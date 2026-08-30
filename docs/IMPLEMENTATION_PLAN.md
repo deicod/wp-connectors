@@ -20,8 +20,10 @@
   than assuming an earlier task followed the suggested file names exactly. At the end, run the
   narrow checks listed for the task, inspect `git diff`, update documentation where behavior
   differs, and then check the task checkbox.
-- Never put credentials, OAuth codes, tokens, full request bodies, authorization headers, or
-  unmasked WordPress salts in fixtures, snapshots, logs, commits, or issue text.
+- Never put real credentials, OAuth codes, tokens, full request bodies, authorization headers,
+  or unmasked WordPress salts in fixtures, snapshots, logs, commits, or issue text. Sanitized
+  synthetic fixtures (fake tokens, seeded test values, redacted request snapshots constructed
+  for tests) are explicitly allowed where tasks require them.
 
 ## Cross-cutting implementation decisions
 
@@ -556,8 +558,9 @@ documented exception.
 
 - [ ] **Task 6.5 — Implement Anthropic OAuth inference.** Adapt the tested Messages mapping from
   z.ai without coupling plugin runtimes; target `https://api.anthropic.com/v1/messages`, use
-  `Authorization: *** include `anthropic-beta: oauth-2025-04-20` and the required
-  `anthropic-version: 2023-06-01` header (assert both explicitly). Check this task only after exact headers/URL and full
+  `Authorization: Bearer <oauth-access-token>` (SPEC §4.3), include `anthropic-beta:
+  oauth-2025-04-20` and the required `anthropic-version: 2023-06-01` header (assert all three
+  explicitly). Check this task only after exact headers/URL and full
   request/response/SSE/tool/structured-output regression fixtures pass.
 
 - [ ] **Task 6.6 — Implement model metadata and availability.** Ship a conservative static Claude
