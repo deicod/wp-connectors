@@ -13,6 +13,9 @@
 	<exclude-pattern>*/tools/*</exclude-pattern>
 	<!-- Test fixtures may intentionally contain standard-violating vendor output. -->
 	<exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+	<!-- The WP API stubs mirror core signatures, not repo style (still covered
+	     by `composer lint` and PHPCompatibility). -->
+	<exclude-pattern>*/tests/harness/wp-stubs.php</exclude-pattern>
 
 	<arg name="extensions" value="php"/>
 	<arg name="basepath" value="."/>

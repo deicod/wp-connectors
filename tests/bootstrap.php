@@ -18,3 +18,7 @@ if (!file_exists($autoload)) {
     exit(1);
 }
 require_once $autoload;
+
+require_once __DIR__ . '/harness/wp-stubs.php';
+require_once __DIR__ . '/harness/SdkHttpClient.php';
+require_once __DIR__ . '/harness/WpConnectorsTestCase.php';

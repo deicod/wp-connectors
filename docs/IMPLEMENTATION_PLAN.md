@@ -82,7 +82,7 @@ documented exception.
   Avoid a runtime Composer dependency in plugin zips. Check this task only after each script runs
   locally (or a precisely documented environment limitation is demonstrated).
 
-- [ ] **Task 0.3 — Build the WordPress test bootstrap.** Create a repeatable test environment that
+- [x] **Task 0.3 — Build the WordPress test bootstrap.** Create a repeatable test environment that
   loads connector code against WordPress/SDK stubs or the WordPress test suite, resets options and
   scheduled events between tests, and intercepts HTTP through WordPress hooks. Add helpers for
   deterministic clocks, nonces, users/capabilities, and encrypted-option assertions. Check this
