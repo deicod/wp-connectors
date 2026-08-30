@@ -57,6 +57,7 @@
             "@test"
         ],
         "lint": "@php bin/lint-php.php",
+        "build": "@php bin/build.php",
         "conventions": "@php bin/check-conventions.php",
         "phpcbf": "phpcbf -p",
         "phpcs": "phpcs -p",

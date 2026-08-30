@@ -95,7 +95,7 @@ documented exception.
   ensure the build is reproducible either way. Check this task only after the conventions are
   documented and enforced by at least one automated check.
 
-- [ ] **Task 0.5 — Implement the standalone artifact builder.** Add a build command that assembles
+- [x] **Task 0.5 — Implement the standalone artifact builder.** Add a build command that assembles
   one zip per plugin, excludes tests/development files, includes required licenses/assets, embeds
   namespaced shared OAuth code where applicable, and emits checksums. Add an artifact inspection
   that rejects repository-relative includes and missing plugin headers. Check this task only after
