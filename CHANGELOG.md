@@ -39,6 +39,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   rejected before transport. Committed redacted request snapshots cover
   minimal, conversation, structured-output, tool, and multimodal-text cases
   (Task 1.6).
+- Response/streaming/error mapping: non-streaming and SSE responses (split
+  frames, `[DONE]`, comments, malformed events, tool-call delta merging,
+  finish reasons, usage) normalize into SDK results; 401/403/429/4xx/5xx/3xx
+  throw SDK-typed exceptions whose messages never include upstream bodies,
+  with `ErrorMapper::to_wp_error()` exposing stable typed codes
+  (`zai_unauthorized`, `zai_rate_limited`, …); no retries in v1 (Task 1.7).
 
 ### Added (tooling / M0 foundation)
 

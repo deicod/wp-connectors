@@ -22,11 +22,17 @@ namespace Deicod\WpConnectors\Zai\Models;
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
-use WordPress\AiClient\Messages\Enums\ModalityEnum;
 use WordPress\AiClient\Providers\Http\DTO\Request;
+use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
+use WordPress\AiClient\Providers\Http\Exception\ClientException;
+use WordPress\AiClient\Providers\Http\Exception\RedirectException;
+use WordPress\AiClient\Providers\Http\Exception\ResponseException;
+use WordPress\AiClient\Providers\Http\Exception\ServerException;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleTextGenerationModel;
+use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Support\SseAggregator;
 
 /**
  * Text generation model for z.ai.
@@ -82,6 +88,122 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		$this->validate_request( $prompt );
 
 		return parent::prepareGenerateTextParams( $prompt );
+	}
+
+	/**
+	 * Throws a SAFE, typed SDK exception when the response is not successful.
+	 *
+	 * The SDK defaults embed the upstream error body in the exception message;
+	 * z.ai error bodies can echo request material (up to and including
+	 * credential fragments), so this override replaces the message with a
+	 * stable, status-specific one. The exception TYPES are the SDK's own, so
+	 * core's exception_to_wp_error() instanceof mapping keeps working.
+	 *
+	 * No retries in v1: a non-2xx response always throws exactly once.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param Response $response The HTTP response to check.
+	 * @return void
+	 * @throws ClientException   For 4xx responses.
+	 * @throws ServerException   For 5xx responses.
+	 * @throws RedirectException For 3xx responses.
+	 */
+	protected function throwIfNotSuccessful( Response $response ): void {
+		if ( $response->isSuccessful() ) {
+			return;
+		}
+
+		$status = $response->getStatusCode();
+
+		if ( $status >= 500 ) {
+			throw new ServerException(
+				sprintf(
+					/* translators: %d: HTTP status code. */
+					esc_html__( 'The z.ai API reported a server error (%d). This is usually temporary; try again shortly.', 'zai' ),
+					absint( $status )
+				),
+				absint( $status )
+			);
+		}
+
+		if ( $status >= 400 ) {
+			switch ( $status ) {
+				case 401:
+					$message = __( 'The z.ai API rejected the API key (401). Check the key on the Connectors screen — international and China keys are not interchangeable.', 'zai' );
+					break;
+				case 403:
+					$message = __( 'The z.ai API refused the request (403). The key may not have access to this model or plan.', 'zai' );
+					break;
+				case 429:
+					$message = __( 'The z.ai API is rate limiting this key (429). Wait a moment and try again.', 'zai' );
+					break;
+				default:
+					$message = sprintf(
+						/* translators: %d: HTTP status code. */
+						esc_html__( 'The z.ai API rejected the request (%d). Check the prompt and model selection.', 'zai' ),
+						absint( $status )
+					);
+			}
+
+			throw new ClientException( esc_html( $message ), absint( $status ) );
+		}
+
+		throw new RedirectException(
+			sprintf(
+				/* translators: %d: HTTP status code. */
+				esc_html__( 'The z.ai API returned an unexpected redirect (%d). No request was retried.', 'zai' ),
+				absint( $status )
+			),
+			absint( $status )
+		);
+	}
+
+	/**
+	 * Parses non-streaming AND SSE responses into SDK result objects.
+	 *
+	 * A `text/event-stream` response (or a body starting with `data:`) is
+	 * aggregated first: chunk deltas are merged into one consolidated
+	 * chat.completion payload (tool calls, finish reasons, usage included)
+	 * and then run through the standard non-streaming parser.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param Response $response The API response.
+	 * @return GenerativeAiResult The parsed result.
+	 * @throws ResponseException When the payload is malformed.
+	 */
+	protected function parseResponseToGenerativeAiResult( Response $response ): GenerativeAiResult { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated override name.
+		$body = (string) $response->getBody();
+
+		$is_event_stream = false !== stripos( (string) $response->getHeaderAsString( 'Content-Type' ), 'text/event-stream' )
+			|| 0 === strpos( ltrim( $body ), 'data:' );
+
+		if ( ! $is_event_stream ) {
+			return parent::parseResponseToGenerativeAiResult( $response );
+		}
+
+		$aggregator = new SseAggregator();
+		$aggregator->feed( $body );
+		$aggregator->finish();
+
+		$aggregated = $aggregator->aggregated();
+
+		if ( null === $aggregated ) {
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'stream',
+				'No usable chat.completion.chunk event was received.'
+			);
+		}
+
+		$consolidated = new Response(
+			$response->getStatusCode(),
+			array( 'Content-Type' => array( 'application/json' ) ),
+			(string) wp_json_encode( $aggregated )
+		);
+
+		return parent::parseResponseToGenerativeAiResult( $consolidated );
 	}
 
 	/**

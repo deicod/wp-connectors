@@ -189,7 +189,7 @@ documented exception.
   transport. Check this task only after request snapshots cover minimal, conversation, structured
   output, tool, and multimodal cases without including credentials.
 
-- [ ] **Task 1.7 — Implement response, streaming, and error mapping.** Normalize non-streaming and
+- [x] **Task 1.7 — Implement response, streaming, and error mapping.** Normalize non-streaming and
   SSE responses into SDK result objects, including tool calls, finish reasons, usage when present,
   split SSE frames, `[DONE]`, and malformed events. Map 401, 403, 429, transport errors, and 5xx
   to stable typed `WP_Error` codes and safe messages; do not add custom retries in v1. Check this
