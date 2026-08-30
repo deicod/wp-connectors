@@ -133,7 +133,7 @@ documented exception.
   activation tests cover WP 7.0, the supported standalone-SDK case (6.9 header accepted), a
   missing SDK, and duplicate `init` execution.
 
-- [ ] **Task 1.2 — Implement plan/region configuration.** Add settings for
+- [x] **Task 1.2 — Implement plan/region configuration.** Add settings for
   `zai_connector_zai_plan` (`coding` default, `general`) and
   `zai_connector_zai_region` (`intl` default, `cn`) using the Settings API. Sanitize to the known
   enum, fall back safely on corrupt values, require `manage_options`, use nonces, and explain the

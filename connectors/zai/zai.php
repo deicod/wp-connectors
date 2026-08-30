@@ -20,6 +20,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai;
 
 use WordPress\AiClient\AiClient;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	return;
@@ -65,6 +66,12 @@ function boot(): void {
 	add_action( 'init', __NAMESPACE__ . '\\register_provider', 5 );
 
 	add_action( 'admin_notices', array( Plugin::class, 'render_dependency_notice' ) );
+
+	// Plan/region settings (Task 1.2).
+	add_action( 'admin_init', array( PlanRegionSettings::class, 'register_settings' ) );
+	add_action( 'admin_init', array( PlanRegionSettings::class, 'guard_settings_save' ) );
+	add_action( 'admin_menu', array( PlanRegionSettings::class, 'register_page' ) );
+	add_action( 'update_option_' . PlanRegionSettings::OPTION_REGION, array( PlanRegionSettings::class, 'handle_region_change' ), 10, 2 );
 }
 
 boot();

@@ -108,6 +108,20 @@ final class WpHarness
     public static $registered_settings = array();
 
     /**
+     * Admin submenu pages registered via add_options_page(): slug => page data.
+     *
+     * @var array<string, array>
+     */
+    public static $admin_pages = array();
+
+    /**
+     * Settings errors recorded via add_settings_error().
+     *
+     * @var list<array{setting: string, code: string, message: string, type: string}>
+     */
+    public static $settings_errors = array();
+
+    /**
      * _doing_it_wrong() recordings.
      *
      * @var list<array{function: string, message: string, version: string}>
@@ -149,6 +163,8 @@ final class WpHarness
         self::$sdk_mock_queue = array();
         self::$doing_it_wrong = array();
         self::$registered_settings = array();
+        self::$admin_pages = array();
+        self::$settings_errors = array();
 
         // $_REQUEST derivatives leak between tests otherwise.
         unset($_GET['_wpnonce'], $_POST['_wpnonce'], $_REQUEST['_wpnonce']);

@@ -12,6 +12,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   with missing-SDK admin notice, own PSR-4 autoloader, idempotent provider
   registration at `init` priority 5; registers only the `zai` provider in M1
   (Task 1.1).
+- Plan/region settings (`zai_connector_zai_plan` coding|general,
+  `zai_connector_zai_region` intl|cn) via the Settings API on a dedicated
+  Settings → z.ai page: whitelist sanitization with corrupt-value fallback,
+  capability+nonce save guard, and region-switch invalidation of plugin-owned
+  credential-derived state (the core-owned key option is never written)
+  (Task 1.2).
 
 ### Added (tooling / M0 foundation)
 

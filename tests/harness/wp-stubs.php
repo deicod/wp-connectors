@@ -609,6 +609,37 @@ function esc_textarea($text)
     return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8', true);
 }
 
+/*
+ * -------------------------------------------------------------------------
+ * Form helpers (selected/checked disabled-state echoes).
+ * -------------------------------------------------------------------------
+ */
+
+function wp_connectors_harness_selected($helper, $current = true, $echo = true, $attribute = 'selected')
+{
+    $result = ((string) $helper === (string) $current) ? " $attribute='$attribute'" : '';
+    if ($echo) {
+        echo $result; // phpcs:ignore WordPress.Security.EscapeOutput
+    }
+
+    return $result;
+}
+
+function selected($helper, $current = true, $echo = true)
+{
+    return wp_connectors_harness_selected($helper, $current, $echo, 'selected');
+}
+
+function checked($helper, $current = true, $echo = true)
+{
+    return wp_connectors_harness_selected($helper, $current, $echo, 'checked');
+}
+
+function disabled($helper, $current = true, $echo = true)
+{
+    return wp_connectors_harness_selected($helper, $current, $echo, 'disabled');
+}
+
 function sanitize_text_field($str)
 {
     return trim(preg_replace('/[\r\n\t ]+/', ' ', strip_tags((string) $str)));
@@ -973,6 +1004,33 @@ function unregister_setting($option_group, $option_name)
     return true;
 }
 
+/**
+ * Records admin submenu pages registered via add_options_page().
+ *
+ * @param string   $page_title Page title.
+ * @param string   $menu_title Menu title.
+ * @param string   $capability Required capability.
+ * @param string   $menu_slug  Menu slug.
+ * @param callable $callback   Render callback.
+ * @param int|null $position   Position (ignored).
+ * @return string|false The hook suffix, or false when the user lacks the capability.
+ */
+function add_options_page($page_title, $menu_title, $capability, $menu_slug, $callback = '', $position = null)
+{
+    if (! current_user_can($capability)) {
+        return false;
+    }
+
+    WpHarness::$admin_pages[ $menu_slug ] = array(
+        'parent' => 'options-general.php',
+        'title' => $menu_title,
+        'capability' => $capability,
+        'callback' => $callback,
+    );
+
+    return 'settings_page_' . $menu_slug;
+}
+
 function get_registered_settings()
 {
     return WpHarness::$registered_settings;
@@ -992,6 +1050,30 @@ function settings_fields($option_group)
 {
     echo '<input type="hidden" name="option_page" value="' . esc_attr($option_group) . '" />'; // phpcs:ignore WordPress.Security.EscapeOutput
     echo '<input type="hidden" name="_wpnonce" value="' . esc_attr(wp_create_nonce($option_group . '-options')) . '" />'; // phpcs:ignore WordPress.Security.EscapeOutput
+}
+
+/**
+ * Minimal WP_Error-style admin-notices channel used by plugin save guards.
+ *
+ * @param string $setting Setting slug.
+ * @param string $code    Error code.
+ * @param string $message Message.
+ * @param string $type    Notice type.
+ * @return void
+ */
+function add_settings_error($setting, $code, $message, $type = 'error')
+{
+    WpHarness::$settings_errors[] = array(
+        'setting' => $setting,
+        'code' => $code,
+        'message' => $message,
+        'type' => $type,
+    );
+}
+
+function settings_errors($setting = '', $sanitize = false, $hide_on_update = false)
+{
+    return WpHarness::$settings_errors;
 }
 
 function do_settings_sections($page)
