@@ -26,6 +26,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   a persisted verdict bound to the complete key hash + key source + endpoint
   identity; transport/5xx failures stay transient and never persist a verdict
   (Task 1.4).
+- Model metadata directory (O1 resolved, record 0006): dynamic `/models`
+  discovery with a 12-hour transient cache scoped to provider+plan+region,
+  newest-first GLM sorting, plan-partitioned static fallbacks (coding: GLM
+  5.x family; general: full catalog), malformed/401/404/transport responses
+  falling back without poisoning the cache, and conservative text-only
+  capability/option declarations (Task 1.5).
 
 ### Added (tooling / M0 foundation)
 

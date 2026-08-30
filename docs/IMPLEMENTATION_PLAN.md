@@ -167,7 +167,7 @@ documented exception.
   Check this task only after metadata tests cover the minimum and newer SDK shapes, header tests
   prove correct injection, and failures/logs prove the key is always redacted.
 
-- [ ] **Task 1.5 — Implement the model metadata directory.** Start with a maintained static GLM
+- [x] **Task 1.5 — Implement the model metadata directory.** Start with a maintained static GLM
   text-model catalog, newest-first. The static fallback MUST be plan-specific: separate coding
   and general catalogs (coding subscriptions expose a restricted model set; a shared fallback
   can advertise general-only models while the coding endpoint is selected, per SPEC §3.3). Add an
