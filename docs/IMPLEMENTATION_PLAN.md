@@ -116,10 +116,19 @@ documented exception.
 
 ## Milestone 1 — z.ai OpenAI-compatible provider (`zai`)
 
-- [ ] **Milestone 1 complete.** Check this milestone only after Tasks 1.1–1.9 are checked, all M1
+- [x] **Milestone 1 complete.** Check this milestone only after Tasks 1.1–1.9 are checked, all M1
   SPEC acceptance criteria pass, and the unresolved coding-plan `/models` behavior (O1 for the
   OpenAI surface) is recorded from a credentialed probe or explicitly remains behind the tested
   static fallback.
+
+  M1 completion evidence (2026-08-30): O1 resolved by credentialed probe (record 0006: 200
+  OpenAI-shape on coding+intl and general+intl; dynamic discovery shipped WITH the tested
+  plan-partitioned static fallback, which stays authoritative for the unprobed `cn` region).
+  Offline matrix green (`composer check`: 162 tests, 813 assertions, PHPCS/PHPCompatibility/
+  PHPStan/conventions/secret-scan clean). Live smoke coding+intl PASS through the plugin
+  classes (availability → discovery → generation, glm-5.3, 114 tokens); general+intl inference
+  returns the account-plan 429/1113 surfaced as the typed rate-limit error. Artifact
+  `dist/connectors-zai-0.1.0.zip` builds reproducibly and passes the standalone inspector.
 
 ### Tasks
 
@@ -202,7 +211,7 @@ documented exception.
   Check this task only after tests demonstrate logging is off by default and cannot expose query
   secrets, headers, keys, prompt bodies, schemas, OAuth-like values, or response bodies.
 
-- [ ] **Task 1.9 — Validate and document M1.** Add user instructions, supported options/models,
+- [x] **Task 1.9 — Validate and document M1.** Add user instructions, supported options/models,
   endpoint selection behavior, API-key storage disclosure, multisite behavior, and troubleshooting.
   Run the offline matrix across supported PHP targets and an opt-in live coding+international
   smoke test when a key is available. Record the O1 probe result and preserve fallback if it is
@@ -210,11 +219,22 @@ documented exception.
 
 ### Exit criteria
 
-- Core auto-discovers a `zai` card with an API-key field.
-- Each plan/region selection routes to the exact SPEC endpoint at request time.
-- `wp_ai_client_prompt(...)->using_provider('zai')->generate_text()` works with mocked transport
-  and, when credentials are supplied, coding+international live transport.
-- An invalid key produces a redacted, actionable error and unavailable/not-connected state.
+- [x] Core auto-discovers a `zai` card with an API-key field. — apiKey()
+  metadata derives the Connectors card and `connectors_ai_zai_api_key`
+  (ZaiPluginScaffoldTest, record 0001 derivation test).
+- [x] Each plan/region selection routes to the exact SPEC endpoint at request time. —
+  table-driven exact-URL tests plus request-time retarget proof with the provider's
+  cached directory and model (ZaiEndpointResolverTest, ZaiModelDirectoryTest,
+  ZaiRequestMappingTest).
+- [x] `wp_ai_client_prompt(...)->using_provider('zai')->generate_text()` works with mocked
+  transport and, when credentials are supplied, coding+international live transport. —
+  mocked end to end via the genuine SDK prompt path in the test suite; live coding+intl
+  PASS through the plugin classes (ZaiLiveSmokeTest opt-in, `bin/zai-live-probe.php`,
+  record 0006).
+- [x] An invalid key produces a redacted, actionable error and unavailable/not-connected
+  state. — nonempty-invalid key reports not connected
+  (ZaiProviderMetadataAndAvailabilityTest) with a redacted actionable 401 error
+  (ZaiResponseMappingTest, ErrorMapper).
 
 ---
 

@@ -45,6 +45,7 @@ foreach ( glob( $connectors_dir . '/*/src', GLOB_ONLYDIR ) ?: array() as $src_di
 
 require_once __DIR__ . '/harness/wp-stubs.php';
 require_once __DIR__ . '/harness/SdkHttpClient.php';
+require_once __DIR__ . '/harness/CurlPsr18Client.php';
 require_once __DIR__ . '/harness/WpConnectorsTestCase.php';
 require_once __DIR__ . '/harness/FakeSecrets.php';
 require_once __DIR__ . '/harness/HttpResponseFactory.php';

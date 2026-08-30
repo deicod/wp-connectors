@@ -24,6 +24,26 @@ Both responses list the **same 10 models**:
 (each entry carries an `owned_by: "z-ai"` and a unix `created` timestamp; the
 evidence JSONs hold the raw values).
 
+## M1 live smoke evidence (2026-08-30, Milestone 1 Task 1.9)
+
+`php bin/zai-live-probe.php` (key read at runtime from `~/.config/z.ai/api_key`;
+never copied into the repo, fixtures, or logs):
+
+| Check | coding+intl (default) | general+intl |
+|---|---|---|
+| Availability probe (GET /models) | connected, ~190 ms | connected, ~190 ms |
+| Discovery (live /models via the plugin directory) | 10 models, same list as above | 10 models, same list |
+| Chat completion (plugin model class) | **PASS** — glm-5.3 returned the exact requested marker text, 114 tokens, ~2.4 s | HTTP 429, z.ai code 1113 "Insufficient balance or no resource package" |
+
+- The coding+intl combination — the M1 acceptance path — passed end to end:
+  availability → discovery → generation, all through the shipped plugin classes.
+- The general-plan 429/1113 is an **account property** (the probe key is a Coding
+  Plan subscription key with no pay-as-you-go balance), not a plugin defect; the
+  plugin surfaced it as the stable typed rate-limit error with the upstream body
+  correctly excluded — a live confirmation of the Task 1.7 error mapping.
+- The opt-in PHPUnit live test (`WP_CONNECTORS_TEST_ZAI_API_KEY`, see
+  `docs/TESTING.md`) also passes (5 assertions) and skips cleanly without the env var.
+
 ## Consequences for implementation
 
 1. **O1 (OpenAI surface) is resolved: `/models` exists and works** — including on the

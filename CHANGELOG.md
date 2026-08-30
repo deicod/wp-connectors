@@ -50,6 +50,14 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   via a transporter decorator across inference, availability, and discovery
   requests into a bounded ring buffer; a plugin-row Settings link and the
   debug checkbox + log viewer on the settings page (Task 1.8).
+- M1 validation and documentation: WordPress-style `readme.txt` (usage, key
+  storage disclosure, endpoint behavior, multisite, troubleshooting),
+  `uninstall.php` removing plugin-owned options/caches only, opt-in live
+  smoke tooling (`bin/zai-live-probe.php` + env-gated `ZaiLiveSmokeTest`,
+  key read at runtime from `ZAI_LIVE_API_KEY`/`~/.config/z.ai/api_key`),
+  and recorded live evidence in record 0006 — coding+intl PASS end to end,
+  general-plan 429/1113 (account property) surfaced as the typed rate-limit
+  error (Task 1.9).
 
 ### Added (tooling / M0 foundation)
 

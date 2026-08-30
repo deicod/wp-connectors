@@ -4,6 +4,8 @@ parameters:
 		- bin
 		- connectors
 		- shared
+		# Live-probe tooling referenced from bin/zai-live-probe.php.
+		- tests/harness/CurlPsr18Client.php
 	excludePaths:
 		- */vendor/*
 		- */dist/*
