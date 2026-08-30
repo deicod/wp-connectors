@@ -328,7 +328,12 @@ documented exception.
   retaining safe diagnostic state; treat transient failures as retryable without erasing the last
   token prematurely. Terminal classification MUST be restricted to definitive authorization
   errors (`invalid_grant`, revoked grant); HTTP 429 and other transient/transport failures MUST
-  remain retryable and MUST NOT mark the grant dead or force a reconnect. Repeated transient
+  remain retryable and MUST NOT mark the grant dead or force a reconnect. Deterministic
+  client/configuration failures — OAuth error `invalid_client`/`unauthorized_client` (rotated
+  or disabled extracted client ID, a documented SPEC risk) — form a THIRD state: permanent
+  configuration error that suppresses retries until connector configuration changes
+  (update required), distinct from both reconnect-required and transient; test it separately
+  from invalid-grant handling. Repeated transient
   failures MUST enter a persisted, bounded cooldown (honoring `Retry-After` where provided, else
   exponential backoff with a cap) so sequential callers do not hammer the token endpoint during
   an outage. Check this task only after deterministic concurrency, clock-boundary, scheduling,
@@ -346,7 +351,11 @@ documented exception.
   refresh failure, and concurrent refresh paths.
 
 - [ ] **Task 3.5 — Implement availability semantics.** Compute availability from grant presence,
-  decryptability, expiry/refresh outcome, and an optional cheap provider probe. Distinguish
+  decryptability, expiry/refresh outcome, and an optional cheap provider probe. Availability
+  checks invoked from GET renders (provider page, core Connectors screen) MUST be read-only:
+  report from cached grant state only (stale-expiry = temporarily unavailable with a
+  scheduled refresh), never perform HTTP or commit rotated tokens — refreshes run exclusively
+  through POST/scheduled paths. Distinguish
   disconnected, reconnect-required, temporarily unavailable, and connected internally while
   mapping safely to the SDK interface. Check this task only after each state and its admin/core
   representation has a deterministic test.
@@ -556,9 +565,13 @@ documented exception.
   endpoint first and steal the grant; include a plaintext-absence assertion like Task 4.2.
   Concurrent starts MUST be deterministic exactly as in Task 4.2: per-user isolation of pending
   state or explicit atomic cancel-and-replace — a second start may never silently orphan a
-  first user's still-valid code; test overlapping starts.
+  first user's still-valid code; test overlapping starts. Replacement is fenced like Codex
+  cancellation (Task 4.3): a replacement start acquires the polling lease or advances a
+  generation checked immediately before token commit, so an old flow's in-flight exchange
+  cannot install its grant after the new code is presented; add a start-versus-poll race test.
   Check this task only after request,
-  output escaping, expiration, duplicate-start, at-rest encryption, CSRF, and capability tests pass.
+  output escaping, expiration, duplicate-start, replacement fencing, at-rest encryption, CSRF,
+  and capability tests pass.
 
 - [ ] **Task 5.4 — Implement RFC 8628 polling.** Poll at the server interval, handle
   `authorization_pending`, denial, expiry, and success without tying up a PHP worker. A
@@ -721,8 +734,9 @@ documented exception.
 
 - [ ] **Task 7.6 — Define versioning, upgrades, and uninstall.** Add tested schema/version upgrade
   routines, model-catalog update policy, OAuth client-ID patch path, deactivation behavior, and
-  explicit opt-in or documented uninstall cleanup for options, cron hooks, locks, fallback keys,
-  and ciphertext. Check this task only after upgrade/rollback and uninstall tests show no orphaned
+  explicit opt-in or documented uninstall cleanup for options, cron hooks, locks, and
+  ciphertext. External key configuration (Task 3.2 fallback) is never stored by the plugin and
+  therefore never deleted by uninstall. Check this task only after upgrade/rollback and uninstall tests show no orphaned
   secrets or cross-plugin deletion.
 
 - [ ] **Task 7.7 — Produce reproducible release artifacts.** Build each plugin independently,
