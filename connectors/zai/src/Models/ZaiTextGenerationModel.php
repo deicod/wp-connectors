@@ -184,6 +184,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * chat.completion payload (tool calls, finish reasons, usage included)
 	 * and then run through the standard non-streaming parser.
 	 *
+	 * SDK parse failures are re-thrown with a FIXED message: the SDK's
+	 * ResponseException messages can embed upstream response fields verbatim
+	 * (e.g. an unexpected finish_reason), which must never reach error
+	 * surfaces.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param Response $response The API response.
@@ -197,7 +202,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			|| 0 === strpos( ltrim( $body ), 'data:' );
 
 		if ( ! $is_event_stream ) {
-			return parent::parseResponseToGenerativeAiResult( $response );
+			return $this->parseNonStreamBody( $response );
 		}
 
 		$aggregator = new SseAggregator();
@@ -220,7 +225,30 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			(string) wp_json_encode( $aggregated )
 		);
 
-		return parent::parseResponseToGenerativeAiResult( $consolidated );
+		return $this->parseNonStreamBody( $consolidated );
+	}
+
+	/**
+	 * Runs the SDK's non-streaming parser with sanitized failure messages.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param Response $response The chat.completion response.
+	 * @return GenerativeAiResult The parsed result.
+	 * @throws ResponseException With a fixed message when the payload is malformed.
+	 */
+	private function parseNonStreamBody( Response $response ): GenerativeAiResult {
+		try {
+			return parent::parseResponseToGenerativeAiResult( $response );
+		} catch ( ResponseException $e ) {
+			// The SDK message may embed upstream body content (e.g. a
+			// non-standard finish_reason); replace it with a fixed string.
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'response',
+				'The chat-completions payload was malformed.'
+			);
+		}
 	}
 
 	/**

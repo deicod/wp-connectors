@@ -296,6 +296,48 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         );
     }
 
+    public function testRateLimitResponseDoesNotInvalidateAValidKey()
+    {
+        // z.ai returns 429 for plan mismatches on an otherwise VALID key
+        // (error 1113, record 0006): the verdict must stay unpersisted.
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(429, array(), HttpResponseFactory::openAiErrorBody('Insufficient balance or no resource package'));
+        $this->assertFalse($instance->isConfigured(), 'Inconclusive probe reports unavailable for this call.');
+
+        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 429 must not persist an invalid verdict.');
+
+        // And the next check probes again (no cached false verdict).
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+        $this->assertTrue($instance->isConfigured());
+    }
+
+    public function testNotFoundResponseDoesNotInvalidateTheKey()
+    {
+        // The cn /models path is unprobed (record 0006): a 404 there says
+        // nothing about the credential.
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+        $this->assertFalse($instance->isConfigured());
+        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 404 must not persist an invalid verdict.');
+    }
+
+    public function testForbiddenResponsePersistsInvalidVerdict()
+    {
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(403, array(), HttpResponseFactory::openAiErrorBody('no access'));
+        $this->assertFalse($instance->isConfigured());
+
+        $state = get_option(ZaiProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state);
+        $this->assertSame('invalid', $state['valid'], '403 (credential lacks access) must persist.');
+    }
+
     public function testTransportFailureIsTransientAndNotPersisted()
     {
         $key = FakeSecrets::apiKey();

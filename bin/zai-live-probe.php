@@ -132,11 +132,12 @@ try {
         $model_id = $models[0]->getId();
     }
     /**
-     * The provider only constructs text generation models (ZaiProvider::createModel).
+     * getProviderModel() (not ZaiProvider::model()) binds the registry's
+     * transporter and auth into the instance.
      *
      * @var Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel $model
      */
-    $model = ZaiProvider::model( $model_id );
+    $model = $registry->getProviderModel( 'zai', $model_id );
     $result = $model->generateTextResult( array(
         new Message( MessageRoleEnum::user(), array( new MessagePart( 'Reply with exactly: wp-connectors live probe ok' ) ) ),
     ) );

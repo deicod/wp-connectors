@@ -369,24 +369,73 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             new ApiKeyRequestAuthentication(FakeSecrets::apiKey())
         );
 
+        // The provider's directory instance is cached per-class for the whole
+        // process — exactly like a long-running request or WP-CLI. NO manual
+        // invalidation is performed: the SDK-level cache key must itself be
+        // endpoint-scoped (review finding: it previously was not).
         $directory = $registry->getProviderClassName('zai')::modelMetadataDirectory();
-        $directory->invalidateCaches(); // The instance is cached per-class process-wide.
+        $directory->invalidateCaches(); // Reset cross-test process state only.
 
         $this->selectEndpoint('coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
-        $directory->listModelMetadata();
+        $models = $directory->listModelMetadata();
+        $this->assertCount(1, $models);
         $this->assertSame('https://api.z.ai/api/coding/paas/v4/models', $this->sdkHttpAttempts()[0]['url']);
 
-        // Same provider, same registry instance: change the setting and
-        // invalidate the in-memory per-instance cache only.
+        // Same provider, same directory instance, same registry: switch the
+        // endpoint and list again — the next request must hit the NEW
+        // endpoint, never the warm cache from the previous one.
         $this->selectEndpoint('general', 'cn');
-        $directory->invalidateCaches();
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
-        $directory->listModelMetadata();
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-4.5')));
+        $models = $directory->listModelMetadata();
 
+        $this->assertCount(2, $models, 'The new endpoint catalog must be fetched, not the stale one.');
+        $this->assertCount(2, $this->sdkHttpAttempts());
         $this->assertSame('https://open.bigmodel.cn/api/paas/v4/models', end(WpHarness::$sdk_http_attempts)['url']);
         $this->assertTrue($registry->hasProvider('zai'), 'Registry state must be untouched.');
     }
+
+    public function testSdkCacheKeyIsEndpointScoped()
+    {
+        // Direct proof that the SDK-level cache key (including any PSR-16
+        // persistent cache configured via AiClient::setCache()) differs per
+        // plan and per region.
+        $directory = new ZaiModelMetadataDirectory();
+        $base_key = Closure::bind(
+            function () {
+                return $this->getBaseCacheKey();
+            },
+            $directory,
+            ZaiModelMetadataDirectory::class
+        );
+
+        $this->selectEndpoint('coding', 'intl');
+        $coding_intl = $base_key();
+        $this->selectEndpoint('general', 'intl');
+        $general_intl = $base_key();
+        $this->selectEndpoint('coding', 'cn');
+        $coding_cn = $base_key();
+
+        $this->assertNotSame($coding_intl, $general_intl);
+        $this->assertNotSame($coding_intl, $coding_cn);
+        $this->assertNotSame($general_intl, $coding_cn);
+    }
+
+    public function testFallbackIsNotCachedAtTheSdkLayerEither()
+    {
+        $this->selectEndpoint('coding', 'intl');
+
+        $directory = $this->directory();
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad key'));
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($directory->listModelMetadata()));
+
+        // The SAME instance must re-probe (no SDK localCache entry for the
+        // fallback), so a later valid key can still discover.
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.2')));
+        $this->assertCount(1, $this->idList($directory->listModelMetadata()));
+        $this->assertCount(2, $this->sdkHttpAttempts());
+    }
+
 
     /**
      * @param list<ModelMetadata> $models

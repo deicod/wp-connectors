@@ -4,11 +4,12 @@
  *
  * Codes are part of the plugin's public contract (SPEC §6.2) and never
  * change with provider message wording. Messages are constructed here, never
- * copied from the exception, because upstream error bodies can echo request
- * material (including credentials) and must stay redacted. The three
- * exception types whose messages are built entirely from controlled strings
- * (our own invalid-argument rejections, SDK ResponseException parse
- * messages, and NetworkException transport messages) do include the detail.
+ * copied verbatim from exceptions whose text can embed upstream content,
+ * because upstream bodies can echo request material (including credentials)
+ * and must stay redacted. Exceptions whose messages are built entirely from
+ * controlled strings (our own pre-transport rejections, the fixed-string
+ * ResponseExceptions this plugin produces, and NetworkException transport
+ * messages) do include the detail.
  *
  * @since 0.1.0
  *
@@ -190,8 +191,10 @@ final class ErrorMapper {
 		}
 
 		if ( $exception instanceof ResponseException ) {
-			// ResponseException messages are fixed SDK strings describing the
-			// malformed field — no upstream content.
+			// Safe to pass through: ResponseExceptions reaching this mapper
+			// are constructed by THIS plugin with fixed messages (the model
+			// re-wraps SDK parse failures precisely so no upstream field can
+			// reach exception messages).
 			return new \WP_Error(
 				self::CODE_INVALID_RESPONSE,
 				$exception->getMessage(),

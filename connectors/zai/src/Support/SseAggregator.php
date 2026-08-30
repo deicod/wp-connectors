@@ -8,8 +8,9 @@
  *
  * Handles the OpenAI/z.ai streaming conventions: `data:` lines (multi-line
  * data joined), `[DONE]` sentinel, comment lines (`:`), ignorable `event:`/
- * `id:`/`retry:` fields, split frames (chunks may end mid-frame), CRLF and LF
- * line endings, and malformed JSON events (counted and skipped, never fatal).
+ * `id:`/`retry:` fields, split frames (chunks may end mid-frame), CR/LF/CRLF
+ * line terminators mixed freely, and malformed JSON events (counted and
+ * skipped, never fatal).
  *
  * @since 0.1.0
  *
@@ -28,7 +29,9 @@ namespace Deicod\WpConnectors\Zai\Support;
 final class SseAggregator {
 
 	/**
-	 * Buffered raw bytes not yet forming a complete frame.
+	 * Buffered bytes not yet forming a complete frame: line endings
+	 * normalized to LF, except possibly one trailing CR that may still
+	 * extend to CRLF when more data arrives.
 	 *
 	 * @since 0.1.0
 	 *
@@ -66,6 +69,12 @@ final class SseAggregator {
 	/**
 	 * Feeds a raw chunk of the event stream.
 	 *
+	 * SSE allows CR, LF, or CRLF line terminators, mixed freely, so the
+	 * buffer is normalized to LF before frame splitting; a trailing CR is
+	 * held back because it may still extend to CRLF when the next chunk
+	 * arrives. Frames are separated by a blank line (two consecutive LF
+	 * after normalization).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param string $chunk Raw bytes as received from the transport.
@@ -74,24 +83,22 @@ final class SseAggregator {
 	public function feed( string $chunk ): void {
 		$this->buffer .= $chunk;
 
-		// Frames are separated by a blank line (LF or CRLF).
-		while ( true ) {
-			$lf   = strpos( $this->buffer, "\n\n" );
-			$crlf = strpos( $this->buffer, "\r\n\r\n" );
+		$held_back_cr = '';
+		if ( "\r" === substr( $this->buffer, -1 ) ) {
+			$held_back_cr = "\r";
+			$this->buffer = substr( $this->buffer, 0, -1 );
+		}
 
-			if ( false === $lf && false === $crlf ) {
-				return;
-			}
+		$this->buffer = str_replace( array( "\r\n", "\r" ), "\n", $this->buffer ) . $held_back_cr;
 
-			if ( false !== $crlf && ( false === $lf || $crlf < $lf ) ) {
-				$frame        = substr( $this->buffer, 0, $crlf );
-				$this->buffer = substr( $this->buffer, $crlf + 4 );
-			} else {
-				$frame        = substr( $this->buffer, 0, $lf );
-				$this->buffer = substr( $this->buffer, $lf + 2 );
-			}
+		$pos = strpos( $this->buffer, "\n\n" );
+		while ( false !== $pos ) {
+			$frame        = substr( $this->buffer, 0, $pos );
+			$this->buffer = substr( $this->buffer, $pos + 2 );
 
 			$this->consume_frame( $frame );
+
+			$pos = strpos( $this->buffer, "\n\n" );
 		}
 	}
 
@@ -292,7 +299,7 @@ final class SseAggregator {
 	private function consume_frame( string $frame ): void {
 		$data_lines = array();
 
-		foreach ( explode( "\n", str_replace( "\r\n", "\n", $frame ) ) as $line ) {
+		foreach ( explode( "\n", $frame ) as $line ) {
 			if ( '' === $line || 0 === strpos( $line, ':' ) ) {
 				// Empty line or comment (keep-alive): ignore.
 				continue;

@@ -258,9 +258,16 @@ final class PlanRegionSettings {
 	 * Defense-in-depth guard for saves of this option group.
 	 *
 	 * Core's options.php already enforces `manage_options` (via the page) and
-	 * the group nonce. This guard additionally strips this plugin's option
-	 * keys from the incoming request when either check fails, so no alternate
-	 * write path can persist plan/region values without both.
+	 * the group nonce. Two different failure shapes exist in real WordPress:
+	 *
+	 * - CAPABILITY failure: options.php would wp_die() on its own check, but
+	 *   admin_init runs first — this guard strips the plugin's option keys
+	 *   from the request immediately, so nothing of ours can be persisted by
+	 *   any other write path in the same request.
+	 * - NONCE failure: core's check_admin_referer() terminates the request
+	 *   (wp_nonce_ays → wp_die) and never returns, so the nonce is left for
+	 *   core to enforce (this guard only verifies it AFTER the capability
+	 *   check passed, to keep the strip path reachable).
 	 *
 	 * Hooked on `admin_init`.
 	 *
@@ -274,45 +281,46 @@ final class PlanRegionSettings {
 			return;
 		}
 
-		$authorized = current_user_can( 'manage_options' )
-			&& check_admin_referer( self::OPTION_GROUP . '-options' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			unset( $_POST[ self::OPTION_PLAN ], $_POST[ self::OPTION_REGION ] );
 
-		if ( $authorized ) {
+			add_settings_error(
+				self::OPTION_GROUP,
+				'zai_connector_unauthorized',
+				__( 'The z.ai endpoint selection was not saved: this form requires an administrator session.', 'zai' )
+			);
+
 			return;
 		}
 
-		unset( $_POST[ self::OPTION_PLAN ], $_POST[ self::OPTION_REGION ] );
-
-		add_settings_error(
-			self::OPTION_GROUP,
-			'zai_connector_unauthorized',
-			__( 'The z.ai endpoint selection was not saved: this form requires an administrator session and a valid nonce.', 'zai' )
-		);
+		check_admin_referer( self::OPTION_GROUP . '-options' );
 	}
 
 	/**
-	 * Invalidates plugin-owned credential-derived state after a region switch.
+	 * Invalidates plugin-owned credential-derived state after an endpoint switch.
 	 *
-	 * Hooked on `update_option_zai_connector_zai_region` (old value, new value).
+	 * Hooked on `update_option_zai_connector_zai_plan` and
+	 * `update_option_zai_connector_zai_region` (old value, new value).
 	 * The core-owned key option is deliberately NOT touched: the validated
 	 * state is bound to the endpoint (Task 1.4), so removing it here forces a
-	 * fresh authenticated probe against the new region and disconnects the
-	 * provider until a key for that region validates.
+	 * fresh authenticated probe against the new endpoint and disconnects the
+	 * provider after a region switch until a key for that region validates.
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param mixed $old_value Previous region value.
-	 * @param mixed $new_value New region value.
+	 * @param mixed $old_value Previous value.
+	 * @param mixed $new_value New value.
 	 * @return void
 	 */
-	public static function handle_region_change( $old_value, $new_value ): void {
+	public static function handle_settings_change( $old_value, $new_value ): void {
 		if ( (string) $old_value === (string) $new_value ) {
 			return;
 		}
 
 		delete_option( 'zai_connector_zai_key_state' );
 
-		// The discovery cache is endpoint-scoped by key, but clear it anyway
+		// The discovery caches are endpoint-scoped by key (and the SDK-level
+		// cache key is endpoint-scoped too), but clear the transients anyway
 		// so no stale entry survives an unexpected cache-key collision.
 		foreach ( self::PLANS as $plan ) {
 			foreach ( self::REGIONS as $region ) {

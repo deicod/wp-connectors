@@ -99,7 +99,7 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 	public const VERDICT_VALID = 'valid';
 
 	/**
-	 * Verdict: the credential was rejected (probe returned 4xx).
+	 * Verdict: the credential was rejected (probe returned 401/403).
 	 *
 	 * @since 0.1.0
 	 *
@@ -283,11 +283,19 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 	/**
 	 * Probes the model-list endpoint with the effective credential.
 	 *
+	 * Only statuses that definitively reject the CREDENTIAL persist a verdict
+	 * (401 bad token; 403 no access for this key). Everything else stays
+	 * transient so it can never poison the connected state — z.ai returns
+	 * 429 both for real rate limits and for plan mismatches on an otherwise
+	 * VALID key (error 1113 "Insufficient balance", record 0006), and 404/5xx
+	 * indicate an unavailable probe endpoint (the cn /models path is unprobed),
+	 * not a bad key.
+	 *
 	 * @since 0.1.0
 	 *
-	 * @return bool|null True (valid), false (rejected by the endpoint), or
-	 *                   null when the probe failed transiently (transport
-	 *                   error, 3xx, or 5xx).
+	 * @return bool|null True (valid), false (credential rejected: 401/403),
+	 *                   or null when the probe was inconclusive (transport
+	 *                   error, 3xx, 429, other 4xx, 5xx).
 	 */
 	private function probe(): ?bool {
 		try {
@@ -306,12 +314,12 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 			return true;
 		}
 
-		if ( $status >= 400 && $status < 500 ) {
-			// The endpoint answered and rejected the credential.
+		if ( 401 === $status || 403 === $status ) {
+			// The endpoint answered and rejected the credential itself.
 			return false;
 		}
 
-		// 3xx / 5xx: treat as transient.
+		// 3xx, 429, other 4xx, 5xx: inconclusive for the credential.
 		return null;
 	}
 

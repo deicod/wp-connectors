@@ -219,6 +219,46 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testMixedLineEndingBoundariesAreRecognized()
+    {
+        // SSE allows CR, LF, and CRLF line terminators mixed freely; a data
+        // line ending LF followed by a CRLF blank line is a legal frame
+        // boundary (review finding: previously both events were lost).
+        $body = ""
+            . 'data: {"id":"chatcmpl-m","choices":[{"index":0,"delta":{"role":"assistant","content":"Mixed"},"finish_reason":null}]}' . "\n\r\n"
+            . 'data: {"id":"chatcmpl-m","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":"stop"}]}' . "\r\r"
+            . 'data: [DONE]' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $this->assertSame('Mixed!', $result->toText());
+    }
+
+    public function testNonStandardFinishReasonYieldsAFixedSafeMessage()
+    {
+        // The SDK's parser embeds the upstream finish_reason verbatim into
+        // its ResponseException; the model must replace that message so no
+        // upstream content reaches error surfaces.
+        $upstream = '<img src=x onerror=alert(1)>Bearer ' . FakeSecrets::apiKey();
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), wp_json_encode(array(
+            'id' => 'chatcmpl-bad',
+            'choices' => array(array(
+                'message' => array('role' => 'assistant', 'content' => 'x'),
+                'finish_reason' => $upstream,
+            )),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-standard finish_reason must throw.');
+        } catch ( WordPress\AiClient\Providers\Http\Exception\ResponseException $e ) {
+            $this->assertStringContainsString('malformed', $e->getMessage());
+            $this->assertRedacted($e->getMessage(), FakeSecrets::apiKey());
+            $this->assertStringNotContainsString('<img', $e->getMessage());
+        }
+    }
+
     public function testStreamWithoutDoneSentinelStillAggregates()
     {
         // [DONE] is conventional, not required by our parser.

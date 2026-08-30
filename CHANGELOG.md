@@ -6,6 +6,33 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M1 — independent multi-agent review)
+
+- Directory caching hardened: the SDK-level cache key (`getBaseCacheKey()`)
+  is now endpoint-scoped (plan+region), so a warm SDK cache — including a
+  persistent PSR-16 cache configured via `AiClient::setCache()` — can never
+  serve the previous endpoint's catalog after a settings switch, and the
+  static fallback is never persisted in ANY cache layer (previously the
+  24h SDK cache could pin a fallback or a stale catalog; plan switches now
+  also invalidate plugin transients like region switches).
+- Availability probe: only 401/403 persist an invalid verdict; 429 and other
+  4xx stay transient — z.ai returns 429 "Insufficient balance" (code 1113)
+  for plan mismatches on an otherwise VALID key, which must not poison the
+  connected state (nor let core's REST key validation erase a good key).
+- SSE framing per spec: CR/LF/CRLF terminators mixed freely are now
+  recognized (a `\n\r\n` boundary previously merged two events and lost both).
+- Malformed-payload exceptions carry fixed messages: the SDK embeds the
+  upstream `finish_reason` verbatim in its parse exceptions; the model now
+  re-wraps them so no response-body content can reach error surfaces.
+- Live probe builds the model through `getProviderModel()` (a PHPStan fix had
+  broken transporter/auth binding, making the recorded evidence
+  non-reproducible with the committed tool); re-verified coding+intl PASS.
+- Settings save guard restructured so the capability strip path is genuinely
+  reachable (nonce failures are terminal in core via `check_admin_referer`).
+- Record 0004 autoload table amended to match shipped behavior (tiny
+  non-secret options use the core autoload default; log and key-state
+  options stay non-autoloaded).
+
 ### Added (zai / M1)
 
 - `connectors/zai` plugin scaffold: 6.9-compatible header, guarded bootstrap

@@ -148,7 +148,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertNotEmpty(WpHarness::$settings_errors);
     }
 
-    public function testAuthorizedUserWithoutValidNonceIsStrippedByTheGuard()
+    public function testAuthorizedUserWithoutValidNonceIsLeftToCoreEnforcement()
     {
         $this->bootPlugin();
         $this->asAdministrator();
@@ -160,7 +160,21 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
         do_action('admin_init');
 
-        $this->assertArrayNotHasKey(PlanRegionSettings::OPTION_PLAN, $_POST);
+        // Nonce enforcement is terminal in real WordPress (check_admin_referer
+        // wp_dies); the guard records the failure and leaves the rest to core.
+        $this->assertNotEmpty(WpHarness::$doing_it_wrong);
+        $this->assertArrayNotHasKey('zai_connector_unauthorized', array_column(WpHarness::$settings_errors, 'code'));
+    }
+
+    public function testPlanSwitchInvalidatesPersistedKeyStateLikeRegionSwitch()
+    {
+        $this->bootPlugin();
+
+        update_option('zai_connector_zai_key_state', array('binding' => 'stale'));
+
+        do_action('update_option_' . PlanRegionSettings::OPTION_PLAN, 'coding', 'general');
+
+        $this->assertFalse(get_option('zai_connector_zai_key_state', false), 'Validated key state must be cleared on a plan switch too.');
     }
 
     public function testAuthorizedUserWithValidNoncePassesTheGuard()

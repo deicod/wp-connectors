@@ -43,6 +43,10 @@ never copied into the repo, fixtures, or logs):
   correctly excluded — a live confirmation of the Task 1.7 error mapping.
 - The opt-in PHPUnit live test (`WP_CONNECTORS_TEST_ZAI_API_KEY`, see
   `docs/TESTING.md`) also passes (5 assertions) and skips cleanly without the env var.
+- Post-review re-verification: the independent M1 review caught that a PHPStan
+  fix had switched the probe's model construction to `ZaiProvider::model()` (which
+  binds no transporter/auth); restored to `getProviderModel()`, the probe again
+  passes coding+intl end to end with the committed tool (glm-5.3, ~2.4 s).
 
 ## Consequences for implementation
 

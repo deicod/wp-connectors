@@ -10,12 +10,14 @@ cross-cutting decision 6.
 |--------|-------|-----------|---------|----------|
 | `connectors_ai_zai_api_key` | **WordPress core** (Settings API group `connectors`) | core only (settings screen / REST) | core (pass-through at init 20), zai plugin (read-only) | core default |
 | `connectors_ai_zai_anthropic_api_key` | **WordPress core** | core only | same | core default |
-| `zai_connector_zai_plan` / `_region` | zai plugin | plugin Settings API page (`manage_options` + nonce) | plugin (read **at request time**, not construction time) | no |
-| `zai_connector_zai_anthropic_plan` / `_region` | zai plugin | plugin Settings API page | same | no |
-| OAuth token envelopes (`*_connector_*_tokens`) | each OAuth plugin | plugin only (encrypted, versioned envelope) | plugin only | no |
-| Pending-flow state (device/PKCE) | each OAuth plugin | plugin only (encrypted store or transient) | plugin only | no |
-| Discovery caches (model list) | plugin | plugin; cache key includes provider+plan+region | plugin | no (short-lived) |
-| Debug/observability option | plugin | plugin admin, **default off** | plugin logging helpers | no |
+| `zai_connector_zai_plan` / `_region` | zai plugin | plugin Settings API page (`manage_options` + nonce) | plugin (read **at request time**, not construction time) | yes (core default; tiny non-secret enums — first write goes through options.php's `update_option`, which creates the row autoloaded; WP 6.6+ stores `auto`) |
+| `zai_connector_zai_debug` | zai plugin | plugin Settings API page | plugin logging helpers | yes (core default; single '0'/'1' flag) |
+| `zai_connector_zai_debug_log` | zai plugin | plugin logger only | plugin log viewer | **no** (`update_option(..., false)`) |
+| `zai_connector_zai_key_state` | zai plugin | plugin availability probe (hash only, never the key) | plugin | **no** (`update_option(..., false)`) |
+| `zai_connector_zai_anthropic_plan` / `_region` | zai plugin | plugin Settings API page | same | same as zai plan/region |
+| OAuth token envelopes (`*_connector_*_tokens`) | each OAuth plugin | plugin only (encrypted, versioned envelope) | plugin only | **no** |
+| Pending-flow state (device/PKCE) | each OAuth plugin | plugin only (encrypted store or transient) | plugin only | **no** |
+| Discovery caches (model list) | plugin | plugin; cache key includes provider+plan+region | plugin | transient (short-lived) |
 
 Rules:
 

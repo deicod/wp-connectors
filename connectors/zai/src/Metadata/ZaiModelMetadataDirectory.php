@@ -25,6 +25,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Metadata;
 
 use Throwable;
+use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -77,6 +78,56 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	}
 
 	/**
+	 * Whether the current sendListModelsRequest() result is the static
+	 * fallback (which must never be persisted in ANY cache layer).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var bool
+	 */
+	private $serving_fallback = false;
+
+	/**
+	 * Scopes the SDK-level cache key to the CURRENT endpoint.
+	 *
+	 * The SDK wraps sendListModelsRequest() in its own cache
+	 * (WithDataCachingTrait, 24h TTL, per-class key by default — including a
+	 * persistent PSR-16 cache when one is configured via AiClient::setCache()).
+	 * Without endpoint scoping here, a warm SDK cache would serve the
+	 * previous endpoint's catalog after a plan/region switch, defeating the
+	 * class's core invariant. Scoping the key makes every cache layer
+	 * (in-memory local AND PSR-16) endpoint-specific by construction.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return string
+	 */
+	protected function getBaseCacheKey(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
+		return 'ai_client_' . AiClient::VERSION . '_' . md5( self::class . '|' . ZaiEndpoint::for_current_settings()->cache_key() );
+	}
+
+	/**
+	 * Prevents the SDK cache layer from persisting the static fallback.
+	 *
+	 * Discovery failures must stay uncached so a later valid key can still
+	 * discover — in every layer, including a configured PSR-16 cache.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string                 $key   Cache key suffix.
+	 * @param mixed                  $value Value to cache.
+	 * @param int|\DateInterval|null $ttl   TTL (ignored for local cache).
+	 * @return bool
+	 */
+	protected function setCache( string $key, $value, $ttl = null ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
+		if ( $this->serving_fallback ) {
+			return true; // Pretend success; store nothing.
+		}
+
+		return parent::setCache( $key, $value, $ttl );
+	}
+
+	/**
 	 * Builds the request against the CURRENT plan/region endpoint.
 	 *
 	 * The option read happens here, at request-build time — never at
@@ -112,6 +163,8 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		$endpoint = ZaiEndpoint::for_current_settings();
 		$cache_id = self::CACHE_PREFIX . md5( $endpoint->cache_key() );
 
+		$this->serving_fallback = false;
+
 		$cached_ids = get_transient( $cache_id );
 		if ( \is_array( $cached_ids ) ) {
 			return $this->map_from_ids( $cached_ids );
@@ -119,11 +172,15 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 
 		try {
 			// Parent performs the HTTP request (against the resolved endpoint),
-			// throws on non-2xx, and parses via parse_response_to_model_metadata_list().
+			// throws on non-2xx, and parses via parseResponseToModelMetadataList().
 			$discovered = parent::sendListModelsRequest();
 		} catch ( Throwable $e ) {
-			// Discovery failure is never fatal and never cached: the
-			// plan-partitioned static fallback keeps the provider usable.
+			// Discovery failure is never fatal and never cached (in any
+			// layer — see setCache()): the plan-partitioned static fallback
+			// keeps the provider usable while a later valid key can still
+			// discover.
+			$this->serving_fallback = true;
+
 			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
 		}
 
