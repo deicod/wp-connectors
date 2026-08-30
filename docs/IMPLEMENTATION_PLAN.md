@@ -222,7 +222,10 @@ documented exception.
 - [ ] **Task 2.1 — Add the second provider and independent settings.** Extend the existing z.ai
   plugin to register `zai_anthropic` idempotently and add its own
   `zai_connector_zai_anthropic_plan` and `_region` options with the same defaults and controls.
-  Keep API-key storage/auth metadata distinct as core derives it from provider ID. The second
+  Keep API-key storage/auth metadata distinct as core derives it from provider ID. A region
+  change MUST invalidate this provider's key exactly as in Task 1.2 (`intl` ↔ `cn` are separate
+  accounts/keys): clear/invalidate `connectors_ai_zai_anthropic_api_key` or gate requests
+  until a new key is supplied; test the region switch for this provider. The second
   provider's availability MUST be validated independently (authenticated probe or equivalent
   per-provider validated state): Task 1.4's validated state for `zai` cannot establish
   `zai_anthropic`'s status, so add an invalid-key → not-connected test for this provider too.
@@ -348,7 +351,10 @@ documented exception.
   Revoke action MUST also cancel any pending authorization flow: cancel scheduled polling
   (single events) and delete all provider- and user-scoped pending device/PKCE state, so a
   flow that was mid-air during revocation cannot later install a fresh grant and undo the
-  revoke. Ensure GET renders
+  revoke. Authorization exchanges are covered by the same serialization as refreshes
+  (Task 3.3): the exchange MUST check the persisted grant generation/tombstone (or hold the
+  revoke lock) before persisting, so an in-flight exchange returning after revoke discards
+  its tokens; add a deterministic revoke-versus-exchange race test. Ensure GET renders
   but never mutates state. Check this task only after authorized, unauthorized, CSRF, escaping,
   revoke (including a pending-flow-cannot-reconnect-after-revoke test), token-non-disclosure,
   and card-action-visibility tests (one per OAuth provider) pass.
@@ -580,7 +586,12 @@ documented exception.
 - [ ] **Task 6.2 — Implement PKCE authorization start.** Generate a high-entropy verifier and
   state with CSPRNG, derive S256 base64url challenge without padding, store transient flow state
   with expiry, and construct the exact authorize URL/client ID/redirect URI/scopes from the SPEC.
-  Check this task only after RFC PKCE vectors, entropy/encoding, URL, expiry, replacement, nonce,
+  Concurrent starts MUST be deterministic exactly as in Tasks 4.2/5.3: per-admin isolation of
+  the pending PKCE verifier/state or explicit atomic cancel-and-replace — a second start may
+  never silently invalidate a first administrator's pending `code#state` submission; test two
+  simultaneous administrators.
+  Check this task only after RFC PKCE vectors, entropy/encoding, URL, expiry, replacement,
+  concurrent-start isolation, nonce,
   and capability tests pass.
 
 - [ ] **Task 6.3 — Implement paste-code parsing and state validation.** Accept the displayed
