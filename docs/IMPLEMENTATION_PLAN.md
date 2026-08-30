@@ -287,8 +287,11 @@ documented exception.
   retaining safe diagnostic state; treat transient failures as retryable without erasing the last
   token prematurely. Terminal classification MUST be restricted to definitive authorization
   errors (`invalid_grant`, revoked grant); HTTP 429 and other transient/transport failures MUST
-  remain retryable and MUST NOT mark the grant dead or force a reconnect. Check this task only
-  after deterministic concurrency, clock-boundary, scheduling, terminal (including a 429-during-
+  remain retryable and MUST NOT mark the grant dead or force a reconnect. Repeated transient
+  failures MUST enter a persisted, bounded cooldown (honoring `Retry-After` where provided, else
+  exponential backoff with a cap) so sequential callers do not hammer the token endpoint during
+  an outage. Check this task only after deterministic concurrency, clock-boundary, scheduling,
+  terminal (including a 429-during-
   refresh test asserting the grant survives), and transient failure tests pass.
 
 - [ ] **Task 3.4 — Implement authenticated request retry.** Supply a provider-neutral wrapper that
@@ -390,7 +393,8 @@ documented exception.
   after provider-neutral request/response/stream contract tests pass with two fake configurations.
 
 - [ ] **Task 4.6 — Configure Codex inference and metadata.** Target
-  `https://chatgpt.com/backend-api/codex`, use OAuth Bearer tokens, expose a conservative static
+  `https://chatgpt.com/backend-api/codex/responses` (service base plus the Responses endpoint
+  path), use OAuth Bearer tokens, expose a conservative static
   GPT Codex catalog, and map only verified capabilities. Ensure URLs are constructed once and do
   not accidentally target `api.openai.com`. Check this task only after exact URL/header/model and
   unsupported-option tests pass.
@@ -449,10 +453,12 @@ documented exception.
   output escaping, expiration, duplicate-start, CSRF, and capability tests pass.
 
 - [ ] **Task 5.4 — Implement RFC 8628 polling.** Poll at the server interval, handle
-  `authorization_pending`, denial, expiry, 429, and success without tying up a PHP worker. A
+  `authorization_pending`, denial, expiry, and success without tying up a PHP worker. A
   `slow_down` response MUST increase the polling interval by at least five seconds for this and
   all subsequent requests (RFC 8628 §3.5); assert the updated schedule in the clock-driven tests.
-  The token request MUST be asserted exactly: form-encoded POST containing all three of
+  An HTTP 429 from the token endpoint is transient: retain the device-flow state until its
+  original expiry, honor `Retry-After` or a bounded backoff, and assert the resulting next-poll
+  schedule in the clock-driven tests. The token request MUST be asserted exactly: form-encoded POST containing all three of
   the device-code grant type (`urn:ietf:params:oauth:grant-type:device_code`), `device_code`, and
   `client_id` (per SPEC §4.2) — omitting any field must fail the test. Exchange with the exact
   device-code grant type and reject ambiguous HTTP/body states. Check this task only after a
@@ -466,7 +472,8 @@ documented exception.
   expiry-boundary, concurrency, refresh rotation, invalid-grant, revoke, and recovery tests pass.
 
 - [ ] **Task 5.6 — Configure xAI Responses inference.** Reuse—not fork—the shared adapter against
-  `https://api.x.ai/v1`, set the conservative static catalog with default `grok-4.6`, and configure
+  `https://api.x.ai/v1/responses` (Responses endpoint path included, per the Task 4.6 rule),
+  set the conservative static catalog with default `grok-4.6`, and configure
   only verified reasoning/tools/streaming/caching features. Check this task only after exact URL,
   auth, request, response, streaming, default-model, and regression tests for Codex pass.
 
