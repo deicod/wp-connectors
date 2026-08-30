@@ -93,4 +93,25 @@ final class Plugin {
 			esc_html__( 'WordPress 7.0 and newer ship the SDK in core. On WordPress 6.9, install and activate the standalone PHP AI Client plugin.', 'zai' )
 		);
 	}
+
+	/**
+	 * Adds the Settings link to the plugin row.
+	 *
+	 * Hooked on `plugin_action_links_{plugin-basename}`. The API key itself
+	 * lives on the core Connectors screen; this link leads to the plan/region
+	 * selection and debug logging.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array $links Existing action links.
+	 * @return array Links with Settings prepended.
+	 */
+	public static function action_links( array $links ): array {
+		array_unshift(
+			$links,
+			'<a href="' . esc_url( admin_url( 'options-general.php?page=' . Settings\PlanRegionSettings::PAGE_SLUG ) ) . '">' . esc_html__( 'Settings', 'zai' ) . '</a>'
+		);
+
+		return $links;
+	}
 }

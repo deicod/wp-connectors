@@ -107,6 +107,11 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
 define('ABSPATH', '/tmp/');
 $GLOBALS['__hooks'] = array();
 function add_action($tag, $cb, $prio = 10, $args = 1) { $GLOBALS['__hooks'][$tag][] = $cb; return true; }
+function add_filter($tag, $cb, $prio = 10, $args = 1) { $GLOBALS['__hooks'][$tag][] = $cb; return true; }
+function plugin_basename($file) { return basename(dirname($file)) . '/' . basename($file); }
+function admin_url($path = '') { return 'https://example.test/wp-admin/' . $path; }
+function esc_url($url) { return $url; }
+function esc_attr($t) { return htmlspecialchars((string) $t, ENT_QUOTES); }
 function esc_html($t) { return htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8', true); }
 function __($t, $d = 'default') { return $t; }
 function esc_html__($t, $d = 'default') { return esc_html($t); }

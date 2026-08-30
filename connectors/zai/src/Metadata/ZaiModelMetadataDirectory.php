@@ -30,8 +30,10 @@ use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
+use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 
 /**
  * Model metadata directory for z.ai.
@@ -57,6 +59,22 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * @var string
 	 */
 	public const CACHE_PREFIX = 'zai_connector_zai_models_';
+
+	/**
+	 * Wraps the transporter with the (option-gated) debug logger.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param HttpTransporterInterface $http_transporter Transporter to install.
+	 * @return void
+	 */
+	public function setHttpTransporter( HttpTransporterInterface $http_transporter ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
+		if ( ! $http_transporter instanceof LoggingHttpTransporter ) {
+			$http_transporter = new LoggingHttpTransporter( $http_transporter );
+		}
+
+		parent::setHttpTransporter( $http_transporter );
+	}
 
 	/**
 	 * Builds the request against the CURRENT plan/region endpoint.

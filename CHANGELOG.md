@@ -45,6 +45,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   throw SDK-typed exceptions whose messages never include upstream bodies,
   with `ErrorMapper::to_wp_error()` exposing stable typed codes
   (`zai_unauthorized`, `zai_rate_limited`, …); no retries in v1 (Task 1.7).
+- Observability and admin links: option-gated debug logging (default OFF) of
+  method + redacted URL (query stripped) + status + duration only, recorded
+  via a transporter decorator across inference, availability, and discovery
+  requests into a bounded ring buffer; a plugin-row Settings link and the
+  debug checkbox + log viewer on the settings page (Task 1.8).
 
 ### Added (tooling / M0 foundation)
 

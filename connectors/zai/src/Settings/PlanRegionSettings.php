@@ -195,7 +195,9 @@ final class PlanRegionSettings {
 		settings_fields( self::OPTION_GROUP );
 		do_settings_sections( self::PAGE_SLUG );
 		echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__( 'Save Changes', 'zai' ) . '</button></p>';
-		echo '</form></div>';
+		echo '</form>';
+		DebugSettings::render_log();
+		echo '</div>';
 	}
 
 	/**

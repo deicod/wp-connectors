@@ -20,7 +20,9 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai;
 
 use WordPress\AiClient\AiClient;
+use Deicod\WpConnectors\Zai\Settings\DebugSettings;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
+use Deicod\WpConnectors\Zai\Support\DebugLogger;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	return;
@@ -67,11 +69,17 @@ function boot(): void {
 
 	add_action( 'admin_notices', array( Plugin::class, 'render_dependency_notice' ) );
 
-	// Plan/region settings (Task 1.2).
+	// Plan/region settings (Task 1.2) + debug logging (Task 1.8).
 	add_action( 'admin_init', array( PlanRegionSettings::class, 'register_settings' ) );
 	add_action( 'admin_init', array( PlanRegionSettings::class, 'guard_settings_save' ) );
+	add_action( 'admin_init', array( DebugSettings::class, 'register_settings' ) );
 	add_action( 'admin_menu', array( PlanRegionSettings::class, 'register_page' ) );
+	add_action( 'admin_menu', array( DebugSettings::class, 'register_fields' ), 20 );
 	add_action( 'update_option_' . PlanRegionSettings::OPTION_REGION, array( PlanRegionSettings::class, 'handle_region_change' ), 10, 2 );
+	add_action( 'update_option_' . DebugLogger::OPTION_ENABLED, array( DebugSettings::class, 'handle_enabled_change' ), 10, 2 );
+
+	// Plugin-row Settings link (Task 1.8).
+	add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), array( Plugin::class, 'action_links' ) );
 }
 
 boot();

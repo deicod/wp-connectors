@@ -37,6 +37,7 @@ use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use WordPress\AiClient\Providers\Http\Traits\WithHttpTransporterTrait;
 use WordPress\AiClient\Providers\Http\Traits\WithRequestAuthenticationTrait;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 
 /**
  * Provider availability for z.ai.
@@ -45,7 +46,11 @@ use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
  */
 final class ZaiProviderAvailability implements ProviderAvailabilityInterface, WithHttpTransporterInterface, WithRequestAuthenticationInterface {
 
-	use WithHttpTransporterTrait;
+	// The alias lets the wrapping setHttpTransporter() override below
+	// delegate to the trait implementation (traits have no parent:: chain).
+	use WithHttpTransporterTrait {
+		setHttpTransporter as trait_set_transporter; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- trait method alias.
+	}
 	use WithRequestAuthenticationTrait;
 
 	/**
@@ -101,6 +106,22 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 	 * @var string
 	 */
 	public const VERDICT_INVALID = 'invalid';
+
+	/**
+	 * Wraps the transporter with the (option-gated) debug logger.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface $http_transporter Transporter to install.
+	 * @return void
+	 */
+	public function setHttpTransporter( \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface $http_transporter ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
+		if ( ! $http_transporter instanceof LoggingHttpTransporter ) {
+			$http_transporter = new LoggingHttpTransporter( $http_transporter );
+		}
+
+		$this->trait_set_transporter( $http_transporter );
+	}
 
 	/**
 	 * Reports whether the provider is configured with a validated credential.

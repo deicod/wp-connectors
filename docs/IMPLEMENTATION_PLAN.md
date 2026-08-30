@@ -196,7 +196,7 @@ documented exception.
   task only after fixture tests cover success, partial streams, upstream error bodies containing
   secrets, and every required status mapping.
 
-- [ ] **Task 1.8 — Add safe observability and admin links.** Add an option-gated debug logger for
+- [x] **Task 1.8 — Add safe observability and admin links.** Add an option-gated debug logger for
   method, redacted URL, status, and duration only. Add plugin-row settings access and a settings
   section that makes plan/region choices discoverable without competing with core's key field.
   Check this task only after tests demonstrate logging is off by default and cannot expose query
