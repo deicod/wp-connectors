@@ -358,7 +358,11 @@ documented exception.
   revoke. Authorization exchanges are covered by the same serialization as refreshes
   (Task 3.3): the exchange MUST check the persisted grant generation/tombstone (or hold the
   revoke lock) before persisting, so an in-flight exchange returning after revoke discards
-  its tokens; add a deterministic revoke-versus-exchange race test. Ensure GET renders
+  its tokens; add a deterministic revoke-versus-exchange race test. Authorization exchanges
+  and refreshes MUST share the same lock/fencing generation: a reconnect exchange that
+  installs a new grant advances the generation, so an in-flight refresh for the OLD grant
+  returning afterwards can never overwrite the new account's tokens; add a
+  reconnect-versus-refresh race test. Ensure GET renders
   but never mutates state. Check this task only after authorized, unauthorized, CSRF, escaping,
   revoke (including a pending-flow-cannot-reconnect-after-revoke test), token-non-disclosure,
   and card-action-visibility tests (one per OAuth provider) pass.
@@ -421,11 +425,12 @@ documented exception.
   `Retry-After` value. Retries MUST NOT sleep inside the initiating admin request: schedule
   delayed AJAX/cron retries or return a retriable response to the UI — three synchronous
   60-second delays would exceed common proxy timeouts and hold a PHP worker without ever
-  rendering the code. If the retry budget is exhausted, the pending flow MUST be preserved
-  until its original 15-minute expiry with the next permitted poll scheduled (mirroring the
-  xAI rule in Task 5.4) — exhausted 429 retries are not terminal. Check this task only after success, malformed response, timeout, retry,
+  rendering the code. If the start's retry budget is exhausted, surface a retriable UI response
+  (no flow exists yet to preserve — there is no `device_auth_id`/`user_code`/expiry before a
+  successful start); state preservation after 429 exhaustion applies to polling
+  (Task 4.3), not to start. Check this task only after success, malformed response, timeout, retry,
   cap (including an oversized-`Retry-After` clamp test), async-retry scheduling,
-  429-exhaustion flow-preservation, duplicate-start, CSRF, and capability
+  start-exhaustion retriable-response, duplicate-start, CSRF, and capability
   tests pass.
 
 - [ ] **Task 4.3 — Implement device polling and exchange.** Poll no faster than `max(interval, 3)`
@@ -435,7 +440,9 @@ documented exception.
   scheduled poll overlap after authorization succeeds, only one may exchange the one-time
   authorization code — the loser observes completed state, never a terminal failure or
   overwrite; add a deterministic overlapping-polls test (same invariant for the xAI flow in
-  Task 5.4). The poll request MUST be asserted exactly:
+  Task 5.4). If polling's 429 retry budget is exhausted, the pending flow MUST be preserved
+  until its original 15-minute expiry with the next permitted poll scheduled (mirroring the
+  xAI rule in Task 5.4) — exhausted 429 retries are not terminal here. The poll request MUST be asserted exactly:
   JSON POST to `https://auth.openai.com/api/accounts/deviceauth/token` containing both
   `device_auth_id` and `user_code` (per SPEC §4.1) — form-encoding or omitting either field
   must fail the test. A 429 from the device-token endpoint MUST
@@ -606,9 +613,13 @@ documented exception.
 
 - [ ] **Task 6.3 — Implement paste-code parsing and state validation.** Accept the displayed
   `code#state` form with conservative whitespace handling, split unambiguously, compare state in
-  constant time, enforce one-time/expiry semantics, and never log either value. Check this task
+  constant time, enforce one-time/expiry semantics, and never log either value. Submission
+  MUST use a per-flow claim/lease: concurrent or replayed submissions are blocked, but a
+  definitively non-consuming transient response (HTTP 429) releases the claim and PRESERVES
+  the encrypted verifier/state + authorization code for retry — never consume on 429; test
+  retry-after-429 and concurrent-submission rejection. Check this task
   only after valid, malformed, missing delimiter, wrong state, replay, expired, oversized, CSRF,
-  and unauthorized cases pass.
+  429-retryable, and unauthorized cases pass.
 
 - [ ] **Task 6.4 — Implement token exchange and refresh.** JSON-post the exact authorization grant
   fields and later refresh grant fields to the console endpoint. Set a plain connector User-Agent
