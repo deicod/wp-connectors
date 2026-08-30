@@ -119,11 +119,14 @@ documented exception.
 ### Tasks
 
 - [ ] **Task 1.1 — Scaffold the z.ai standalone plugin.** Create `connectors/zai` with a valid
-  plugin header, GPL license metadata, guarded bootstrap, classmap/autoloader, admin dependency
+  plugin header (`Requires at least: 6.9` — matching the official provider plugins — so
+  WordPress does not block activation on 6.9+standalone-SDK sites; the runtime
+  `class_exists(AiClient::class)` guard plus admin dependency notice decides actual SDK
+  availability), GPL license metadata, guarded bootstrap, classmap/autoloader, admin dependency
   notice, and `init` priority 5 registration. Register only the `zai` provider in this milestone,
   idempotently, and safely no-op when `AiClient` is unavailable. Check this task only after
-  activation tests cover WP 7.0, the supported standalone-SDK case, a missing SDK, and duplicate
-  `init` execution.
+  activation tests cover WP 7.0, the supported standalone-SDK case (6.9 header accepted), a
+  missing SDK, and duplicate `init` execution.
 
 - [ ] **Task 1.2 — Implement plan/region configuration.** Add settings for
   `zai_connector_zai_plan` (`coding` default, `general`) and
@@ -346,11 +349,15 @@ documented exception.
 
 - [ ] **Task 4.2 — Implement device authorization start.** POST JSON with the specified client ID
   to the user-code endpoint, validate `user_code`, `device_auth_id`, and interval, cap stored flow
-  lifetime at 15 minutes, and display the exact verification URL/code safely. Apply bounded 429
+  lifetime at 15 minutes, and display the exact verification URL/code safely. Concurrent or
+  double-submitted starts MUST be deterministic: scope transient flow state per admin user (or
+  explicitly cancel-and-replace the previous flow), so a second start can never orphan or corrupt
+  the first flow's `device_auth_id`/`user_code`; add a duplicate-start test. Apply bounded 429
   retry using `Retry-After` or 2/4/8-second backoff, maximum four attempts, with every single
   retry delay clamped to at most 60 seconds even when the endpoint returns an oversized
   `Retry-After` value. Check this task only after success, malformed response, timeout, retry,
-  cap (including an oversized-`Retry-After` clamp test), CSRF, and capability tests pass.
+  cap (including an oversized-`Retry-After` clamp test), duplicate-start, CSRF, and capability
+  tests pass.
 
 - [ ] **Task 4.3 — Implement device polling and exchange.** Poll no faster than `max(interval, 3)`
   using bounded admin/AJAX requests or scheduled work rather than a long PHP request; treat only
@@ -359,8 +366,11 @@ documented exception.
   `device_auth_id` and `user_code` (per SPEC §4.1) — form-encoding or omitting either field
   must fail the test. A 429 from the device-token endpoint MUST
   follow the same bounded backoff policy as Task 4.2 (`Retry-After`/2-4-8-second, max four
-  attempts, per-delay 60-second clamp). Exchange the returned code/verifier at the token endpoint
-  using form encoding and the exact callback URI/client ID. Check this task only after
+  attempts, per-delay 60-second clamp). The authorization-code exchange MUST be asserted
+  exactly: form-encoded POST to `https://auth.openai.com/oauth/token` containing
+  `grant_type=authorization_code`, `code`, `code_verifier`, the exact `redirect_uri`
+  (`https://auth.openai.com/deviceauth/callback`), and the exact client ID (per SPEC §4.1) —
+  missing or mis-encoded fields must fail the test. Check this task only after
   pending→success, expiry, cancellation, throttling (including the bounded 429 backoff test),
   malformed success, and terminal error state-machine tests pass.
 
@@ -439,15 +449,19 @@ documented exception.
   output escaping, expiration, duplicate-start, CSRF, and capability tests pass.
 
 - [ ] **Task 5.4 — Implement RFC 8628 polling.** Poll at the server interval, handle
-  `authorization_pending`, `slow_down`, denial, expiry, 429, and success without tying up a PHP
-  worker. The token request MUST be asserted exactly: form-encoded POST containing all three of
+  `authorization_pending`, denial, expiry, 429, and success without tying up a PHP worker. A
+  `slow_down` response MUST increase the polling interval by at least five seconds for this and
+  all subsequent requests (RFC 8628 §3.5); assert the updated schedule in the clock-driven tests.
+  The token request MUST be asserted exactly: form-encoded POST containing all three of
   the device-code grant type (`urn:ietf:params:oauth:grant-type:device_code`), `device_code`, and
   `client_id` (per SPEC §4.2) — omitting any field must fail the test. Exchange with the exact
   device-code grant type and reject ambiguous HTTP/body states. Check this task only after a
   clock-driven state-machine suite covers every terminal and nonterminal response.
 
-- [ ] **Task 5.5 — Implement xAI token lifecycle.** Encrypt token sets, refresh with the exact
-  client ID/grant, use a 3600-second skew without refreshing repeatedly, schedule backup refresh,
+- [ ] **Task 5.5 — Implement xAI token lifecycle.** Encrypt token sets, and refresh with an
+  exactly-asserted request: form-encoded POST to the discovered (issuer-pinned) token endpoint
+  containing `grant_type=refresh_token`, the stored `refresh_token`, and the exact client ID
+  (per SPEC §4.2). Use a 3600-second skew without refreshing repeatedly, schedule backup refresh,
   show a redacted account label if safely derivable, and revoke locally. Check this task only after
   expiry-boundary, concurrency, refresh rotation, invalid-grant, revoke, and recovery tests pass.
 

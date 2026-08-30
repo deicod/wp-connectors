@@ -266,8 +266,9 @@ wp-connectors/
 Rules:
 - Each plugin is standalone-drop-in (no Composer autoloader requirement at runtime —
   simple `src/autoload.php` classmap, like the official provider plugins).
-- `Requires at least: 7.0` (SDK in core) — or 6.9 + standalone PHP AI Client plugin; guard
-  with `class_exists(AiClient::class)` and admin notice if missing.
+- `Requires at least: 6.9` (matching the official provider plugins) — on 7.0 the SDK ships in
+  core, on 6.9 the standalone PHP AI Client plugin must be active; guard with
+  `class_exists(AiClient::class)` and admin notice if missing.
 - `Requires PHP: 7.4` (SDK minimum). Use `wp_remote_*` for all HTTP (no cURL ext dependency).
 - Plugin text domains per plugin; English strings, `__()` wrapped from day one.
 - Namespace per plugin: `Deicod\WpConnectors\Zai`, `…\OpenAiOauth`, `…\XaiOauth`, `…\AnthropicOauth`.
