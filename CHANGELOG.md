@@ -6,6 +6,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Added (zai / M1)
+
+- `connectors/zai` plugin scaffold: 6.9-compatible header, guarded bootstrap
+  with missing-SDK admin notice, own PSR-4 autoloader, idempotent provider
+  registration at `init` priority 5; registers only the `zai` provider in M1
+  (Task 1.1).
+
 ### Added (tooling / M0 foundation)
 
 - Architecture records (`docs/architecture/`) verifying the WP 7.0/7.1

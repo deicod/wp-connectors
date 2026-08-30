@@ -22,10 +22,18 @@
 	<arg name="basepath" value="."/>
 	<arg value="sp"/>
 
-	<!-- Shipped plugin code: the full WordPress standard. -->
+	<!-- Shipped plugin code: the full WordPress standard. File naming deviates
+	     deliberately: docs/CONVENTIONS.md mandates strict PSR-4 paths
+	     (Deicod\WpConnectors\Zai\Provider\X at src/Provider/X.php, like the
+	     official provider plugins), which the WordPress.FileName sniffs
+	     reject. -->
 	<rule ref="WordPress">
 		<exclude-pattern>bin/*</exclude-pattern>
 		<exclude-pattern>tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.Files.FileName">
+		<exclude-pattern>connectors/*</exclude-pattern>
+		<exclude-pattern>shared/*</exclude-pattern>
 	</rule>
 
 	<!-- Repository tooling and tests: core checks only. -->
@@ -48,7 +56,11 @@
 		<exclude-pattern>tests/*</exclude-pattern>
 	</rule>
 
-	<!-- Global symbols defined by our plugins carry these prefixes. -->
+	<!-- Global symbols defined by our plugins carry these prefixes: the repo
+	     namespace and each plugin's option/hook prefix. (The ZAI_VERSION
+	     constant mandated by docs/CONVENTIONS.md carries a slug-derived prefix
+	     the sniff rejects as too short; it is ignore-annotated at the
+	     definition site instead of listed here.) -->
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
 		<properties>
 			<property name="prefixes" type="array">

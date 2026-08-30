@@ -123,7 +123,7 @@ documented exception.
 
 ### Tasks
 
-- [ ] **Task 1.1 — Scaffold the z.ai standalone plugin.** Create `connectors/zai` with a valid
+- [x] **Task 1.1 — Scaffold the z.ai standalone plugin.** Create `connectors/zai` with a valid
   plugin header (`Requires at least: 6.9` — matching the official provider plugins — so
   WordPress does not block activation on 6.9+standalone-SDK sites; the runtime
   `class_exists(AiClient::class)` guard plus admin dependency notice decides actual SDK
