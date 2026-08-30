@@ -28,6 +28,7 @@
         "php": ">=7.4"
     },
     "require-dev": {
+        "ext-zip": "*",
         "dealerdirect/phpcodesniffer-composer-installer": "^1.1",
         "phpcompatibility/php-compatibility": "^9.3",
         "phpstan/phpstan": "^2.1",

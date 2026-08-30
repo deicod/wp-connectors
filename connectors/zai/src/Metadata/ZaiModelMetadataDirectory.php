@@ -13,7 +13,11 @@
  * The discovery cache is a WordPress transient scoped to the endpoint
  * identity (provider + plan + region, via ZaiEndpoint::cache_key()), so a
  * warm cache can never serve another endpoint's catalog after a settings
- * change.
+ * change. The SDK's own cache layer (in-memory plus any PSR-16 cache, 24h
+ * TTL) is BYPASSED entirely — see hasCache()/setCache() — so the transient
+ * is the single source of caching: discovery expires after DISCOVERY_TTL and
+ * invalidates together with the plugin cache on settings/uninstall
+ * transient deletion, in every layer.
  *
  * @since 0.1.0
  *
@@ -78,25 +82,15 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	}
 
 	/**
-	 * Whether the current sendListModelsRequest() result is the static
-	 * fallback (which must never be persisted in ANY cache layer).
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var bool
-	 */
-	private $serving_fallback = false;
-
-	/**
 	 * Scopes the SDK-level cache key to the CURRENT endpoint.
 	 *
 	 * The SDK wraps sendListModelsRequest() in its own cache
 	 * (WithDataCachingTrait, 24h TTL, per-class key by default — including a
 	 * persistent PSR-16 cache when one is configured via AiClient::setCache()).
-	 * Without endpoint scoping here, a warm SDK cache would serve the
-	 * previous endpoint's catalog after a plan/region switch, defeating the
-	 * class's core invariant. Scoping the key makes every cache layer
-	 * (in-memory local AND PSR-16) endpoint-specific by construction.
+	 * That layer is bypassed wholesale here (see hasCache()/setCache()), but
+	 * the key stays endpoint-scoped so entries written by any other path
+	 * (a foreign directory instance, invalidateCaches() clears) can never
+	 * cross endpoints.
 	 *
 	 * @since 0.1.0
 	 *
@@ -107,24 +101,40 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	}
 
 	/**
-	 * Prevents the SDK cache layer from persisting the static fallback.
+	 * Never serves from the SDK cache layer (in-memory local or PSR-16).
 	 *
-	 * Discovery failures must stay uncached so a later valid key can still
-	 * discover — in every layer, including a configured PSR-16 cache.
+	 * The plugin transient is the ONLY discovery cache: outer layers retain
+	 * values for 24h, which would defeat the advertised 12h TTL and survive
+	 * the transient deletion on settings changes/uninstall. Reporting
+	 * "never cached" forces every lookup through sendListModelsRequest(),
+	 * which applies the plugin's own TTL and invalidation rules.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $key Cache key suffix.
+	 * @return bool Always false.
+	 */
+	protected function hasCache( string $key ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
+		return false;
+	}
+
+	/**
+	 * Never persists anything in the SDK cache layer (in-memory or PSR-16).
+	 *
+	 * Successful discoveries are persisted as the plugin transient inside
+	 * sendListModelsRequest() with DISCOVERY_TTL; fallbacks are never cached
+	 * at all. Storing here as well would leave warmed entries behind after
+	 * transient invalidation.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @param string                 $key   Cache key suffix.
-	 * @param mixed                  $value Value to cache.
-	 * @param int|\DateInterval|null $ttl   TTL (ignored for local cache).
-	 * @return bool
+	 * @param mixed                  $value Value to cache (ignored).
+	 * @param int|\DateInterval|null $ttl   TTL (ignored).
+	 * @return bool Always true (pretend success; store nothing).
 	 */
 	protected function setCache( string $key, $value, $ttl = null ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
-		if ( $this->serving_fallback ) {
-			return true; // Pretend success; store nothing.
-		}
-
-		return parent::setCache( $key, $value, $ttl );
+		return true; // Pretend success; store nothing.
 	}
 
 	/**
@@ -163,8 +173,6 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		$endpoint = ZaiEndpoint::for_current_settings();
 		$cache_id = self::CACHE_PREFIX . md5( $endpoint->cache_key() );
 
-		$this->serving_fallback = false;
-
 		$cached_ids = get_transient( $cache_id );
 		if ( \is_array( $cached_ids ) ) {
 			return $this->map_from_ids( $cached_ids );
@@ -176,11 +184,9 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 			$discovered = parent::sendListModelsRequest();
 		} catch ( Throwable $e ) {
 			// Discovery failure is never fatal and never cached (in any
-			// layer — see setCache()): the plan-partitioned static fallback
-			// keeps the provider usable while a later valid key can still
-			// discover.
-			$this->serving_fallback = true;
-
+			// layer — see setCache()/hasCache()): the plan-partitioned static
+			// fallback keeps the provider usable while a later valid key can
+			// still discover.
 			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
 		}
 
@@ -195,6 +201,11 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 *
 	 * Any malformed shape (missing/non-list `data`, entries without string
 	 * IDs) throws, which sendListModelsRequest() turns into the fallback.
+	 * IDs without known chat support (e.g. a future embedding/image model
+	 * on the general endpoint) are dropped BEFORE metadata is assigned —
+	 * advertising them with full chat capabilities would only route them to
+	 * /chat/completions where they cannot work; a list with no usable chat
+	 * IDs left also throws, yielding the plan fallback.
 	 *
 	 * @since 0.1.0
 	 *
@@ -218,6 +229,8 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 			$ids[] = $entry['id'];
 		}
 
+		$ids = $this->filter_chat_ids( $ids );
+
 		if ( array() === $ids ) {
 			throw ResponseException::fromMissingData( 'z.ai', 'data' );
 		}
@@ -235,6 +248,9 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	/**
 	 * Builds the sorted metadata map for a list of model IDs.
 	 *
+	 * IDs without known chat support are dropped, so a transient warmed by
+	 * an older version can never resurface a non-chat model either.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param array $ids   Model IDs (discovered, cached, or fallback).
@@ -242,16 +258,31 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 */
 	private function map_from_ids( array $ids ): array {
 		$models = array();
-		foreach ( $ids as $id ) {
-			if ( ! \is_string( $id ) || '' === $id ) {
-				continue;
-			}
-
+		foreach ( $this->filter_chat_ids( $ids ) as $id ) {
 			$models[ $id ] = ZaiModelCatalog::metadata_for( $id );
 		}
 
 		uasort( $models, array( ZaiModelCatalog::class, 'sort_callback' ) );
 
 		return $models;
+	}
+
+	/**
+	 * Keeps only IDs with known chat support.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array $ids Model IDs (any source; non-strings dropped).
+	 * @return list<string> Chat-capable model IDs.
+	 */
+	private function filter_chat_ids( array $ids ): array {
+		$chat_ids = array();
+		foreach ( $ids as $id ) {
+			if ( \is_string( $id ) && '' !== $id && ZaiModelCatalog::is_chat_model( $id ) ) {
+				$chat_ids[] = $id;
+			}
+		}
+
+		return $chat_ids;
 	}
 }

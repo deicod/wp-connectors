@@ -230,12 +230,16 @@ final class WpConnectorsBuild
     /**
      * Derives the plugin namespace suffix from the slug (openai-oauth -> OpenAiOauth).
      *
+     * Delegates to the ONE shared derivation in bin/lib/plugin-tools.php so
+     * build, conventions, and the test bootstrap can never disagree (the
+     * acronym casing, e.g. OpenAi, is preserved there).
+     *
      * @param string $slug Plugin slug.
      * @return string
      */
     public static function namespaceSuffixFromSlug($slug)
     {
-        return str_replace(' ', '', ucwords(str_replace('-', ' ', $slug)));
+        return wp_connectors_namespace_suffix_from_slug($slug);
     }
 
     /**

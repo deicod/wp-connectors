@@ -5,10 +5,12 @@
  * Request mapping rides on the SDK's AbstractOpenAiCompatibleTextGenerationModel
  * base class; this subclass adds:
  *
- * - request-time endpoint resolution (plan × region, Task 1.3), and
+ * - request-time endpoint resolution (plan × region, Task 1.3),
  * - pre-transport rejection of option/model combinations the z.ai catalog
  *   does not advertise (Task 1.6): anything not in the advertised option set
- *   fails BEFORE any HTTP request, with a clear message.
+ *   fails BEFORE any HTTP request, with a clear message, and
+ * - a WP-facing generate_text() boundary that converts SDK exceptions into
+ *   the typed, redacted zai_* WP_Error codes promised by SPEC §6.2.
  *
  * @since 0.1.0
  *
@@ -32,6 +34,7 @@ use WordPress\AiClient\Providers\Http\Exception\ServerException;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleTextGenerationModel;
 use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 
@@ -90,6 +93,30 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		}
 
 		parent::setHttpTransporter( $http_transporter );
+	}
+
+	/**
+	 * WP-facing generation boundary: typed WP_Error instead of SDK exceptions.
+	 *
+	 * WordPress callers get the promised stable error codes (SPEC §6.2:
+	 * zai_unauthorized, zai_rate_limited, …) with safe, actionable messages.
+	 * The SDK's generateTextResult() is final and throws SDK exceptions,
+	 * which core would otherwise convert to generic codes — so this wrapper
+	 * is the integration point for the ErrorMapper at the generation
+	 * boundary. Direct SDK-style callers may keep using generateTextResult()
+	 * and catch SDK exceptions.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array $prompt Prompt messages (list of Message).
+	 * @return GenerativeAiResult|\WP_Error Result on success; typed, redacted WP_Error on any failure.
+	 */
+	public function generate_text( array $prompt ) { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- WP-flavored generation boundary.
+		try {
+			return $this->generateTextResult( $prompt );
+		} catch ( \Throwable $e ) {
+			return ErrorMapper::to_wp_error( $e );
+		}
 	}
 
 	/**

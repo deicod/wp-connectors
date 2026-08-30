@@ -930,10 +930,12 @@ function wp_die($message = '', $title = '', $args = array())
  * -------------------------------------------------------------------------
  */
 
-function current_time($type = 'U')
+function current_time($type = 'U', $gmt = false)
 {
     if ('timestamp' === $type || 'U' === $type) {
-        return WpHarness::now();
+        // Non-gmt lookups carry the site's UTC offset, exactly like core;
+        // gmt lookups are offset-free so stored UTC values compare cleanly.
+        return WpHarness::now() + ($gmt ? 0 : WpHarness::$utc_offset);
     }
     if ('mysql' === $type) {
         return gmdate('Y-m-d H:i:s', WpHarness::now());

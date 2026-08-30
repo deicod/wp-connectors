@@ -86,11 +86,39 @@ final class ZaiModelCatalog {
 	}
 
 	/**
+	 * Whether an ID is known to be a chat-capable GLM text model.
+	 *
+	 * Two sources of knowledge, either suffices: the static catalogs
+	 * (verified per-model evidence, record 0006) or the observed GLM chat ID
+	 * grammar `glm-<version>[-variant]` (e.g. a future 'glm-6' or
+	 * 'glm-5.4-air'). IDs that match neither — an embedding model like
+	 * 'embedding-3', an image model like 'cogview-4' — must never receive
+	 * chat metadata: they would be advertised as selectable and then fail
+	 * at /chat/completions.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $model_id Model ID from discovery or the catalogs.
+	 * @return bool True when the ID has known chat support.
+	 */
+	public static function is_chat_model( string $model_id ): bool {
+		if ( \in_array( $model_id, self::CODING_MODELS, true ) || \in_array( $model_id, self::GENERAL_MODELS, true ) ) {
+			return true;
+		}
+
+		// Version-anchored GLM ID: 'glm-' immediately followed by a number
+		// (then optional .minor and -variant segments). Word-form prefixes
+		// ('glm-future-9' style, 'glm-embedding') deliberately do NOT match.
+		return 1 === preg_match( '/^glm-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9.-]+)?$/', $model_id );
+	}
+
+	/**
 	 * Builds the metadata for one model ID.
 	 *
 	 * Unknown IDs (returned by discovery but not yet cataloged) get the same
 	 * conservative text-only capability set — the catalog data only refines
-	 * display names.
+	 * display names. Callers must gate on is_chat_model() first so non-chat
+	 * IDs never receive this chat metadata.
 	 *
 	 * @since 0.1.0
 	 *

@@ -28,6 +28,19 @@ final class ToolchainSmokeTest extends TestCase
         $this->assertSame('1.3.1', \WordPress\AiClient\AiClient::VERSION);
     }
 
+    public function testComposerDeclaresExtZipForBuildAndArtifactTests(): void
+    {
+        // bin/build.php and the artifact tests fatal at `new ZipArchive()`
+        // without ext-zip; declaring it in require-dev makes dependency
+        // setup fail with an actionable platform error instead of a mid-run
+        // fatal (review finding).
+        $composer = json_decode((string) file_get_contents(__DIR__ . '/../composer.json'), true);
+
+        $this->assertIsArray($composer);
+        $this->assertIsArray($composer['require-dev'] ?? null);
+        $this->assertArrayHasKey('ext-zip', $composer['require-dev'], 'require-dev must declare the ext-zip platform package.');
+    }
+
     public function testAiClientRegistryIsUsable(): void
     {
         $registry = \WordPress\AiClient\AiClient::defaultRegistry();

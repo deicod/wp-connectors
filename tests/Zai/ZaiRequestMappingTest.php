@@ -35,6 +35,7 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
      */
     private function model(?ModelConfig $config = null)
     {
+        $this->primeZaiDiscoveryTransient();
         $model = ZaiProvider::model('glm-5.3', $config);
         $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));

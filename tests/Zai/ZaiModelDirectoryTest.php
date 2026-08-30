@@ -150,14 +150,90 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->selectEndpoint('coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
 
-        $this->directory()->listModelMetadata();
+        // ONE directory instance across the expiry — the production shape
+        // (the provider's per-process singleton). The SDK's own cache layer
+        // (in-memory local or PSR-16, 24h TTL) must not be able to serve the
+        // discovery past the plugin's 12h transient TTL (review finding: it
+        // previously did, so the advertised TTL never triggered a refresh).
+        $directory = $this->directory();
+        $directory->listModelMetadata();
         $this->assertCount(1, $this->sdkHttpAttempts());
 
         $this->advanceTime(ZaiModelMetadataDirectory::DISCOVERY_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
-        $models = $this->directory()->listModelMetadata();
+        $models = $directory->listModelMetadata();
         $this->assertCount(2, $models);
         $this->assertCount(2, $this->sdkHttpAttempts());
+    }
+
+    public function testTransientInvalidationBypassesTheSdkCacheLayerToo()
+    {
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+
+        // Warm both layers the way a successful request does.
+        $directory = $this->directory();
+        $this->assertCount(1, $this->idList($directory->listModelMetadata()));
+
+        // A settings change / uninstall deletes the plugin transient...
+        delete_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl'));
+
+        // ...the very next listing on the SAME instance must re-discover,
+        // never serve a warmed SDK/local/PSR-16 entry.
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
+        $models = $directory->listModelMetadata();
+
+        $this->assertCount(2, $this->idList($models));
+        $this->assertCount(2, $this->sdkHttpAttempts());
+    }
+
+    public function testConfiguredPsr16CacheNeverServesOrStoresDiscovery()
+    {
+        // End-to-end against a REAL configured PSR-16 cache (the SDK's
+        // outermost cache layer when core wires one via AiClient::setCache()):
+        // a poisoned pre-existing entry must never be served, and successful
+        // discoveries must never be written — the plugin transient is the
+        // sole discovery cache (review finding).
+        $cache = new SimpleArrayCache();
+        AiClient::setCache($cache);
+
+        try {
+            $this->freezeTime(1700000000);
+            $this->selectEndpoint('coding', 'intl');
+
+            $directory = $this->directory();
+            $base_key = Closure::bind(
+                function () {
+                    return $this->getBaseCacheKey();
+                },
+                $directory,
+                ZaiModelMetadataDirectory::class
+            );
+            $cache->set($base_key() . '_models', array('poisoned-model' => ZaiModelCatalog::metadata_for('poisoned-model')));
+
+            $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+            $models = $directory->listModelMetadata();
+
+            $this->assertSame(array('glm-5.3'), $this->idList($models), 'A warmed PSR-16 entry must never be served.');
+            $this->assertCount(1, $this->sdkHttpAttempts());
+
+            // Expiry still governs: past the transient TTL the same instance
+            // re-discovers even though a PSR-16 cache is configured.
+            $this->advanceTime(ZaiModelMetadataDirectory::DISCOVERY_TTL + 1);
+            $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
+            $models = $directory->listModelMetadata();
+
+            $this->assertCount(2, $this->idList($models));
+            $this->assertCount(2, $this->sdkHttpAttempts());
+
+            $this->assertSame(
+                array( $base_key() . '_models' ),
+                array_keys($cache->entries),
+                'No discovery value may be written to the PSR-16 cache (only the poisoned test entry may remain).'
+            );
+        } finally {
+            AiClient::setCache(null);
+        }
     }
 
     /*
@@ -341,13 +417,54 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testUnknownDiscoveredIdGetsConservativeTextCapabilities()
     {
+        // 'glm-6-preview': not in the static catalogs (a future release),
+        // but chat-shaped per the observed GLM ID grammar — discovery keeps
+        // it with conservative text-only capabilities.
         $this->selectEndpoint('general', 'intl');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-future-9')));
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-6-preview')));
 
-        $metadata = $this->directory()->getModelMetadata('glm-future-9');
+        $metadata = $this->directory()->getModelMetadata('glm-6-preview');
 
         $this->assertSame(array('text_generation', 'chat_history'), array_map('strval', $metadata->getSupportedCapabilities()));
-        $this->assertSame('GLM-FUTURE-9', $metadata->getName(), 'Unknown IDs keep a conservative uppercase name.');
+        $this->assertSame('GLM 6 Preview', $metadata->getName(), 'Grammar-matching unknown IDs get the standard display name.');
+    }
+
+    public function testDiscoveryDropsModelIdsWithoutKnownChatSupport()
+    {
+        // A future /models list exposing non-chat models (embedding, image,
+        // word-form IDs) must not advertise them: they would get full chat
+        // metadata and then fail at /chat/completions (review finding).
+        $this->selectEndpoint('general', 'intl');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array(
+            'embedding-3',
+            'cogview-4',
+            'glm-future-9',
+            'glm-5.3',
+            'glm-6',
+        )));
+
+        $models = $this->directory()->listModelMetadata();
+
+        $this->assertSame(array('glm-6', 'glm-5.3'), $this->idList($models), 'Only IDs with known chat support may be advertised.');
+
+        // The persisted transient must already be the filtered list, so a
+        // non-chat ID can never resurface from the cache either.
+        $cached = get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|general|intl'));
+        $this->assertSame(array('glm-6', 'glm-5.3'), array_values($cached));
+
+        // hasModelMetadata() must reject the dropped IDs.
+        $this->assertFalse($this->directory()->hasModelMetadata('embedding-3'));
+    }
+
+    public function testDiscoveryWithOnlyNonChatIdsFallsBackToThePlanCatalog()
+    {
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('embedding-3', 'cogview-4')));
+
+        $models = $this->directory()->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'Nothing usable discovered: the plan fallback applies.');
+        $this->assertFalse(get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl')), 'The fallback must not be cached.');
     }
 
     /*

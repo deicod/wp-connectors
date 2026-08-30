@@ -227,6 +227,27 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
+     * Primes the z.ai discovery transient for the CURRENT endpoint.
+     *
+     * The plugin transient is the sole discovery cache (the SDK layer is
+     * bypassed), so every ZaiProvider::model() lookup re-checks discovery.
+     * Tests that only mock the chat/completions transport call this first,
+     * so no unexpected /models attempt disturbs their recorded requests.
+     *
+     * @param list<string> $ids Model IDs to advertise (default glm-5.3).
+     * @return void
+     */
+    protected function primeZaiDiscoveryTransient(array $ids = array( 'glm-5.3' ))
+    {
+        set_transient(
+            \Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::CACHE_PREFIX
+                . md5( \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() ),
+            $ids,
+            \Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::DISCOVERY_TTL
+        );
+    }
+
+    /**
      * Recorded wp_remote_* attempts.
      *
      * @return list<array{method: string, url: string, args: array}>

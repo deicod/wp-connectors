@@ -30,6 +30,7 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
      */
     private function model()
     {
+        $this->primeZaiDiscoveryTransient();
         $model = ZaiProvider::model('glm-5.3');
         $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));

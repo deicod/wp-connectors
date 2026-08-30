@@ -34,6 +34,7 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
      */
     private function model()
     {
+        $this->primeZaiDiscoveryTransient();
         $model = ZaiProvider::model('glm-5.3');
         $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
@@ -361,6 +362,66 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
     /*
      * Typed WP_Error mapping.
      */
+
+    public function testGenerateTextReturnsTheResultOnSuccess()
+    {
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), wp_json_encode(array(
+            'id' => 'chatcmpl-ok',
+            'choices' => array(array(
+                'message' => array('role' => 'assistant', 'content' => 'Hi.'),
+                'finish_reason' => 'stop',
+            )),
+        )));
+
+        $result = $this->model()->generate_text($this->prompt());
+
+        $this->assertNotWPError($result);
+        $this->assertSame('Hi.', $result->toText());
+    }
+
+    /**
+     * @dataProvider provideBoundaryErrorCodes
+     */
+    public function testGenerateTextYieldsTypedWpErrorsAtTheBoundary($status, $expectedCode)
+    {
+        // The WP-facing boundary must convert the SDK exception into the
+        // promised typed WP_Error (SPEC 6.2) — not leak the exception for
+        // core's generic conversion (review finding).
+        $secret = FakeSecrets::apiKey();
+        $this->queueSdkResponse($status, array(), HttpResponseFactory::openAiErrorBody('upstream echoes Bearer ' . $secret));
+
+        $error = $this->model()->generate_text($this->prompt());
+
+        $this->assertWPError($error, $expectedCode);
+        $this->assertSame($status, $error->get_error_data()['status']);
+        $this->assertRedacted($error->get_error_message(), $secret);
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideBoundaryErrorCodes()
+    {
+        return array(
+            '401' => array(401, ErrorMapper::CODE_UNAUTHORIZED),
+            '403' => array(403, ErrorMapper::CODE_FORBIDDEN),
+            '429' => array(429, ErrorMapper::CODE_RATE_LIMITED),
+            '418' => array(418, ErrorMapper::CODE_CLIENT_ERROR),
+            '500' => array(500, ErrorMapper::CODE_UPSTREAM_ERROR),
+            '503' => array(503, ErrorMapper::CODE_UPSTREAM_ERROR),
+            '307' => array(307, ErrorMapper::CODE_REDIRECT_ERROR),
+        );
+    }
+
+    public function testGenerateTextMapsTransportFailuresToTypedWpErrors()
+    {
+        $this->allowUnmockedHttp = true;
+
+        $error = $this->model()->generate_text($this->prompt());
+
+        $this->assertWPError($error, ErrorMapper::CODE_TRANSPORT_ERROR);
+        $this->assertRedacted($error->get_error_message(), FakeSecrets::apiKey());
+    }
 
     public function testErrorMapperProducesStableTypedWpErrors()
     {

@@ -80,6 +80,15 @@ final class WpHarness
     public static $frozen_time;
 
     /**
+     * Site UTC offset in seconds, applied by current_time() for non-gmt
+     * lookups (mirrors core's timezone-affected timestamp). Tests change it
+     * to simulate a site timezone change.
+     *
+     * @var int
+     */
+    public static $utc_offset = 0;
+
+    /**
      * Outbound wp_remote_* attempts recorded by the HTTP stubs.
      *
      * @var list<array{method: string, url: string, args: array, mocked: bool}>
@@ -158,6 +167,7 @@ final class WpHarness
         self::$did_actions = array();
         self::$current_user = null;
         self::$frozen_time = null;
+        self::$utc_offset = 0;
         self::$http_attempts = array();
         self::$sdk_http_attempts = array();
         self::$sdk_mock_queue = array();

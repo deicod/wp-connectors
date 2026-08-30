@@ -299,12 +299,14 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
     public function testRateLimitResponseDoesNotInvalidateAValidKey()
     {
         // z.ai returns 429 for plan mismatches on an otherwise VALID key
-        // (error 1113, record 0006): the verdict must stay unpersisted.
+        // (error 1113, record 0006): the verdict must stay unpersisted and
+        // the inconclusive probe must report configured-pending (true), not
+        // block the key (review finding: core clears keys on false).
         $key = FakeSecrets::apiKey();
         $instance = $this->availability($key);
 
         $this->queueSdkResponse(429, array(), HttpResponseFactory::openAiErrorBody('Insufficient balance or no resource package'));
-        $this->assertFalse($instance->isConfigured(), 'Inconclusive probe reports unavailable for this call.');
+        $this->assertTrue($instance->isConfigured(), 'An inconclusive probe must not report not-connected.');
 
         $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 429 must not persist an invalid verdict.');
 
@@ -313,16 +315,30 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertTrue($instance->isConfigured());
     }
 
-    public function testNotFoundResponseDoesNotInvalidateTheKey()
+    public function testCnRegionModels404DoesNotBlockKeySaving()
     {
-        // The cn /models path is unprobed (record 0006): a 404 there says
-        // nothing about the credential.
+        // The cn /models path is unprobed and expected to 404 (record 0006):
+        // a newly submitted key (core REST validation sets it as a runtime
+        // candidate) must still be accepted — an unavailable probe ROUTE
+        // says nothing about the credential, and core clears keys when
+        // isConfigured() returns false (review finding).
+        update_option(PlanRegionSettings::OPTION_REGION, 'cn');
         $key = FakeSecrets::apiKey();
         $instance = $this->availability($key);
 
         $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+        $this->assertTrue(
+            $instance->isConfigured(),
+            'An inconclusive probe on the cn endpoint must not block the key save.'
+        );
+        $this->assertSame('https://open.bigmodel.cn/api/coding/paas/v4/models', $this->sdkHttpAttempts()[0]['url']);
+        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 404 must not persist a verdict.');
+
+        // It also never settles into a fake connected state: the next check
+        // probes again and a definitive answer (if the route ever answers)
+        // is honored.
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad key'));
         $this->assertFalse($instance->isConfigured());
-        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 404 must not persist an invalid verdict.');
     }
 
     public function testForbiddenResponsePersistsInvalidVerdict()
@@ -343,9 +359,11 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $key = FakeSecrets::apiKey();
         $instance = $this->availability($key);
 
-        // No queued mock: the harness transport throws a network error.
+        // No queued mock: the harness transport throws a network error. The
+        // probe is inconclusive — configured-pending, never a persisted
+        // verdict, never a blocked key save.
         $this->allowUnmockedHttp = true;
-        $this->assertFalse($instance->isConfigured());
+        $this->assertTrue($instance->isConfigured());
         $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A transport failure must not persist a verdict.');
     }
 
@@ -355,7 +373,7 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $instance = $this->availability($key);
 
         $this->queueSdkResponse(503, array(), 'upstream overloaded');
-        $this->assertFalse($instance->isConfigured());
+        $this->assertTrue($instance->isConfigured(), 'A 5xx is inconclusive for the credential: configured-pending.');
         $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 5xx must not persist a verdict.');
     }
 
@@ -373,6 +391,60 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->advanceTime(ZaiProviderAvailability::STATE_TTL + 60);
         $this->allowUnmockedHttp = true;
         $this->assertTrue($instance->isConfigured());
+    }
+
+    /*
+     * UTC clock for TTL math (review finding: local-time timestamps break
+     * the elapsed-time calculation when the site timezone changes).
+     */
+
+    public function testTimezoneChangeAfterStoringDoesNotDistortTheTtl()
+    {
+        $this->freezeTime(1700000000);
+        WpHarness::$utc_offset = 2 * HOUR_IN_SECONDS;
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+        $this->assertTrue($instance->isConfigured());
+
+        // checked_at must be UTC (the frozen clock), NOT local time.
+        $state = get_option(ZaiProviderAvailability::STATE_OPTION);
+        $this->assertSame(1700000000, $state['checked_at'], 'checked_at must be stored as UTC.');
+        $this->assertSame(ZaiProviderAvailability::STATE_CLOCK_UTC, $state['clock']);
+
+        // Site timezone moves from +2 to -5: the stored verdict must still
+        // expire after the TTL (with local timestamps the delta goes
+        // negative and the verdict stays "fresh" for hours).
+        WpHarness::$utc_offset = -5 * HOUR_IN_SECONDS;
+        $this->advanceTime(ZaiProviderAvailability::STATE_TTL + 60);
+
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('now rejected'));
+        $this->assertFalse($instance->isConfigured(), 'The verdict must have expired despite the timezone change.');
+        $this->assertCount(2, $this->sdkHttpAttempts(), 'The expired verdict must trigger a fresh probe.');
+    }
+
+    public function testLegacyStateWithoutUtcMarkerIsReprobed()
+    {
+        $this->freezeTime(1700000000);
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+        $this->assertTrue($instance->isConfigured());
+
+        // Strip the clock marker: the stored checked_at basis is unknown, so
+        // the state must be treated as stale and re-probed, never trusted.
+        $state = get_option(ZaiProviderAvailability::STATE_OPTION);
+        unset($state['clock']);
+        update_option(ZaiProviderAvailability::STATE_OPTION, $state, false);
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+        $this->assertTrue($instance->isConfigured());
+        $this->assertCount(2, $this->sdkHttpAttempts(), 'A marker-less (legacy) state must be re-probed.');
+
+        // The rewrite restores the marker.
+        $this->assertSame(ZaiProviderAvailability::STATE_CLOCK_UTC, get_option(ZaiProviderAvailability::STATE_OPTION)['clock']);
     }
 
     public function testEffectiveKeyResolutionMirrorsCoreOrder()

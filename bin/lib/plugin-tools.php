@@ -192,12 +192,25 @@ function wp_connectors_autoloader_violations($pluginDir)
 /**
  * Derives the plugin namespace segment from the slug (openai-oauth -> OpenAiOauth).
  *
+ * The ONE derivation shared by bin/build.php (shared-code namespace
+ * rewriting), bin/check-conventions.php (expected autoloader prefix), and
+ * the test bootstrap (dev autoloader). Slug segments are capitalized except
+ * known acronyms, which keep their documented casing ('openai' -> 'OpenAi',
+ * per docs/CONVENTIONS.md).
+ *
  * @param string $slug Plugin slug.
  * @return string
  */
 function wp_connectors_namespace_suffix_from_slug($slug)
 {
-    return implode('', array_map('ucfirst', explode('-', strtolower((string) $slug))));
+    $acronyms = array( 'openai' => 'OpenAi' );
+
+    $parts = array();
+    foreach (explode('-', strtolower((string) $slug)) as $segment) {
+        $parts[] = isset($acronyms[ $segment ]) ? $acronyms[ $segment ] : ucfirst($segment);
+    }
+
+    return implode('', $parts);
 }
 
 /**

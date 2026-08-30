@@ -6,7 +6,12 @@
  * nonempty-but-invalid key must report not-connected. This implementation
  * probes the model-list endpoint with the effective credential and persists
  * the verdict, bound to the COMPLETE key value, its source (env/constant/
- * database/runtime) and the endpoint identity (provider+plan+region):
+ * database/runtime) and the endpoint identity (provider+plan+region). Only
+ * a definitive credential rejection (401/403) reports not-connected;
+ * INCONCLUSIVE probes (route unavailable, network error, 429, 5xx) report
+ * configured-pending instead, so core's key-save validation never blocks a
+ * key for an endpoint whose probe route is unavailable (expected for the
+ * China region /models 404):
  *
  * - Replacing the key (any source change) changes the binding, so a newly
  *   invalid key can never appear connected and a corrected key can never stay
@@ -90,6 +95,20 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 	public const STATE_TTL = 300;
 
 	/**
+	 * Clock marker stored with UTC-based timestamps.
+	 *
+	 * A stored state without this marker predates the UTC switch; its
+	 * checked_at cannot be compared reliably (the site offset may have
+	 * changed), so such states are treated as stale and re-probed — never
+	 * trusted, never fatal.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	public const STATE_CLOCK_UTC = 'utc';
+
+	/**
 	 * Verdict: the credential is valid (probe returned 2xx).
 	 *
 	 * @since 0.1.0
@@ -145,26 +164,36 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 		$state   = $this->stored_state();
 
 		if ( \is_array( $state ) && ( $state['binding'] ?? '' ) === $binding ) {
-			// current_time() (not time()) so the deterministic test clock drives
-			// TTL expiry; the site timezone offset cancels out in the delta.
-			$fresh = isset( $state['checked_at'] )
-				&& ( current_time( 'timestamp' ) - (int) $state['checked_at'] ) < self::STATE_TTL; // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.Requested
+			// UTC on BOTH sides (current_time() with $gmt, not time(), so the
+			// deterministic test clock still drives TTL expiry): a site
+			// timezone change alters no input to this subtraction, so the
+			// elapsed-time math can never go negative ("fresh" for hours).
+			// Marker-less states predate the UTC switch — see STATE_CLOCK_UTC.
+			$fresh = ( $state['clock'] ?? '' ) === self::STATE_CLOCK_UTC
+				&& isset( $state['checked_at'] )
+				&& ( current_time( 'timestamp', true ) - (int) $state['checked_at'] ) < self::STATE_TTL; // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.RequestedUTC -- time() would bypass the deterministic (injectable) clock the TTL tests rely on.
 
 			if ( $fresh ) {
 				return self::VERDICT_VALID === ( $state['valid'] ?? null );
 			}
 
 			// Stale-but-matching verdict: probe again, but remember it as the
-			// fallback for transient transport failures below.
+			// fallback for inconclusive probes below.
 			$fallback = self::VERDICT_VALID === ( $state['valid'] ?? null );
 		}
 
 		$verdict = $this->probe();
 
 		if ( null === $verdict ) {
-			// Transient failure (transport/5xx): do not overwrite a matching
-			// stored verdict; report it when present, otherwise unavailable.
-			return isset( $fallback ) ? $fallback : false;
+			// Inconclusive probe (transport error, 5xx, 429, 404 on the
+			// unprobed cn /models route, ...): nothing here rejects the
+			// CREDENTIAL, so core's key-save validation (which clears the
+			// key when isConfigured() returns false) must NOT be blocked —
+			// otherwise no key could ever be saved for an endpoint whose
+			// probe route is unavailable. Treat as configured-pending; a
+			// stored matching verdict (definitive evidence about this exact
+			// key+endpoint) still takes precedence.
+			return isset( $fallback ) ? $fallback : true;
 		}
 
 		$this->persist_state( $binding, $verdict );
@@ -295,7 +324,8 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 	 *
 	 * @return bool|null True (valid), false (credential rejected: 401/403),
 	 *                   or null when the probe was inconclusive (transport
-	 *                   error, 3xx, 429, other 4xx, 5xx).
+	 *                   error, 3xx, 429, other 4xx, 5xx) — which says nothing
+	 *                   about the credential and must not block key saving.
 	 */
 	private function probe(): ?bool {
 		try {
@@ -328,7 +358,7 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 	 *
 	 * @since 0.1.0
 	 *
-	 * @return array{binding?: string, valid?: string, checked_at?: int}|null
+	 * @return array{binding?: string, valid?: string, checked_at?: int, clock?: string}|null
 	 */
 	private function stored_state(): ?array {
 		$state = get_option( self::STATE_OPTION, null );
@@ -338,6 +368,10 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 
 	/**
 	 * Persists the validated state (never autoloaded, never the key itself).
+	 *
+	 * The stored checked_at is UTC (current_time() with $gmt) so a later
+	 * site timezone change cannot distort the TTL elapsed-time math; the
+	 * clock marker records the basis for safe future interpretation.
 	 *
 	 * @since 0.1.0
 	 *
@@ -351,7 +385,8 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 			array(
 				'binding'    => $binding,
 				'valid'      => $valid ? self::VERDICT_VALID : self::VERDICT_INVALID,
-				'checked_at' => (int) current_time( 'timestamp' ), // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.Requested
+				'checked_at' => (int) current_time( 'timestamp', true ), // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.RequestedUTC -- time() would bypass the deterministic (injectable) clock the TTL tests rely on.
+				'clock'      => self::STATE_CLOCK_UTC,
 			),
 			false
 		);

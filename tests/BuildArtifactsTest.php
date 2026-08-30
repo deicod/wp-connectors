@@ -190,6 +190,41 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertTrue(class_exists('Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Storage\\TokenStore'));
     }
 
+    public function testNamespaceDerivationPreservesTheOpenAiAcronym()
+    {
+        // The documented namespace for the planned connectors/openai-oauth
+        // plugin is Deicod\WpConnectors\OpenAiOauth (docs/CONVENTIONS.md).
+        // The ONE shared derivation — used by bin/build.php,
+        // bin/check-conventions.php, and the test bootstrap — must preserve
+        // the acronym casing (review finding: it previously returned
+        // OpenaiOauth everywhere).
+        $this->assertSame('OpenAiOauth', wp_connectors_namespace_suffix_from_slug('openai-oauth'));
+        $this->assertSame('Zai', wp_connectors_namespace_suffix_from_slug('zai'));
+        $this->assertSame('ExampleConnector', wp_connectors_namespace_suffix_from_slug('example-connector'));
+
+        // bin/build.php delegates to the same derivation (one source of truth).
+        $this->assertSame('OpenAiOauth', WpConnectorsBuild::namespaceSuffixFromSlug('openai-oauth'));
+
+        // A correctly named future openai-oauth plugin must therefore pass
+        // the conventions autoloader check (it previously would have been
+        // rejected for not matching the lowercased derivation), while a
+        // wrongly cased OpenaiOautH prefix must still fail.
+        $tempPlugin = self::distDir() . '/.ns-test/openai-oauth';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\OpenAiOauth\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+
+        $this->assertSame(array(), wp_connectors_autoloader_violations($tempPlugin), 'The documented OpenAiOauth prefix must be accepted.');
+
+        file_put_contents($tempPlugin . '/src/autoload.php', str_replace('OpenAiOauth', 'OpenaiOauth', $autoload));
+        $this->assertNotSame(array(), wp_connectors_autoloader_violations($tempPlugin), 'A lowercased OpenaiOauth prefix must be rejected.');
+
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
     public function testBuildNeverFollowsSymlinks()
     {
         // Copy the fixture plugin, add a symlink pointing outside the tree,
