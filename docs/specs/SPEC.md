@@ -167,7 +167,8 @@ Device-authorization flow (best fit for WP: no redirect URI, no browser callback
 
 - Rate limits: both usercode and token endpoints throttle with HTTP 429 → retry with
   `Retry-After` backoff (2s/4s/8s cap 60s), max 4 attempts; surface clear error, don't loop.
-- Inference: `https://chatgpt.com/backend-api/codex` (Responses API, NOT api.openai.com).
+- Inference: `https://chatgpt.com/backend-api/codex/responses` (Responses endpoint — service
+  base plus `/responses` path; NOT api.openai.com).
   Bearer = OAuth access token. v1 = text generation + chat history via Responses-shaped
   adapter; model list static (gpt-5.x codex family) — O2 open: discover via
   `/backend-api/codex/models` if reachable with token.

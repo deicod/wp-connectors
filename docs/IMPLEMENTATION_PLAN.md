@@ -2,7 +2,8 @@
 
 **Based on:** [`docs/specs/SPEC.md`](specs/SPEC.md), Draft v1 (2026-08-30)  
 **Planning status:** Ready for implementation  
-**Target:** WordPress 7.0+, PHP 7.4–8.4
+**Target:** WordPress 7.0+ and WordPress 6.9 with the standalone PHP AI Client plugin
+(advertised via `Requires at least: 6.9`), PHP 7.4–8.4
 
 ## How to use this plan
 
@@ -309,7 +310,10 @@ documented exception.
 
 - [ ] **Task 3.3 — Implement refresh coordination.** Add lazy expiry-minus-skew refresh, a short
   per-provider lock to prevent refresh-token races, atomic replacement, scheduled single-event
-  backup, and cleanup on revoke/uninstall. Revocation MUST be serialized against in-flight
+  backup, and cleanup on revoke/uninstall. The lock MUST be fenced against lease expiry:
+  atomic acquisition plus renewal/a lease longer than the transport timeout, or a fencing
+  generation checked before every refresh commit — a refresh returning after its lease expired
+  may never overwrite a newer (rotated) token set; test the lock-expiry overlap. Revocation MUST be serialized against in-flight
   refreshes: revoke participates in the refresh lock or advances a persisted grant
   generation/tombstone that refresh checks before committing, so a refresh that returns after
   revoke can never write a fresh token set and silently reconnect the provider (add a
@@ -414,8 +418,14 @@ documented exception.
   plaintext device-flow credentials appear in options/transients. Apply bounded 429
   retry using `Retry-After` or 2/4/8-second backoff, maximum four attempts, with every single
   retry delay clamped to at most 60 seconds even when the endpoint returns an oversized
-  `Retry-After` value. Check this task only after success, malformed response, timeout, retry,
-  cap (including an oversized-`Retry-After` clamp test), duplicate-start, CSRF, and capability
+  `Retry-After` value. Retries MUST NOT sleep inside the initiating admin request: schedule
+  delayed AJAX/cron retries or return a retriable response to the UI — three synchronous
+  60-second delays would exceed common proxy timeouts and hold a PHP worker without ever
+  rendering the code. If the retry budget is exhausted, the pending flow MUST be preserved
+  until its original 15-minute expiry with the next permitted poll scheduled (mirroring the
+  xAI rule in Task 5.4) — exhausted 429 retries are not terminal. Check this task only after success, malformed response, timeout, retry,
+  cap (including an oversized-`Retry-After` clamp test), async-retry scheduling,
+  429-exhaustion flow-preservation, duplicate-start, CSRF, and capability
   tests pass.
 
 - [ ] **Task 4.3 — Implement device polling and exchange.** Poll no faster than `max(interval, 3)`
@@ -652,8 +662,9 @@ documented exception.
   practical and use least-privilege permissions. Check this task only after a pull request run is
   green or each unavailable runner limitation is documented with an equivalent local result.
 
-- [ ] **Task 7.2 — Add WordPress compatibility integration tests.** Exercise WordPress 7.0 and,
-  if support remains claimed, WP 6.9 with the standalone SDK. Test single site and multisite,
+- [ ] **Task 7.2 — Add WordPress compatibility integration tests.** Exercise WordPress 7.0 and
+  WordPress 6.9 with the standalone SDK — mandatory, not conditional, while the plugins
+  advertise `Requires at least: 6.9` (per the plan target). Test single site and multisite,
   network activation with per-site options, supported PHP extremes, cron disabled behavior, and
   missing sodium/SDK degradation. Check this task only after the compatibility table reflects
   actual automated results rather than aspirations.
@@ -695,8 +706,13 @@ documented exception.
   SPEC risk table are updated with an actionable decision.
 
 - [ ] **Task 7.9 — Run release-candidate acceptance.** On a clean WordPress install, install only
-  the zips and walk every connector's connect/settings, mocked or authorized inference, streaming,
-  refresh, failure, reconnect, revoke, deactivation/reactivation, and uninstall paths. Confirm no
+  the zips and walk every connector's connect/settings, inference, streaming,
+  refresh, failure, reconnect, revoke, deactivation/reactivation, and uninstall paths. Every
+  MANDATORY unofficial OAuth connector (Codex, xAI) MUST get a controlled credentialed
+  end-to-end smoke test before release — device-start/exchange plus at least one authorized
+  inference round-trip; a connector that cannot be live-verified needs an explicit
+  release-blocking waiver flagging it as unverified. (Bonus Anthropic: live test when
+  credentials exist, else waiver.) Confirm no
   runtime repository dependency and review all visible disclosures. Check this task only after a
   signed-off matrix has no unresolved release-blocking defects.
 
