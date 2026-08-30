@@ -10,7 +10,9 @@
   LLM must change a task checkbox to `[x]` only after its implementation, task-level tests,
   documentation, and review are complete.** It must change a milestone checkbox to `[x]` only
   after every task and exit criterion in that milestone is complete.
-- Work in milestone order unless a task explicitly says it can run in parallel. Do not mark a
+- Work in milestone order unless a task explicitly says it can run in parallel. **Milestone 6
+  (Anthropic OAuth) is bonus/optional:** a v1 release MAY proceed to Milestone 7 (repo
+  hardening) with M6 unchecked; only mandatory milestones block release. Do not mark a
   checkbox from design work alone when the task calls for executable code or validation.
 - Each task is intended to fit comfortably in an average 200k-token LLM context. A task lists
   the files/components, implementation steps, tests, and completion evidence it should leave
@@ -383,7 +385,9 @@ documented exception.
 
 - [ ] **Task 4.1 — Scaffold the OpenAI OAuth plugin.** Create `connectors/openai-oauth` with the
   `Deicod\WpConnectors\OpenAiOauth` namespace, provider ID `codex`, dependency guard, standalone
-  shared-runtime copy, settings submenu, plugin-row link, metadata, static logo, and idempotent
+  shared-runtime copy, settings submenu, plugin-row link, registration of the shared
+  card-adjacent Connect action (Task 3.6 helper — assert it renders for this plugin), metadata,
+  static logo, and idempotent
   priority-5 registration. Check this task only after activation/dependency/collision tests and
   artifact isolation pass.
 
@@ -476,7 +480,8 @@ documented exception.
 ### Tasks
 
 - [ ] **Task 5.1 — Scaffold the xAI OAuth plugin.** Create `connectors/xai-oauth` with namespace
-  `Deicod\WpConnectors\XaiOauth`, provider ID `grok`, priority-5 registration, own admin page,
+  `Deicod\WpConnectors\XaiOauth`, provider ID `grok`, priority-5 registration, own admin page
+  including registration of the shared card-adjacent Connect action (assert it renders),
   metadata/logo, dependency notice, and private shared-runtime copy. Check this task only after it
   activates alongside every existing plugin without symbol, option, hook, or provider collision.
 
@@ -491,8 +496,11 @@ documented exception.
 
 - [ ] **Task 5.3 — Implement xAI device authorization.** Form-post the exact client ID and scopes,
   validate the device response, display `verification_uri` and `user_code`, and persist only the
-  minimum encrypted/transient flow state until `expires_in`. Check this task only after request,
-  output escaping, expiration, duplicate-start, CSRF, and capability tests pass.
+  minimum flow state until `expires_in` — in the encrypted store (Task 3.2), never a plaintext
+  transient: the `device_code` lets a database/cache reader poll the public-client token
+  endpoint first and steal the grant; include a plaintext-absence assertion like Task 4.2.
+  Check this task only after request,
+  output escaping, expiration, duplicate-start, at-rest encryption, CSRF, and capability tests pass.
 
 - [ ] **Task 5.4 — Implement RFC 8628 polling.** Poll at the server interval, handle
   `authorization_pending`, denial, expiry, and success without tying up a PHP worker. A
@@ -548,7 +556,8 @@ documented exception.
 
 - [ ] **Task 6.1 — Scaffold the Anthropic OAuth plugin.** Create `connectors/anthropic-oauth` with
   namespace `Deicod\WpConnectors\AnthropicOauth`, provider ID `claude_pro`, guarded registration,
-  own admin page, metadata/logo, dependency notice, and private shared-runtime copy. Check this
+  own admin page including registration of the shared card-adjacent Connect action (assert it
+  renders), metadata/logo, dependency notice, and private shared-runtime copy. Check this
   task only after all plugins activate together and the artifact remains standalone.
 
 - [ ] **Task 6.2 — Implement PKCE authorization start.** Generate a high-entropy verifier and
