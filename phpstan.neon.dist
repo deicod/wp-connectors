@@ -1,0 +1,11 @@
+parameters:
+	level: 5
+	paths:
+		- bin
+		- connectors
+		- shared
+	excludePaths:
+		- */vendor/*
+		- */dist/*
+		- */tools/*
+	treatPhpDocTypesAsCertain: false

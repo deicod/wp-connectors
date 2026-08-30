@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<ruleset name="wp-connectors">
+	<description>Coding standard for the wp-connectors repository. Shipped plugin code (connectors/, shared/) uses the full WordPress standard; repository tooling and tests are checked with the relaxed WordPress-Core subset.</description>
+
+	<file>bin</file>
+	<file>connectors</file>
+	<file>shared</file>
+	<file>tests</file>
+
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/node_modules/*</exclude-pattern>
+	<exclude-pattern>*/dist/*</exclude-pattern>
+	<exclude-pattern>*/tools/*</exclude-pattern>
+	<!-- Test fixtures may intentionally contain standard-violating vendor output. -->
+	<exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg name="basepath" value="."/>
+	<arg value="sp"/>
+
+	<!-- Shipped plugin code: the full WordPress standard. -->
+	<rule ref="WordPress">
+		<exclude-pattern>bin/*</exclude-pattern>
+		<exclude-pattern>tests/*</exclude-pattern>
+	</rule>
+
+	<!-- Repository tooling and tests: core checks only. -->
+	<rule ref="WordPress-Core">
+		<include-pattern>bin/*</include-pattern>
+		<include-pattern>tests/*</include-pattern>
+	</rule>
+
+	<!-- Plugin text domains (one per plugin directory; see docs/architecture/0005). -->
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="zai"/>
+				<element value="openai-oauth"/>
+				<element value="xai-oauth"/>
+				<element value="anthropic-oauth"/>
+			</property>
+		</properties>
+		<exclude-pattern>bin/*</exclude-pattern>
+		<exclude-pattern>tests/*</exclude-pattern>
+	</rule>
+
+	<!-- Global symbols defined by our plugins carry these prefixes. -->
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="deicod"/>
+				<element value="zai_connector"/>
+				<element value="wp_connectors"/>
+			</property>
+		</properties>
+		<exclude-pattern>bin/*</exclude-pattern>
+		<exclude-pattern>tests/*</exclude-pattern>
+	</rule>
+
+	<!-- We support WordPress 6.9 with the standalone SDK plugin. -->
+	<config name="minimum_wp_version" value="6.9"/>
+</ruleset>

@@ -76,7 +76,7 @@ documented exception.
   all referenced class names and signatures have been verified against the pinned source and the
   records identify any divergence from the SPEC.
 
-- [ ] **Task 0.2 — Establish development tooling.** Add Composer development dependencies and
+- [x] **Task 0.2 — Establish development tooling.** Add Composer development dependencies and
   scripts for PHPCS with WordPress rules, PHPUnit, PHP syntax checks, and any static analysis that
   supports PHP 7.4. Configure generated/vendor paths, test fixtures, and consistent namespaces.
   Avoid a runtime Composer dependency in plugin zips. Check this task only after each script runs
