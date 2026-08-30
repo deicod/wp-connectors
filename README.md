@@ -16,7 +16,9 @@ bundled in WordPress 7.0).
 
 ## Status
 
-Spec phase — see [`docs/specs/SPEC.md`](docs/specs/SPEC.md). Implementation milestones M1–M6.
+Spec phase — see [`docs/specs/SPEC.md`](docs/specs/SPEC.md) and the detailed
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md). The plan expands the specification's
+M1–M6 delivery sequence with explicit foundation and shared-runtime milestones.
 
 ## ⚠️ Disclosure
 

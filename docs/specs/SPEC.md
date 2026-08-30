@@ -61,7 +61,7 @@ Auto-discovery derives per-connector metadata from `ProviderMetadata`:
 - Consequence: OAuth connectors register as `none` + ship their **own minimal admin page**
   (Connect / status / revoke) linked from the plugin row and via a card-adjacent action.
 - API keys in DB are not encrypted by core (masked only). OAuth token stores MUST
-  self-encrypt (see §6.3).
+  self-encrypt (see §4.4 and §6.1).
 
 ### 2.3 Provider plugin anatomy (per provider)
 
@@ -167,7 +167,8 @@ Device-authorization flow (best fit for WP: no redirect URI, no browser callback
 
 - Rate limits: both usercode and token endpoints throttle with HTTP 429 → retry with
   `Retry-After` backoff (2s/4s/8s cap 60s), max 4 attempts; surface clear error, don't loop.
-- Inference: `https://chatgpt.com/backend-api/codex` (Responses API, NOT api.openai.com).
+- Inference: `https://chatgpt.com/backend-api/codex/responses` (Responses endpoint — service
+  base plus `/responses` path; NOT api.openai.com).
   Bearer = OAuth access token. v1 = text generation + chat history via Responses-shaped
   adapter; model list static (gpt-5.x codex family) — O2 open: discover via
   `/backend-api/codex/models` if reachable with token.
@@ -227,14 +228,22 @@ PKCE authorization-code with **paste-back code** (no callback server needed — 
 
 - Token store: single WP option per provider, **encrypted at rest** with
   libsodium (`sodium_crypto_secretbox`) via core-bundled sodium_compat; key derived from
-  `AUTH_KEY`-style salts (fall back to generated+stored random key in its own option;
-  document rotation behavior). Never exposed via REST/settings API.
+  `AUTH_KEY`-style salts. If salts are unusable, the fallback key MUST come from an external
+  source outside the WordPress database (e.g. `WP_CONNECTORS_*_KEY` constant or env var);
+  if none exists, **fail closed** (provider unavailable, clear admin notice) — never persist a
+  decrypt-capable key beside the ciphertext. Never exposed via REST/settings API.
 - Lazy refresh on use (expiry − skew) + `wp_schedule_single_event` background refresh as
   backup; 401 during inference triggers one refresh+retry, then typed error.
-- Terminal refresh failure (`invalid_grant`, HTTP 4xx): mark grant dead, show
-  "Re-connect required" on admin page + connector availability = false.
-- Availability check (`ProviderAvailabilityInterface`): token present && (refresh succeeds
-  || cheap model-list/inference probe). Core Connectors screen shows status from this.
+- Terminal refresh failure = definitive authorization errors only (`invalid_grant`, revoked
+  grant): mark grant dead, show
+  "Re-connect required" on admin page + connector availability = false. HTTP 429 and other
+  transient/transport failures stay retryable (bounded cooldown, honor `Retry-After`).
+- Availability check (`ProviderAvailabilityInterface`): in POST/scheduled contexts, token
+  present && (refresh succeeds || cheap model-list/inference probe). In GET-render contexts
+  (provider admin page, core Connectors screen) availability is read-only: report from cached
+  grant state only — no HTTP, no token rotation, no cron-event creation during the render
+  (a stale-expiry shows temporarily unavailable; any needed refresh event must already exist
+  or be created from POST/scheduled paths).
 - Admin page per plugin (submenu under Settings): provider status, Connect/Re-connect,
   Revoke (delete tokens), account label if derivable (e.g. JWT claims email for codex/xai).
 - Capability `manage_options` guards everything; nonces on all actions.
@@ -266,8 +275,9 @@ wp-connectors/
 Rules:
 - Each plugin is standalone-drop-in (no Composer autoloader requirement at runtime —
   simple `src/autoload.php` classmap, like the official provider plugins).
-- `Requires at least: 7.0` (SDK in core) — or 6.9 + standalone PHP AI Client plugin; guard
-  with `class_exists(AiClient::class)` and admin notice if missing.
+- `Requires at least: 6.9` (matching the official provider plugins) — on 7.0 the SDK ships in
+  core, on 6.9 the standalone PHP AI Client plugin must be active; guard with
+  `class_exists(AiClient::class)` and admin notice if missing.
 - `Requires PHP: 7.4` (SDK minimum). Use `wp_remote_*` for all HTTP (no cURL ext dependency).
 - Plugin text domains per plugin; English strings, `__()` wrapped from day one.
 - Namespace per plugin: `Deicod\WpConnectors\Zai`, `…\OpenAiOauth`, `…\XaiOauth`, `…\AnthropicOauth`.
@@ -302,7 +312,10 @@ Rules:
 - Plan/region dropdowns (Settings page) default coding+intl; switching re-targets requests
   (verified by request-log/debug output).
 - `wp_ai_client_prompt('…')->using_provider('zai')->generate_text()` works on coding+intl
-  with a Coding Plan key; O1 resolved (dynamic vs static model list, documented in code).
+  with a Coding Plan key. O1 handling: a credentialed `/models` probe is attempted — if it
+  succeeds, dynamic discovery (per §3.3 cache rules) is implemented; if unavailable or
+  inconclusive, retaining the tested static per-plan fallback COUNTS as a valid O1
+  resolution (document the probe outcome in code) — M1 does not block on O1.
 - Invalid key → core screen shows not-connected; clear WP_Error.
 
 **M2 — zai_anthropic**
