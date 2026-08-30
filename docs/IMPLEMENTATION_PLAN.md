@@ -294,7 +294,10 @@ documented exception.
 
 - [ ] **Task 3.3 — Implement refresh coordination.** Add lazy expiry-minus-skew refresh, a short
   per-provider lock to prevent refresh-token races, atomic replacement, scheduled single-event
-  backup, and cleanup on revoke/uninstall. Treat terminal authorization failures as dead while
+  backup, and cleanup on revoke/uninstall. Token-set replacement MUST use merge semantics:
+  preserve the stored refresh token unless the response contains a nonempty replacement
+  `refresh_token` (providers may omit it on refresh; discarding a still-valid token forces
+  unnecessary reconnection). Treat terminal authorization failures as dead while
   retaining safe diagnostic state; treat transient failures as retryable without erasing the last
   token prematurely. Terminal classification MUST be restricted to definitive authorization
   errors (`invalid_grant`, revoked grant); HTTP 429 and other transient/transport failures MUST
@@ -321,13 +324,22 @@ documented exception.
   account-label redaction, Connect/Re-connect/Revoke actions, plugin-row link helpers, a
   reusable Connectors-card-adjacent action (so users arriving through Settings → Connectors have
   a direct route to the provider's Connect page, per SPEC §2.2), nonce and `manage_options`
-  enforcement, and admin notices including the unofficial OAuth/ToS disclosure. Ensure GET renders
+  enforcement, and admin notices including the unofficial OAuth/ToS disclosure. The shared
+  Revoke action MUST also cancel any pending authorization flow: cancel scheduled polling
+  (single events) and delete all provider- and user-scoped pending device/PKCE state, so a
+  flow that was mid-air during revocation cannot later install a fresh grant and undo the
+  revoke. Ensure GET renders
   but never mutates state. Check this task only after authorized, unauthorized, CSRF, escaping,
-  revoke, token-non-disclosure, and card-action-visibility tests (one per OAuth provider) pass.
+  revoke (including a pending-flow-cannot-reconnect-after-revoke test), token-non-disclosure,
+  and card-action-visibility tests (one per OAuth provider) pass.
 
 - [ ] **Task 3.7 — Implement safe OAuth HTTP/error utilities.** Wrap `wp_remote_*` with explicit
   timeouts, accepted content types, bounded response sizes, TLS defaults, structured redacted
-  debug events, `Retry-After` parsing, and provider-error normalization. Debug event emission
+  debug events, `Retry-After` parsing, and provider-error normalization. Credential-bearing
+  requests (token, refresh, exchange, device) MUST have redirects disabled — or every redirect
+  target revalidated against the approved provider origin without forwarding the body — so a
+  cross-origin 307/308 can never replay secrets at an attacker-controlled location; assert
+  rejection of a cross-origin redirect. Debug event emission
   MUST be gated behind an explicit shared debug option that is disabled by default (SPEC §6.2);
   no OAuth endpoint, status, timing, or failure metadata may be recorded without administrator
   opt-in. Check this task only after tests cover malformed JSON, HTML errors, redirects, timeout,
@@ -544,8 +556,8 @@ documented exception.
 
 - [ ] **Task 6.5 — Implement Anthropic OAuth inference.** Adapt the tested Messages mapping from
   z.ai without coupling plugin runtimes; target `https://api.anthropic.com/v1/messages`, use
-  `Authorization: Bearer`, include `anthropic-beta: oauth-2025-04-20`, and add any protocol version
-  header required by verified behavior. Check this task only after exact headers/URL and full
+  `Authorization: *** include `anthropic-beta: oauth-2025-04-20` and the required
+  `anthropic-version: 2023-06-01` header (assert both explicitly). Check this task only after exact headers/URL and full
   request/response/SSE/tool/structured-output regression fixtures pass.
 
 - [ ] **Task 6.6 — Implement model metadata and availability.** Ship a conservative static Claude
