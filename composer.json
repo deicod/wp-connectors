@@ -53,9 +53,11 @@
             "@phpcs",
             "@phpcs-compat",
             "@phpstan",
+            "@conventions",
             "@test"
         ],
         "lint": "@php bin/lint-php.php",
+        "conventions": "@php bin/check-conventions.php",
         "phpcbf": "phpcbf -p",
         "phpcs": "phpcs -p",
         "phpcs-compat": "phpcs -p --standard=phpcs-compat.xml.dist",
@@ -63,8 +65,9 @@
         "test": "phpunit"
     },
     "scripts-descriptions": {
-        "check": "Full offline validation entry point: syntax lint, PHPCS (WordPress + PHP 7.4 compatibility), static analysis, and the PHPUnit suite. Never contacts the network.",
+        "check": "Full offline validation entry point: syntax lint, PHPCS (WordPress + PHP 7.4 compatibility), static analysis, convention enforcement, and the PHPUnit suite. Never contacts the network.",
         "lint": "PHP syntax check (php -l) over all repository PHP sources, excluding vendor/tools/dist.",
+        "conventions": "Enforce docs/CONVENTIONS.md over every plugin directory (headers, text domain, version constant, autoloader, self-containment).",
         "phpcs": "PHP_CodeSniffer with the WordPress coding standard.",
         "phpcs-compat": "PHPCompatibility scan pinned to the supported PHP range (7.4-8.4).",
         "phpstan": "PHPStan static analysis.",

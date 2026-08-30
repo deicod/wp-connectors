@@ -89,7 +89,7 @@ documented exception.
   task only after one passing smoke test proves plugin registration timing and one test proves
   outbound HTTP is blocked unless mocked.
 
-- [ ] **Task 0.4 — Define repository conventions.** Add editor/git attributes, ignore rules,
+- [x] **Task 0.4 — Define repository conventions.** Add editor/git attributes, ignore rules,
   namespace-to-path conventions, plugin version constants, text domains, changelog policy, and a
   policy for generated shared-library copies. Decide whether generated copies are committed and
   ensure the build is reproducible either way. Check this task only after the conventions are
