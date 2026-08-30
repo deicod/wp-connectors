@@ -144,7 +144,7 @@ documented exception.
   combinations, invalid input, unauthorized submission, region-switch key invalidation, and
   escaped/translatable rendering.
 
-- [ ] **Task 1.3 — Centralize endpoint resolution.** Implement an immutable endpoint resolver for
+- [x] **Task 1.3 — Centralize endpoint resolution.** Implement an immutable endpoint resolver for
   all four OpenAI plan/region combinations while keeping provider `baseUrl()` fixed to the
   international-general canonical URL required by the SDK. Ensure model and directory requests
   resolve options at request time rather than construction time. Check this task only after a

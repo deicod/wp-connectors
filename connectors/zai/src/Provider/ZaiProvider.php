@@ -21,6 +21,7 @@ use WordPress\AiClient\Providers\Http\Enums\RequestAuthenticationMethod;
 use WordPress\AiClient\Providers\Models\Contracts\ModelInterface;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel;
 
@@ -47,13 +48,16 @@ final class ZaiProvider extends AbstractApiProvider {
 	/**
 	 * The canonical base URL: international region, general plan.
 	 *
+	 * Fixed by contract (SPEC §3.3): the plan/region endpoint used for actual
+	 * requests is resolved at request time via ZaiEndpoint (Task 1.3), so this
+	 * value never changes with the settings.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return string Base URL.
 	 */
 	protected static function baseUrl(): string {
-		// Replaced by the endpoint resolver in Task 1.3; canonical value here.
-		return 'https://api.z.ai/api/paas/v4';
+		return ZaiEndpoint::CANONICAL_BASE_URL;
 	}
 
 	/**

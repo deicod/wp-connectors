@@ -18,6 +18,9 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   capability+nonce save guard, and region-switch invalidation of plugin-owned
   credential-derived state (the core-owned key option is never written)
   (Task 1.2).
+- Immutable endpoint resolver (`ZaiEndpoint`) covering the four SPEC §3.1
+  plan × region base URLs with request-time option reads; provider
+  `baseUrl()` stays fixed to the intl-general canonical URL (Task 1.3).
 
 ### Added (tooling / M0 foundation)
 
