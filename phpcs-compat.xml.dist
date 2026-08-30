@@ -10,7 +10,7 @@
 	<exclude-pattern>*/vendor/*</exclude-pattern>
 	<exclude-pattern>*/dist/*</exclude-pattern>
 	<exclude-pattern>*/tools/*</exclude-pattern>
-	<exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+	<exclude-pattern>*/tests/fixtures/data/*</exclude-pattern>
 
 	<arg name="extensions" value="php"/>
 	<arg name="basepath" value="."/>

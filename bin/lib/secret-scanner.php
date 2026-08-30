@@ -41,14 +41,19 @@ function wp_connectors_secret_patterns()
 /**
  * Marker substrings that mark a line as containing fixture/example data.
  *
+ * Deliberately NARROW: only unambiguous fixture markers. Generic prose words
+ * ("example", "sample", "dummy", "fake", "xxx") must NOT be here — a real
+ * credential on a line that merely mentions such a word would bypass the
+ * scan.
+ *
  * @return list<string>
  */
 function wp_connectors_fixture_markers()
 {
     return array(
-        'fixture', 'example', 'dummy', 'sample', 'placeholder', 'not-a-real',
-        'notareal', 'fake', 'test-value', 'your-', '<key>', 'xxx', 'redacted',
-        'wpct_', 'abcdefgh', '0123456789abcdef',
+        'fixture', 'not-a-real', 'notareal', 'test-value', 'your-',
+        '<key>', 'redacted', 'wpct_', 'abcdefgh', '0123456789abcdef',
+        'placeholder',
     );
 }
 
@@ -121,7 +126,7 @@ function wp_connectors_scan_paths(array $roots)
                 continue;
             }
             $extension = strtolower($file->getExtension());
-            if ($extension !== '' && ! in_array($extension, array( 'php', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key' ), true)) {
+            if ($extension !== '' && ! in_array($extension, array( 'php', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
                 continue;
             }
             $findings = array_merge($findings, wp_connectors_scan_string((string) file_get_contents($file->getPathname()), $file->getPathname()));

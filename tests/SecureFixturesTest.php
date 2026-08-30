@@ -145,18 +145,30 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString($githubToken, $report);
     }
 
+    public function testScannerDoesNotBypassOnGenericProseWords()
+    {
+        // Regression for the over-broad marker allowlist: generic words like
+        // "example"/"sample"/"fake" must NOT suppress scanning of a real
+        // credential shape on the same line.
+        $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+        $githubToken = 'ghp_' . bin2hex(random_bytes(18));
+        $contents = "See the example integration guide: api_key = {$zaiKey}\n"
+            . "# sample environment config\ntoken: {$githubToken}\n";
+
+        $findings = wp_connectors_scan_string($contents, 'prose');
+
+        $report = implode("\n", $findings);
+        $this->assertStringContainsString('zai-key', $report);
+        $this->assertStringContainsString('github-token', $report);
+    }
+
     public function testScannerAcceptsRepoSources()
     {
         $repoRoot = dirname(__DIR__);
-        $findings = wp_connectors_scan_paths(array(
-            $repoRoot . '/connectors',
-            $repoRoot . '/shared',
-            $repoRoot . '/bin',
-            $repoRoot . '/tests',
-            $repoRoot . '/docs',
-            $repoRoot . '/README.md',
-            $repoRoot . '/CHANGELOG.md',
-        ));
+        // Mirror the CLI default: the whole repository root (the scan prunes
+        // .git/vendor/node_modules/dist/tools itself), so root config files
+        // like mise.toml and composer.json are covered too.
+        $findings = wp_connectors_scan_paths(array( $repoRoot ));
 
         $this->assertSame(array(), $findings, 'Repository sources must stay secret-free: ' . implode("\n", $findings));
     }
@@ -174,7 +186,8 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             'WP_CONNECTORS_TEST_ANTHROPIC_REFRESH_TOKEN',
         );
         foreach ($optIn as $name) {
-            $this->assertFalse(getenv($name), "{$name} must not be set during the offline suite.");
+            // Assert on a boolean so a failure diff can never echo the value.
+            $this->assertFalse(getenv($name) !== false, "{$name} must not be set during the offline suite.");
         }
     }
 }

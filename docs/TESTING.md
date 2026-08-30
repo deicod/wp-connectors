@@ -2,7 +2,12 @@
 
 ## Offline suite (default)
 
+`tools/` is gitignored (per-developer tooling), so a clean checkout first needs
+Composer locally:
+
 ```bash
+mkdir -p tools
+curl -sS -o tools/composer.phar https://getcomposer.org/download/2.10.3/composer.phar
 php tools/composer.phar install   # once; pins PHPUnit/PHPCS/SDK in vendor/
 php tools/composer.phar check     # full offline validation entry point
 ```

@@ -148,7 +148,8 @@ function wp_connectors_self_containment_violations($pluginDir)
 }
 
 /**
- * Checks that src/autoload.php registers a Composer-free PSR-4 autoloader.
+ * Checks that src/autoload.php registers exactly one Composer-free PSR-4
+ * autoloader bound to the plugin's own Deicod\WpConnectors\<Ns>\ prefix.
  *
  * @param string $pluginDir Absolute plugin directory.
  * @return list<string> Violation messages.
@@ -167,11 +168,36 @@ function wp_connectors_autoloader_violations($pluginDir)
     if (strpos($code, 'spl_autoload_register') === false) {
         $violations[] = sprintf('%s: src/autoload.php must register a PSR-4 autoloader.', $slug);
     }
+    if (substr_count($code, 'spl_autoload_register') !== 1) {
+        $violations[] = sprintf('%s: src/autoload.php must register exactly one autoloader.', $slug);
+    }
     if (stripos($code, 'composer') !== false || stripos($code, 'vendor') !== false) {
         $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
     }
+    $expectedPrefix = 'Deicod\\WpConnectors\\' . wp_connectors_namespace_suffix_from_slug($slug) . '\\';
+    // Autoloaders typically write the prefix as a single-quoted literal with
+    // escaped backslashes; normalize before matching.
+    $normalized = str_replace('\\\\', '\\', $code);
+    if (strpos($normalized, $expectedPrefix) === false) {
+        $violations[] = sprintf(
+            '%s: src/autoload.php must bind PSR-4 prefix %s (derived from the plugin slug).',
+            $slug,
+            $expectedPrefix
+        );
+    }
 
     return $violations;
+}
+
+/**
+ * Derives the plugin namespace segment from the slug (openai-oauth -> OpenAiOauth).
+ *
+ * @param string $slug Plugin slug.
+ * @return string
+ */
+function wp_connectors_namespace_suffix_from_slug($slug)
+{
+    return implode('', array_map('ucfirst', explode('-', strtolower((string) $slug))));
 }
 
 /**

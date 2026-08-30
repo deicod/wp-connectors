@@ -11,8 +11,9 @@
 	<exclude-pattern>*/node_modules/*</exclude-pattern>
 	<exclude-pattern>*/dist/*</exclude-pattern>
 	<exclude-pattern>*/tools/*</exclude-pattern>
-	<!-- Test fixtures may intentionally contain standard-violating vendor output. -->
-	<exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+	<!-- Raw (non-plugin) fixture payloads may contain vendor output; plugin-shaped
+	     fixtures under tests/fixtures/plugins stay fully checked. -->
+	<exclude-pattern>*/tests/fixtures/data/*</exclude-pattern>
 	<!-- The WP API stubs mirror core signatures, not repo style (still covered
 	     by `composer lint` and PHPCompatibility). -->
 	<exclude-pattern>*/tests/harness/wp-stubs.php</exclude-pattern>

@@ -19,6 +19,14 @@ use WordPress\AiClient\Providers\Http\HttpTransporter;
 
 abstract class WpConnectorsTestCase extends TestCase
 {
+    /**
+     * Set to true in tests that deliberately exercise the blocked/unmocked
+     * HTTP path; otherwise unmocked attempts fail the run (failOnWarning).
+     *
+     * @var bool
+     */
+    protected $allowUnmockedHttp = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -33,20 +41,34 @@ abstract class WpConnectorsTestCase extends TestCase
         );
     }
 
-    protected function tearDown(): void
+    /**
+     * Audits unmocked HTTP attempts. Runs in assertPostConditions (NOT
+     * tearDown): PHPUnit 9.6 reads $this->warnings before tearDown hooks, so
+     * addWarning() there is silently discarded.
+     */
+    protected function assertPostConditions(): void
     {
+        parent::assertPostConditions();
+
+        if ($this->allowUnmockedHttp) {
+            return;
+        }
+
         $leaks = array();
         foreach (WpHarness::$http_attempts as $attempt) {
             if (empty($attempt['mocked'])) {
                 $leaks[] = $attempt;
             }
         }
-
-        parent::tearDown();
+        foreach (WpHarness::$sdk_http_attempts as $attempt) {
+            if (empty($attempt['mocked'])) {
+                $leaks[] = $attempt;
+            }
+        }
 
         if ($leaks !== array()) {
             $this->addWarning(
-                'Test made unmocked wp_remote_* attempts: ' . wp_json_encode($leaks)
+                'Test made unmocked HTTP attempts (wp_remote_* or SDK transport): ' . wp_json_encode($leaks)
             );
         }
     }

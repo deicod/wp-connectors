@@ -38,12 +38,18 @@ final class WpConnectorsBuild
         'vendor', 'node_modules', 'dist', 'tools', 'tests', 'test',
         'composer.json', 'composer.lock', 'phpunit.xml', 'phpunit.xml.dist',
         'phpcs.xml', 'phpcs.xml.dist', 'phpstan.neon', 'phpstan.neon.dist',
-        '.phpunit.result.cache', '.phpcs-cache.json', '.phpunit.cache',
+        '.phpunit.result.cache', '.phpcs-cache.json', 'phpcs-cache.json',
+        '.phpunit.cache', 'package.json', 'package-lock.json', 'Makefile',
+        'webpack.config.js', 'vite.config.js',
         'build.json', '.distignore',
     );
 
     /**
      * Rewrites shared-source namespace into a plugin-private namespace.
+     *
+     * The provenance docblock is inserted AFTER the open tag so the generated
+     * file stays valid PHP even when the source starts with
+     * `<?php declare(strict_types=1);`.
      *
      * @param string $source        PHP source from shared/src.
      * @param string $pluginSuffix  Namespace segment, e.g. 'OpenAiOauth'.
@@ -52,7 +58,7 @@ final class WpConnectorsBuild
      */
     public static function rewriteSharedNamespace($source, $pluginSuffix, $sourceVersion)
     {
-        $provenance = "/**\n * Generated copy of {$sourceVersion} for this plugin's private namespace.\n * Do not edit here; change the shared source and rebuild.\n */\n\n";
+        $provenance = "/**\n * Generated copy of {$sourceVersion} for this plugin's private namespace.\n * Do not edit here; change the shared source and rebuild.\n */\n";
         $rewritten = (string) preg_replace(
             '/(namespace\s+)Deicod\\\\WpConnectors\\\\Shared((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
             '$1Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared$2',
@@ -65,7 +71,13 @@ final class WpConnectorsBuild
             $rewritten
         );
 
-        return $provenance . $rewritten;
+        // Insert provenance directly after the open tag (never before it).
+        return (string) preg_replace(
+            '/^<\?php\b\s*/',
+            "<?php\n\n" . $provenance . "\n",
+            $rewritten,
+            1
+        );
     }
 
     /**
@@ -83,6 +95,11 @@ final class WpConnectorsBuild
         );
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
+            // Never follow symlinks: a link inside the plugin directory must
+            // not package out-of-tree file contents into the zip.
+            if ($file->isLink()) {
+                continue;
+            }
             $relative = str_replace($pluginDir . '/', '', $file->getPathname());
             $parts = explode('/', $relative);
             if (array_intersect($parts, self::EXCLUDED_PATHS) !== array()) {

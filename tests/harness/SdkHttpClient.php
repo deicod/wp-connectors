@@ -30,14 +30,16 @@ final class SdkHttpClient implements ClientInterface
      */
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
+        $mocked = count(WpHarness::$sdk_mock_queue) > 0;
         WpHarness::$sdk_http_attempts[] = array(
             'method' => $request->getMethod(),
             'url' => (string) $request->getUri(),
             'headers' => $request->getHeaders(),
             'body' => (string) $request->getBody(),
+            'mocked' => $mocked,
         );
 
-        if (count(WpHarness::$sdk_mock_queue) > 0) {
+        if ($mocked) {
             return array_shift(WpHarness::$sdk_mock_queue);
         }
 

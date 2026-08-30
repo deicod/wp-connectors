@@ -3,6 +3,12 @@
 /tools/
 /composer.phar
 
+# Never commit credential-shaped files
+.env
+.env.*
+*.pem
+*.key
+
 # Build artifacts
 /dist/
 

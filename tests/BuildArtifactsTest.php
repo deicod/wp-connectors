@@ -165,13 +165,72 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testSharedNamespaceRewrite()
     {
-        $source = "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
+        $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
         $rewritten = WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/Storage/TokenStore.php');
 
         $this->assertStringContainsString('namespace Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Storage;', $rewritten);
         $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock;', $rewritten);
         $this->assertStringNotContainsString('namespace Deicod\\WpConnectors\\Shared', $rewritten);
         $this->assertStringContainsString('Generated copy of shared/src/Storage/TokenStore.php', $rewritten);
+
+        // The rewritten file must be valid PHP (provenance placement must not
+        // precede the open tag / strict_types) and must load without output.
+        $temp = self::distDir() . '/.rewrite-test-' . getmypid() . '.php';
+        file_put_contents($temp, $rewritten);
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($temp) . ' 2>&1', $output, $exit);
+        $this->assertSame(0, $exit, 'Rewritten shared source must pass php -l: ' . implode("\n", $output));
+
+        ob_start();
+        require $temp;
+        $emitted = ob_get_clean();
+        unlink($temp);
+        $this->assertSame('', $emitted, 'Loading a rewritten shared file must not emit output.');
+        $this->assertTrue(class_exists('Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Storage\\TokenStore'));
+    }
+
+    public function testBuildNeverFollowsSymlinks()
+    {
+        // Copy the fixture plugin, add a symlink pointing outside the tree,
+        // and prove the built zip does not contain the linked file's entry.
+        $tempPlugin = self::distDir() . '/.symlink-test/example-connector';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir(dirname($tempPlugin), 0755, true);
+        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
+        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
+            $target = $tempPlugin . '/' . $relative;
+            if ($item->isDir()) {
+                mkdir($target, 0755, true);
+            } else {
+                copy($item->getPathname(), $target);
+            }
+        }
+        $secretOutside = dirname($tempPlugin) . '/outside-secret.txt';
+        file_put_contents($secretOutside, 'not-packaged');
+        symlink($secretOutside, $tempPlugin . '/leaked-config.txt');
+
+        $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+
+        $zip = new ZipArchive();
+        $zip->open($zipPath);
+        $names = array();
+        for ($i = 0; $i < $zip->numFiles; ++$i) {
+            $names[] = $zip->getNameIndex($i);
+        }
+        $zip->close();
+
+        unlink($zipPath);
+        unlink($zipPath . '.sha256');
+        @unlink(self::distDir() . '/checksums.txt');
+        WpHarness::rrmdir(dirname($tempPlugin));
+
+        $this->assertNotContains('example-connector/leaked-config.txt', $names, 'Symlinked files must never be packaged.');
+        $this->assertContains('example-connector/example-connector.php', $names);
     }
 
     /**

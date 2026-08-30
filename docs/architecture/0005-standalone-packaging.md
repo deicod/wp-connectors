@@ -20,9 +20,10 @@ connectors/<slug>/uninstall.php      ← plugin-owned cleanup only (record 0004)
   for its namespace — exactly the official plugin's pattern (a ~25-line
   `spl_autoload_register` closure).
 - **Plugin header fields** (required in every artifact, enforced by the artifact
-  inspector): `Plugin Name`, `Description`, `Requires at least: 6.9`, `Requires PHP:
-  7.4`, `Version`, `Author`, `License: GPL-2.0-or-later`, `License URI`, `Text Domain`
-  matching the plugin slug.
+  inspector and `composer conventions`): `Plugin Name`, `Version`,
+  `Requires at least: 6.9`, `Requires PHP: 7.4`, `License: GPL-2.0-or-later`,
+  `Text Domain` matching the plugin slug, `Author`. (`Description` and
+  `License URI` are conventionally included but not machine-enforced.)
 - **Namespaces**: `Deicod\WpConnectors\Zai`, `…\OpenAiOauth`, `…\XaiOauth`,
   `…\AnthropicOauth` (SPEC §5). One plugin directory = one top-level namespace.
 - **Version constant** per plugin main file (e.g. `ZAI_CONNECTOR_VERSION`) defined
@@ -38,9 +39,9 @@ connectors/<slug>/uninstall.php      ← plugin-owned cleanup only (record 0004)
   with provenance headers recording the source revision.
 - **Generated copies are not committed.** They are reproducible from `shared/` at any
   time by `bin/build.php` (deterministic: sorted file list, fixed mtimes, fixed zip
-  entry order), which is what keeps the repo single-sourced. An automated check in
-  the offline validation suite asserts a fresh copy matches the last build output for
-  every OAuth plugin that exists.
+  entry order), which is what keeps the repo single-sourced. (The automated
+  fresh-copy-matches-build check arrives with the first OAuth plugin, Task 3.8;
+  until then the rewrite itself is unit-tested in `BuildArtifactsTest`.)
 - **Self-containment is tested, not assumed**: the artifact inspector rejects any
   `require`/`include` resolving outside the plugin directory, any `vendor/` or
   `.git` entry, and any zip without a valid main-file header; a collision test
@@ -62,5 +63,5 @@ connectors/<slug>/uninstall.php      ← plugin-owned cleanup only (record 0004)
 - `php bin/inspect-artifact.php <zip>` — standalone validation of a built zip
   (headers, self-containment, no dev files); exit code non-zero on rejection.
 - Both run offline; the full offline validation entry point is
-  `php tools/composer.phar run validate` (record 0002/0003 toolchain; composer binary
+  `php tools/composer.phar check` (record 0002/0003 toolchain; composer binary
   itself is gitignored, `composer.json` documents the pinned dev dependencies).

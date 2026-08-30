@@ -38,11 +38,15 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         return array( sprintf('inspect: cannot open %s as a zip archive.', basename($zipPath)) );
     }
 
-    $forbidden = array(
-        'vendor/', '.git/', '.github/', 'tests/', 'test/', 'tools/', 'dist/',
+    // Forbidden entries are matched on whole path segments/files, so entries
+    // like "assets/latest/x.png" are never false-rejected.
+    $forbiddenSegments = array( 'vendor', '.git', '.github', 'tests', 'test', 'tools', 'dist', 'node_modules', 'phpunit.cache' );
+    $forbiddenFiles = array(
         'composer.json', 'composer.lock', 'phpunit.xml', 'phpunit.xml.dist',
         'phpcs.xml', 'phpcs.xml.dist', 'phpstan.neon', 'phpstan.neon.dist',
-        'build.json',
+        'package.json', 'package-lock.json', 'Makefile', 'build.json',
+        '.phpunit.result.cache', '.phpcs-cache.json', 'phpcs-cache.json',
+        '.gitignore', '.gitattributes', '.editorconfig', '.distignore',
     );
 
     $topDirs = array();
@@ -50,12 +54,20 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         $name = (string) $zip->getNameIndex($i);
         $parts = explode('/', $name);
         $topDirs[ $parts[0] ] = true;
-        foreach ($forbidden as $needle) {
-            if (strpos($name, $needle) !== false) {
-                $violations[] = sprintf('inspect: zip contains development entry "%s".', $name);
+        // Segment check (whole path components) and exact file-name check.
+        $isForbidden = false;
+        foreach ($parts as $part) {
+            if (in_array($part, $forbiddenSegments, true)) {
+                $isForbidden = true;
 
                 break;
             }
+        }
+        if (! $isForbidden && in_array($parts[ count($parts) - 1 ], $forbiddenFiles, true)) {
+            $isForbidden = true;
+        }
+        if ($isForbidden) {
+            $violations[] = sprintf('inspect: zip contains development entry "%s".', $name);
         }
     }
     $zip->close();

@@ -121,10 +121,10 @@ function has_filter($tag, $callback = false)
         return count(WpHarness::$filters[ $tag ]) > 0;
     }
     $key = WpHarness::callbackKey($callback);
-    foreach (WpHarness::$filters[ $tag ] as $callbacks) {
+    foreach (WpHarness::$filters[ $tag ] as $priority => $callbacks) {
         foreach ($callbacks as $existing) {
             if ($existing['key'] === $key) {
-                return true;
+                return (int) $priority; // Core returns the priority.
             }
         }
     }
@@ -142,12 +142,18 @@ function apply_filters($tag, $value, ...$args)
     if (! isset(WpHarness::$filters[ $tag ])) {
         return $value;
     }
-    foreach (WpHarness::$filters[ $tag ] as $callbacks) {
-        foreach ($callbacks as $entry) {
-            $call_args = array_merge(array( $value ), $args);
-            $call_args = array_slice($call_args, 0, max(1, $entry['accepted_args']));
-            $value = call_user_func_array($entry['callback'], $call_args);
+
+    WpHarness::$current_action_stack[] = $tag;
+    try {
+        foreach (WpHarness::$filters[ $tag ] as $callbacks) {
+            foreach ($callbacks as $entry) {
+                $call_args = array_merge(array( $value ), $args);
+                $call_args = array_slice($call_args, 0, max(1, $entry['accepted_args']));
+                $value = call_user_func_array($entry['callback'], $call_args);
+            }
         }
+    } finally {
+        array_pop(WpHarness::$current_action_stack);
     }
 
     return $value;
@@ -184,12 +190,17 @@ function current_filter()
 
 function doing_action($tag = null)
 {
-    $count = count(WpHarness::$current_action_stack);
-    if ($count === 0) {
+    // Core semantics: membership anywhere in the stack, not just the top.
+    if (WpHarness::$current_action_stack === array()) {
         return false;
     }
 
-    return null === $tag ? true : WpHarness::$current_action_stack[ $count - 1 ] === $tag;
+    return null === $tag ? true : in_array($tag, WpHarness::$current_action_stack, true);
+}
+
+function doing_filter($tag = null)
+{
+    return doing_action($tag);
 }
 
 function did_action($tag)
@@ -277,9 +288,17 @@ function get_transient($transient)
 
 function set_transient($transient, $value, $expiration = 0)
 {
+    if ($expiration > 0) {
+        $expires_at = WpHarness::now() + $expiration;
+    } elseif ($expiration < 0) {
+        // Core treats a negative TTL as already expired.
+        $expires_at = WpHarness::now() - 1;
+    } else {
+        $expires_at = false;
+    }
     WpHarness::$transients[ $transient ] = array(
         'value' => $value,
-        'expires_at' => $expiration > 0 ? WpHarness::now() + $expiration : false,
+        'expires_at' => $expires_at,
     );
 
     return true;
@@ -670,6 +689,10 @@ function add_query_arg(...$args)
     if (1 === count($args) && is_array($args[0])) {
         $query = $args[0];
         $url = '';
+    } elseif (2 === count($args) && ! is_array($args[0])) {
+        // Core resolves the two-scalar form against the current request URI.
+        $query = array( (string) $args[0] => $args[1] );
+        $url = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '/';
     } elseif (2 === count($args)) {
         $query = $args[0];
         $url = $args[1];
@@ -677,13 +700,18 @@ function add_query_arg(...$args)
         $query = array( (string) $args[0] => $args[1] );
         $url = $args[2];
     }
-    $separator = strpos($url, '?') === false ? '?' : '&';
+
+    $parts = explode('?', $url, 2);
+    $path = $parts[0];
+    $params = array();
+    if (isset($parts[1])) {
+        parse_str($parts[1], $params);
+    }
     foreach ($query as $key => $value) {
-        $url .= $separator . urlencode((string) $key) . '=' . urlencode((string) $value);
-        $separator = '&';
+        $params[ (string) $key ] = $value; // Replace, do not duplicate.
     }
 
-    return $url;
+    return $path . ($params === array() ? '' : '?' . http_build_query($params));
 }
 
 /*
@@ -812,8 +840,11 @@ function wp_remote_retrieve_headers($response)
 function wp_remote_retrieve_header($response, $header)
 {
     $headers = wp_remote_retrieve_headers($response);
-    if (isset($headers[ $header ])) {
-        return $headers[ $header ];
+    // Core looks headers up case-insensitively.
+    foreach ($headers as $name => $value) {
+        if (strcasecmp((string) $name, (string) $header) === 0) {
+            return $value;
+        }
     }
 
     return null;
@@ -925,11 +956,9 @@ function self_admin_url($path = '')
  * -------------------------------------------------------------------------
  */
 
-$GLOBALS['wp_connectors_harness_settings'] = array();
-
 function register_setting($option_group, $option_name, $args = array())
 {
-    $GLOBALS['wp_connectors_harness_settings'][ $option_name ] = array_merge(
+    WpHarness::$registered_settings[ $option_name ] = array_merge(
         array( 'group' => $option_group, 'type' => 'string', 'default' => '', 'show_in_rest' => false ),
         (array) $args
     );
@@ -939,14 +968,14 @@ function register_setting($option_group, $option_name, $args = array())
 
 function unregister_setting($option_group, $option_name)
 {
-    unset($GLOBALS['wp_connectors_harness_settings'][ $option_name ]);
+    unset(WpHarness::$registered_settings[ $option_name ]);
 
     return true;
 }
 
 function get_registered_settings()
 {
-    return $GLOBALS['wp_connectors_harness_settings'];
+    return WpHarness::$registered_settings;
 }
 
 function add_settings_section($id, $title, $callback, $page)

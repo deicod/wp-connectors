@@ -93,6 +93,8 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
 
     public function testOutboundHttpIsBlockedUnlessMocked()
     {
+        // This test deliberately exercises the blocked path.
+        $this->allowUnmockedHttp = true;
         $this->asAdministrator();
 
         $blocked = wp_remote_get('https://api.z.ai/api/paas/v4/models');
@@ -117,6 +119,8 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
 
     public function testSdkTransportIsBlockedUnlessQueued()
     {
+        // This test deliberately exercises the blocked SDK transport path.
+        $this->allowUnmockedHttp = true;
         $transporter = AiClient::defaultRegistry()->getHttpTransporter();
         $this->assertInstanceOf(HttpTransporter::class, $transporter);
 

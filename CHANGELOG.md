@@ -26,3 +26,30 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 - Secure test-fixture rules: fake secret factories, HTTP response builders,
   secret-pattern scanner (`composer scan-secrets`), documented opt-in
   environment variables for live tests.
+
+### Fixed (M0 independent review hardening)
+
+- Unmocked-HTTP leak audit moved from `tearDown()` (a no-op under PHPUnit
+  9.6) to `assertPostConditions()`, covering SDK-transport attempts too;
+  a leaking test now fails the run as documented.
+- Shared-source namespace rewrite inserts provenance after `<?php` so
+  generated files stay valid PHP with `declare(strict_types=1)`.
+- Builder never follows file symlinks (out-of-tree files can no longer be
+  packaged) and excludes more development files (package.json, Makefile…).
+- Secret scanner: fixture-marker allowlist narrowed to unambiguous markers
+  (generic prose words no longer suppress a scan), `toml` scanned, and the
+  default scan covers the whole repository root (mise.toml, .github/,
+  composer.json…) instead of enumerated subdirectories.
+- Harness semantics aligned with WordPress core: filter/action stack
+  membership (`doing_action`, `current_filter` inside `apply_filters`),
+  `has_filter()` priority return, negative transient TTL, `add_query_arg`
+  replace semantics, case-insensitive response headers, Settings API state
+  reset between tests.
+- Artifact inspector matches forbidden entries on whole path segments
+  (no more false rejects like `assets/latest/…`).
+- `composer conventions` now enforces the autoloader PSR-4 prefix and
+  single-registration rule via the shared helpers (no duplicated logic).
+- Docs corrected: offline entry point is `composer check`, enforced header
+  list and shared-copy-freshness timing in record 0005, Composer bootstrap
+  step for clean checkouts in the testing guide; `.env`/`*.pem`/`*.key`
+  gitignored; fixture plugins now covered by PHPCS/compat scans.

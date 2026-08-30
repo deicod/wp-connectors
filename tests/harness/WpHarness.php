@@ -101,6 +101,13 @@ final class WpHarness
     public static $sdk_mock_queue = array();
 
     /**
+     * Settings API registrations: option name => args.
+     *
+     * @var array<string, array>
+     */
+    public static $registered_settings = array();
+
+    /**
      * _doing_it_wrong() recordings.
      *
      * @var list<array{function: string, message: string, version: string}>
@@ -141,6 +148,7 @@ final class WpHarness
         self::$sdk_http_attempts = array();
         self::$sdk_mock_queue = array();
         self::$doing_it_wrong = array();
+        self::$registered_settings = array();
 
         // $_REQUEST derivatives leak between tests otherwise.
         unset($_GET['_wpnonce'], $_POST['_wpnonce'], $_REQUEST['_wpnonce']);
