@@ -155,9 +155,10 @@ documented exception.
   description, API-key authentication metadata, logo, and availability mapping. Availability MUST
   be more than key presence: an authenticated probe (or equivalent validated state) is required
   so a nonempty-but-invalid key (HTTP 401 on the probe) reports unavailable/not-connected, per
-  the M1 exit criterion. Persisted validated state MUST be bound to the credential: key the
-  validation to a non-secret credential generation/fingerprint (hash of key source+value
-  prefix) or invalidate on EVERY key-source change (env/constant/DB replacement) — a newly
+  the M1 exit criterion. Persisted validated state MUST be bound to the credential: hash the
+  COMPLETE key value together with the source (a prefix hash collides when a replacement key
+  shares the provider prefix — common API-key format) or use a generation counter bumped on
+  every replacement; invalidate on EVERY key-source change (env/constant/DB replacement) — a newly
   invalid key must not appear connected, a corrected key must not stay unavailable; test
   valid→invalid and invalid→valid replacement (apply the same rule to `zai_anthropic`,
   Task 2.1). Guard description
@@ -341,7 +342,10 @@ documented exception.
   from invalid-grant handling. Repeated transient
   failures MUST enter a persisted, bounded cooldown (honoring `Retry-After` where provided, else
   exponential backoff with a cap) so sequential callers do not hammer the token endpoint during
-  an outage. Check this task only after deterministic concurrency, clock-boundary, scheduling,
+  an outage; the cap applies to BOTH forms — provider-supplied `Retry-After` (seconds and
+  HTTP-date) and fallback backoff — so an oversized throttle cannot suppress refreshes far
+  past the outage; test oversized seconds and HTTP-date values as Task 4.2 does for login
+  retries. Check this task only after deterministic concurrency, clock-boundary, scheduling,
   terminal (including a 429-during-
   refresh test asserting the grant survives), and transient failure tests pass.
 
@@ -438,7 +442,12 @@ documented exception.
   SAME administrator (double-submit/two tabs) MUST be serialized through an atomic per-user
   start lease/CAS before state is stored — both requests may never obtain different server
   flows and overwrite one per-user slot while both display valid-looking codes; add a
-  genuinely overlapping same-user test (Tasks 5.3 and 6.2 inherit this guarantee). Persisted pending
+  genuinely overlapping same-user test (Tasks 5.3 and 6.2 inherit this guarantee). Starts
+  are fenced against revocation: capture the grant generation before the vendor call (or
+  serialize start writes with the revoke lock) and recheck before storing the pending record,
+  so a start whose HTTP response was in flight during Revoke cannot adopt the post-revoke
+  generation and later install a grant; add a deterministic revoke-versus-start race test.
+  Persisted pending
   flow state (`device_auth_id`, `user_code`) MUST use the encrypted store (Task 3.2) — these
   values let a database reader hijack the flow after the administrator authorizes; test that no
   plaintext device-flow credentials appear in options/transients. Apply bounded 429
