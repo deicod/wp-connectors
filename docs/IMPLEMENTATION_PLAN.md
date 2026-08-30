@@ -575,6 +575,9 @@ documented exception.
 
 - [ ] **Task 5.4 — Implement RFC 8628 polling.** Poll at the server interval, handle
   `authorization_pending`, denial, expiry, and success without tying up a PHP worker. A
+  transport-layer timeout on a poll is non-terminal (RFC 8628 §3.5): preserve the still-valid
+  device flow and reduce the polling frequency with bounded backoff for subsequent polls;
+  cover the timeout path in the clock-driven suite. A
   `slow_down` response MUST increase the polling interval by at least five seconds for this and
   all subsequent requests (RFC 8628 §3.5); assert the updated schedule in the clock-driven tests.
   An HTTP 429 from the token endpoint is transient: retain the device-flow state until its
@@ -637,7 +640,11 @@ documented exception.
   Concurrent starts MUST be deterministic exactly as in Tasks 4.2/5.3: per-admin isolation of
   the pending PKCE verifier/state or explicit atomic cancel-and-replace — a second start may
   never silently invalidate a first administrator's pending `code#state` submission; test two
-  simultaneous administrators.
+  simultaneous administrators. Replacement (cancel-and-replace path) is fenced like xAI
+  Task 5.3: it acquires the old flow's claim/lease or advances a generation checked
+  immediately before token persistence, so an in-flight exchange for a replaced flow cannot
+  install the old grant after the new authorization URL is displayed; add a
+  start-versus-exchange race test.
   Check this task only after RFC PKCE vectors, entropy/encoding, URL, expiry, replacement,
   concurrent-start isolation, nonce,
   and capability tests pass.
