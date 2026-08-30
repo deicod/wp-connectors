@@ -256,6 +256,14 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
     WpHarness::$options[ $option ] = $value;
     WpHarness::$option_autoload[ $option ] = null === $autoload ? true : (bool) $autoload;
 
+    // Core semantics: adding an option fires the add-option hook family —
+    // NOT update_option_{$option}. (update_option() delegates to add_option()
+    // when the row is missing, so a first-ever save fires these hooks only;
+    // the specific hook passes exactly two args: option name, value.)
+    do_action('add_option', $option, $value);
+    do_action("add_option_{$option}", $option, $value);
+    do_action('added_option', $option, $value);
+
     return true;
 }
 

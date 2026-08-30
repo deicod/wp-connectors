@@ -42,6 +42,7 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
             $violations = array_merge(
                 $violations,
                 wp_connectors_main_file_violations($pluginRoot, $mainFiles),
+                wp_connectors_duplicate_header_violations($mainFiles[0], $slug),
                 wp_connectors_header_violations($headers, $slug),
                 wp_connectors_version_constant_violations($pluginRoot, $headers),
                 wp_connectors_autoloader_violations($pluginRoot),

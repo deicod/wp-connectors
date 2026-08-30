@@ -106,11 +106,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * NOT part of the core prompt flow: wp_ai_client_prompt() dispatches to
 	 * the final generateTextResult() and converts exceptions itself (fixed
 	 * core codes, messages verbatim — no filter), so this wrapper is never
-	 * called there. It exists for code that holds the model directly
-	 * (ZaiProvider::model(), getProviderModel()) and wants the plugin's
-	 * typed, redacted zai_* codes (SPEC §6.2) instead of SDK exceptions:
-	 * through the core builder callers get core codes with the same safe
-	 * messages and correct HTTP statuses either way.
+	 * called there. It exists for code that holds the model directly —
+	 * obtained via ProviderRegistry::getProviderModel(), the only factory
+	 * that binds the HTTP transporter and request auth (a bare
+	 * ZaiProvider::model() yields an unbound model whose generation fails
+	 * before any request) — and wants the plugin's typed, redacted zai_*
+	 * codes (SPEC §6.2) instead of SDK exceptions: through the core builder
+	 * callers get core codes with the same safe messages and correct HTTP
+	 * statuses either way.
 	 *
 	 * @since 0.1.0
 	 *

@@ -102,7 +102,24 @@ function wp_connectors_main_file_violations($pluginDir, array $mainFiles = array
 }
 
 /**
+ * Returns the shared plugin-header match pattern.
+ *
+ * One pattern for header parsing and the duplicate-header check, so the two
+ * can never drift apart.
+ *
+ * @return string PCRE pattern with two capture groups (header name, value).
+ */
+function wp_connectors_plugin_header_pattern()
+{
+    return '/^(?:\s*\*\s*)?(Plugin Name|Version|Requires at least|Requires PHP|License|Text Domain|Author):\s*(.+)$/mi';
+}
+
+/**
  * Parses WordPress plugin headers from a main plugin file (docblock-tolerant).
+ *
+ * Repeated headers keep the FIRST occurrence, matching WordPress's
+ * get_file_data(); duplicates are reported separately by
+ * wp_connectors_duplicate_header_violations().
  *
  * @param string $file Absolute path to the main plugin file.
  * @return array<string, string> Header name (lowercased) => value.
@@ -111,13 +128,52 @@ function wp_connectors_parse_plugin_headers($file)
 {
     $head = (string) file_get_contents($file, false, null, 0, 8192);
     $headers = array();
-    if (preg_match_all('/^(?:\s*\*\s*)?(Plugin Name|Version|Requires at least|Requires PHP|License|Text Domain|Author):\s*(.+)$/mi', $head, $matches, PREG_SET_ORDER)) {
+    if (preg_match_all(wp_connectors_plugin_header_pattern(), $head, $matches, PREG_SET_ORDER)) {
         foreach ($matches as $match) {
-            $headers[ strtolower($match[1]) ] = trim($match[2]);
+            $key = strtolower($match[1]);
+            if (! isset($headers[ $key ])) {
+                $headers[ $key ] = trim($match[2]);
+            }
         }
     }
 
     return $headers;
+}
+
+/**
+ * Flags repeated recognized plugin headers (docs/CONVENTIONS.md).
+ *
+ * WordPress ignores every duplicate after the first, so a repeated header is
+ * at best a stale leftover and at worst a value the tooling would act on
+ * while WordPress never sees it. Shared by the conventions check, the
+ * builder, and the artifact inspector.
+ *
+ * @param string $file Absolute path to the main plugin file.
+ * @param string $slug Plugin directory slug.
+ * @return list<string> Violation messages.
+ */
+function wp_connectors_duplicate_header_violations($file, $slug)
+{
+    $head = (string) file_get_contents($file, false, null, 0, 8192);
+    $violations = array();
+    $seen = array();
+    if (preg_match_all(wp_connectors_plugin_header_pattern(), $head, $matches, PREG_SET_ORDER)) {
+        foreach ($matches as $match) {
+            $key = strtolower($match[1]);
+            if (isset($seen[ $key ])) {
+                $violations[] = sprintf(
+                    '%s: duplicate "%s" plugin header; WordPress keeps the first value ("%s").',
+                    $slug,
+                    ucwords($key),
+                    $seen[ $key ]
+                );
+                continue;
+            }
+            $seen[ $key ] = trim($match[2]);
+        }
+    }
+
+    return $violations;
 }
 
 /**
@@ -152,11 +208,72 @@ function wp_connectors_header_violations(array $headers, $slug)
 }
 
 /**
+ * Whether a __DIR__-anchored include resolves outside the plugin directory.
+ *
+ * "Anchored" alone is not enough: `require __DIR__ . '/../../x.php';` is
+ * anchored yet walks OUT of the plugin (only the dirname(__DIR__) spelling
+ * was caught before). When the statement's string literals are static, this
+ * composes them against the containing file's directory and requires the
+ * result to stay inside the plugin dir — the self-containment invariant.
+ * Nested-but-inside includes (a file in src/Sub requiring
+ * `__DIR__ . '/../support.php'`) still pass.
+ *
+ * @param string       $file     Absolute path of the file containing the include.
+ * @param string       $include  The full include statement.
+ * @param list<string> $literals Quoted string literals of the statement, in order.
+ * @param string       $pluginDir Absolute plugin directory.
+ * @return bool True when the include is __DIR__-anchored, static, and escapes.
+ */
+function wp_connectors_anchored_include_escapes_plugin($file, $include, array $literals, $pluginDir)
+{
+    if (strpos($include, '__DIR__') === false) {
+        return false;
+    }
+    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include)) {
+        // Already flagged by the upward-dirname rule; do not double-report.
+        return false;
+    }
+    $walksUp = false;
+    foreach ($literals as $literal) {
+        if (strpos($literal, '${') !== false) {
+            // Dynamic segment: the target cannot be resolved statically.
+            return false;
+        }
+        if (preg_match('#(^|[/\\\\])\.\.([/\\\\]|$)#', $literal)) {
+            $walksUp = true;
+        }
+    }
+    if (! $walksUp) {
+        // A purely downward path can never leave the plugin dir.
+        return false;
+    }
+
+    $resolved = dirname($file);
+    foreach ($literals as $literal) {
+        foreach (preg_split('#[/\\\\]+#', $literal) ?: array() as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                $resolved = dirname($resolved);
+                continue;
+            }
+            $resolved .= '/' . $segment;
+        }
+    }
+
+    $root = rtrim((string) $pluginDir, '/');
+
+    return $resolved !== $root && strpos($resolved . '/', $root . '/') !== 0;
+}
+
+/**
  * Checks that no PHP file in the plugin escapes the plugin directory.
  *
  * Flags include/require statements with unanchored literal paths, upward
- * dirname() escapes, runtime references to vendor/autoload or Composer, and
- * any reference to the repository-level shared/ source.
+ * dirname() escapes, __DIR__-anchored includes whose '..' segments resolve
+ * outside the plugin dir, runtime references to vendor/autoload or Composer,
+ * and any reference to the repository-level shared/ source.
  *
  * @param string $pluginDir Absolute plugin directory.
  * @return list<string> Violation messages ("<slug>: <file>: <message>").
@@ -187,6 +304,9 @@ function wp_connectors_self_containment_violations($pluginDir)
                         if ((! $anchored && ! $dynamic) || $escapesUp) {
                             $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include));
                         }
+                    }
+                    if (wp_connectors_anchored_include_escapes_plugin($path, $include, $literals[1], $pluginDir)) {
+                        $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include));
                     }
                 }
             }

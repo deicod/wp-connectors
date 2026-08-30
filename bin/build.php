@@ -138,6 +138,7 @@ final class WpConnectorsBuild
         $headers = wp_connectors_parse_plugin_headers($mainFiles[0]);
         $violations = array_merge(
             wp_connectors_main_file_violations($pluginDir, $mainFiles),
+            wp_connectors_duplicate_header_violations($mainFiles[0], $slug),
             wp_connectors_header_violations($headers, $slug),
             wp_connectors_version_constant_violations($pluginDir, $headers),
             wp_connectors_self_containment_violations($pluginDir),

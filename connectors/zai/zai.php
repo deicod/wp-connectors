@@ -77,6 +77,12 @@ function boot(): void {
 	add_action( 'admin_menu', array( DebugSettings::class, 'register_fields' ), 20 );
 	add_action( 'update_option_' . PlanRegionSettings::OPTION_PLAN, array( PlanRegionSettings::class, 'handle_settings_change' ), 10, 2 );
 	add_action( 'update_option_' . PlanRegionSettings::OPTION_REGION, array( PlanRegionSettings::class, 'handle_region_change' ), 10, 2 );
+	// Fresh-install companion: while no option row exists, core's
+	// update_option() delegates to add_option(), which fires
+	// add_option_{$option} instead of the update hook — without this
+	// registration the FIRST persisted region change would skip every
+	// invalidation the later updates perform.
+	add_action( 'add_option_' . PlanRegionSettings::OPTION_REGION, array( PlanRegionSettings::class, 'handle_region_add' ), 10, 2 );
 	add_action( 'update_option_' . DebugLogger::OPTION_ENABLED, array( DebugSettings::class, 'handle_enabled_change' ), 10, 2 );
 
 	// Plugin-row Settings link (Task 1.8).

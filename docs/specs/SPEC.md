@@ -306,9 +306,12 @@ Rules:
   - Through `wp_ai_client_prompt()->...->generate_text()` callers receive core's codes
     (`prompt_client_error`, `prompt_upstream_server_error`, …) carrying the zai-safe
     message and the correct HTTP status.
-  - Direct model use (`ZaiProvider::model()->generate_text()`, `ErrorMapper`) additionally
+  - Direct model use (a registry-bound model — `AiClient::defaultRegistry()
+    ->getProviderModel( 'zai', … )->generate_text()` — with `ErrorMapper`) additionally
     delivers the plugin's typed stable codes (`zai_unauthorized`, `zai_rate_limited`, …).
-    Typed `zai_*` codes cannot be delivered through the core builder — a WordPress core
+    Models must come from the registry: it alone binds the HTTP transporter and request
+    authentication (`ZaiProvider::model()` alone builds an unbound model). Typed `zai_*`
+    codes cannot be delivered through the core builder — a WordPress core
     limitation, not a plugin choice.
 
 ### 6.3 Compatibility

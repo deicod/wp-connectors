@@ -118,10 +118,14 @@ Through WordPress's own prompt API (`wp_ai_client_prompt()`), errors come
 back as `WP_Error` values with WordPress core's codes (for example
 `prompt_client_error`) — the message is the plugin's redacted, actionable
 text and the HTTP status is preserved. Code that calls the model directly
-(`ZaiProvider::model()`) can use `generate_text()` / `ErrorMapper` for the
-plugin's own stable codes (`zai_unauthorized`, `zai_rate_limited`,
-`zai_upstream_error`, ...). Upstream response bodies never appear in any
-message.
+can use `generate_text()` / `ErrorMapper` for the plugin's own stable codes
+(`zai_unauthorized`, `zai_rate_limited`, `zai_upstream_error`, ...).
+Always obtain the model through the AI Client registry —
+`AiClient::defaultRegistry()->getProviderModel( 'zai', 'glm-5.3' )` —
+which binds the HTTP transporter and request authentication for you; a
+model built by calling `ZaiProvider::model()` directly is unbound, and its
+generation fails before any request is sent. Upstream response bodies
+never appear in any message.
 
 == Changelog ==
 

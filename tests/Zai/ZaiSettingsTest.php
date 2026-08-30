@@ -240,6 +240,72 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         );
     }
 
+    public function testFirstPersistedRegionChangeOnAFreshInstallRunsTheFullInvalidation()
+    {
+        $this->bootPlugin();
+
+        // Fresh install: no region row exists (the default is served from the
+        // registration), so the first save travels through core's
+        // add_option() — update_option() delegates to it — which fires
+        // add_option_{$option}, NOT update_option_{$option}.
+        $this->assertFalse(get_option(PlanRegionSettings::OPTION_REGION, false), 'Fresh install must start without a region row.');
+        update_option('zai_connector_zai_key_state', array('binding' => 'stale'));
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'intl-key');
+        set_transient('zai_connector_zai_models_' . md5('zai|coding|intl'), array('glm-5.3'), 3600);
+
+        add_option(PlanRegionSettings::OPTION_REGION, 'cn');
+
+        $this->assertSame('cn', PlanRegionSettings::get_region());
+        $this->assertFalse(get_option('zai_connector_zai_key_state', false), 'The initial persisted region change must clear the validated key state.');
+        $this->assertFalse(
+            get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, false),
+            'The initial persisted region change must clear the old region\'s stored key.'
+        );
+        $this->assertFalse(get_transient('zai_connector_zai_models_' . md5('zai|coding|intl')), 'The initial persisted region change must clear the old region\'s discovery cache.');
+        $this->assertFalse(
+            get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::REGION_PENDING_OPTION, false),
+            'Without an env/constant credential nothing can ride the initial switch: no pending flag.'
+        );
+    }
+
+    public function testSavingTheDefaultRegionOnAFreshInstallIsNotASwitch()
+    {
+        $this->bootPlugin();
+
+        update_option('zai_connector_zai_key_state', array('binding' => 'keepme'));
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'keepme-too');
+
+        // Persisting the default while no row exists behaves like a
+        // same-value update: no account switch happened, nothing to clear.
+        add_option(PlanRegionSettings::OPTION_REGION, 'intl');
+
+        $this->assertNotFalse(get_option('zai_connector_zai_key_state', false));
+        $this->assertNotFalse(
+            get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, false),
+            'Saving the default region is not a switch: the key must be kept.'
+        );
+    }
+
+    public function testRegionSwitchWithAPreExistingOptionRowStillInvalidates()
+    {
+        $this->bootPlugin();
+
+        // Regression: once the row exists, updates keep firing the classic
+        // update_option_{$option} hook and must invalidate exactly as before.
+        update_option(PlanRegionSettings::OPTION_REGION, 'intl');
+        update_option('zai_connector_zai_key_state', array('binding' => 'stale'));
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'intl-key');
+
+        update_option(PlanRegionSettings::OPTION_REGION, 'cn');
+
+        $this->assertSame('cn', PlanRegionSettings::get_region());
+        $this->assertFalse(get_option('zai_connector_zai_key_state', false), 'Validated key state must be cleared.');
+        $this->assertFalse(
+            get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, false),
+            'The stored key must be cleared on the update path too.'
+        );
+    }
+
     public function testRegionSwitchMarksAnEnvCredentialPendingValidationForTheNewRegion()
     {
         $this->bootPlugin();

@@ -464,6 +464,23 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertRedacted($error->get_error_message(), FakeSecrets::apiKey());
     }
 
+    public function testUnboundDirectModelSurfacesTheBindingHintNotAGenericError()
+    {
+        $this->primeZaiDiscoveryTransient();
+
+        // Bare factory call: no transporter and no request auth — only
+        // ProviderRegistry::getProviderModel() binds them. Direct generation
+        // on the unbound model must report the SDK's clear binding hint
+        // instead of the generic catch-all message.
+        $model = ZaiProvider::model('glm-5.3');
+
+        $error = $model->generate_text($this->prompt());
+
+        $this->assertWPError($error, ErrorMapper::CODE_ERROR);
+        $this->assertStringContainsString('instance not set', $error->get_error_message());
+        $this->assertStringContainsString('AiClient', $error->get_error_message());
+    }
+
     public function testErrorMapperProducesStableTypedWpErrors()
     {
         $cases = array(

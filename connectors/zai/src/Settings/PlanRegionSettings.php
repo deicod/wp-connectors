@@ -384,6 +384,29 @@ final class PlanRegionSettings {
 	}
 
 	/**
+	 * Initial region save: the add_option() path of a region change.
+	 *
+	 * On a fresh install no region row exists yet, so the first persisted
+	 * save travels through core's add_option() (update_option() delegates to
+	 * it when the row is missing), which fires
+	 * `add_option_zai_connector_zai_region` (option name, value) instead of
+	 * the update hook. The effective previous region while no row exists is
+	 * the registered default (intl), so the change is measured against it:
+	 * persisting the default itself is a no-op, exactly like a same-value
+	 * update, while any other value performs the full region-switch
+	 * invalidation of handle_region_change().
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $option Option name (hook contract; the handler knows its option).
+	 * @param mixed  $value  New region.
+	 * @return void
+	 */
+	public static function handle_region_add( $option, $value ): void {
+		self::handle_region_change( self::DEFAULT_REGION, $value );
+	}
+
+	/**
 	 * Returns the effective plan (corrupt values fall back to the default).
 	 *
 	 * @since 0.1.0

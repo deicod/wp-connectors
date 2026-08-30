@@ -8,8 +8,9 @@
  * because upstream bodies can echo request material (including credentials)
  * and must stay redacted. Exceptions whose messages are built entirely from
  * controlled strings (our own pre-transport rejections, the fixed-string
- * ResponseExceptions this plugin produces, and NetworkException transport
- * messages) do include the detail.
+ * ResponseExceptions this plugin produces, NetworkException transport
+ * messages, and the SDK's fixed-string RuntimeExceptions) do include the
+ * detail.
  *
  * Two error surfaces share the message catalog in this class:
  *
@@ -34,6 +35,7 @@ namespace Deicod\WpConnectors\Zai\Support;
 
 use Throwable;
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Common\Exception\TokenLimitReachedException;
 use WordPress\AiClient\Providers\Http\Exception\ClientException;
 use WordPress\AiClient\Providers\Http\Exception\NetworkException;
@@ -258,6 +260,18 @@ final class ErrorMapper {
 				self::CODE_INVALID_REQUEST,
 				$exception->getMessage(),
 				array( 'status' => 400 )
+			);
+		}
+
+		if ( $exception instanceof RuntimeException ) {
+			// SDK construction/binding failures carry fixed-string messages —
+			// notably the "instance not set. Make sure you use the AiClient
+			// class" hint a model built outside the registry throws — so
+			// surfacing them beats the generic text without any leak risk.
+			return new \WP_Error(
+				self::CODE_ERROR,
+				$exception->getMessage(),
+				array( 'status' => 500 )
 			);
 		}
 

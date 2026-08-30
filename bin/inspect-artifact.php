@@ -8,6 +8,8 @@
  *   - zips without exactly one top-level plugin directory (including zips
  *     whose sole top-level entry is a FILE — reported as a violation, never
  *     a crash, with the temp extraction tree cleaned up on every path),
+ *   - top-level names that are not real slugs or entries with '..' path
+ *     segments (extraction would write outside the work dir),
  *   - more than one main plugin file with a Plugin Name header,
  *   - missing/invalid plugin headers, version-constant mismatch, wrong text
  *     domain (same rules as bin/check-conventions.php),
@@ -54,6 +56,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 
     $topDirs = array();
     $sawDirectoryEntry = false;
+    $traversalEntries = array();
     for ($i = 0; $i < $zip->numFiles; ++$i) {
         $name = (string) $zip->getNameIndex($i);
         $parts = explode('/', $name);
@@ -64,6 +67,13 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         // traverse (RecursiveDirectoryIterator would throw).
         if (count($parts) > 1) {
             $sawDirectoryEntry = true;
+        }
+        // No entry may carry a '..' path segment anywhere: extracting such
+        // an entry writes outside the work dir (host traversal). Backslash
+        // separators are rejected too — harmless literal characters on Linux,
+        // but path separators under PHP on Windows.
+        if (in_array('..', $parts, true) || strpos($name, '\\') !== false) {
+            $traversalEntries[] = $name;
         }
         // Segment check (whole path components) and exact file-name check.
         $isForbidden = false;
@@ -94,6 +104,22 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     $slug = (string) array_key_first($topDirs);
     if ($slug === '' ) {
         $violations[] = 'inspect: zip has an empty top-level directory name.';
+
+        return $violations;
+    }
+    // The root name must be a real slug BEFORE anything is built from it:
+    // '../payload.php'-style entries make $workDir . '/..' point at HOST
+    // paths outside the extraction dir, so every check below would traverse
+    // (and extraction would write) outside the work dir.
+    if ($slug === '.' || $slug === '..' || ! preg_match('/^[A-Za-z0-9_.-]+$/', $slug)) {
+        $violations[] = sprintf('inspect: invalid top-level plugin directory name "%s".', $slug);
+
+        return $violations;
+    }
+    if ($traversalEntries !== array()) {
+        foreach ($traversalEntries as $name) {
+            $violations[] = sprintf('inspect: zip entry "%s" escapes the extraction directory.', $name);
+        }
 
         return $violations;
     }
@@ -133,6 +159,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         } else {
             $violations = array_merge($violations, wp_connectors_main_file_violations($pluginDir, $mainFiles));
             $headers = wp_connectors_parse_plugin_headers($mainFiles[0]);
+            $violations = array_merge($violations, wp_connectors_duplicate_header_violations($mainFiles[0], $slug));
             $violations = array_merge($violations, wp_connectors_header_violations($headers, $slug));
             $violations = array_merge($violations, wp_connectors_version_constant_violations($pluginDir, $headers));
             $violations = array_merge($violations, wp_connectors_autoloader_violations($pluginDir));

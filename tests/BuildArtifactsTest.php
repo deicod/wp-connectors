@@ -257,6 +257,175 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * Traversal root names (finding: '../payload.php' as the sole entry made
+     * every check run against HOST paths outside the extraction dir).
+     */
+
+    public function testInspectorRejectsATraversalRootNameWithoutTouchingTheHost()
+    {
+        $zipPath = self::distDir() . '/connectors-traversal-demo-1.0.0.zip';
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('../payload.php', "<?php\n/**\n * Plugin Name:       traversal-demo\n * Version:           1.0.0\n */\n");
+        $zip->close();
+
+        $workDir = self::distDir() . '/.inspect-traversal';
+        $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
+
+        $this->assertNotSame(array(), $violations, 'A traversal root name must be rejected.');
+        $this->assertStringContainsString('invalid top-level plugin directory name', implode("\n", $violations));
+        $this->assertDirectoryDoesNotExist($workDir, 'The temp extraction tree must be cleaned up on every path.');
+        $this->assertFileDoesNotExist(dirname($workDir) . '/payload.php', 'Extraction must never write outside the work dir.');
+
+        unlink($zipPath);
+    }
+
+    public function testInspectorRejectsMidPathTraversalEntriesBeforeExtracting()
+    {
+        $zipPath = self::distDir() . '/connectors-midpath-demo-1.0.0.zip';
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('midpath-demo/midpath-demo.php', "<?php\n/**\n * Plugin Name:       midpath-demo\n * Version:           1.0.0\n */\n");
+        $zip->addFromString('midpath-demo/src/../../escape.php', "<?php\necho 'outside';\n");
+        $zip->close();
+
+        $workDir = self::distDir() . '/.inspect-midpath';
+        $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
+
+        $this->assertNotSame(array(), $violations, "A '..' path segment in any entry must be rejected.");
+        $this->assertStringContainsString('escapes the extraction directory', implode("\n", $violations));
+        $this->assertDirectoryDoesNotExist($workDir, 'The temp extraction tree must be cleaned up on every path.');
+        $this->assertFileDoesNotExist(dirname($workDir) . '/escape.php', 'Extraction must never write outside the work dir.');
+
+        unlink($zipPath);
+    }
+
+    public function testInspectorRejectsBackslashSeparatedPathEntries()
+    {
+        // A backslash is a harmless literal on Linux but a path separator
+        // under PHP on Windows, where '..\..\x.php' behind a valid root
+        // would extract outside the work dir.
+        $zipPath = self::distDir() . '/connectors-backslash-demo-1.0.0.zip';
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('backslash-demo/backslash-demo.php', "<?php\n/**\n * Plugin Name:       backslash-demo\n * Version:           1.0.0\n */\n");
+        $zip->addFromString("backslash-demo/src\\..\\..\\escape.php", "<?php\necho 'outside';\n");
+        $zip->close();
+
+        $workDir = self::distDir() . '/.inspect-backslash';
+        $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
+
+        $this->assertNotSame(array(), $violations, 'Backslash-separated path entries must be rejected.');
+        $this->assertStringContainsString('escapes the extraction directory', implode("\n", $violations));
+        $this->assertDirectoryDoesNotExist($workDir, 'The temp extraction tree must be cleaned up on every path.');
+
+        unlink($zipPath);
+    }
+
+    /*
+     * Anchored includes that walk out of the plugin dir (finding:
+     * `require __DIR__ . '/../../other/bootstrap.php';` passed the check).
+     */
+
+    public function testAnchoredIncludesThatEscapeThePluginDirAreRejected()
+    {
+        $tempPlugin = self::distDir() . '/.anchored-test/anchored-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src/Settings', 0755, true);
+        $head = "Plugin Name:       anchored-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      7.4\nLicense:           GPL-2.0-or-later\nText Domain:       anchored-demo\nAuthor:            x\n";
+        file_put_contents($tempPlugin . '/anchored-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'ANCHORED_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n");
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\AnchoredDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+        // Nested-but-inside: from src/Settings, '..' resolves to src/ — still
+        // beneath the plugin root, so it must stay allowed.
+        file_put_contents($tempPlugin . '/src/support.php', "<?php\n// loaded by src/Settings/bootstrap.php\n");
+        file_put_contents($tempPlugin . '/src/Settings/bootstrap.php', "<?php\nrequire_once __DIR__ . '/../support.php';\n");
+        // Anchored-but-escaping: two '..' segments leave the plugin dir.
+        file_put_contents($tempPlugin . '/src/escape.php', "<?php\nrequire __DIR__ . '/../../outside/bootstrap.php';\n");
+
+        $violations = wp_connectors_self_containment_violations($tempPlugin);
+
+        $byFile = array();
+        foreach ($violations as $violation) {
+            if (strpos($violation, 'src/escape.php') !== false) {
+                $byFile['escape'] = ($byFile['escape'] ?? 0) + 1;
+            }
+            if (strpos($violation, 'src/Settings/bootstrap.php') !== false) {
+                $byFile['bootstrap'] = ($byFile['bootstrap'] ?? 0) + 1;
+            }
+            if (strpos($violation, 'src/autoload.php') !== false) {
+                $byFile['autoload'] = ($byFile['autoload'] ?? 0) + 1;
+            }
+        }
+        $this->assertSame(1, $byFile['escape'] ?? 0, 'The anchored-but-escaping include must be flagged exactly once: ' . implode("\n", $violations));
+        $this->assertSame(0, $byFile['bootstrap'] ?? 0, 'A nested-but-inside include must still be allowed.');
+        $this->assertSame(0, $byFile['autoload'] ?? 0, 'The ordinary downward autoloader include must stay clean.');
+
+        // The inspector enforces the same shared rule on built artifacts.
+        $zipPath = self::distDir() . '/connectors-anchored-demo-1.0.0.zip';
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        foreach (array('anchored-demo.php', 'src/autoload.php', 'src/support.php', 'src/Settings/bootstrap.php', 'src/escape.php') as $relative) {
+            $zip->addFile($tempPlugin . '/' . $relative, 'anchored-demo/' . $relative);
+        }
+        $zip->close();
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-anchored');
+        $this->assertNotSame(array(), $violations);
+        $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
+
+        unlink($zipPath);
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
+    /*
+     * Duplicate plugin headers (finding: the parser kept the LAST value while
+     * WordPress's get_file_data() keeps the FIRST).
+     */
+
+    public function testDuplicateHeadersKeepTheFirstValueAndAreFlagged()
+    {
+        $tempPlugin = self::distDir() . '/.dupheader-test/dupheader-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        // Two Version lines: WordPress installs and reports the FIRST; the
+        // constant below matches the first, so the pair only stays clean when
+        // the parser is keep-first.
+        $head = "Plugin Name:       dupheader-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      7.4\nLicense:           GPL-2.0-or-later\nText Domain:       dupheader-demo\nAuthor:            x\n * Version:           9.9.9\n";
+        file_put_contents($tempPlugin . '/dupheader-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'DUPHEADER_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n");
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\DupheaderDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+
+        $mainPath = $tempPlugin . '/dupheader-demo.php';
+        $headers = wp_connectors_parse_plugin_headers($mainPath);
+
+        $this->assertSame('1.0.0', $headers['version'], 'The parser must keep the FIRST header value, like WordPress.');
+        $this->assertSame(
+            array(),
+            wp_connectors_version_constant_violations($tempPlugin, $headers),
+            'The constant check must agree with what WordPress would actually install (first value).'
+        );
+
+        $duplicates = wp_connectors_duplicate_header_violations($mainPath, 'dupheader-demo');
+        $this->assertNotSame(array(), $duplicates, 'A repeated recognized header must be flagged.');
+        $this->assertStringContainsString('duplicate "Version"', $duplicates[0]);
+        $this->assertStringContainsString('1.0.0', $duplicates[0]);
+
+        // The builder refuses to package duplicate headers at all.
+        try {
+            WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+            $this->fail('The build must refuse a plugin with duplicate headers.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('duplicate', $e->getMessage());
+        }
+
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
+    /*
      * Version-constant gate (finding: stale {SLUG}_VERSION built mislabeled zips).
      */
 
