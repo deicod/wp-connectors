@@ -440,7 +440,10 @@ documented exception.
   scheduled poll overlap after authorization succeeds, only one may exchange the one-time
   authorization code — the loser observes completed state, never a terminal failure or
   overwrite; add a deterministic overlapping-polls test (same invariant for the xAI flow in
-  Task 5.4). If polling's 429 retry budget is exhausted, the pending flow MUST be preserved
+  Task 5.4). Cancellation is fenced like revocation (Task 3.6): cancel acquires the lease or
+  advances a generation/tombstone checked immediately before the exchange persists tokens,
+  so a cancelled flow can never install a grant after the UI reports cancellation; add a
+  cancel-versus-exchange race test. If polling's 429 retry budget is exhausted, the pending flow MUST be preserved
   until its original 15-minute expiry with the next permitted poll scheduled (mirroring the
   xAI rule in Task 5.4) — exhausted 429 retries are not terminal here. The poll request MUST be asserted exactly:
   JSON POST to `https://auth.openai.com/api/accounts/deviceauth/token` containing both
@@ -451,8 +454,12 @@ documented exception.
   exactly: form-encoded POST to `https://auth.openai.com/oauth/token` containing
   `grant_type=authorization_code`, `code`, `code_verifier`, the exact `redirect_uri`
   (`https://auth.openai.com/deviceauth/callback`), and the exact client ID (per SPEC §4.1) —
-  missing or mis-encoded fields must fail the test. Check this task only after
-  pending→success, expiry, cancellation, throttling (including the bounded 429 backoff test),
+  missing or mis-encoded fields must fail the test. A non-consuming transient response from
+  the exchange (HTTP 429) MUST preserve the encrypted code/verifier state for bounded retry
+  (claim released, never consumed on 429 — mirroring the Claude rule in Task 6.3); test
+  exchange-retry-after-429. Check this task only after
+  pending→success, expiry, cancellation (including the cancel-versus-exchange race),
+  throttling (including the bounded 429 backoff and exchange-preservation tests),
   malformed success, and terminal error state-machine tests pass.
 
 - [ ] **Task 4.4 — Implement Codex token lifecycle.** Validate access/refresh/id token fields,
@@ -473,7 +480,9 @@ documented exception.
 - [ ] **Task 4.6 — Configure Codex inference and metadata.** Target
   `https://chatgpt.com/backend-api/codex/responses` (service base plus the Responses endpoint
   path), use OAuth Bearer tokens, and inject the `ChatGPT-Account-Id` header: extract the
-  account ID from the OAuth token set (JWT `chatgpt_account_id` claim) and validate it — without
+  account ID from the OAuth token set — the JWT carries it in the namespaced
+  `https://api.openai.com/auth` claim object (`chatgpt_account_id` inside it), NOT as a
+  top-level claim; the exact-header test fixture must use that namespaced structure — without
   the header, multi-workspace users route to the wrong workspace or fail entitlement checks;
   cover it in the exact-header test. Expose a conservative static
   GPT Codex catalog, and map only verified capabilities. Ensure URLs are constructed once and do
@@ -483,7 +492,10 @@ documented exception.
 - [ ] **Task 4.7 — Resolve optional model discovery (O2).** With explicit credentials, probe the
   proposed Codex models endpoint without logging tokens; record status/shape/date. Implement
   cached discovery only if stable enough to normalize, otherwise retain the static catalog and
-  document the result. Check this task only after fallback behavior is tested and O2 is marked
+  document the result. If implemented, the cache MUST be scoped to the connected account:
+  key by validated account ID/grant generation or invalidate on new-grant install (reconnect
+  to another ChatGPT account/workspace must not serve the previous account's catalog); test
+  an account switch before expiry. Check this task only after fallback behavior is tested and O2 is marked
   resolved or explicitly inconclusive with no acceptance dependency.
 
 - [ ] **Task 4.8 — Complete availability, errors, and disclosure.** Connect provider availability
@@ -616,8 +628,11 @@ documented exception.
   constant time, enforce one-time/expiry semantics, and never log either value. Submission
   MUST use a per-flow claim/lease: concurrent or replayed submissions are blocked, but a
   definitively non-consuming transient response (HTTP 429) releases the claim and PRESERVES
-  the encrypted verifier/state + authorization code for retry — never consume on 429; test
-  retry-after-429 and concurrent-submission rejection. Check this task
+  the encrypted verifier/state + authorization code for retry — never consume on 429; on 429
+  with a nonzero `Retry-After`, persist a per-flow not-before time (cooldown) and reject or
+  schedule earlier attempts so the cooldown is honored before the claim can be reacquired;
+  test retry-after-429 honoring the advertised delay, and concurrent-submission rejection.
+  Check this task
   only after valid, malformed, missing delimiter, wrong state, replay, expired, oversized, CSRF,
   429-retryable, and unauthorized cases pass.
 
