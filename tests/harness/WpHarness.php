@@ -180,6 +180,27 @@ final class WpHarness
     public static $blog_stack = array();
 
     /**
+     * Arguments of every get_sites() call, in order (for pagination proofs).
+     *
+     * @var list<array>
+     */
+    public static $get_sites_queries = array();
+
+    /**
+     * Last ID slice returned by get_sites() (non-advancing-loop detection).
+     *
+     * @var list<int>|null
+     */
+    public static $last_get_sites_slice = null;
+
+    /**
+     * Consecutive get_sites() calls that returned the same ID slice.
+     *
+     * @var int
+     */
+    public static $get_sites_repeat_count = 0;
+
+    /**
      * Parked per-blog option tables while switched away from that blog.
      *
      * @var array<int, array<string, mixed>>
@@ -223,6 +244,9 @@ final class WpHarness
         self::$blog_stack = array();
         self::$blog_options = array();
         self::$blog_transients = array();
+        self::$get_sites_queries = array();
+        self::$last_get_sites_slice = null;
+        self::$get_sites_repeat_count = 0;
 
         // $_REQUEST derivatives leak between tests otherwise.
         unset($_GET['_wpnonce'], $_POST['_wpnonce'], $_REQUEST['_wpnonce']);

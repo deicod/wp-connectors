@@ -14,6 +14,7 @@ cross-cutting decision 6.
 | `zai_connector_zai_debug` | zai plugin | plugin Settings API page | plugin logging helpers | yes (core default; single '0'/'1' flag) |
 | `zai_connector_zai_debug_log` | zai plugin | plugin logger only | plugin log viewer | **no** (`update_option(..., false)`) |
 | `zai_connector_zai_key_state` | zai plugin | plugin availability probe (hash only, never the key) | plugin | **no** (`update_option(..., false)`) |
+| `zai_connector_zai_region_pending` | zai plugin | plugin region-change handler (region + credential fingerprint, never the key) | plugin availability probe | **no** (`update_option(..., false)`) |
 | `zai_connector_zai_anthropic_plan` / `_region` | zai plugin | plugin Settings API page | same | same as zai plan/region |
 | OAuth token envelopes (`*_connector_*_tokens`) | each OAuth plugin | plugin only (encrypted, versioned envelope) | plugin only | **no** |
 | Pending-flow state (device/PKCE) | each OAuth plugin | plugin only (encrypted store or transient) | plugin only | **no** |
@@ -60,4 +61,11 @@ cleared verdict alone would leave the connector "connected" and send the OLD reg
 key against the NEW endpoint indefinitely. After a switch no key is stored — the
 connector stays not-connected until an admin supplies a key for the new region;
 core's key-save validation then accepts a new key despite the inconclusive probe
-(pending). Implemented and tested in Tasks 1.2/1.4/1.5.
+(pending). Env/constant credentials cannot be deleted the way the stored key can,
+so the switch marks them pending a DEFINITIVE validation instead
+(`zai_connector_zai_region_pending`, bound to the new region plus a SHA-256
+fingerprint of the riding credential): while that exact key stays effective, an
+inconclusive probe reads as not-connected — only an authenticated 2xx (connected)
+or a 401/403 (rejected) settles it, while any different credential (a candidate
+during core's key-save validation, a newly stored database key) keeps the normal
+pending-accept semantics. Implemented and tested in Tasks 1.2/1.4/1.5.

@@ -586,11 +586,15 @@ function restore_current_blog()
 }
 
 /**
- * Emulates get_sites(): blog IDs (blog 1 plus WpHarness::$sites), paged.
+ * Emulates get_sites(): blog IDs (blog 1 plus WpHarness::$sites).
  *
- * Supports the arguments the plugin code uses: 'fields' => 'ids',
- * 'number', 'paged' (and legacy 'offset'). Without 'fields' => 'ids',
- * returns stdClass-like site objects with id/blog_id.
+ * Faithful to core's WP_Site_Query argument surface: 'number', 'offset',
+ * and 'fields' => 'ids' are honored; 'paged' is deliberately IGNORED
+ * (it is not a get_sites()/WP_Site_Query argument), so a caller that
+ * paginates with 'paged' keeps receiving the first batch — exactly like
+ * real WordPress. A non-advancing loop (the same slice returned many
+ * times in a row) fails fast instead of hanging the suite, mirroring the
+ * request timeout the same bug would cause in production.
  *
  * @param array|string $args Query arguments.
  * @return list<int>|list<object>
@@ -603,14 +607,25 @@ function get_sites($args = array())
     sort($ids, SORT_NUMERIC);
 
     $number = isset($args['number']) ? (int) $args['number'] : 100;
-    $offset = 0;
-    if (isset($args['offset'])) {
-        $offset = (int) $args['offset'];
-    } elseif (isset($args['paged'])) {
-        $offset = (max(1, (int) $args['paged']) - 1) * $number;
-    }
+    $offset = isset($args['offset']) ? (int) $args['offset'] : 0;
     if ($number > 0) {
         $ids = array_slice($ids, $offset, $number);
+    }
+
+    WpHarness::$get_sites_queries[] = $args;
+
+    if ($ids === WpHarness::$last_get_sites_slice) {
+        ++WpHarness::$get_sites_repeat_count;
+        if (WpHarness::$get_sites_repeat_count > 10) {
+            throw new RuntimeException(
+                'get_sites() returned the same slice 10+ times in a row: the caller\'s '
+                . 'pagination arguments do not advance the query (WP_Site_Query supports '
+                . 'offset, not paged).'
+            );
+        }
+    } else {
+        WpHarness::$last_get_sites_slice = $ids;
+        WpHarness::$get_sites_repeat_count = 0;
     }
 
     if (isset($args['fields']) && 'ids' === $args['fields']) {

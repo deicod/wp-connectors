@@ -32,6 +32,7 @@ function zai_connector_zai_uninstall_site() {
 	delete_option( 'zai_connector_zai_debug' );
 	delete_option( 'zai_connector_zai_debug_log' );
 	delete_option( 'zai_connector_zai_key_state' );
+	delete_option( 'zai_connector_zai_region_pending' );
 
 	// Discovery cache transients for every endpoint combination.
 	foreach ( array( 'coding', 'general' ) as $zai_connector_plan ) {
@@ -44,11 +45,14 @@ function zai_connector_zai_uninstall_site() {
 /**
  * Removes plugin-owned data from every site of a multisite network.
  *
- * No-op on single-site installs. Sites are iterated in pages of 100 so a
+ * No-op on single-site installs. Sites are iterated in batches of 100 so a
  * large network is handled the same way, one bounded batch at a time (the
  * deletes are idempotent, so re-reaching the current site after its own
- * cleanup above is harmless). The previous blog context is restored after
- * each site.
+ * cleanup above is harmless). The batches advance through the SUPPORTED
+ * `offset` argument (offset = 0, 100, 200, …): WP_Site_Query/get_sites()
+ * has no `paged` argument, so paging the query would re-return the first
+ * batch forever — later sites would never be cleaned and the loop would
+ * never end. The previous blog context is restored after each site.
  *
  * @since 0.1.0
  *
@@ -60,7 +64,7 @@ function zai_connector_zai_uninstall_network() {
 	}
 
 	$zai_connector_batch_size = 100;
-	$zai_connector_paged      = 1;
+	$zai_connector_offset     = 0;
 	$zai_connector_found      = 0;
 
 	do {
@@ -68,11 +72,11 @@ function zai_connector_zai_uninstall_network() {
 			array(
 				'fields' => 'ids',
 				'number' => $zai_connector_batch_size,
-				'paged'  => $zai_connector_paged,
+				'offset' => $zai_connector_offset,
 			)
 		);
-		++$zai_connector_paged;
-		$zai_connector_found = count( $zai_connector_site_ids );
+		$zai_connector_offset  += $zai_connector_batch_size;
+		$zai_connector_found    = count( $zai_connector_site_ids );
 
 		foreach ( $zai_connector_site_ids as $zai_connector_site_id ) {
 			switch_to_blog( (int) $zai_connector_site_id );

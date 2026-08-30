@@ -42,6 +42,7 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         update_option( 'zai_connector_zai_debug', '1' );
         update_option( 'zai_connector_zai_debug_log', 'line' );
         update_option( 'zai_connector_zai_key_state', array( 'binding' => 'x' ) );
+        update_option( 'zai_connector_zai_region_pending', array( 'region' => 'cn', 'fingerprint' => 'x' ) );
         set_transient( 'zai_connector_zai_models_' . md5( 'zai|coding|intl' ), array( 'glm-5.3' ), 3600 );
         update_option( 'connectors_ai_zai_api_key', $decoy_value );
     }
@@ -60,6 +61,7 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
             'zai_connector_zai_debug',
             'zai_connector_zai_debug_log',
             'zai_connector_zai_key_state',
+            'zai_connector_zai_region_pending',
         ) as $option ) {
             $this->assertFalse( get_option( $option, false ), "{$option} must be removed on uninstall." );
         }
@@ -116,9 +118,14 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
 
     public function testNetworkUninstallHandlesMoreSitesThanOneBatch()
     {
-        // 205 extra sites force three pages of 100 — the batching loop must
-        // reach past the first page (a naive single get_sites() call is
-        // capped by core's default number and would miss the tail).
+        // 205 extra sites force three batches of 100 — the batching loop must
+        // reach past the first batch (a naive single get_sites() call is
+        // capped by core's default number and would miss the tail). The
+        // harness get_sites() ignores 'paged' exactly like core's
+        // WP_Site_Query, so passing here PROVES the loop advances through
+        // the supported 'offset' argument: a 'paged' regression would
+        // re-return the first 100 sites forever (the harness fails that
+        // non-advancing loop fast) and the tail blogs would never be cleaned.
         WpHarness::$is_multisite = true;
         WpHarness::$sites = range( 2, 206 );
 
@@ -132,12 +139,53 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         zai_connector_zai_uninstall_site();
         zai_connector_zai_uninstall_network();
 
+        // 206 sites (blog 1 + 205) in batches of 100: offsets 0, 100, 200,
+        // then the 6-row short batch ends the sweep — no fifth query.
+        $this->assertSame(
+            array( 0, 100, 200 ),
+            array_map( 'intval', array_column( WpHarness::$get_sites_queries, 'offset' ) ),
+            'The batch loop must advance the offset by the batch size.'
+        );
+        $this->assertSame(
+            array( 100, 100, 100 ),
+            array_map( 'intval', array_column( WpHarness::$get_sites_queries, 'number' ) ),
+            'Every batch must be bounded by the batch size.'
+        );
+
         foreach ( array( 1, 2, 101, 102, 206 ) as $blog_id ) {
             switch_to_blog( $blog_id );
             $this->assertFalse( get_option( 'zai_connector_zai_plan', false ), "Blog {$blog_id} plan option must be removed." );
             $this->assertFalse( get_option( 'zai_connector_zai_key_state', false ), "Blog {$blog_id} key state must be removed." );
             restore_current_blog();
         }
+
+        $this->assertSame( 1, get_current_blog_id() );
+    }
+
+    public function testNetworkUninstallTerminatesWhenTheSiteCountDividesEvenly()
+    {
+        // 199 extra sites = 200 total: two FULL batches, then one empty
+        // batch must end the sweep (a short batch terminates the loop) —
+        // an offset past the end simply returns no rows.
+        WpHarness::$is_multisite = true;
+        WpHarness::$sites = range( 2, 200 );
+
+        switch_to_blog( 200 );
+        update_option( 'zai_connector_zai_plan', 'coding' );
+        restore_current_blog();
+
+        zai_connector_zai_uninstall_site();
+        zai_connector_zai_uninstall_network();
+
+        $this->assertSame(
+            array( 0, 100, 200 ),
+            array_map( 'intval', array_column( WpHarness::$get_sites_queries, 'offset' ) ),
+            'A full final batch must be followed by exactly one terminating empty query.'
+        );
+
+        switch_to_blog( 200 );
+        $this->assertFalse( get_option( 'zai_connector_zai_plan', false ), 'The last site of the final full batch must be cleaned.' );
+        restore_current_blog();
 
         $this->assertSame( 1, get_current_blog_id() );
     }

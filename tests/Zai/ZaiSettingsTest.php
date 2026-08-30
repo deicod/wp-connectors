@@ -234,6 +234,38 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
             'The stored key belongs to the OLD region\'s account and must be cleared (Task 1.2).'
         );
         $this->assertFalse(get_transient('zai_connector_zai_models_' . md5('zai|coding|intl')), 'Old-region discovery cache must be cleared.');
+        $this->assertFalse(
+            get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::REGION_PENDING_OPTION, false),
+            'Without an env/constant credential nothing can ride the switch: no pending flag.'
+        );
+    }
+
+    public function testRegionSwitchMarksAnEnvCredentialPendingValidationForTheNewRegion()
+    {
+        $this->bootPlugin();
+        $envKey = FakeSecrets::apiKey();
+
+        try {
+            putenv('ZAI_API_KEY=' . $envKey);
+            update_option(PlanRegionSettings::OPTION_REGION, 'intl');
+
+            do_action('update_option_' . PlanRegionSettings::OPTION_REGION, 'intl', 'cn');
+
+            // The riding env credential is immutable, so it is marked
+            // pending a DEFINITIVE validation, bound to the new region and
+            // a fingerprint of the key — never the key itself.
+            $flag = get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::REGION_PENDING_OPTION);
+            $this->assertIsArray($flag, 'The env credential effective across the switch must be marked pending.');
+            $this->assertSame('cn', $flag['region']);
+            $this->assertSame(hash('sha256', $envKey), $flag['fingerprint']);
+            $this->assertOptionNotPlaintext(
+                \Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::REGION_PENDING_OPTION,
+                $envKey,
+                'The pending flag must store a fingerprint, never the key.'
+            );
+        } finally {
+            putenv('ZAI_API_KEY');
+        }
     }
 
     public function testRegionRewriteWithSameValueDoesNotInvalidate()

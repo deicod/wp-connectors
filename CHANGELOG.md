@@ -6,6 +6,31 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M1 — Codex PR review, round 3)
+
+- Network uninstall pagination actually advances: the multisite cleanup
+  passed `paged` to `get_sites()`, an argument WP_Site_Query does not
+  support — on networks of 100+ sites every batch re-returned the same
+  first 100 sites, so the loop never advanced (request timeout) and later
+  sites were never cleaned. The batches now advance the supported `offset`
+  (0, 100, 200, …) and stop on the first short batch; the test harness's
+  `get_sites()` is core-faithful (ignores `paged`, fails a non-advancing
+  loop fast) so the tests prove the advance across multiple batches.
+- A region switch now also distrusts environment/constant credentials
+  until they are DEFINITIVELY validated for the new region: those sources
+  are immutable (the plugin cannot delete them like the stored key), so an
+  inconclusive probe (the China /models route 404s → configured-pending)
+  previously left the connector "connected" with the old-region env key
+  against the new endpoint indefinitely. The switch records a
+  region-pending flag (new region + SHA-256 fingerprint of the riding
+  credential): while exactly that key is effective, an inconclusive probe
+  reports not-connected; an authenticated 2xx (connected) or 401/403
+  (rejected) settles it, and any different credential — including the
+  candidate core wires during key-save validation — keeps the normal
+  pending-accept semantics. New option `zai_connector_zai_region_pending`
+  (non-autoloaded, fingerprint only, removed on uninstall; record 0004
+  updated).
+
 ### Fixed (zai / M1 — Codex PR review, round 2)
 
 - Region switch now deletes the STORED key, not just the validated-state
@@ -36,7 +61,7 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   `zai_invalid_response`, multi-event streams lost their final content.
 - Network uninstall removes plugin-owned data from EVERY site: options and
   transients are per-site, so a network-activated uninstall now iterates
-  the sites (paged batches of 100, blog context restored) instead of
+  the sites (offset batches of 100, blog context restored) instead of
   cleaning only the current site.
 
 ### Fixed (tooling — Codex PR review, round 2)

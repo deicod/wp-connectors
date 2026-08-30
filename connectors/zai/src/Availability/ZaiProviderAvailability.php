@@ -20,6 +20,12 @@
  *   the stored key is additionally deleted by the settings layer (SPEC §3.3;
  *   separate accounts and keys): pending-accept semantics must never let the
  *   old region's key ride an inconclusive probe onto the new endpoint.
+ *   Env/constant credentials cannot be deleted, so the same handler marks
+ *   them pending DEFINITIVE validation (REGION_PENDING_OPTION, bound to the
+ *   new region + credential fingerprint): while that exact key is the
+ *   effective one, only an authenticated 2xx (connected) or a 401/403
+ *   (rejected) may settle the state — a merely inconclusive probe reads as
+ *   DISCONNECTED, never as configured-pending.
  *
  * The stored state contains a SHA-256 binding (not the key), the boolean
  * verdict, and the check timestamp — never credential material.
@@ -67,6 +73,22 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 	 * @var string
 	 */
 	public const STATE_OPTION = 'zai_connector_zai_key_state';
+
+	/**
+	 * Plugin-owned option marking an environment/constant credential as
+	 * pending DEFINITIVE validation after a region switch.
+	 *
+	 * Holds array{region: string, fingerprint: string} — the new region and
+	 * a SHA-256 fingerprint of the credential that was effective when the
+	 * region changed (never the key itself). While the flag binds the
+	 * currently effective key, isConfigured() reports false on anything but
+	 * a definitive probe result; see mark_region_switch_pending().
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	public const REGION_PENDING_OPTION = 'zai_connector_zai_region_pending';
 
 	/**
 	 * The core-owned option holding the z.ai API key.
@@ -164,6 +186,12 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 		$binding = $this->binding( $effective['source'], $effective['key'] );
 		$state   = $this->stored_state();
 
+		// Region-switch distrust (set by the settings layer after a region
+		// change): while the effective key is exactly the env/constant
+		// credential that rode the switch, only a DEFINITIVE result may
+		// report it connected — see region_switch_pending().
+		$region_pending = $this->region_switch_pending( $effective['key'] );
+
 		if ( \is_array( $state ) && ( $state['binding'] ?? '' ) === $binding ) {
 			// UTC on BOTH sides (current_time() with $gmt, not time(), so the
 			// deterministic test clock still drives TTL expiry): a site
@@ -175,6 +203,13 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 				&& ( current_time( 'timestamp', true ) - (int) $state['checked_at'] ) < self::STATE_TTL; // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.RequestedUTC -- time() would bypass the deterministic (injectable) clock the TTL tests rely on.
 
 			if ( $fresh ) {
+				if ( $region_pending ) {
+					// A fresh verdict for this exact binding IS the definitive
+					// answer the distrust waits for (defensively: persisting
+					// one already clears the flag).
+					delete_option( self::REGION_PENDING_OPTION );
+				}
+
 				return self::VERDICT_VALID === ( $state['valid'] ?? null );
 			}
 
@@ -194,10 +229,24 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 			// probe route is unavailable. Treat as configured-pending; a
 			// stored matching verdict (definitive evidence about this exact
 			// key+endpoint) still takes precedence.
+			//
+			// EXCEPT under region-switch distrust: a pending probe says
+			// nothing about the old-region credential, and configured-pending
+			// here would send it against the new endpoint indefinitely.
+			if ( $region_pending ) {
+				return false;
+			}
+
 			return isset( $fallback ) ? $fallback : true;
 		}
 
 		$this->persist_state( $binding, $verdict );
+
+		if ( $region_pending ) {
+			// Definitive answer about the riding credential (valid or
+			// rejected): the distrust is resolved either way.
+			delete_option( self::REGION_PENDING_OPTION );
+		}
 
 		return $verdict;
 	}
@@ -308,6 +357,90 @@ final class ZaiProviderAvailability implements ProviderAvailabilityInterface, Wi
 		$endpoint = ZaiEndpoint::for_current_settings();
 
 		return hash( 'sha256', $source . '|' . $endpoint->cache_key() . '|' . $key );
+	}
+
+	/**
+	 * Reports whether the effective key is the credential a region switch
+	 * marked pending DEFINITIVE validation for the CURRENT region.
+	 *
+	 * The flag binds the region AND the credential fingerprint, so it only
+	 * ever gates the exact env/constant key that was effective when the
+	 * region changed — a different credential (a candidate core wires
+	 * during key-save validation, a newly stored database key, a replaced
+	 * env var) is not the riding key and keeps the normal
+	 * configured-pending semantics. A candidate with the IDENTICAL value
+	 * (an admin re-saving the very env/constant key) is still that old-
+	 * region credential and stays gated (SPEC §3.3: separate accounts).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $key Complete effective key value.
+	 * @return bool True when the flag binds this exact key to the currently
+	 *              selected region.
+	 */
+	private function region_switch_pending( string $key ): bool {
+		$flag = get_option( self::REGION_PENDING_OPTION, null );
+
+		if ( ! \is_array( $flag ) ) {
+			return false;
+		}
+
+		$region      = $flag['region'] ?? null;
+		$fingerprint = $flag['fingerprint'] ?? null;
+
+		if ( ! \is_string( $region ) || ! \is_string( $fingerprint ) || '' === $fingerprint ) {
+			return false;
+		}
+
+		return ZaiEndpoint::for_current_settings()->region() === $region
+			&& hash_equals( $fingerprint, hash( 'sha256', $key ) );
+	}
+
+	/**
+	 * Marks the region-immutable credential as pending definitive validation.
+	 *
+	 * Called by the settings layer on a region switch, AFTER the stored
+	 * (database) key was deleted: the env var / constant are the sources the
+	 * plugin cannot clear, so exactly they would otherwise ride
+	 * configured-pending semantics onto the new endpoint. Stores the new
+	 * region plus a SHA-256 fingerprint of that credential (never the key);
+	 * when no env/constant credential exists nothing can ride the switch and
+	 * any stale flag is dropped.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $region The newly selected region.
+	 * @return void
+	 */
+	public static function mark_region_switch_pending( string $region ): void {
+		$credential = getenv( self::KEY_ENV_NAME );
+
+		if ( ! \is_string( $credential ) || '' === $credential ) {
+			$credential = '';
+
+			if ( \defined( self::KEY_ENV_NAME ) ) {
+				$constant_value = \constant( self::KEY_ENV_NAME );
+
+				if ( \is_string( $constant_value ) && '' !== $constant_value ) {
+					$credential = $constant_value;
+				}
+			}
+		}
+
+		if ( '' === $credential ) {
+			delete_option( self::REGION_PENDING_OPTION );
+
+			return;
+		}
+
+		update_option(
+			self::REGION_PENDING_OPTION,
+			array(
+				'region'      => $region,
+				'fingerprint' => hash( 'sha256', $credential ),
+			),
+			false
+		);
 	}
 
 	/**

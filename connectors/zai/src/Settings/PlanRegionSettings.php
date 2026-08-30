@@ -16,8 +16,11 @@
  * the OLD region's key against the NEW endpoint indefinitely. After the
  * switch no key is stored, so the connector stays not-connected until an
  * admin supplies a key for the new region (plan changes never touch the
- * key; coding and general share one account). Deleting the core-owned key
- * option here is the sanctioned region-switch exception to "plugins never
+ * key; coding and general share one account). Env/constant credentials —
+ * which no plugin code can delete — are instead marked pending a
+ * DEFINITIVE validation for the new region (see handle_region_change()).
+ * Deleting the core-owned key option here is the sanctioned
+ * region-switch exception to "plugins never
  * write core-owned options" (architecture record 0004, region-switch
  * implication; plan Task 1.2).
  *
@@ -339,7 +342,8 @@ final class PlanRegionSettings {
 	}
 
 	/**
-	 * Region-change handler: shared invalidation PLUS the stored-key clear.
+	 * Region-change handler: shared invalidation PLUS the stored-key clear
+	 * and the env/constant pending-validation mark.
 	 *
 	 * Hooked on `update_option_zai_connector_zai_region` (old value, new
 	 * value). Deleting the stored key is required by Task 1.2 ("a region
@@ -348,8 +352,13 @@ final class PlanRegionSettings {
 	 * inconclusive probe against the new region (cn /models 404) reports
 	 * configured-pending — the connector would then appear connected and
 	 * send the old region's key against the new endpoint indefinitely.
-	 * Env/constant sources are deliberately untouched; a definitive
-	 * rejection of those still arrives through the revalidation probe.
+	 *
+	 * Env/constant sources cannot be deleted the way the database key can,
+	 * so the SAME hole exists for them after the switch: the handler marks
+	 * the riding credential pending a DEFINITIVE validation for the new
+	 * region (ZaiProviderAvailability::REGION_PENDING_OPTION). Until that
+	 * exact credential is proven (authenticated 2xx) or rejected (401/403),
+	 * availability reports DISCONNECTED — never configured-pending.
 	 *
 	 * @since 0.1.0
 	 *
@@ -365,6 +374,13 @@ final class PlanRegionSettings {
 		self::handle_settings_change( $old_value, $new_value );
 
 		delete_option( ZaiProviderAvailability::KEY_OPTION );
+
+		// Corrupt hook payloads fall back to the sanitized stored region.
+		ZaiProviderAvailability::mark_region_switch_pending(
+			\is_string( $new_value ) && \in_array( $new_value, self::REGIONS, true )
+				? $new_value
+				: self::get_region()
+		);
 	}
 
 	/**

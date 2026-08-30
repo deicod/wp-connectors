@@ -36,6 +36,20 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         return $instance;
     }
 
+    /**
+     * Availability instance whose wired key equals the env var value, so
+     * the effective credential resolves to the ENVIRONMENT source (the
+     * registry-wired credential is authoritative and key_source() maps it
+     * back to 'env') — the shape production uses after a region switch.
+     *
+     * @param string $envKey Value of ZAI_API_KEY.
+     * @return ZaiProviderAvailability
+     */
+    private function envBackedAvailability(string $envKey): ZaiProviderAvailability
+    {
+        return $this->availability($envKey);
+    }
+
     /*
      * Provider metadata across SDK versions.
      */
@@ -339,6 +353,145 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         // A later definitive answer about the cn key is honored.
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad cn key'));
         $this->assertFalse($candidate->isConfigured());
+    }
+
+    public function testRegionSwitchWithEnvKeyStaysDisconnectedUntilDefinitivelyValidated()
+    {
+        // Codex r3: after a region switch the env credential (immutable —
+        // the plugin cannot clear it like the database key) must not ride
+        // configured-pending semantics onto the new endpoint. Only a
+        // DEFINITIVE probe result may report it connected again.
+        $envKey = FakeSecrets::apiKey();
+
+        try {
+            putenv('ZAI_API_KEY=' . $envKey);
+            $this->bootProvider();
+
+            // Connected on the OLD region before the switch.
+            $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+            $this->assertTrue($this->availability($envKey)->isConfigured());
+            $this->assertSame('https://api.z.ai/api/coding/paas/v4/models', $this->sdkHttpAttempts()[0]['url']);
+
+            // Switch intl → cn through the real option write (fires the hook).
+            update_option(PlanRegionSettings::OPTION_REGION, 'cn');
+
+            $env = $this->envBackedAvailability($envKey); // Wired key == env value: source resolves to 'env'.
+
+            // Inconclusive probe (the unprobed cn /models 404): the env key
+            // must NOT appear connected on the new region.
+            $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+            $this->assertFalse(
+                $env->isConfigured(),
+                'The old-region env key must not count as connected after the switch.'
+            );
+            $this->assertSame(
+                'https://open.bigmodel.cn/api/coding/paas/v4/models',
+                $this->sdkHttpAttempts()[1]['url'],
+                'The pending check still probes the NEW endpoint with the env key.'
+            );
+            $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'An inconclusive probe must not persist a verdict.');
+            $this->assertNotFalse(
+                get_option(ZaiProviderAvailability::REGION_PENDING_OPTION, false),
+                'The region-pending flag must stay while the probe is inconclusive.'
+            );
+
+            // Still inconclusive: still disconnected.
+            $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+            $this->assertFalse($env->isConfigured());
+
+            // A definitive 2xx ends the distrust: connected, flag cleared,
+            // verdict persisted (answerable from state within the TTL).
+            $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+            $this->assertTrue(
+                $env->isConfigured(),
+                'A definitive success must report the env key connected for the new region.'
+            );
+            $this->assertFalse(get_option(ZaiProviderAvailability::REGION_PENDING_OPTION, false), 'The flag must clear on the definitive verdict.');
+            $this->assertSame('valid', get_option(ZaiProviderAvailability::STATE_OPTION)['valid']);
+
+            $this->assertTrue($env->isConfigured());
+            $this->assertCount(4, $this->sdkHttpAttempts(), 'Within the TTL the persisted verdict answers without a new probe.');
+        } finally {
+            putenv('ZAI_API_KEY');
+        }
+    }
+
+    public function testRegionSwitchWithEnvKeyDefinitiveRejectionIsActionable()
+    {
+        $envKey = FakeSecrets::apiKey();
+
+        try {
+            putenv('ZAI_API_KEY=' . $envKey);
+            $this->bootProvider();
+
+            update_option(PlanRegionSettings::OPTION_REGION, 'cn');
+
+            $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token invalid in this region'));
+            $env = $this->envBackedAvailability($envKey);
+            $this->assertFalse($env->isConfigured(), 'A rejected credential must report not-connected.');
+
+            // Actionable: the definitive rejection is persisted (the admin
+            // sees WHY — the key is invalid for this endpoint), and the
+            // distrust flag is resolved.
+            $state = get_option(ZaiProviderAvailability::STATE_OPTION);
+            $this->assertIsArray($state);
+            $this->assertSame('invalid', $state['valid']);
+            $this->assertFalse(
+                get_option(ZaiProviderAvailability::REGION_PENDING_OPTION, false),
+                'A definitive rejection resolves the region-pending flag.'
+            );
+        } finally {
+            putenv('ZAI_API_KEY');
+        }
+    }
+
+    public function testRegionSwitchDistrustDoesNotBlockSavingANewKeyForTheNewRegion()
+    {
+        // Core's key-save path must keep working: the candidate core wires
+        // during validation is a DIFFERENT credential than the distrusted
+        // env key, so the cn /models 404 stays accepted-pending for it —
+        // and once the new key is stored (and the env override gone) the
+        // stored key itself keeps normal pending semantics.
+        $envKey = FakeSecrets::apiKey();
+        $cnKey = FakeSecrets::apiKey();
+
+        try {
+            putenv('ZAI_API_KEY=' . $envKey);
+            $this->bootProvider();
+
+            update_option(PlanRegionSettings::OPTION_REGION, 'cn');
+
+            $candidate = $this->availability($cnKey);
+            $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+            $this->assertTrue(
+                $candidate->isConfigured(),
+                'Saving a new key for the new region must stay accepted-pending.'
+            );
+            $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 404 must not persist a verdict.');
+
+            // The env credential itself remains distrusted while effective.
+            $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+            $this->assertFalse(
+                $this->envBackedAvailability($envKey)->isConfigured(),
+                'The env key must stay disconnected despite the saved db key (env wins resolution).'
+            );
+            $this->assertNotFalse(
+                get_option(ZaiProviderAvailability::REGION_PENDING_OPTION, false),
+                'The flag must persist for the env credential until definitively validated.'
+            );
+
+            // Env override removed: the stored key is now effective and is
+            // NOT the distrusted credential — normal pending semantics.
+            update_option(ZaiProviderAvailability::KEY_OPTION, $cnKey);
+            putenv('ZAI_API_KEY');
+            $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+            $this->assertTrue(
+                $this->availability($cnKey)->isConfigured(),
+                'The saved key for the new region keeps normal pending semantics.'
+            );
+        } finally {
+            putenv('ZAI_API_KEY');
+        }
     }
 
     public function testRateLimitResponseDoesNotInvalidateAValidKey()
