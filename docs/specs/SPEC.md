@@ -227,12 +227,16 @@ PKCE authorization-code with **paste-back code** (no callback server needed — 
 
 - Token store: single WP option per provider, **encrypted at rest** with
   libsodium (`sodium_crypto_secretbox`) via core-bundled sodium_compat; key derived from
-  `AUTH_KEY`-style salts (fall back to generated+stored random key in its own option;
-  document rotation behavior). Never exposed via REST/settings API.
+  `AUTH_KEY`-style salts. If salts are unusable, the fallback key MUST come from an external
+  source outside the WordPress database (e.g. `WP_CONNECTORS_*_KEY` constant or env var);
+  if none exists, **fail closed** (provider unavailable, clear admin notice) — never persist a
+  decrypt-capable key beside the ciphertext. Never exposed via REST/settings API.
 - Lazy refresh on use (expiry − skew) + `wp_schedule_single_event` background refresh as
   backup; 401 during inference triggers one refresh+retry, then typed error.
-- Terminal refresh failure (`invalid_grant`, HTTP 4xx): mark grant dead, show
-  "Re-connect required" on admin page + connector availability = false.
+- Terminal refresh failure = definitive authorization errors only (`invalid_grant`, revoked
+  grant): mark grant dead, show
+  "Re-connect required" on admin page + connector availability = false. HTTP 429 and other
+  transient/transport failures stay retryable (bounded cooldown, honor `Retry-After`).
 - Availability check (`ProviderAvailabilityInterface`): token present && (refresh succeeds
   || cheap model-list/inference probe). Core Connectors screen shows status from this.
 - Admin page per plugin (submenu under Settings): provider status, Connect/Re-connect,

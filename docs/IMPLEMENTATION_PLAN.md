@@ -435,7 +435,9 @@ documented exception.
 
 - [ ] **Task 4.8 — Complete availability, errors, and disclosure.** Connect provider availability
   to token state; map 401 to reconnect guidance, device 429 to throttling guidance, entitlement
-  403 separately from generic failures, and 5xx to upstream errors. Put the unofficial-client-ID
+  403 separately from generic failures, and 5xx to upstream errors. An inference-time HTTP 429
+  from the Responses endpoint MUST map to the typed rate-limit error (SPEC §6.2) — covered by
+  its own test, separate from device-authorization throttling. Put the unofficial-client-ID
   and account-risk notice beside Connect. Check this task only after core/admin status tests,
   disclosure rendering, and redaction tests pass.
 
