@@ -151,7 +151,7 @@ documented exception.
   table-driven test verifies exact URLs and proves an option change retargets a subsequent
   request without rebuilding the registry.
 
-- [ ] **Task 1.4 — Implement provider metadata and authentication.** Add provider ID, display name,
+- [x] **Task 1.4 — Implement provider metadata and authentication.** Add provider ID, display name,
   description, API-key authentication metadata, logo, and availability mapping. Availability MUST
   be more than key presence: an authenticated probe (or equivalent validated state) is required
   so a nonempty-but-invalid key (HTTP 401 on the probe) reports unavailable/not-connected, per

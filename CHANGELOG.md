@@ -21,6 +21,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 - Immutable endpoint resolver (`ZaiEndpoint`) covering the four SPEC §3.1
   plan × region base URLs with request-time option reads; provider
   `baseUrl()` stays fixed to the intl-general canonical URL (Task 1.3).
+- Provider metadata with SDK version guards (description ≥1.2.0, logo ≥1.3.0,
+  shipped logo asset) and availability as an authenticated /models probe with
+  a persisted verdict bound to the complete key hash + key source + endpoint
+  identity; transport/5xx failures stay transient and never persist a verdict
+  (Task 1.4).
 
 ### Added (tooling / M0 foundation)
 

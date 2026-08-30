@@ -11,6 +11,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Provider;
 
+use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\ApiBasedImplementation\AbstractApiProvider;
 use WordPress\AiClient\Providers\Contracts\ModelMetadataDirectoryInterface;
@@ -91,6 +92,57 @@ final class ZaiProvider extends AbstractApiProvider {
 	}
 
 	/**
+	 * Builds the provider metadata constructor arguments for an SDK version.
+	 *
+	 * Description requires SDK >= 1.2.0 and the logo path SDK >= 1.3.0; both
+	 * are appended only when the given SDK version supports them (the guard
+	 * pattern from the official provider plugin, architecture record 0003).
+	 * The parameter defaults to the detected SDK version and exists so tests
+	 * can cover the minimum and newer metadata shapes.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string|null $sdk_version SDK version to build for, or null for AiClient::VERSION.
+	 * @return list<mixed> Positional ProviderMetadata constructor arguments.
+	 */
+	public static function provider_metadata_args( ?string $sdk_version = null ): array {
+		$version = $sdk_version ?? AiClient::VERSION;
+
+		$args = array(
+			self::PROVIDER_ID,
+			'z.ai',
+			ProviderTypeEnum::cloud(),
+			'https://z.ai/manage/apikey/apikey',
+			RequestAuthenticationMethod::apiKey(),
+		);
+
+		if ( version_compare( $version, '1.2.0', '>=' ) ) {
+			$args[] = self::translated_description();
+		}
+
+		if ( version_compare( $version, '1.3.0', '>=' ) ) {
+			$args[] = dirname( __DIR__, 2 ) . '/assets/zai.svg';
+		}
+
+		return $args;
+	}
+
+	/**
+	 * Returns the translated provider description.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return string Description text.
+	 */
+	private static function translated_description(): string {
+		if ( \function_exists( '__' ) ) {
+			return __( 'GLM text generation via the z.ai OpenAI-compatible API.', 'zai' );
+		}
+
+		return 'GLM text generation via the z.ai OpenAI-compatible API.';
+	}
+
+	/**
 	 * Creates the provider metadata.
 	 *
 	 * @since 0.1.0
@@ -98,13 +150,7 @@ final class ZaiProvider extends AbstractApiProvider {
 	 * @return ProviderMetadata Provider metadata.
 	 */
 	protected static function createProviderMetadata(): ProviderMetadata {
-		return new ProviderMetadata(
-			self::PROVIDER_ID,
-			'z.ai',
-			ProviderTypeEnum::cloud(),
-			'https://z.ai/manage/apikey/apikey',
-			RequestAuthenticationMethod::apiKey()
-		);
+		return new ProviderMetadata( ...self::provider_metadata_args() );
 	}
 
 	/**

@@ -225,11 +225,24 @@ function get_option($option, $default = false)
 
 function update_option($option, $value, $autoload = null)
 {
+    $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
+
+    // Core semantics: no update (and no hooks) when the value is unchanged.
+    if ($old === $value && null === $autoload) {
+        return false;
+    }
+
     WpHarness::$options[ $option ] = $value;
     if (null !== $autoload) {
         WpHarness::$option_autoload[ $option ] = (bool) $autoload;
     } elseif (! array_key_exists($option, WpHarness::$option_autoload)) {
         WpHarness::$option_autoload[ $option ] = true;
+    }
+
+    if ($old !== $value) {
+        do_action("update_option_{$option}", $old, $value);
+        do_action('updated_option', $option, $old, $value);
+        do_action('update_option', $option, $old, $value);
     }
 
     return true;
