@@ -221,9 +221,12 @@ documented exception.
 
 - [ ] **Task 2.4 — Implement Anthropic metadata/catalog.** Create the custom metadata directory,
   static GLM fallback, capability declarations, sorting, optional cached `/v1/models` discovery,
-  and graceful failure policy. Share neutral GLM catalog data where useful without coupling the
-  two protocol adapters. Check this task only after static/discovered/fallback and capability
-  tests pass, and the Anthropic half of O1 is documented accurately.
+  and graceful failure policy. The static fallback MUST be plan-partitioned: separate coding and
+  general catalogs (coding subscriptions expose a restricted model set; a single shared fallback
+  would advertise general-only models while the coding endpoint is selected, per SPEC §3.3).
+  Share neutral GLM catalog data where useful without coupling the two protocol adapters.
+  Check this task only after static/discovered/fallback tests pass for BOTH plan selections,
+  and the Anthropic half of O1 is documented accurately.
 
 - [ ] **Task 2.5 — Implement Messages request mapping.** Translate system instruction, alternating
   chat content blocks, text and supported images, tools/tool results, JSON output guidance,
@@ -274,10 +277,13 @@ documented exception.
 
 - [ ] **Task 3.3 — Implement refresh coordination.** Add lazy expiry-minus-skew refresh, a short
   per-provider lock to prevent refresh-token races, atomic replacement, scheduled single-event
-  backup, and cleanup on revoke/uninstall. Treat terminal `invalid_grant`/4xx as dead while
+  backup, and cleanup on revoke/uninstall. Treat terminal authorization failures as dead while
   retaining safe diagnostic state; treat transient failures as retryable without erasing the last
-  token prematurely. Check this task only after deterministic concurrency, clock-boundary,
-  scheduling, terminal, and transient failure tests pass.
+  token prematurely. Terminal classification MUST be restricted to definitive authorization
+  errors (`invalid_grant`, revoked grant); HTTP 429 and other transient/transport failures MUST
+  remain retryable and MUST NOT mark the grant dead or force a reconnect. Check this task only
+  after deterministic concurrency, clock-boundary, scheduling, terminal (including a 429-during-
+  refresh test asserting the grant survives), and transient failure tests pass.
 
 - [ ] **Task 3.4 — Implement authenticated request retry.** Supply a provider-neutral wrapper that
   obtains/refreshed access tokens, makes an inference request, and on the first 401 performs at
@@ -292,10 +298,12 @@ documented exception.
   representation has a deterministic test.
 
 - [ ] **Task 3.6 — Build reusable protected admin components.** Implement status presentation,
-  account-label redaction, Connect/Re-connect/Revoke actions, plugin-row link helpers, nonce and
-  `manage_options` enforcement, and admin notices including the unofficial OAuth/ToS disclosure.
-  Ensure GET renders but never mutates state. Check this task only after authorized, unauthorized,
-  CSRF, escaping, revoke, and token-non-disclosure tests pass.
+  account-label redaction, Connect/Re-connect/Revoke actions, plugin-row link helpers, a
+  reusable Connectors-card-adjacent action (so users arriving through Settings → Connectors have
+  a direct route to the provider's Connect page, per SPEC §2.2), nonce and `manage_options`
+  enforcement, and admin notices including the unofficial OAuth/ToS disclosure. Ensure GET renders
+  but never mutates state. Check this task only after authorized, unauthorized, CSRF, escaping,
+  revoke, token-non-disclosure, and card-action-visibility tests (one per OAuth provider) pass.
 
 - [ ] **Task 3.7 — Implement safe OAuth HTTP/error utilities.** Wrap `wp_remote_*` with explicit
   timeouts, accepted content types, bounded response sizes, TLS defaults, structured redacted
@@ -340,16 +348,21 @@ documented exception.
 
 - [ ] **Task 4.3 — Implement device polling and exchange.** Poll no faster than `max(interval, 3)`
   using bounded admin/AJAX requests or scheduled work rather than a long PHP request; treat only
-  documented pending 403/404 responses as pending. Exchange the returned code/verifier at the
-  token endpoint using form encoding and the exact callback URI/client ID. Check this task only
-  after pending→success, expiry, cancellation, throttling, malformed success, and terminal error
-  state-machine tests pass.
+  documented pending 403/404 responses as pending. A 429 from the device-token endpoint MUST
+  follow the same bounded backoff policy as Task 4.2 (`Retry-After`/2-4-8-second, max four
+  attempts, per-delay 60-second clamp). Exchange the returned code/verifier at the token endpoint
+  using form encoding and the exact callback URI/client ID. Check this task only after
+  pending→success, expiry, cancellation, throttling (including the bounded 429 backoff test),
+  malformed success, and terminal error state-machine tests pass.
 
 - [ ] **Task 4.4 — Implement Codex token lifecycle.** Validate access/refresh/id token fields,
   derive expiry from trusted response data (using JWT claims only as a non-authoritative aid),
   store the encrypted token set, refresh at a 120-second skew, and derive a safely escaped account
-  label when possible. Check this task only after storage, refresh, label, invalid JWT, missing
-  refresh token, revoke, and reconnect-required tests pass.
+  label when possible. The refresh MUST be asserted as an exact request: form-encoded POST to
+  `https://auth.openai.com/oauth/token` containing `grant_type=refresh_token`, the stored refresh
+  token, and the exact client ID (per SPEC §4.1). Check this task only after storage, refresh
+  (including the exact-request assertion), label, invalid JWT, missing refresh token, revoke, and
+  reconnect-required tests pass.
 
 - [ ] **Task 4.5 — Implement the parameterized Responses adapter.** In shared source, create the
   protocol adapter used later by xAI: configurable base URL, endpoint path, headers, model catalog,
