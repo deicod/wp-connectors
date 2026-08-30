@@ -200,10 +200,16 @@ documented exception.
 
 - [x] **Task 1.7 — Implement response, streaming, and error mapping.** Normalize non-streaming and
   SSE responses into SDK result objects, including tool calls, finish reasons, usage when present,
-  split SSE frames, `[DONE]`, and malformed events. Map 401, 403, 429, transport errors, and 5xx
-  to stable typed `WP_Error` codes and safe messages; do not add custom retries in v1. Check this
+  split SSE frames, `[DONE]`, malformed events, and a final frame that ends without a trailing
+  blank line. Map 401, 403, 429, transport errors, and 5xx to safe messages from one shared
+  catalog, delivered on two surfaces: through the core prompt builder (core converts the
+  exception itself with its own fixed codes, passing the message through verbatim — no filter),
+  callers get core codes + the redacted zai message + the correct HTTP status — proven against
+  the genuine `WP_AI_Client_Prompt_Builder`; the stable typed `zai_*` `WP_Error` codes are the
+  plugin's direct model-use API (`generate_text()` / `ErrorMapper`) and cannot be delivered
+  through the core builder (core limitation). Do not add custom retries in v1. Check this
   task only after fixture tests cover success, partial streams, upstream error bodies containing
-  secrets, and every required status mapping.
+  secrets, every required status mapping, and the real core-builder dispatch path.
 
 - [x] **Task 1.8 — Add safe observability and admin links.** Add an option-gated debug logger for
   method, redacted URL, status, and duration only. Add plugin-row settings access and a settings

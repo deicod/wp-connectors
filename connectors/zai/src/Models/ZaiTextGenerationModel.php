@@ -9,8 +9,13 @@
  * - pre-transport rejection of option/model combinations the z.ai catalog
  *   does not advertise (Task 1.6): anything not in the advertised option set
  *   fails BEFORE any HTTP request, with a clear message, and
- * - a WP-facing generate_text() boundary that converts SDK exceptions into
- *   the typed, redacted zai_* WP_Error codes promised by SPEC §6.2.
+ * - SAFE exception messages at every boundary the core prompt builder can
+ *   reach: core dispatches to the FINAL generateTextResult() (this class's
+ *   generate_text() wrapper is never part of that flow) and converts the
+ *   caught exception to WP_Error with a FIXED code map, passing the message
+ *   through VERBATIM — no filter exists on that path — so every exception
+ *   this class throws is built from ErrorMapper's redacted, actionable
+ *   catalog, never from the upstream body.
  *
  * @since 0.1.0
  *
@@ -96,22 +101,23 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
-	 * WP-facing generation boundary: typed WP_Error instead of SDK exceptions.
+	 * WP-facing generation boundary for DIRECT model use: typed WP_Error.
 	 *
-	 * WordPress callers get the promised stable error codes (SPEC §6.2:
-	 * zai_unauthorized, zai_rate_limited, …) with safe, actionable messages.
-	 * The SDK's generateTextResult() is final and throws SDK exceptions,
-	 * which core would otherwise convert to generic codes — so this wrapper
-	 * is the integration point for the ErrorMapper at the generation
-	 * boundary. Direct SDK-style callers may keep using generateTextResult()
-	 * and catch SDK exceptions.
+	 * NOT part of the core prompt flow: wp_ai_client_prompt() dispatches to
+	 * the final generateTextResult() and converts exceptions itself (fixed
+	 * core codes, messages verbatim — no filter), so this wrapper is never
+	 * called there. It exists for code that holds the model directly
+	 * (ZaiProvider::model(), getProviderModel()) and wants the plugin's
+	 * typed, redacted zai_* codes (SPEC §6.2) instead of SDK exceptions:
+	 * through the core builder callers get core codes with the same safe
+	 * messages and correct HTTP statuses either way.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @param array $prompt Prompt messages (list of Message).
 	 * @return GenerativeAiResult|\WP_Error Result on success; typed, redacted WP_Error on any failure.
 	 */
-	public function generate_text( array $prompt ) { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- WP-flavored generation boundary.
+	public function generate_text( array $prompt ) { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- WP-flavored direct-use generation boundary; see class docblock.
 		try {
 			return $this->generateTextResult( $prompt );
 		} catch ( \Throwable $e ) {
@@ -139,9 +145,13 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 *
 	 * The SDK defaults embed the upstream error body in the exception message;
 	 * z.ai error bodies can echo request material (up to and including
-	 * credential fragments), so this override replaces the message with a
-	 * stable, status-specific one. The exception TYPES are the SDK's own, so
-	 * core's exception_to_wp_error() instanceof mapping keeps working.
+	 * credential fragments). This override builds the message from
+	 * ErrorMapper's shared catalog instead, because this exception travels
+	 * the real dispatch path: core's prompt builder converts it to WP_Error
+	 * passing the message through VERBATIM (no filter on that path), so the
+	 * redaction must already be complete here. The exception TYPES are the
+	 * SDK's own, so core's fixed instanceof mapping keeps producing the
+	 * right code and HTTP status.
 	 *
 	 * No retries in v1: a non-2xx response always throws exactly once.
 	 *
@@ -158,49 +168,17 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			return;
 		}
 
-		$status = $response->getStatusCode();
+		$status = absint( $response->getStatusCode() );
 
 		if ( $status >= 500 ) {
-			throw new ServerException(
-				sprintf(
-					/* translators: %d: HTTP status code. */
-					esc_html__( 'The z.ai API reported a server error (%d). This is usually temporary; try again shortly.', 'zai' ),
-					absint( $status )
-				),
-				absint( $status )
-			);
+			throw new ServerException( esc_html( ErrorMapper::safe_http_message( $status ) ), absint( $status ) );
 		}
 
 		if ( $status >= 400 ) {
-			switch ( $status ) {
-				case 401:
-					$message = __( 'The z.ai API rejected the API key (401). Check the key on the Connectors screen — international and China keys are not interchangeable.', 'zai' );
-					break;
-				case 403:
-					$message = __( 'The z.ai API refused the request (403). The key may not have access to this model or plan.', 'zai' );
-					break;
-				case 429:
-					$message = __( 'The z.ai API is rate limiting this key (429). Wait a moment and try again.', 'zai' );
-					break;
-				default:
-					$message = sprintf(
-						/* translators: %d: HTTP status code. */
-						esc_html__( 'The z.ai API rejected the request (%d). Check the prompt and model selection.', 'zai' ),
-						absint( $status )
-					);
-			}
-
-			throw new ClientException( esc_html( $message ), absint( $status ) );
+			throw new ClientException( esc_html( ErrorMapper::safe_http_message( $status ) ), absint( $status ) );
 		}
 
-		throw new RedirectException(
-			sprintf(
-				/* translators: %d: HTTP status code. */
-				esc_html__( 'The z.ai API returned an unexpected redirect (%d). No request was retried.', 'zai' ),
-				absint( $status )
-			),
-			absint( $status )
-		);
+		throw new RedirectException( esc_html( ErrorMapper::safe_http_message( $status ) ), absint( $status ) );
 	}
 
 	/**

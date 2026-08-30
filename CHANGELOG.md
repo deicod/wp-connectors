@@ -6,6 +6,54 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M1 — Codex PR review, round 2)
+
+- Region switch now deletes the STORED key, not just the validated-state
+  verdict: with an inconclusive probe (the China /models route 404s) the
+  connector previously stayed "connected" and would send the old
+  international key against the China endpoint indefinitely. After a
+  switch no key is stored, so the connector stays not-connected until a
+  key for the new region is supplied (plan changes never touch the key —
+  coding/general share one account). Pending-accept semantics remain only
+  for core's key-save validation path (record 0004 region-switch note).
+- Generation through the real core prompt path works again: the model
+  catalog now advertises `outputModalities` (text). The SDK's prompt
+  builders — including core's `wp_ai_client_prompt()` — require that
+  option during model resolution, so every builder-driven `generate_text()`
+  previously matched no zai model at all; covered by a test that drives the
+  genuine `WP_AI_Client_Prompt_Builder` end to end.
+- Error mapping is honest about the two surfaces it lives on (SPEC §6.2,
+  plan Task 1.7, readme updated): through the core builder, callers get
+  core's fixed codes (`prompt_client_error`, …) with the message passed
+  through VERBATIM — the plugin now builds every model exception from the
+  one shared `ErrorMapper::safe_http_message()` catalog, which is what
+  keeps that path redacted; the typed `zai_*` codes remain the direct
+  model-use API (`generate_text()`/`ErrorMapper`) and cannot be delivered
+  through the core builder (WordPress core limitation, no filter exists).
+- SSE streams ending directly after the last `data:` line (no trailing
+  blank line) no longer lose that frame: `finish()` flushes the remaining
+  buffered frame — single-event streams previously failed as
+  `zai_invalid_response`, multi-event streams lost their final content.
+- Network uninstall removes plugin-owned data from EVERY site: options and
+  transients are per-site, so a network-activated uninstall now iterates
+  the sites (paged batches of 100, blog context restored) instead of
+  cleaning only the current site.
+
+### Fixed (tooling — Codex PR review, round 2)
+
+- `bin/inspect-artifact.php`: a zip whose sole top-level entry is a FILE
+  (e.g. `plugin.php`) is now rejected as a normal violation instead of
+  crashing the directory iterator, and the temp extraction tree is cleaned
+  up on every path (try/finally).
+- `bin/lib/plugin-tools.php`: exactly one main plugin file is now enforced
+  — archives with two root-level `Plugin Name` headers (something WordPress
+  would expose as two plugins) are rejected by the conventions check, the
+  builder, and the inspector, which previously all accepted the first match
+  and ignored the second.
+- `bin/build.php`: the version-constant check is part of the build refusal
+  gate — a bumped header with a stale `{SLUG}_VERSION` constant can no
+  longer be packaged as a mislabeled zip.
+
 ### Fixed (zai / M1 — independent multi-agent review)
 
 - Directory caching hardened: the SDK-level cache key (`getBaseCacheKey()`)

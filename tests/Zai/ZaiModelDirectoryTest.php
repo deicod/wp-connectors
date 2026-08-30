@@ -400,7 +400,18 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
                 $metadata = ZaiModelCatalog::metadata_for($modelId);
 
                 foreach ($metadata->getSupportedOptions() as $option) {
-                    $this->assertNotSame('outputModalities', (string) $option->getName(), "{$modelId} must not advertise output modalities.");
+                    if ('outputModalities' === (string) $option->getName()) {
+                        // outputModalities MUST be advertised (SDK model
+                        // resolution requires it, incl. core's prompt path)
+                        // — but text only: no image output is claimed.
+                        foreach ($option->getSupportedValues() as $modalitySet) {
+                            $this->assertSame(
+                                array('text'),
+                                array_map('strval', $modalitySet),
+                                "{$modelId} must not claim image output without evidence."
+                            );
+                        }
+                    }
                     if ('inputModalities' === (string) $option->getName()) {
                         foreach ($option->getSupportedValues() as $modalitySet) {
                             $this->assertSame(

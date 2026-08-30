@@ -133,7 +133,9 @@ Bearer = auth reached, not 404); `/v1/models` under `api.z.ai/api/anthropic` and
     Static fallback is the safe default; verify during M1 implementation.
   - Capabilities v1: `textGeneration`, `chatHistory`. Options: systemInstruction,
     temperature, maxTokens, topP, stopSequences, outputMimeType (json), outputSchema,
-    functionDeclarations (tools), inputModalities (text; image if model supports).
+    functionDeclarations (tools), inputModalities (text; image if model supports),
+    outputModalities (text — required: SDK model resolution, including core's
+    `wp_ai_client_prompt()`, matches no model without it).
     Image generation (CogView) / embeddings (embedding-3) via general API = later milestone,
     not in v1.
 
@@ -296,8 +298,18 @@ Rules:
 ### 6.2 Observability
 - Optional debug log (option-gated) of request method/URL/status/duration — never payloads
   with auth headers.
-- Typed WP_Error messages mapping provider errors (401 → re-auth hint, 403 xAI → tier hint,
-  429 → rate limit, 5xx → upstream).
+- Safe, actionable error messages mapping provider errors (401 → re-auth hint, 403 →
+  tier/access hint, 429 → rate limit, 5xx → upstream), built from ONE plugin-owned catalog
+  so every surface is redacted. Delivery has two surfaces (WordPress core converts
+  prompt-builder exceptions itself, with its own fixed codes and the message passed
+  through verbatim — no filter exists on that path):
+  - Through `wp_ai_client_prompt()->...->generate_text()` callers receive core's codes
+    (`prompt_client_error`, `prompt_upstream_server_error`, …) carrying the zai-safe
+    message and the correct HTTP status.
+  - Direct model use (`ZaiProvider::model()->generate_text()`, `ErrorMapper`) additionally
+    delivers the plugin's typed stable codes (`zai_unauthorized`, `zai_rate_limited`, …).
+    Typed `zai_*` codes cannot be delivered through the core builder — a WordPress core
+    limitation, not a plugin choice.
 
 ### 6.3 Compatibility
 - WordPress 7.0+ (6.9 with standalone SDK plugin), PHP 7.4–8.4, no cURL ext needed.

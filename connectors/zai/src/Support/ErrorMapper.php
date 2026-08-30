@@ -11,6 +11,18 @@
  * ResponseExceptions this plugin produces, and NetworkException transport
  * messages) do include the detail.
  *
+ * Two error surfaces share the message catalog in this class:
+ *
+ * - DIRECT model use (ZaiTextGenerationModel::generate_text()) returns the
+ *   typed zai_* WP_Error codes below.
+ * - The core prompt builder (wp_ai_client_prompt()->...->generate_text())
+ *   converts exceptions itself with a fixed code map (prompt_client_error,
+ *   prompt_upstream_server_error, …) and NO filter, passing the exception
+ *   message through VERBATIM — so the model builds its exceptions from the
+ *   same safe_http_message() catalog, which is what keeps that path redacted
+ *   and actionable. Typed zai_* codes cannot be delivered through the core
+ *   builder; that is a WordPress core limitation.
+ *
  * @since 0.1.0
  *
  * @package wp-connectors
@@ -136,6 +148,52 @@ final class ErrorMapper {
 	const CODE_ERROR = 'zai_error';
 
 	/**
+	 * Builds the safe, actionable message for a non-2xx HTTP status.
+	 *
+	 * The ONE catalog shared by both error surfaces: the model's non-final
+	 * response pipeline (whose exception messages core later converts to
+	 * WP_Error VERBATIM — no filter exists on that path) and this mapper's
+	 * typed WP_Error output. Never includes upstream body content.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param int $status HTTP status code (any non-2xx).
+	 * @return string Translated, redacted, actionable message.
+	 */
+	public static function safe_http_message( int $status ): string {
+		if ( $status >= 500 ) {
+			return sprintf(
+				/* translators: %d: HTTP status code. */
+				__( 'The z.ai API reported a server error (%d). This is usually temporary; try again shortly.', 'zai' ),
+				$status
+			);
+		}
+
+		if ( $status >= 400 ) {
+			switch ( $status ) {
+				case 401:
+					return __( 'The z.ai API rejected the API key (401). Check the key on the Connectors screen — international and China keys are not interchangeable.', 'zai' );
+				case 403:
+					return __( 'The z.ai API refused the request (403). The key may not have access to this model or plan.', 'zai' );
+				case 429:
+					return __( 'The z.ai API is rate limiting this key (429). Wait a moment and try again.', 'zai' );
+				default:
+					return sprintf(
+						/* translators: %d: HTTP status code. */
+						__( 'The z.ai API rejected the request (%d). Check the prompt and model selection.', 'zai' ),
+						$status
+					);
+			}
+		}
+
+		return sprintf(
+			/* translators: %d: HTTP status code. */
+			__( 'The z.ai API returned an unexpected redirect (%d). No request was retried.', 'zai' ),
+			$status
+		);
+	}
+
+	/**
 	 * Maps a caught exception to a typed WP_Error with a safe message.
 	 *
 	 * @since 0.1.0
@@ -151,11 +209,7 @@ final class ErrorMapper {
 		if ( $exception instanceof ServerException ) {
 			return new \WP_Error(
 				self::CODE_UPSTREAM_ERROR,
-				sprintf(
-					/* translators: %d: HTTP status code. */
-					__( 'The z.ai API reported a server error (%d). This is usually temporary; try again shortly.', 'zai' ),
-					self::status_of( $exception )
-				),
+				self::safe_http_message( self::status_of( $exception ) ),
 				array( 'status' => self::status_of( $exception ) )
 			);
 		}
@@ -163,11 +217,7 @@ final class ErrorMapper {
 		if ( $exception instanceof RedirectException ) {
 			return new \WP_Error(
 				self::CODE_REDIRECT_ERROR,
-				sprintf(
-					/* translators: %d: HTTP status code. */
-					__( 'The z.ai API returned an unexpected redirect (%d). No request was retried.', 'zai' ),
-					self::status_of( $exception )
-				),
+				self::safe_http_message( self::status_of( $exception ) ),
 				array( 'status' => self::status_of( $exception ) )
 			);
 		}
@@ -229,36 +279,20 @@ final class ErrorMapper {
 	private static function client_error( ClientException $exception ): \WP_Error {
 		$status = self::status_of( $exception );
 
-		switch ( $status ) {
-			case 401:
-				return new \WP_Error(
-					self::CODE_UNAUTHORIZED,
-					__( 'The z.ai API rejected the API key (401). Check the key on the Connectors screen — international and China keys are not interchangeable.', 'zai' ),
-					array( 'status' => 401 )
-				);
-			case 403:
-				return new \WP_Error(
-					self::CODE_FORBIDDEN,
-					__( 'The z.ai API refused the request (403). The key may not have access to this model or plan.', 'zai' ),
-					array( 'status' => 403 )
-				);
-			case 429:
-				return new \WP_Error(
-					self::CODE_RATE_LIMITED,
-					__( 'The z.ai API is rate limiting this key (429). Wait a moment and try again.', 'zai' ),
-					array( 'status' => 429 )
-				);
-			default:
-				return new \WP_Error(
-					self::CODE_CLIENT_ERROR,
-					sprintf(
-						/* translators: %d: HTTP status code. */
-						__( 'The z.ai API rejected the request (%d). Check the prompt and model selection.', 'zai' ),
-						$status
-					),
-					array( 'status' => $status )
-				);
+		$code = self::CODE_CLIENT_ERROR;
+		if ( 401 === $status ) {
+			$code = self::CODE_UNAUTHORIZED;
+		} elseif ( 403 === $status ) {
+			$code = self::CODE_FORBIDDEN;
+		} elseif ( 429 === $status ) {
+			$code = self::CODE_RATE_LIMITED;
 		}
+
+		return new \WP_Error(
+			$code,
+			self::safe_http_message( $status ),
+			array( 'status' => $status )
+		);
 	}
 
 	/**

@@ -89,6 +89,10 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
         $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-test');
         $this->assertSame(array(), $violations);
+        $this->assertDirectoryDoesNotExist(
+            self::distDir() . '/.inspect-test',
+            'The inspector must remove its temp extraction tree via try/finally (accepting path).'
+        );
     }
 
     public function testExtractedArtifactIsSelfContainedAndSyntaxClean()
@@ -138,6 +142,12 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-bad');
         $this->assertNotSame(array(), $violations);
         $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
+        // This path extracts a real tree, so it pins the try/finally cleanup:
+        // a deleted finally block would leak .inspect-bad and fail here.
+        $this->assertDirectoryDoesNotExist(
+            self::distDir() . '/.inspect-bad',
+            'The inspector must remove its temp extraction tree via try/finally (rejecting path).'
+        );
     }
 
     public function testInspectorRejectsMissingHeader()
@@ -161,6 +171,129 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $violations = wp_connectors_inspect_artifact($extra, self::distDir() . '/.inspect-bad');
         $this->assertNotSame(array(), $violations);
         $this->assertStringContainsString('development entry', implode("\n", $violations));
+    }
+
+    /*
+     * Root-file archives (finding: the sole top-level entry is a FILE).
+     */
+
+    public function testInspectorRejectsARootFileArchiveWithoutTraversingIt()
+    {
+        // A zip whose single top-level entry is a regular file (plugin.php)
+        // used to make the directory iterator throw and leak the temp tree;
+        // it must be a normal violation with the work dir cleaned up.
+        $zipPath = self::distDir() . '/connectors-rootfile-demo-1.0.0.zip';
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $main = "<?php\n/**\n * Plugin Name:       rootfile-demo\n * Version:           1.0.0\n * Requires at least: 6.9\n * Requires PHP:      7.4\n * License:           GPL-2.0-or-later\n * Text Domain:       rootfile-demo\n * Author:            x\n */\ndefine( 'ROOTFILE_DEMO_VERSION', '1.0.0' );\n";
+        $zip->addFromString('plugin.php', $main);
+        $zip->close();
+
+        $workDir = self::distDir() . '/.inspect-rootfile';
+        $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
+
+        $this->assertNotSame(array(), $violations, 'A root-file archive must be rejected.');
+        $this->assertStringContainsString('sole entry "plugin.php" is a file', implode("\n", $violations));
+        $this->assertDirectoryDoesNotExist($workDir, 'The temp extraction tree must be cleaned up on every path.');
+
+        unlink($zipPath);
+    }
+
+    /*
+     * Exactly one main plugin file (finding: two Plugin Name headers accepted).
+     */
+
+    public function testMultipleMainPluginFilesAreRejectedByTheSharedRule()
+    {
+        $tempPlugin = self::distDir() . '/.twomain-test/twomain-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        $head = "Plugin Name:       twomain-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      7.4\nLicense:           GPL-2.0-or-later\nText Domain:       twomain-demo\nAuthor:            x\n";
+        file_put_contents($tempPlugin . '/twomain-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'TWOMAIN_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n");
+        file_put_contents($tempPlugin . '/second-entry.php', "<?php\n/**\n * Plugin Name:       twomain-demo again\n */\necho 'also a plugin';\n");
+        file_put_contents($tempPlugin . '/not-a-plugin.php', "<?php\necho 'no header here';\n");
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\TwomainDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+
+        // The helper sees BOTH header-bearing files, deterministically ordered.
+        $mainFiles = wp_connectors_find_main_plugin_files($tempPlugin);
+        $this->assertCount(2, $mainFiles);
+        $this->assertSame('second-entry.php', basename($mainFiles[0]));
+        $this->assertSame('twomain-demo.php', basename($mainFiles[1]));
+
+        $violations = wp_connectors_main_file_violations($tempPlugin, $mainFiles);
+        $this->assertNotSame(array(), $violations, 'Two Plugin Name headers must be a violation.');
+        $this->assertStringContainsString('multiple main plugin files', $violations[0]);
+        $this->assertStringContainsString('second-entry.php', $violations[0]);
+        $this->assertStringContainsString('twomain-demo.php', $violations[0]);
+
+        // The builder refuses to package it.
+        try {
+            WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+            $this->fail('The build must refuse a plugin with two main files.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('multiple main plugin files', $e->getMessage());
+        }
+
+        // And the inspector rejects the archive shape it would produce.
+        $zipPath = self::distDir() . '/connectors-twomain-demo-1.0.0.zip';
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        foreach (array('twomain-demo.php', 'second-entry.php', 'src/autoload.php') as $relative) {
+            $zip->addFile($tempPlugin . '/' . $relative, 'twomain-demo/' . $relative);
+        }
+        $zip->close();
+
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-twomain');
+        $this->assertNotSame(array(), $violations);
+        $this->assertStringContainsString('multiple main plugin files', implode("\n", $violations));
+
+        unlink($zipPath);
+        @unlink($zipPath . '.sha256');
+        @unlink(self::distDir() . '/checksums.txt');
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
+    /*
+     * Version-constant gate (finding: stale {SLUG}_VERSION built mislabeled zips).
+     */
+
+    public function testBuildRefusesAStaleVersionConstant()
+    {
+        // Copy the fixture, bump the header Version without touching the
+        // EXAMPLE_CONNECTOR_VERSION constant: the build must refuse.
+        $tempPlugin = self::distDir() . '/.version-test/example-connector';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir(dirname($tempPlugin), 0755, true);
+        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
+        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
+            $target = $tempPlugin . '/' . $relative;
+            if ($item->isDir()) {
+                mkdir($target, 0755, true);
+            } else {
+                copy($item->getPathname(), $target);
+            }
+        }
+        $mainPath = $tempPlugin . '/example-connector.php';
+        $main = (string) file_get_contents($mainPath);
+        $main = str_replace('Version:           0.1.0', 'Version:           0.2.0', $main);
+        file_put_contents($mainPath, $main);
+
+        try {
+            WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+            $this->fail('The build must refuse a header/constant version mismatch.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('does not match header Version', $e->getMessage());
+            $this->assertStringContainsString('EXAMPLE_CONNECTOR_VERSION', $e->getMessage());
+        }
+
+        WpHarness::rrmdir(dirname($tempPlugin));
     }
 
     public function testSharedNamespaceRewrite()

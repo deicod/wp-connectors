@@ -25,22 +25,80 @@ function wp_connectors_strip_comments($source)
 }
 
 /**
- * Finds the main plugin file (the root-level file with a Plugin Name header).
+ * Finds ALL root-level files carrying a Plugin Name header (sorted by name).
+ *
+ * Exactly one of these may exist (docs/CONVENTIONS.md, rule 1): more than
+ * one header-bearing root file is something WordPress could expose as two
+ * plugins. Callers that need to enforce that use
+ * wp_connectors_main_file_violations() with this list.
+ *
+ * @param string $pluginDir Absolute plugin directory.
+ * @return list<string> Absolute paths (possibly empty).
+ */
+function wp_connectors_find_main_plugin_files($pluginDir)
+{
+    $mainFiles = array();
+    foreach (glob(rtrim($pluginDir, '/') . '/*.php') ?: array() as $candidate) {
+        $head = (string) file_get_contents($candidate, false, null, 0, 8192);
+        if (strpos($head, 'Plugin Name:') !== false) {
+            $mainFiles[] = $candidate;
+        }
+    }
+    sort($mainFiles, SORT_STRING);
+
+    return $mainFiles;
+}
+
+/**
+ * Finds the main plugin file (the first header-bearing root file, by name).
+ *
+ * Deterministic (alphabetically first of the scan); when more than one
+ * candidate exists the caller must ALSO surface the
+ * wp_connectors_main_file_violations() violation instead of silently
+ * accepting the first match.
  *
  * @param string $pluginDir Absolute plugin directory.
  * @return string|null Absolute path, or null when absent.
  */
 function wp_connectors_find_main_plugin_file($pluginDir)
 {
-    $mainFile = null;
-    foreach (glob(rtrim($pluginDir, '/') . '/*.php') ?: array() as $candidate) {
-        $head = (string) file_get_contents($candidate, false, null, 0, 8192);
-        if (strpos($head, 'Plugin Name:') !== false) {
-            return $candidate;
-        }
+    $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
+
+    return $mainFiles === array() ? null : $mainFiles[0];
+}
+
+/**
+ * Enforces the exactly-one-main-file rule (docs/CONVENTIONS.md, rule 1).
+ *
+ * Shared by the conventions check, the builder, and the artifact inspector:
+ * an archive with two header-bearing root files would be accepted by
+ * WordPress as two plugins, so it must be rejected everywhere.
+ *
+ * @param string      $pluginDir Absolute plugin directory.
+ * @param list<string> $mainFiles Pre-scanned candidates from
+ *                                wp_connectors_find_main_plugin_files()
+ *                                (rescanned when empty).
+ * @return list<string> Violation messages (empty when zero or one candidate).
+ */
+function wp_connectors_main_file_violations($pluginDir, array $mainFiles = array())
+{
+    if ($mainFiles === array()) {
+        $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
+    }
+    if (count($mainFiles) <= 1) {
+        return array();
     }
 
-    return null;
+    $names = array();
+    foreach ($mainFiles as $file) {
+        $names[] = basename($file);
+    }
+
+    return array( sprintf(
+        '%s: multiple main plugin files with Plugin Name headers (%s); exactly one is allowed.',
+        basename(rtrim($pluginDir, '/')),
+        implode(', ', $names)
+    ) );
 }
 
 /**

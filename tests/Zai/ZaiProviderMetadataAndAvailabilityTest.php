@@ -296,6 +296,51 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         );
     }
 
+    public function testRegionSwitchClearsTheStoredKeySoAnInconclusiveProbeCannotRideIt()
+    {
+        // With the plugin's hooks active (the settings page save path), a
+        // region switch must clear the STORED key too: clearing only the
+        // verdict is not enough, because the cn /models probe 404s
+        // (inconclusive → configured-pending) and the connector would send
+        // the OLD international key against the China endpoint indefinitely.
+        $intlKey = FakeSecrets::apiKey();
+        update_option(ZaiProviderAvailability::KEY_OPTION, $intlKey);
+        $this->bootProvider();
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+        $this->assertTrue($this->availability($intlKey)->isConfigured());
+
+        // Switch intl → cn through the real option write (fires the hook).
+        update_option(PlanRegionSettings::OPTION_REGION, 'cn');
+
+        $this->assertFalse(
+            get_option(ZaiProviderAvailability::KEY_OPTION, false),
+            'The region switch must delete the stored key (separate accounts, SPEC §3.3).'
+        );
+        $this->assertFalse(
+            (new ZaiProviderAvailability())->isConfigured(),
+            'No key after the switch means not connected — no probe may ride the old key.'
+        );
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'The post-switch check must not send the old key anywhere.');
+
+        // The admin supplies a key for the NEW region: core's key-save
+        // validation wires a candidate (runtime source) and the cn /models
+        // 404 stays acceptable (pending) — the R1 semantics, key-save path
+        // only.
+        $cnKey = FakeSecrets::apiKey();
+        $candidate = $this->availability($cnKey);
+        $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+        $this->assertTrue(
+            $candidate->isConfigured(),
+            'Saving a NEW key for the new region must be accepted despite the unprobed cn /models route.'
+        );
+        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 404 must not persist a verdict.');
+
+        // A later definitive answer about the cn key is honored.
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad cn key'));
+        $this->assertFalse($candidate->isConfigured());
+    }
+
     public function testRateLimitResponseDoesNotInvalidateAValidKey()
     {
         // z.ai returns 429 for plan mismatches on an otherwise VALID key

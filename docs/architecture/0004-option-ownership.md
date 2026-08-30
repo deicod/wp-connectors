@@ -24,7 +24,9 @@ Rules:
 1. **Connector plugins never write core-owned options.** Core owns the write path
    (Settings API registration at init 20, REST masking/validation). Reading them via
    `get_option()` for request building is fine; env/constant sources take precedence
-   over the DB value, matching core's own resolution order (record 0001).
+   over the DB value, matching core's own resolution order (record 0001). The ONE
+   sanctioned exception: a z.ai region switch DELETES the stored key (see the
+   region-switch implication below) — deleting, never creating or updating.
 2. **Per-site scope, including multisite** (`get_option`/`update_option` are
    site-scoped). Network activation still yields per-site settings and per-site OAuth
    grants; salts are shared across sites, which is why the M3 encrypted envelope must
@@ -48,8 +50,14 @@ documented default (coding-plan/international for z.ai) rather than failing requ
 
 ## z.ai region-switch implication (SPEC §3.3)
 
-`intl` and `cn` are separate accounts with separate keys. A region switch must
-invalidate the provider's effective credential state (clear the stored key or gate
-requests until a new key is supplied) and invalidate the discovery cache — the cache
+`intl` and `cn` are separate accounts with separate keys. A region switch deletes the
+stored key (the rule-1 exception above) and invalidates the plugin-owned
+credential-derived state (validated-key verdict) and the discovery caches — the cache
 key already includes region, so a warm cache can never serve the other region's
-catalog. Implemented and tested in Tasks 1.2/1.5.
+catalog. Clearing the key itself is required, not just the verdict: the China
+`/models` probe route is unprobed and 404s (inconclusive → configured-pending), so a
+cleared verdict alone would leave the connector "connected" and send the OLD region's
+key against the NEW endpoint indefinitely. After a switch no key is stored — the
+connector stays not-connected until an admin supplies a key for the new region;
+core's key-save validation then accepts a new key despite the inconclusive probe
+(pending). Implemented and tested in Tasks 1.2/1.4/1.5.

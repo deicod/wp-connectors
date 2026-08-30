@@ -5,7 +5,10 @@
  *   php bin/inspect-artifact.php dist/connectors-example-connector-0.1.0.zip
  *
  * Rejects (non-zero exit):
- *   - zips without exactly one top-level plugin directory,
+ *   - zips without exactly one top-level plugin directory (including zips
+ *     whose sole top-level entry is a FILE — reported as a violation, never
+ *     a crash, with the temp extraction tree cleaned up on every path),
+ *   - more than one main plugin file with a Plugin Name header,
  *   - missing/invalid plugin headers, version-constant mismatch, wrong text
  *     domain (same rules as bin/check-conventions.php),
  *   - repo-relative includes or shared/ references (self-containment),
@@ -50,10 +53,18 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     );
 
     $topDirs = array();
+    $sawDirectoryEntry = false;
     for ($i = 0; $i < $zip->numFiles; ++$i) {
         $name = (string) $zip->getNameIndex($i);
         $parts = explode('/', $name);
         $topDirs[ $parts[0] ] = true;
+        // An entry with a second path segment proves the top-level name is
+        // (also) a directory; a zip of only "file.php"-style entries has a
+        // FILE at the top level, which directory-based checks below cannot
+        // traverse (RecursiveDirectoryIterator would throw).
+        if (count($parts) > 1) {
+            $sawDirectoryEntry = true;
+        }
         // Segment check (whole path components) and exact file-name check.
         $isForbidden = false;
         foreach ($parts as $part) {
@@ -86,55 +97,75 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 
         return $violations;
     }
+    if (! $sawDirectoryEntry) {
+        // Reject root-file archives BEFORE any directory traversal: the sole
+        // top-level entry is a file (e.g. plugin.php), not a plugin folder.
+        $violations[] = sprintf(
+            'inspect: zip must contain exactly one top-level plugin directory; the sole entry "%s" is a file.',
+            $slug
+        );
 
-    // Extract independently and validate the real tree.
+        return $violations;
+    }
+
+    // Extract independently and validate the real tree. Everything below
+    // runs inside try/finally so the temp tree is removed on EVERY path.
     if (is_dir($workDir)) {
         wp_connectors_inspect_rrmdir($workDir);
     }
     mkdir($workDir, 0755, true);
-    $zip = new ZipArchive();
-    $zip->open($zipPath);
-    $zip->extractTo($workDir);
-    $zip->close();
+    try {
+        $zip = new ZipArchive();
+        $zip->open($zipPath);
+        $zip->extractTo($workDir);
+        $zip->close();
 
-    $pluginDir = $workDir . '/' . $slug;
-    $mainFile = wp_connectors_find_main_plugin_file($pluginDir);
-    if (null === $mainFile) {
-        $violations[] = sprintf('inspect: %s: no main plugin file with a Plugin Name header.', $slug);
-    } else {
-        $headers = wp_connectors_parse_plugin_headers($mainFile);
-        $violations = array_merge($violations, wp_connectors_header_violations($headers, $slug));
-        $violations = array_merge($violations, wp_connectors_version_constant_violations($pluginDir, $headers));
-        $violations = array_merge($violations, wp_connectors_autoloader_violations($pluginDir));
-    }
-    $violations = array_merge($violations, wp_connectors_self_containment_violations($pluginDir));
+        $pluginDir = $workDir . '/' . $slug;
+        if (! is_dir($pluginDir)) {
+            $violations[] = sprintf('inspect: the single top-level entry "%s" is not a plugin directory.', $slug);
 
-    // Every PHP file must pass a syntax check after independent extraction.
-    $php = escapeshellarg(PHP_BINARY);
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($pluginDir, FilesystemIterator::SKIP_DOTS)
-    );
-    foreach ($iterator as $file) {
-        /** @var SplFileInfo $file */
-        if ($file->getExtension() !== 'php') {
-            continue;
+            return $violations;
         }
-        $output = array();
-        $exit = 0;
-        exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($file->getPathname())), $output, $exit);
-        if ($exit !== 0) {
-            $violations[] = sprintf('inspect: %s failed php -l: %s', str_replace($workDir . '/', '', $file->getPathname()), implode(' ', $output));
+
+        $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
+        if ($mainFiles === array()) {
+            $violations[] = sprintf('inspect: %s: no main plugin file with a Plugin Name header.', $slug);
+        } else {
+            $violations = array_merge($violations, wp_connectors_main_file_violations($pluginDir, $mainFiles));
+            $headers = wp_connectors_parse_plugin_headers($mainFiles[0]);
+            $violations = array_merge($violations, wp_connectors_header_violations($headers, $slug));
+            $violations = array_merge($violations, wp_connectors_version_constant_violations($pluginDir, $headers));
+            $violations = array_merge($violations, wp_connectors_autoloader_violations($pluginDir));
         }
+        $violations = array_merge($violations, wp_connectors_self_containment_violations($pluginDir));
+
+        // Every PHP file must pass a syntax check after independent extraction.
+        $php = escapeshellarg(PHP_BINARY);
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($pluginDir, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            /** @var SplFileInfo $file */
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+            $output = array();
+            $exit = 0;
+            exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($file->getPathname())), $output, $exit);
+            if ($exit !== 0) {
+                $violations[] = sprintf('inspect: %s failed php -l: %s', str_replace($workDir . '/', '', $file->getPathname()), implode(' ', $output));
+            }
+        }
+
+        // No development credentials inside artifacts.
+        foreach (wp_connectors_scan_paths(array( $pluginDir )) as $secretFinding) {
+            $violations[] = 'inspect: ' . str_replace($workDir . '/', '', $secretFinding);
+        }
+
+        return $violations;
+    } finally {
+        wp_connectors_inspect_rrmdir($workDir);
     }
-
-    // No development credentials inside artifacts.
-    foreach (wp_connectors_scan_paths(array( $pluginDir )) as $secretFinding) {
-        $violations[] = 'inspect: ' . str_replace($workDir . '/', '', $secretFinding);
-    }
-
-    wp_connectors_inspect_rrmdir($workDir);
-
-    return $violations;
 }
 
 /**

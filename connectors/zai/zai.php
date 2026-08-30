@@ -76,7 +76,7 @@ function boot(): void {
 	add_action( 'admin_menu', array( PlanRegionSettings::class, 'register_page' ) );
 	add_action( 'admin_menu', array( DebugSettings::class, 'register_fields' ), 20 );
 	add_action( 'update_option_' . PlanRegionSettings::OPTION_PLAN, array( PlanRegionSettings::class, 'handle_settings_change' ), 10, 2 );
-	add_action( 'update_option_' . PlanRegionSettings::OPTION_REGION, array( PlanRegionSettings::class, 'handle_settings_change' ), 10, 2 );
+	add_action( 'update_option_' . PlanRegionSettings::OPTION_REGION, array( PlanRegionSettings::class, 'handle_region_change' ), 10, 2 );
 	add_action( 'update_option_' . DebugLogger::OPTION_ENABLED, array( DebugSettings::class, 'handle_enabled_change' ), 10, 2 );
 
 	// Plugin-row Settings link (Task 1.8).

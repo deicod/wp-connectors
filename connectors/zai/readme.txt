@@ -43,9 +43,13 @@ encryption at rest, a separate security plugin can encrypt core options.
 Alternatively, define the constant or environment variable `ZAI_API_KEY`
 before WordPress loads and no key is stored in the database at all.
 
-The plugin itself never writes the key option. Its own options store only a
-one-way hash used to remember whether the current key was validated (never
-the key), your plan/region selection, and — if enabled — the debug log.
+The plugin itself never writes the key option. The single exception: switching
+the account region deletes the stored key — the international (z.ai) and China
+(bigmodel.cn) accounts are separate, so an international key must never be sent
+to the China endpoint and vice versa; save a key for the new region afterwards.
+Its own options store only a one-way hash used to remember whether the current
+key was validated (never the key), your plan/region selection, and — if
+enabled — the debug log.
 
 = Model discovery =
 
@@ -63,7 +67,8 @@ yet.
 Settings and the key are per-site (`get_option` / `update_option` scope).
 On a network-activated install every site configures and stores its own key,
 plan, and region. Network activation does not share credentials between
-sites.
+sites. Uninstalling a network-activated plugin removes the plugin-owned
+options and caches from every site on the network.
 
 == Installation ==
 
@@ -103,8 +108,20 @@ as disabled clears the log.
 
 Deactivation keeps your settings. Uninstalling removes the plugin-owned
 options (plan, region, debug switch and log, key-validation state) and the
-model-discovery cache. The API key option is owned by WordPress core and is
-left in place; delete it from the Connectors screen if desired.
+model-discovery cache — on multisite, from every site on the network. The
+API key option is owned by WordPress core and is left in place; delete it
+from the Connectors screen if desired.
+
+= What do error messages and codes look like? =
+
+Through WordPress's own prompt API (`wp_ai_client_prompt()`), errors come
+back as `WP_Error` values with WordPress core's codes (for example
+`prompt_client_error`) — the message is the plugin's redacted, actionable
+text and the HTTP status is preserved. Code that calls the model directly
+(`ZaiProvider::model()`) can use `generate_text()` / `ErrorMapper` for the
+plugin's own stable codes (`zai_unauthorized`, `zai_rate_limited`,
+`zai_upstream_error`, ...). Upstream response bodies never appear in any
+message.
 
 == Changelog ==
 

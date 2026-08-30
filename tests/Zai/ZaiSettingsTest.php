@@ -166,15 +166,21 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertArrayNotHasKey('zai_connector_unauthorized', array_column(WpHarness::$settings_errors, 'code'));
     }
 
-    public function testPlanSwitchInvalidatesPersistedKeyStateLikeRegionSwitch()
+    public function testPlanSwitchInvalidatesStateButKeepsTheStoredKey()
     {
         $this->bootPlugin();
 
         update_option('zai_connector_zai_key_state', array('binding' => 'stale'));
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'plan-shared-key');
 
         do_action('update_option_' . PlanRegionSettings::OPTION_PLAN, 'coding', 'general');
 
         $this->assertFalse(get_option('zai_connector_zai_key_state', false), 'Validated key state must be cleared on a plan switch too.');
+        $this->assertSame(
+            'plan-shared-key',
+            get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION),
+            'A plan change stays on the same account: the stored key must be kept.'
+        );
     }
 
     public function testAuthorizedUserWithValidNoncePassesTheGuard()
@@ -207,29 +213,43 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
      * Region-switch key invalidation.
      */
 
-    public function testRegionSwitchInvalidatesPersistedKeyStateAndCaches()
+    public function testRegionSwitchClearsStoredKeyStateCachesAndTheStoredKey()
     {
         $this->bootPlugin();
 
-        // Plugin-owned credential-derived state (Task 1.4) and a discovery
-        // cache entry (Task 1.5) for the OLD region must not survive a switch.
+        // Plugin-owned credential-derived state (Task 1.4), a discovery
+        // cache entry (Task 1.5), and the STORED key itself: the regions use
+        // separate accounts (SPEC §3.3), so none of the old region's
+        // credential material may survive a switch.
         update_option('zai_connector_zai_key_state', array('binding' => 'stale'));
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'intl-key');
         update_option(PlanRegionSettings::OPTION_REGION, 'intl');
         set_transient('zai_connector_zai_models_' . md5('zai|coding|intl'), array('glm-5.3'), 3600);
 
         do_action('update_option_' . PlanRegionSettings::OPTION_REGION, 'intl', 'cn');
 
         $this->assertFalse(get_option('zai_connector_zai_key_state', false), 'Validated key state must be cleared.');
+        $this->assertFalse(
+            get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, false),
+            'The stored key belongs to the OLD region\'s account and must be cleared (Task 1.2).'
+        );
         $this->assertFalse(get_transient('zai_connector_zai_models_' . md5('zai|coding|intl')), 'Old-region discovery cache must be cleared.');
     }
 
     public function testRegionRewriteWithSameValueDoesNotInvalidate()
     {
+        $this->bootPlugin();
+
         update_option('zai_connector_zai_key_state', array('binding' => 'keepme'));
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'keepme-too');
 
         do_action('update_option_' . PlanRegionSettings::OPTION_REGION, 'intl', 'intl');
 
         $this->assertNotFalse(get_option('zai_connector_zai_key_state', false));
+        $this->assertNotFalse(
+            get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, false),
+            'A same-value rewrite is not a region switch: the key must be kept.'
+        );
     }
 
     /*

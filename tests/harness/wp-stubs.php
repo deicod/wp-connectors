@@ -515,14 +515,114 @@ function current_user_can($capability, ...$args)
     return wp_get_current_user()->has_cap($capability);
 }
 
+/*
+ * -------------------------------------------------------------------------
+ * Multisite (site iteration and per-site option scope).
+ * -------------------------------------------------------------------------
+ */
+
 function is_multisite()
 {
-    return false;
+    return WpHarness::$is_multisite;
 }
 
 function get_current_blog_id()
 {
-    return 1;
+    return WpHarness::$current_blog_id;
+}
+
+function is_main_site($site_id = null)
+{
+    return (null === $site_id ? WpHarness::$current_blog_id : (int) $site_id) === 1;
+}
+
+/**
+ * Switches the emulated blog context, parking the current blog's
+ * options/transients so each blog has its own tables (core semantics:
+ * get_option()/delete_option() are site-scoped).
+ *
+ * @param int  $new_blog   Blog ID to switch to.
+ * @param mixed $deprecated Unused (core signature compatibility).
+ * @return true
+ */
+function switch_to_blog($new_blog, $deprecated = null)
+{
+    unset($deprecated);
+    $new_blog = (int) $new_blog;
+
+    WpHarness::$blog_options[ WpHarness::$current_blog_id ] = WpHarness::$options;
+    WpHarness::$blog_transients[ WpHarness::$current_blog_id ] = WpHarness::$transients;
+    WpHarness::$blog_stack[] = WpHarness::$current_blog_id;
+
+    WpHarness::$current_blog_id = $new_blog;
+    WpHarness::$options = WpHarness::$blog_options[ $new_blog ] ?? array();
+    WpHarness::$transients = WpHarness::$blog_transients[ $new_blog ] ?? array();
+    unset(WpHarness::$blog_options[ $new_blog ], WpHarness::$blog_transients[ $new_blog ]);
+
+    return true;
+}
+
+/**
+ * Restores the blog context switched away from by switch_to_blog().
+ *
+ * @return bool True on success, false when the switch stack is empty.
+ */
+function restore_current_blog()
+{
+    $previous = array_pop(WpHarness::$blog_stack);
+    if (null === $previous) {
+        return false;
+    }
+
+    WpHarness::$blog_options[ WpHarness::$current_blog_id ] = WpHarness::$options;
+    WpHarness::$blog_transients[ WpHarness::$current_blog_id ] = WpHarness::$transients;
+
+    WpHarness::$current_blog_id = $previous;
+    WpHarness::$options = WpHarness::$blog_options[ $previous ] ?? array();
+    WpHarness::$transients = WpHarness::$blog_transients[ $previous ] ?? array();
+    unset(WpHarness::$blog_options[ $previous ], WpHarness::$blog_transients[ $previous ]);
+
+    return true;
+}
+
+/**
+ * Emulates get_sites(): blog IDs (blog 1 plus WpHarness::$sites), paged.
+ *
+ * Supports the arguments the plugin code uses: 'fields' => 'ids',
+ * 'number', 'paged' (and legacy 'offset'). Without 'fields' => 'ids',
+ * returns stdClass-like site objects with id/blog_id.
+ *
+ * @param array|string $args Query arguments.
+ * @return list<int>|list<object>
+ */
+function get_sites($args = array())
+{
+    $args = wp_parse_args($args);
+
+    $ids = array_values(array_unique(array_merge(array(1), WpHarness::$sites)));
+    sort($ids, SORT_NUMERIC);
+
+    $number = isset($args['number']) ? (int) $args['number'] : 100;
+    $offset = 0;
+    if (isset($args['offset'])) {
+        $offset = (int) $args['offset'];
+    } elseif (isset($args['paged'])) {
+        $offset = (max(1, (int) $args['paged']) - 1) * $number;
+    }
+    if ($number > 0) {
+        $ids = array_slice($ids, $offset, $number);
+    }
+
+    if (isset($args['fields']) && 'ids' === $args['fields']) {
+        return $ids;
+    }
+
+    return array_map(
+        static function ($id) {
+            return (object) array('id' => (int) $id, 'blog_id' => (int) $id, 'network_id' => 1, 'public' => 1);
+        },
+        $ids
+    );
 }
 
 /*

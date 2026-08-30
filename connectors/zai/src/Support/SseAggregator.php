@@ -103,13 +103,28 @@ final class SseAggregator {
 	}
 
 	/**
-	 * Marks the stream complete (flushes nothing; kept for symmetry).
+	 * Marks the stream complete, flushing any final unterminated frame.
+	 *
+	 * A response may end directly after the last `data:` line with no blank
+	 * line following it; since feed() receives the complete body before
+	 * finish(), whatever remains buffered is a real final frame, not a split
+	 * chunk. A trailing CR is now definitively a line terminator (no further
+	 * data can extend it to CRLF), so the remainder is fully normalized
+	 * before dispatch. Discarding it would lose the final event — a
+	 * single-event stream would fail as zai_invalid_response, a multi-event
+	 * stream its last content.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
 	public function finish(): void {
+		$remaining    = str_replace( array( "\r\n", "\r" ), "\n", $this->buffer );
+		$this->buffer = '';
+
+		if ( '' !== $remaining ) {
+			$this->consume_frame( $remaining );
+		}
 	}
 
 	/**

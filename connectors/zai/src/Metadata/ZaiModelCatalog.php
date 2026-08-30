@@ -140,8 +140,12 @@ final class ZaiModelCatalog {
 	/**
 	 * The supported-option set advertised for GLM text models (v1).
 	 *
-	 * Text input only: no image/document modality is claimed anywhere —
-	 * no model-specific evidence exists (SPEC §3.3, record 0006 note 4).
+	 * Text input and text output only: no image/document modality is claimed
+	 * anywhere — no model-specific evidence exists (SPEC §3.3, record 0006
+	 * note 4). outputModalities MUST be advertised: the SDK's prompt builders
+	 * (including core's wp_ai_client_prompt()) set an output modality before
+	 * generation and require it in model resolution — a catalog without it
+	 * matches no model at all through that path.
 	 *
 	 * @since 0.1.0
 	 *
@@ -162,6 +166,10 @@ final class ZaiModelCatalog {
 			new SupportedOption( OptionEnum::functionDeclarations() ),
 			new SupportedOption(
 				OptionEnum::inputModalities(),
+				array( array( ModalityEnum::text() ) )
+			),
+			new SupportedOption(
+				OptionEnum::outputModalities(),
 				array( array( ModalityEnum::text() ) )
 			),
 		);

@@ -16,9 +16,10 @@
  * - Replacing the key (any source change) changes the binding, so a newly
  *   invalid key can never appear connected and a corrected key can never stay
  *   unavailable — both force a fresh probe.
- * - Switching plan or region changes the binding too, which is what gates
- *   requests after a region switch until a key for the new region validates
- *   (SPEC §3.3; the regions use separate accounts and keys).
+ * - Switching plan or region changes the binding too. For a REGION switch
+ *   the stored key is additionally deleted by the settings layer (SPEC §3.3;
+ *   separate accounts and keys): pending-accept semantics must never let the
+ *   old region's key ride an inconclusive probe onto the new endpoint.
  *
  * The stored state contains a SHA-256 binding (not the key), the boolean
  * verdict, and the check timestamp — never credential material.

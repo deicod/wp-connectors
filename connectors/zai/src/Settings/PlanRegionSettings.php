@@ -9,10 +9,17 @@
  * Region switch semantics (SPEC §3.3): the international (z.ai) and China
  * (bigmodel.cn) accounts are separate, with separate API keys. Switching the
  * region therefore invalidates every piece of plugin-owned credential-derived
- * state (the persisted key-validation state and the model-discovery cache);
- * the connector then stays not-connected until a key for the new region is
- * supplied and validated. The core-owned key option itself is never touched
- * (architecture record 0004, rule 1).
+ * state (the persisted key-validation state and the model-discovery cache)
+ * AND deletes the stored key: the validated-state binding alone cannot gate
+ * the connector when the new endpoint's probe is inconclusive (the China
+ * /models route is unprobed and 404s — configured-pending), which would send
+ * the OLD region's key against the NEW endpoint indefinitely. After the
+ * switch no key is stored, so the connector stays not-connected until an
+ * admin supplies a key for the new region (plan changes never touch the
+ * key; coding and general share one account). Deleting the core-owned key
+ * option here is the sanctioned region-switch exception to "plugins never
+ * write core-owned options" (architecture record 0004, region-switch
+ * implication; plan Task 1.2).
  *
  * @since 0.1.0
  *
@@ -22,6 +29,8 @@
 declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Settings;
+
+use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 
 /**
  * Plan/region settings store and Settings API wiring.
@@ -299,12 +308,12 @@ final class PlanRegionSettings {
 	/**
 	 * Invalidates plugin-owned credential-derived state after an endpoint switch.
 	 *
-	 * Hooked on `update_option_zai_connector_zai_plan` and
-	 * `update_option_zai_connector_zai_region` (old value, new value).
-	 * The core-owned key option is deliberately NOT touched: the validated
-	 * state is bound to the endpoint (Task 1.4), so removing it here forces a
-	 * fresh authenticated probe against the new endpoint and disconnects the
-	 * provider after a region switch until a key for that region validates.
+	 * Hooked on `update_option_zai_connector_zai_plan` (old value, new value);
+	 * the region option is handled by handle_region_change(), which also clears
+	 * the stored key. The core-owned key option is deliberately NOT touched
+	 * here: plan changes stay on the same account, and the validated state is
+	 * bound to the endpoint (Task 1.4), so removing it already forces a fresh
+	 * authenticated probe against the new endpoint.
 	 *
 	 * @since 0.1.0
 	 *
@@ -327,6 +336,35 @@ final class PlanRegionSettings {
 				delete_transient( 'zai_connector_zai_models_' . md5( 'zai|' . $plan . '|' . $region ) );
 			}
 		}
+	}
+
+	/**
+	 * Region-change handler: shared invalidation PLUS the stored-key clear.
+	 *
+	 * Hooked on `update_option_zai_connector_zai_region` (old value, new
+	 * value). Deleting the stored key is required by Task 1.2 ("a region
+	 * change MUST NOT silently reuse the previous region's credential"):
+	 * clearing only the validated-state verdict is not enough, because an
+	 * inconclusive probe against the new region (cn /models 404) reports
+	 * configured-pending — the connector would then appear connected and
+	 * send the old region's key against the new endpoint indefinitely.
+	 * Env/constant sources are deliberately untouched; a definitive
+	 * rejection of those still arrives through the revalidation probe.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param mixed $old_value Previous region.
+	 * @param mixed $new_value New region.
+	 * @return void
+	 */
+	public static function handle_region_change( $old_value, $new_value ): void {
+		if ( (string) $old_value === (string) $new_value ) {
+			return;
+		}
+
+		self::handle_settings_change( $old_value, $new_value );
+
+		delete_option( ZaiProviderAvailability::KEY_OPTION );
 	}
 
 	/**

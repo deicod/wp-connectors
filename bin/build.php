@@ -13,6 +13,10 @@
  * order, the repository LICENSE is embedded, shared OAuth source is copied
  * under the plugin's own namespace when the plugin opts in via build.json,
  * and every zip gets a SHA-256 checksum (dist/checksums.txt is regenerated).
+ * A plugin is REFUSED when the shared convention checks fail — headers,
+ * exactly one main plugin file, version constant matching the header
+ * Version, self-containment, autoloader shape — so a mislabeled zip (e.g. a
+ * bumped header with a stale {SLUG}_VERSION constant) is never packaged.
  *
  * @package wp-connectors
  */
@@ -127,13 +131,15 @@ final class WpConnectorsBuild
     {
         $pluginDir = rtrim($pluginDir, '/');
         $slug = basename($pluginDir);
-        $mainFile = wp_connectors_find_main_plugin_file($pluginDir);
-        if (null === $mainFile) {
+        $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
+        if ($mainFiles === array()) {
             throw new RuntimeException("build: no main plugin file with a Plugin Name header in {$pluginDir}");
         }
-        $headers = wp_connectors_parse_plugin_headers($mainFile);
+        $headers = wp_connectors_parse_plugin_headers($mainFiles[0]);
         $violations = array_merge(
+            wp_connectors_main_file_violations($pluginDir, $mainFiles),
             wp_connectors_header_violations($headers, $slug),
+            wp_connectors_version_constant_violations($pluginDir, $headers),
             wp_connectors_self_containment_violations($pluginDir),
             wp_connectors_autoloader_violations($pluginDir)
         );

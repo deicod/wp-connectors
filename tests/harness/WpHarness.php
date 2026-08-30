@@ -152,6 +152,48 @@ final class WpHarness
     public static $loaded_plugins = array();
 
     /**
+     * Whether the emulated install is multisite (is_multisite()).
+     *
+     * @var bool
+     */
+    public static $is_multisite = false;
+
+    /**
+     * Extra blog IDs on the emulated network (blog 1 always exists).
+     *
+     * @var list<int>
+     */
+    public static $sites = array();
+
+    /**
+     * Current blog ID for switch_to_blog()/restore_current_blog().
+     *
+     * @var int
+     */
+    public static $current_blog_id = 1;
+
+    /**
+     * Pending switch_to_blog() returns (innermost last).
+     *
+     * @var list<int>
+     */
+    public static $blog_stack = array();
+
+    /**
+     * Parked per-blog option tables while switched away from that blog.
+     *
+     * @var array<int, array<string, mixed>>
+     */
+    public static $blog_options = array();
+
+    /**
+     * Parked per-blog transient stores while switched away from that blog.
+     *
+     * @var array<int, array<string, array{value: mixed, expires_at: int|false}>>
+     */
+    public static $blog_transients = array();
+
+    /**
      * Resets all mutable state. Called before every test.
      *
      * @return void
@@ -175,6 +217,12 @@ final class WpHarness
         self::$registered_settings = array();
         self::$admin_pages = array();
         self::$settings_errors = array();
+        self::$is_multisite = false;
+        self::$sites = array();
+        self::$current_blog_id = 1;
+        self::$blog_stack = array();
+        self::$blog_options = array();
+        self::$blog_transients = array();
 
         // $_REQUEST derivatives leak between tests otherwise.
         unset($_GET['_wpnonce'], $_POST['_wpnonce'], $_REQUEST['_wpnonce']);

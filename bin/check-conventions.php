@@ -34,13 +34,14 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
         $slug = basename($pluginRoot);
         $violations = array();
 
-        $mainFile = wp_connectors_find_main_plugin_file($pluginRoot);
-        if (null === $mainFile) {
+        $mainFiles = wp_connectors_find_main_plugin_files($pluginRoot);
+        if ($mainFiles === array()) {
             $violations[] = sprintf('%s: no main plugin file with a "Plugin Name:" header at the plugin root.', $slug);
         } else {
-            $headers = wp_connectors_parse_plugin_headers($mainFile);
+            $headers = wp_connectors_parse_plugin_headers($mainFiles[0]);
             $violations = array_merge(
                 $violations,
+                wp_connectors_main_file_violations($pluginRoot, $mainFiles),
                 wp_connectors_header_violations($headers, $slug),
                 wp_connectors_version_constant_violations($pluginRoot, $headers),
                 wp_connectors_autoloader_violations($pluginRoot),

@@ -269,6 +269,47 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
+    public function testFinishFlushesTheFinalFrameWhenTheStreamEndsWithoutADelimiter()
+    {
+        // A response that ends right after the last data: line (no trailing
+        // blank line) must not lose that frame: the buffered remainder is a
+        // real final event, not a split chunk (review finding: finish()
+        // previously discarded it — single-event streams failed as
+        // zai_invalid_response, multi-event streams lost their final content).
+        $body = ''
+            . 'data: {"id":"chatcmpl-f","choices":[{"index":0,"delta":{"role":"assistant","content":"Tail "},"finish_reason":null}]}' . "\n\n"
+            . 'data: {"id":"chatcmpl-f","choices":[{"index":0,"delta":{"content":"frame."},"finish_reason":"stop"}]}';
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $this->assertSame('Tail frame.', $result->toText());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+    }
+
+    public function testFinishFlushesASingleEventStreamWithoutAnyTrailingNewline()
+    {
+        // Minimum repro of the lost-frame defect: one event, no terminator
+        // at all — previously zai_invalid_response, now a parsed result.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'),
+            'data: {"id":"chatcmpl-f1","choices":[{"index":0,"delta":{"role":"assistant","content":"Only event."},"finish_reason":"stop"}]}');
+
+        $this->assertSame('Only event.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    public function testFinishNormalizesAHeldBackTrailingCrBeforeDispatchingTheFinalFrame()
+    {
+        // A body ending in a lone CR leaves the CR held back in feed(); at
+        // end of input it is definitively a line terminator, so the final
+        // frame must still be consumed and decode cleanly.
+        $aggregator = new SseAggregator();
+        $aggregator->feed('data: {"id":"chatcmpl-f2","choices":[{"index":0,"delta":{"role":"assistant","content":"CR tail."},"finish_reason":"stop"}]}' . "\r");
+        $aggregator->finish();
+
+        $this->assertSame(1, $aggregator->event_count());
+        $this->assertSame('CR tail.', $aggregator->aggregated()['choices'][0]['message']['content']);
+    }
+
     public function testEventStreamDetectedByBodyPrefixWithoutContentType()
     {
         $this->queueSdkResponse(200, array(),
@@ -475,5 +516,121 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         } catch ( NetworkException $e ) {
             $this->assertRedacted($e->getMessage(), FakeSecrets::apiKey());
         }
+    }
+
+    /*
+     * The REAL dispatch path: the genuine WP core prompt builder
+     * (WP_AI_Client_Prompt_Builder) → the SDK PromptBuilder → the FINAL
+     * ZaiTextGenerationModel::generateTextResult() → core's fixed
+     * exception_to_wp_error() conversion. The zai generate_text() wrapper is
+     * never called on this path; these tests prove what callers of
+     * wp_ai_client_prompt(...)->using_provider('zai')->generate_text()
+     * actually receive: CORE codes, zai-safe messages (core passes the
+     * exception message through verbatim — no filter exists), and correct
+     * HTTP statuses.
+     *
+     * Requires the WordPress core source; set WP_CONNECTORS_TEST_WP_ROOT
+     * (defaults to ~/wp-ai-research/wordpress when present). Skipped
+     * otherwise — never fails a checkout without core.
+     */
+
+    /**
+     * Loads the real core prompt builder class file.
+     *
+     * @return class-string<WP_AI_Client_Prompt_Builder>
+     */
+    private function corePromptBuilderClass(): string
+    {
+        $home = (string) getenv('HOME');
+        $wpRoot = (string) (getenv('WP_CONNECTORS_TEST_WP_ROOT') ?: ($home !== '' ? $home . '/wp-ai-research/wordpress' : ''));
+        $file = $wpRoot . '/wp-includes/ai-client/class-wp-ai-client-prompt-builder.php';
+
+        if ('' === $wpRoot || ! is_file($file)) {
+            $this->markTestSkipped('WP core source not found (set WP_CONNECTORS_TEST_WP_ROOT to the WordPress checkout).');
+        }
+
+        require_once $file;
+
+        return 'WP_AI_Client_Prompt_Builder';
+    }
+
+    /**
+     * Boots the provider into the registry and settles the availability
+     * verdict (the SDK's model resolution probes isConfigured() first, which
+     * would otherwise consume the queued generation response).
+     *
+     * @return WP_AI_Client_Prompt_Builder
+     */
+    private function corePromptBuilder()
+    {
+        $class = $this->corePromptBuilderClass();
+
+        $this->primeZaiDiscoveryTransient();
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, FakeSecrets::apiKey());
+        \Deicod\WpConnectors\Zai\Plugin::register(AiClient::defaultRegistry());
+        AiClient::defaultRegistry()->setProviderRequestAuthentication(
+            'zai',
+            new ApiKeyRequestAuthentication(FakeSecrets::apiKey())
+        );
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+        $this->assertTrue(ZaiProvider::availability()->isConfigured(), 'Availability must settle before generation.');
+
+        return new $class(AiClient::defaultRegistry(), 'Hello');
+    }
+
+    public function testCoreBuilderPathReturnsGeneratedTextOnSuccess()
+    {
+        $builder = $this->corePromptBuilder();
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), wp_json_encode(array(
+            'id' => 'chatcmpl-core',
+            'choices' => array(array(
+                'index' => 0,
+                'message' => array('role' => 'assistant', 'content' => 'Via core.'),
+                'finish_reason' => 'stop',
+            )),
+        )));
+
+        $text = $builder->using_provider('zai')->generate_text();
+
+        $this->assertSame('Via core.', $text);
+    }
+
+    /**
+     * @dataProvider provideCoreBuilderErrorCases
+     */
+    public function testCoreBuilderPathYieldsCoreCodesWithZaiSafeMessages($status, $expectedCoreCode)
+    {
+        $builder = $this->corePromptBuilder();
+
+        $secret = FakeSecrets::apiKey();
+        $this->queueSdkResponse($status, array(), HttpResponseFactory::openAiErrorBody('upstream echoes Bearer ' . $secret));
+
+        $result = $builder->using_provider('zai')->generate_text();
+
+        $this->assertWPError($result, $expectedCoreCode);
+        $data = $result->get_error_data();
+        $this->assertSame($status, $data['status'], 'Core must derive the REST status from the exception code.');
+        $this->assertArrayHasKey('exception_class', $data, 'Core records the exception class in the error data.');
+        $this->assertSame(
+            ErrorMapper::safe_http_message($status),
+            $result->get_error_message(),
+            'The verbatim-passed message must be exactly the zai-safe catalog text.'
+        );
+        $this->assertRedacted($result->get_error_message(), $secret);
+        $this->assertStringNotContainsString('upstream echoes', $result->get_error_message(), 'Raw upstream body must never reach the message.');
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideCoreBuilderErrorCases()
+    {
+        return array(
+            '401' => array(401, 'prompt_client_error'),
+            '429' => array(429, 'prompt_client_error'),
+            '503' => array(503, 'prompt_upstream_server_error'),
+        );
     }
 }
