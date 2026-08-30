@@ -61,7 +61,7 @@ Auto-discovery derives per-connector metadata from `ProviderMetadata`:
 - Consequence: OAuth connectors register as `none` + ship their **own minimal admin page**
   (Connect / status / revoke) linked from the plugin row and via a card-adjacent action.
 - API keys in DB are not encrypted by core (masked only). OAuth token stores MUST
-  self-encrypt (see §6.3).
+  self-encrypt (see §4.4 and §6.1).
 
 ### 2.3 Provider plugin anatomy (per provider)
 

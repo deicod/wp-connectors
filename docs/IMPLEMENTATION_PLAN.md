@@ -1,0 +1,621 @@
+# Implementation Plan — WordPress 7.0 AI Connectors
+
+**Based on:** [`docs/specs/SPEC.md`](specs/SPEC.md), Draft v1 (2026-08-30)  
+**Planning status:** Ready for implementation  
+**Target:** WordPress 7.0+, PHP 7.4–8.4
+
+## How to use this plan
+
+- Every milestone and task deliberately starts with an unchecked checkbox. **The implementing
+  LLM must change a task checkbox to `[x]` only after its implementation, task-level tests,
+  documentation, and review are complete.** It must change a milestone checkbox to `[x]` only
+  after every task and exit criterion in that milestone is complete.
+- Work in milestone order unless a task explicitly says it can run in parallel. Do not mark a
+  checkbox from design work alone when the task calls for executable code or validation.
+- Each task is intended to fit comfortably in an average 200k-token LLM context. A task lists
+  the files/components, implementation steps, tests, and completion evidence it should leave
+  behind. If repository discovery shows that a task would exceed that context, split it into
+  additional unchecked subtasks in this document before implementing it.
+- At the start of every task, re-read the relevant SPEC sections and inspect current code rather
+  than assuming an earlier task followed the suggested file names exactly. At the end, run the
+  narrow checks listed for the task, inspect `git diff`, update documentation where behavior
+  differs, and then check the task checkbox.
+- Never put credentials, OAuth codes, tokens, full request bodies, authorization headers, or
+  unmasked WordPress salts in fixtures, snapshots, logs, commits, or issue text.
+
+## Cross-cutting implementation decisions
+
+These decisions remove ambiguity without changing the product scope in the SPEC:
+
+1. `connectors/zai` is one plugin from M1 onward. M1 registers and implements only provider ID
+   `zai`; M2 adds `zai_anthropic` to that same plugin. This preserves milestone-level acceptance
+   testing while reaching the required final two-provider plugin.
+2. The shared OAuth source is developed in `shared/`, but every OAuth plugin artifact receives
+   its own namespaced copy at build time. No installed plugin may include files from another
+   plugin or from the repository-level `shared/` directory.
+3. OAuth providers use `RequestAuthenticationMethod` metadata that auto-discovers as `none`,
+   because core has no OAuth field. Their own admin pages are the sole token-management UI.
+4. Model lists are versioned static catalogs by default. Runtime discovery is an optional,
+   validated enhancement with a cached result and a static fallback; an unavailable discovery
+   endpoint must never make the provider unusable.
+5. Network-dependent provider checks are integration tests requiring explicitly supplied test
+   credentials. The default automated suite uses mocked `wp_remote_*` responses and must never
+   contact a vendor.
+6. Options are per-site, including on multisite. Uninstall behavior must remove connector-owned
+   settings and OAuth material only when the plugin's documented data-retention policy permits;
+   deactivation alone must retain configuration.
+
+## Definition of done for every implementation task
+
+A task is complete only when its code is PHP 7.4-compatible, user-facing text is translatable,
+admin mutations have capability and nonce checks, error paths return typed `WP_Error` values,
+relevant unit/integration tests pass, no secret can appear in logs, and affected documentation
+matches actual behavior. Apply WordPress coding standards unless an SDK signature requires a
+documented exception.
+
+---
+
+## Milestone 0 — Repository foundation and executable test harness
+
+- [ ] **Milestone 0 complete.** Check this milestone only after Tasks 0.1–0.6 are checked and a
+  clean checkout can install dependencies, run all offline checks, and build a minimal plugin
+  artifact without loading code from outside that artifact.
+
+### Tasks
+
+- [ ] **Task 0.1 — Record architecture and compatibility contracts.** Inspect the exact SDK and
+  WordPress 7.0 APIs used by the SPEC; add concise architecture records for provider
+  registration, model construction, metadata version guards, option ownership, and standalone
+  plugin packaging. Pin development dependencies or test fixtures to known compatible versions.
+  Explicitly document how WP 6.9 plus the standalone SDK is detected. Check this task only after
+  all referenced class names and signatures have been verified against the pinned source and the
+  records identify any divergence from the SPEC.
+
+- [ ] **Task 0.2 — Establish development tooling.** Add Composer development dependencies and
+  scripts for PHPCS with WordPress rules, PHPUnit, PHP syntax checks, and any static analysis that
+  supports PHP 7.4. Configure generated/vendor paths, test fixtures, and consistent namespaces.
+  Avoid a runtime Composer dependency in plugin zips. Check this task only after each script runs
+  locally (or a precisely documented environment limitation is demonstrated).
+
+- [ ] **Task 0.3 — Build the WordPress test bootstrap.** Create a repeatable test environment that
+  loads connector code against WordPress/SDK stubs or the WordPress test suite, resets options and
+  scheduled events between tests, and intercepts HTTP through WordPress hooks. Add helpers for
+  deterministic clocks, nonces, users/capabilities, and encrypted-option assertions. Check this
+  task only after one passing smoke test proves plugin registration timing and one test proves
+  outbound HTTP is blocked unless mocked.
+
+- [ ] **Task 0.4 — Define repository conventions.** Add editor/git attributes, ignore rules,
+  namespace-to-path conventions, plugin version constants, text domains, changelog policy, and a
+  policy for generated shared-library copies. Decide whether generated copies are committed and
+  ensure the build is reproducible either way. Check this task only after the conventions are
+  documented and enforced by at least one automated check.
+
+- [ ] **Task 0.5 — Implement the standalone artifact builder.** Add a build command that assembles
+  one zip per plugin, excludes tests/development files, includes required licenses/assets, embeds
+  namespaced shared OAuth code where applicable, and emits checksums. Add an artifact inspection
+  that rejects repository-relative includes and missing plugin headers. Check this task only after
+  a minimal fixture plugin can be zipped, extracted elsewhere, and syntax-checked independently.
+
+- [ ] **Task 0.6 — Create secure test-fixture rules.** Provide fake token/key factories, HTTP
+  response builders, and automated secret-pattern scanning. Document opt-in environment variable
+  names for live tests without supplying values. Check this task only after a seeded fake token
+  test passes and the scanner intentionally rejects a known-secret fixture.
+
+### Exit criteria
+
+- Tooling has one documented entry point for a full offline validation run.
+- Tests cannot accidentally make real provider requests.
+- Plugin artifacts are demonstrably self-contained and contain no development credentials.
+
+---
+
+## Milestone 1 — z.ai OpenAI-compatible provider (`zai`)
+
+- [ ] **Milestone 1 complete.** Check this milestone only after Tasks 1.1–1.9 are checked, all M1
+  SPEC acceptance criteria pass, and the unresolved coding-plan `/models` behavior (O1 for the
+  OpenAI surface) is recorded from a credentialed probe or explicitly remains behind the tested
+  static fallback.
+
+### Tasks
+
+- [ ] **Task 1.1 — Scaffold the z.ai standalone plugin.** Create `connectors/zai` with a valid
+  plugin header, GPL license metadata, guarded bootstrap, classmap/autoloader, admin dependency
+  notice, and `init` priority 5 registration. Register only the `zai` provider in this milestone,
+  idempotently, and safely no-op when `AiClient` is unavailable. Check this task only after
+  activation tests cover WP 7.0, the supported standalone-SDK case, a missing SDK, and duplicate
+  `init` execution.
+
+- [ ] **Task 1.2 — Implement plan/region configuration.** Add settings for
+  `zai_connector_zai_plan` (`coding` default, `general`) and
+  `zai_connector_zai_region` (`intl` default, `cn`) using the Settings API. Sanitize to the known
+  enum, fall back safely on corrupt values, require `manage_options`, use nonces, and explain the
+  billing/account distinction. Check this task only after tests cover defaults, all four valid
+  combinations, invalid input, unauthorized submission, and escaped/translatable rendering.
+
+- [ ] **Task 1.3 — Centralize endpoint resolution.** Implement an immutable endpoint resolver for
+  all four OpenAI plan/region combinations while keeping provider `baseUrl()` fixed to the
+  international-general canonical URL required by the SDK. Ensure model and directory requests
+  resolve options at request time rather than construction time. Check this task only after a
+  table-driven test verifies exact URLs and proves an option change retargets a subsequent
+  request without rebuilding the registry.
+
+- [ ] **Task 1.4 — Implement provider metadata and authentication.** Add provider ID, display name,
+  description, API-key authentication metadata, logo, and availability mapping. Guard description
+  and logo features according to detected SDK support rather than merely assuming methods exist;
+  rely on core's `connectors_ai_zai_api_key` store and inject `Authorization: Bearer <key>`.
+  Check this task only after metadata tests cover the minimum and newer SDK shapes, header tests
+  prove correct injection, and failures/logs prove the key is always redacted.
+
+- [ ] **Task 1.5 — Implement the model metadata directory.** Start with a maintained static GLM
+  text-model catalog, newest-first, differentiated where coding/general access is known. Add an
+  optional `/models` discovery path only if responses can be normalized, cached, and merged with
+  capability metadata without losing the static fallback. Do not claim image support without
+  model-specific evidence. Check this task only after tests cover sorting, cache expiry,
+  malformed/401/404 discovery responses, fallback behavior, and capability/option declarations.
+
+- [ ] **Task 1.6 — Implement chat-completions request mapping.** Build `/chat/completions` requests
+  for text generation and chat history, mapping system instruction, temperature, max tokens,
+  top-p, stop sequences, JSON MIME type/schema, function declarations, and supported text/image
+  inputs exactly as the SDK exposes them. Reject unsupported option/model combinations before
+  transport. Check this task only after request snapshots cover minimal, conversation, structured
+  output, tool, and multimodal cases without including credentials.
+
+- [ ] **Task 1.7 — Implement response, streaming, and error mapping.** Normalize non-streaming and
+  SSE responses into SDK result objects, including tool calls, finish reasons, usage when present,
+  split SSE frames, `[DONE]`, and malformed events. Map 401, 403, 429, transport errors, and 5xx
+  to stable typed `WP_Error` codes and safe messages; do not add custom retries in v1. Check this
+  task only after fixture tests cover success, partial streams, upstream error bodies containing
+  secrets, and every required status mapping.
+
+- [ ] **Task 1.8 — Add safe observability and admin links.** Add an option-gated debug logger for
+  method, redacted URL, status, and duration only. Add plugin-row settings access and a settings
+  section that makes plan/region choices discoverable without competing with core's key field.
+  Check this task only after tests demonstrate logging is off by default and cannot expose query
+  secrets, headers, keys, prompt bodies, schemas, OAuth-like values, or response bodies.
+
+- [ ] **Task 1.9 — Validate and document M1.** Add user instructions, supported options/models,
+  endpoint selection behavior, API-key storage disclosure, multisite behavior, and troubleshooting.
+  Run the offline matrix across supported PHP targets and an opt-in live coding+international
+  smoke test when a key is available. Record the O1 probe result and preserve fallback if it is
+  inconclusive. Check this task only after documentation and test evidence match shipped behavior.
+
+### Exit criteria
+
+- Core auto-discovers a `zai` card with an API-key field.
+- Each plan/region selection routes to the exact SPEC endpoint at request time.
+- `wp_ai_client_prompt(...)->using_provider('zai')->generate_text()` works with mocked transport
+  and, when credentials are supplied, coding+international live transport.
+- An invalid key produces a redacted, actionable error and unavailable/not-connected state.
+
+---
+
+## Milestone 2 — z.ai Anthropic-compatible provider (`zai_anthropic`)
+
+- [ ] **Milestone 2 complete.** Check this milestone only after Tasks 2.1–2.7 are checked, the one
+  z.ai plugin registers both providers without collisions, and the M2 SPEC acceptance criteria
+  pass across every plan/region endpoint through mocked tests.
+
+### Tasks
+
+- [ ] **Task 2.1 — Add the second provider and independent settings.** Extend the existing z.ai
+  plugin to register `zai_anthropic` idempotently and add its own
+  `zai_connector_zai_anthropic_plan` and `_region` options with the same defaults and controls.
+  Keep API-key storage/auth metadata distinct as core derives it from provider ID. Check this task
+  only after tests prove the providers coexist, settings do not bleed between them, and failure of
+  one registration cannot silently replace the other.
+
+- [ ] **Task 2.2 — Extend endpoint resolution for Anthropic URLs.** Map coding/general × intl/cn to
+  the four `/anthropic` bases and append `/v1/messages` or `/v1/models` exactly once. Read settings
+  at request time while retaining the required canonical `baseUrl()`. Check this task only after
+  table-driven tests cover all final request URLs and option changes between requests.
+
+- [ ] **Task 2.3 — Implement Bearer authentication and protocol headers.** Inject
+  `Authorization: Bearer <key>`, `anthropic-version: 2023-06-01`, and safe content headers; do not
+  depend on unverified `x-api-key` support. Check this task only after exact-header tests prove no
+  duplicate/conflicting auth header and logging tests prove full redaction.
+
+- [ ] **Task 2.4 — Implement Anthropic metadata/catalog.** Create the custom metadata directory,
+  static GLM fallback, capability declarations, sorting, optional cached `/v1/models` discovery,
+  and graceful failure policy. Share neutral GLM catalog data where useful without coupling the
+  two protocol adapters. Check this task only after static/discovered/fallback and capability
+  tests pass, and the Anthropic half of O1 is documented accurately.
+
+- [ ] **Task 2.5 — Implement Messages request mapping.** Translate system instruction, alternating
+  chat content blocks, text and supported images, tools/tool results, JSON output guidance,
+  `outputSchema`, max tokens, temperature, top-p, and stop sequences to the Anthropic-compatible
+  Messages format. Handle protocol constraints such as required max tokens and role ordering.
+  Check this task only after focused fixtures cover every advertised option and unsupported input
+  fails before HTTP.
+
+- [ ] **Task 2.6 — Implement Messages response/stream mapping.** Normalize message content,
+  tool-use blocks, stop reasons, usage, and Anthropic SSE event sequences into SDK results. Reuse
+  only protocol-neutral error/redaction helpers from M1. Check this task only after success,
+  interleaved content/tool deltas, malformed stream, 401/403/429/5xx, and transport tests pass.
+
+- [ ] **Task 2.7 — Validate and document M2.** Update the plugin/readme documentation for two
+  cards, two independent endpoint selectors and key fields, known model-list behavior, and examples
+  for system instructions, tools, and structured output. Run the full z.ai regression suite and
+  optional live tests without committing output containing credentials. Check this task only after
+  the documentation, package contents, and M2 acceptance evidence agree.
+
+### Exit criteria
+
+- One standalone plugin exposes both `zai` and `zai_anthropic` cards.
+- Messages requests use Bearer authentication and the required version header for all endpoints.
+- Tools and `outputSchema` round-trip through representative mocked Claude-Code-style workloads.
+
+---
+
+## Milestone 3 — Shared OAuth security/runtime foundation
+
+- [ ] **Milestone 3 complete.** Check this milestone only after Tasks 3.1–3.8 are checked and the
+  shared source can be embedded into two fixture plugins under distinct namespaces, with encrypted
+  storage, concurrency-safe refresh, admin protection, and zero runtime cross-plugin dependency.
+
+### Tasks
+
+- [ ] **Task 3.1 — Define provider-neutral OAuth contracts.** In `shared/`, define PHP 7.4-safe
+  interfaces/value objects for token sets, clocks, HTTP transport, OAuth grants, token storage,
+  refresh policy, availability, and typed errors. Keep provider endpoints/client IDs out of generic
+  classes. Check this task only after contract tests cover token validation/serialization and an
+  architecture review confirms no WordPress global is hidden inside pure value objects.
+
+- [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
+  with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
+  WordPress auth salts. If salts are unusable, generate and persist a random fallback key in its
+  own non-autoloaded option. Define salt-change/fallback-key rotation, corruption, migration, and
+  deletion behavior; never return partial plaintext. Check this task only after round-trip,
+  tamper, wrong-key, legacy-version, rotation, missing-sodium-compat, autoload, and deletion tests.
+
+- [ ] **Task 3.3 — Implement refresh coordination.** Add lazy expiry-minus-skew refresh, a short
+  per-provider lock to prevent refresh-token races, atomic replacement, scheduled single-event
+  backup, and cleanup on revoke/uninstall. Treat terminal `invalid_grant`/4xx as dead while
+  retaining safe diagnostic state; treat transient failures as retryable without erasing the last
+  token prematurely. Check this task only after deterministic concurrency, clock-boundary,
+  scheduling, terminal, and transient failure tests pass.
+
+- [ ] **Task 3.4 — Implement authenticated request retry.** Supply a provider-neutral wrapper that
+  obtains/refreshed access tokens, makes an inference request, and on the first 401 performs at
+  most one refresh and one replay. Never replay non-repeatable bodies or loop. Check this task only
+  after tests cover fresh, proactively refreshed, single-401 recovery, second-401 failure,
+  refresh failure, and concurrent refresh paths.
+
+- [ ] **Task 3.5 — Implement availability semantics.** Compute availability from grant presence,
+  decryptability, expiry/refresh outcome, and an optional cheap provider probe. Distinguish
+  disconnected, reconnect-required, temporarily unavailable, and connected internally while
+  mapping safely to the SDK interface. Check this task only after each state and its admin/core
+  representation has a deterministic test.
+
+- [ ] **Task 3.6 — Build reusable protected admin components.** Implement status presentation,
+  account-label redaction, Connect/Re-connect/Revoke actions, plugin-row link helpers, nonce and
+  `manage_options` enforcement, and admin notices including the unofficial OAuth/ToS disclosure.
+  Ensure GET renders but never mutates state. Check this task only after authorized, unauthorized,
+  CSRF, escaping, revoke, and token-non-disclosure tests pass.
+
+- [ ] **Task 3.7 — Implement safe OAuth HTTP/error utilities.** Wrap `wp_remote_*` with explicit
+  timeouts, accepted content types, bounded response sizes, TLS defaults, structured redacted
+  debug events, `Retry-After` parsing, and provider-error normalization. Check this task only after
+  tests cover malformed JSON, HTML errors, redirects, timeout, 429 date/seconds headers, 5xx,
+  hostile strings, and secret-bearing URLs/bodies.
+
+- [ ] **Task 3.8 — Build namespaced shared copies.** Extend the artifact builder to rewrite or
+  generate each plugin's private namespace, include license/source provenance, and verify copies
+  match the shared source. Add a collision test activating all fixture plugins together. Check
+  this task only after isolated artifacts and simultaneous activation pass with `shared/` absent.
+
+### Exit criteria
+
+- Tokens are never stored plaintext and corrupted/rotated ciphertext fails closed.
+- Refreshes are bounded, scheduled, concurrency-safe, and never enter a 401 loop.
+- Every admin mutation requires both capability and a valid nonce.
+
+---
+
+## Milestone 4 — OpenAI Codex OAuth connector (`codex`)
+
+- [ ] **Milestone 4 complete.** Check this milestone only after Tasks 4.1–4.9 are checked and the
+  SPEC's M3 acceptance criteria pass, including a complete mocked device flow, encrypted refresh,
+  core availability, and Responses-based text generation.
+
+### Tasks
+
+- [ ] **Task 4.1 — Scaffold the OpenAI OAuth plugin.** Create `connectors/openai-oauth` with the
+  `Deicod\WpConnectors\OpenAiOauth` namespace, provider ID `codex`, dependency guard, standalone
+  shared-runtime copy, settings submenu, plugin-row link, metadata, static logo, and idempotent
+  priority-5 registration. Check this task only after activation/dependency/collision tests and
+  artifact isolation pass.
+
+- [ ] **Task 4.2 — Implement device authorization start.** POST JSON with the specified client ID
+  to the user-code endpoint, validate `user_code`, `device_auth_id`, and interval, cap stored flow
+  lifetime at 15 minutes, and display the exact verification URL/code safely. Apply bounded 429
+  retry using `Retry-After` or 2/4/8-second backoff, maximum four attempts. Check this task only
+  after success, malformed response, timeout, retry, cap, CSRF, and capability tests pass.
+
+- [ ] **Task 4.3 — Implement device polling and exchange.** Poll no faster than `max(interval, 3)`
+  using bounded admin/AJAX requests or scheduled work rather than a long PHP request; treat only
+  documented pending 403/404 responses as pending. Exchange the returned code/verifier at the
+  token endpoint using form encoding and the exact callback URI/client ID. Check this task only
+  after pending→success, expiry, cancellation, throttling, malformed success, and terminal error
+  state-machine tests pass.
+
+- [ ] **Task 4.4 — Implement Codex token lifecycle.** Validate access/refresh/id token fields,
+  derive expiry from trusted response data (using JWT claims only as a non-authoritative aid),
+  store the encrypted token set, refresh at a 120-second skew, and derive a safely escaped account
+  label when possible. Check this task only after storage, refresh, label, invalid JWT, missing
+  refresh token, revoke, and reconnect-required tests pass.
+
+- [ ] **Task 4.5 — Implement the parameterized Responses adapter.** In shared source, create the
+  protocol adapter used later by xAI: configurable base URL, endpoint path, headers, model catalog,
+  refresh skew, and error hooks. Map SDK text/chat/system instructions, structured output, tools,
+  reasoning controls only when supported, and streaming Responses events. Check this task only
+  after provider-neutral request/response/stream contract tests pass with two fake configurations.
+
+- [ ] **Task 4.6 — Configure Codex inference and metadata.** Target
+  `https://chatgpt.com/backend-api/codex`, use OAuth Bearer tokens, expose a conservative static
+  GPT Codex catalog, and map only verified capabilities. Ensure URLs are constructed once and do
+  not accidentally target `api.openai.com`. Check this task only after exact URL/header/model and
+  unsupported-option tests pass.
+
+- [ ] **Task 4.7 — Resolve optional model discovery (O2).** With explicit credentials, probe the
+  proposed Codex models endpoint without logging tokens; record status/shape/date. Implement
+  cached discovery only if stable enough to normalize, otherwise retain the static catalog and
+  document the result. Check this task only after fallback behavior is tested and O2 is marked
+  resolved or explicitly inconclusive with no acceptance dependency.
+
+- [ ] **Task 4.8 — Complete availability, errors, and disclosure.** Connect provider availability
+  to token state; map 401 to reconnect guidance, device 429 to throttling guidance, entitlement
+  403 separately from generic failures, and 5xx to upstream errors. Put the unofficial-client-ID
+  and account-risk notice beside Connect. Check this task only after core/admin status tests,
+  disclosure rendering, and redaction tests pass.
+
+- [ ] **Task 4.9 — Validate and document Codex.** Document device steps, popup/manual navigation,
+  token storage and salt rotation, refresh/revoke behavior, static models, limitations, and ToS
+  risk. Run full offline and optional credentialed login/inference/refresh tests; do not automate
+  destructive account actions. Check this task only after the plugin zip is standalone and all
+  M3 acceptance evidence is captured safely.
+
+### Exit criteria
+
+- An administrator can complete, cancel, expire, reconnect, and revoke the device flow.
+- Tokens are encrypted, refresh 120 seconds early, and survive ordinary page requests safely.
+- Responses text/chat calls work and one post-401 refresh/retry is enforced.
+
+---
+
+## Milestone 5 — xAI Grok OAuth connector (`grok`)
+
+- [ ] **Milestone 5 complete.** Check this milestone only after Tasks 5.1–5.8 are checked and the
+  SPEC's M4 criteria pass, including discovery fallback, RFC 8628 behavior, shared Responses
+  adapter reuse, and actionable entitlement errors.
+
+### Tasks
+
+- [ ] **Task 5.1 — Scaffold the xAI OAuth plugin.** Create `connectors/xai-oauth` with namespace
+  `Deicod\WpConnectors\XaiOauth`, provider ID `grok`, priority-5 registration, own admin page,
+  metadata/logo, dependency notice, and private shared-runtime copy. Check this task only after it
+  activates alongside every existing plugin without symbol, option, hook, or provider collision.
+
+- [ ] **Task 5.2 — Implement OIDC discovery with fallback.** Fetch
+  `https://auth.x.ai/.well-known/openid-configuration`, validate HTTPS issuer/endpoints and cache
+  the result with bounded lifetime; on network, schema, or security validation failure use the
+  hardcoded device/token endpoints from the SPEC. Check this task only after valid, poisoned,
+  redirect, stale-cache, offline, and fallback tests pass.
+
+- [ ] **Task 5.3 — Implement xAI device authorization.** Form-post the exact client ID and scopes,
+  validate the device response, display `verification_uri` and `user_code`, and persist only the
+  minimum encrypted/transient flow state until `expires_in`. Check this task only after request,
+  output escaping, expiration, duplicate-start, CSRF, and capability tests pass.
+
+- [ ] **Task 5.4 — Implement RFC 8628 polling.** Poll at the server interval, handle
+  `authorization_pending`, `slow_down`, denial, expiry, 429, and success without tying up a PHP
+  worker. Exchange with the exact device-code grant type and reject ambiguous HTTP/body states.
+  Check this task only after a clock-driven state-machine suite covers every terminal and
+  nonterminal response.
+
+- [ ] **Task 5.5 — Implement xAI token lifecycle.** Encrypt token sets, refresh with the exact
+  client ID/grant, use a 3600-second skew without refreshing repeatedly, schedule backup refresh,
+  show a redacted account label if safely derivable, and revoke locally. Check this task only after
+  expiry-boundary, concurrency, refresh rotation, invalid-grant, revoke, and recovery tests pass.
+
+- [ ] **Task 5.6 — Configure xAI Responses inference.** Reuse—not fork—the shared adapter against
+  `https://api.x.ai/v1`, set the conservative static catalog with default `grok-4.6`, and configure
+  only verified reasoning/tools/streaming/caching features. Check this task only after exact URL,
+  auth, request, response, streaming, default-model, and regression tests for Codex pass.
+
+- [ ] **Task 5.7 — Implement entitlement-aware errors and availability.** Map inference HTTP 403
+  to a stable typed tier/allowlist error with a non-accusatory hint; keep 401, 429, and 5xx distinct.
+  Do not mark a valid grant disconnected merely because a transient probe fails. Check this task
+  only after mocked core/admin status and every error class are verified without leaking bodies.
+
+- [ ] **Task 5.8 — Validate and document Grok.** Document eligible subscriptions as uncertain,
+  discovery fallback, requested scopes, six-hour typical access lifetime versus one-hour skew,
+  revoke semantics, static model behavior, and unofficial OAuth risk. Run the combined adapter
+  regression suite and optional credentialed smoke test. Check this task only after M4 acceptance
+  evidence and an independently installable zip are complete.
+
+### Exit criteria
+
+- The discovery document is used only after validation and hardcoded fallback always remains.
+- Grok and Codex share one source adapter while retaining isolated plugin artifacts.
+- xAI 403 responses provide the tier hint and never masquerade as an authentication failure.
+
+---
+
+## Milestone 6 — Anthropic Claude Pro/Max OAuth connector (`claude_pro`, bonus)
+
+- [ ] **Milestone 6 complete.** Check this milestone only after Tasks 6.1–6.8 are checked and the
+  SPEC's M5 criteria pass, including PKCE/state validation, paste-code exchange, required headers,
+  refresh/revoke behavior, and the token-endpoint User-Agent rule.
+
+### Tasks
+
+- [ ] **Task 6.1 — Scaffold the Anthropic OAuth plugin.** Create `connectors/anthropic-oauth` with
+  namespace `Deicod\WpConnectors\AnthropicOauth`, provider ID `claude_pro`, guarded registration,
+  own admin page, metadata/logo, dependency notice, and private shared-runtime copy. Check this
+  task only after all plugins activate together and the artifact remains standalone.
+
+- [ ] **Task 6.2 — Implement PKCE authorization start.** Generate a high-entropy verifier and
+  state with CSPRNG, derive S256 base64url challenge without padding, store transient flow state
+  with expiry, and construct the exact authorize URL/client ID/redirect URI/scopes from the SPEC.
+  Check this task only after RFC PKCE vectors, entropy/encoding, URL, expiry, replacement, nonce,
+  and capability tests pass.
+
+- [ ] **Task 6.3 — Implement paste-code parsing and state validation.** Accept the displayed
+  `code#state` form with conservative whitespace handling, split unambiguously, compare state in
+  constant time, enforce one-time/expiry semantics, and never log either value. Check this task
+  only after valid, malformed, missing delimiter, wrong state, replay, expired, oversized, CSRF,
+  and unauthorized cases pass.
+
+- [ ] **Task 6.4 — Implement token exchange and refresh.** JSON-post the exact authorization grant
+  fields and later refresh grant fields to the console endpoint. Set a plain connector User-Agent
+  such as `wp-connectors/<version>` and add a regression assertion that it never begins with
+  `claude-code/`. Encrypt returned tokens and apply the shared refresh coordinator. Check this
+  task only after exact request, UA, success, malformed, 429, invalid-grant, rotation, and revoke
+  tests pass.
+
+- [ ] **Task 6.5 — Implement Anthropic OAuth inference.** Adapt the tested Messages mapping from
+  z.ai without coupling plugin runtimes; target `https://api.anthropic.com/v1/messages`, use
+  `Authorization: Bearer`, include `anthropic-beta: oauth-2025-04-20`, and add any protocol version
+  header required by verified behavior. Check this task only after exact headers/URL and full
+  request/response/SSE/tool/structured-output regression fixtures pass.
+
+- [ ] **Task 6.6 — Implement model metadata and availability.** Ship a conservative static Claude
+  catalog sorted newest Sonnet first, advertise only tested capabilities, and connect encrypted
+  grant health to core availability. Keep model identifiers/data maintainable independently of
+  the adapter. Check this task only after sorting, default selection, stale model, unavailable,
+  refreshable, and reconnect-required tests pass.
+
+- [ ] **Task 6.7 — Complete admin UX, errors, and disclosure.** Present start URL, paste form,
+  status, reconnect and revoke actions; map 401/403/429/5xx safely and put the unofficial OAuth
+  and account-risk disclosure adjacent to Connect. Check this task only after accessibility,
+  escaping, capability, nonce, state, redaction, and error-presentation tests pass.
+
+- [ ] **Task 6.8 — Validate and document Claude Pro/Max.** Document the paste-code flow, scopes,
+  storage/rotation, required beta header, token-endpoint UA behavior, models, refresh/revoke, and
+  ToS risk. Run all offline protocol/shared-runtime tests and an optional credentialed smoke test.
+  Check this task only after the standalone zip and M5 acceptance evidence are complete.
+
+### Exit criteria
+
+- State is one-time, constant-time validated, and bound to an expiring PKCE verifier.
+- The exchange/refresh User-Agent regression test prevents the known throttled prefix.
+- Messages inference includes the OAuth beta header and one-refresh retry semantics.
+
+---
+
+## Milestone 7 — Repository hardening, release, and distribution decision
+
+- [ ] **Milestone 7 complete.** Check this milestone only after Tasks 7.1–7.9 are checked, all
+  required SPEC M6 criteria pass, release artifacts are reproducible and tested, and the selected
+  distribution path resolves O5 in both the SPEC and release documentation.
+
+### Tasks
+
+- [ ] **Task 7.1 — Enforce code quality in CI.** Add workflows for Composer validation, PHPCS,
+  PHP syntax on 7.4–8.4, PHPUnit, static analysis, build reproducibility, secret scanning, and a
+  simultaneous-plugin activation smoke test. Pin third-party actions by immutable commit where
+  practical and use least-privilege permissions. Check this task only after a pull request run is
+  green or each unavailable runner limitation is documented with an equivalent local result.
+
+- [ ] **Task 7.2 — Add WordPress compatibility integration tests.** Exercise WordPress 7.0 and,
+  if support remains claimed, WP 6.9 with the standalone SDK. Test single site and multisite,
+  network activation with per-site options, supported PHP extremes, cron disabled behavior, and
+  missing sodium/SDK degradation. Check this task only after the compatibility table reflects
+  actual automated results rather than aspirations.
+
+- [ ] **Task 7.3 — Perform a security review.** Trace every secret from input to deletion, audit
+  capability/nonces/CSRF/PKCE, HTTP allowlists and redirects, option autoloading, output escaping,
+  log redaction, refresh locks, JWT handling, uninstall, and built artifacts. Add adversarial tests
+  for findings. Check this task only after all high/critical findings are fixed and lower findings
+  are fixed or explicitly accepted with rationale.
+
+- [ ] **Task 7.4 — Perform protocol and SDK conformance review.** Compare provider classes,
+  metadata, advertised options, result types, streaming events, and availability behavior with the
+  pinned WordPress SDK/reference plugin. Test older supported SDK feature guards. Check this task
+  only after mismatches are corrected or documented and no provider advertises an unsupported
+  capability.
+
+- [ ] **Task 7.5 — Finalize user and operator documentation.** Update root and per-plugin readmes
+  with installation, screenshots if useful, settings, model limitations, live-test instructions,
+  privacy/data flow, encrypted OAuth versus core API-key storage, salt rotation, multisite, cron,
+  debugging, support boundaries, and prominent unofficial-flow disclosures. Check this task only
+  after every command/link/example is verified and translations remain possible.
+
+- [ ] **Task 7.6 — Define versioning, upgrades, and uninstall.** Add tested schema/version upgrade
+  routines, model-catalog update policy, OAuth client-ID patch path, deactivation behavior, and
+  explicit opt-in or documented uninstall cleanup for options, cron hooks, locks, fallback keys,
+  and ciphertext. Check this task only after upgrade/rollback and uninstall tests show no orphaned
+  secrets or cross-plugin deletion.
+
+- [ ] **Task 7.7 — Produce reproducible release artifacts.** Build each plugin independently,
+  verify headers/licenses/text domains/classmaps/shared copies, run syntax and malware/secret
+  scans on extracted zips, generate checksums/SBOM or dependency inventory, and compare two clean
+  builds. Check this task only after artifacts are byte-reproducible or all unavoidable metadata
+  differences are normalized and documented.
+
+- [ ] **Task 7.8 — Resolve distribution strategy (O5).** Decide WordPress.org per-plugin slugs
+  versus GitHub-only zips after reviewing unofficial OAuth policy/ToS implications. Record chosen
+  slugs, ownership, signing/provenance, release approval, rollback, and security-reporting process;
+  do not claim WordPress.org availability before approval. Check this task only after O5 and the
+  SPEC risk table are updated with an actionable decision.
+
+- [ ] **Task 7.9 — Run release-candidate acceptance.** On a clean WordPress install, install only
+  the zips and walk every connector's connect/settings, mocked or authorized inference, streaming,
+  refresh, failure, reconnect, revoke, deactivation/reactivation, and uninstall paths. Confirm no
+  runtime repository dependency and review all visible disclosures. Check this task only after a
+  signed-off matrix has no unresolved release-blocking defects.
+
+### Exit criteria
+
+- CI produces independently installable, checked artifacts for all completed connectors.
+- Compatibility, security, disclosure, upgrade, and distribution documentation reflects tested
+  behavior.
+- O1, O2, and O5 are resolved or explicitly documented as inconclusive/non-blocking with safe
+  fallback; O3 and O4 remain clearly deferred unless separately scoped.
+
+---
+
+## Post-v1 backlog (not part of milestone completion)
+
+- [ ] **Backlog Task B.1 — Investigate z.ai `x-api-key` support (O3).** Use a safe credentialed
+  probe and add it only as an optional compatible mode if it provides concrete value; Bearer must
+  remain supported. Check this task only after evidence, tests, and documentation are complete.
+- [ ] **Backlog Task B.2 — Add image generation and embeddings (O4).** Write a separate capability
+  specification for CogView/embedding models, SDK surfaces, endpoint availability, limits, and
+  billing before implementation. Check this task only after that specification and its own testable
+  plan are approved and implemented.
+- [ ] **Backlog Task B.3 — Track Connectors API OAuth support.** Reassess custom admin pages if core
+  gains native OAuth fields; include migration and backward compatibility rather than switching
+  automatically. Check this task only after an upstream stable API exists and migration tests pass.
+
+## Final plan/spec consistency review
+
+The following checks were applied while producing this plan:
+
+- The SPEC labels product milestones M1–M6, while this plan adds foundation and shared-runtime
+  milestones and therefore numbers release hardening as Milestone 7. The mapping is: plan M1→SPEC
+  M1, plan M2→SPEC M2, plan M4→SPEC M3, plan M5→SPEC M4, plan M6→SPEC M5, plan M7→SPEC M6.
+- The SPEC simultaneously says the z.ai surfaces ship as one plugin and assigns them sequential
+  milestones. The plan resolves this by creating the plugin in M1 and adding its second provider
+  in M2; no temporary second plugin is created.
+- The SPEC says OAuth token stores use core-bundled `sodium_compat`, but runtime availability can
+  vary on supported deployments. The plan requires a tested fail-closed/dependency path rather
+  than plaintext fallback.
+- The SPEC requires runtime z.ai endpoint selection even though `baseUrl()` is canonical. The plan
+  explicitly tests late option reads in both directory and inference requests.
+- O1 and O2 cannot be safely answered by unauthenticated probes. The plan makes credentialed probes
+  optional and keeps static catalogs as acceptance-safe fallbacks, so implementation never blocks
+  or silently relies on an unverified endpoint.
+- The SPEC names newer model families/defaults that can age quickly. The plan treats catalogs as
+  maintainable versioned data and forbids advertising capabilities based solely on family names.
+- The SPEC's “revoke” requirement has no remote revocation endpoint for these flows. In this plan,
+  revoke means local encrypted-token deletion and scheduled-event cleanup unless a verified remote
+  endpoint is later documented; user-facing copy must not imply remote invalidation.
+- OAuth admin polling is described behaviorally in the SPEC. The plan forbids a single long-lived
+  PHP request and requires a bounded state machine suitable for WordPress request lifetimes.
+- The plan keeps PHP 7.4 syntax compatibility, uses only `wp_remote_*` for provider traffic,
+  preserves per-site multisite settings, and maintains standalone plugin artifacts as required.
+
+If implementation discovers a genuine contradiction with the SDK or live provider behavior, the
+implementing LLM must update the SPEC and this plan in the same change, add regression evidence,
+and leave affected milestone/task checkboxes unchecked until the revised acceptance criteria pass.
