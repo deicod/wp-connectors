@@ -82,7 +82,7 @@ final class WpHarness
     /**
      * Outbound wp_remote_* attempts recorded by the HTTP stubs.
      *
-     * @var list<array{method: string, url: string, args: array}>
+     * @var list<array{method: string, url: string, args: array, mocked: bool}>
      */
     public static $http_attempts = array();
 
@@ -190,15 +190,17 @@ final class WpHarness
      * @param string $method HTTP method.
      * @param string $url    Request URL.
      * @param array  $args   Request arguments.
+     * @param bool   $mocked Whether a pre_http_request mock answered.
      * @return void
      */
-    public static function recordHttpAttempt($method, $url, array $args)
+    public static function recordHttpAttempt($method, $url, array $args, $mocked = false)
     {
         unset($args['body']);
         self::$http_attempts[] = array(
             'method' => strtoupper($method),
             'url' => $url,
             'args' => $args,
+            'mocked' => (bool) $mocked,
         );
     }
 
@@ -241,6 +243,31 @@ final class WpHarness
         }
 
         return $fired;
+    }
+
+    /**
+     * Recursively removes a directory (test helper).
+     *
+     * @param string $dir Absolute directory path.
+     * @return void
+     */
+    public static function rrmdir($dir)
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+        $items = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($items as $item) {
+            if ($item->isDir()) {
+                rmdir($item->getPathname());
+            } else {
+                unlink($item->getPathname());
+            }
+        }
+        rmdir($dir);
     }
 
     /**

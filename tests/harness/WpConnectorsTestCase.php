@@ -35,13 +35,18 @@ abstract class WpConnectorsTestCase extends TestCase
 
     protected function tearDown(): void
     {
-        $leaks = WpHarness::$http_attempts;
+        $leaks = array();
+        foreach (WpHarness::$http_attempts as $attempt) {
+            if (empty($attempt['mocked'])) {
+                $leaks[] = $attempt;
+            }
+        }
 
         parent::tearDown();
 
         if ($leaks !== array()) {
             $this->addWarning(
-                'Test leaked unmocked wp_remote_* attempts: ' . wp_json_encode($leaks)
+                'Test made unmocked wp_remote_* attempts: ' . wp_json_encode($leaks)
             );
         }
     }

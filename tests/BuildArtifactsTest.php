@@ -97,7 +97,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
         $extractDir = self::distDir() . '/.extract-test';
         if (is_dir($extractDir)) {
-            rrmdir_recursive($extractDir);
+            WpHarness::rrmdir($extractDir);
         }
         mkdir($extractDir, 0755, true);
         $zip = new ZipArchive();
@@ -129,7 +129,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             $this->assertSame(0, $exit, 'php -l failed: ' . implode("\n", $output));
         }
         $this->assertGreaterThan(4, $count, 'Fixture zip should contain the main file, autoloader, and source classes.');
-        rrmdir_recursive($extractDir);
+        WpHarness::rrmdir($extractDir);
     }
 
     public function testInspectorRejectsRepoRelativeInclude()
@@ -193,7 +193,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
         $tmp = self::distDir() . '/.badzip-' . $slug;
         if (is_dir($tmp)) {
-            rrmdir_recursive($tmp);
+            WpHarness::rrmdir($tmp);
         }
         mkdir($tmp . '/' . $slug . '/src', 0755, true);
         file_put_contents($tmp . '/' . $slug . '/' . $slug . '.php', $main);
@@ -205,33 +205,8 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->addFile($tmp . '/' . $slug . '/' . $slug . '.php', "{$slug}/{$slug}.php");
         $zip->addFile($tmp . '/' . $slug . '/src/autoload.php', "{$slug}/src/autoload.php");
         $zip->close();
-        rrmdir_recursive($tmp);
+        WpHarness::rrmdir($tmp);
 
         return $zipPath;
     }
-}
-
-/**
- * Test helper: recursive rm (global to keep the test file simple).
- *
- * @param string $dir Directory.
- * @return void
- */
-function rrmdir_recursive($dir)
-{
-    if (! is_dir($dir)) {
-        return;
-    }
-    $items = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
-    );
-    foreach ($items as $item) {
-        if ($item->isDir()) {
-            rmdir($item->getPathname());
-        } else {
-            unlink($item->getPathname());
-        }
-    }
-    rmdir($dir);
 }

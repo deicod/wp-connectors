@@ -21,6 +21,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', '1');
 
 require_once __DIR__ . '/lib/plugin-tools.php';
+require_once __DIR__ . '/lib/secret-scanner.php';
 
 /**
  * Inspects a zip archive and returns violations.
@@ -112,6 +113,11 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         if ($exit !== 0) {
             $violations[] = sprintf('inspect: %s failed php -l: %s', str_replace($workDir . '/', '', $file->getPathname()), implode(' ', $output));
         }
+    }
+
+    // No development credentials inside artifacts.
+    foreach (wp_connectors_scan_paths(array( $pluginDir )) as $secretFinding) {
+        $violations[] = 'inspect: ' . str_replace($workDir . '/', '', $secretFinding);
     }
 
     wp_connectors_inspect_rrmdir($workDir);

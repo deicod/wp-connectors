@@ -741,9 +741,8 @@ function load_plugin_textdomain($domain, $deprecated = false, $plugin_rel_path =
 function wp_remote_request($url, $args = array())
 {
     $method = isset($args['method']) ? $args['method'] : 'POST';
-    WpHarness::recordHttpAttempt($method, (string) $url, (array) $args);
-
     $pre = apply_filters('pre_http_request', false, (array) $args, (string) $url);
+    WpHarness::recordHttpAttempt($method, (string) $url, (array) $args, false !== $pre);
     if (false !== $pre) {
         return $pre;
     }

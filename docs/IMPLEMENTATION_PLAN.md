@@ -101,7 +101,7 @@ documented exception.
   that rejects repository-relative includes and missing plugin headers. Check this task only after
   a minimal fixture plugin can be zipped, extracted elsewhere, and syntax-checked independently.
 
-- [ ] **Task 0.6 — Create secure test-fixture rules.** Provide fake token/key factories, HTTP
+- [x] **Task 0.6 — Create secure test-fixture rules.** Provide fake token/key factories, HTTP
   response builders, and automated secret-pattern scanning. Document opt-in environment variable
   names for live tests without supplying values. Check this task only after a seeded fake token
   test passes and the scanner intentionally rejects a known-secret fixture.
