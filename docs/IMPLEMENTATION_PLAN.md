@@ -299,7 +299,11 @@ documented exception.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
-  WordPress auth salts. If salts are unusable, the fallback key MUST come from an external
+  WordPress auth salts. The key derivation (or the envelope itself) MUST bind the ciphertext to
+  its provider AND site context (multisite shares salts across sites: derive per-site — e.g.
+  include the site ID — or embed and verify provider+site inside the envelope), so a ciphertext
+  transplanted from another site or provider fails authentication rather than granting access;
+  add cross-provider and cross-site swap tests. If salts are unusable, the fallback key MUST come from an external
   source outside the WordPress database (e.g. a `WP_CONNECTORS_*_KEY` constant or environment
   variable); if no external source exists, fail closed (provider unavailable with a clear admin
   notice) rather than persisting a decrypt-capable key alongside the ciphertext. Define
@@ -456,8 +460,10 @@ documented exception.
   (`https://auth.openai.com/deviceauth/callback`), and the exact client ID (per SPEC §4.1) —
   missing or mis-encoded fields must fail the test. A non-consuming transient response from
   the exchange (HTTP 429) MUST preserve the encrypted code/verifier state for bounded retry
-  (claim released, never consumed on 429 — mirroring the Claude rule in Task 6.3); test
-  exchange-retry-after-429. Check this task only after
+  (claim released, never consumed on 429 — mirroring the Claude rule in Task 6.3); on 429 with
+  a nonzero `Retry-After`, persist a per-flow not-before time (cooldown) and reject or
+  reschedule earlier reacquisition so the cooldown is honored before another poll retries;
+  test exchange-retry-after-429 with early-retry rejection. Check this task only after
   pending→success, expiry, cancellation (including the cancel-versus-exchange race),
   throttling (including the bounded 429 backoff and exchange-preservation tests),
   malformed success, and terminal error state-machine tests pass.

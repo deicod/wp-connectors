@@ -308,7 +308,10 @@ Rules:
 - Plan/region dropdowns (Settings page) default coding+intl; switching re-targets requests
   (verified by request-log/debug output).
 - `wp_ai_client_prompt('…')->using_provider('zai')->generate_text()` works on coding+intl
-  with a Coding Plan key; O1 resolved (dynamic vs static model list, documented in code).
+  with a Coding Plan key. O1 handling: a credentialed `/models` probe is attempted — if it
+  succeeds, dynamic discovery (per §3.3 cache rules) is implemented; if unavailable or
+  inconclusive, retaining the tested static per-plan fallback COUNTS as a valid O1
+  resolution (document the probe outcome in code) — M1 does not block on O1.
 - Invalid key → core screen shows not-connected; clear WP_Error.
 
 **M2 — zai_anthropic**
