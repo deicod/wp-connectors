@@ -220,8 +220,13 @@ documented exception.
 - [ ] **Task 2.1 — Add the second provider and independent settings.** Extend the existing z.ai
   plugin to register `zai_anthropic` idempotently and add its own
   `zai_connector_zai_anthropic_plan` and `_region` options with the same defaults and controls.
-  Keep API-key storage/auth metadata distinct as core derives it from provider ID. Check this task
-  only after tests prove the providers coexist, settings do not bleed between them, and failure of
+  Keep API-key storage/auth metadata distinct as core derives it from provider ID. The second
+  provider's availability MUST be validated independently (authenticated probe or equivalent
+  per-provider validated state): Task 1.4's validated state for `zai` cannot establish
+  `zai_anthropic`'s status, so add an invalid-key → not-connected test for this provider too.
+  Check this task
+  only after tests prove the providers coexist, settings do not bleed between them, the
+  invalid-key status test above, and failure of
   one registration cannot silently replace the other.
 
 - [ ] **Task 2.2 — Extend endpoint resolution for Anthropic URLs.** Map coding/general × intl/cn to
@@ -236,7 +241,10 @@ documented exception.
 
 - [ ] **Task 2.4 — Implement Anthropic metadata/catalog.** Create the custom metadata directory,
   static GLM fallback, capability declarations, sorting, optional cached `/v1/models` discovery,
-  and graceful failure policy. The static fallback MUST be plan-partitioned: separate coding and
+  and graceful failure policy. The discovery cache MUST be scoped by endpoint identity
+  (provider/plan/region in the cache key, or invalidation on settings change) exactly as in
+  Task 1.5, including a pre-expiry plan/region switch test asserting the new endpoint's catalog
+  is re-fetched rather than served stale. The static fallback MUST be plan-partitioned: separate coding and
   general catalogs (coding subscriptions expose a restricted model set; a single shared fallback
   would advertise general-only models while the coding endpoint is selected, per SPEC §3.3).
   Share neutral GLM catalog data where useful without coupling the two protocol adapters.
@@ -312,8 +320,12 @@ documented exception.
 
 - [ ] **Task 3.4 — Implement authenticated request retry.** Supply a provider-neutral wrapper that
   obtains/refreshed access tokens, makes an inference request, and on the first 401 performs at
-  most one refresh and one replay. Never replay non-repeatable bodies or loop. Check this task only
-  after tests cover fresh, proactively refreshed, single-401 recovery, second-401 failure,
+  most one refresh and one replay. A 401 on a still-unexpired token MUST bypass the
+  expiry-minus-skew freshness check and force a refresh (providers can revoke access tokens
+  before recorded expiry; replaying the same credential would loop the failure). Never replay
+  non-repeatable bodies or loop. Check this task only
+  after tests cover fresh, proactively refreshed, single-401 recovery with a still-unexpired
+  token (forced refresh), second-401 failure,
   refresh failure, and concurrent refresh paths.
 
 - [ ] **Task 3.5 — Implement availability semantics.** Compute availability from grant presence,
