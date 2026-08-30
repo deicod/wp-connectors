@@ -1,0 +1,31 @@
+{
+    "url": "https://api.z.ai/api/coding/paas/v4/chat/completions",
+    "body": {
+        "model": "glm-5.3",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Capital of France?"
+                    }
+                ]
+            }
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "type": "object",
+                "properties": {
+                    "answer": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "answer"
+                ]
+            }
+        }
+    }
+}

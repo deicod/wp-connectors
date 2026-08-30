@@ -1,0 +1,17 @@
+{
+    "url": "https://api.z.ai/api/coding/paas/v4/chat/completions",
+    "body": {
+        "model": "glm-5.3",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Say hi."
+                    }
+                ]
+            }
+        ]
+    }
+}

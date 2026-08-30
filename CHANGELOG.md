@@ -32,6 +32,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   5.x family; general: full catalog), malformed/401/404/transport responses
   falling back without poisoning the cache, and conservative text-only
   capability/option declarations (Task 1.5).
+- Chat-completions request mapping on the SDK OpenAI-compatible base class
+  with request-time endpoint resolution; unsupported option/model
+  combinations (image input, candidateCount, penalties, topK, logprobs,
+  web search, non-text output modalities/MIME types, custom options) are
+  rejected before transport. Committed redacted request snapshots cover
+  minimal, conversation, structured-output, tool, and multimodal-text cases
+  (Task 1.6).
 
 ### Added (tooling / M0 foundation)
 

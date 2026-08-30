@@ -182,7 +182,7 @@ documented exception.
   fallback behavior, and capability/option
   declarations.
 
-- [ ] **Task 1.6 — Implement chat-completions request mapping.** Build `/chat/completions` requests
+- [x] **Task 1.6 — Implement chat-completions request mapping.** Build `/chat/completions` requests
   for text generation and chat history, mapping system instruction, temperature, max tokens,
   top-p, stop sequences, JSON MIME type/schema, function declarations, and supported text/image
   inputs exactly as the SDK exposes them. Reject unsupported option/model combinations before
