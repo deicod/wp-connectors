@@ -132,8 +132,12 @@ documented exception.
   `zai_connector_zai_plan` (`coding` default, `general`) and
   `zai_connector_zai_region` (`intl` default, `cn`) using the Settings API. Sanitize to the known
   enum, fall back safely on corrupt values, require `manage_options`, use nonces, and explain the
-  billing/account distinction. Check this task only after tests cover defaults, all four valid
-  combinations, invalid input, unauthorized submission, and escaped/translatable rendering.
+  billing/account distinction. A region change (`intl` ↔ `cn`) MUST NOT silently reuse the
+  previous region's credential: clear/invalidate the stored key (or gate requests until a new
+  key is supplied) because the regions use separate accounts and keys (SPEC §3.3); test the
+  switch for the z.ai provider. Check this task only after tests cover defaults, all four valid
+  combinations, invalid input, unauthorized submission, region-switch key invalidation, and
+  escaped/translatable rendering.
 
 - [ ] **Task 1.3 — Centralize endpoint resolution.** Implement an immutable endpoint resolver for
   all four OpenAI plan/region combinations while keeping provider `baseUrl()` fixed to the
@@ -143,7 +147,10 @@ documented exception.
   request without rebuilding the registry.
 
 - [ ] **Task 1.4 — Implement provider metadata and authentication.** Add provider ID, display name,
-  description, API-key authentication metadata, logo, and availability mapping. Guard description
+  description, API-key authentication metadata, logo, and availability mapping. Availability MUST
+  be more than key presence: an authenticated probe (or equivalent validated state) is required
+  so a nonempty-but-invalid key (HTTP 401 on the probe) reports unavailable/not-connected, per
+  the M1 exit criterion. Guard description
   and logo features according to detected SDK support rather than merely assuming methods exist;
   rely on core's `connectors_ai_zai_api_key` store and inject `Authorization: Bearer <key>`.
   Check this task only after metadata tests cover the minimum and newer SDK shapes, header tests
@@ -276,10 +283,14 @@ documented exception.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
-  WordPress auth salts. If salts are unusable, generate and persist a random fallback key in its
-  own non-autoloaded option. Define salt-change/fallback-key rotation, corruption, migration, and
+  WordPress auth salts. If salts are unusable, the fallback key MUST come from an external
+  source outside the WordPress database (e.g. a `WP_CONNECTORS_*_KEY` constant or environment
+  variable); if no external source exists, fail closed (provider unavailable with a clear admin
+  notice) rather than persisting a decrypt-capable key alongside the ciphertext. Define
+  salt-change/external-key rotation, corruption, migration, and
   deletion behavior; never return partial plaintext. Check this task only after round-trip,
-  tamper, wrong-key, legacy-version, rotation, missing-sodium-compat, autoload, and deletion tests.
+  tamper, wrong-key, legacy-version, rotation, missing-sodium-compat, autoload, fail-closed,
+  and deletion tests.
 
 - [ ] **Task 3.3 — Implement refresh coordination.** Add lazy expiry-minus-skew refresh, a short
   per-provider lock to prevent refresh-token races, atomic replacement, scheduled single-event
@@ -355,7 +366,10 @@ documented exception.
   lifetime at 15 minutes, and display the exact verification URL/code safely. Concurrent or
   double-submitted starts MUST be deterministic: scope transient flow state per admin user (or
   explicitly cancel-and-replace the previous flow), so a second start can never orphan or corrupt
-  the first flow's `device_auth_id`/`user_code`; add a duplicate-start test. Apply bounded 429
+  the first flow's `device_auth_id`/`user_code`; add a duplicate-start test. Persisted pending
+  flow state (`device_auth_id`, `user_code`) MUST use the encrypted store (Task 3.2) — these
+  values let a database reader hijack the flow after the administrator authorizes; test that no
+  plaintext device-flow credentials appear in options/transients. Apply bounded 429
   retry using `Retry-After` or 2/4/8-second backoff, maximum four attempts, with every single
   retry delay clamped to at most 60 seconds even when the endpoint returns an oversized
   `Retry-After` value. Check this task only after success, malformed response, timeout, retry,
