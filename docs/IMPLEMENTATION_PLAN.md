@@ -62,7 +62,7 @@ documented exception.
 
 ## Milestone 0 — Repository foundation and executable test harness
 
-- [ ] **Milestone 0 complete.** Check this milestone only after Tasks 0.1–0.6 are checked and a
+- [x] **Milestone 0 complete.** Check this milestone only after Tasks 0.1–0.6 are checked and a
   clean checkout can install dependencies, run all offline checks, and build a minimal plugin
   artifact without loading code from outside that artifact.
 
