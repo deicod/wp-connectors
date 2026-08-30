@@ -155,7 +155,12 @@ documented exception.
   description, API-key authentication metadata, logo, and availability mapping. Availability MUST
   be more than key presence: an authenticated probe (or equivalent validated state) is required
   so a nonempty-but-invalid key (HTTP 401 on the probe) reports unavailable/not-connected, per
-  the M1 exit criterion. Guard description
+  the M1 exit criterion. Persisted validated state MUST be bound to the credential: key the
+  validation to a non-secret credential generation/fingerprint (hash of key source+value
+  prefix) or invalidate on EVERY key-source change (env/constant/DB replacement) — a newly
+  invalid key must not appear connected, a corrected key must not stay unavailable; test
+  valid→invalid and invalid→valid replacement (apply the same rule to `zai_anthropic`,
+  Task 2.1). Guard description
   and logo features according to detected SDK support rather than merely assuming methods exist;
   rely on core's `connectors_ai_zai_api_key` store and inject `Authorization: Bearer <key>`.
   Check this task only after metadata tests cover the minimum and newer SDK shapes, header tests
@@ -429,7 +434,11 @@ documented exception.
   lifetime at 15 minutes, and display the exact verification URL/code safely. Concurrent or
   double-submitted starts MUST be deterministic: scope transient flow state per admin user (or
   explicitly cancel-and-replace the previous flow), so a second start can never orphan or corrupt
-  the first flow's `device_auth_id`/`user_code`; add a duplicate-start test. Persisted pending
+  the first flow's `device_auth_id`/`user_code`; add a duplicate-start test. Starts by the
+  SAME administrator (double-submit/two tabs) MUST be serialized through an atomic per-user
+  start lease/CAS before state is stored — both requests may never obtain different server
+  flows and overwrite one per-user slot while both display valid-looking codes; add a
+  genuinely overlapping same-user test (Tasks 5.3 and 6.2 inherit this guarantee). Persisted pending
   flow state (`device_auth_id`, `user_code`) MUST use the encrypted store (Task 3.2) — these
   values let a database reader hijack the flow after the administrator authorizes; test that no
   plaintext device-flow credentials appear in options/transients. Apply bounded 429
@@ -573,7 +582,9 @@ documented exception.
   output escaping, expiration, duplicate-start, replacement fencing, at-rest encryption, CSRF,
   and capability tests pass.
 
-- [ ] **Task 5.4 — Implement RFC 8628 polling.** Poll at the server interval, handle
+- [ ] **Task 5.4 — Implement RFC 8628 polling.** Poll at the server interval — defaulting to
+  five seconds when the device response omits the optional `interval` member (RFC 8628 §3.3);
+  reject nonpositive or malformed supplied values and cover the omitted-field path — and handle
   `authorization_pending`, denial, expiry, and success without tying up a PHP worker. A
   transport-layer timeout on a poll is non-terminal (RFC 8628 §3.5): preserve the still-valid
   device flow and reduce the polling frequency with bounded backoff for subsequent polls;

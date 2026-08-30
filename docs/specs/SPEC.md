@@ -238,8 +238,11 @@ PKCE authorization-code with **paste-back code** (no callback server needed — 
   grant): mark grant dead, show
   "Re-connect required" on admin page + connector availability = false. HTTP 429 and other
   transient/transport failures stay retryable (bounded cooldown, honor `Retry-After`).
-- Availability check (`ProviderAvailabilityInterface`): token present && (refresh succeeds
-  || cheap model-list/inference probe). Core Connectors screen shows status from this.
+- Availability check (`ProviderAvailabilityInterface`): in POST/scheduled contexts, token
+  present && (refresh succeeds || cheap model-list/inference probe). In GET-render contexts
+  (provider admin page, core Connectors screen) availability is read-only: report from cached
+  grant state only (stale-expiry = temporarily unavailable, schedule a refresh); refreshes and
+  probes run exclusively through POST/scheduled paths, never during GET renders.
 - Admin page per plugin (submenu under Settings): provider status, Connect/Re-connect,
   Revoke (delete tokens), account label if derivable (e.g. JWT claims email for codex/xai).
 - Capability `manage_options` guards everything; nonces on all actions.
