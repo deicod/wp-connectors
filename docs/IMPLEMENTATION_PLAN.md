@@ -68,7 +68,7 @@ documented exception.
 
 ### Tasks
 
-- [ ] **Task 0.1 — Record architecture and compatibility contracts.** Inspect the exact SDK and
+- [x] **Task 0.1 — Record architecture and compatibility contracts.** Inspect the exact SDK and
   WordPress 7.0 APIs used by the SPEC; add concise architecture records for provider
   registration, model construction, metadata version guards, option ownership, and standalone
   plugin packaging. Pin development dependencies or test fixtures to known compatible versions.

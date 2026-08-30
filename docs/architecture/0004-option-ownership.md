@@ -1,0 +1,53 @@
+# 0004 — Option ownership
+
+Verified against: `wp-includes/connectors.php` (setting derivation, REST masking,
+key pass-through), the SPEC §3.3/§4.4 requirements, and the implementation plan's
+cross-cutting decision 6.
+
+## Ownership table
+
+| Option | Owner | Written by | Read by | autoload |
+|--------|-------|-----------|---------|----------|
+| `connectors_ai_zai_api_key` | **WordPress core** (Settings API group `connectors`) | core only (settings screen / REST) | core (pass-through at init 20), zai plugin (read-only) | core default |
+| `connectors_ai_zai_anthropic_api_key` | **WordPress core** | core only | same | core default |
+| `zai_connector_zai_plan` / `_region` | zai plugin | plugin Settings API page (`manage_options` + nonce) | plugin (read **at request time**, not construction time) | no |
+| `zai_connector_zai_anthropic_plan` / `_region` | zai plugin | plugin Settings API page | same | no |
+| OAuth token envelopes (`*_connector_*_tokens`) | each OAuth plugin | plugin only (encrypted, versioned envelope) | plugin only | no |
+| Pending-flow state (device/PKCE) | each OAuth plugin | plugin only (encrypted store or transient) | plugin only | no |
+| Discovery caches (model list) | plugin | plugin; cache key includes provider+plan+region | plugin | no (short-lived) |
+| Debug/observability option | plugin | plugin admin, **default off** | plugin logging helpers | no |
+
+Rules:
+
+1. **Connector plugins never write core-owned options.** Core owns the write path
+   (Settings API registration at init 20, REST masking/validation). Reading them via
+   `get_option()` for request building is fine; env/constant sources take precedence
+   over the DB value, matching core's own resolution order (record 0001).
+2. **Per-site scope, including multisite** (`get_option`/`update_option` are
+   site-scoped). Network activation still yields per-site settings and per-site OAuth
+   grants; salts are shared across sites, which is why the M3 encrypted envelope must
+   bind provider **and** site ID (plan Task 3.2).
+3. **Plugin-owned secrets are never autoloaded** (`autoload => false` via
+   `add_option()`) to avoid shipping ciphertext on every uncached request unless
+   explicitly fetched.
+4. **Uninstall** removes plugin-owned options, scheduled events, locks, and ciphertext
+   only. Core-owned API keys are left to core. **Deactivation** retains everything
+   (plan cross-cutting decision 6).
+5. **Option name prefixes are namespaced per plugin** (`zai_connector_`,
+   `openai_connector_`, `xai_connector_`, `anthropic_connector_`) so simultaneous
+   activation can never collide.
+
+## Settings write path (admin mutations)
+
+Every admin mutation in this suite follows: `current_user_can( 'manage_options' )` +
+nonce check (`wp_nonce_field` / `check_admin_referer`) + sanitization to a known enum
+or shape + typed `WP_Error` on failure. Corrupt stored values fall back to the
+documented default (coding-plan/international for z.ai) rather than failing requests.
+
+## z.ai region-switch implication (SPEC §3.3)
+
+`intl` and `cn` are separate accounts with separate keys. A region switch must
+invalidate the provider's effective credential state (clear the stored key or gate
+requests until a new key is supplied) and invalidate the discovery cache — the cache
+key already includes region, so a warm cache can never serve the other region's
+catalog. Implemented and tested in Tasks 1.2/1.5.

@@ -359,7 +359,12 @@ Rules:
 
 ## 9. Open questions
 
-- **O1:** `/models` on coding base URLs (both protocols) with valid key? → resolve in M1.
+- **O1:** `/models` on coding base URLs (both protocols) with valid key? → **Resolved for the
+  OpenAI surface, international region** (2026-08-30 credentialed probe: HTTP 200 OpenAI-shape
+  on both coding and general intl bases, identical 10-model GLM list — see
+  [`docs/architecture/0006-zai-models-evidence.md`](../architecture/0006-zai-models-evidence.md)).
+  M1 implements dynamic directory + plan-partitioned static fallback. The `cn` region and the
+  Anthropic surface remain unprobed; the static fallback stays authoritative there.
 - **O2:** Codex model discovery via `chatgpt.com/backend-api/codex/models`? → M3.
 - **O3:** z.ai `x-api-key` header support on Anthropic surface (nice-to-have, Bearer suffices).
 - **O4:** CogView (image) / embedding models on general API — defer post-v1, directory is
