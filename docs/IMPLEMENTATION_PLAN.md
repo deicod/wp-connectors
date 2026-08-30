@@ -149,9 +149,14 @@ documented exception.
 - [ ] **Task 1.5 — Implement the model metadata directory.** Start with a maintained static GLM
   text-model catalog, newest-first, differentiated where coding/general access is known. Add an
   optional `/models` discovery path only if responses can be normalized, cached, and merged with
-  capability metadata without losing the static fallback. Do not claim image support without
-  model-specific evidence. Check this task only after tests cover sorting, cache expiry,
-  malformed/401/404 discovery responses, fallback behavior, and capability/option declarations.
+  capability metadata without losing the static fallback. The discovery cache MUST be scoped by
+  endpoint identity: include provider, plan, and region in the cache key (or invalidate it on
+  plan/region settings changes) so a warm cache can never serve models from a previous endpoint
+  after an administrator switches settings. Do not claim image support without model-specific
+  evidence. Check this task only after tests cover sorting, cache expiry, cache scoping across a
+  plan/region switch (verify the other endpoint's catalog is re-fetched, not served stale, before
+  expiry), malformed/401/404 discovery responses, fallback behavior, and capability/option
+  declarations.
 
 - [ ] **Task 1.6 — Implement chat-completions request mapping.** Build `/chat/completions` requests
   for text generation and chat history, mapping system instruction, temperature, max tokens,
@@ -328,8 +333,10 @@ documented exception.
 - [ ] **Task 4.2 — Implement device authorization start.** POST JSON with the specified client ID
   to the user-code endpoint, validate `user_code`, `device_auth_id`, and interval, cap stored flow
   lifetime at 15 minutes, and display the exact verification URL/code safely. Apply bounded 429
-  retry using `Retry-After` or 2/4/8-second backoff, maximum four attempts. Check this task only
-  after success, malformed response, timeout, retry, cap, CSRF, and capability tests pass.
+  retry using `Retry-After` or 2/4/8-second backoff, maximum four attempts, with every single
+  retry delay clamped to at most 60 seconds even when the endpoint returns an oversized
+  `Retry-After` value. Check this task only after success, malformed response, timeout, retry,
+  cap (including an oversized-`Retry-After` clamp test), CSRF, and capability tests pass.
 
 - [ ] **Task 4.3 — Implement device polling and exchange.** Poll no faster than `max(interval, 3)`
   using bounded admin/AJAX requests or scheduled work rather than a long PHP request; treat only
