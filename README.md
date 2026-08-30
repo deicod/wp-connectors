@@ -1,0 +1,39 @@
+# wp-connectors
+
+WordPress 7.0 AI connector plugins — provider plugins for the native
+**Settings → Connectors** screen, built on the PHP AI Client SDK (`wordpress/php-ai-client`,
+bundled in WordPress 7.0).
+
+## Connectors
+
+| Connector | Provider(s) | Surface | Auth |
+|---|---|---|---|
+| `zai` | z.ai GLM | OpenAI-compatible API (Coding Plan default, General optional; International default, China optional) | API key |
+| `zai_anthropic` | z.ai GLM | Anthropic-compatible API (same plan × region matrix) | API key |
+| `codex` | OpenAI (ChatGPT/Codex subscription) | Codex backend (Responses API) | OAuth device flow |
+| `grok` | xAI (SuperGrok / X Premium+) | xAI Responses API | OAuth device flow |
+| `claude_pro` | Anthropic (Claude Pro/Max) | Anthropic Messages API | OAuth PKCE (paste-code) |
+
+## Status
+
+Spec phase — see [`docs/specs/SPEC.md`](docs/specs/SPEC.md). Implementation milestones M1–M6.
+
+## ⚠️ Disclosure
+
+The OAuth connectors use authorization flows and client identifiers originating from
+first-party vendor CLI tools (OpenAI Codex CLI, Grok CLI, Claude Code). They are not
+officially documented public OAuth programs. Using subscription-backed endpoints outside
+the official clients may conflict with the respective provider's terms of service. Use at
+your own risk; tokens are stored encrypted, but account risk sits with the site owner.
+
+## Layout
+
+```
+docs/specs/     specifications (SPEC.md = current suite)
+connectors/     one directory per plugin (self-contained drop-ins)
+shared/         build-time shared OAuth/token helpers (copied into each plugin)
+```
+
+## License
+
+GPL-2.0-or-later (matches WordPress plugin ecosystem requirements).
