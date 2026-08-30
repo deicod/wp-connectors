@@ -306,7 +306,11 @@ documented exception.
 
 - [ ] **Task 3.3 — Implement refresh coordination.** Add lazy expiry-minus-skew refresh, a short
   per-provider lock to prevent refresh-token races, atomic replacement, scheduled single-event
-  backup, and cleanup on revoke/uninstall. Token-set replacement MUST use merge semantics:
+  backup, and cleanup on revoke/uninstall. Revocation MUST be serialized against in-flight
+  refreshes: revoke participates in the refresh lock or advances a persisted grant
+  generation/tombstone that refresh checks before committing, so a refresh that returns after
+  revoke can never write a fresh token set and silently reconnect the provider (add a
+  deterministic revoke-versus-refresh race test). Token-set replacement MUST use merge semantics:
   preserve the stored refresh token unless the response contains a nonempty replacement
   `refresh_token` (providers may omit it on refresh; discarding a still-valid token forces
   unnecessary reconnection). Treat terminal authorization failures as dead while
@@ -351,11 +355,13 @@ documented exception.
 
 - [ ] **Task 3.7 — Implement safe OAuth HTTP/error utilities.** Wrap `wp_remote_*` with explicit
   timeouts, accepted content types, bounded response sizes, TLS defaults, structured redacted
-  debug events, `Retry-After` parsing, and provider-error normalization. Credential-bearing
-  requests (token, refresh, exchange, device) MUST have redirects disabled — or every redirect
-  target revalidated against the approved provider origin without forwarding the body — so a
-  cross-origin 307/308 can never replay secrets at an attacker-controlled location; assert
-  rejection of a cross-origin redirect. Debug event emission
+  debug events, `Retry-After` parsing, and provider-error normalization. Redirects MUST be
+  disabled (or every redirect target revalidated against the approved provider origin without
+  forwarding headers/body) for EVERY credential-bearing request — OAuth token/refresh/exchange/
+  device requests AND authenticated inference/model/discovery requests (shared Responses
+  adapter, both z.ai adapters) — so a cross-origin 307/308 can never replay the Authorization
+  header or prompt body at an attacker-controlled location; assert
+  rejection of a cross-origin redirect on both an OAuth request and an inference request. Debug event emission
   MUST be gated behind an explicit shared debug option that is disabled by default (SPEC §6.2);
   no OAuth endpoint, status, timing, or failure metadata may be recorded without administrator
   opt-in. Check this task only after tests cover malformed JSON, HTML errors, redirects, timeout,
@@ -408,7 +414,12 @@ documented exception.
 
 - [ ] **Task 4.3 — Implement device polling and exchange.** Poll no faster than `max(interval, 3)`
   using bounded admin/AJAX requests or scheduled work rather than a long PHP request; treat only
-  documented pending 403/404 responses as pending. The poll request MUST be asserted exactly:
+  documented pending 403/404 responses as pending. Polling and code exchange MUST be mutually
+  exclusive per flow (per-flow lease or idempotent completion guard): when an AJAX poll and a
+  scheduled poll overlap after authorization succeeds, only one may exchange the one-time
+  authorization code — the loser observes completed state, never a terminal failure or
+  overwrite; add a deterministic overlapping-polls test (same invariant for the xAI flow in
+  Task 5.4). The poll request MUST be asserted exactly:
   JSON POST to `https://auth.openai.com/api/accounts/deviceauth/token` containing both
   `device_auth_id` and `user_code` (per SPEC §4.1) — form-encoding or omitting either field
   must fail the test. A 429 from the device-token endpoint MUST
@@ -438,7 +449,10 @@ documented exception.
 
 - [ ] **Task 4.6 — Configure Codex inference and metadata.** Target
   `https://chatgpt.com/backend-api/codex/responses` (service base plus the Responses endpoint
-  path), use OAuth Bearer tokens, expose a conservative static
+  path), use OAuth Bearer tokens, and inject the `ChatGPT-Account-Id` header: extract the
+  account ID from the OAuth token set (JWT `chatgpt_account_id` claim) and validate it — without
+  the header, multi-workspace users route to the wrong workspace or fail entitlement checks;
+  cover it in the exact-header test. Expose a conservative static
   GPT Codex catalog, and map only verified capabilities. Ensure URLs are constructed once and do
   not accidentally target `api.openai.com`. Check this task only after exact URL/header/model and
   unsupported-option tests pass.
@@ -499,6 +513,9 @@ documented exception.
   minimum flow state until `expires_in` — in the encrypted store (Task 3.2), never a plaintext
   transient: the `device_code` lets a database/cache reader poll the public-client token
   endpoint first and steal the grant; include a plaintext-absence assertion like Task 4.2.
+  Concurrent starts MUST be deterministic exactly as in Task 4.2: per-user isolation of pending
+  state or explicit atomic cancel-and-replace — a second start may never silently orphan a
+  first user's still-valid code; test overlapping starts.
   Check this task only after request,
   output escaping, expiration, duplicate-start, at-rest encryption, CSRF, and capability tests pass.
 
