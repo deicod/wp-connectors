@@ -147,7 +147,9 @@ documented exception.
   prove correct injection, and failures/logs prove the key is always redacted.
 
 - [ ] **Task 1.5 — Implement the model metadata directory.** Start with a maintained static GLM
-  text-model catalog, newest-first, differentiated where coding/general access is known. Add an
+  text-model catalog, newest-first. The static fallback MUST be plan-specific: separate coding
+  and general catalogs (coding subscriptions expose a restricted model set; a shared fallback
+  can advertise general-only models while the coding endpoint is selected, per SPEC §3.3). Add an
   optional `/models` discovery path only if responses can be normalized, cached, and merged with
   capability metadata without losing the static fallback. The discovery cache MUST be scoped by
   endpoint identity: include provider, plan, and region in the cache key (or invalidate it on
@@ -155,7 +157,8 @@ documented exception.
   after an administrator switches settings. Do not claim image support without model-specific
   evidence. Check this task only after tests cover sorting, cache expiry, cache scoping across a
   plan/region switch (verify the other endpoint's catalog is re-fetched, not served stale, before
-  expiry), malformed/401/404 discovery responses, fallback behavior, and capability/option
+  expiry), fallback contents for BOTH plan selections, malformed/401/404 discovery responses,
+  fallback behavior, and capability/option
   declarations.
 
 - [ ] **Task 1.6 — Implement chat-completions request mapping.** Build `/chat/completions` requests
@@ -307,9 +310,12 @@ documented exception.
 
 - [ ] **Task 3.7 — Implement safe OAuth HTTP/error utilities.** Wrap `wp_remote_*` with explicit
   timeouts, accepted content types, bounded response sizes, TLS defaults, structured redacted
-  debug events, `Retry-After` parsing, and provider-error normalization. Check this task only after
-  tests cover malformed JSON, HTML errors, redirects, timeout, 429 date/seconds headers, 5xx,
-  hostile strings, and secret-bearing URLs/bodies.
+  debug events, `Retry-After` parsing, and provider-error normalization. Debug event emission
+  MUST be gated behind an explicit shared debug option that is disabled by default (SPEC §6.2);
+  no OAuth endpoint, status, timing, or failure metadata may be recorded without administrator
+  opt-in. Check this task only after tests cover malformed JSON, HTML errors, redirects, timeout,
+  429 date/seconds headers, 5xx, hostile strings, secret-bearing URLs/bodies, and a
+  disabled-by-default assertion proving no events are emitted without the option.
 
 - [ ] **Task 3.8 — Build namespaced shared copies.** Extend the artifact builder to rewrite or
   generate each plugin's private namespace, include license/source provenance, and verify copies
@@ -348,7 +354,10 @@ documented exception.
 
 - [ ] **Task 4.3 — Implement device polling and exchange.** Poll no faster than `max(interval, 3)`
   using bounded admin/AJAX requests or scheduled work rather than a long PHP request; treat only
-  documented pending 403/404 responses as pending. A 429 from the device-token endpoint MUST
+  documented pending 403/404 responses as pending. The poll request MUST be asserted exactly:
+  JSON POST to `https://auth.openai.com/api/accounts/deviceauth/token` containing both
+  `device_auth_id` and `user_code` (per SPEC §4.1) — form-encoding or omitting either field
+  must fail the test. A 429 from the device-token endpoint MUST
   follow the same bounded backoff policy as Task 4.2 (`Retry-After`/2-4-8-second, max four
   attempts, per-delay 60-second clamp). Exchange the returned code/verifier at the token endpoint
   using form encoding and the exact callback URI/client ID. Check this task only after
@@ -417,8 +426,11 @@ documented exception.
 
 - [ ] **Task 5.2 — Implement OIDC discovery with fallback.** Fetch
   `https://auth.x.ai/.well-known/openid-configuration`, validate HTTPS issuer/endpoints and cache
-  the result with bounded lifetime; on network, schema, or security validation failure use the
-  hardcoded device/token endpoints from the SPEC. Check this task only after valid, poisoned,
+  the result with bounded lifetime. The discovered issuer MUST match `https://auth.x.ai` exactly,
+  and every consumed endpoint (authorization/token/device) MUST be constrained to explicitly
+  approved origins — a poisoned or misconfigured response must trigger fallback, never use. On
+  network, schema, or security validation failure use the hardcoded device/token endpoints from
+  the SPEC. Check this task only after valid, poisoned (asserting fallback rather than use),
   redirect, stale-cache, offline, and fallback tests pass.
 
 - [ ] **Task 5.3 — Implement xAI device authorization.** Form-post the exact client ID and scopes,
@@ -428,9 +440,11 @@ documented exception.
 
 - [ ] **Task 5.4 — Implement RFC 8628 polling.** Poll at the server interval, handle
   `authorization_pending`, `slow_down`, denial, expiry, 429, and success without tying up a PHP
-  worker. Exchange with the exact device-code grant type and reject ambiguous HTTP/body states.
-  Check this task only after a clock-driven state-machine suite covers every terminal and
-  nonterminal response.
+  worker. The token request MUST be asserted exactly: form-encoded POST containing all three of
+  the device-code grant type (`urn:ietf:params:oauth:grant-type:device_code`), `device_code`, and
+  `client_id` (per SPEC §4.2) — omitting any field must fail the test. Exchange with the exact
+  device-code grant type and reject ambiguous HTTP/body states. Check this task only after a
+  clock-driven state-machine suite covers every terminal and nonterminal response.
 
 - [ ] **Task 5.5 — Implement xAI token lifecycle.** Encrypt token sets, refresh with the exact
   client ID/grant, use a 3600-second skew without refreshing repeatedly, schedule backup refresh,
