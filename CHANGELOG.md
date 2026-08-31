@@ -31,6 +31,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   both, so both were silently ignored — letting the initial `{}` become
   an executable no-argument call). The legitimate empty-string fragment
   keeps its no-op semantics.
+- A frame DECLARING a known event name (message_start, content_block_*,
+  message_delta, message_stop, error) with an undecodable payload now
+  fails the whole stream as a typed parse error: silently dropping a
+  malformed content_block_delta returned a successful completion with
+  that chunk of the answer missing. Unknown event names and
+  ping/keep-alive frames stay ignorable for forward compatibility.
 
 ### Fixed (zai / M2 — Codex PR review, round 3)
 

@@ -106,6 +106,29 @@ final class AnthropicSseAggregator {
 	private $block_order = array();
 
 	/**
+	 * Event names the aggregator actively dispatches on (Codex R4 #3).
+	 *
+	 * A frame DECLARING one of these names with an undecodable payload is a
+	 * corrupt stream event, not ignorable noise: it must invalidate the
+	 * whole response (a silently dropped content delta would alter the
+	 * generated answer). Unknown event names and ping/keep-alive frames
+	 * stay ignorable for forward compatibility.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	const DECLARED_EVENTS = array(
+		'message_start',
+		'content_block_start',
+		'content_block_delta',
+		'content_block_stop',
+		'message_delta',
+		'message_stop',
+		'error',
+	);
+
+	/**
 	 * Whether an error event was received.
 	 *
 	 * @since 0.2.0
@@ -154,6 +177,18 @@ final class AnthropicSseAggregator {
 	 * @var bool
 	 */
 	private $malformed_tool_input = false;
+
+	/**
+	 * Whether a frame DECLARING a known event name carried an undecodable
+	 * payload (Codex R4 #3): the stream is corrupt and the model must
+	 * surface its fixed parse-error message instead of completing with the
+	 * damaged content silently missing.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $malformed_event = false;
 
 	/**
 	 * Constructor.
@@ -270,6 +305,23 @@ final class AnthropicSseAggregator {
 	 */
 	public function has_malformed_tool_input(): bool {
 		return $this->malformed_tool_input;
+	}
+
+	/**
+	 * Whether a declared event frame carried an undecodable payload.
+	 *
+	 * True means the stream is corrupt: at least one frame explicitly
+	 * declaring a known event name (message_start, content_block_*,
+	 * message_delta, message_stop, error) had a payload that failed JSON
+	 * decoding, so the aggregated completion would be missing that event's
+	 * content and must be treated as a parse error.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return bool True when a declared event frame was malformed.
+	 */
+	public function has_malformed_event(): bool {
+		return $this->malformed_event;
 	}
 
 	/**
@@ -436,6 +488,18 @@ final class AnthropicSseAggregator {
 
 		if ( ! \is_array( $decoded ) ) {
 			++$this->malformed;
+
+			/*
+			 * Codex R4 #3: a frame DECLARING a known event name with an
+			 * undecodable payload is a corrupt stream event, not noise —
+			 * silently dropping it (a content delta, say) would return a
+			 * successful completion with that chunk of the answer missing.
+			 * Invalidate the stream; unknown event names and ping frames
+			 * stay ignorable.
+			 */
+			if ( \is_string( $event_name ) && \in_array( $event_name, self::DECLARED_EVENTS, true ) ) {
+				$this->malformed_event = true;
+			}
 
 			return;
 		}

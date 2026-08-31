@@ -905,6 +905,102 @@ $body = ''
         }
     }
 
+    public function testAMalformedContentDeltaFrameInvalidatesTheStream()
+    {
+        // Codex R4 #3: a frame DECLARING content_block_delta with invalid
+        // JSON must fail the whole stream — silently dropping the chunk
+        // would return a successful completion with the answer altered.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_md","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: this is not json' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Complete."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A malformed declared-event frame must fail the stream, got: ' . $result->toText());
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('Complete.', $e->getMessage());
+        }
+
+        // The typed boundary surfaces the same verdict.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+        $error = $this->model()->generate_text($this->prompt());
+        $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_INVALID_RESPONSE);
+    }
+
+    public function testMalformedFramesOfOtherDeclaredEventsInvalidateTheStream()
+    {
+        foreach (array('message_start', 'message_delta', 'message_stop', 'error') as $declared) {
+            $body = ''
+                . 'event: ' . $declared . "\n"
+                . 'data: broken-' . $declared . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+            $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+            try {
+                $this->model()->generateTextResult($this->prompt());
+                $this->fail("A malformed {$declared} frame must fail the stream.");
+            } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            }
+        }
+    }
+
+    public function testAMalformedUnknownEventFrameStaysIgnorable()
+    {
+        // The distinction is declared-event-with-bad-payload vs UNKNOWN
+        // event: an unresolvable/unknown name with garbage data stays
+        // ignorable for forward compatibility, and the stream completes.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ue","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: some_future_event' . "\n"
+            . 'data: not json at all' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('OK.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    public function testAMalformedPingFrameStaysIgnorable()
+    {
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pg","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: ping' . "\n"
+            . 'data: broken keep-alive' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('OK.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
     public function testAnErrorEventFailsWithAFixedSafeMessage()
     {
         $secret = FakeSecrets::apiKey();

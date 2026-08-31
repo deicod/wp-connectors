@@ -570,6 +570,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			);
 		}
 
+		if ( $aggregator->has_malformed_event() ) {
+			// A frame declaring a known event name with an undecodable
+			// payload (Codex R4 #3): completing would silently return the
+			// answer with that event's content missing.
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'stream',
+				'The message stream contained a malformed event frame.'
+			);
+		}
+
 		$aggregated = $aggregator->aggregated();
 
 		if ( $aggregator->has_malformed_tool_input() ) {
