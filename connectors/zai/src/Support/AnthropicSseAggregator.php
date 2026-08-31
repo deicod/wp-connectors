@@ -579,7 +579,14 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'content_block_start':
-				$index = isset( $data['index'] ) ? (int) $data['index'] : 0;
+				$index = self::raw_block_index( $raw );
+
+				if ( null === $index ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				$block = isset( $data['content_block'] ) && \is_array( $data['content_block'] ) ? $data['content_block'] : array();
 
 				$raw_block = \is_object( $raw ) && isset( $raw->content_block ) && \is_object( $raw->content_block )
@@ -644,11 +651,25 @@ final class AnthropicSseAggregator {
 					return;
 				}
 
-				$this->apply_delta( isset( $data['index'] ) ? (int) $data['index'] : 0, $data );
+				$index = self::raw_block_index( $raw );
+
+				if ( null === $index ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
+				$this->apply_delta( $index, $data );
 				return;
 
 			case 'content_block_stop':
-				// The accumulator map already holds the block; nothing to move.
+				// The accumulator map already holds the block; nothing to
+				// move — but the event still names an index, and a
+				// malformed one marks the stream corrupt (R6 #4 class).
+				if ( null === self::raw_block_index( $raw ) ) {
+					$this->malformed_event = true;
+				}
+
 				return;
 
 			case 'message_delta':
@@ -675,6 +696,30 @@ final class AnthropicSseAggregator {
 		}
 
 		// Unknown event types are ignored (forward compatibility).
+	}
+
+	/**
+	 * Extracts the content block index from a raw decoded event payload.
+	 *
+	 * Codex R6 #4: the index is a non-negative INTEGER — a missing member
+	 * or a string/float/null value was previously coerced to 0, so a
+	 * malformed event MUTATED THE WRONG BLOCK (block 0) while the stream
+	 * still succeeded. Returns null when the index is absent or not a
+	 * non-negative integer; callers flag the stream malformed.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $raw Non-associative decode of the event payload.
+	 * @return int|null The validated index, or null when malformed.
+	 */
+	private static function raw_block_index( $raw ): ?int {
+		if ( ! \is_object( $raw ) || ! \property_exists( $raw, 'index' ) ) {
+			return null;
+		}
+
+		$index = $raw->index;
+
+		return \is_int( $index ) && $index >= 0 ? $index : null;
 	}
 
 	/**

@@ -483,6 +483,49 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * @dataProvider provideMalformedIndexes
+     */
+    public function testMalformedContentBlockIndexesInvalidateTheStream($eventTemplate)
+    {
+        // Codex R6 #4: a missing or non-integer index was coerced to 0 —
+        // mutating the WRONG block while the stream still succeeded.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ix","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Original"}}' . "\n\n"
+            . $eventTemplate . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A malformed index must invalidate the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideMalformedIndexes()
+    {
+        return array(
+            'delta index missing' => array('event: content_block_delta' . "\n" . 'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"x"}}'),
+            'delta index string' => array('event: content_block_delta' . "\n" . 'data: {"type":"content_block_delta","index":"0","delta":{"type":"text_delta","text":"x"}}'),
+            'delta index float' => array('event: content_block_delta' . "\n" . 'data: {"type":"content_block_delta","index":0.5,"delta":{"type":"text_delta","text":"x"}}'),
+            'delta index negative' => array('event: content_block_delta' . "\n" . 'data: {"type":"content_block_delta","index":-1,"delta":{"type":"text_delta","text":"x"}}'),
+            'start index missing' => array('event: content_block_start' . "\n" . 'data: {"type":"content_block_start","content_block":{"type":"text","text":""}}'),
+            'start index string' => array('event: content_block_start' . "\n" . 'data: {"type":"content_block_start","index":"1","content_block":{"type":"text","text":""}}'),
+            'stop index missing' => array('event: content_block_stop' . "\n" . 'data: {"type":"content_block_stop"}'),
+            'stop index null' => array('event: content_block_stop' . "\n" . 'data: {"type":"content_block_stop","index":null}'),
+        );
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.

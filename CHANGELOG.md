@@ -18,6 +18,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   such a stream previously bypassed the model's exact-role check — a
   bypass the non-streaming path never had. An omitted streamed role
   keeps the documented assistant default.
+- A `content_block_start`/`content_block_delta`/`content_block_stop`
+  event whose `index` member is missing or not a non-negative integer
+  (string, float, null, negative) now invalidates the stream: the value
+  was previously coerced to index 0, so a malformed event mutated the
+  WRONG block while the stream still reported success.
 
 - The Debug logging checkbox renders again on Settings → z.ai: the
   field was still attached to the pre-refactor option-group section id,
