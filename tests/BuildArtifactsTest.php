@@ -83,25 +83,121 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      *
      * The one plugin registers zai and zai_anthropic; the standalone zip
      * must carry both providers' source trees, pass the inspector, and stay
-     * self-contained.
-     *
-     * Codex R1 finding 3: a build run rewrites the zip, its .sha256
-     * sidecar, and the zip's entry in dist/checksums.txt — so ALL THREE
-     * pieces of release-verification state are snapshotted and restored
-     * (or removed when the test introduced them), leaving a prepared
-     * dist/ directory exactly as it was. The preservation itself is
-     * asserted after the restore.
+     * self-contained. The dist/ release-verification state around the
+     * build is preserved by withArtifactStatePreserved() (Codex R1 #3 /
+     * R2 #2) and asserted byte-identical after the restore.
      */
     public function testRealZaiArtifactShipsBothProvidersAndStaysStandalone()
     {
-        $zipPath = self::distDir() . '/connectors-zai-0.1.0.zip';
+        $this->withArtifactStatePreserved(
+            'connectors-zai-0.1.0.zip',
+            function (string $zipPath): void {
+                $built = WpConnectorsBuild::buildPlugin(__DIR__ . '/../connectors/zai', self::distDir());
+                $this->assertSame($zipPath, $built);
+
+                $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-zai'));
+
+                $zip = new ZipArchive();
+                $this->assertTrue($zip->open($zipPath));
+                $names = array();
+                for ($i = 0; $i < $zip->numFiles; ++$i) {
+                    $names[] = $zip->getNameIndex($i);
+                }
+                $zip->close();
+
+                foreach (array(
+                    'zai/src/Provider/ZaiProvider.php',
+                    'zai/src/Provider/ZaiAnthropicProvider.php',
+                    'zai/src/Models/ZaiTextGenerationModel.php',
+                    'zai/src/Models/ZaiAnthropicTextGenerationModel.php',
+                    'zai/src/Metadata/ZaiModelMetadataDirectory.php',
+                    'zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
+                    'zai/src/Authentication/ZaiAnthropicRequestAuthentication.php',
+                    'zai/src/Support/AnthropicSseAggregator.php',
+                    'zai/assets/zai.svg',
+                    'zai/uninstall.php',
+                    'zai/LICENSE',
+                ) as $required) {
+                    $this->assertContains($required, $names, "The artifact must ship {$required}.");
+                }
+
+                // Exactly the two expected root PHP files: the one plugin
+                // header file (the second provider is a registered class inside
+                // the same plugin, not a second plugin) and uninstall.php.
+                $mains = array_filter($names, static function (string $name): bool {
+                    return 1 === preg_match('/^zai\/[^\/]+\.php$/', $name);
+                });
+                $this->assertSame(array('zai/uninstall.php', 'zai/zai.php'), array_values($mains));
+            },
+            function (string $sidecarPrevious, string $manifestPrevious, string $sidecarPath, string $manifestPath): void {
+                $this->assertSame($sidecarPrevious, (string) file_get_contents($sidecarPath), 'The checksum sidecar must survive the test byte-for-byte.');
+                $this->assertSame($manifestPrevious, (string) file_get_contents($manifestPath), 'The checksum manifest must survive the test byte-for-byte.');
+            }
+        );
+    }
+
+    /**
+     * Codex R2 #2: a FAILING build/artifact assertion must not leave the
+     * seeded verification files behind — the removal of test-introduced
+     * files runs in the OUTER finally of withArtifactStatePreserved(), on
+     * every exit path (tearDown only removes example-connector/demo
+     * artifacts, so a lingering connectors-zai sidecar would contaminate
+     * later runs).
+     */
+    public function testAFailingArtifactAssertionCleansUpIntroducedVerificationState()
+    {
+        $sidecarPath = self::distDir() . '/connectors-zai-0.1.0.zip.sha256';
+        $manifestPath = self::distDir() . '/checksums.txt';
+        $this->assertFileDoesNotExist($sidecarPath, 'Precondition: no lingering zai sidecar (fresh or preserved dist).');
+
+        try {
+            $this->withArtifactStatePreserved(
+                'connectors-zai-0.1.0.zip',
+                function (): void {
+                    // Any failing build/artifact assertion — no build needed.
+                    $this->fail('simulated artifact assertion failure');
+                },
+                static function (): void {
+                }
+            );
+            $this->fail('The simulated failure must propagate.');
+        } catch (PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('simulated artifact assertion failure', $e->getMessage());
+        }
+
+        $this->assertFileDoesNotExist($sidecarPath, 'The introduced sidecar must be removed even on a failing path.');
+        $this->assertFileDoesNotExist($manifestPath, 'The introduced manifest must be removed even on a failing path.');
+    }
+
+    /**
+     * Runs $body against a real build's dist/ release-verification state
+     * with the state preserved on every exit path.
+     *
+     * Codex R1 #3: a build run rewrites the zip, its .sha256 sidecar, and
+     * the zip's entry in dist/checksums.txt, so all three pieces are
+     * snapshotted (seeded with sentinels when absent, so the restore path
+     * always runs) and restored byte-for-byte afterwards.
+     *
+     * Codex R2 #2: the structure is two NESTED finally blocks — the inner
+     * one restores state, the OUTER one removes whatever the test
+     * introduced — so a failing assertion inside $body cannot skip the
+     * cleanup and leave seeded files behind. $verifyRestored runs between
+     * the two (success path only) to assert the restoration.
+     *
+     * @param string   $zipName         Artifact zip basename, e.g. 'connectors-zai-0.1.0.zip'.
+     * @param callable $body            Build + artifact assertions; receives the zip path.
+     * @param callable $verifyRestored  Post-restore assertions; receives
+     *                                  ($sidecarPrevious, $manifestPrevious, $sidecarPath, $manifestPath).
+     * @return void
+     */
+    private function withArtifactStatePreserved(string $zipName, callable $body, callable $verifyRestored): void
+    {
+        $zipPath = self::distDir() . '/' . $zipName;
         $sidecarPath = $zipPath . '.sha256';
         $manifestPath = self::distDir() . '/checksums.txt';
 
-        // Seed verification state when none exists, so the preservation
-        // assertions always exercise the restore path.
-        $sidecarSeed = "0000000000000000000000000000000000000000000000000000000000000000  connectors-zai-0.1.0.zip\n";
-        $manifestSeed = "0000000000000000000000000000000000000000000000000000000000000000  connectors-zai-0.1.0.zip\n";
+        $sidecarSeed = '0000000000000000000000000000000000000000000000000000000000000000  ' . $zipName . "\n";
+        $manifestSeed = '0000000000000000000000000000000000000000000000000000000000000000  ' . $zipName . "\n";
 
         $zipExisted = is_file($zipPath);
         $zipPrevious = $zipExisted ? (string) file_get_contents($zipPath) : '';
@@ -118,66 +214,28 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         }
 
         try {
-            $built = WpConnectorsBuild::buildPlugin(__DIR__ . '/../connectors/zai', self::distDir());
-            $this->assertSame($zipPath, $built);
-
-            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-zai'));
-
-            $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
-            $names = array();
-            for ($i = 0; $i < $zip->numFiles; ++$i) {
-                $names[] = $zip->getNameIndex($i);
-            }
-            $zip->close();
-
-            foreach (array(
-                'zai/src/Provider/ZaiProvider.php',
-                'zai/src/Provider/ZaiAnthropicProvider.php',
-                'zai/src/Models/ZaiTextGenerationModel.php',
-                'zai/src/Models/ZaiAnthropicTextGenerationModel.php',
-                'zai/src/Metadata/ZaiModelMetadataDirectory.php',
-                'zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
-                'zai/src/Authentication/ZaiAnthropicRequestAuthentication.php',
-                'zai/src/Support/AnthropicSseAggregator.php',
-                'zai/assets/zai.svg',
-                'zai/uninstall.php',
-                'zai/LICENSE',
-            ) as $required) {
-                $this->assertContains($required, $names, "The artifact must ship {$required}.");
-            }
-
-            // Exactly the two expected root PHP files: the one plugin
-            // header file (the second provider is a registered class inside
-            // the same plugin, not a second plugin) and uninstall.php.
-            $mains = array_filter($names, static function (string $name): bool {
-                return 1 === preg_match('/^zai\/[^\/]+\.php$/', $name);
-            });
-            $this->assertSame(array('zai/uninstall.php', 'zai/zai.php'), array_values($mains));
-        } finally {
-            // Restore-or-remove every file the build touched.
-            if ($zipExisted) {
-                if ($zipPrevious !== (string) file_get_contents($zipPath)) {
-                    file_put_contents($zipPath, $zipPrevious);
+            try {
+                $body($zipPath);
+            } finally {
+                // Restore-or-remove every file the build touched.
+                if ($zipExisted) {
+                    if ($zipPrevious !== (string) file_get_contents($zipPath)) {
+                        file_put_contents($zipPath, $zipPrevious);
+                    }
+                } elseif (is_file($zipPath)) {
+                    @unlink($zipPath);
                 }
-            } elseif (is_file($zipPath)) {
-                @unlink($zipPath);
+
+                file_put_contents($sidecarPath, $sidecarPrevious);
+                file_put_contents($manifestPath, $manifestPrevious);
             }
 
-            file_put_contents($sidecarPath, $sidecarPrevious);
-            file_put_contents($manifestPath, $manifestPrevious);
-        }
-
-        // Post-restore: the release-verification state is byte-identical
-        // to what was there before the build (fails if any piece was
-        // clobbered or deleted). The cleanup runs even when these fail.
-        try {
-            $this->assertSame($sidecarPrevious, (string) file_get_contents($sidecarPath), 'The checksum sidecar must survive the test byte-for-byte.');
-            $this->assertSame($manifestPrevious, (string) file_get_contents($manifestPath), 'The checksum manifest must survive the test byte-for-byte.');
+            $verifyRestored($sidecarPrevious, $manifestPrevious, $sidecarPath, $manifestPath);
         } finally {
-            // Remove only what this test introduced (a prepared dist/ keeps
-            // its real state; tearDown's guarded manifest cleanup is a
-            // no-op then).
+            // Remove ONLY what this test introduced — on every exit path
+            // (an assertion failure above must not leave seeded files
+            // behind). A prepared dist/ keeps its real state; tearDown's
+            // guarded manifest cleanup is a no-op then.
             if (! $sidecarExisted) {
                 @unlink($sidecarPath);
             }

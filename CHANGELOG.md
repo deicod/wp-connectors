@@ -14,6 +14,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   typed parse error instead of passing fabricated/invalid arguments to a
   FunctionCall; `{}` and a missing input member stay legitimate
   no-argument calls.
+- The artifact build test's dist/ preservation moved into a reusable
+  two-level-finally guard: a failing build assertion can no longer skip
+  the removal of the seeded checksum sidecar/manifest (which tearDown
+  does not clean), so no introduced file lingers to contaminate later
+  runs.
 
 ### Fixed (zai / M2 — Codex PR review, round 1)
 
