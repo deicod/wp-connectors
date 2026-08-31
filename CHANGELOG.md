@@ -27,6 +27,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   always won, so `event: ping` carrying a `content_block_delta` payload
   was ignored as keep-alive and the answer completed with the content
   chunk missing. Frames with only one declaration keep their behavior.
+- The live probe validates `--plan` and `--region` exactly like
+  `--surface`: a typo previously printed (e.g. `china`) while the
+  settings getters silently fell back to defaults, making the evidence
+  misleading and potentially exercising the wrong billing surface.
+  Invalid values exit 2 before any key lookup or network call.
 
 ### Fixed (zai / M2 — Codex PR review, round 6)
 

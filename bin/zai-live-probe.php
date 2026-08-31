@@ -74,6 +74,25 @@ if ( ! in_array( $surface, array( 'openai', 'anthropic' ), true ) ) {
 $plan = isset( $args['plan'] ) ? (string) $args['plan'] : ( 'anthropic' === $surface ? 'general' : 'coding' );
 $region = isset( $args['region'] ) ? (string) $args['region'] : 'intl';
 
+/*
+ * Codex R7 #2: a typo in --plan/--region was stored and REPORTED while
+ * the settings getters silently fell back to defaults before endpoint
+ * resolution — the probe printed e.g. `china` while actually hitting
+ * intl, making evidence misleading and potentially exercising the wrong
+ * billing surface. Validate exactly like --surface: reject before any
+ * key lookup or network call.
+ */
+if ( ! in_array( $plan, array( 'coding', 'general' ), true ) ) {
+    fwrite( STDERR, "live-probe: --plan must be coding or general
+" );
+    exit( 2 );
+}
+if ( ! in_array( $region, array( 'intl', 'cn' ), true ) ) {
+    fwrite( STDERR, "live-probe: --region must be intl or cn
+" );
+    exit( 2 );
+}
+
 $key = zai_live_probe_key();
 if ( '' === $key ) {
     fwrite( STDERR, "live-probe: no key found (ZAI_LIVE_API_KEY, WP_CONNECTORS_TEST_ZAI_API_KEY, or ~/.config/z.ai/api_key)\n" );
