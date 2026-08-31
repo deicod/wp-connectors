@@ -170,17 +170,20 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
         // Post-restore: the release-verification state is byte-identical
         // to what was there before the build (fails if any piece was
-        // clobbered or deleted).
-        $this->assertSame($sidecarPrevious, (string) file_get_contents($sidecarPath), 'The checksum sidecar must survive the test byte-for-byte.');
-        $this->assertSame($manifestPrevious, (string) file_get_contents($manifestPath), 'The checksum manifest must survive the test byte-for-byte.');
-
-        // Remove only what this test introduced (a prepared dist/ keeps its
-        // real state; tearDown's guarded manifest cleanup is a no-op then).
-        if (! $sidecarExisted) {
-            @unlink($sidecarPath);
-        }
-        if (! $manifestExisted) {
-            @unlink($manifestPath);
+        // clobbered or deleted). The cleanup runs even when these fail.
+        try {
+            $this->assertSame($sidecarPrevious, (string) file_get_contents($sidecarPath), 'The checksum sidecar must survive the test byte-for-byte.');
+            $this->assertSame($manifestPrevious, (string) file_get_contents($manifestPath), 'The checksum manifest must survive the test byte-for-byte.');
+        } finally {
+            // Remove only what this test introduced (a prepared dist/ keeps
+            // its real state; tearDown's guarded manifest cleanup is a
+            // no-op then).
+            if (! $sidecarExisted) {
+                @unlink($sidecarPath);
+            }
+            if (! $manifestExisted) {
+                @unlink($manifestPath);
+            }
         }
     }
 

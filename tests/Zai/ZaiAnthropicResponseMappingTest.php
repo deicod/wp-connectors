@@ -497,7 +497,9 @@ $body = ''
 
     public function testNonObjectToolJsonFailsAsAStreamParseError()
     {
-        // A valid JSON SCALAR is not a tool-arguments object either.
+        // A valid JSON SCALAR or LIST is not a tool-arguments OBJECT either
+        // (assoc decoding cannot distinguish ["a"] from {"0":"a"}, so the
+        // check decodes to stdClass for exact object-ness).
 $body = ''
             . 'event: message_start' . "\n" .
             'data: {"type":"message_start","message":{"id":"msg_ns","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n" .
@@ -516,7 +518,21 @@ $body = ''
 
         try {
             $this->model()->generateTextResult($this->prompt());
-            $this->fail('Non-object tool JSON must fail.');
+            $this->fail('A scalar tool JSON fragment must fail.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+
+        // A JSON LIST is equally not an object.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), str_replace(
+            '"partial_json":"5"',
+            '"partial_json":"[1,2]"',
+            $body
+        ));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A list tool JSON fragment must fail.');
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
             $this->assertStringContainsString('malformed input JSON', $e->getMessage());
         }
