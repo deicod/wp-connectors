@@ -157,6 +157,74 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertNull($call->getArgs(), 'An empty input object means "no arguments".');
     }
 
+    public function testAMissingToolUseInputMemberStaysANoArgumentCall()
+    {
+        // Codex R2 #1: a missing input member is a legitimate no-argument
+        // call, not a parse error.
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_tool_absent',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'tool_use', 'id' => 'toolu_03', 'name' => 'ping')),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertNull($call->getArgs(), 'A missing input member means "no arguments".');
+    }
+
+    public function testAListToolUseInputFailsAsATypedParseError()
+    {
+        // Codex R2 #1: the regular (non-streaming) response path must
+        // reject non-object tool arguments exactly like the R1 SSE fix —
+        // passing ["PARIS"] through would fabricate arguments a consumer
+        // might execute a side-effecting tool with.
+        $body = (string) wp_json_encode(array(
+            'id' => 'msg_tool_list',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'tool_use', 'id' => 'toolu_04', 'name' => 'delete_file', 'input' => array('/etc/hosts'))),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A list tool input must fail, got: ' . $result->toText());
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('non-object input', $e->getMessage());
+            $this->assertRedacted($e->getMessage(), '/etc/hosts');
+            $this->assertStringNotContainsString('delete_file', $e->getMessage(), 'Upstream tool names must not be echoed.');
+        }
+
+        // The typed boundary surfaces the same verdict.
+        $this->queueSdkResponse(200, array(), $body);
+        $error = $this->model()->generate_text($this->prompt());
+        $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_INVALID_RESPONSE);
+        $this->assertRedacted($error->get_error_message(), '/etc/hosts');
+    }
+
+    public function testAScalarToolUseInputFailsAsATypedParseError()
+    {
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_tool_scalar',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'tool_use', 'id' => 'toolu_05', 'name' => 'ping', 'input' => 'PARIS')),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A scalar tool input must fail.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('non-object input', $e->getMessage());
+            $this->assertStringNotContainsString('PARIS', $e->getMessage(), 'Upstream values must not be echoed.');
+        }
+    }
+
     /**
      * @dataProvider provideStopReasons
      */

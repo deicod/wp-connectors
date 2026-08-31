@@ -6,6 +6,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 2)
+
+- The non-streaming Messages response path now applies the same
+  tool-argument object-ness validation as the streaming path (R1): a
+  tool_use `input` that is not a JSON object (scalars, lists) fails as a
+  typed parse error instead of passing fabricated/invalid arguments to a
+  FunctionCall; `{}` and a missing input member stay legitimate
+  no-argument calls.
+
 ### Fixed (zai / M2 — Codex PR review, round 1)
 
 - Streamed tool arguments that do not decode to a JSON object (truncated

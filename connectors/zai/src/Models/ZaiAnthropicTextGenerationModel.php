@@ -670,11 +670,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its identity members.' );
 					}
 				}
-				if ( ! \array_key_exists( 'input', $part_data ) ) {
-					throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its input member.' );
-				}
 
-				$args = $part_data['input'];
+				/*
+				 * Object-ness validation (Codex R2 #1), mirroring the R1 SSE
+				 * fix: tool arguments must be a JSON OBJECT. A missing or
+				 * null input member and the empty object {} are legitimate
+				 * no-argument calls; scalars and JSON lists (integer keys)
+				 * are malformed and fail as a typed parse error — passing
+				 * them through would hand a consumer fabricated or invalid
+				 * arguments for a possibly side-effecting tool.
+				 */
+				$args = isset( $part_data['input'] ) ? $part_data['input'] : null;
+				if ( null !== $args && ! self::is_object_shape( $args ) ) {
+					throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block carried a non-object input value.' );
+				}
 				if ( \is_array( $args ) && array() === $args ) {
 					// An empty object means "no arguments" (official-plugin
 					// normalization).
@@ -691,6 +700,35 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		throw ResponseException::fromInvalidData( 'z.ai', 'content', 'The message contained a block of an unsupported type.' );
+	}
+
+	/**
+	 * Whether a decoded JSON value has an OBJECT shape (Codex R2 #1).
+	 *
+	 * The response body is decoded associatively, so a JSON object and a
+	 * JSON list both arrive as PHP arrays; the shape test is the key type —
+	 * objects (including the empty object {}) carry string keys only. The
+	 * pathological numeric-keyed JSON object ({"0":…}) is
+	 * indistinguishable from a list after an associative decode and is
+	 * rejected with it.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $value Decoded input member of a tool_use block.
+	 * @return bool True only for object-shaped values.
+	 */
+	private static function is_object_shape( $value ): bool {
+		if ( ! \is_array( $value ) ) {
+			return false;
+		}
+
+		foreach ( array_keys( $value ) as $key ) {
+			if ( ! \is_string( $key ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
