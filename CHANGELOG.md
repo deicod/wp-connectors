@@ -25,6 +25,10 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 - A `content_block_start` whose `content_block.type` is missing or
   non-string now invalidates the stream: it silently became a `text`
   block that a following text_delta completed on fabricated state.
+- Outbound tool results are validated against the preceding tool calls:
+  every `tool_result` must answer a preceding `tool_use`'s ID exactly
+  once — stale, mistyped, out-of-order, or duplicate results are
+  rejected before transport instead of failing upstream with a 400.
 
 ### Fixed (zai / M2 — Codex PR review, round 8)
 

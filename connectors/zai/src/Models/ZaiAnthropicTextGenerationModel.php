@@ -327,17 +327,41 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * legitimately contain (Codex R1 finding 2); coalescing here means the
 	 * request stays valid without rejecting such histories.
 	 *
+	 * Tool-result linkage (Codex R8 #5): every tool_result block must answer
+	 * a PRECEDING tool_use block's ID, exactly once. Outstanding IDs are
+	 * tracked while the messages are walked in order — an unmatched
+	 * (stale/mistyped/unknown) or duplicate tool_result ID is rejected
+	 * before transport instead of failing upstream with a 400.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param array $messages Messages to prepare (list of Message).
 	 * @return array The prepared messages parameter (list of content messages).
+	 * @throws InvalidArgumentException When a tool_result ID is unmatched or answered twice.
 	 */
 	protected function prepare_messages_param( array $messages ): array {
-		$prepared = array();
+		$prepared          = array();
+		$outstanding_tools = array();
 
 		foreach ( $messages as $message ) {
 			$role   = $this->message_role_string( $message->getRole() );
 			$blocks = $this->message_content_blocks( $message );
+
+			foreach ( $blocks as $block ) {
+				if ( 'tool_use' === $block['type'] ) {
+					// A new tool_use opens its ID for exactly one answer.
+					$outstanding_tools[ $block['id'] ] = true;
+				} elseif ( 'tool_result' === $block['type'] ) {
+					if ( ! isset( $outstanding_tools[ $block['tool_use_id'] ] ) ) {
+						throw new InvalidArgumentException(
+							'The zai_anthropic provider requires every tool result to answer a preceding tool call with the same id (unmatched or duplicate tool result).'
+						);
+					}
+
+					// Each tool_use ID may be answered exactly once.
+					unset( $outstanding_tools[ $block['tool_use_id'] ] );
+				}
+			}
 
 			$last = \count( $prepared ) - 1;
 			if ( $last >= 0 && $prepared[ $last ]['role'] === $role ) {

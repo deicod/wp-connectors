@@ -490,6 +490,96 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString('"input_schema":[', $raw);
     }
 
+    public function testAnUnmatchedToolResultIsRejectedBeforeTransport()
+    {
+        // Codex R8 #5: a tool_result whose ID answers no preceding tool_use
+        // reached the API and failed with a 400 instead of the advertised
+        // pre-transport validation.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Weather?'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_real', 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_stale', 'get_weather', array('temp_c' => 21))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An unmatched tool result must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('preceding tool call', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testADuplicateToolResultIsRejectedBeforeTransport()
+    {
+        // Each tool_use ID may be answered exactly once.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_x', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('call_x', 'ping', array('ok' => 1))),
+                new MessagePart(new FunctionResponse('call_x', 'ping', array('ok' => 2))),
+            )),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A duplicate tool result must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('preceding tool call', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAToolResultAnsweringALaterToolCallIsRejected()
+    {
+        // Order matters: answering a tool_use that appears AFTER the
+        // result is just as unmatched.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_later', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_later', 'ping', array('ok' => 1))))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_later2', 'ping', array())))),
+        );
+
+        // Reorder: result for call_later2 arrives before its tool_use.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_first', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_future', 'ping', array('ok' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A tool result answering a later tool call must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('preceding tool call', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testSequentialToolRoundsStillPass()
+    {
+        // Two complete rounds — every result answers its own outstanding
+        // call, in order.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('c1', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('c1', 'ping', array('r' => 1))))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('c2', 'pong', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('c2', 'pong', array('r' => 2))))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('tool_result', $body['messages'][2]['content'][0]['type']);
+        $this->assertSame('c1', $body['messages'][2]['content'][0]['tool_use_id']);
+        $this->assertSame('c2', $body['messages'][4]['content'][0]['tool_use_id']);
+    }
+
     public function testMultimodalTextRequestSnapshot()
     {
         // Multiple text parts in one message (text-only multimodality): both
