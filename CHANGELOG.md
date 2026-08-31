@@ -6,6 +6,14 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 7)
+
+- A `tool_use` response block OMITTING its `input` member or setting it
+  to `null` is now rejected as a typed parse error instead of being
+  normalized into a no-argument FunctionCall: the Messages protocol
+  requires the member, and an empty call is represented by `{}`
+  alone (supersedes the R2-era tolerance; `{}` stays legitimate).
+
 ### Fixed (zai / M2 — Codex PR review, round 6)
 
 - An explicitly-null response envelope `type` (`"type": null`) is now

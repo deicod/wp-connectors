@@ -194,21 +194,39 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertNull($call->getArgs(), 'An empty input object means "no arguments".');
     }
 
-    public function testAMissingToolUseInputMemberStaysANoArgumentCall()
+    /**
+     * @dataProvider provideAbsentOrNullToolInputs
+     */
+    public function testAbsentOrNullToolUseInputsAreRejected($inputFragment)
     {
-        // Codex R2 #1: a missing input member is a legitimate no-argument
-        // call, not a parse error.
-        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
-            'id' => 'msg_tool_absent',
-            'role' => 'assistant',
-            'content' => array(array('type' => 'tool_use', 'id' => 'toolu_03', 'name' => 'ping')),
-            'stop_reason' => 'tool_use',
-            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
-        )));
+        // Codex R7 #1 supersedes the R2 tolerance: the Messages protocol
+        // REQUIRES tool_use.input (an empty call is {} alone) — an omitted
+        // or explicitly-null member must not be normalized into a
+        // fabricated no-argument FunctionCall.
+        $this->queueSdkResponse(200, array(), '{"id":"msg_tool_absent","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_03","name":"ping"' . $inputFragment . '}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
 
-        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('An absent/null input member must be rejected, got a call with args: ' . wp_json_encode($result->toMessage()->getParts()[0]->getFunctionCall()->getArgs()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('missing its input member', $e->getMessage());
+        }
 
-        $this->assertNull($call->getArgs(), 'A missing input member means "no arguments".');
+        // The typed boundary surfaces the same verdict.
+        $this->queueSdkResponse(200, array(), '{"id":"msg_tool_absent","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_03","name":"ping"' . $inputFragment . '}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
+        $error = $this->model()->generate_text($this->prompt());
+        $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_INVALID_RESPONSE);
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideAbsentOrNullToolInputs()
+    {
+        return array(
+            'input omitted' => array(''),
+            'input explicit null' => array(',"input":null'),
+        );
     }
 
     public function testAListToolUseInputFailsAsATypedParseError()

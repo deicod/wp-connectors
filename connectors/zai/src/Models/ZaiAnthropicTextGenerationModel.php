@@ -793,13 +793,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				}
 
 				/*
-				 * Object-ness validation (Codex R2 #1 / R3 #1), mirroring
-				 * the R1 SSE fix: tool arguments must be a JSON OBJECT. The
-				 * RAW (non-associative) decode decides the shape exactly —
-				 * {} and missing/null are legitimate no-argument calls;
-				 * scalars, booleans, and JSON lists (including the empty
-				 * list []) fail as a typed parse error, because passing
-				 * them through would hand a consumer fabricated or invalid
+				 * Object-ness validation (Codex R2 #1 / R3 #1 / R7 #1),
+				 * mirroring the R1 SSE fix: tool arguments must be a JSON
+				 * OBJECT, and the member itself is REQUIRED — an empty call
+				 * is represented by {} alone. An OMITTED or explicitly-null
+				 * input previously normalized into a fabricated
+				 * no-argument FunctionCall (the R2-era tolerance, superseded
+				 * by R7: the protocol demands the member); scalars,
+				 * booleans, and JSON lists (including the empty list [])
+				 * were already typed parse errors, because passing them
+				 * through would hand a consumer fabricated or invalid
 				 * arguments for a possibly side-effecting tool. Without a
 				 * raw block (defensive: should not happen) the strictest
 				 * associative fallback (is_object_shape) rejects the
@@ -814,19 +817,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					 */
 					$args = isset( $part_data['input'] ) ? $part_data['input'] : null;
 
-					if ( null !== $args && ! self::is_object_shape( $args ) ) {
-						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block carried a non-object input value.' );
+					if ( null === $args || ! self::is_object_shape( $args ) ) {
+						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its input member.' );
 					}
 
-					if ( \is_array( $args ) && array() === $args ) {
+					if ( array() === $args ) {
 						$args = null;
 					}
 				} else {
 					$raw_input = \property_exists( $raw_part, 'input' ) ? $raw_part->input : null;
 
 					if ( null === $raw_input ) {
-						// Missing input member or explicit null: no-argument call.
-						$args = null;
+						// Missing input member or explicit null (R7 #1).
+						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its input member.' );
 					} elseif ( \is_object( $raw_input ) ) {
 						$args = isset( $part_data['input'] ) && \is_array( $part_data['input'] )
 							? $part_data['input']
