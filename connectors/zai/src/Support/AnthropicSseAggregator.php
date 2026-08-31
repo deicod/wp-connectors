@@ -504,8 +504,6 @@ final class AnthropicSseAggregator {
 			return;
 		}
 
-		++$this->events;
-
 		$type = \is_string( $event_name )
 			? $event_name
 			: ( isset( $decoded['type'] ) && \is_string( $decoded['type'] ) ? $decoded['type'] : '' );
@@ -516,7 +514,27 @@ final class AnthropicSseAggregator {
 		 * non-associative decode of the same payload travels along for the
 		 * tool-input shape decisions.
 		 */
-		$this->dispatch_event( $type, $decoded, json_decode( $payload ) );
+		$raw = json_decode( $payload );
+
+		/*
+		 * Verifier sweep on Codex R4: a DECLARED event (by event: field or
+		 * — for data-only frames — by the payload's own type member) whose
+		 * payload is valid JSON but NOT an object (a list, e.g. a dropped
+		 * chunk inside ["lost"]) is the same corruption class as an
+		 * undecodable payload: is_array() cannot tell a JSON list from a
+		 * JSON object, the raw decode can. Flag it; unknown names stay
+		 * ignorable.
+		 */
+		if ( \in_array( $type, self::DECLARED_EVENTS, true ) && ! \is_object( $raw ) ) {
+			++$this->malformed;
+			$this->malformed_event = true;
+
+			return;
+		}
+
+		++$this->events;
+
+		$this->dispatch_event( $type, $decoded, $raw );
 	}
 
 	/**
@@ -551,10 +569,64 @@ final class AnthropicSseAggregator {
 					? $raw->content_block
 					: null;
 
+				/*
+				 * Verifier sweep on Codex R4: a content_block_start whose
+				 * content_block member is absent or not an object is a
+				 * corrupt declared event — defaulting to an empty text
+				 * block would let a garbage tool-block start silently
+				 * swallow the block's deltas (the tool call vanishes while
+				 * the stream reports success). Flag it.
+				 */
+				if ( \is_object( $raw ) && ( ! \property_exists( $raw, 'content_block' ) || ! \is_object( $raw->content_block ) ) ) {
+					$this->malformed_event = true;
+				}
+
 				$this->start_block( $index, $block, $raw_block );
 				return;
 
 			case 'content_block_delta':
+				/*
+				 * Verifier sweep on Codex R4: a decodable-but-wrong-shape
+				 * delta is the same corruption class as an undecodable one
+				 * — silently dropping it returns a completion with that
+				 * chunk of the answer missing. The delta member must be an
+				 * object carrying a string type; text_delta/thinking_delta
+				 * additionally require their string text/thinking member
+				 * (mirroring the partial_json rule). Unknown delta types
+				 * stay ignorable for forward compatibility;
+				 * input_json_delta's partial_json is validated in
+				 * apply_delta (Codex R4 #1).
+				 */
+				$raw_delta = \is_object( $raw ) && isset( $raw->delta ) && \is_object( $raw->delta )
+					? $raw->delta
+					: null;
+
+				if ( null === $raw_delta ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
+				if ( ! \property_exists( $raw_delta, 'type' ) || ! \is_string( $raw_delta->type ) ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
+				if ( 'text_delta' === $raw_delta->type
+					&& ( ! \property_exists( $raw_delta, 'text' ) || ! \is_string( $raw_delta->text ) ) ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
+				if ( 'thinking_delta' === $raw_delta->type
+					&& ( ! \property_exists( $raw_delta, 'thinking' ) || ! \is_string( $raw_delta->thinking ) ) ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				$this->apply_delta( isset( $data['index'] ) ? (int) $data['index'] : 0, $data );
 				return;
 

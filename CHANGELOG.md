@@ -37,6 +37,16 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   malformed content_block_delta returned a successful completion with
   that chunk of the answer missing. Unknown event names and
   ping/keep-alive frames stay ignorable for forward compatibility.
+- The independent verification sweep extended that invalidation to the
+  same corruption class it found still slipping through: a declared
+  event with a valid-JSON LIST payload (is_array cannot distinguish a
+  JSON list from an object — the raw non-associative decode can), a
+  decodable-but-wrong-shape `content_block_delta` (delta member
+  missing/null/scalar, non-string delta.type, non-string text/thinking
+  members), the same shapes arriving via data-only frames dispatched by
+  their type member, and a `content_block_start` whose content_block
+  member is absent or not an object (which silently swallowed the
+  block's deltas). Unknown delta types stay ignorable.
 
 ### Fixed (zai / M2 — Codex PR review, round 3)
 

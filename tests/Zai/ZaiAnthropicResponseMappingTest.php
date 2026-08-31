@@ -54,6 +54,43 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         return array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))));
     }
 
+    /**
+     * Builds a minimal valid stream around one content_block_delta payload.
+     *
+     * @param string $deltaJson The delta event's data payload.
+     * @return string
+     */
+    private function streamWithDelta(string $deltaJson): string
+    {
+        return ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_sw","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: ' . $deltaJson . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+    }
+
+    /**
+     * Asserts one content_block_delta payload invalidates the stream.
+     *
+     * @param string $deltaJson The delta event's data payload.
+     * @return void
+     */
+    private function assertDeltaInvalidates(string $deltaJson): void
+    {
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $this->streamWithDelta($deltaJson));
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A wrong-shape content delta must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     /*
      * Non-streaming success.
      */
@@ -999,6 +1036,121 @@ $body = ''
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
         $this->assertSame('OK.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    /**
+     * @dataProvider provideWrongShapeContentDeltas
+     */
+    public function testWrongShapeContentDeltasInvalidateTheStream($deltaJson)
+    {
+        // Verifier sweep on Codex R4: decodable-but-wrong-shape content
+        // deltas were silently dropped — a completion with that chunk of
+        // the answer missing.
+        $this->assertDeltaInvalidates($deltaJson);
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideWrongShapeContentDeltas()
+    {
+        return array(
+            'delta member missing' => array('{"type":"content_block_delta","index":0}'),
+            'delta member null' => array('{"type":"content_block_delta","index":0,"delta":null}'),
+            'delta member scalar' => array('{"type":"content_block_delta","index":0,"delta":"text"}'),
+            'delta type missing' => array('{"type":"content_block_delta","index":0,"delta":{"text":"x"}}'),
+            'delta type non-string' => array('{"type":"content_block_delta","index":0,"delta":{"type":5,"text":"x"}}'),
+            'text_delta text missing' => array('{"type":"content_block_delta","index":0,"delta":{"type":"text_delta"}}'),
+            'text_delta text non-string' => array('{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":123}}'),
+            'thinking_delta thinking non-string' => array('{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":true}}'),
+        );
+    }
+
+    public function testAListPayloadForADeclaredEventInvalidatesTheStream()
+    {
+        // Verifier sweep on Codex R4: valid JSON in LIST shape bypassed the
+        // is_array() object-ness collapse — the dropped chunk inside the
+        // list vanished while the stream reported success.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_lp","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: ["lost chunk"]' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A list payload for a declared event must fail, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('lost chunk', $e->getMessage());
+        }
+    }
+
+    public function testAWrongShapeTypedDataOnlyFrameInvalidatesTheStream()
+    {
+        // A DATA-ONLY frame whose type member names the declared event and
+        // whose shape is wrong: dispatch by the type member must apply the
+        // same validation (there is no event: field to key on).
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_do","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A wrong-shape typed data-only frame must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testAGarbageContentBlockStartInvalidatesTheStream()
+    {
+        // Verifier sweep on Codex R4: a content_block_start whose
+        // content_block member is absent/non-object defaulted to a text
+        // block, silently swallowing the tool call's deltas.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_gb","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":"garbage"}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A garbage content_block_start must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('garbage', $e->getMessage());
+        }
+    }
+
+    public function testUnknownDeltaTypesStayIgnorable()
+    {
+        // Forward compatibility: a future delta type (with object shape) is
+        // ignored and the stream completes.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $this->streamWithDelta(
+            '{"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}'
+        ));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('', $result->toText(), 'The unknown delta contributes no text; the stream completes.');
     }
 
     public function testAnErrorEventFailsWithAFixedSafeMessage()
