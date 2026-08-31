@@ -75,7 +75,10 @@ your key validates (cached 12 hours per provider, plan, and region — a
 settings change never serves a stale list). `zai` uses
 `{base}/models` (OpenAI shape); `zai_anthropic` uses `{base}/v1/models`
 (Anthropic shape) — live-verified 2026-08-31 to return the same 10-model
-GLM list on both plans. When discovery fails — no key yet, wrong-region
+GLM list on both plans. On the zai_anthropic provider the discovered list
+is intersected with the selected plan's catalog, so the Coding Plan card
+never advertises general-only GLM 4.x models even though the live route
+returns them. When discovery fails — no key yet, wrong-region
 key, network error — each provider falls back to its built-in per-plan
 catalog: coding shows the GLM 5.x family; general shows the full observed
 GLM list. Capabilities are conservative: text generation and chat history,

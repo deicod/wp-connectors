@@ -122,6 +122,61 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertCount(1, $this->sdkHttpAttempts());
     }
 
+    public function testCodingPlanDiscoveryIsIntersectedWithThePlanCatalog()
+    {
+        // Codex R3 #4: the live route returns the FULL list on the coding
+        // plan (record 0007), but the coding subscription exposes only its
+        // restricted model set — general-only GLM 4.x entries must not be
+        // advertised OR cached.
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array(
+            'glm-5.3', 'glm-5.3-flash', 'glm-4.7', 'glm-4.5', 'glm-4.5-air',
+        )));
+
+        $models = $this->directory()->listModelMetadata();
+
+        // The advertised list is the DISCOVERED list intersected with the
+        // coding catalog (newest-first): the two coding models present in
+        // the response, with the general-only entries dropped.
+        $this->assertSame(array('glm-5.3', 'glm-5.3-flash'), $this->idList($models), 'Only in-plan discovered models may be advertised.');
+
+        // The cached transient must already be the intersected list.
+        $cached = get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl'));
+        $this->assertSame(array('glm-5.3', 'glm-5.3-flash'), array_values($cached), 'The cached discovery must be plan-intersected.');
+
+        // hasModelMetadata must reject the dropped general-only IDs.
+        $this->assertFalse($this->directory()->hasModelMetadata('glm-4.5'));
+        $this->assertFalse($this->directory()->hasModelMetadata('glm-4.5-air'));
+    }
+
+    public function testGeneralPlanDiscoveryKeepsTheFullList()
+    {
+        $this->selectEndpoint('general', 'intl');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array(
+            'glm-5.3', 'glm-4.7', 'glm-4.5',
+        )));
+
+        $models = $this->directory()->listModelMetadata();
+
+        $this->assertSame(array('glm-5.3', 'glm-4.7', 'glm-4.5'), $this->idList($models), 'The general plan keeps the full discovered list.');
+
+        $cached = get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|general|intl'));
+        $this->assertSame(array('glm-5.3', 'glm-4.7', 'glm-4.5'), array_values($cached));
+    }
+
+    public function testDiscoveryWithOnlyOutOfPlanModelsFallsBack()
+    {
+        // Nothing survives the plan intersection: the plan fallback applies
+        // and nothing is cached.
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-4.5', 'glm-4.5-air')));
+
+        $models = $this->directory()->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The plan fallback applies.');
+        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The fallback must not be cached.');
+    }
+
     public function testDiscoveryAcceptsTheOpenAiListShapeToo()
     {
         $this->selectEndpoint('general', 'intl');

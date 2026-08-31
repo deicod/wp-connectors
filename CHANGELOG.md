@@ -27,6 +27,14 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   throwaway artifact name, so it runs (and passes) against a prepared
   release `dist/` too instead of failing on its unconditional
   no-sidecar precondition.
+- Successful `zai_anthropic` model discovery is intersected with the
+  active plan's catalog before caching: the live `/v1/models` route
+  returns the full list on the coding plan (record 0007), but the coding
+  subscription exposes only its restricted model set, so general-only
+  GLM 4.x entries are no longer advertised or cached while coding is
+  selected; the general plan keeps the full discovered list. A discovery
+  response with no in-plan models falls back to the plan catalog without
+  caching.
 
 ### Fixed (zai / M2 — Codex PR review, round 2)
 

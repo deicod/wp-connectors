@@ -28,8 +28,11 @@
  * The discovery cache is a WordPress transient scoped to the endpoint
  * identity (provider + plan + region, via ZaiAnthropicEndpoint::cache_key()),
  * so a warm cache can never serve another endpoint's catalog after a
- * settings change. There is no other cache layer: this class implements the
- * SDK interface directly and keeps no in-memory state.
+ * settings change. Successful discovery is additionally intersected with
+ * the ACTIVE plan's catalog before caching (Codex R3 #4): the coding plan
+ * advertises only its restricted model set even though the live route
+ * returns the full list. There is no other cache layer: this class
+ * implements the SDK interface directly and keeps no in-memory state.
  *
  * @since 0.2.0
  *
@@ -230,7 +233,7 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			throw ResponseException::fromMissingData( 'z.ai', 'data' );
 		}
 
-		return $this->parse_model_ids( $response );
+		return $this->parse_model_ids( $response, $endpoint->plan() );
 	}
 
 	/**
@@ -239,11 +242,13 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 * @since 0.2.0
 	 *
 	 * @param Response $response The /v1/models response.
-	 * @return list<string> Chat-capable model IDs.
+	 * @param string   $plan     The active plan (the discovered list is
+	 *                           intersected with its catalog, Codex R3 #4).
+	 * @return list<string> Chat-capable, in-plan model IDs.
 	 * @throws ResponseException When the response shape is malformed or no
 	 *                           usable chat ID remains.
 	 */
-	private function parse_model_ids( Response $response ): array {
+	private function parse_model_ids( Response $response, string $plan ): array {
 		$data = $response->getData();
 
 		if ( ! \is_array( $data ) || ! isset( $data['data'] ) || ! \is_array( $data['data'] ) ) {
@@ -259,16 +264,29 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			$ids[] = $entry['id'];
 		}
 
-		// IDs without known chat support are dropped BEFORE anything is
-		// cached — advertising them would route them to /v1/messages where
-		// they cannot work (chat-support evidence lives in the shared
-		// ZaiModelCatalog, never the family-name grammar).
+		/*
+		 * IDs without known chat support are dropped BEFORE anything is
+		 * cached — advertising them would route them to /v1/messages where
+		 * they cannot work (chat-support evidence lives in the shared
+		 * ZaiModelCatalog, never the family-name grammar).
+		 */
 		$chat_ids = array();
 		foreach ( $ids as $id ) {
 			if ( ZaiModelCatalog::is_chat_model( $id ) ) {
 				$chat_ids[] = $id;
 			}
 		}
+
+		/*
+		 * Codex R3 #4: the live /v1/models route returns the SAME
+		 * full-catalog list on the coding plan (record 0007), but the
+		 * coding subscription exposes only its restricted model set —
+		 * discovered IDs are intersected with the ACTIVE plan's catalog
+		 * before caching, so the coding provider never advertises
+		 * general-only GLM 4.x entries. The general catalog IS the full
+		 * observed list, so the general plan's behavior is unchanged.
+		 */
+		$chat_ids = array_values( array_intersect( $chat_ids, ZaiModelCatalog::ids_for_plan( $plan ) ) );
 
 		if ( array() === $chat_ids ) {
 			throw ResponseException::fromMissingData( 'z.ai', 'data' );
