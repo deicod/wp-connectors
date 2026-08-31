@@ -33,6 +33,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   history, shorten the prompt — and a null typed maxTokens payload that
   ErrorMapper keys on; the raise-maxTokens advice stays on genuine
   `max_tokens` stop reasons only.
+- A success-shaped body whose top-level envelope identifies as anything
+  other than `"message"` (e.g. a `type:"error"` envelope carrying a
+  valid-looking payload) is now rejected as a typed parse error instead
+  of parsing as a generation (verifier residual on the R5 round). The
+  unseen-index tolerance note was also corrected: a thinking delta on a
+  start-less index is tolerated with its thought content dropped, not
+  surfaced.
 
 ### Fixed (zai / M2 — Codex PR review, round 4)
 

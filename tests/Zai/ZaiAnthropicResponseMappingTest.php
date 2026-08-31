@@ -384,6 +384,28 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAContradictoryEnvelopeTypeIsRejected()
+    {
+        // Verifier residual on Codex R5: a type:"error" envelope carrying
+        // an otherwise-valid body must not parse as a generation.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_env',
+            'type' => 'error',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'Ambiguous content.')),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A contradictory envelope type must be rejected, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('message', $e->getMessage());
+            $this->assertStringNotContainsString('Ambiguous content.', $e->getMessage());
+        }
+    }
+
     /**
      * @dataProvider provideNonAssistantRoles
      */

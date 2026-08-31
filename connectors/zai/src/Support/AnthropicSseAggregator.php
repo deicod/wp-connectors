@@ -738,11 +738,14 @@ final class AnthropicSseAggregator {
 			 * to a TEXT accumulator made the JSON fragments collect where
 			 * content_block_payload() ignores them — the tool_use
 			 * completion "succeeded" with NO FunctionCall at all. Tool
-			 * deltas invalidate the stream. A genuine TEXT (or thinking)
-			 * delta on an unseen index keeps the tolerant default below:
-			 * the text is still accumulated and surfaced — a documented,
-			 * tested tolerance for streams that simply lost their start
-			 * event.
+			 * deltas invalidate the stream. A genuine TEXT delta on an
+			 * unseen index keeps the tolerant default below — the text is
+			 * still accumulated and surfaced (documented and tested). A
+			 * thinking delta on an unseen index is likewise tolerated with
+			 * its thought content DROPPED: thought-channel content is
+			 * deliberately non-essential in this connector (outbound replay
+			 * drops it too), so losing it on a start-event-less stream
+			 * beats failing the completion.
 			 */
 			if ( isset( $delta['type'] ) && 'input_json_delta' === $delta['type'] ) {
 				$this->malformed_tool_input = true;

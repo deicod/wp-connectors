@@ -661,13 +661,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$raw_content_ok = \is_object( $raw ) && isset( $raw->content ) && \is_array( $raw->content );
 
 		/*
+		 * Verifier residual on Codex R5: a Messages response envelope
+		 * identifies itself with type "message" — a contradictory envelope
+		 * (e.g. type "error" carrying an otherwise-valid body) must not
+		 * parse as a generation. Absent members stay tolerated (the role,
+		 * content, and stop_reason members carry the validation weight).
+		 */
+		if ( isset( $data['type'] ) && ( ! \is_string( $data['type'] ) || 'message' !== $data['type'] ) ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'type', 'The response envelope did not identify itself as a message.' );
+		}
+
+		/*
 		 * Codex R5 #3: a Messages GENERATION response must be an assistant
 		 * message — require the exact role. A missing, unknown, or `user`
 		 * role previously fabricated an assistant turn or, worse, exposed
 		 * the payload as a generated USER message, mis-attributing content
 		 * into downstream history.
 		 */
-		if ( ! isset( $data['role'] ) || 'assistant' !== $data['role'] || ! \is_string( $data['role'] ) ) {
+		if ( ! isset( $data['role'] ) || ! \is_string( $data['role'] ) || 'assistant' !== $data['role'] ) {
 			throw ResponseException::fromInvalidData( 'z.ai', 'role', 'The message did not identify itself as an assistant response.' );
 		}
 
