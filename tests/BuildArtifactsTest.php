@@ -146,14 +146,25 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      */
     public function testAFailingArtifactAssertionCleansUpIntroducedVerificationState()
     {
-        $sidecarPath = self::distDir() . '/connectors-zai-0.1.0.zip.sha256';
+        /*
+         * Codex R3 #3: the regression must run against ANY dist/ state,
+         * including a prepared release directory — so it drives the guard
+         * with a throwaway artifact name that can never collide with a
+         * real release sidecar (no unconditional absence precondition on
+         * connectors-zai-0.1.0.zip.sha256).
+         */
+        $zipName = 'connectors-zai-cleanup-probe.zip';
+        $sidecarPath = self::distDir() . '/' . $zipName . '.sha256';
         $manifestPath = self::distDir() . '/checksums.txt';
         $manifestExisted = is_file($manifestPath);
-        $this->assertFileDoesNotExist($sidecarPath, 'Precondition: no lingering zai sidecar (fresh or preserved dist).');
+
+        // Defensive: clear any leftover probe sidecar from a previous
+        // broken run so the postcondition below stays meaningful.
+        @unlink($sidecarPath);
 
         try {
             $this->withArtifactStatePreserved(
-                'connectors-zai-0.1.0.zip',
+                $zipName,
                 function (): void {
                     // Any failing build/artifact assertion — no build needed.
                     $this->fail('simulated artifact assertion failure');
@@ -166,7 +177,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             $this->assertStringContainsString('simulated artifact assertion failure', $e->getMessage());
         }
 
-        $this->assertFileDoesNotExist($sidecarPath, 'The introduced sidecar must be removed even on a failing path.');
+        $this->assertFileDoesNotExist($sidecarPath, 'The introduced probe sidecar must be removed even on a failing path.');
         if (! $manifestExisted) {
             // On a prepared dist/ the helper must (and does) keep the real
             // manifest — the removal postcondition only holds when the test

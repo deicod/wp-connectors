@@ -23,6 +23,10 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   and flagged as the same typed stream-parse error; object inputs become
   the initial argument value and missing/null stay the no-argument
   placeholder.
+- The build-cleanup regression test now drives the guard with a
+  throwaway artifact name, so it runs (and passes) against a prepared
+  release `dist/` too instead of failing on its unconditional
+  no-sidecar precondition.
 
 ### Fixed (zai / M2 — Codex PR review, round 2)
 
