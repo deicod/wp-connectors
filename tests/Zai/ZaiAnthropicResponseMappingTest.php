@@ -669,6 +669,41 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(FinishReasonEnum::contentFilter(), $result->getCandidates()[0]->getFinishReason());
     }
 
+    public function testADuplicateContentBlockStartInvalidatesTheStream()
+    {
+        // Codex R7 #4: a second start for the same index silently replaced
+        // the accumulator — fragments collected before the duplicate were
+        // discarded and the completion reported success with altered
+        // content.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_dup","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"First "}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Replaced."}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Second."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A duplicate content_block_start must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+
+        // The typed boundary surfaces the same verdict.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+        $error = $this->model()->generate_text($this->prompt());
+        $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_INVALID_RESPONSE);
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.

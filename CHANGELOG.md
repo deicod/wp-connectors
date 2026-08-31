@@ -18,6 +18,10 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   `input_schema` as a JSON LIST and the tools contract requires an
   object (upstream 400). String-keyed and mixed-key schemas still
   encode as objects; null/empty keep their `{}` normalization.
+- A duplicate `content_block_start` for an already-started index now
+  invalidates the stream: the silent accumulator reset discarded every
+  fragment collected before the duplicate while the completion still
+  reported success with altered content.
 
 ### Fixed (zai / M2 — Codex PR review, round 6)
 

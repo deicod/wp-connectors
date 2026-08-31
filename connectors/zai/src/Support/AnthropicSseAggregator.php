@@ -761,6 +761,20 @@ final class AnthropicSseAggregator {
 			}
 		}
 
+		/*
+		 * Codex R7 #4: a SECOND start for an already-started index is a
+		 * corrupt stream — silently replacing the accumulator discarded
+		 * every text/thinking/tool fragment collected so far, and the
+		 * later completion reported success with altered content. Flag it
+		 * and keep the ORIGINAL accumulator (the flag fails the response
+		 * before the payload is ever used).
+		 */
+		if ( \array_key_exists( $index, $this->blocks ) ) {
+			$this->malformed_event = true;
+
+			return;
+		}
+
 		$this->blocks[ $index ] = array(
 			'type'     => $type,
 			'text'     => isset( $block['text'] ) && \is_string( $block['text'] ) ? $block['text'] : '',
@@ -772,9 +786,7 @@ final class AnthropicSseAggregator {
 			'has_json' => false,
 		);
 
-		if ( ! \in_array( $index, $this->block_order, true ) ) {
-			$this->block_order[] = $index;
-		}
+		$this->block_order[] = $index;
 	}
 
 	/**
