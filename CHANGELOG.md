@@ -23,6 +23,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   (string, float, null, negative) now invalidates the stream: the value
   was previously coerced to index 0, so a malformed event mutated the
   WRONG block while the stream still reported success.
+- A delta whose type conflicts with the started block's type now
+  invalidates the stream instead of being silently discarded:
+  `input_json_delta` on a text/thinking block previously finished with
+  `stop_reason: tool_use` while omitting the tool call entirely, and
+  text/thinking deltas on a tool block accumulated then dropped.
+  Unknown delta types keep their forward-compatible tolerance. As a
+  side effect, a thinking delta on a start-less index now seeds a
+  thinking accumulator, so its content surfaces instead of being
+  dropped (supersedes the R5 tolerance note).
 
 - The Debug logging checkbox renders again on Settings → z.ai: the
   field was still attached to the pre-refactor option-group section id,

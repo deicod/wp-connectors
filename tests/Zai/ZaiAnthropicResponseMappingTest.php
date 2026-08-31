@@ -526,6 +526,93 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    /**
+     * @dataProvider provideConflictingDeltas
+     */
+    public function testConflictingDeltasInvalidateTheStream($startBlockJson, $deltaJson)
+    {
+        // Codex R6 #3: a delta whose type conflicts with the started
+        // block's type previously appended to an incompatible accumulator
+        // whose payload builder ignored the member — the stream finished
+        // with stop_reason tool_use while silently omitting the tool call
+        // (or discarding text/thinking content on a tool block).
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_cf","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: ' . $startBlockJson . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: ' . $deltaJson . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $parts = $result->toMessage()->getParts();
+            $this->fail('A conflicting delta must invalidate the stream, got parts: ' . wp_json_encode($parts));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideConflictingDeltas()
+    {
+        return array(
+            'json delta on text block' => array(
+                '{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+                '{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}',
+            ),
+            'json delta on thinking block' => array(
+                '{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}',
+                '{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}',
+            ),
+            'text delta on tool block' => array(
+                '{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_c1","name":"ping","input":{}}}',
+                '{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"sneaky"}}',
+            ),
+            'thinking delta on tool block' => array(
+                '{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_c2","name":"ping","input":{}}}',
+                '{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}',
+            ),
+            'text delta on thinking block' => array(
+                '{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}',
+                '{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"misplaced"}}',
+            ),
+            'thinking delta on text block' => array(
+                '{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+                '{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"misplaced"}}',
+            ),
+        );
+    }
+
+    public function testAMatchingThinkingDeltaOnASeededThinkingBlockSurfaces()
+    {
+        // With conflicting deltas now rejected, an unseen-index thinking
+        // delta seeds a THINKING accumulator, so its content surfaces as a
+        // thought part instead of being silently dropped (R5 note
+        // superseded).
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ct","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Pondering."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $parts = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts();
+
+        $this->assertCount(1, $parts);
+        $this->assertTrue($parts[0]->getChannel()->isThought());
+        $this->assertSame('Pondering.', $parts[0]->getText());
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.

@@ -800,14 +800,13 @@ final class AnthropicSseAggregator {
 			 * to a TEXT accumulator made the JSON fragments collect where
 			 * content_block_payload() ignores them — the tool_use
 			 * completion "succeeded" with NO FunctionCall at all. Tool
-			 * deltas invalidate the stream. A genuine TEXT delta on an
-			 * unseen index keeps the tolerant default below — the text is
-			 * still accumulated and surfaced (documented and tested). A
-			 * thinking delta on an unseen index is likewise tolerated with
-			 * its thought content DROPPED: thought-channel content is
-			 * deliberately non-essential in this connector (outbound replay
-			 * drops it too), so losing it on a start-event-less stream
-			 * beats failing the completion.
+			 * deltas invalidate the stream. A genuine TEXT or THINKING
+			 * delta on an unseen index keeps the tolerant default below —
+			 * the accumulator is seeded with the delta's OWN block type,
+			 * so the recovered chunk is accumulated and surfaced (documented
+			 * and tested; the R5 note about thought content being dropped
+			 * no longer applies — a thinking delta now seeds a thinking
+			 * block).
 			 */
 			if ( isset( $delta['type'] ) && 'input_json_delta' === $delta['type'] ) {
 				$this->malformed_tool_input = true;
@@ -815,7 +814,46 @@ final class AnthropicSseAggregator {
 				return;
 			}
 
-			$this->start_block( $index, array( 'type' => 'text' ), null );
+			$seed_type = isset( $delta['type'] ) && 'thinking_delta' === $delta['type'] ? 'thinking' : 'text';
+			$this->start_block( $index, array( 'type' => $seed_type ), null );
+		}
+
+		/*
+		 * Codex R6 #3: each delta type must match the accumulator's block
+		 * type — the protocol sends text deltas to text blocks, thinking
+		 * deltas to thinking blocks, and JSON deltas to tool_use blocks.
+		 * A mismatch previously appended to an incompatible accumulator
+		 * whose payload builder IGNORES the member: an input_json_delta on
+		 * a text/thinking block silently omitted the tool call while the
+		 * stream finished with stop_reason tool_use, and text/thinking
+		 * deltas on a tool block accumulated then discarded. Mismatches
+		 * now invalidate the stream; unknown delta types keep their
+		 * forward-compatible tolerance (no block-type claim to violate).
+		 */
+		$expected_type = null;
+		if ( isset( $delta['type'] ) && \is_string( $delta['type'] ) ) {
+			switch ( $delta['type'] ) {
+				case 'text_delta':
+					$expected_type = 'text';
+					break;
+				case 'thinking_delta':
+					$expected_type = 'thinking';
+					break;
+				case 'input_json_delta':
+					$expected_type = 'tool_use';
+					break;
+			}
+		}
+
+		if ( null !== $expected_type && $this->blocks[ $index ]['type'] !== $expected_type ) {
+			if ( 'tool_use' === $expected_type ) {
+				// Tool-argument corruption: the malformed-tool-input error.
+				$this->malformed_tool_input = true;
+			} else {
+				$this->malformed_event = true;
+			}
+
+			return;
 		}
 
 		if ( isset( $delta['type'] ) && \is_string( $delta['type'] ) ) {
