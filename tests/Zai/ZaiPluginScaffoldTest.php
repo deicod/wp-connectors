@@ -50,15 +50,12 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
         $this->assertTrue(AiClient::defaultRegistry()->hasProvider('zai'));
     }
 
-    public function testRegistersOnlyTheZaiProviderInMilestone1()
+    public function testRegistersBothProvidersInMilestone2()
     {
         $this->bootPlugin();
 
         $this->assertTrue(AiClient::defaultRegistry()->hasProvider('zai'));
-        $this->assertFalse(
-            AiClient::defaultRegistry()->hasProvider('zai_anthropic'),
-            'zai_anthropic belongs to Milestone 2 and must not be registered yet.'
-        );
+        $this->assertTrue(AiClient::defaultRegistry()->hasProvider('zai_anthropic'));
     }
 
     public function testRegistersWithAFreshRegistryWithoutDuplicating()
@@ -70,7 +67,8 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
         Plugin::register($fresh);
 
         $this->assertTrue($fresh->hasProvider('zai'));
-        $this->assertSame(array('zai'), $fresh->getRegisteredProviderIds());
+        $this->assertTrue($fresh->hasProvider('zai_anthropic'));
+        $this->assertSame(array('zai', 'zai_anthropic'), $fresh->getRegisteredProviderIds());
     }
 
     /*

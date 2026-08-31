@@ -252,7 +252,7 @@ documented exception.
 
 ### Tasks
 
-- [ ] **Task 2.1 — Add the second provider and independent settings.** Extend the existing z.ai
+- [x] **Task 2.1 — Add the second provider and independent settings.** Extend the existing z.ai
   plugin to register `zai_anthropic` idempotently and add its own
   `zai_connector_zai_anthropic_plan` and `_region` options with the same defaults and controls.
   Keep API-key storage/auth metadata distinct as core derives it from provider ID. A region

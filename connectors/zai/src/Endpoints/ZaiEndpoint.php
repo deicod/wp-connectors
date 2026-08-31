@@ -168,6 +168,20 @@ final class ZaiEndpoint {
 	}
 
 	/**
+	 * The model-list URL of this endpoint.
+	 *
+	 * Shared surface with ZaiAnthropicEndpoint so the provider-agnostic
+	 * availability base can probe either surface uniformly.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return string Full URL of the /models route.
+	 */
+	public function models_url(): string {
+		return $this->api_url( 'models' );
+	}
+
+	/**
 	 * Builds a request URL by appending a path with a single slash.
 	 *
 	 * @since 0.1.0

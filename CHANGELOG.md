@@ -6,6 +6,29 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Added (zai / M2 — second provider `zai_anthropic`, Task 2.1)
+
+- The `zai` plugin now registers a second provider, `zai_anthropic`
+  (card "z.ai (Anthropic API)"), alongside `zai`. Both registrations are
+  individually idempotent, and the registrar refuses to register onto a
+  provider ID a foreign class already holds — the SDK's `registerProvider()`
+  would silently overwrite it — so one provider's registration can never
+  replace the other's.
+- `zai_anthropic` has its own plan/region options
+  (`zai_connector_zai_anthropic_plan` / `_region`, defaults coding + intl)
+  rendered as a second section on the shared settings page; the two
+  providers' selections cannot bleed into each other.
+- A `zai_anthropic` region switch clears that provider's validated state,
+  discovery caches, region-pending flag, and stored key
+  (`connectors_ai_zai_anthropic_api_key`) — never the `zai` provider's data.
+- Availability is validated independently per provider: separate state
+  options and endpoint-scoped bindings mean a validated `zai` key can never
+  establish `zai_anthropic`'s connected status (and vice versa); a
+  nonempty-but-invalid key reports not-connected for this provider too.
+- The M1 settings/availability logic moved into shared per-provider base
+  classes (`AbstractPlanRegionSettings`, `AbstractZaiProviderAvailability`)
+  with the `zai` classes as thin children — no behavior change for `zai`.
+
 ### Fixed (zai / M1 — Codex PR review, round 3)
 
 - Network uninstall pagination actually advances: the multisite cleanup
