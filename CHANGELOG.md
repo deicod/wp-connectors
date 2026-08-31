@@ -25,6 +25,10 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   the test introduced them), and the class tearDown restores a prepared
   manifest instead of deleting it — a prepared `dist/` directory is left
   exactly as it was, verified by post-restore assertions.
+- An `outputSchema` now requests the JSON guidance on its own — the MIME
+  option and the schema are advertised independently, and a schema
+  without `outputMimeType: application/json` was silently discarded into
+  an unconstrained request.
 
 ### Fixed (zai / M2 — independent review round)
 

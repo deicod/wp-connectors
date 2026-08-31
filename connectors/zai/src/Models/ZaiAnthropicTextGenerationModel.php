@@ -231,8 +231,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
-	 * Builds the JSON-output guidance for the system prompt, or '' when JSON
-	 * output was not requested.
+	 * Builds the JSON-output guidance for the system prompt, or '' when
+	 * neither JSON output signal was given.
+	 *
+	 * outputSchema is advertised independently of outputMimeType, so EITHER
+	 * signal requests guidance: a schema without the MIME option must not
+	 * be silently discarded into an unconstrained request (Codex R1
+	 * finding 4).
 	 *
 	 * @since 0.2.0
 	 *
@@ -241,13 +246,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private function json_output_guidance(): string {
 		$config = $this->getConfig();
 
-		if ( 'application/json' !== $config->getOutputMimeType() ) {
+		$output_schema = $config->getOutputSchema();
+		$json_mime     = 'application/json' === $config->getOutputMimeType();
+
+		if ( ! $json_mime && ! \is_array( $output_schema ) ) {
 			return '';
 		}
 
 		$guidance = __( 'Respond with a single JSON value only — no markdown fences, no commentary, no surrounding text.', 'zai' );
 
-		$output_schema = $config->getOutputSchema();
 		if ( \is_array( $output_schema ) ) {
 			$guidance .= "\n" . sprintf(
 				/* translators: %s: a JSON Schema document (compact JSON). */

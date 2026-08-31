@@ -209,6 +209,62 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString('JSON Schema', $body['system']);
     }
 
+    public function testAnOutputSchemaAloneRequestsJsonGuidance()
+    {
+        // Codex R1 finding 4: outputSchema is advertised independently of
+        // outputMimeType — supplying it alone must not silently discard
+        // the schema into an unconstrained request.
+        $schema = array(
+            'type' => 'object',
+            'properties' => array('answer' => array('type' => 'string')),
+            'required' => array('answer'),
+        );
+
+        $config = ModelConfig::fromArray(array(
+            'outputSchema' => $schema,
+        ));
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Capital of France?')))),
+            $this->model($config)
+        );
+
+        $this->assertArrayHasKey('system', $body, 'The schema alone must produce JSON guidance.');
+        $this->assertStringContainsString('single JSON value', $body['system']);
+        $this->assertStringContainsString((string) wp_json_encode($schema), $body['system'], 'The schema must be embedded.');
+
+        $this->assertMatchesSnapshot('schema-only-structured-output', $url, $body);
+    }
+
+    public function testATextPlainMimeDoesNotDiscardAnExplicitSchema()
+    {
+        $schema = array('type' => 'object');
+
+        $config = ModelConfig::fromArray(array(
+            'outputMimeType' => 'text/plain',
+            'outputSchema' => $schema,
+        ));
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
+            $this->model($config)
+        );
+
+        $this->assertStringContainsString('single JSON value', $body['system'], 'An explicit schema wins over a plain-text mime.');
+    }
+
+    public function testNeitherSignalProducesNoGuidance()
+    {
+        $config = ModelConfig::fromArray(array('outputMimeType' => 'text/plain'));
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
+            $this->model($config)
+        );
+
+        $this->assertArrayNotHasKey('system', $body, 'No JSON signal, no guidance.');
+    }
+
     public function testJsonGuidanceAppendsToAnExistingSystemInstruction()
     {
         $config = ModelConfig::fromArray(array(
