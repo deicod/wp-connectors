@@ -361,6 +361,28 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringContainsString('"properties":{}', $raw, 'A schema-less tool declaration gets an empty-object properties member.');
     }
 
+    public function testAnEmptyArrayParameterSchemaNormalizesToAnObject()
+    {
+        // Codex R1 finding 5: a parameterless declaration whose parameters
+        // are array() (not null) must normalize like a missing schema —
+        // input_schema encodes as {}, never [].
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('ping', 'Pings', array()))->toArray(),
+            ),
+        ));
+
+        $this->model($config)->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+
+        $raw = (string) $this->sdkHttpAttempts()[0]['body'];
+        $this->assertStringContainsString('"input_schema":{"type":"object","properties":{}}', $raw, 'The empty-array schema normalizes to the empty-object schema.');
+        $this->assertStringNotContainsString('"input_schema":[]', $raw, 'input_schema must never encode as [].');
+    }
+
     public function testMultimodalTextRequestSnapshot()
     {
         // Multiple text parts in one message (text-only multimodality): both

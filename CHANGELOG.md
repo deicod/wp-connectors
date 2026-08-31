@@ -29,6 +29,9 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   option and the schema are advertised independently, and a schema
   without `outputMimeType: application/json` was silently discarded into
   an unconstrained request.
+- A parameterless tool declaration whose parameters are an empty array
+  (not null) now normalizes to the empty-object input schema — the raw
+  `[]` encoding failed the Messages tool-schema validation upstream.
 
 ### Fixed (zai / M2 — independent review round)
 

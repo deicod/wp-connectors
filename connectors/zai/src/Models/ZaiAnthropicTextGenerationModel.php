@@ -278,10 +278,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$tools = array();
 
 		foreach ( $function_declarations as $declaration ) {
-			// The Messages protocol requires input_schema on every tool,
-			// even for functions without parameters (empty object schema).
+			// The Messages protocol requires input_schema on every tool — an
+			// OBJECT — even for functions without parameters. Both the
+			// absent schema (null) and an EMPTY array schema () normalize
+			// to the empty-object schema; a raw empty array would
+			// JSON-encode as [] and fail upstream validation (Codex R1
+			// finding 5).
 			$input_schema = $declaration->getParameters();
-			if ( null === $input_schema ) {
+			if ( null === $input_schema || array() === $input_schema ) {
 				$input_schema = array(
 					'type'       => 'object',
 					'properties' => new \stdClass(),
