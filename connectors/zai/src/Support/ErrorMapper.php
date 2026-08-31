@@ -178,7 +178,10 @@ final class ErrorMapper {
 				case 403:
 					return __( 'The z.ai API refused the request (403). The key may not have access to this model or plan.', 'zai' );
 				case 429:
-					return __( 'The z.ai API is rate limiting this key (429). Wait a moment and try again.', 'zai' );
+					// 429 is also z.ai code 1113: a Coding-Plan key against the
+					// General endpoint without pay-as-you-go balance (record
+					// 0006) — an account state that waiting can never fix.
+					return __( 'The z.ai API rejected the request (429). This is either temporary rate limiting — wait a moment and try again — or a plan/balance mismatch: check that the selected plan (Coding Plan or General API) matches the key, and that the account has balance or an active subscription at its region portal (z.ai internationally, open.bigmodel.cn in China).', 'zai' );
 				default:
 					return sprintf(
 						/* translators: %d: HTTP status code. */

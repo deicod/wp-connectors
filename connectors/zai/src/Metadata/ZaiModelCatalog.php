@@ -86,15 +86,36 @@ final class ZaiModelCatalog {
 	}
 
 	/**
+	 * Curated allowlist of chat-capable IDs verified beyond the catalogs.
+	 *
+	 * The is_chat_model() filter admits an ID only with VERIFIED chat
+	 * support — the plan forbids deriving capabilities from the family name
+	 * or ID grammar alone, so a family-shaped non-chat release
+	 * ('glm-6-image', 'glm-6-embedding') must never be advertised as chat. A
+	 * model whose
+	 * chat support is verified live (record-0006-style evidence) is added
+	 * HERE and to the matching fallback catalog — never by loosening
+	 * is_chat_model().
+	 *
+	 * Empty as of record 0006: every verified chat ID already sits in one
+	 * of the two fallback catalogs.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var list<string>
+	 */
+	const VERIFIED_CHAT_MODELS = array();
+
+	/**
 	 * Whether an ID is known to be a chat-capable GLM text model.
 	 *
-	 * Two sources of knowledge, either suffices: the static catalogs
-	 * (verified per-model evidence, record 0006) or the observed GLM chat ID
-	 * grammar `glm-<version>[-variant]` (e.g. a future 'glm-6' or
-	 * 'glm-5.4-air'). IDs that match neither — an embedding model like
-	 * 'embedding-3', an image model like 'cogview-4' — must never receive
-	 * chat metadata: they would be advertised as selectable and then fail
-	 * at /chat/completions.
+	 * Verified evidence only: membership in the curated VERIFIED_CHAT_MODELS
+	 * allowlist or one of the static catalogs (per-model evidence, record
+	 * 0006). The GLM ID grammar is deliberately NOT proof of chat
+	 * capability — an unverified future release ('glm-6'), an embedding
+	 * model like 'embedding-3', an image model like 'cogview-4' or
+	 * 'glm-6-image' must never receive chat metadata: it would be
+	 * advertised as selectable and then fail at /chat/completions.
 	 *
 	 * @since 0.1.0
 	 *
@@ -102,23 +123,28 @@ final class ZaiModelCatalog {
 	 * @return bool True when the ID has known chat support.
 	 */
 	public static function is_chat_model( string $model_id ): bool {
-		if ( \in_array( $model_id, self::CODING_MODELS, true ) || \in_array( $model_id, self::GENERAL_MODELS, true ) ) {
-			return true;
-		}
+		return \in_array( $model_id, self::verified_chat_ids(), true );
+	}
 
-		// Version-anchored GLM ID: 'glm-' immediately followed by a number
-		// (then optional .minor and -variant segments). Word-form prefixes
-		// ('glm-future-9' style, 'glm-embedding') deliberately do NOT match.
-		return 1 === preg_match( '/^glm-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9.-]+)?$/', $model_id );
+	/**
+	 * Every ID with verified chat support: the curated allowlist plus both
+	 * plan-partitioned fallback catalogs.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return list<string> Verified chat-capable model IDs.
+	 */
+	private static function verified_chat_ids(): array {
+		return array_merge( self::VERIFIED_CHAT_MODELS, self::CODING_MODELS, self::GENERAL_MODELS );
 	}
 
 	/**
 	 * Builds the metadata for one model ID.
 	 *
-	 * Unknown IDs (returned by discovery but not yet cataloged) get the same
-	 * conservative text-only capability set — the catalog data only refines
-	 * display names. Callers must gate on is_chat_model() first so non-chat
-	 * IDs never receive this chat metadata.
+	 * The same conservative text-only capability set serves every admitted
+	 * ID; the catalog data only refines display names. Callers must gate on
+	 * is_chat_model() first so non-chat or unverified IDs never receive
+	 * this chat metadata.
 	 *
 	 * @since 0.1.0
 	 *

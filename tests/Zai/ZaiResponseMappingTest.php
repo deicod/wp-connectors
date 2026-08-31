@@ -180,6 +180,69 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(array('city' => 'Paris'), $call->getArgs());
     }
 
+    public function testMergedToolCallsEncodeAsAJsonListForAwkwardStreamIndexes()
+    {
+        // r5: out-of-order, non-zero-starting, or sparse tool-call stream
+        // indexes must not leak insertion-order/sparse PHP integer keys into
+        // the consolidated payload — json_encode would produce an OBJECT for
+        // message.tool_calls and the valid multi-tool stream would fail the
+        // non-streaming parser as malformed.
+        $cases = array(
+            'out-of-order indexes' => array(
+                'deltas' => array(array(1, 'call_b'), array(0, 'call_a')),
+                'expected_ids' => array('call_a', 'call_b'),
+            ),
+            'first index greater than zero' => array(
+                'deltas' => array(array(1, 'call_b'), array(2, 'call_c')),
+                'expected_ids' => array('call_b', 'call_c'),
+            ),
+            'sparse gapped indexes' => array(
+                'deltas' => array(array(0, 'call_a'), array(2, 'call_c')),
+                'expected_ids' => array('call_a', 'call_c'),
+            ),
+        );
+
+        foreach ($cases as $label => $case) {
+            $aggregator = new SseAggregator();
+            foreach ($case['deltas'] as list($index, $id)) {
+                $aggregator->feed('data: ' . wp_json_encode(array(
+                    'id' => 'chatcmpl-tc',
+                    'choices' => array(array(
+                        'index' => 0,
+                        'delta' => array('tool_calls' => array(array(
+                            'index' => $index,
+                            'id' => $id,
+                            'type' => 'function',
+                            'function' => array('name' => 'tool_' . $id, 'arguments' => '{}'),
+                        ))),
+                        'finish_reason' => null,
+                    )),
+                )) . "\n\n");
+            }
+            $aggregator->finish();
+
+            $toolCalls = $aggregator->aggregated()['choices'][0]['message']['tool_calls'];
+
+            $json = wp_json_encode($toolCalls);
+            $this->assertStringStartsWith('[', $json, "{$label}: tool_calls must encode as a JSON list.");
+            $this->assertStringStartsNotWith('{', $json, "{$label}: tool_calls must not encode as a JSON object.");
+
+            $decoded = json_decode($json, true);
+            $this->assertSame(
+                range(0, count($case['deltas']) - 1),
+                array_keys($decoded),
+                "{$label}: merged tool calls must be reindexed 0-based."
+            );
+            $this->assertSame(
+                $case['expected_ids'],
+                array_map(static function (array $call) {
+                    return $call['id'];
+                }, $decoded),
+                "{$label}: tool calls must be ordered by stream index."
+            );
+        }
+    }
+
     public function testStreamParserToleratesSplitFramesCrlfCommentsAndMalformedEvents()
     {
         $body = ""
@@ -369,7 +432,7 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $cases = array(
             401 => 'Connectors screen',
             403 => 'access',
-            429 => 'rate limiting',
+            429 => 'plan/balance mismatch',
             500 => 'server error',
         );
 
@@ -398,6 +461,25 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
 
         $this->assertCount(1, $this->sdkHttpAttempts(), 'v1 must not retry rate-limited requests.');
+    }
+
+    public function testRateLimitMessageGuidesPlanAndBalanceMismatches()
+    {
+        // r5: z.ai 429 is ALSO code 1113 — a Coding-Plan key against the
+        // General endpoint without pay-as-you-go balance (record 0006) —
+        // an account state that "wait and retry" can never fix. The safe
+        // (redacted, status-only) catalog text must guide both shapes and
+        // name both region portals, without echoing the upstream body.
+        $message = ErrorMapper::safe_http_message(429);
+
+        $this->assertStringContainsString('rate limiting', $message, 'The temporary-rate-limit reading must stay.');
+        $this->assertStringContainsString('plan/balance mismatch', $message);
+        $this->assertStringContainsString('Coding Plan', $message);
+        $this->assertStringContainsString('General API', $message);
+        $this->assertStringContainsString('balance', $message);
+        $this->assertStringContainsString('z.ai', $message, 'The international portal must be named.');
+        $this->assertStringContainsString('open.bigmodel.cn', $message, 'The China portal must be named.');
+        $this->assertStringNotContainsString('1113', $message, 'Upstream error codes must stay out of the fixed catalog.');
     }
 
     /*

@@ -203,6 +203,20 @@ final class SseAggregator {
 			return null;
 		}
 
+		// Reindex the merged tool calls ONCE, here: while merging, the
+		// accumulated per-choice lists stay keyed by STREAM index (the merge
+		// identity), so out-of-order (1 before 0), non-zero-starting, or
+		// sparse (0 and 2) indexes would otherwise leave insertion-order or
+		// gapped integer keys — and json_encode would emit message.tool_calls
+		// as an OBJECT, failing a valid multi-tool stream as malformed.
+		foreach ( $choices as &$choice ) {
+			if ( isset( $choice['message']['tool_calls'] ) && \is_array( $choice['message']['tool_calls'] ) ) {
+				\ksort( $choice['message']['tool_calls'], SORT_NUMERIC );
+				$choice['message']['tool_calls'] = \array_values( $choice['message']['tool_calls'] );
+			}
+		}
+		unset( $choice );
+
 		ksort( $choices, SORT_NUMERIC );
 
 		$payload = array(

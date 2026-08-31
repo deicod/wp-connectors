@@ -65,6 +65,28 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertSame('https://z.ai/manage/apikey/apikey', $args[3]);
     }
 
+    public function testCredentialsUrlFollowsTheSelectedRegion()
+    {
+        // r5: regions use separate accounts and keys (SPEC 3.3) — a
+        // China-region admin must be linked to the open.bigmodel.cn portal,
+        // never to the international z.ai key page.
+        update_option(PlanRegionSettings::OPTION_REGION, 'cn');
+        $this->assertSame(
+            'https://open.bigmodel.cn/usercenter/apikeys',
+            ZaiProvider::provider_metadata_args('1.1.0')[3],
+            'The cn region must advertise the open.bigmodel.cn key portal.'
+        );
+        $this->assertSame(ZaiProvider::CN_CREDENTIALS_URL, ZaiProvider::provider_metadata_args('1.3.0')[3], 'The link is region-aware in every metadata shape.');
+
+        update_option(PlanRegionSettings::OPTION_REGION, 'intl');
+        $this->assertSame(
+            'https://z.ai/manage/apikey/apikey',
+            ZaiProvider::provider_metadata_args('1.1.0')[3],
+            'The intl region keeps the z.ai key portal.'
+        );
+        $this->assertSame(ZaiProvider::INTL_CREDENTIALS_URL, ZaiProvider::provider_metadata_args('1.2.0')[3]);
+    }
+
     public function testMetadataShapeOnSdk120AddsDescription()
     {
         $args = ZaiProvider::provider_metadata_args('1.2.0');

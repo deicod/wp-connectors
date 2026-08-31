@@ -426,25 +426,54 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         }
     }
 
-    public function testUnknownDiscoveredIdGetsConservativeTextCapabilities()
+    public function testUnknownFamilyShapedDiscoveredIdIsNotAdvertised()
     {
-        // 'glm-6-preview': not in the static catalogs (a future release),
-        // but chat-shaped per the observed GLM ID grammar — discovery keeps
-        // it with conservative text-only capabilities.
+        // r5: family shape is not chat evidence. 'glm-6-image' matches the
+        // GLM naming grammar, but nothing VERIFIED says it chats — the plan
+        // forbids advertising capabilities from family names alone. Unknown
+        // IDs from /models are excluded from advertised chat metadata.
         $this->selectEndpoint('general', 'intl');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-6-preview')));
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array(
+            'glm-6-image',
+            'glm-6-preview',
+            'glm-5.3',
+        )));
 
-        $metadata = $this->directory()->getModelMetadata('glm-6-preview');
+        $models = $this->directory()->listModelMetadata();
 
-        $this->assertSame(array('text_generation', 'chat_history'), array_map('strval', $metadata->getSupportedCapabilities()));
-        $this->assertSame('GLM 6 Preview', $metadata->getName(), 'Grammar-matching unknown IDs get the standard display name.');
+        $this->assertSame(array('glm-5.3'), $this->idList($models), 'Only verified chat IDs may be advertised.');
+        $this->assertFalse($this->directory()->hasModelMetadata('glm-6-image'));
+
+        // Direct catalog proof: the grammar matches, the verdict must not.
+        $this->assertFalse(ZaiModelCatalog::is_chat_model('glm-6-image'));
+        $this->assertFalse(ZaiModelCatalog::is_chat_model('glm-6'));
+        $this->assertFalse(ZaiModelCatalog::is_chat_model('glm-6-preview'));
+    }
+
+    public function testKnownCatalogIdsAreAdvertisedFromDiscovery()
+    {
+        // Every fallback-catalog ID counts as verified chat support: mixed
+        // into a discovery response (alongside non-chat noise), all of them
+        // survive filtering, per plan and region data alike.
+        $this->selectEndpoint('general', 'intl');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array_merge(
+            array('glm-6-image', 'cogview-4', 'embedding-3'),
+            ZaiModelCatalog::GENERAL_MODELS
+        )));
+
+        $models = $this->directory()->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::GENERAL_MODELS, $this->idList($models));
+        $this->assertTrue(ZaiModelCatalog::is_chat_model('glm-4.5-air'), 'Coding-family and general-family catalog IDs are all verified.');
+        $this->assertTrue(ZaiModelCatalog::is_chat_model('glm-5.3-flash'));
     }
 
     public function testDiscoveryDropsModelIdsWithoutKnownChatSupport()
     {
         // A future /models list exposing non-chat models (embedding, image,
-        // word-form IDs) must not advertise them: they would get full chat
-        // metadata and then fail at /chat/completions (review finding).
+        // word-form IDs, unverified family-shaped releases) must not
+        // advertise them: they would get full chat metadata and then fail
+        // at /chat/completions (review finding).
         $this->selectEndpoint('general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array(
             'embedding-3',
@@ -452,25 +481,27 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             'glm-future-9',
             'glm-5.3',
             'glm-6',
+            'glm-6-image',
         )));
 
         $models = $this->directory()->listModelMetadata();
 
-        $this->assertSame(array('glm-6', 'glm-5.3'), $this->idList($models), 'Only IDs with known chat support may be advertised.');
+        $this->assertSame(array('glm-5.3'), $this->idList($models), 'Only IDs with known chat support may be advertised.');
 
         // The persisted transient must already be the filtered list, so a
         // non-chat ID can never resurface from the cache either.
         $cached = get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|general|intl'));
-        $this->assertSame(array('glm-6', 'glm-5.3'), array_values($cached));
+        $this->assertSame(array('glm-5.3'), array_values($cached));
 
         // hasModelMetadata() must reject the dropped IDs.
         $this->assertFalse($this->directory()->hasModelMetadata('embedding-3'));
+        $this->assertFalse($this->directory()->hasModelMetadata('glm-6-image'));
     }
 
     public function testDiscoveryWithOnlyNonChatIdsFallsBackToThePlanCatalog()
     {
         $this->selectEndpoint('coding', 'intl');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('embedding-3', 'cogview-4')));
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('embedding-3', 'cogview-4', 'glm-6-image')));
 
         $models = $this->directory()->listModelMetadata();
 

@@ -25,6 +25,7 @@ use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
 /**
  * Provider definition for the z.ai OpenAI-compatible API.
@@ -45,6 +46,29 @@ final class ZaiProvider extends AbstractApiProvider {
 	 * @var string
 	 */
 	public const PROVIDER_ID = 'zai';
+
+	/**
+	 * Key-management portal for the international region (z.ai).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	public const INTL_CREDENTIALS_URL = 'https://z.ai/manage/apikey/apikey';
+
+	/**
+	 * Key-management portal for the China region (open.bigmodel.cn).
+	 *
+	 * Regions use separate accounts and separate API keys (SPEC §3.3), so
+	 * the advertised link must follow the selected region — a China admin
+	 * sent to the z.ai portal lands on an account their key can never
+	 * live in.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	public const CN_CREDENTIALS_URL = 'https://open.bigmodel.cn/usercenter/apikeys';
 
 	/**
 	 * The canonical base URL: international region, general plan.
@@ -112,7 +136,7 @@ final class ZaiProvider extends AbstractApiProvider {
 			self::PROVIDER_ID,
 			'z.ai',
 			ProviderTypeEnum::cloud(),
-			'https://z.ai/manage/apikey/apikey',
+			self::credentials_url(),
 			RequestAuthenticationMethod::apiKey(),
 		);
 
@@ -125,6 +149,23 @@ final class ZaiProvider extends AbstractApiProvider {
 		}
 
 		return $args;
+	}
+
+	/**
+	 * The key-management URL of the currently selected region's portal.
+	 *
+	 * The region option is read at metadata-build time (provider
+	 * registration, once per request): like the rest of the provider
+	 * metadata, a region change is reflected from the next request on.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return string Credentials portal URL for the current region.
+	 */
+	private static function credentials_url(): string {
+		return 'cn' === PlanRegionSettings::get_region()
+			? self::CN_CREDENTIALS_URL
+			: self::INTL_CREDENTIALS_URL;
 	}
 
 	/**
