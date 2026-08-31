@@ -26,6 +26,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   Messages tool schema requires an object. Mixed/string-keyed arrays
   still encode as objects and the empty-array→`{}` normalization is
   unchanged.
+- An `input_json_delta` whose `partial_json` member is NULL or OMITTED
+  is now flagged as malformed streamed arguments (isset() is false for
+  both, so both were silently ignored — letting the initial `{}` become
+  an executable no-argument call). The legitimate empty-string fragment
+  keeps its no-op semantics.
 
 ### Fixed (zai / M2 — Codex PR review, round 3)
 

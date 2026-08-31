@@ -613,25 +613,24 @@ final class AnthropicSseAggregator {
 					return;
 
 				case 'input_json_delta':
-					if ( isset( $delta['partial_json'] ) && ! \is_string( $delta['partial_json'] ) ) {
-						/*
-						 * The protocol's partial_json member is a STRING; a
-						 * non-string value is a corrupt streamed-arguments
-						 * event. Dropping it silently (verifier finding on
-						 * Codex R3) would surface a no-argument call built
-						 * from a broken stream — flag it like every other
-						 * malformed tool input instead.
-						 */
+					/*
+					 * The protocol's partial_json member is a STRING, and
+					 * in this tool-JSON context it is REQUIRED: a missing,
+					 * null, or non-string member (isset() is false for both
+					 * missing and null — Codex R4 #1) is a corrupt
+					 * streamed-arguments event. Dropping it silently would
+					 * surface a no-argument call built from a broken stream
+					 * — flag it like every other malformed tool input.
+					 */
+					if ( ! \array_key_exists( 'partial_json', $delta ) || ! \is_string( $delta['partial_json'] ) ) {
 						$this->malformed_tool_input = true;
 
 						return;
 					}
 
-					if ( isset( $delta['partial_json'] ) ) {
-						$this->blocks[ $index ]['json'] .= $delta['partial_json'];
-						if ( '' !== $delta['partial_json'] ) {
-							$this->blocks[ $index ]['has_json'] = true;
-						}
+					$this->blocks[ $index ]['json'] .= $delta['partial_json'];
+					if ( '' !== $delta['partial_json'] ) {
+						$this->blocks[ $index ]['has_json'] = true;
 					}
 					return;
 			}
