@@ -660,9 +660,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$raw            = json_decode( (string) $response->getBody() );
 		$raw_content_ok = \is_object( $raw ) && isset( $raw->content ) && \is_array( $raw->content );
 
-		$role = isset( $data['role'] ) && 'user' === $data['role']
-			? MessageRoleEnum::user()
-			: MessageRoleEnum::model();
+		/*
+		 * Codex R5 #3: a Messages GENERATION response must be an assistant
+		 * message — require the exact role. A missing, unknown, or `user`
+		 * role previously fabricated an assistant turn or, worse, exposed
+		 * the payload as a generated USER message, mis-attributing content
+		 * into downstream history.
+		 */
+		if ( ! isset( $data['role'] ) || 'assistant' !== $data['role'] || ! \is_string( $data['role'] ) ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'role', 'The message did not identify itself as an assistant response.' );
+		}
+
+		$role = MessageRoleEnum::model();
 
 		$parts = array();
 		foreach ( $data['content'] as $index => $part_data ) {

@@ -346,6 +346,54 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
      */
 
     /**
+     * @dataProvider provideNonAssistantRoles
+     */
+    public function testNonAssistantResponseRolesAreRejected($roleValue, $present)
+    {
+        // Codex R5 #3: a generation response MUST be an assistant message —
+        // missing, unknown, or user roles must never be fabricated into
+        // assistant turns or exposed as generated user messages.
+        $payload = array(
+            'id' => 'msg_role',
+            'type' => 'message',
+            'content' => array(array('type' => 'text', 'text' => 'Never attributable.')),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        );
+        if ($present) {
+            $payload['role'] = $roleValue;
+        }
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode($payload));
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-assistant response role must be rejected, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('assistant response', $e->getMessage());
+            $this->assertStringNotContainsString('Never attributable.', $e->getMessage(), 'Rejected content must not be echoed.');
+        }
+
+        // The typed boundary surfaces the same verdict.
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode($payload));
+        $error = $this->model()->generate_text($this->prompt());
+        $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_INVALID_RESPONSE);
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideNonAssistantRoles()
+    {
+        return array(
+            'role missing' => array(null, false),
+            'role user' => array('user', true),
+            'role unknown' => array('system', true),
+            'role non-string' => array(123, true),
+        );
+    }
+
+    /**
      * @dataProvider provideMalformedBodies
      */
     public function testMalformedPayloadsFailWithFixedSafeMessages($body)

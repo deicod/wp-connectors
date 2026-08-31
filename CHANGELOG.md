@@ -21,6 +21,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   collected and ignored and a tool_use completion "succeeded" with no
   FunctionCall at all. A genuine text (or thinking) delta on an unseen
   index keeps the documented tolerance — the chunk is still surfaced.
+- A Messages generation response must identify itself with the exact
+  `assistant` role: a missing, unknown, or `user` role previously
+  fabricated an assistant turn or exposed the payload as a generated
+  USER message — both now fail as a typed parse error instead of
+  mis-attributing content into downstream history.
 
 ### Fixed (zai / M2 — Codex PR review, round 4)
 
