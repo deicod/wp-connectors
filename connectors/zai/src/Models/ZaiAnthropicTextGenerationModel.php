@@ -607,18 +607,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			);
 		}
 
+		$aggregated = $aggregator->aggregated();
+
 		if ( $aggregator->has_malformed_event() ) {
-			// A frame declaring a known event name with an undecodable
-			// payload (Codex R4 #3): completing would silently return the
-			// answer with that event's content missing.
+			/*
+			 * A declared event frame was undecodable or wrongly shaped
+			 * (Codex R4 #3), or aggregated() refused the stream — e.g. no
+			 * message_start was received (Codex R8 #3), which must never
+			 * produce a payload. The check runs AFTER aggregated() because
+			 * aggregation itself raises the flag.
+			 */
 			throw ResponseException::fromInvalidData(
 				'z.ai',
 				'stream',
 				'The message stream contained a malformed event frame.'
 			);
 		}
-
-		$aggregated = $aggregator->aggregated();
 
 		if ( $aggregator->has_malformed_tool_input() ) {
 			// Truncated/corrupt streamed tool arguments: substituting {}

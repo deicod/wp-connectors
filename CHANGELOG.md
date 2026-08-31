@@ -18,6 +18,10 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   post-termination frames could previously modify the returned
   text/tool args/stop reason/usage while the response succeeded.
   Ping/comment keepalive frames stay tolerated.
+- A stream omitting `message_start` now invalidates instead of
+  fabricating an assistant envelope with blank id/usage (which had also
+  bypassed the R6 streamed-role validation): message_start receipt is
+  required before aggregation produces a payload.
 
 ### Fixed (zai / M2 — Codex PR review, round 8)
 

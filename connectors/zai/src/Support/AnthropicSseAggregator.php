@@ -115,6 +115,15 @@ final class AnthropicSseAggregator {
 	private $stopped_indexes = array();
 
 	/**
+	 * Whether the message_start event was received (Codex R8 #3).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $message_started = false;
+
+	/**
 	 * Event names the aggregator actively dispatches on (Codex R4 #3).
 	 *
 	 * A frame DECLARING one of these names with an undecodable payload is a
@@ -357,6 +366,18 @@ final class AnthropicSseAggregator {
 	 * @return array<string, mixed>|null Null when no usable completion was consumed.
 	 */
 	public function aggregated(): ?array {
+		/*
+		 * Codex R8 #3: a stream without message_start must not aggregate —
+		 * doing so fabricated an assistant envelope (blank id/usage) and
+		 * bypassed the R6 streamed-role validation entirely. The model
+		 * checks this flag after aggregation.
+		 */
+		if ( ! $this->message_started ) {
+			$this->malformed_event = true;
+
+			return null;
+		}
+
 		if ( null === $this->stop_reason ) {
 			return null;
 		}
@@ -599,6 +620,8 @@ final class AnthropicSseAggregator {
 	private function dispatch_event( string $type, array $data, $raw ): void {
 		switch ( $type ) {
 			case 'message_start':
+				$this->message_started = true;
+
 				/*
 				 * Codex R6 #2: the streamed envelope role must be validated
 				 * HERE — aggregated() fabricates role:assistant, which would

@@ -886,6 +886,29 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
+    public function testAStreamWithoutMessageStartInvalidates()
+    {
+        // Codex R8 #3: omitting message_start fabricated an assistant
+        // envelope (blank id/usage) and bypassed the R6 role validation.
+        $body = ''
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"No envelope."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream without message_start must fail, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('No envelope.', $e->getMessage());
+        }
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.
