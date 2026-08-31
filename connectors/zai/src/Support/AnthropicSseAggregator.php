@@ -106,6 +106,15 @@ final class AnthropicSseAggregator {
 	private $block_order = array();
 
 	/**
+	 * Indexes whose content_block_stop was received (Codex R8 #1).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<int, true>
+	 */
+	private $stopped_indexes = array();
+
+	/**
 	 * Event names the aggregator actively dispatches on (Codex R4 #3).
 	 *
 	 * A frame DECLARING one of these names with an undecodable payload is a
@@ -677,12 +686,29 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'content_block_stop':
-				// The accumulator map already holds the block; nothing to
-				// move — but the event still names an index, and a
-				// malformed one marks the stream corrupt (R6 #4 class).
-				if ( null === self::raw_block_index( $raw ) ) {
+				// The event still names an index, and a malformed one marks
+				// the stream corrupt (R6 #4 class).
+				$index = self::raw_block_index( $raw );
+
+				if ( null === $index ) {
 					$this->malformed_event = true;
+
+					return;
 				}
+
+				/*
+				 * Codex R8 #1: a stop for an index that was never started,
+				 * or a second stop for the same index, is a corrupt stream
+				 * (nothing legitimate is being closed). Record the closed
+				 * state so later deltas for the index are rejected too.
+				 */
+				if ( ! isset( $this->blocks[ $index ] ) || isset( $this->stopped_indexes[ $index ] ) ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
+				$this->stopped_indexes[ $index ] = true;
 
 				return;
 
@@ -826,6 +852,17 @@ final class AnthropicSseAggregator {
 	 */
 	private function apply_delta( int $index, array $data ): void {
 		$delta = isset( $data['delta'] ) && \is_array( $data['delta'] ) ? $data['delta'] : array();
+
+		/*
+		 * Codex R8 #1: a delta for an index whose content_block_stop was
+		 * already received appends to a closed block — the completion then
+		 * carried post-stop modifications. Reject it.
+		 */
+		if ( isset( $this->stopped_indexes[ $index ] ) ) {
+			$this->malformed_event = true;
+
+			return;
+		}
 
 		if ( ! isset( $this->blocks[ $index ] ) ) {
 			/*

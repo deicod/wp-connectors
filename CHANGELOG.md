@@ -6,6 +6,27 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 8)
+
+- A delta arriving after an index's `content_block_stop` still appended
+  to the closed block, and a `content_block_stop` for a never-started
+  (or twice-stopped) index passed silently: stopped indexes are now
+  tracked, and both shapes invalidate the stream with the typed parse
+  error.
+
+### Fixed (zai / M2 — Codex PR review, round 8)
+
+- The SSE state machine completed its damaged-streams-fail-typed
+  invariant: a delta arriving after an index's `content_block_stop`, a
+  stop for a never-started (or twice-stopped) index, any non-keepalive
+  data event after the terminal `message_stop` (pings/comments stay
+  tolerated), a stream without `message_start` (which fabricated an
+  assistant envelope with blank id/usage and bypassed the R6 role
+  validation), and a `content_block_start` whose `content_block.type`
+  is missing or non-string (which fabricated a text block) all now
+  invalidate the stream with the typed parse error instead of altering
+  or fabricating output.
+
 ### Fixed (zai / M2 — Codex PR review, round 7)
 
 - A `tool_use` response block OMITTING its `input` member or setting it

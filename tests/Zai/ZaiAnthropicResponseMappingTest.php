@@ -788,6 +788,56 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testADeltaAfterContentBlockStopInvalidatesTheStream()
+    {
+        // Codex R8 #1: after content_block_stop for an index, another delta
+        // for the SAME index still appended — no closed state existed.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_as","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Pre."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Post."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A post-stop delta must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testAStopForANeverStartedIndexInvalidatesTheStream()
+    {
+        // Codex R8 #1: a stop closing an index that was never started is
+        // corrupt — nothing legitimate is being closed.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ns2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":3}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stop for a never-started index must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.
@@ -1683,7 +1733,10 @@ $body = ''
             $parts = $result->toMessage()->getParts();
             $this->fail('A tool delta without a start block must fail, got parts: ' . wp_json_encode($parts));
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
-            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+            // Both defects in this fixture are flagged (R5 #2: the unseen
+            // tool delta; R8 #1: the trailing stop for the never-started
+            // index) — the model reports the malformed-event verdict first.
+            $this->assertStringContainsString('malformed', $e->getMessage());
         }
     }
 
