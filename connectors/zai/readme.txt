@@ -77,17 +77,24 @@ options and caches from every site on the network.
 2. Go to Settings → Connectors and enter your z.ai API key.
 3. Optionally adjust plan/region under Settings → z.ai.
 4. Verify the Connectors screen shows z.ai as connected (this performs one
-   authenticated request to the /models endpoint).
+   authenticated request to the /models endpoint; it checks the key's
+   authentication only — a plan/balance mismatch first shows up on
+   generation as a 429 error, see the FAQ).
 
 == Frequently Asked Questions ==
 
 = The card says not connected but I entered a key =
 
 The connector validates the key with an authenticated request against the
-currently selected endpoint. A wrong-region key (international key while the
-China region is selected), a revoked key, or a key without access to the
-selected plan all report not connected. Fix the region/plan selection or use
-a matching key.
+currently selected endpoint — an authentication check only. A wrong-region
+key (international key while the China region is selected) or a revoked key
+reports not connected; fix the region selection or use a matching key.
+
+A plan mismatch does NOT show up there. The /models probe succeeds for a key
+whose plan does not match the selected endpoint, so the card reads connected
+(verified against the live API), and the mismatch only surfaces during
+generation as HTTP 429 with z.ai code 1113 — see "Requests fail with
+"rate limiting (429)"" below for how to fix the plan/balance selection.
 
 = Requests fail with "rate limiting (429)" =
 

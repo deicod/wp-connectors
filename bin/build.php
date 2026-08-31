@@ -17,6 +17,9 @@
  * exactly one main plugin file, version constant matching the header
  * Version, self-containment, autoloader shape — so a mislabeled zip (e.g. a
  * bumped header with a stale {SLUG}_VERSION constant) is never packaged.
+ * In the no-argument mode every subdirectory of connectors/ is built, so a
+ * malformed connector directory fails the run instead of silently missing
+ * from the release.
  *
  * @package wp-connectors
  */
@@ -343,10 +346,12 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
         }
         $targets[] = $pluginDir;
     } else {
+        // Every subdirectory is a target: a malformed connector (e.g. no
+        // main-file header) must FAIL the run via buildPlugin() — never be
+        // silently omitted from a release with exit 0. Explicit-slug mode
+        // rejects the same directory the same way.
         foreach (glob($repoRoot . '/connectors/*', GLOB_ONLYDIR) ?: array() as $pluginDir) {
-            if (null !== wp_connectors_find_main_plugin_file($pluginDir)) {
-                $targets[] = $pluginDir;
-            }
+            $targets[] = $pluginDir;
         }
     }
 

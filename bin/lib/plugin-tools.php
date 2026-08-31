@@ -307,6 +307,196 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
 }
 
 /**
+ * Extracts the non-literal runtime segments of an include-target expression.
+ *
+ * String literals are blanked out, then the expression is split on '.'
+ * concatenation operators at bracket depth zero. Everything left that is
+ * neither the __DIR__/ABSPATH anchor nor a blanked literal — a variable, a
+ * function call, an array access — is a segment the literal analysis cannot
+ * see and wp_connectors_runtime_segment_reasons() must resolve separately.
+ *
+ * @param string $statement Include statement or plain expression.
+ * @return list<string> Runtime segment expressions (empty when static).
+ */
+function wp_connectors_include_runtime_segments($statement)
+{
+    $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($statement)), " \t\n\r();");
+    $blanked = (string) preg_replace('/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/', "''", $argument);
+
+    $segments = array();
+    $current = '';
+    $depth = 0;
+    $length = strlen($blanked);
+    for ($i = 0; $i < $length; ++$i) {
+        $char = $blanked[ $i ];
+        if ($char === '(' || $char === '[') {
+            ++$depth;
+        } elseif ($char === ')' || $char === ']') {
+            --$depth;
+        }
+        if ($char === '.' && $depth === 0) {
+            $segments[] = $current;
+            $current = '';
+            continue;
+        }
+        $current .= $char;
+    }
+    $segments[] = $current;
+
+    $runtime = array();
+    foreach ($segments as $segment) {
+        $trimmed = trim($segment);
+        if ($trimmed === '' || $trimmed === "''" || $trimmed === '__DIR__' || $trimmed === 'ABSPATH') {
+            continue;
+        }
+        $runtime[] = $trimmed;
+    }
+
+    return $runtime;
+}
+
+/**
+ * Same-file assignments to a variable that execute before a byte offset.
+ *
+ * The ONE assignment collector shared by the literal-free and the mixed
+ * include analyses: statements of the shape `$x = …;` / `$x .= …;` whose
+ * start precedes $offset (an assignment after the include cannot be read
+ * by it).
+ *
+ * @param string $code     Comment-stripped source of the file.
+ * @param string $variable Variable token, including the leading '$'.
+ * @param int    $offset   Byte offset the include starts at.
+ * @return list<string> Assignment statements (each ends with ';').
+ */
+function wp_connectors_same_file_assignments($code, $variable, $offset)
+{
+    $assignments = array();
+    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\.)?=(?![=>])[^;]+;/', $code, $matches, PREG_OFFSET_CAPTURE)) {
+        foreach ($matches[0] as $assignment) {
+            if ($assignment[1] >= $offset) {
+                // Assigned after the include — the include cannot read it.
+                continue;
+            }
+            $assignments[] = $assignment[0];
+        }
+    }
+
+    return $assignments;
+}
+
+/**
+ * Whether a mixed anchored expression is the mandated PSR-4 autoloader shape.
+ *
+ * The ONE sanctioned variable include in a plugin: inside the plugin's own
+ * src/autoload.php, an expression anchored on __DIR__ whose runtime segments
+ * are all str_replace() calls mapping the autoloader's class-name argument
+ * into a path, with only downward ('..'-free) literals. PHP class names are
+ * identifier-only, so the mapped segments can never traverse; and the file
+ * itself is separately pinned by wp_connectors_autoloader_violations()
+ * (exactly one registration, bound to the slug-derived prefix). Every other
+ * runtime segment anywhere else stays subject to strict resolution.
+ *
+ * @param string       $file     Absolute path of the file containing the include.
+ * @param string       $statement Include statement or plain expression.
+ * @param list<string> $segments Runtime segments from
+ *                               wp_connectors_include_runtime_segments().
+ * @param string       $pluginDir Absolute plugin directory.
+ * @return bool True when the narrow autoloader exception applies.
+ */
+function wp_connectors_is_psr4_autoloader_shape($file, $statement, array $segments, $pluginDir)
+{
+    if (rtrim((string) $pluginDir, '/') . '/src/autoload.php' !== $file) {
+        return false;
+    }
+    if (strpos($statement, '__DIR__') === false) {
+        return false;
+    }
+    if (preg_match_all('/[\'"]([^\'"]+)[\'"]/', $statement, $matches)) {
+        foreach ($matches[1] as $literal) {
+            if (strpos($literal, '${') !== false || preg_match('#(^|[/\\\\])\.\.([/\\\\]|$)#', $literal)) {
+                // Only strictly downward literal segments may surround the
+                // class-name mapping.
+                return false;
+            }
+        }
+    }
+    foreach ($segments as $segment) {
+        if (! preg_match('/^str_replace\s*\(/i', $segment)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Reasons an anchored include mixing literals with runtime segments cannot
+ * be proven to stay in-root.
+ *
+ * `require __DIR__ . '/' . $dependency;` carries a quoted literal, which
+ * used to select the literal-only analysis and skip the variable part
+ * entirely — an indirectly assigned escaping path shipped unnoticed. Every
+ * segment is now analyzed: each plain variable resolves through its
+ * same-file assignments (the substituted path must stay in-root), and any
+ * other runtime segment (function call, array access, runtime-built path)
+ * or unresolvable variable is reported. The only exception is the mandated
+ * PSR-4 autoloader shape (wp_connectors_is_psr4_autoloader_shape()).
+ *
+ * @param string $file     Absolute path of the file containing the include.
+ * @param string $code     Comment-stripped source of that file.
+ * @param string $statement The include statement (starts at the keyword).
+ * @param int    $offset   Byte offset of the statement within $code.
+ * @param string $pluginDir Absolute plugin directory.
+ * @return list<string> Violation reasons (empty when provably in-root).
+ */
+function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset, $pluginDir)
+{
+    $segments = wp_connectors_include_runtime_segments($statement);
+    if ($segments === array()) {
+        return array();
+    }
+    if (strpos($statement, '__DIR__') === false && strpos($statement, 'ABSPATH') === false) {
+        // Unanchored statements are flagged by the literal analysis already.
+        return array();
+    }
+    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $statement)) {
+        // Already flagged by the upward-dirname rule; do not double-report.
+        return array();
+    }
+    if (wp_connectors_is_psr4_autoloader_shape($file, $statement, $segments, $pluginDir)) {
+        return array();
+    }
+
+    $reasons = array();
+    foreach ($segments as $segment) {
+        if (! preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $segment)) {
+            $reasons[] = 'combines the anchor with unresolvable runtime segments';
+            continue;
+        }
+        $assignments = wp_connectors_same_file_assignments($code, $segment, $offset);
+        if ($assignments === array()) {
+            $reasons[] = sprintf('depends on %s with no resolvable same-file assignment', $segment);
+            continue;
+        }
+        foreach ($assignments as $assignment) {
+            $value = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
+            if (wp_connectors_include_runtime_segments($value) !== array()) {
+                $reasons[] = sprintf('depends on %s built from unresolvable runtime segments', $segment);
+                continue;
+            }
+            // Substitute the resolved value in place, then hold the fully
+            // composed path to the same in-root proof as a static include.
+            $substituted = (string) str_replace($segment, $value, $statement);
+            foreach (wp_connectors_include_expression_reasons($file, $substituted, $pluginDir) as $reason) {
+                $reasons[] = sprintf('%s through %s', $reason, $segment);
+            }
+        }
+    }
+
+    return $reasons;
+}
+
+/**
  * Reasons a literal-free include/require cannot be proven to stay in-root.
  *
  * An include like `require $dependency;` carries no quoted literal, so the
@@ -314,7 +504,9 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
  * nothing — letting conventions, the builder, and the inspector package a
  * plugin that fails standalone. Strict allow: a plain-variable target passes
  * only when EVERY same-file assignment before the include resolves through
- * wp_connectors_include_expression_reasons() to a provably in-root path;
+ * wp_connectors_include_expression_reasons() to a provably in-root path —
+ * including the mixed-segment proof of wp_connectors_runtime_segment_reasons()
+ * for assignments that themselves combine the anchor with runtime segments;
  * any other expression (unassigned variable, function call, array access,
  * runtime-built path) must prove itself the same way or is reported.
  *
@@ -330,16 +522,7 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
     $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($include)), " \t\n\r();");
 
     if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $argument)) {
-        $assignments = array();
-        if (preg_match_all('/' . '\$' . preg_quote(substr($argument, 1), '/') . '\s*(?:\.)?=(?![=>])[^;]+;/', $code, $matches, PREG_OFFSET_CAPTURE)) {
-            foreach ($matches[0] as $assignment) {
-                if ($assignment[1] >= $offset) {
-                    // Assigned after the include — the include cannot read it.
-                    continue;
-                }
-                $assignments[] = $assignment[0];
-            }
-        }
+        $assignments = wp_connectors_same_file_assignments($code, $argument, $offset);
         if ($assignments === array()) {
             return array( sprintf('variable %s has no resolvable same-file assignment', $argument) );
         }
@@ -347,6 +530,12 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
         foreach ($assignments as $assignment) {
             $expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
             foreach (wp_connectors_include_expression_reasons($file, $expression, $pluginDir) as $reason) {
+                $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
+            }
+            // An assignment may itself mix the anchor with runtime segments
+            // (`$path = __DIR__ . '/' . $x;`) — it must pass the same
+            // per-segment proof, not just the literal one.
+            foreach (wp_connectors_runtime_segment_reasons($file, $code, $expression, $offset, $pluginDir) as $reason) {
                 $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
             }
         }
@@ -364,10 +553,11 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
  *
  * Flags include/require statements with unanchored literal paths, upward
  * dirname() escapes, __DIR__-anchored includes whose '..' segments resolve
- * outside the plugin dir, literal-free includes whose target (a variable or
- * runtime expression) cannot be proven to stay inside the plugin dir, runtime
- * references to vendor/autoload or Composer, and any reference to the
- * repository-level shared/ source.
+ * outside the plugin dir, anchored includes that mix literals with variable
+ * or runtime segments that cannot each be proven in-root, literal-free
+ * includes whose target (a variable or runtime expression) cannot be proven
+ * to stay inside the plugin dir, runtime references to vendor/autoload or
+ * Composer, and any reference to the repository-level shared/ source.
  *
  * @param string $pluginDir Absolute plugin directory.
  * @return list<string> Violation messages ("<slug>: <file>: <message>").
@@ -401,6 +591,13 @@ function wp_connectors_self_containment_violations($pluginDir)
                     }
                     if (wp_connectors_anchored_include_escapes_plugin($path, $include[0], $literals[1], $pluginDir)) {
                         $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
+                    }
+                    // A quoted literal must not select literal-only analysis
+                    // and hide the variable parts of the same statement:
+                    // `require __DIR__ . '/' . $dependency;` is analyzed
+                    // segment by segment like any other hidden target.
+                    foreach (wp_connectors_runtime_segment_reasons($path, $code, $include[0], $include[1], $pluginDir) as $reason) {
+                        $violations[] = sprintf('%s: %s includes a target not provably inside the plugin dir (%s): %s', $slug, $relative, $reason, trim($include[0]));
                     }
                 } else {
                     // No quoted literal: the target is hidden behind a variable

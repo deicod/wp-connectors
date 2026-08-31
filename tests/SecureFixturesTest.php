@@ -208,6 +208,38 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         );
     }
 
+    public function testMarkerInsideStringContentsDoesNotExemptTheLine()
+    {
+        // Regression: the marker regex matched comment syntax INSIDE quoted
+        // strings, so a line carrying a live value plus the string content
+        // "// secrets:allow" was fully exempted. Markers must live in REAL
+        // comments (string-literal contents are blanked out before the
+        // marker search).
+        $openaiKey = 'sk-proj-' . bin2hex(random_bytes(20));
+        $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+
+        // (a) A lookalike marker held in string content exempts nothing:
+        // the live value next to it stays flagged.
+        $inString = wp_connectors_scan_string("\$note = '{$openaiKey}' . '// secrets:allow';", 'instr');
+        $this->assertStringContainsString('openai-anthropic-key', implode("\n", $inString));
+
+        // Escape-aware: a marker hidden behind an escaped quote inside a
+        // string is still string content, not a comment.
+        $escaped = wp_connectors_scan_string("\$m = 'can\\'t trust // secrets:allow'; k = \"{$zaiKey}\";", 'esc');
+        $this->assertStringContainsString('zai-key', implode("\n", $escaped));
+
+        // (c) '#' comment markers behave identically.
+        $hashInString = wp_connectors_scan_string("\$cfg = '# secrets:allow' . \"{$zaiKey}\";", 'hashstr');
+        $this->assertStringContainsString('zai-key', implode("\n", $hashInString));
+
+        // (b) A REAL trailing marker comment still exempts its line — both
+        // after a recognizably fake value and after a live-looking one.
+        $this->assertSame(array(), wp_connectors_scan_string('sk-proj-TEST-PLACEHOLDER-0123456789 // secrets:allow', 'fakedummy'));
+        $this->assertSame(array(), wp_connectors_scan_string("key = {$openaiKey} // secrets:allow", 'livedummy'));
+        $this->assertSame(array(), wp_connectors_scan_string("cfg = {$zaiKey} # secrets:allow", 'realhash'));
+        $this->assertSame(array(), wp_connectors_scan_string("# secrets:allow {$zaiKey}", 'realhash2'));
+    }
+
     public function testScannerAcceptsRepoSources()
     {
         $repoRoot = dirname(__DIR__);

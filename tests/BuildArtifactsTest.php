@@ -437,6 +437,123 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * Anchored includes mixing literals with variable segments (finding:
+     * `require __DIR__ . '/' . $dependency;` carries a quoted literal, which
+     * selected the literal-only analysis and skipped the variable part — an
+     * escaping assignment behind it shipped unnoticed).
+     */
+
+    public function testMixedLiteralAndVariableIncludesAreAnalyzedPerSegment()
+    {
+        $tempPlugin = self::distDir() . '/.mixed-include-test/mixed-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        // (c) The mandated PSR-4 autoloader in its DIRECT require form: the
+        // str_replace class-name mapping must stay exempt — but ONLY here.
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\MixedDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    require __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+        file_put_contents($tempPlugin . '/src/support.php', "<?php\n// reached by the mixed in-root include below\n");
+        // (a) Escaping literal behind a mixed variable segment.
+        file_put_contents($tempPlugin . '/escape-mixed.php', "<?php\n\$dependency = '../../other-plugin/bootstrap.php';\nrequire __DIR__ . '/' . \$dependency;\n");
+        // (b) In-root literal behind a mixed variable segment: must pass.
+        file_put_contents($tempPlugin . '/ok-mixed.php', "<?php\n\$support = 'src/support.php';\nrequire __DIR__ . '/' . \$support;\n");
+        // (d) Mixed literal + variable whose composed path escapes: the
+        // statement's own literals stay downward-only, so only the resolved
+        // value can reveal the escape.
+        file_put_contents($tempPlugin . '/trailing-mixed.php', "<?php\n\$sub = '../../outside';\nrequire __DIR__ . '/' . \$sub . '/partial.php';\n");
+        // Unresolvable variable segment.
+        file_put_contents($tempPlugin . '/unresolved-mixed.php', "<?php\nrequire __DIR__ . '/' . \$unknown;\n");
+        // The autoloader SHAPE outside src/autoload.php is NOT exempt.
+        file_put_contents($tempPlugin . '/shape-only.php', "<?php\nrequire __DIR__ . '/' . str_replace( '\\\\', '/', \$class ) . '.php';\n");
+
+        $violations = wp_connectors_self_containment_violations($tempPlugin);
+
+        $byFile = array();
+        foreach ($violations as $violation) {
+            foreach (array( 'escape-mixed.php', 'ok-mixed.php', 'trailing-mixed.php', 'unresolved-mixed.php', 'shape-only.php', 'src/autoload.php' ) as $relative) {
+                if (strpos($violation, $relative) !== false) {
+                    $byFile[$relative] = ($byFile[$relative] ?? 0) + 1;
+                }
+            }
+        }
+        $this->assertSame(1, $byFile['escape-mixed.php'] ?? 0, 'A mixed include whose variable resolves outside the plugin dir must be flagged exactly once: ' . implode("\n", $violations));
+        $this->assertSame(1, $byFile['trailing-mixed.php'] ?? 0, 'A mixed include escaping only through the resolved value must be flagged.');
+        $this->assertSame(1, $byFile['unresolved-mixed.php'] ?? 0, 'A mixed include with an unresolvable variable segment must be flagged.');
+        $this->assertSame(1, $byFile['shape-only.php'] ?? 0, 'The autoloader shape outside src/autoload.php must stay flagged.');
+        $this->assertSame(0, $byFile['ok-mixed.php'] ?? 0, 'A mixed include whose variable resolves in-root must still be allowed.');
+        $this->assertSame(0, $byFile['src/autoload.php'] ?? 0, 'The direct-form PSR-4 autoloader include must stay clean.');
+
+        $report = implode("\n", $violations);
+        $this->assertStringContainsString('not provably inside the plugin dir', $report);
+        $this->assertStringContainsString('resolves outside the plugin dir through $dependency', $report);
+        $this->assertStringContainsString('depends on $unknown with no resolvable same-file assignment', $report);
+        $this->assertStringContainsString('combines the anchor with unresolvable runtime segments', $report);
+
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
+    /*
+     * All-plugin build mode (finding: a connector directory without a valid
+     * main-file header was silently omitted from the no-argument build — a
+     * damaged or new connector vanished from a release with exit 0).
+     */
+
+    public function testAllPluginBuildRejectsAMalformedConnectorDirectory()
+    {
+        $repo = $this->makeBuildCliRepo(array( 'good-demo' => true, 'broken-demo' => false ));
+
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' 2>&1', $output, $exit);
+
+        $report = implode("\n", $output);
+        $this->assertSame(1, $exit, "A malformed connector directory must fail the all-plugin build:\n{$report}");
+        $this->assertStringContainsString('no main plugin file', $report);
+        $this->assertStringContainsString('broken-demo', $report, 'The failing run must name the malformed directory.');
+        // The healthy connector is still built and reported in the same run.
+        $this->assertStringContainsString('connectors-good-demo-1.0.0.zip', $report);
+        $this->assertFileExists($repo . '/dist/connectors-good-demo-1.0.0.zip');
+
+        WpHarness::rrmdir($repo);
+    }
+
+    public function testAllPluginBuildPackagesEveryValidConnectorDirectory()
+    {
+        $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));
+
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' 2>&1', $output, $exit);
+
+        $report = implode("\n", $output);
+        $this->assertSame(0, $exit, "An all-valid connectors/ tree must build cleanly:\n{$report}");
+        foreach (array( 'alpha-demo', 'beta-demo' ) as $slug) {
+            $this->assertFileExists($repo . '/dist/connectors-' . $slug . '-1.0.0.zip', "Every valid connector dir must produce its zip: {$slug}");
+        }
+        $checksums = (string) file_get_contents($repo . '/dist/checksums.txt');
+        $this->assertStringContainsString('connectors-alpha-demo-1.0.0.zip', $checksums);
+        $this->assertStringContainsString('connectors-beta-demo-1.0.0.zip', $checksums);
+
+        WpHarness::rrmdir($repo);
+    }
+
+    public function testExplicitSlugBuildStillRejectsAMalformedConnector()
+    {
+        $repo = $this->makeBuildCliRepo(array( 'broken-demo' => false ));
+
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=broken-demo 2>&1', $output, $exit);
+
+        $this->assertSame(1, $exit, 'Explicit-slug mode must keep rejecting a malformed connector.');
+        $this->assertStringContainsString('no main plugin file', implode("\n", $output));
+
+        WpHarness::rrmdir($repo);
+    }
+
+    /*
      * Duplicate plugin headers (finding: the parser kept the LAST value while
      * WordPress's get_file_data() keeps the FIRST).
      */
@@ -661,5 +778,45 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         WpHarness::rrmdir($tmp);
 
         return $zipPath;
+    }
+
+    /**
+     * Assembles a throwaway repository for CLI-mode build runs.
+     *
+     * Copies bin/build.php and its lib into a temp root and creates the
+     * requested connectors/ subdirectories (valid plugins, or malformed
+     * directories whose main file lost its Plugin Name header), so the
+     * guarded CLI entry point can be exercised as a subprocess.
+     *
+     * @param array<string,bool> $connectors Slug => whether the dir is valid.
+     * @return string Absolute temp repo root.
+     */
+    private function makeBuildCliRepo(array $connectors)
+    {
+        $repo = self::distDir() . '/.build-cli-' . getmypid() . '-' . substr(md5((string) json_encode($connectors)), 0, 6);
+        if (is_dir($repo)) {
+            WpHarness::rrmdir($repo);
+        }
+        mkdir($repo . '/bin/lib', 0755, true);
+        copy(__DIR__ . '/../bin/build.php', $repo . '/bin/build.php');
+        copy(__DIR__ . '/../bin/lib/plugin-tools.php', $repo . '/bin/lib/plugin-tools.php');
+
+        foreach ($connectors as $slug => $valid) {
+            $pluginDir = $repo . '/connectors/' . $slug;
+            mkdir($pluginDir . '/src', 0755, true);
+            if (! $valid) {
+                // Damaged/new connector: PHP present, header lost.
+                file_put_contents($pluginDir . '/' . $slug . '.php', "<?php\necho 'header lost';\n");
+                continue;
+            }
+            $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      7.4\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+            $main = "<?php\n/**\n * {$head} */\ndefine( '" . strtoupper(str_replace('-', '_', $slug)) . "_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+            file_put_contents($pluginDir . '/' . $slug . '.php', $main);
+            $suffix = wp_connectors_namespace_suffix_from_slug($slug);
+            $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\{$suffix}\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+            file_put_contents($pluginDir . '/src/autoload.php', $autoload);
+        }
+
+        return $repo;
     }
 }

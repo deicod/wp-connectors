@@ -5,10 +5,11 @@
  *
  * Detects live-credential shapes (API keys, OAuth tokens, JWTs, private
  * keys) in files. Exemptions are structured, never a bare word on the line:
- * a line is skipped only when it carries the strict "secrets:allow" comment
- * marker, and a match is skipped only when the matched VALUE itself is
- * recognizable as a fake (placeholder shapes, well-known dummy segments) —
- * see wp_connectors_allow_marker_pattern() and
+ * a line is skipped only when it carries the strict "secrets:allow" marker
+ * in an actual comment — never as string-literal contents — and a match is
+ * skipped only when the matched VALUE itself is recognizable as a fake
+ * (placeholder shapes, well-known dummy segments) — see
+ * wp_connectors_allow_marker_pattern() and
  * wp_connectors_is_recognizably_fake_secret().
  *
  * Findings deliberately never include the matched text — only file, line,
@@ -47,15 +48,40 @@ function wp_connectors_secret_patterns()
  *
  * A line is exempt ONLY when the marker appears inside a comment on that
  * line: `$key = '…'; // secrets:allow` (also `#`, `/* … *\/`, and ` * `
- * docblock continuations). A bare word like "fixture" anywhere on the line
- * exempts nothing — a real credential sitting on a line that merely
- * mentions "fixture" must still be flagged.
+ * docblock continuations) — where "inside a comment" means OUTSIDE any
+ * string literal (wp_connectors_line_without_string_literals()). A bare
+ * word like "fixture" anywhere on the line exempts nothing — a real
+ * credential sitting on a line that merely mentions "fixture" must still
+ * be flagged.
  *
  * @return string PCRE pattern matching the marker inside a comment.
  */
 function wp_connectors_allow_marker_pattern()
 {
     return '/(?:^|\s)(?:\/\/|#|\/\*|\*)\s*secrets:allow\b/';
+}
+
+/**
+ * Removes PHP string-literal CONTENTS from a source line.
+ *
+ * Single- and double-quoted literals (escape-aware within the line) are
+ * replaced by empty shells, so comment-marker detection can never honor a
+ * marker that is itself string content — `$v = 'sk-…' . '// secrets:allow';`
+ * carries a live value plus a lookalike marker and must stay flaggable.
+ * Deliberately line-based (no tokenizer): an unterminated multi-line
+ * string on this line simply keeps its contents, the same limitation the
+ * scanner already accepts elsewhere.
+ *
+ * @param string $line One line of source.
+ * @return string The line with string contents blanked out.
+ */
+function wp_connectors_line_without_string_literals($line)
+{
+    return (string) preg_replace(
+        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/',
+        "''",
+        $line
+    );
 }
 
 /**
@@ -97,7 +123,10 @@ function wp_connectors_scan_string($contents, $label)
     $allowMarker = wp_connectors_allow_marker_pattern();
     $lines = explode("\n", $contents);
     foreach ($lines as $index => $line) {
-        if (preg_match($allowMarker, $line) === 1) {
+        // Markers count only in REAL comments: blank out string-literal
+        // contents first, so a marker that is itself string data cannot
+        // exempt the live secret sitting next to it on the same line.
+        if (preg_match($allowMarker, wp_connectors_line_without_string_literals($line)) === 1) {
             continue;
         }
         foreach (wp_connectors_secret_patterns() as $name => $pattern) {
