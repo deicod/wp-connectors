@@ -1,0 +1,23 @@
+# Development tooling (installed, never committed)
+/vendor/
+/tools/
+/composer.phar
+
+# Never commit credential-shaped files
+.env
+.env.*
+*.pem
+*.key
+
+# Build artifacts
+/dist/
+
+# Test/tool caches
+.phpunit.result.cache
+.phpunit.cache/
+.phpcs-cache.json
+
+# Editor/OS noise
+.DS_Store
+*.swp
+*~

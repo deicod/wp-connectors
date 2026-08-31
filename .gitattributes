@@ -1,0 +1,23 @@
+# Normalize line endings; PHP and friends are always LF in this repo.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.svg text
+
+# Git source archives are not the distribution path (bin/build.php builds the
+# plugin zips), but keep them lean anyway.
+/.github export-ignore
+/bin export-ignore
+/docs export-ignore
+/tests export-ignore
+/tools export-ignore
+/dist export-ignore
+/composer.lock export-ignore
+/phpcs.xml.dist export-ignore
+/phpcs-compat.xml.dist export-ignore
+/phpstan.neon.dist export-ignore
+/phpunit.xml.dist export-ignore
+/mise.toml export-ignore

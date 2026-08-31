@@ -1,0 +1,81 @@
+{
+    "name": "deicod/wp-connectors",
+    "description": "WordPress 7.0 AI connector plugins (z.ai, Codex, Grok, Claude Pro) for the native Settings -> Connectors screen.",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "keywords": [
+        "wordpress",
+        "ai",
+        "connectors",
+        "z-ai",
+        "glm",
+        "codex",
+        "grok",
+        "claude"
+    ],
+    "authors": [
+        {
+            "name": "Darko Luketic",
+            "homepage": "https://github.com/deicod"
+        }
+    ],
+    "homepage": "https://github.com/deicod/wp-connectors",
+    "support": {
+        "issues": "https://github.com/deicod/wp-connectors/issues",
+        "source": "https://github.com/deicod/wp-connectors"
+    },
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "ext-zip": "*",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.1",
+        "phpcompatibility/php-compatibility": "^9.3",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^9.6",
+        "squizlabs/php_codesniffer": "^3.13",
+        "wordpress/php-ai-client": "1.3.1",
+        "wp-coding-standards/wpcs": "^3.1"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "php-http/discovery": false
+        },
+        "optimize-autoloader": true,
+        "platform": {
+            "php": "7.4.33"
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "check": [
+            "@lint",
+            "@phpcs",
+            "@phpcs-compat",
+            "@phpstan",
+            "@conventions",
+            "@scan-secrets",
+            "@test"
+        ],
+        "lint": "@php bin/lint-php.php",
+        "build": "@php bin/build.php",
+        "conventions": "@php bin/check-conventions.php",
+        "scan-secrets": "@php bin/scan-secrets.php",
+        "phpcbf": "phpcbf -p",
+        "phpcs": "phpcs -p",
+        "phpcs-compat": "phpcs -p --standard=phpcs-compat.xml.dist",
+        "phpstan": "phpstan analyse --memory-limit=512M --no-progress",
+        "test": "phpunit"
+    },
+    "scripts-descriptions": {
+        "check": "Full offline validation entry point: syntax lint, PHPCS (WordPress + PHP 7.4 compatibility), static analysis, convention enforcement, and the PHPUnit suite. Never contacts the network.",
+        "lint": "PHP syntax check (php -l) over all repository PHP sources, excluding vendor/tools/dist.",
+        "conventions": "Enforce docs/CONVENTIONS.md over every plugin directory (headers, text domain, version constant, autoloader, self-containment).",
+        "scan-secrets": "Scan repository sources for live-credential patterns (only the strict secrets:allow marker or recognizably fake values are exempt).",
+        "phpcs": "PHP_CodeSniffer with the WordPress coding standard.",
+        "phpcs-compat": "PHPCompatibility scan pinned to the supported PHP range (7.4-8.4).",
+        "phpstan": "PHPStan static analysis.",
+        "test": "PHPUnit test suite (offline; outbound HTTP is blocked unless explicitly mocked)."
+    }
+}

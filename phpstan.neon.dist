@@ -1,0 +1,17 @@
+parameters:
+	level: 5
+	paths:
+		- bin
+		- connectors
+		- shared
+		# Live-probe tooling referenced from bin/zai-live-probe.php.
+		- tests/harness/CurlPsr18Client.php
+	excludePaths:
+		- */vendor/*
+		- */dist/*
+		- */tools/*
+	treatPhpDocTypesAsCertain: false
+	# The WordPress API surface used by connector code (single source of truth:
+	# the same stubs the test harness loads).
+	bootstrapFiles:
+		- tests/harness/wp-stubs.php

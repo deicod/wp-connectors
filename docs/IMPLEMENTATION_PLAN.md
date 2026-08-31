@@ -62,13 +62,13 @@ documented exception.
 
 ## Milestone 0 — Repository foundation and executable test harness
 
-- [ ] **Milestone 0 complete.** Check this milestone only after Tasks 0.1–0.6 are checked and a
+- [x] **Milestone 0 complete.** Check this milestone only after Tasks 0.1–0.6 are checked and a
   clean checkout can install dependencies, run all offline checks, and build a minimal plugin
   artifact without loading code from outside that artifact.
 
 ### Tasks
 
-- [ ] **Task 0.1 — Record architecture and compatibility contracts.** Inspect the exact SDK and
+- [x] **Task 0.1 — Record architecture and compatibility contracts.** Inspect the exact SDK and
   WordPress 7.0 APIs used by the SPEC; add concise architecture records for provider
   registration, model construction, metadata version guards, option ownership, and standalone
   plugin packaging. Pin development dependencies or test fixtures to known compatible versions.
@@ -76,32 +76,32 @@ documented exception.
   all referenced class names and signatures have been verified against the pinned source and the
   records identify any divergence from the SPEC.
 
-- [ ] **Task 0.2 — Establish development tooling.** Add Composer development dependencies and
+- [x] **Task 0.2 — Establish development tooling.** Add Composer development dependencies and
   scripts for PHPCS with WordPress rules, PHPUnit, PHP syntax checks, and any static analysis that
   supports PHP 7.4. Configure generated/vendor paths, test fixtures, and consistent namespaces.
   Avoid a runtime Composer dependency in plugin zips. Check this task only after each script runs
   locally (or a precisely documented environment limitation is demonstrated).
 
-- [ ] **Task 0.3 — Build the WordPress test bootstrap.** Create a repeatable test environment that
+- [x] **Task 0.3 — Build the WordPress test bootstrap.** Create a repeatable test environment that
   loads connector code against WordPress/SDK stubs or the WordPress test suite, resets options and
   scheduled events between tests, and intercepts HTTP through WordPress hooks. Add helpers for
   deterministic clocks, nonces, users/capabilities, and encrypted-option assertions. Check this
   task only after one passing smoke test proves plugin registration timing and one test proves
   outbound HTTP is blocked unless mocked.
 
-- [ ] **Task 0.4 — Define repository conventions.** Add editor/git attributes, ignore rules,
+- [x] **Task 0.4 — Define repository conventions.** Add editor/git attributes, ignore rules,
   namespace-to-path conventions, plugin version constants, text domains, changelog policy, and a
   policy for generated shared-library copies. Decide whether generated copies are committed and
   ensure the build is reproducible either way. Check this task only after the conventions are
   documented and enforced by at least one automated check.
 
-- [ ] **Task 0.5 — Implement the standalone artifact builder.** Add a build command that assembles
+- [x] **Task 0.5 — Implement the standalone artifact builder.** Add a build command that assembles
   one zip per plugin, excludes tests/development files, includes required licenses/assets, embeds
   namespaced shared OAuth code where applicable, and emits checksums. Add an artifact inspection
   that rejects repository-relative includes and missing plugin headers. Check this task only after
   a minimal fixture plugin can be zipped, extracted elsewhere, and syntax-checked independently.
 
-- [ ] **Task 0.6 — Create secure test-fixture rules.** Provide fake token/key factories, HTTP
+- [x] **Task 0.6 — Create secure test-fixture rules.** Provide fake token/key factories, HTTP
   response builders, and automated secret-pattern scanning. Document opt-in environment variable
   names for live tests without supplying values. Check this task only after a seeded fake token
   test passes and the scanner intentionally rejects a known-secret fixture.
@@ -116,14 +116,23 @@ documented exception.
 
 ## Milestone 1 — z.ai OpenAI-compatible provider (`zai`)
 
-- [ ] **Milestone 1 complete.** Check this milestone only after Tasks 1.1–1.9 are checked, all M1
+- [x] **Milestone 1 complete.** Check this milestone only after Tasks 1.1–1.9 are checked, all M1
   SPEC acceptance criteria pass, and the unresolved coding-plan `/models` behavior (O1 for the
   OpenAI surface) is recorded from a credentialed probe or explicitly remains behind the tested
   static fallback.
 
+  M1 completion evidence (2026-08-30): O1 resolved by credentialed probe (record 0006: 200
+  OpenAI-shape on coding+intl and general+intl; dynamic discovery shipped WITH the tested
+  plan-partitioned static fallback, which stays authoritative for the unprobed `cn` region).
+  Offline matrix green (`composer check`: 162 tests, 813 assertions, PHPCS/PHPCompatibility/
+  PHPStan/conventions/secret-scan clean). Live smoke coding+intl PASS through the plugin
+  classes (availability → discovery → generation, glm-5.3, 114 tokens); general+intl inference
+  returns the account-plan 429/1113 surfaced as the typed rate-limit error. Artifact
+  `dist/connectors-zai-0.1.0.zip` builds reproducibly and passes the standalone inspector.
+
 ### Tasks
 
-- [ ] **Task 1.1 — Scaffold the z.ai standalone plugin.** Create `connectors/zai` with a valid
+- [x] **Task 1.1 — Scaffold the z.ai standalone plugin.** Create `connectors/zai` with a valid
   plugin header (`Requires at least: 6.9` — matching the official provider plugins — so
   WordPress does not block activation on 6.9+standalone-SDK sites; the runtime
   `class_exists(AiClient::class)` guard plus admin dependency notice decides actual SDK
@@ -133,7 +142,7 @@ documented exception.
   activation tests cover WP 7.0, the supported standalone-SDK case (6.9 header accepted), a
   missing SDK, and duplicate `init` execution.
 
-- [ ] **Task 1.2 — Implement plan/region configuration.** Add settings for
+- [x] **Task 1.2 — Implement plan/region configuration.** Add settings for
   `zai_connector_zai_plan` (`coding` default, `general`) and
   `zai_connector_zai_region` (`intl` default, `cn`) using the Settings API. Sanitize to the known
   enum, fall back safely on corrupt values, require `manage_options`, use nonces, and explain the
@@ -144,14 +153,14 @@ documented exception.
   combinations, invalid input, unauthorized submission, region-switch key invalidation, and
   escaped/translatable rendering.
 
-- [ ] **Task 1.3 — Centralize endpoint resolution.** Implement an immutable endpoint resolver for
+- [x] **Task 1.3 — Centralize endpoint resolution.** Implement an immutable endpoint resolver for
   all four OpenAI plan/region combinations while keeping provider `baseUrl()` fixed to the
   international-general canonical URL required by the SDK. Ensure model and directory requests
   resolve options at request time rather than construction time. Check this task only after a
   table-driven test verifies exact URLs and proves an option change retargets a subsequent
   request without rebuilding the registry.
 
-- [ ] **Task 1.4 — Implement provider metadata and authentication.** Add provider ID, display name,
+- [x] **Task 1.4 — Implement provider metadata and authentication.** Add provider ID, display name,
   description, API-key authentication metadata, logo, and availability mapping. Availability MUST
   be more than key presence: an authenticated probe (or equivalent validated state) is required
   so a nonempty-but-invalid key (HTTP 401 on the probe) reports unavailable/not-connected, per
@@ -167,7 +176,7 @@ documented exception.
   Check this task only after metadata tests cover the minimum and newer SDK shapes, header tests
   prove correct injection, and failures/logs prove the key is always redacted.
 
-- [ ] **Task 1.5 — Implement the model metadata directory.** Start with a maintained static GLM
+- [x] **Task 1.5 — Implement the model metadata directory.** Start with a maintained static GLM
   text-model catalog, newest-first. The static fallback MUST be plan-specific: separate coding
   and general catalogs (coding subscriptions expose a restricted model set; a shared fallback
   can advertise general-only models while the coding endpoint is selected, per SPEC §3.3). Add an
@@ -182,27 +191,33 @@ documented exception.
   fallback behavior, and capability/option
   declarations.
 
-- [ ] **Task 1.6 — Implement chat-completions request mapping.** Build `/chat/completions` requests
+- [x] **Task 1.6 — Implement chat-completions request mapping.** Build `/chat/completions` requests
   for text generation and chat history, mapping system instruction, temperature, max tokens,
   top-p, stop sequences, JSON MIME type/schema, function declarations, and supported text/image
   inputs exactly as the SDK exposes them. Reject unsupported option/model combinations before
   transport. Check this task only after request snapshots cover minimal, conversation, structured
   output, tool, and multimodal cases without including credentials.
 
-- [ ] **Task 1.7 — Implement response, streaming, and error mapping.** Normalize non-streaming and
+- [x] **Task 1.7 — Implement response, streaming, and error mapping.** Normalize non-streaming and
   SSE responses into SDK result objects, including tool calls, finish reasons, usage when present,
-  split SSE frames, `[DONE]`, and malformed events. Map 401, 403, 429, transport errors, and 5xx
-  to stable typed `WP_Error` codes and safe messages; do not add custom retries in v1. Check this
+  split SSE frames, `[DONE]`, malformed events, and a final frame that ends without a trailing
+  blank line. Map 401, 403, 429, transport errors, and 5xx to safe messages from one shared
+  catalog, delivered on two surfaces: through the core prompt builder (core converts the
+  exception itself with its own fixed codes, passing the message through verbatim — no filter),
+  callers get core codes + the redacted zai message + the correct HTTP status — proven against
+  the genuine `WP_AI_Client_Prompt_Builder`; the stable typed `zai_*` `WP_Error` codes are the
+  plugin's direct model-use API (`generate_text()` / `ErrorMapper`) and cannot be delivered
+  through the core builder (core limitation). Do not add custom retries in v1. Check this
   task only after fixture tests cover success, partial streams, upstream error bodies containing
-  secrets, and every required status mapping.
+  secrets, every required status mapping, and the real core-builder dispatch path.
 
-- [ ] **Task 1.8 — Add safe observability and admin links.** Add an option-gated debug logger for
+- [x] **Task 1.8 — Add safe observability and admin links.** Add an option-gated debug logger for
   method, redacted URL, status, and duration only. Add plugin-row settings access and a settings
   section that makes plan/region choices discoverable without competing with core's key field.
   Check this task only after tests demonstrate logging is off by default and cannot expose query
   secrets, headers, keys, prompt bodies, schemas, OAuth-like values, or response bodies.
 
-- [ ] **Task 1.9 — Validate and document M1.** Add user instructions, supported options/models,
+- [x] **Task 1.9 — Validate and document M1.** Add user instructions, supported options/models,
   endpoint selection behavior, API-key storage disclosure, multisite behavior, and troubleshooting.
   Run the offline matrix across supported PHP targets and an opt-in live coding+international
   smoke test when a key is available. Record the O1 probe result and preserve fallback if it is
@@ -210,11 +225,22 @@ documented exception.
 
 ### Exit criteria
 
-- Core auto-discovers a `zai` card with an API-key field.
-- Each plan/region selection routes to the exact SPEC endpoint at request time.
-- `wp_ai_client_prompt(...)->using_provider('zai')->generate_text()` works with mocked transport
-  and, when credentials are supplied, coding+international live transport.
-- An invalid key produces a redacted, actionable error and unavailable/not-connected state.
+- [x] Core auto-discovers a `zai` card with an API-key field. — apiKey()
+  metadata derives the Connectors card and `connectors_ai_zai_api_key`
+  (ZaiPluginScaffoldTest, record 0001 derivation test).
+- [x] Each plan/region selection routes to the exact SPEC endpoint at request time. —
+  table-driven exact-URL tests plus request-time retarget proof with the provider's
+  cached directory and model (ZaiEndpointResolverTest, ZaiModelDirectoryTest,
+  ZaiRequestMappingTest).
+- [x] `wp_ai_client_prompt(...)->using_provider('zai')->generate_text()` works with mocked
+  transport and, when credentials are supplied, coding+international live transport. —
+  mocked end to end via the genuine SDK prompt path in the test suite; live coding+intl
+  PASS through the plugin classes (ZaiLiveSmokeTest opt-in, `bin/zai-live-probe.php`,
+  record 0006).
+- [x] An invalid key produces a redacted, actionable error and unavailable/not-connected
+  state. — nonempty-invalid key reports not connected
+  (ZaiProviderMetadataAndAvailabilityTest) with a redacted actionable 401 error
+  (ZaiResponseMappingTest, ErrorMapper).
 
 ---
 

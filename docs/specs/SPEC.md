@@ -133,7 +133,9 @@ Bearer = auth reached, not 404); `/v1/models` under `api.z.ai/api/anthropic` and
     Static fallback is the safe default; verify during M1 implementation.
   - Capabilities v1: `textGeneration`, `chatHistory`. Options: systemInstruction,
     temperature, maxTokens, topP, stopSequences, outputMimeType (json), outputSchema,
-    functionDeclarations (tools), inputModalities (text; image if model supports).
+    functionDeclarations (tools), inputModalities (text; image if model supports),
+    outputModalities (text — required: SDK model resolution, including core's
+    `wp_ai_client_prompt()`, matches no model without it).
     Image generation (CogView) / embeddings (embedding-3) via general API = later milestone,
     not in v1.
 
@@ -296,8 +298,21 @@ Rules:
 ### 6.2 Observability
 - Optional debug log (option-gated) of request method/URL/status/duration — never payloads
   with auth headers.
-- Typed WP_Error messages mapping provider errors (401 → re-auth hint, 403 xAI → tier hint,
-  429 → rate limit, 5xx → upstream).
+- Safe, actionable error messages mapping provider errors (401 → re-auth hint, 403 →
+  tier/access hint, 429 → rate limit, 5xx → upstream), built from ONE plugin-owned catalog
+  so every surface is redacted. Delivery has two surfaces (WordPress core converts
+  prompt-builder exceptions itself, with its own fixed codes and the message passed
+  through verbatim — no filter exists on that path):
+  - Through `wp_ai_client_prompt()->...->generate_text()` callers receive core's codes
+    (`prompt_client_error`, `prompt_upstream_server_error`, …) carrying the zai-safe
+    message and the correct HTTP status.
+  - Direct model use (a registry-bound model — `AiClient::defaultRegistry()
+    ->getProviderModel( 'zai', … )->generate_text()` — with `ErrorMapper`) additionally
+    delivers the plugin's typed stable codes (`zai_unauthorized`, `zai_rate_limited`, …).
+    Models must come from the registry: it alone binds the HTTP transporter and request
+    authentication (`ZaiProvider::model()` alone builds an unbound model). Typed `zai_*`
+    codes cannot be delivered through the core builder — a WordPress core
+    limitation, not a plugin choice.
 
 ### 6.3 Compatibility
 - WordPress 7.0+ (6.9 with standalone SDK plugin), PHP 7.4–8.4, no cURL ext needed.
@@ -359,7 +374,12 @@ Rules:
 
 ## 9. Open questions
 
-- **O1:** `/models` on coding base URLs (both protocols) with valid key? → resolve in M1.
+- **O1:** `/models` on coding base URLs (both protocols) with valid key? → **Resolved for the
+  OpenAI surface, international region** (2026-08-30 credentialed probe: HTTP 200 OpenAI-shape
+  on both coding and general intl bases, identical 10-model GLM list — see
+  [`docs/architecture/0006-zai-models-evidence.md`](../architecture/0006-zai-models-evidence.md)).
+  M1 implements dynamic directory + plan-partitioned static fallback. The `cn` region and the
+  Anthropic surface remain unprobed; the static fallback stays authoritative there.
 - **O2:** Codex model discovery via `chatgpt.com/backend-api/codex/models`? → M3.
 - **O3:** z.ai `x-api-key` header support on Anthropic surface (nice-to-have, Bearer suffices).
 - **O4:** CogView (image) / embedding models on general API — defer post-v1, directory is

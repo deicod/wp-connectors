@@ -1,0 +1,50 @@
+{
+    "url": "https://api.z.ai/api/coding/paas/v4/chat/completions",
+    "body": {
+        "model": "glm-5.3",
+        "messages": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "You are terse."
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hello."
+                    }
+                ]
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hi!"
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Bye."
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 128,
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "stop": [
+            "END"
+        ]
+    }
+}

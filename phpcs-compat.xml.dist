@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<ruleset name="wp-connectors-compat">
+	<description>PHPCompatibility scan: all shipped and tooling code must run on PHP 7.4-8.4.</description>
+
+	<file>bin</file>
+	<file>connectors</file>
+	<file>shared</file>
+	<file>tests</file>
+
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/dist/*</exclude-pattern>
+	<exclude-pattern>*/tools/*</exclude-pattern>
+	<exclude-pattern>*/tests/fixtures/data/*</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg name="basepath" value="."/>
+	<arg value="sp"/>
+
+	<rule ref="PHPCompatibility"/>
+
+	<!-- The supported PHP matrix (SPEC section 6.3). -->
+	<config name="testVersion" value="7.4-8.4"/>
+</ruleset>

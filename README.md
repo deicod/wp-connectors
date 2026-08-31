@@ -16,7 +16,14 @@ bundled in WordPress 7.0).
 
 ## Status
 
-Spec phase — see [`docs/specs/SPEC.md`](docs/specs/SPEC.md) and the detailed
+- **M0 (foundation)** and **M1 (`zai`, z.ai OpenAI-compatible provider)** are complete — the
+  `connectors/zai` plugin registers the `zai` provider with plan/region endpoint selection,
+  validated-key availability, live model discovery with a plan-partitioned static fallback,
+  text generation (tools, structured output, SSE aggregation), typed errors, and option-gated
+  debug logging. Live smoke evidence: [`docs/architecture/0006-zai-models-evidence.md`](docs/architecture/0006-zai-models-evidence.md).
+- Next: M2 (`zai_anthropic`, Anthropic-compatible surface in the same plugin).
+
+See [`docs/specs/SPEC.md`](docs/specs/SPEC.md) and the detailed
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md). The plan expands the specification's
 M1–M6 delivery sequence with explicit foundation and shared-runtime milestones.
 
