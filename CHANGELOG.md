@@ -22,6 +22,9 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   fabricating an assistant envelope with blank id/usage (which had also
   bypassed the R6 streamed-role validation): message_start receipt is
   required before aggregation produces a payload.
+- A `content_block_start` whose `content_block.type` is missing or
+  non-string now invalidates the stream: it silently became a `text`
+  block that a following text_delta completed on fabricated state.
 
 ### Fixed (zai / M2 — Codex PR review, round 8)
 

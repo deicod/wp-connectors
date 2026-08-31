@@ -909,6 +909,36 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAStartBlockWithoutAValidTypeInvalidatesTheStream()
+    {
+        // Codex R8 #4: a missing or non-string content_block.type silently
+        // became a text block that a following text_delta completed.
+        foreach (array(
+            '{"type":"content_block_start","index":0,"content_block":{"text":""}}',
+            '{"type":"content_block_start","index":0,"content_block":{"type":7,"text":""}}',
+            '{"type":"content_block_start","index":0,"content_block":{"type":null,"text":""}}',
+        ) as $startJson) {
+            $body = ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_nt","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: ' . $startJson . "\n\n"
+                . 'event: content_block_delta' . "\n"
+                . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x"}}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+            $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+            try {
+                $this->model()->generateTextResult($this->prompt());
+                $this->fail('A start block without a valid type must fail the stream: ' . $startJson);
+            } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            }
+        }
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.

@@ -528,7 +528,7 @@ final class AnthropicSseAggregator {
 		 * data frame is a corrupt post-termination event.
 		 */
 		if ( $this->terminated && '' !== trim( implode( "\n", $data_lines ) ) ) {
-			$type_probe = json_decode( implode( "\n", $data_lines ), true );
+			$type_probe   = json_decode( implode( "\n", $data_lines ), true );
 			$is_keepalive = \is_array( $type_probe ) && isset( $type_probe['type'] ) && 'ping' === $type_probe['type'];
 
 			if ( ! $is_keepalive ) {
@@ -846,7 +846,19 @@ final class AnthropicSseAggregator {
 	 * @return void
 	 */
 	private function start_block( int $index, array $block, $raw_block ): void {
-		$type = isset( $block['type'] ) && \is_string( $block['type'] ) ? $block['type'] : 'text';
+		/*
+		 * Codex R8 #4: the block type is REQUIRED and must be a string —
+		 * a missing or non-string type silently became a text block, and a
+		 * following text_delta then succeeded on the fabricated block. No
+		 * default: flag the stream malformed.
+		 */
+		$type = isset( $block['type'] ) && \is_string( $block['type'] ) ? $block['type'] : null;
+
+		if ( null === $type ) {
+			$this->malformed_event = true;
+
+			return;
+		}
 
 		$input = new \stdClass();
 
