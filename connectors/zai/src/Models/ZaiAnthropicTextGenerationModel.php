@@ -658,7 +658,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @since 0.2.0
 	 *
 	 * @param array<string, mixed> $part_data The content block (associative decode).
-	 * @param stdClass|null        $raw_part  The same block from a NON-
+	 * @param \stdClass|null       $raw_part  The same block from a NON-
 	 *                                        associative decode — the
 	 *                                        object-ness oracle for tool
 	 *                                         inputs (Codex R3 #1), null
@@ -737,7 +737,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 							$args = null;
 						}
 					} else {
-						// Scalar, boolean, or JSON list (including []).
+						// A scalar, boolean, or JSON list value (an empty
+						// list included).
 						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block carried a non-object input value.' );
 					}
 				}

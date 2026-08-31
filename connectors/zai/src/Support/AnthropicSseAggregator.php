@@ -430,7 +430,8 @@ final class AnthropicSseAggregator {
 			return;
 		}
 
-		$decoded = json_decode( implode( "\n", $data_lines ), true );
+		$payload = implode( "\n", $data_lines );
+		$decoded = json_decode( $payload, true );
 
 		if ( ! \is_array( $decoded ) ) {
 			++$this->malformed;
@@ -444,7 +445,13 @@ final class AnthropicSseAggregator {
 			? $event_name
 			: ( isset( $decoded['type'] ) && \is_string( $decoded['type'] ) ? $decoded['type'] : '' );
 
-		$this->dispatch_event( $type, $decoded );
+		/*
+		 * Object-ness oracle (Codex R3 #1/#2): the associative decode above
+		 * collapses JSON {} and [] to the same empty PHP array, so the raw
+		 * non-associative decode of the same payload travels along for the
+		 * tool-input shape decisions.
+		 */
+		$this->dispatch_event( $type, $decoded, json_decode( $payload ) );
 	}
 
 	/**
@@ -454,9 +461,10 @@ final class AnthropicSseAggregator {
 	 *
 	 * @param string               $type Event type (event: field or data.type).
 	 * @param array<string, mixed> $data The decoded event payload.
+	 * @param mixed                $raw  Non-associative decode of the same payload.
 	 * @return void
 	 */
-	private function dispatch_event( string $type, array $data ): void {
+	private function dispatch_event( string $type, array $data, $raw ): void {
 		switch ( $type ) {
 			case 'message_start':
 				$message = isset( $data['message'] ) && \is_array( $data['message'] ) ? $data['message'] : array();
@@ -474,7 +482,11 @@ final class AnthropicSseAggregator {
 				$index = isset( $data['index'] ) ? (int) $data['index'] : 0;
 				$block = isset( $data['content_block'] ) && \is_array( $data['content_block'] ) ? $data['content_block'] : array();
 
-				$this->start_block( $index, $block );
+				$raw_block = \is_object( $raw ) && isset( $raw->content_block ) && \is_object( $raw->content_block )
+					? $raw->content_block
+					: null;
+
+				$this->start_block( $index, $block, $raw_block );
 				return;
 
 			case 'content_block_delta':
@@ -514,14 +526,41 @@ final class AnthropicSseAggregator {
 	/**
 	 * Starts (or resets) the content block accumulator at a stream index.
 	 *
+	 * A tool_use block's ORIGINAL input shape is validated here against the
+	 * raw (non-associative) decode (Codex R3 #2): an object becomes the
+	 * initial input value, a missing/null input member stays the no-argument
+	 * placeholder, and anything else (scalar, boolean, JSON list —
+	 * including []) marks the block malformed. {} is NEVER silently
+	 * substituted for a malformed value: that fabricated a valid
+	 * no-argument tool call the model never produced.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param int                  $index Stream block index.
-	 * @param array<string, mixed> $block The content_block payload.
+	 * @param int                  $index     Stream block index.
+	 * @param array<string, mixed> $block     The content_block payload (associative).
+	 * @param \stdClass|null       $raw_block The same payload, non-associatively decoded.
 	 * @return void
 	 */
-	private function start_block( int $index, array $block ): void {
+	private function start_block( int $index, array $block, $raw_block ): void {
 		$type = isset( $block['type'] ) && \is_string( $block['type'] ) ? $block['type'] : 'text';
+
+		$input = new \stdClass();
+
+		if ( 'tool_use' === $type && null !== $raw_block && \property_exists( $raw_block, 'input' ) ) {
+			$raw_input = $raw_block->input;
+
+			if ( null === $raw_input ) {
+				// Explicit null: no-argument call (same as a missing member).
+				$input = new \stdClass();
+			} elseif ( \is_object( $raw_input ) ) {
+				$assoc = json_decode( (string) wp_json_encode( $raw_input ), true );
+				$input = \is_array( $assoc ) && array() !== $assoc ? $assoc : new \stdClass();
+			} else {
+				// A scalar, boolean, or JSON list value (an empty list
+				// included) — malformed streamed tool arguments.
+				$this->malformed_tool_input = true;
+			}
+		}
 
 		$this->blocks[ $index ] = array(
 			'type'     => $type,
@@ -529,7 +568,7 @@ final class AnthropicSseAggregator {
 			'thinking' => isset( $block['thinking'] ) && \is_string( $block['thinking'] ) ? $block['thinking'] : '',
 			'id'       => isset( $block['id'] ) && \is_string( $block['id'] ) ? $block['id'] : null,
 			'name'     => isset( $block['name'] ) && \is_string( $block['name'] ) ? $block['name'] : null,
-			'input'    => isset( $block['input'] ) && \is_array( $block['input'] ) ? $block['input'] : new \stdClass(),
+			'input'    => $input,
 			'json'     => '',
 			'has_json' => false,
 		);
@@ -553,7 +592,7 @@ final class AnthropicSseAggregator {
 	 */
 	private function apply_delta( int $index, array $data ): void {
 		if ( ! isset( $this->blocks[ $index ] ) ) {
-			$this->start_block( $index, array( 'type' => 'text' ) );
+			$this->start_block( $index, array( 'type' => 'text' ), null );
 		}
 
 		$delta = isset( $data['delta'] ) && \is_array( $data['delta'] ) ? $data['delta'] : array();

@@ -672,6 +672,127 @@ $body = ''
         $this->assertNull($call->getArgs(), 'An empty-object input stream stays a no-argument call.');
     }
 
+    public function testAScalarStartBlockToolInputFailsAsAStreamParseError()
+    {
+        // Codex R3 #2: a malformed content_block_start input (scalar here)
+        // with NO input_json_delta following must not be silently replaced
+        // with {} — that fabricated an executable no-argument call.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_sb","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s1","name":"delete_file","input":"/etc/hosts"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A scalar start-block input must fail, got a call: ' . wp_json_encode($result->toMessage()->getParts()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+            $this->assertRedacted($e->getMessage(), '/etc/hosts');
+            $this->assertStringNotContainsString('delete_file', $e->getMessage());
+        }
+    }
+
+    public function testAListStartBlockToolInputFailsAsAStreamParseError()
+    {
+        $list_start = '{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s2","name":"get_weather","input":["Oslo"]}}';
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_sb2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: ' . $list_start . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A list start-block input must fail.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
+    public function testAnEmptyJsonListStartBlockToolInputFailsAsAStreamParseError()
+    {
+        // Codex R3 #1's [] variant on the stream path: the start block's
+        // associative decode collapses "input":[] to an empty array — the
+        // raw oracle must still recognize the empty LIST.
+        $empty_list_start = '{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s3","name":"ping","input":[]}}';
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_sb3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: ' . $empty_list_start . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('An empty-list start-block input must fail, got a call with args: ' . wp_json_encode($result->toMessage()->getParts()[0]->getFunctionCall()->getArgs()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
+    public function testAnEmptyObjectStartBlockInputStaysANoArgumentCall()
+    {
+        // The legitimate start-block {}: no deltas follow, and the call is
+        // a no-argument one (R3 #2: {} must stay legitimate).
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_sb4","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s4","name":"ping","input":{}}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame('toolu_s4', $call->getId());
+        $this->assertNull($call->getArgs());
+    }
+
+    public function testAnObjectStartBlockInputWithoutDeltasBecomesTheCallArgs()
+    {
+        // Start-block object input with no deltas: the initial value IS the
+        // call's arguments.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_sb5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s5","name":"get_weather","input":{"city":"Oslo"}}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame(array('city' => 'Oslo'), $call->getArgs());
+    }
+
     public function testAnErrorEventFailsWithAFixedSafeMessage()
     {
         $secret = FakeSecrets::apiKey();

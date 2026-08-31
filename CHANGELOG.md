@@ -15,7 +15,14 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   value is stdClass only for objects). `{}` and a missing input member
   stay legitimate no-argument calls. The SSE consolidated payload now
   preserves `{}` as an object across the aggregator/model boundary for
-  the same reason.
+  the reason.
+- A malformed `content_block_start` tool input (scalar, list — including
+  `[]` — or boolean, with no argument deltas following) is no longer
+  silently replaced with `{}`: the stream start block's ORIGINAL input
+  shape is validated against a non-associative decode of the same frame
+  and flagged as the same typed stream-parse error; object inputs become
+  the initial argument value and missing/null stay the no-argument
+  placeholder.
 
 ### Fixed (zai / M2 — Codex PR review, round 2)
 
