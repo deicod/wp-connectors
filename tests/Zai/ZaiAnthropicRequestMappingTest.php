@@ -443,6 +443,43 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testEmptyTextPartsAreDroppedBeforeTransport()
+    {
+        // Codex R4 #2: the Messages protocol rejects empty text blocks —
+        // blank parts must be dropped, not encoded.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart(''),
+                new MessagePart('Real content.'),
+                new MessagePart(''),
+            )),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame(array(
+            array('type' => 'text', 'text' => 'Real content.'),
+        ), $body['messages'][0]['content'], 'Only the non-empty text block may be encoded.');
+    }
+
+    public function testAMessageOfOnlyEmptyTextPartsIsRejectedBeforeTransport()
+    {
+        // With every visible part dropped, the message has no translatable
+        // content — the existing pre-transport rejection applies.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart(''))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An all-empty message must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('at least one translatable', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testThoughtPartsAreDroppedFromOutboundMessages()
     {
         // Model reasoning echoes carry no user intent and cannot be replayed

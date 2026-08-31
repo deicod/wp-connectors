@@ -403,9 +403,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				return null;
 			}
 
+			/*
+			 * Empty text parts are DROPPED (Codex R4 #2): the Messages
+			 * protocol rejects empty text blocks with a 400, and a message
+			 * whose only visible part is empty would otherwise pass the
+			 * later no-content check (a block exists) and fail upstream.
+			 * Dropping here lets that check reject such messages before
+			 * transport.
+			 */
+			$text = (string) $part->getText();
+			if ( '' === $text ) {
+				return null;
+			}
+
 			return array(
 				'type' => 'text',
-				'text' => (string) $part->getText(),
+				'text' => $text,
 			);
 		}
 

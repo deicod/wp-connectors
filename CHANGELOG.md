@@ -15,6 +15,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   contract. The SDK's header collection has no removal API, so the
   request is rebuilt from its remaining headers with method, URI,
   body/data, and transport options carried over verbatim.
+- Empty text parts are dropped from outbound Messages requests: the
+  protocol rejects empty text blocks with a 400, and a message whose
+  visible parts are all empty now falls through to the existing
+  no-translatable-content pre-transport rejection instead of failing
+  upstream.
 
 ### Fixed (zai / M2 — Codex PR review, round 3)
 
