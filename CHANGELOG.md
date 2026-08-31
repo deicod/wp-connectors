@@ -6,6 +6,17 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 6)
+
+- The Debug logging checkbox renders again on Settings → z.ai: the
+  field was still attached to the pre-refactor option-group section id,
+  which no registered section uses — `do_settings_sections()` renders
+  only fields of registered sections, so the toggle silently
+  disappeared when the settings sections became per-provider. It now
+  attaches to the registered zai section (one shared debug toggle,
+  exactly the M1 UX), pinned by a test asserting every registered
+  field's section id belongs to a registered section of the page.
+
 ### Fixed (zai / M2 — Codex PR review, round 5)
 
 - Tool parts are validated against their message's role before

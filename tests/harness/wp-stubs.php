@@ -1176,11 +1176,15 @@ function get_registered_settings()
 
 function add_settings_section($id, $title, $callback, $page)
 {
+    WpHarness::$settings_sections[$page][] = $id;
+
     return true;
 }
 
 function add_settings_field($id, $title, $callback, $page, $section = 'default', $args = array())
 {
+    WpHarness::$settings_fields[$page][$section][] = $id;
+
     return true;
 }
 

@@ -48,9 +48,17 @@ final class DebugSettings {
 	}
 
 	/**
-	 * Adds the debug field to the shared settings section.
+	 * Adds the debug field to the zai provider's settings section.
 	 *
 	 * Hooked on `admin_menu` after PlanRegionSettings::register_page().
+	 *
+	 * Codex R6 #6: the field was attached to the OPTION_GROUP section id
+	 * ('zai_connector') — valid before the SDK-free settings refactor
+	 * registered sections under per-provider SECTION_IDs. do_settings_sections()
+	 * renders only fields of REGISTERED sections, so the debug checkbox
+	 * silently disappeared from Settings → z.ai. It now attaches to the
+	 * section actually registered for the page (the zai provider's — one
+	 * shared debug toggle for the whole plugin, exactly the M1 UX).
 	 *
 	 * @since 0.1.0
 	 *
@@ -62,7 +70,7 @@ final class DebugSettings {
 			esc_html__( 'Debug logging', 'zai' ),
 			array( __CLASS__, 'render_enabled_field' ),
 			PlanRegionSettings::PAGE_SLUG,
-			PlanRegionSettings::OPTION_GROUP
+			PlanRegionSettings::SECTION_ID
 		);
 	}
 

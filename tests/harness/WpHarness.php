@@ -124,6 +124,20 @@ final class WpHarness
     public static $admin_pages = array();
 
     /**
+     * Settings sections registered per page (add_settings_section recording).
+     *
+     * @var array<string, list<string>>
+     */
+    public static $settings_sections = array();
+
+    /**
+     * Settings fields registered per page and section (add_settings_field recording).
+     *
+     * @var array<string, array<string, list<string>>>
+     */
+    public static $settings_fields = array();
+
+    /**
      * Settings errors recorded via add_settings_error().
      *
      * @var list<array{setting: string, code: string, message: string, type: string}>
@@ -237,6 +251,8 @@ final class WpHarness
         self::$doing_it_wrong = array();
         self::$registered_settings = array();
         self::$admin_pages = array();
+        self::$settings_sections = array();
+        self::$settings_fields = array();
         self::$settings_errors = array();
         self::$is_multisite = false;
         self::$sites = array();

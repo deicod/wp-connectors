@@ -19,6 +19,7 @@ use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use Deicod\WpConnectors\Zai\Plugin;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Settings\DebugSettings;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\DebugLogger;
 
 final class ZaiObservabilityTest extends WpConnectorsTestCase
@@ -195,6 +196,39 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         do_action('update_option_' . DebugLogger::OPTION_ENABLED, '0', '1');
 
         $this->assertCount(1, DebugLogger::entries());
+    }
+
+    public function testEverySettingsFieldAttachesToARegisteredSection()
+    {
+        // Codex R6 #6: the debug field was attached to the old option-group
+        // section id, which no section registers — do_settings_sections()
+        // renders only fields of registered sections, so the checkbox had
+        // silently disappeared from Settings → z.ai.
+        $this->loadPlugin(__DIR__ . '/../../connectors/zai/zai.php', '\Deicod\WpConnectors\Zai\boot');
+        $this->asAdministrator();
+        do_action('admin_menu');
+
+        $sections = WpHarness::$settings_sections[PlanRegionSettings::PAGE_SLUG] ?? array();
+        $this->assertContains(PlanRegionSettings::SECTION_ID, $sections, 'The zai section must be registered.');
+        $this->assertContains(Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::SECTION_ID, $sections, 'The zai_anthropic section must be registered.');
+
+        $fields = WpHarness::$settings_fields[PlanRegionSettings::PAGE_SLUG] ?? array();
+        $this->assertNotEmpty($fields, 'Fields must be registered for the settings page.');
+
+        foreach ($fields as $sectionId => $fieldIds) {
+            $this->assertContains(
+                $sectionId,
+                $sections,
+                "Section {$sectionId} has fields but is never registered — do_settings_sections() would not render them."
+            );
+        }
+
+        // The one shared debug toggle renders on the zai provider's section.
+        $this->assertContains(
+            DebugLogger::OPTION_ENABLED,
+            $fields[PlanRegionSettings::SECTION_ID] ?? array(),
+            'The debug field must render on the registered zai section.'
+        );
     }
 
     public function testDebugOptionIsRegisteredWithTheSettingsApi()
