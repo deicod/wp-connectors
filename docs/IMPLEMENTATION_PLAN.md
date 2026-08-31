@@ -267,7 +267,7 @@ documented exception.
   invalid-key status test above, and failure of
   one registration cannot silently replace the other.
 
-- [ ] **Task 2.2 — Extend endpoint resolution for Anthropic URLs.** Map coding/general × intl/cn to
+- [x] **Task 2.2 — Extend endpoint resolution for Anthropic URLs.** Map coding/general × intl/cn to
   the four `/anthropic` bases and append `/v1/messages` or `/v1/models` exactly once. Read settings
   at request time while retaining the required canonical `baseUrl()`. Check this task only after
   table-driven tests cover all final request URLs and option changes between requests.
