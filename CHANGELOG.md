@@ -32,6 +32,10 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   settings getters silently fell back to defaults, making the evidence
   misleading and potentially exercising the wrong billing surface.
   Invalid values exit 2 before any key lookup or network call.
+- The live probe now fails when the availability step fails, instead of
+  continuing with `$exit = 0`: a later generation success could print a
+  final PASS although the first documented acceptance step failed (the
+  two routes can apply different access policy).
 
 ### Fixed (zai / M2 — Codex PR review, round 6)
 

@@ -147,6 +147,16 @@ $configured = $provider_class::availability()->isConfigured();
 zai_live_probe_report( 'availability', $configured ? 'connected' : 'NOT connected' );
 zai_live_probe_report( 'availability ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
 
+/*
+ * Codex R7 #5: availability is a documented acceptance STEP — a false
+ * verdict must fail the probe even when a later generation happens to
+ * succeed (the two routes can apply different access policy). Do not
+ * continue as if the step passed.
+ */
+if ( ! $configured ) {
+    $exit = 1;
+}
+
 // 2. Model discovery through the directory (live models route).
 $start = microtime( true );
 try {
