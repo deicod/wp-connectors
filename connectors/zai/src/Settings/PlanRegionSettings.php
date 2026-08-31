@@ -3,8 +3,8 @@
  * Plan and region settings for the zai provider (OpenAI-compatible surface).
  *
  * All behavior lives in AbstractPlanRegionSettings; this child binds it to
- * the zai provider's option names and classes. See the base class for the
- * sanitization, guard, and region-switch semantics.
+ * the zai provider's option names and identifiers. See the base class for
+ * the sanitization, guard, and region-switch semantics.
  *
  * @since 0.1.0
  *
@@ -14,10 +14,6 @@
 declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Settings;
-
-use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
-use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
-use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
 
 /**
  * Plan/region settings store and Settings API wiring for the zai provider.
@@ -63,35 +59,60 @@ final class PlanRegionSettings extends AbstractPlanRegionSettings {
 	public const PROVIDER_LABEL = 'z.ai';
 
 	/**
-	 * The provider's availability class (option-name holder).
+	 * SDK-free invalidation identifiers for this provider (see the base
+	 * STATE_OPTION docblock): the availability layer's option names, the
+	 * core-owned key option, the env/constant name, the discovery-cache
+	 * prefix, and the endpoint identity scope.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return class-string
+	 * @var string
 	 */
-	protected static function availability_class(): string {
-		return ZaiProviderAvailability::class;
-	}
+	public const STATE_OPTION = 'zai_connector_zai_key_state';
 
 	/**
-	 * The provider's model metadata directory class (cache-prefix holder).
+	 * Region-pending flag option (SDK-free invalidation identifier).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return class-string
+	 * @var string
 	 */
-	protected static function directory_class(): string {
-		return ZaiModelMetadataDirectory::class;
-	}
+	public const REGION_PENDING_OPTION = 'zai_connector_zai_region_pending';
 
 	/**
-	 * The provider's endpoint resolver class.
+	 * Core-owned key option (SDK-free invalidation identifier).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return class-string
+	 * @var string
 	 */
-	protected static function endpoint_class(): string {
-		return ZaiEndpoint::class;
-	}
+	public const KEY_OPTION = 'connectors_ai_zai_api_key';
+
+	/**
+	 * Env/constant name (SDK-free invalidation identifier).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const KEY_ENV_NAME = 'ZAI_API_KEY';
+
+	/**
+	 * Discovery-cache transient prefix (SDK-free invalidation identifier).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const CACHE_PREFIX = 'zai_connector_zai_models_';
+
+	/**
+	 * Endpoint identity scope (SDK-free invalidation identifier): matches
+	 * ZaiEndpoint::cache_key()'s prefix.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const CACHE_SCOPE = 'zai';
 }

@@ -171,6 +171,17 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	abstract protected static function endpoint_class(): string;
 
 	/**
+	 * The provider's SDK-free settings class (the invalidation identifiers
+	 * and the region-pending implementation live there; loading it is safe
+	 * on sites without the SDK plugin — Codex R2 #3).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return class-string
+	 */
+	abstract protected static function settings_class(): string;
+
+	/**
 	 * Wraps the transporter with the (option-gated) debug logger.
 	 *
 	 * @since 0.2.0
@@ -426,13 +437,10 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	/**
 	 * Marks the region-immutable credential as pending definitive validation.
 	 *
-	 * Called by the settings layer on a region switch, AFTER the stored
-	 * (database) key was deleted: the env var / constant are the sources the
-	 * plugin cannot clear, so exactly they would otherwise ride
-	 * configured-pending semantics onto the new endpoint. Stores the new
-	 * region plus a SHA-256 fingerprint of that credential (never the key);
-	 * when no env/constant credential exists nothing can ride the switch and
-	 * any stale flag is dropped.
+	 * The implementation lives in the SDK-free settings layer (Codex R2 #3):
+	 * the region switch fires on sites without the SDK plugin too, where
+	 * this class cannot be autoloaded at all. Kept as a delegating public
+	 * method for SDK-present callers holding the availability class.
 	 *
 	 * @since 0.2.0
 	 *
@@ -440,34 +448,8 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return void
 	 */
 	public static function mark_region_switch_pending( string $region ): void {
-		$credential = getenv( static::KEY_ENV_NAME );
-
-		if ( ! \is_string( $credential ) || '' === $credential ) {
-			$credential = '';
-
-			if ( \defined( static::KEY_ENV_NAME ) ) {
-				$constant_value = \constant( static::KEY_ENV_NAME );
-
-				if ( \is_string( $constant_value ) && '' !== $constant_value ) {
-					$credential = $constant_value;
-				}
-			}
-		}
-
-		if ( '' === $credential ) {
-			delete_option( static::REGION_PENDING_OPTION );
-
-			return;
-		}
-
-		update_option(
-			static::REGION_PENDING_OPTION,
-			array(
-				'region'      => $region,
-				'fingerprint' => hash( 'sha256', $credential ),
-			),
-			false
-		);
+		$settings_class = static::settings_class();
+		$settings_class::mark_region_switch_pending( $region );
 	}
 
 	/**

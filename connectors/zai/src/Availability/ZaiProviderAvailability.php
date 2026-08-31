@@ -18,6 +18,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Availability;
 
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
 /**
  * Provider availability for the zai provider.
@@ -26,6 +27,11 @@ use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
  */
 final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 
+	// The four identifier constants below mirror the SDK-free settings
+	// layer (PlanRegionSettings), which owns them so settings invalidation
+	// never autoloads this SDK-dependent class (Codex R2 #3); a
+	// consistency test pins the mirror.
+
 	/**
 	 * Plugin-owned option persisting the last validated state.
 	 *
@@ -33,7 +39,7 @@ final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 	 *
 	 * @var string
 	 */
-	public const STATE_OPTION = 'zai_connector_zai_key_state';
+	public const STATE_OPTION = PlanRegionSettings::STATE_OPTION;
 
 	/**
 	 * Plugin-owned option marking an env/constant credential as pending
@@ -43,7 +49,7 @@ final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 	 *
 	 * @var string
 	 */
-	public const REGION_PENDING_OPTION = 'zai_connector_zai_region_pending';
+	public const REGION_PENDING_OPTION = PlanRegionSettings::REGION_PENDING_OPTION;
 
 	/**
 	 * The core-owned option holding the zai provider's API key.
@@ -52,7 +58,7 @@ final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 	 *
 	 * @var string
 	 */
-	public const KEY_OPTION = 'connectors_ai_zai_api_key';
+	public const KEY_OPTION = PlanRegionSettings::KEY_OPTION;
 
 	/**
 	 * Environment variable / constant name core advertises for the key.
@@ -61,7 +67,7 @@ final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 	 *
 	 * @var string
 	 */
-	public const KEY_ENV_NAME = 'ZAI_API_KEY';
+	public const KEY_ENV_NAME = PlanRegionSettings::KEY_ENV_NAME;
 
 	/**
 	 * The provider's endpoint resolver class.
@@ -72,5 +78,16 @@ final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 	 */
 	protected static function endpoint_class(): string {
 		return ZaiEndpoint::class;
+	}
+
+	/**
+	 * The provider's SDK-free settings class (Codex R2 #3).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return class-string
+	 */
+	protected static function settings_class(): string {
+		return PlanRegionSettings::class;
 	}
 }

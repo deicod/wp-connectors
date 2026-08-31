@@ -328,6 +328,125 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
     }
 
     /*
+     * SDK-absent safety (Codex R2 #3) and identifier consistency.
+     */
+
+    public function testSettingsInvalidationNeverLoadsSdkDependentClasses()
+    {
+        // On WP 6.9 without the optional PHP AI Client plugin the settings
+        // UI still boots (dependency notice), and a plan/region save must
+        // invalidate credential-derived state WITHOUT autoloading the
+        // availability/directory classes — they implement missing SDK
+        // types and would fatal after the option write. The suite always
+        // loads the SDK from vendor/, so this runs in a fresh PHP process
+        // with only the SDK-free plugin files available (same pattern as
+        // the M1 missing-SDK scaffold test).
+        $script = <<<'PHP'
+define('ABSPATH', '/tmp/');
+$GLOBALS['__opts'] = array();
+$GLOBALS['__trans'] = array();
+function get_option($k, $d = false) { return array_key_exists($k, $GLOBALS['__opts']) ? $GLOBALS['__opts'][$k] : $d; }
+function update_option($k, $v, $a = null) { $GLOBALS['__opts'][$k] = $v; return true; }
+function delete_option($k) { unset($GLOBALS['__opts'][$k]); return true; }
+function add_option($k, $v = '', $x = null, $a = null) { if (!array_key_exists($k, $GLOBALS['__opts'])) { $GLOBALS['__opts'][$k] = $v; } return true; }
+function get_transient($k) { return array_key_exists($k, $GLOBALS['__trans']) ? $GLOBALS['__trans'][$k] : false; }
+function set_transient($k, $v, $t = 0) { $GLOBALS['__trans'][$k] = $v; return true; }
+function delete_transient($k) { unset($GLOBALS['__trans'][$k]); return true; }
+function add_action(...$x) {} function add_filter(...$x) {}
+function plugin_basename($f) { return basename(dirname($f)) . '/' . basename($f); }
+function wp_json_encode($d) { return json_encode($d); }
+function __($t, $d = null) { return $t; } function esc_html($t) { return $t; }
+function esc_html__($t, $d = null) { return $t; } function esc_attr($t) { return $t; }
+
+// Boot the plugin file itself (register_provider's SDK guard makes init a
+// no-op; booting must stay SDK-free) and load nothing else beyond it.
+require %s;
+
+// Seed live-site state for BOTH providers.
+update_option('zai_connector_zai_plan', 'coding');
+update_option('zai_connector_zai_region', 'intl');
+update_option('zai_connector_zai_key_state', array('binding' => 'x'));
+update_option('connectors_ai_zai_api_key', 'zai-key');
+set_transient('zai_connector_zai_models_' . md5('zai|coding|intl'), array('glm-5.3'), 3600);
+update_option('zai_connector_zai_anthropic_plan', 'general');
+update_option('zai_connector_zai_anthropic_region', 'intl');
+update_option('zai_connector_zai_anthropic_key_state', array('binding' => 'x'));
+update_option('connectors_ai_zai_anthropic_api_key', 'anthropic-key');
+set_transient('zai_connector_zai_anthropic_models_' . md5('zai_anthropic|general|intl'), array('glm-5.3'), 3600);
+
+// The invalidation a settings save fires. If either handler autoloaded an
+// SDK-dependent class, PHP would fatal with "Interface not found" here.
+Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::handle_settings_change('coding', 'general');
+Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::handle_region_change('intl', 'cn');
+
+if (class_exists('WordPress\AiClient\AiClient')) { fwrite(STDERR, "SDK unexpectedly present\n"); exit(1); }
+
+$failures = array();
+if (get_option('zai_connector_zai_key_state', false) !== false) { $failures[] = 'zai state'; }
+if (get_option('connectors_ai_zai_api_key', false) === false) { $failures[] = 'zai key wrongly deleted by plan change'; }
+if (get_transient('zai_connector_zai_models_' . md5('zai|coding|intl')) !== false) { $failures[] = 'zai transient'; }
+if (get_option('zai_connector_zai_anthropic_key_state', false) !== false) { $failures[] = 'anthropic state'; }
+if (get_option('connectors_ai_zai_anthropic_api_key', false) !== false) { $failures[] = 'anthropic key'; }
+if (get_transient('zai_connector_zai_anthropic_models_' . md5('zai_anthropic|general|intl')) !== false) { $failures[] = 'anthropic transient'; }
+if ($failures !== array()) { fwrite(STDERR, 'not invalidated: ' . implode('; ', $failures) . "\n"); exit(1); }
+echo "SDK_ABSENT_INVALIDATION_OK\n";
+PHP;
+        $script = sprintf($script, var_export(dirname(__DIR__, 2) . '/connectors/zai/zai.php', true));
+
+        $command = escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1';
+        exec($command, $outputLines, $exitCode);
+        $output = implode("\n", $outputLines);
+
+        $this->assertSame(0, $exitCode, "SDK-absent invalidation must not fatal or mis-invalidate:\n{$output}");
+        $this->assertStringContainsString('SDK_ABSENT_INVALIDATION_OK', $output);
+    }
+
+    public function testSettingsInvalidationIdentifiersMatchTheRuntimeClasses()
+    {
+        // The settings layer carries SDK-free copies of the invalidation
+        // identifiers (Codex R2 #3). The availability/directory constants
+        // mirror them; the endpoint cache-key format is composed inline in
+        // the settings handlers. This pins every relationship so the layers
+        // can never drift.
+        $cases = array(
+            array(
+                Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::class,
+                Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::class,
+                Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::class,
+                Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class,
+            ),
+            array(
+                Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::class,
+                Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::class,
+                Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::class,
+                Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class,
+            ),
+        );
+
+        foreach ($cases as $case) {
+            list($settings, $availability, $directory, $endpoint) = $case;
+
+            $this->assertSame($settings::STATE_OPTION, $availability::STATE_OPTION);
+            $this->assertSame($settings::REGION_PENDING_OPTION, $availability::REGION_PENDING_OPTION);
+            $this->assertSame($settings::KEY_OPTION, $availability::KEY_OPTION);
+            $this->assertSame($settings::KEY_ENV_NAME, $availability::KEY_ENV_NAME);
+            $this->assertSame($settings::CACHE_PREFIX, $directory::CACHE_PREFIX);
+
+            // The inline cache-key composition must equal the endpoint
+            // resolver's own identity for every plan x region.
+            foreach (Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings::PLANS as $plan) {
+                foreach (Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings::REGIONS as $region) {
+                    $this->assertSame(
+                        $settings::CACHE_SCOPE . '|' . $plan . '|' . $region,
+                        $endpoint::for($plan, $region)->cache_key(),
+                        'The settings-layer cache-key composition must match the endpoint identity.'
+                    );
+                }
+            }
+        }
+    }
+
+    /*
      * Rendering: the second section on the shared page.
      */
 

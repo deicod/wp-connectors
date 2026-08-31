@@ -150,31 +150,79 @@ abstract class AbstractPlanRegionSettings {
 	const DEFAULT_REGION = 'intl';
 
 	/**
-	 * The provider's availability class (option-name holder).
+	 * Invalidation identifiers, part 1: the availability layer's option
+	 * names this settings layer must be able to clear.
+	 *
+	 * These are deliberately DUPLICATED here (Codex R2 #3): on WordPress
+	 * 6.9 without the optional PHP AI Client plugin the settings UI still
+	 * boots (dependency notice), and a plan/region save must invalidate
+	 * credential-derived state WITHOUT autoloading the availability class —
+	 * which implements missing SDK interfaces and would fatal. The
+	 * provider classes mirror THESE constants as their single source of
+	 * truth, and a consistency test pins the mirror. Overridden per
+	 * provider child; the base values are the zai provider's.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return class-string
+	 * @var string
 	 */
-	abstract protected static function availability_class(): string;
+	const STATE_OPTION = 'zai_connector_zai_key_state';
 
 	/**
-	 * The provider's model metadata directory class (cache-prefix holder).
+	 * Invalidation identifiers: the availability layer's region-pending flag
+	 * option (see STATE_OPTION for why this lives here SDK-free).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return class-string
+	 * @var string
 	 */
-	abstract protected static function directory_class(): string;
+	const REGION_PENDING_OPTION = 'zai_connector_zai_region_pending';
 
 	/**
-	 * The provider's endpoint resolver class.
+	 * Invalidation identifiers: the core-owned key option name deleted on a
+	 * region switch (see STATE_OPTION for why this lives here SDK-free).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return class-string
+	 * @var string
 	 */
-	abstract protected static function endpoint_class(): string;
+	const KEY_OPTION = 'connectors_ai_zai_api_key';
+
+	/**
+	 * Invalidation identifiers: the env/constant name consulted by
+	 * mark_region_switch_pending() (see STATE_OPTION for why this lives
+	 * here SDK-free).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const KEY_ENV_NAME = 'ZAI_API_KEY';
+
+	/**
+	 * Invalidation identifiers: the directory layer's discovery-cache
+	 * transient prefix (see STATE_OPTION for why this lives here
+	 * SDK-free).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const CACHE_PREFIX = 'zai_connector_zai_models_';
+
+	/**
+	 * Invalidation identifiers: the endpoint identity scope the discovery
+	 * cache keys embed ('{scope}|{plan}|{region}' — see ZaiEndpoint /
+	 * ZaiAnthropicEndpoint cache_key()). Composing the key inline keeps the
+	 * invalidation free of the endpoint classes' autoload (see
+	 * STATE_OPTION for the SDK-absent rationale); a consistency test pins
+	 * the composition to the endpoint classes' own format.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const CACHE_SCOPE = 'zai';
 
 	/**
 	 * Registers this provider's two options with the Settings API.
@@ -425,7 +473,9 @@ abstract class AbstractPlanRegionSettings {
 	 * the stored key. The core-owned key option is deliberately NOT touched
 	 * here: plan changes stay on the same account, and the validated state is
 	 * bound to the endpoint (Task 1.4), so removing it already forces a fresh
-	 * authenticated probe against the new endpoint.
+	 * authenticated probe against the new endpoint. The invalidation uses
+	 * ONLY this layer's own identifiers (see STATE_OPTION) so it stays
+	 * loadable on sites without the SDK plugin.
 	 *
 	 * @since 0.2.0
 	 *
@@ -438,19 +488,23 @@ abstract class AbstractPlanRegionSettings {
 			return;
 		}
 
-		$availability_class = static::availability_class();
-		$directory_class    = static::directory_class();
-		$endpoint_class     = static::endpoint_class();
-
-		delete_option( $availability_class::STATE_OPTION );
+		/*
+		 * Codex R2 #3: every identifier below comes from THIS layer's
+		 * constants and the cache key is composed inline — no availability,
+		 * directory, or endpoint class is autoloaded. On WP 6.9 without the
+		 * optional PHP AI Client plugin those classes cannot load at all
+		 * (they implement missing SDK types) and a settings save here would
+		 * otherwise fatal after the option write.
+		 */
+		delete_option( static::STATE_OPTION );
 
 		// The discovery caches are endpoint-scoped by key (so is the cache
 		// identity itself), but clear the transients anyway so no stale entry
 		// survives an unexpected cache-key collision.
 		foreach ( self::PLANS as $plan ) {
 			foreach ( self::REGIONS as $region ) {
-				$endpoint = $endpoint_class::for( $plan, $region );
-				delete_transient( $directory_class::CACHE_PREFIX . md5( $endpoint->cache_key() ) );
+				$cache_id = static::CACHE_PREFIX . md5( static::CACHE_SCOPE . '|' . $plan . '|' . $region );
+				delete_transient( $cache_id );
 			}
 		}
 	}
@@ -487,11 +541,10 @@ abstract class AbstractPlanRegionSettings {
 
 		self::handle_settings_change( $old_value, $new_value );
 
-		$availability_class = static::availability_class();
-		delete_option( $availability_class::KEY_OPTION );
+		delete_option( static::KEY_OPTION );
 
 		// Corrupt hook payloads fall back to the sanitized stored region.
-		$availability_class::mark_region_switch_pending(
+		static::mark_region_switch_pending(
 			\is_string( $new_value ) && \in_array( $new_value, self::REGIONS, true )
 				? $new_value
 				: static::get_region()
@@ -541,6 +594,57 @@ abstract class AbstractPlanRegionSettings {
 	 */
 	public static function handle_plan_add( $option, $value ): void {
 		static::handle_settings_change( static::DEFAULT_PLAN, $value );
+	}
+
+	/**
+	 * Marks the region-immutable credential as pending definitive validation.
+	 *
+	 * Called on a region switch, AFTER the stored (database) key was
+	 * deleted: the env var / constant are the sources the plugin cannot
+	 * clear, so exactly they would otherwise ride configured-pending
+	 * semantics onto the new endpoint. Stores the new region plus a SHA-256
+	 * fingerprint of that credential (never the key); when no env/constant
+	 * credential exists nothing can ride the switch and any stale flag is
+	 * dropped.
+	 *
+	 * Lives in this SDK-free layer (Codex R2 #3): the region switch fires
+	 * on sites without the SDK plugin too, where the availability class
+	 * cannot be autoloaded. The availability base delegates here.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $region The newly selected region.
+	 * @return void
+	 */
+	public static function mark_region_switch_pending( string $region ): void {
+		$credential = getenv( static::KEY_ENV_NAME );
+
+		if ( ! \is_string( $credential ) || '' === $credential ) {
+			$credential = '';
+
+			if ( \defined( static::KEY_ENV_NAME ) ) {
+				$constant_value = \constant( static::KEY_ENV_NAME );
+
+				if ( \is_string( $constant_value ) && '' !== $constant_value ) {
+					$credential = $constant_value;
+				}
+			}
+		}
+
+		if ( '' === $credential ) {
+			delete_option( static::REGION_PENDING_OPTION );
+
+			return;
+		}
+
+		update_option(
+			static::REGION_PENDING_OPTION,
+			array(
+				'region'      => $region,
+				'fingerprint' => hash( 'sha256', $credential ),
+			),
+			false
+		);
 	}
 
 	/**

@@ -38,6 +38,7 @@ use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 
 /**
@@ -63,7 +64,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 *
 	 * @var string
 	 */
-	public const CACHE_PREFIX = 'zai_connector_zai_models_';
+	public const CACHE_PREFIX = PlanRegionSettings::CACHE_PREFIX;
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.

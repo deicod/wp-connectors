@@ -56,6 +56,7 @@ use WordPress\AiClient\Providers\Http\Traits\WithRequestAuthenticationTrait;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
+use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 
 /**
@@ -85,7 +86,7 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 *
 	 * @var string
 	 */
-	public const CACHE_PREFIX = 'zai_connector_zai_anthropic_models_';
+	public const CACHE_PREFIX = ZaiAnthropicPlanRegionSettings::CACHE_PREFIX;
 
 	/**
 	 * Seconds a successful discovery response stays cached per endpoint.

@@ -19,6 +19,17 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   the removal of the seeded checksum sidecar/manifest (which tearDown
   does not clean), so no introduced file lingers to contaminate later
   runs.
+- Settings invalidation no longer autoloads SDK classes: on WP 6.9
+  without the optional PHP AI Client plugin the settings UI still boots,
+  and a plan/region save previously reached dynamic class-constant
+  accesses on the availability/directory classes (which implement
+  missing SDK types) — a fatal error right after the option write. The
+  invalidation identifiers now live in the SDK-free settings layer (the
+  availability/directory constants mirror them; the discovery-cache key
+  is composed inline), the region-pending implementation moved there
+  too, and a consistency test pins every identifier pair plus the
+  cache-key format. An out-of-process test runs the invalidation with
+  the SDK genuinely absent and proves it completes cleanly.
 
 ### Fixed (zai / M2 — Codex PR review, round 1)
 

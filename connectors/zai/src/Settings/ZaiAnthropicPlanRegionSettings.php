@@ -16,10 +16,6 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Settings;
 
-use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
-use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
-use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
-
 /**
  * Plan/region settings store and Settings API wiring for the zai_anthropic provider.
  *
@@ -81,36 +77,62 @@ final class ZaiAnthropicPlanRegionSettings extends AbstractPlanRegionSettings {
 	 */
 	public const DEFAULT_PLAN = 'general';
 
-	/**
-	 * The provider's availability class (option-name holder).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return class-string
-	 */
-	protected static function availability_class(): string {
-		return ZaiAnthropicProviderAvailability::class;
-	}
 
 	/**
-	 * The provider's model metadata directory class (cache-prefix holder).
+	 * SDK-free invalidation identifiers for this provider (see the base
+	 * STATE_OPTION docblock): the availability layer's option names, the
+	 * core-owned key option, the env/constant name, the discovery-cache
+	 * prefix, and the endpoint identity scope.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return class-string
+	 * @var string
 	 */
-	protected static function directory_class(): string {
-		return ZaiAnthropicModelMetadataDirectory::class;
-	}
+	public const STATE_OPTION = 'zai_connector_zai_anthropic_key_state';
 
 	/**
-	 * The provider's endpoint resolver class.
+	 * Region-pending flag option (SDK-free invalidation identifier).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return class-string
+	 * @var string
 	 */
-	protected static function endpoint_class(): string {
-		return ZaiAnthropicEndpoint::class;
-	}
+	public const REGION_PENDING_OPTION = 'zai_connector_zai_anthropic_region_pending';
+
+	/**
+	 * Core-owned key option (SDK-free invalidation identifier).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const KEY_OPTION = 'connectors_ai_zai_anthropic_api_key';
+
+	/**
+	 * Env/constant name (SDK-free invalidation identifier).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const KEY_ENV_NAME = 'ZAI_ANTHROPIC_API_KEY';
+
+	/**
+	 * Discovery-cache transient prefix (SDK-free invalidation identifier).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const CACHE_PREFIX = 'zai_connector_zai_anthropic_models_';
+
+	/**
+	 * Endpoint identity scope (SDK-free invalidation identifier): matches
+	 * ZaiAnthropicEndpoint::cache_key()'s prefix.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const CACHE_SCOPE = 'zai_anthropic';
 }
