@@ -255,12 +255,13 @@ final class AnthropicSseAggregator {
 	}
 
 	/**
-	 * Whether a tool_use block's accumulated input JSON was unusable.
+	 * Whether a tool_use block's streamed input JSON was unusable.
 	 *
-	 * Only meaningful after aggregated() ran (the check happens while the
-	 * payload is built): true means the stream's tool arguments were
-	 * truncated or corrupt, and the caller must treat the whole response as
-	 * a parse error rather than use the payload.
+	 * Set during feed() (a malformed start-block input or a non-string
+	 * partial_json member) or while aggregated() builds the payload
+	 * (fragments that do not decode to an object): true means the stream's
+	 * tool arguments were truncated or corrupt, and the caller must treat
+	 * the whole response as a parse error rather than use the payload.
 	 *
 	 * @since 0.2.0
 	 *
@@ -612,7 +613,21 @@ final class AnthropicSseAggregator {
 					return;
 
 				case 'input_json_delta':
-					if ( isset( $delta['partial_json'] ) && \is_string( $delta['partial_json'] ) ) {
+					if ( isset( $delta['partial_json'] ) && ! \is_string( $delta['partial_json'] ) ) {
+						/*
+						 * The protocol's partial_json member is a STRING; a
+						 * non-string value is a corrupt streamed-arguments
+						 * event. Dropping it silently (verifier finding on
+						 * Codex R3) would surface a no-argument call built
+						 * from a broken stream — flag it like every other
+						 * malformed tool input instead.
+						 */
+						$this->malformed_tool_input = true;
+
+						return;
+					}
+
+					if ( isset( $delta['partial_json'] ) ) {
 						$this->blocks[ $index ]['json'] .= $delta['partial_json'];
 						if ( '' !== $delta['partial_json'] ) {
 							$this->blocks[ $index ]['has_json'] = true;

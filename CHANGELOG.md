@@ -35,6 +35,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   selected; the general plan keeps the full discovered list. A discovery
   response with no in-plan models falls back to the plan catalog without
   caching.
+- A non-string `partial_json` member inside an `input_json_delta` event
+  (a corrupt streamed-arguments shape the protocol types as a string) is
+  now flagged as the same typed stream-parse error instead of being
+  silently dropped, which could surface a no-argument call built from a
+  broken stream (verifier finding on the R3 round).
 
 ### Fixed (zai / M2 — Codex PR review, round 2)
 

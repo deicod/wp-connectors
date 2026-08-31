@@ -793,6 +793,37 @@ $body = ''
         $this->assertSame(array('city' => 'Oslo'), $call->getArgs());
     }
 
+    public function testANonStringPartialJsonDeltaFailsAsAStreamParseError()
+    {
+        // Verifier finding on Codex R3: the protocol's partial_json member
+        // is a string; a non-string value is a corrupt streamed-arguments
+        // event and must not be silently dropped (a {} start plus this
+        // delta fabricated a no-argument call).
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_npd","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_n1","name":"delete_file","input":{}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":{"path":"/etc/hosts"}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-string partial_json delta must fail, got a call: ' . wp_json_encode($result->toMessage()->getParts()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+            $this->assertStringNotContainsString('delete_file', $e->getMessage());
+        }
+    }
+
     public function testAnErrorEventFailsWithAFixedSafeMessage()
     {
         $secret = FakeSecrets::apiKey();
