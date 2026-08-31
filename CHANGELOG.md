@@ -13,6 +13,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   (or twice-stopped) index passed silently: stopped indexes are now
   tracked, and both shapes invalidate the stream with the typed parse
   error.
+- `message_stop` is now terminal: any non-keepalive data event after it
+  (including a second `message_stop`) invalidates the stream —
+  post-termination frames could previously modify the returned
+  text/tool args/stop reason/usage while the response succeeded.
+  Ping/comment keepalive frames stay tolerated.
 
 ### Fixed (zai / M2 — Codex PR review, round 8)
 

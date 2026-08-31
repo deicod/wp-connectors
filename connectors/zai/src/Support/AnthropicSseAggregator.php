@@ -156,6 +156,15 @@ final class AnthropicSseAggregator {
 	private $done = false;
 
 	/**
+	 * Whether message_stop terminated the stream (Codex R8 #2).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $terminated = false;
+
+	/**
 	 * Number of well-formed data events consumed.
 	 *
 	 * @since 0.2.0
@@ -492,6 +501,23 @@ final class AnthropicSseAggregator {
 			return;
 		}
 
+		/*
+		 * Codex R8 #2: after message_stop terminated the stream, only
+		 * keepalive traffic (comments and pings) may follow. Any other
+		 * data frame is a corrupt post-termination event.
+		 */
+		if ( $this->terminated && '' !== trim( implode( "\n", $data_lines ) ) ) {
+			$type_probe = json_decode( implode( "\n", $data_lines ), true );
+			$is_keepalive = \is_array( $type_probe ) && isset( $type_probe['type'] ) && 'ping' === $type_probe['type'];
+
+			if ( ! $is_keepalive ) {
+				++$this->malformed;
+				$this->malformed_event = true;
+
+				return;
+			}
+		}
+
 		$payload = implode( "\n", $data_lines );
 		$decoded = json_decode( $payload, true );
 
@@ -722,7 +748,21 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'message_stop':
+				/*
+				 * Codex R8 #2: message_stop is TERMINAL. Frames after it
+				 * were still dispatched and could modify the returned
+				 * text/tool args/stop reason/usage while the response
+				 * succeeded. Consumption ends here; consume_frame() rejects
+				 * anything but keepalive traffic that follows.
+				 */
 				$this->done = true;
+
+				if ( $this->terminated ) {
+					// A second message_stop is itself post-termination.
+					$this->malformed_event = true;
+				}
+
+				$this->terminated = true;
 				return;
 
 			case 'ping':
