@@ -157,7 +157,20 @@ if ( ! $configured ) {
     $exit = 1;
 }
 
-// 2. Model discovery through the directory (live models route).
+/*
+ * 2. Model discovery through the directory (live models route).
+ *
+ * Codex R8 #6: listModelMetadata() NEVER throws on discovery failure —
+ * it silently returns the static fallback, so the probe used to report a
+ * model count (and PASS) with no live discovery at all. Successful
+ * discovery is cached in a per-endpoint transient while fallbacks never
+ * are, so the transient is the fallback-used signal: it is deleted first
+ * (a cache — safe to clear from a probe) and checked after the call.
+ */
+$discovery_cache_id = ( 'anthropic' === $surface ? 'zai_connector_zai_anthropic_models_' : 'zai_connector_zai_models_' )
+    . md5( $endpoint->cache_key() );
+delete_transient( $discovery_cache_id );
+
 $start = microtime( true );
 try {
     $models = $provider_class::modelMetadataDirectory()->listModelMetadata();
@@ -166,6 +179,12 @@ try {
         return $m->getId();
     }, $models ), 0, 12 ) ) );
     zai_live_probe_report( 'discovery ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
+
+    $discovered_live = false !== get_transient( $discovery_cache_id );
+    zai_live_probe_report( 'discovery source', $discovered_live ? 'live /v1/models' : 'DISCOVERY FALLBACK (static catalog — live discovery failed or was malformed)' );
+    if ( ! $discovered_live ) {
+        $exit = 1;
+    }
 } catch ( Exception $e ) {
     zai_live_probe_report( 'models discovered', 'FAILED: ' . $e->getMessage() );
     $exit = 1;

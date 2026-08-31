@@ -29,6 +29,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   every `tool_result` must answer a preceding `tool_use`'s ID exactly
   once — stale, mistyped, out-of-order, or duplicate results are
   rejected before transport instead of failing upstream with a 400.
+- The live probe's discovery step now detects fallback results: the
+  directory silently returns the static catalog when the live /v1/models
+  request fails or malforms, so the probe used to report a model count
+  (and PASS) with no live discovery. Successful discovery is cached in a
+  per-endpoint transient while fallbacks never are — the probe clears
+  that transient first and reports `discovery source` as `live /v1/models`
+  or `DISCOVERY FALLBACK`, failing (nonzero exit) on the latter.
 
 ### Fixed (zai / M2 — Codex PR review, round 8)
 
