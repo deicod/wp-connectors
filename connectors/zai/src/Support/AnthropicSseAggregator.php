@@ -19,7 +19,11 @@
  * Malformed JSON events are counted and skipped, never fatal; unknown event
  * types and fields are ignored. Error EVENTS are recorded as a flag only —
  * their upstream payload is never retained (the model surfaces a fixed,
- * redacted message).
+ * redacted message). Tool-use blocks whose accumulated input_json_delta
+ * fragments do not decode to a JSON OBJECT ({} stays legitimate) are
+ * likewise flagged via has_malformed_tool_input() — truncated or corrupt
+ * streamed arguments must fail as a parse error, never fabricate a
+ * no-argument tool call.
  *
  * @since 0.2.0
  *
@@ -138,6 +142,20 @@ final class AnthropicSseAggregator {
 	private $malformed = 0;
 
 	/**
+	 * Whether a tool_use block's accumulated input JSON failed to decode
+	 * into an object (truncated or corrupt streamed tool arguments).
+	 *
+	 * Set during aggregated(); the model turns the flag into its fixed,
+	 * typed stream-parse error so no FunctionCall is fabricated from the
+	 * fragments.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $malformed_tool_input = false;
+
+	/**
 	 * Constructor.
 	 *
 	 * @since 0.2.0
@@ -237,6 +255,23 @@ final class AnthropicSseAggregator {
 	}
 
 	/**
+	 * Whether a tool_use block's accumulated input JSON was unusable.
+	 *
+	 * Only meaningful after aggregated() ran (the check happens while the
+	 * payload is built): true means the stream's tool arguments were
+	 * truncated or corrupt, and the caller must treat the whole response as
+	 * a parse error rather than use the payload.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return bool True when at least one tool_use block carried
+	 *              non-object (or undecodable) input JSON.
+	 */
+	public function has_malformed_tool_input(): bool {
+		return $this->malformed_tool_input;
+	}
+
+	/**
 	 * Aggregates the consumed events into one Messages payload.
 	 *
 	 * A stream that never delivered a stop reason (message_delta missing —
@@ -300,7 +335,8 @@ final class AnthropicSseAggregator {
 	 * @since 0.2.0
 	 *
 	 * @param array<string, mixed> $block The accumulated block.
-	 * @return array<string, mixed>|null The block payload, or null for unknown types.
+	 * @return array<string, mixed>|null The block payload, or null for
+	 *                                   unknown types and rejected blocks.
 	 */
 	private function content_block_payload( array $block ): ?array {
 		switch ( $block['type'] ) {
@@ -319,8 +355,23 @@ final class AnthropicSseAggregator {
 			case 'tool_use':
 				$input = $block['input'];
 				if ( $block['has_json'] ) {
-					$decoded = json_decode( $block['json'], true );
-					$input   = \is_array( $decoded ) ? $decoded : new \stdClass();
+					// The accumulated input_json_delta fragments MUST decode
+					// to a JSON OBJECT ({} is legitimate). A decode failure
+					// or a non-object value means the stream was truncated or
+					// corrupt: silently substituting {} would fabricate a
+					// valid no-argument tool call whose inputs the model
+					// never produced — a consumer could execute a
+					// side-effecting tool with wrong arguments. Such a block
+					// is rejected (flagged; the model surfaces the fixed
+					// parse-error message) instead.
+					$decoded = json_decode( $block['json'] );
+					if ( ! $decoded instanceof \stdClass ) {
+						$this->malformed_tool_input = true;
+
+						return null;
+					}
+
+					$input = json_decode( $block['json'], true );
 				}
 
 				return array(

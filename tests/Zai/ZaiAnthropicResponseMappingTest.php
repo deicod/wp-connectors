@@ -459,6 +459,95 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTruncatedToolJsonFailsAsAStreamParseErrorNotAFabricatedCall()
+    {
+        // Codex R1 finding 1: input_json_delta fragments that combine into
+        // invalid JSON must NOT degrade to a no-argument tool call — a
+        // consumer could execute a side-effecting tool with wrong inputs.
+$body = ''
+            . 'event: message_start' . "\n" .
+            'data: {"type":"message_start","message":{"id":"msg_tj","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n" .
+            'event: content_block_start' . "\n" .
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_bad","name":"delete_everything","input":{}}}' . "\n\n" .
+            'event: content_block_delta' . "\n" .
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}' . "\n\n" .
+            'event: content_block_stop' . "\n" .
+            'data: {"type":"content_block_stop","index":0}' . "\n\n" .
+            'event: message_delta' . "\n" .
+            'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}' . "\n\n" .
+            'event: message_stop' . "\n" .
+            'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('Truncated tool JSON must fail, got: ' . $result->toText());
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+            $this->assertRedacted($e->getMessage(), 'delete_everything');
+            $this->assertStringNotContainsString('delete_everything', $e->getMessage(), 'Upstream tool names must not be echoed.');
+        }
+
+        // The typed boundary surfaces the same verdict.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+        $error = $this->model()->generate_text($this->prompt());
+        $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_INVALID_RESPONSE);
+    }
+
+    public function testNonObjectToolJsonFailsAsAStreamParseError()
+    {
+        // A valid JSON SCALAR is not a tool-arguments object either.
+$body = ''
+            . 'event: message_start' . "\n" .
+            'data: {"type":"message_start","message":{"id":"msg_ns","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n" .
+            'event: content_block_start' . "\n" .
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s","name":"ping","input":{}}}' . "\n\n" .
+            'event: content_block_delta' . "\n" .
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"5"}}' . "\n\n" .
+            'event: content_block_stop' . "\n" .
+            'data: {"type":"content_block_stop","index":0}' . "\n\n" .
+            'event: message_delta' . "\n" .
+            'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n" .
+            'event: message_stop' . "\n" .
+            'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Non-object tool JSON must fail.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
+    public function testAnEmptyObjectToolJsonStreamStaysALegitimateEmptyCall()
+    {
+        // The legitimate empty-object stream must keep working: fragments
+        // combining to {} decode to an object and yield a no-argument call.
+$body = ''
+            . 'event: message_start' . "\n" .
+            'data: {"type":"message_start","message":{"id":"msg_eo","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n" .
+            'event: content_block_start' . "\n" .
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_e","name":"ping","input":{}}}' . "\n\n" .
+            'event: content_block_delta' . "\n" .
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}' . "\n\n" .
+            'event: content_block_stop' . "\n" .
+            'data: {"type":"content_block_stop","index":0}' . "\n\n" .
+            'event: message_delta' . "\n" .
+            'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n" .
+            'event: message_stop' . "\n" .
+            'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame('toolu_e', $call->getId());
+        $this->assertNull($call->getArgs(), 'An empty-object input stream stays a no-argument call.');
+    }
+
     public function testAnErrorEventFailsWithAFixedSafeMessage()
     {
         $secret = FakeSecrets::apiKey();

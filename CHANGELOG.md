@@ -6,6 +6,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 1)
+
+- Streamed tool arguments that do not decode to a JSON object (truncated
+  input_json_delta fragments, scalars) now fail as a typed stream-parse
+  error instead of silently becoming a no-argument tool call — a consumer
+  could have executed a side-effecting tool with inputs the model never
+  produced. The legitimate empty-object stream (`{}`) still yields a
+  no-argument call.
+
 ### Fixed (zai / M2 — independent review round)
 
 - Two independent reviews of the full M2 diff (security-focused and

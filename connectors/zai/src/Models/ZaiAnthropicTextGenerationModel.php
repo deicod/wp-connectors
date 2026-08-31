@@ -515,6 +515,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$aggregated = $aggregator->aggregated();
 
+		if ( $aggregator->has_malformed_tool_input() ) {
+			// Truncated/corrupt streamed tool arguments: substituting {}
+			// would fabricate a tool call whose inputs the model never
+			// produced (Codex R1 finding 1), so the response fails as a
+			// parse error with a fixed message instead.
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'stream',
+				'A tool_use block in the message stream carried malformed input JSON.'
+			);
+		}
+
 		if ( null === $aggregated ) {
 			throw ResponseException::fromInvalidData(
 				'z.ai',
