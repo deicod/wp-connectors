@@ -272,7 +272,7 @@ documented exception.
   at request time while retaining the required canonical `baseUrl()`. Check this task only after
   table-driven tests cover all final request URLs and option changes between requests.
 
-- [ ] **Task 2.3 — Implement Bearer authentication and protocol headers.** Inject
+- [x] **Task 2.3 — Implement Bearer authentication and protocol headers.** Inject
   `Authorization: Bearer <key>`, `anthropic-version: 2023-06-01`, and safe content headers; do not
   depend on unverified `x-api-key` support. Check this task only after exact-header tests prove no
   duplicate/conflicting auth header and logging tests prove full redaction.
