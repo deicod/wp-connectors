@@ -383,6 +383,63 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString('"input_schema":[]', $raw, 'input_schema must never encode as [].');
     }
 
+    public function testSequentialArrayToolArgumentsAreRejectedBeforeTransport()
+    {
+        // Codex R4 #4: a FunctionCall from chat history carrying a
+        // non-empty sequential array encodes input as a JSON LIST — the
+        // Messages protocol requires an object, so reject before transport.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Weather?'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_9', 'get_weather', array('Oslo'))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('Sequential-array tool arguments must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('JSON object', $e->getMessage());
+            $this->assertStringContainsString('list', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testObjectShapedAndEmptyToolArgumentsStillEncode()
+    {
+        // String-keyed arrays (incl. numeric-STRING keys) encode as JSON
+        // objects and pass; empty arrays keep the {} normalization.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(
+                new MessagePart(new FunctionCall('call_a', 'get_weather', array('city' => 'Oslo'))),
+            )),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_a', 'get_weather', array('temp_c' => 21))))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_b', 'ping', array())))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame(array('city' => 'Oslo'), $body['messages'][1]['content'][0]['input']);
+        $rawBody = (string) $this->sdkHttpAttempts()[0]['body'];
+        $this->assertStringContainsString('"input":{}', $rawBody, 'Empty args still normalize to the empty object on the wire.');
+        $this->assertStringNotContainsString('"input":[]', $rawBody);
+
+    }
+
+    public function testMixedKeyToolArgumentsStillEncodeAsObjects()
+    {
+        // A mixed-key array is NOT a list (json_encode emits an object),
+        // so it passes the shape check untouched.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_c', 'pick', array('first' => 'a', 1 => 'b'))))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame(array('first' => 'a', 1 => 'b'), $body['messages'][1]['content'][0]['input']);
+    }
+
     public function testMultimodalTextRequestSnapshot()
     {
         // Multiple text parts in one message (text-only multimodality): both

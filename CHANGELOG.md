@@ -20,6 +20,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   visible parts are all empty now falls through to the existing
   no-translatable-content pre-transport rejection instead of failing
   upstream.
+- A FunctionCall from chat history whose arguments are a non-empty
+  SEQUENTIAL array (which would encode `input` as a JSON list) is
+  rejected before transport with the typed invalid-request error — the
+  Messages tool schema requires an object. Mixed/string-keyed arrays
+  still encode as objects and the empty-array→`{}` normalization is
+  unchanged.
 
 ### Fixed (zai / M2 — Codex PR review, round 3)
 

@@ -430,10 +430,28 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				);
 			}
 
-			// The Messages protocol requires an OBJECT for tool_use input;
-			// PHP's empty array would encode as [], so empty args become an
-			// empty object explicitly (official-plugin normalization).
+			/*
+			 * The Messages protocol requires an OBJECT for tool_use input.
+			 * Empty/absent args become an empty object explicitly
+			 * (official-plugin normalization; PHP's empty array would
+			 * encode as []). Any OTHER shape that would encode as a JSON
+			 * list or scalar — a non-empty sequential array like
+			 * array('Oslo'), or a scalar — is rejected BEFORE transport
+			 * (Codex R4 #4): upstream would answer a 400, and silently
+			 * re-shaping would silently alter the call's arguments. The
+			 * list test is exact: json_encode emits an array only for
+			 * 0-based sequential keys, so mixed/string-keyed arrays still
+			 * pass as objects.
+			 */
 			$input = $function_call->getArgs();
+
+			if ( \is_array( $input ) && array() !== $input
+				&& \array_keys( $input ) === \range( 0, \count( $input ) - 1 ) ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires tool arguments to be a JSON object (a non-empty list was given).'
+				);
+			}
+
 			if ( null === $input || ( \is_array( $input ) && array() === $input ) ) {
 				$input = new \stdClass();
 			}
