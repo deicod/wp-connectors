@@ -156,7 +156,7 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         $this->assertTrue($instance->isConfigured());
 
         $attempts = $this->sdkHttpAttempts();
-        $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/models', $attempts[0]['url']);
+        $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $attempts[0]['url']);
     }
 
     public function testAZaiValidatedStateCanNeverEstablishAnthropicStatus()
@@ -239,14 +239,14 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
 
         $this->queueSdkResponse(200, array(), '{"data":[{"id":"glm-5.3","type":"model"}]}');
         $this->assertTrue($instance->isConfigured());
-        $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/models', $this->sdkHttpAttempts()[0]['url']);
+        $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $this->sdkHttpAttempts()[0]['url']);
 
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'cn');
 
         $this->queueSdkResponse(401, array(), '{"type":"error","error":{"type":"authentication_error","message":"wrong region"}}');
         $this->assertFalse($instance->isConfigured(), 'An international key must not count as connected on the China endpoint.');
         $this->assertSame(
-            'https://open.bigmodel.cn/api/coding/anthropic/v1/models',
+            'https://open.bigmodel.cn/api/anthropic/v1/models',
             $this->sdkHttpAttempts()[1]['url'],
             'The revalidation probe must target the new region\'s ANTHROPIC endpoint.'
         );

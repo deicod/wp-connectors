@@ -38,12 +38,16 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
      * Defaults and option identity.
      */
 
-    public function testDefaultsAreCodingPlanAndInternationalRegion()
+    public function testDefaultsAreGeneralPlanAndInternationalRegion()
     {
+        // Live-evidence amendment (record 0007): the coding-surface Messages
+        // routes cannot generate, so this provider defaults to the general
+        // surface — the production-proven path for Coding-Plan keys too.
         $this->bootPlugin();
 
-        $this->assertSame('coding', ZaiAnthropicPlanRegionSettings::get_plan());
+        $this->assertSame('general', ZaiAnthropicPlanRegionSettings::get_plan());
         $this->assertSame('intl', ZaiAnthropicPlanRegionSettings::get_region());
+        $this->assertSame('general', ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN);
     }
 
     public function testTheTwoProvidersUseDistinctOptions()
@@ -63,7 +67,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
         $this->assertNotNull($plan, 'zai_anthropic plan option must be registered.');
         $this->assertSame('zai_connector', $plan['group']);
         $this->assertFalse($plan['show_in_rest']);
-        $this->assertSame('coding', $plan['default']);
+        $this->assertSame('general', $plan['default']);
 
         $region = get_registered_settings()[ZaiAnthropicPlanRegionSettings::OPTION_REGION] ?? null;
         $this->assertNotNull($region, 'zai_anthropic region option must be registered.');
@@ -100,7 +104,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, array('nested'));
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 42);
-        $this->assertSame('coding', ZaiAnthropicPlanRegionSettings::get_plan());
+        $this->assertSame('general', ZaiAnthropicPlanRegionSettings::get_plan());
         $this->assertSame('intl', ZaiAnthropicPlanRegionSettings::get_region());
     }
 
@@ -128,7 +132,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
         update_option(PlanRegionSettings::OPTION_PLAN, 'general');
         update_option(PlanRegionSettings::OPTION_REGION, 'cn');
 
-        $this->assertSame('coding', ZaiAnthropicPlanRegionSettings::get_plan(), 'The zai_anthropic plan must be untouched.');
+        $this->assertSame('general', ZaiAnthropicPlanRegionSettings::get_plan(), 'The zai_anthropic plan must be untouched.');
         $this->assertSame('intl', ZaiAnthropicPlanRegionSettings::get_region(), 'The zai_anthropic region must be untouched.');
     }
 

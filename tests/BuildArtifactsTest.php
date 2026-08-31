@@ -56,6 +56,70 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         return $zipPath;
     }
 
+    /**
+     * Task 2.7: the REAL zai plugin artifact ships BOTH providers.
+     *
+     * The one plugin registers zai and zai_anthropic; the standalone zip
+     * must carry both providers' source trees, pass the inspector, and stay
+     * self-contained. The zip is removed afterwards so a released artifact
+     * in dist/ is never silently clobbered by a test run.
+     */
+    public function testRealZaiArtifactShipsBothProvidersAndStaysStandalone()
+    {
+        $zipPath = self::distDir() . '/connectors-zai-0.1.0.zip';
+        $existed = is_file($zipPath);
+        $previous = $existed ? (string) file_get_contents($zipPath) : '';
+
+        try {
+            $built = WpConnectorsBuild::buildPlugin(__DIR__ . '/../connectors/zai', self::distDir());
+            $this->assertSame($zipPath, $built);
+
+            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-zai'));
+
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
+            $names = array();
+            for ($i = 0; $i < $zip->numFiles; ++$i) {
+                $names[] = $zip->getNameIndex($i);
+            }
+            $zip->close();
+
+            foreach (array(
+                'zai/src/Provider/ZaiProvider.php',
+                'zai/src/Provider/ZaiAnthropicProvider.php',
+                'zai/src/Models/ZaiTextGenerationModel.php',
+                'zai/src/Models/ZaiAnthropicTextGenerationModel.php',
+                'zai/src/Metadata/ZaiModelMetadataDirectory.php',
+                'zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
+                'zai/src/Authentication/ZaiAnthropicRequestAuthentication.php',
+                'zai/src/Support/AnthropicSseAggregator.php',
+                'zai/assets/zai.svg',
+                'zai/uninstall.php',
+                'zai/LICENSE',
+            ) as $required) {
+                $this->assertContains($required, $names, "The artifact must ship {$required}.");
+            }
+
+            // Exactly the two expected root PHP files: the one plugin
+            // header file (the second provider is a registered class inside
+            // the same plugin, not a second plugin) and uninstall.php.
+            $mains = array_filter($names, static function (string $name): bool {
+                return 1 === preg_match('/^zai\/[^\/]+\.php$/', $name);
+            });
+            $this->assertSame(array('zai/uninstall.php', 'zai/zai.php'), array_values($mains));
+        } finally {
+            if ($existed && $previous !== (string) file_get_contents($zipPath)) {
+                // Restore the pre-existing artifact byte-for-byte.
+                file_put_contents($zipPath, $previous);
+            } elseif (! $existed && is_file($zipPath)) {
+                @unlink($zipPath);
+            }
+            if (is_file($zipPath . '.sha256')) {
+                @unlink($zipPath . '.sha256');
+            }
+        }
+    }
+
     public function testFixturePluginZipsWithChecksum()
     {
         $zipPath = $this->buildFixture();

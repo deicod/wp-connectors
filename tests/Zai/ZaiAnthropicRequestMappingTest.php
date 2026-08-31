@@ -120,7 +120,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->model()
         );
 
-        $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/messages', $url);
+        $this->assertSame('https://api.z.ai/api/anthropic/v1/messages', $url);
         $this->assertSame('glm-5.3', $body['model']);
         $this->assertSame(4096, $body['max_tokens'], 'max_tokens is required by the protocol: the default applies when omitted.');
         $this->assertSame(array(

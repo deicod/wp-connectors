@@ -30,9 +30,9 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
 
     /**
      * Seeds every plugin-owned option plus a discovery transient on the
-     * CURRENT site, plus a decoy option that must survive.
+     * CURRENT site, plus decoy core-owned key options that must survive.
      *
-     * @param string $decoy_value Value for the core-owned key option.
+     * @param string $decoy_value Value for the core-owned key options.
      * @return void
      */
     private function seedCurrentSite( $decoy_value = 'core-owned-key' )
@@ -44,12 +44,20 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         update_option( 'zai_connector_zai_key_state', array( 'binding' => 'x' ) );
         update_option( 'zai_connector_zai_region_pending', array( 'region' => 'cn', 'fingerprint' => 'x' ) );
         set_transient( 'zai_connector_zai_models_' . md5( 'zai|coding|intl' ), array( 'glm-5.3' ), 3600 );
+
+        update_option( 'zai_connector_zai_anthropic_plan', 'general' );
+        update_option( 'zai_connector_zai_anthropic_region', 'cn' );
+        update_option( 'zai_connector_zai_anthropic_key_state', array( 'binding' => 'x' ) );
+        update_option( 'zai_connector_zai_anthropic_region_pending', array( 'region' => 'cn', 'fingerprint' => 'x' ) );
+        set_transient( 'zai_connector_zai_anthropic_models_' . md5( 'zai_anthropic|coding|intl' ), array( 'glm-5.3' ), 3600 );
+
         update_option( 'connectors_ai_zai_api_key', $decoy_value );
+        update_option( 'connectors_ai_zai_anthropic_api_key', $decoy_value );
     }
 
     /**
      * Asserts the current site holds no plugin-owned data, and that the
-     * core-owned key option survived.
+     * core-owned key options survived.
      *
      * @return void
      */
@@ -62,6 +70,10 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
             'zai_connector_zai_debug_log',
             'zai_connector_zai_key_state',
             'zai_connector_zai_region_pending',
+            'zai_connector_zai_anthropic_plan',
+            'zai_connector_zai_anthropic_region',
+            'zai_connector_zai_anthropic_key_state',
+            'zai_connector_zai_anthropic_region_pending',
         ) as $option ) {
             $this->assertFalse( get_option( $option, false ), "{$option} must be removed on uninstall." );
         }
@@ -69,9 +81,17 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
             get_transient( 'zai_connector_zai_models_' . md5( 'zai|coding|intl' ) ),
             'Discovery transients must be removed on uninstall.'
         );
+        $this->assertFalse(
+            get_transient( 'zai_connector_zai_anthropic_models_' . md5( 'zai_anthropic|coding|intl' ) ),
+            'The second provider\'s discovery transients must be removed on uninstall.'
+        );
         $this->assertNotFalse(
             get_option( 'connectors_ai_zai_api_key', false ),
             'The core-owned key option is left to core/the user (record 0004, rule 4).'
+        );
+        $this->assertNotFalse(
+            get_option( 'connectors_ai_zai_anthropic_api_key', false ),
+            'The core-owned zai_anthropic key option is left to core/the user too.'
         );
     }
 

@@ -9,10 +9,11 @@
  * time, so changing the settings retargets the very next request without
  * rebuilding the provider registry.
  *
- * Messages: {base}/v1/messages — models: {base}/v1/models. Both suffixes are
- * appended exactly once: normalize_base_url() strips them from a base URL
- * that already carries one, so a future matrix edit (or a hand-built value)
- * can never produce {base}/v1/messages/v1/messages.
+ * Messages route per plan (coding {base}/messages, general {base}/v1/messages)
+ * — models: {base}/v1/models. The suffixes are appended exactly once:
+ * normalize_base_url() strips them from a base URL that already carries one,
+ * so a future matrix edit (or a hand-built value) can never produce
+ * {base}/v1/messages/v1/messages.
  *
  * @since 0.2.0
  *
@@ -52,6 +53,26 @@ final class ZaiAnthropicEndpoint {
 	);
 
 	/**
+	 * The Messages API path per plan.
+	 *
+	 * Verified live 2026-08-31 with a valid Coding-Plan key (architecture
+	 * record 0007): the two plans' Anthropic surfaces route Messages
+	 * DIFFERENTLY — the coding surface serves {base}/messages and answers
+	 * {base}/v1/messages with a wrapped 404, the general surface is the
+	 * exact mirror ({base}/v1/messages works, {base}/messages 404s). The
+	 * SPEC originally said "/v1/messages" for both; the live behavior and
+	 * the SPEC were updated together (plan: change both in one change).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, string>
+	 */
+	const MESSAGES_ROUTE_BY_PLAN = array(
+		'coding'  => '/messages',
+		'general' => '/v1/messages',
+	);
+
+	/**
 	 * The canonical base URL: international region, general plan.
 	 *
 	 * Required by the SDK's AbstractApiProvider::baseUrl(), which stays fixed
@@ -72,7 +93,7 @@ final class ZaiAnthropicEndpoint {
 	 *
 	 * @var list<string>
 	 */
-	const ENDPOINT_SUFFIXES = array( '/v1/messages', '/v1/models' );
+	const ENDPOINT_SUFFIXES = array( '/v1/messages', '/messages', '/v1/models' );
 
 	/**
 	 * The API plan of this endpoint.
@@ -212,12 +233,15 @@ final class ZaiAnthropicEndpoint {
 	/**
 	 * The Messages API URL of this endpoint.
 	 *
+	 * The path follows the plan's route (see MESSAGES_ROUTE_BY_PLAN): coding
+	 * serves {base}/messages, general {base}/v1/messages.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @return string Full URL of the /v1/messages route.
+	 * @return string Full URL of the Messages route.
 	 */
 	public function messages_url(): string {
-		return $this->base_url . '/v1/messages';
+		return $this->base_url . self::MESSAGES_ROUTE_BY_PLAN[ $this->plan ];
 	}
 
 	/**

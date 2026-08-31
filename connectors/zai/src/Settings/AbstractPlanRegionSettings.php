@@ -109,7 +109,8 @@ abstract class AbstractPlanRegionSettings {
 	const PAGE_SLUG = 'zai-connector';
 
 	/**
-	 * Valid plan values, default first.
+	 * Valid plan values (shared order for both providers' dropdowns; the
+	 * selected default is marked at render time).
 	 *
 	 * @since 0.2.0
 	 *
@@ -128,6 +129,10 @@ abstract class AbstractPlanRegionSettings {
 
 	/**
 	 * Default plan.
+	 *
+	 * Overridden per provider child where live evidence demands it: the
+	 * zai_anthropic provider defaults to 'general' (record 0007 — the
+	 * coding-surface Messages routes cannot generate as of 2026-08-31).
 	 *
 	 * @since 0.2.0
 	 *
@@ -189,7 +194,7 @@ abstract class AbstractPlanRegionSettings {
 			static::OPTION_PLAN,
 			array(
 				'type'              => 'string',
-				'default'           => self::DEFAULT_PLAN,
+				'default'           => static::DEFAULT_PLAN,
 				'show_in_rest'      => false,
 				'sanitize_callback' => array( static::class, 'sanitize_plan' ),
 			)
@@ -199,7 +204,7 @@ abstract class AbstractPlanRegionSettings {
 			static::OPTION_REGION,
 			array(
 				'type'              => 'string',
-				'default'           => self::DEFAULT_REGION,
+				'default'           => static::DEFAULT_REGION,
 				'show_in_rest'      => false,
 				'sanitize_callback' => array( static::class, 'sanitize_region' ),
 			)
@@ -307,12 +312,23 @@ abstract class AbstractPlanRegionSettings {
 	/**
 	 * Renders this provider's section description (billing and account distinctions).
 	 *
+	 * The "(default)" marker follows the provider's own default plan, which
+	 * differs between the two providers (coding for zai, general for
+	 * zai_anthropic — record 0007).
+	 *
 	 * @since 0.2.0
 	 *
 	 * @return void
 	 */
 	public static function render_section_description(): void {
-		echo '<p>' . esc_html__( 'Coding Plan (default): subscription-backed z.ai plan with cheaper or included usage, restricted to coding-suitable GLM models. General API: pay-as-you-go with the full model catalog.', 'zai' ) . '</p>';
+		$coding  = 'coding' === static::DEFAULT_PLAN
+			? __( 'Coding Plan (default): subscription-backed z.ai plan with cheaper or included usage, restricted to coding-suitable GLM models.', 'zai' )
+			: __( 'Coding Plan: subscription-backed z.ai plan with cheaper or included usage, restricted to coding-suitable GLM models.', 'zai' );
+		$general = 'general' === static::DEFAULT_PLAN
+			? __( 'General API (default): pay-as-you-go with the full model catalog.', 'zai' )
+			: __( 'General API: pay-as-you-go with the full model catalog.', 'zai' );
+
+		echo '<p>' . esc_html( $coding . ' ' . $general ) . '</p>';
 		echo '<p><strong>' . esc_html__( 'Regions use separate accounts and separate API keys.', 'zai' ) . '</strong> ' . esc_html__( 'International keys (z.ai) do not work on the China endpoint (open.bigmodel.cn) and vice versa. After switching the region the connector disconnects until you save a key for the new region on the Connectors screen.', 'zai' ) . '</p>';
 	}
 
@@ -502,7 +518,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return void
 	 */
 	public static function handle_region_add( $option, $value ): void {
-		static::handle_region_change( self::DEFAULT_REGION, $value );
+		static::handle_region_change( static::DEFAULT_REGION, $value );
 	}
 
 	/**
@@ -513,7 +529,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return string 'coding' or 'general'.
 	 */
 	public static function get_plan(): string {
-		return self::sanitize_stored( get_option( static::OPTION_PLAN, self::DEFAULT_PLAN ), self::PLANS, self::DEFAULT_PLAN );
+		return self::sanitize_stored( get_option( static::OPTION_PLAN, static::DEFAULT_PLAN ), self::PLANS, static::DEFAULT_PLAN );
 	}
 
 	/**
@@ -524,7 +540,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return string 'intl' or 'cn'.
 	 */
 	public static function get_region(): string {
-		return self::sanitize_stored( get_option( static::OPTION_REGION, self::DEFAULT_REGION ), self::REGIONS, self::DEFAULT_REGION );
+		return self::sanitize_stored( get_option( static::OPTION_REGION, static::DEFAULT_REGION ), self::REGIONS, static::DEFAULT_REGION );
 	}
 
 	/**

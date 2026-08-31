@@ -1,8 +1,8 @@
 <?php
 /**
- * Opt-in live smoke probe for the z.ai connector (Task 1.9).
+ * Opt-in live smoke probe for the z.ai connector (Tasks 1.9 / 2.7).
  *
- *   php bin/zai-live-probe.php [--plan=coding|general] [--region=intl|cn]
+ *   php bin/zai-live-probe.php [--surface=openai|anthropic] [--plan=coding|general] [--region=intl|cn]
  *
  * Reads a real API key at RUNTIME from the environment
  * (ZAI_LIVE_API_KEY or WP_CONNECTORS_TEST_ZAI_API_KEY) or from
@@ -10,8 +10,11 @@
  * fixtures, logs, or output. Only safe facts are printed: endpoint URLs,
  * HTTP statuses, model IDs, the generated text, and timings.
  *
- * Exercises exactly the M1 acceptance path: availability probe, /models
- * discovery, and one chat completion through the plugin classes.
+ * Exercises exactly the acceptance path of the selected surface
+ * (default openai): availability probe, /models discovery, and one
+ * generation through the plugin classes. The anthropic surface resolves
+ * the /anthropic endpoints and speaks the Messages protocol; per SPEC §3.2
+ * the SAME account key works on both surfaces.
  *
  * @package wp-connectors
  */
@@ -62,8 +65,13 @@ function zai_live_probe_report( string $label, $value ): void
     printf( "%-24s %s\n", $label . ':', is_scalar( $value ) ? (string) $value : wp_json_encode( $value ) );
 }
 
-$args = getopt( '', array( 'plan::', 'region::' ) );
-$plan = isset( $args['plan'] ) ? (string) $args['plan'] : 'coding';
+$args = getopt( '', array( 'surface::', 'plan::', 'region::' ) );
+$surface = isset( $args['surface'] ) ? (string) $args['surface'] : 'openai';
+if ( ! in_array( $surface, array( 'openai', 'anthropic' ), true ) ) {
+    fwrite( STDERR, "live-probe: --surface must be openai or anthropic\n" );
+    exit( 2 );
+}
+$plan = isset( $args['plan'] ) ? (string) $args['plan'] : ( 'anthropic' === $surface ? 'general' : 'coding' );
 $region = isset( $args['region'] ) ? (string) $args['region'] : 'intl';
 
 $key = zai_live_probe_key();
@@ -72,12 +80,15 @@ if ( '' === $key ) {
     exit( 2 );
 }
 
-update_option( 'zai_connector_zai_plan', $plan );
-update_option( 'zai_connector_zai_region', $region );
+update_option( 'zai_connector_zai_' . ( 'anthropic' === $surface ? 'anthropic_' : '' ) . 'plan', $plan );
+update_option( 'zai_connector_zai_' . ( 'anthropic' === $surface ? 'anthropic_' : '' ) . 'region', $region );
 
+use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Plugin;
+use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Messages\DTO\Message;
@@ -86,12 +97,19 @@ use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\HttpTransporter;
 
+$provider_id = 'anthropic' === $surface ? 'zai_anthropic' : 'zai';
+$provider_class = 'anthropic' === $surface ? ZaiAnthropicProvider::class : ZaiProvider::class;
+$key_option = 'anthropic' === $surface ? ZaiAnthropicProviderAvailability::KEY_OPTION : ZaiProviderAvailability::KEY_OPTION;
+
 zai_live_probe_report( 'date (UTC)', gmdate( 'Y-m-d H:i:s' ) );
+zai_live_probe_report( 'surface', $surface );
 zai_live_probe_report( 'plan', $plan );
 zai_live_probe_report( 'region', $region );
 
-$endpoint = ZaiEndpoint::for_current_settings();
+$endpoint = 'anthropic' === $surface ? ZaiAnthropicEndpoint::for_current_settings() : ZaiEndpoint::for_current_settings();
 zai_live_probe_report( 'endpoint base', $endpoint->base_url() );
+zai_live_probe_report( 'models route', $endpoint->models_url() );
+zai_live_probe_report( 'messages route', 'anthropic' === $surface ? $endpoint->messages_url() : $endpoint->api_url( 'chat/completions' ) );
 
 // A REAL transporter (curl, no redirects) — this script intentionally
 // performs live network requests.
@@ -99,21 +117,21 @@ $registry = AiClient::defaultRegistry();
 $registry->setHttpTransporter( new HttpTransporter( new CurlPsr18Client() ) );
 
 Plugin::register( $registry );
-$registry->setProviderRequestAuthentication( 'zai', new ApiKeyRequestAuthentication( $key ) );
-update_option( ZaiProviderAvailability::KEY_OPTION, $key );
+$registry->setProviderRequestAuthentication( $provider_id, new ApiKeyRequestAuthentication( $key ) );
+update_option( $key_option, $key );
 
 $exit = 0;
 
-// 1. Availability (authenticated /models probe with persisted verdict).
+// 1. Availability (authenticated models probe with persisted verdict).
 $start = microtime( true );
-$configured = ZaiProvider::availability()->isConfigured();
+$configured = $provider_class::availability()->isConfigured();
 zai_live_probe_report( 'availability', $configured ? 'connected' : 'NOT connected' );
 zai_live_probe_report( 'availability ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
 
-// 2. Model discovery through the directory (live /models).
+// 2. Model discovery through the directory (live models route).
 $start = microtime( true );
 try {
-    $models = ZaiProvider::modelMetadataDirectory()->listModelMetadata();
+    $models = $provider_class::modelMetadataDirectory()->listModelMetadata();
     zai_live_probe_report( 'models discovered', count( $models ) );
     zai_live_probe_report( 'model ids', implode( ', ', array_slice( array_map( static function ( $m ) {
         return $m->getId();
@@ -124,20 +142,22 @@ try {
     $exit = 1;
 }
 
-// 3. One chat completion through the plugin model class.
+// 3. One generation through the plugin model class (Messages protocol on
+// the anthropic surface; chat completion on the openai surface).
 $start = microtime( true );
 try {
     $model_id = 'glm-5.3';
-    if ( isset( $models ) && ! ZaiProvider::modelMetadataDirectory()->hasModelMetadata( $model_id ) ) {
+    if ( isset( $models ) && ! $provider_class::modelMetadataDirectory()->hasModelMetadata( $model_id ) && array() !== $models ) {
         $model_id = $models[0]->getId();
     }
     /**
-     * getProviderModel() (not ZaiProvider::model()) binds the registry's
-     * transporter and auth into the instance.
+     * getProviderModel() (not the bare Provider::model()) binds the
+     * registry's transporter and auth into the instance; both surfaces'
+     * models implement the SDK's TextGenerationModelInterface.
      *
-     * @var Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel $model
+     * @var Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel|Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel $model
      */
-    $model = $registry->getProviderModel( 'zai', $model_id );
+    $model = $registry->getProviderModel( $provider_id, $model_id );
     $result = $model->generateTextResult( array(
         new Message( MessageRoleEnum::user(), array( new MessagePart( 'Reply with exactly: wp-connectors live probe ok' ) ) ),
     ) );

@@ -3,12 +3,14 @@
  * Uninstall cleanup for Connectors: z.ai.
  *
  * Removes plugin-owned options and transients only (architecture record
- * 0004, rule 4) — on multisite from EVERY site: options and transients are
- * per-site (record 0004, rule 2), and a network-activated uninstall runs
- * once in the current site's context, so every other blog keeps its data
- * unless the cleanup switches to it explicitly. The core-owned API key
- * option (connectors_ai_zai_api_key) is deliberately left for core/the
- * user. Deactivation retains everything.
+ * 0004, rule 4) — for BOTH providers the plugin registers (zai and
+ * zai_anthropic), each with its own option names — on multisite from EVERY
+ * site: options and transients are per-site (record 0004, rule 2), and a
+ * network-activated uninstall runs once in the current site's context, so
+ * every other blog keeps its data unless the cleanup switches to it
+ * explicitly. The core-owned API key options
+ * (connectors_ai_zai_api_key, connectors_ai_zai_anthropic_api_key) are
+ * deliberately left for core/the user. Deactivation retains everything.
  *
  * @since 0.1.0
  *
@@ -34,10 +36,17 @@ function zai_connector_zai_uninstall_site() {
 	delete_option( 'zai_connector_zai_key_state' );
 	delete_option( 'zai_connector_zai_region_pending' );
 
-	// Discovery cache transients for every endpoint combination.
+	delete_option( 'zai_connector_zai_anthropic_plan' );
+	delete_option( 'zai_connector_zai_anthropic_region' );
+	delete_option( 'zai_connector_zai_anthropic_key_state' );
+	delete_option( 'zai_connector_zai_anthropic_region_pending' );
+
+	// Discovery cache transients for every endpoint combination of both
+	// surfaces.
 	foreach ( array( 'coding', 'general' ) as $zai_connector_plan ) {
 		foreach ( array( 'intl', 'cn' ) as $zai_connector_region ) {
 			delete_transient( 'zai_connector_zai_models_' . md5( 'zai|' . $zai_connector_plan . '|' . $zai_connector_region ) );
+			delete_transient( 'zai_connector_zai_anthropic_models_' . md5( 'zai_anthropic|' . $zai_connector_plan . '|' . $zai_connector_region ) );
 		}
 	}
 }

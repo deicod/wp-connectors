@@ -64,9 +64,9 @@ secrets, never in the repository:
 
 | Variable | Used by |
 |----------|---------|
-| `WP_CONNECTORS_TEST_ZAI_API_KEY` | z.ai live probes (M1) |
+| `WP_CONNECTORS_TEST_ZAI_API_KEY` | z.ai live probes (M1 `zai` AND M2 `zai_anthropic`; one account key works on both surfaces) |
 | `WP_CONNECTORS_TEST_ZAI_REGION` | optional: `intl` (default) or `cn` |
-| `WP_CONNECTORS_TEST_ZAI_PLAN` | optional: `coding` (default) or `general` |
+| `WP_CONNECTORS_TEST_ZAI_PLAN` | optional: `coding` (default for `zai`) or `general` (the default for `zai_anthropic`) |
 | `WP_CONNECTORS_TEST_OPENAI_REFRESH_TOKEN` | Codex OAuth live tests (M3+) |
 | `WP_CONNECTORS_TEST_XAI_REFRESH_TOKEN` | xAI/Grok OAuth live tests (M4+) |
 | `WP_CONNECTORS_TEST_ANTHROPIC_REFRESH_TOKEN` | Claude Pro OAuth live tests (M5+, bonus) |

@@ -6,6 +6,32 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Added (zai / M2 — validation, docs, live evidence; Task 2.7)
+
+- Uninstall now removes BOTH providers' options and discovery caches
+  (still leaving the core-owned key options), and the artifact test suite
+  proves the standalone zip ships both providers' source trees.
+- `bin/zai-live-probe.php` grew a `--surface=anthropic` mode; opt-in live
+  smoke test for the second provider
+  (`WP_CONNECTORS_TEST_ZAI_API_KEY`).
+- Live evidence (2026-08-31, record 0007): `/v1/models` works on both
+  Anthropic plans (same 10-model GLM list, Anthropic shape) — the
+  Anthropic half of O1 is resolved; the two plans route Messages
+  differently (general `/v1/messages`, coding `/messages`), and the
+  coding surface cannot generate at all as of that date (wrapped 404s for
+  every probed model/auth combination). `zai_anthropic` therefore now
+  defaults to general+intl — the production-proven path for Coding-Plan
+  keys — and the SPEC (§3.1–§3.3) was amended in the same change.
+  End-to-end live PASS on general+intl through the plugin classes.
+
+### Changed (zai / M2 — live-evidence amendment, record 0007)
+
+- `zai_anthropic` default plan general (was coding): the coding-surface
+  Anthropic Messages routes answer with wrapped 404 errors for every
+  probed combination, so a coding default would fail out of the box.
+  The zai provider keeps its coding default; the coding Anthropic base
+  stays selectable and its `/v1/models` route works.
+
 ### Added (zai / M2 — `zai_anthropic` endpoint resolution, auth, metadata, Messages protocol; Tasks 2.2–2.6)
 
 - Anthropic-surface endpoint resolver with the four SPEC §3.1 `/anthropic`
@@ -45,9 +71,10 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   would silently overwrite it — so one provider's registration can never
   replace the other's.
 - `zai_anthropic` has its own plan/region options
-  (`zai_connector_zai_anthropic_plan` / `_region`, defaults coding + intl)
-  rendered as a second section on the shared settings page; the two
-  providers' selections cannot bleed into each other.
+  (`zai_connector_zai_anthropic_plan` / `_region`; initially coding +
+  intl, later amended to general + intl by the record-0007 live evidence
+  above) rendered as a second section on the shared settings page; the
+  two providers' selections cannot bleed into each other.
 - A `zai_anthropic` region switch clears that provider's validated state,
   discovery caches, region-pending flag, and stored key
   (`connectors_ai_zai_anthropic_api_key`) — never the `zai` provider's data.

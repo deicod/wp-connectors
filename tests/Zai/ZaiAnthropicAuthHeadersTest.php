@@ -139,7 +139,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         $headers = $attempts[0]['headers'];
 
         $this->assertSame('POST', $attempts[0]['method']);
-        $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/messages', $attempts[0]['url']);
+        $this->assertSame('https://api.z.ai/api/anthropic/v1/messages', $attempts[0]['url']);
         $this->assertSame(array('Bearer ' . $key), $headers['Authorization'] ?? null, 'Exactly one Bearer Authorization header.');
         $this->assertSame(array('2023-06-01'), $headers['anthropic-version'] ?? null, 'The protocol version header is always sent.');
         $this->assertSame(array('application/json'), $headers['Content-Type'] ?? null, 'JSON content type.');
@@ -161,7 +161,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         $this->assertCount(1, $attempts);
         $headers = $attempts[0]['headers'];
 
-        $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/models', $attempts[0]['url']);
+        $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $attempts[0]['url']);
         $this->assertSame(array('Bearer ' . $key), $headers['Authorization'] ?? null);
         $this->assertSame(array('2023-06-01'), $headers['anthropic-version'] ?? null, 'The probe carries the protocol header too.');
         $this->assertArrayNotHasKey('x-api-key', $headers);
@@ -228,7 +228,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString('anthropic-version', $serialized, 'Header names/values are never logged.');
 
         $entry = DebugLogger::entries()[0];
-        $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/messages', $entry['url'], 'Path only, no query string.');
+        $this->assertSame('https://api.z.ai/api/anthropic/v1/messages', $entry['url'], 'Path only, no query string.');
     }
 
     public function testThePersistedAvailabilityStateCarriesNoKey()

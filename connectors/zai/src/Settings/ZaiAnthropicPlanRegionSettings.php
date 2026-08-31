@@ -64,6 +64,24 @@ final class ZaiAnthropicPlanRegionSettings extends AbstractPlanRegionSettings {
 	public const PROVIDER_LABEL = 'z.ai (Anthropic API)';
 
 	/**
+	 * Default plan: GENERAL, not coding.
+	 *
+	 * Live-evidence amendment (architecture record 0007, 2026-08-31): the
+	 * coding-surface Messages routes cannot generate (both /messages and
+	 * /v1/messages answer with wrapped 404s for every model and auth shape
+	 * probed), while the general-surface Messages endpoint works — and is
+	 * the production-proven path for Coding-Plan keys on the Anthropic
+	 * protocol (~/.local/bin/claude-glm). The coding base stays selectable;
+	 * it serves /v1/models only as of the probe date. SPEC §3.3 was updated
+	 * together with this change.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const DEFAULT_PLAN = 'general';
+
+	/**
 	 * The provider's availability class (option-name holder).
 	 *
 	 * @since 0.2.0
