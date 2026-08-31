@@ -6,6 +6,32 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — independent review round)
+
+- Two independent reviews of the full M2 diff (security-focused and
+  correctness-focused) found no critical/high issues; their actionable
+  findings are fixed:
+- A message whose parts all drop (thought-only replay, or no parts at
+  all) is now rejected before transport with a precise message instead of
+  degrading to an empty text block the Messages API answers with a
+  misleading 400.
+- A stream truncated before `message_delta` now fails with the fixed
+  parse-error message instead of fabricating a clean `end_turn` stop.
+- `TokenLimitReachedException` now carries the applied limit in its typed
+  `maxTokens` payload (consumers of the accessor no longer see null).
+- `ZaiAnthropicRequestAuthentication::wrap()` fails closed on a foreign
+  authentication implementation instead of silently sending the request
+  unauthenticated.
+- The first persisted PLAN change on a fresh install now runs the state/
+  cache invalidation (add_option_{plan} companion hooks, symmetric with
+  the region hooks).
+- The zai_anthropic live smoke test defaults to the general plan (the
+  coding surface cannot generate per record 0007), several SSE fixtures
+  now use genuine single-frame event:/data: pairing, the webSearch
+  rejection gained its own test, and record 0007's note about the
+  thinking `signature` member was corrected (the SDK can carry thought
+  signatures since 1.3.0; this adapter drops them deliberately).
+
 ### Added (zai / M2 — validation, docs, live evidence; Task 2.7)
 
 - Uninstall now removes BOTH providers' options and discovery caches

@@ -79,7 +79,9 @@ availability state contained a binding hash, never the key.
 ### 6. Response shape notes
 
 Real responses carry `content[].type` of `text`, `thinking` (with a
-`signature` member the SDK has no representation for — ignored), and
+`signature` member; the SDK's `MessagePart` can carry thought signatures
+since 1.3.0, but this adapter deliberately never replays thinking blocks,
+so the signature is dropped together with the block's replay value), and
 `tool_use`; `stop_reason` values observed: `end_turn`, `max_tokens` (small
 `max_tokens` with thinking enabled exhausts the budget — the typed
 token-limit error path). Usage uses `input_tokens`/`output_tokens` as

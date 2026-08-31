@@ -24,6 +24,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Authentication;
 
+use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
@@ -69,13 +70,17 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 	 * key store does not know about protocol headers), so the zai_anthropic
 	 * model, directory, and availability funnel their wired instance through
 	 * here before authenticating a request. Already-wrapped instances pass
-	 * through unchanged; anything else is returned as-is for the caller to
-	 * handle.
+	 * through unchanged. Any OTHER implementation is refused: passing it
+	 * through would send the request unauthenticated (no Bearer, no
+	 * anthropic-version) instead of failing closed (review finding). The
+	 * registry itself only ever wires ApiKeyRequestAuthentication subclasses
+	 * for apiKey() metadata, so this guard is defense in depth.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @param RequestAuthenticationInterface $authentication The wired authentication.
 	 * @return RequestAuthenticationInterface The Anthropic-surface authentication.
+	 * @throws InvalidArgumentException When the authentication type cannot carry this surface's protocol.
 	 */
 	public static function wrap( RequestAuthenticationInterface $authentication ): RequestAuthenticationInterface {
 		if ( $authentication instanceof self ) {
@@ -86,6 +91,8 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 			return new self( $authentication->getApiKey() );
 		}
 
-		return $authentication;
+		throw new InvalidArgumentException(
+			'The zai_anthropic provider requires an API-key authentication instance.'
+		);
 	}
 }

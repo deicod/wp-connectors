@@ -258,6 +258,33 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
         );
     }
 
+    public function testFirstPersistedAnthropicPlanChangeOnAFreshInstallInvalidates()
+    {
+        $this->bootPlugin();
+
+        // No plan row yet: the first save travels through add_option(),
+        // firing add_option_{plan} instead of the update hook — the
+        // companion hook must still run the state invalidation.
+        $this->assertFalse(get_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, false), 'Fresh install must start without a plan row.');
+        update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array('binding' => 'stale'));
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'plan-shared-key');
+        set_transient(Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|general|intl'), array('glm-5.3'), 3600);
+
+        add_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, 'coding');
+
+        $this->assertSame('coding', ZaiAnthropicPlanRegionSettings::get_plan());
+        $this->assertFalse(get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false), 'The first persisted plan change must clear the validated state.');
+        $this->assertFalse(
+            get_transient(Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|general|intl')),
+            'The first persisted plan change must clear the old endpoint\'s discovery cache.'
+        );
+        $this->assertSame(
+            'plan-shared-key',
+            get_option(ZaiAnthropicProviderAvailability::KEY_OPTION),
+            'A plan change stays on the same account: the stored key must be kept.'
+        );
+    }
+
     public function testSameValueRewritesInvalidateNothing()
     {
         $this->bootPlugin();

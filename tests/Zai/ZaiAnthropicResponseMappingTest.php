@@ -192,6 +192,7 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             $this->fail('A max_tokens stop reason must throw.');
         } catch (TokenLimitReachedException $e) {
             $this->assertStringContainsString('token limit', $e->getMessage());
+            $this->assertSame(4096, $e->getMaxTokens(), 'The typed payload carries the applied limit for consumers of the accessor.');
         }
     }
 
@@ -374,14 +375,15 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         // A response that ends right after the last event field (no blank
         // line) must not lose that frame.
         $body = ''
-            . 'event: message_start' . "\n\n"
+            . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_f","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}' . "\n\n"
-            . 'event: content_block_start' . "\n\n"
+            . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
-            . 'event: content_block_delta' . "\n\n"
+            . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Tail frame."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n\n"
-            . 'event: message_delta' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}' . "\n\n"
             . 'event: message_stop' . "\n"
             . 'data: {"type":"message_stop"}';
@@ -396,16 +398,18 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
     public function testEventStreamDetectedByBodyPrefixWithoutContentType()
     {
         $body = ''
-            . 'event: message_start' . "\n\n"
+            . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_p","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
-            . 'event: content_block_start' . "\n\n"
+            . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
-            . 'event: content_block_delta' . "\n\n"
+            . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Body-detected."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n\n"
-            . 'event: message_delta' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n"
-            . 'event: message_stop' . "\n\n";
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array(), $body);
 
@@ -417,18 +421,42 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         // message_stop is conventional for termination, not required to
         // parse what already arrived.
         $body = ''
-            . 'event: message_start' . "\n\n"
+            . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_n","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
-            . 'event: content_block_start' . "\n\n"
+            . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
-            . 'event: content_block_delta' . "\n\n"
+            . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: message_delta' . "\n\n"
+            . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
         $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    public function testATruncatedStreamWithoutAStopReasonFailsSafely()
+    {
+        // A stream cut before message_delta delivered no stop reason:
+        // fabricating end_turn would mask truncation as a clean stop
+        // (review finding), so the fixed parse-error message is thrown.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_t","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Partial"}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream without a stop reason must throw.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('No usable message event', $e->getMessage());
+            $this->assertStringNotContainsString('Partial', $e->getMessage(), 'Streamed content must not be echoed.');
+        }
     }
 
     public function testAnErrorEventFailsWithAFixedSafeMessage()
@@ -468,15 +496,15 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
     public function testUnknownStreamEventsAreIgnored()
     {
         $body = ''
-            . 'event: message_start' . "\n\n"
+            . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_u","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
-            . 'event: some_future_event' . "\n\n"
+            . 'event: some_future_event' . "\n"
             . 'data: {"type":"some_future_event","payload":"whatever"}' . "\n\n"
-            . 'event: content_block_start' . "\n\n"
+            . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
-            . 'event: content_block_delta' . "\n\n"
+            . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
-            . 'event: message_delta' . "\n\n"
+            . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);

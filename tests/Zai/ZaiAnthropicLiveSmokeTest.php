@@ -39,10 +39,12 @@ final class ZaiAnthropicLiveSmokeTest extends WpConnectorsTestCase
         }
     }
 
-    public function testLiveAnthropicCodingInternationalRoundTrip()
+    public function testLiveAnthropicRoundTrip()
     {
         $key = (string) getenv('WP_CONNECTORS_TEST_ZAI_API_KEY');
-        $plan = (string) (getenv('WP_CONNECTORS_TEST_ZAI_PLAN') ?: 'coding');
+        // Default GENERAL: record 0007 proved the coding-surface Messages
+        // routes cannot generate, so the provider's own default is general.
+        $plan = (string) (getenv('WP_CONNECTORS_TEST_ZAI_PLAN') ?: 'general');
         $region = (string) (getenv('WP_CONNECTORS_TEST_ZAI_REGION') ?: 'intl');
 
         update_option('zai_connector_zai_anthropic_plan', $plan);

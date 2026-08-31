@@ -87,9 +87,11 @@ function boot(): void {
 	// Fresh-install companions: while no option row exists, core's
 	// update_option() delegates to add_option(), which fires
 	// add_option_{$option} instead of the update hook — without these
-	// registrations the FIRST persisted region change would skip every
-	// invalidation the later updates perform.
+	// registrations the FIRST persisted plan/region change would skip
+	// every invalidation the later updates perform.
+	add_action( 'add_option_' . PlanRegionSettings::OPTION_PLAN, array( PlanRegionSettings::class, 'handle_plan_add' ), 10, 2 );
 	add_action( 'add_option_' . PlanRegionSettings::OPTION_REGION, array( PlanRegionSettings::class, 'handle_region_add' ), 10, 2 );
+	add_action( 'add_option_' . ZaiAnthropicPlanRegionSettings::OPTION_PLAN, array( ZaiAnthropicPlanRegionSettings::class, 'handle_plan_add' ), 10, 2 );
 	add_action( 'add_option_' . ZaiAnthropicPlanRegionSettings::OPTION_REGION, array( ZaiAnthropicPlanRegionSettings::class, 'handle_region_add' ), 10, 2 );
 	add_action( 'update_option_' . DebugLogger::OPTION_ENABLED, array( DebugSettings::class, 'handle_enabled_change' ), 10, 2 );
 

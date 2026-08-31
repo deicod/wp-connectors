@@ -330,14 +330,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * Thought-channel text parts are deliberately DROPPED: replaying model
 	 * reasoning through `thinking` blocks is only valid on real Anthropic
 	 * with signature blocks, and z.ai behavior is unverified — the blocks
-	 * carry no user intent, so nothing is lost. A message whose parts all
-	 * drop still needs non-empty content per the protocol, so it degrades to
-	 * a single empty text block.
+	 * carry no user intent, so nothing is lost. A message whose parts ALL
+	 * drop (or that has no parts) has no translatable content left: the
+	 * Messages protocol rejects empty text blocks, so degrading to one
+	 * would only move the failure upstream — the request is rejected here,
+	 * before any transport work, with a precise message instead (review
+	 * finding).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @param Message $message The message.
 	 * @return list<array<string, mixed>> Content blocks.
+	 * @throws InvalidArgumentException When the message has no translatable parts.
 	 */
 	protected function message_content_blocks( Message $message ): array {
 		$blocks = array();
@@ -350,9 +354,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		if ( array() === $blocks ) {
-			$blocks[] = array(
-				'type' => 'text',
-				'text' => '',
+			throw new InvalidArgumentException(
+				'The zai_anthropic provider requires every message to carry at least one translatable (text, tool call, or tool result) part.'
 			);
 		}
 
@@ -677,12 +680,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			case 'max_tokens':
 			case 'model_context_window_exceeded':
+				$max_tokens = absint( $this->getConfig()->getMaxTokens() ?? self::DEFAULT_MAX_TOKENS );
+
 				throw new TokenLimitReachedException(
 					sprintf(
 						/* translators: %d: the configured token limit. */
 						esc_html__( 'The generation stopped because the token limit was reached (%d). Raise maxTokens to continue longer answers.', 'zai' ),
-						absint( $this->getConfig()->getMaxTokens() ?? self::DEFAULT_MAX_TOKENS )
-					)
+						$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer from absint(), formatted via %d.
+					),
+					$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer payload for the typed accessor, from absint().
 				);
 		}
 

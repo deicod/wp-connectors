@@ -13,6 +13,7 @@
 declare( strict_types=1 );
 
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
@@ -121,6 +122,25 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         $this->assertSame($plain->getApiKey(), $wrapped->getApiKey());
 
         $this->assertSame($wrapped, ZaiAnthropicRequestAuthentication::wrap($wrapped), 'Already-wrapped instances pass through.');
+    }
+
+    public function testTheWrapFunnelFailsClosedOnForeignAuthTypes()
+    {
+        $foreign = new class implements WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface {
+            public function authenticateRequest(SdkRequest $request): SdkRequest
+            {
+                return $request;
+            }
+
+            public static function getJsonSchema(): array
+            {
+                return array();
+            }
+        };
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('API-key authentication');
+        ZaiAnthropicRequestAuthentication::wrap($foreign);
     }
 
     /*

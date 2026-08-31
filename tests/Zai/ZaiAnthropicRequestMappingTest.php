@@ -326,6 +326,45 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertMatchesSnapshot('multimodal-text', $url, $body);
     }
 
+    public function testAThoughtOnlyMessageIsRejectedBeforeTransport()
+    {
+        // A replayed assistant turn carrying ONLY a thinking block has no
+        // translatable content left: an empty text block would be a
+        // guaranteed upstream 400, so the request must fail HERE (review
+        // finding).
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Hello.'))),
+            new Message(MessageRoleEnum::model(), array(
+                new MessagePart('only reasoning', WordPress\AiClient\Messages\Enums\MessagePartChannelEnum::thought()),
+            )),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A thought-only message must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('at least one translatable', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAPartlessMessageIsRejectedBeforeTransport()
+    {
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array()),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A message without parts must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('at least one translatable', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testThoughtPartsAreDroppedFromOutboundMessages()
     {
         // Model reasoning echoes carry no user intent and cannot be replayed
@@ -418,12 +457,20 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
-    public function testWebSearchIsRejectedBeforeTransport()
+    public function testLogprobsAreRejectedBeforeTransport()
     {
         $this->assertRejectedBeforeTransport(
             ModelConfig::fromArray(array('logprobs' => true)),
             'logprobs'
         );
+    }
+
+    public function testWebSearchIsRejectedBeforeTransport()
+    {
+        $config = ModelConfig::fromArray(array());
+        $config->setWebSearch(new WordPress\AiClient\Tools\DTO\WebSearch());
+
+        $this->assertRejectedBeforeTransport($config, 'web search');
     }
 
     public function testImageOutputModalityIsRejectedBeforeTransport()

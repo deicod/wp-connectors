@@ -239,12 +239,19 @@ final class AnthropicSseAggregator {
 	/**
 	 * Aggregates the consumed events into one Messages payload.
 	 *
+	 * A stream that never delivered a stop reason (message_delta missing —
+	 * a truncated body from a gateway, exactly the wrapped-garbage shape
+	 * the coding surface produces per record 0007) is NOT a completion:
+	 * fabricating end_turn would mask truncation as a clean stop, so null
+	 * is returned and the model surfaces its fixed parse-error message
+	 * (review finding).
+	 *
 	 * @since 0.2.0
 	 *
-	 * @return array<string, mixed>|null Null when no usable event was consumed.
+	 * @return array<string, mixed>|null Null when no usable completion was consumed.
 	 */
 	public function aggregated(): ?array {
-		if ( array() === $this->blocks && null === $this->stop_reason && null === $this->message_id ) {
+		if ( null === $this->stop_reason ) {
 			return null;
 		}
 
@@ -261,7 +268,7 @@ final class AnthropicSseAggregator {
 			'type'        => 'message',
 			'role'        => 'assistant',
 			'content'     => $content,
-			'stop_reason' => \is_string( $this->stop_reason ) ? $this->stop_reason : 'end_turn',
+			'stop_reason' => $this->stop_reason,
 			'usage'       => array(
 				'input_tokens'  => $this->input_tokens ?? 0,
 				'output_tokens' => $this->output_tokens ?? 0,

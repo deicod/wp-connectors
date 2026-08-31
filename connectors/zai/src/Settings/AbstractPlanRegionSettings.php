@@ -522,6 +522,28 @@ abstract class AbstractPlanRegionSettings {
 	}
 
 	/**
+	 * Initial plan save: the add_option() path of a plan change.
+	 *
+	 * Same mechanism as handle_region_add(), for the plan option: the first
+	 * persisted plan save fires `add_option_{provider plan}` instead of the
+	 * update hook. The effective previous plan is the provider's registered
+	 * default, so the change is measured against that. The invalidation is
+	 * defensive (the discovery cache and the availability binding are both
+	 * endpoint-scoped, so no stale entry could be consumed anyway), but the
+	 * symmetry keeps every first-persisted save on the same code path as
+	 * later updates (review finding).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $option Option name (hook contract; the handler knows its option).
+	 * @param mixed  $value  New plan.
+	 * @return void
+	 */
+	public static function handle_plan_add( $option, $value ): void {
+		static::handle_settings_change( static::DEFAULT_PLAN, $value );
+	}
+
+	/**
 	 * Returns this provider's effective plan (corrupt values fall back to the default).
 	 *
 	 * @since 0.2.0
