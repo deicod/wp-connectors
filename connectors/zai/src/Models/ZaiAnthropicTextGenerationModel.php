@@ -661,13 +661,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$raw_content_ok = \is_object( $raw ) && isset( $raw->content ) && \is_array( $raw->content );
 
 		/*
-		 * Verifier residual on Codex R5: a Messages response envelope
-		 * identifies itself with type "message" — a contradictory envelope
-		 * (e.g. type "error" carrying an otherwise-valid body) must not
-		 * parse as a generation. Absent members stay tolerated (the role,
-		 * content, and stop_reason members carry the validation weight).
+		 * Verifier residual on Codex R5 + Codex R6 #1: a Messages response
+		 * envelope identifies itself with type "message" — a contradictory
+		 * envelope (e.g. type "error" carrying an otherwise-valid body)
+		 * must not parse as a generation. array_key_exists() treats an
+		 * explicitly-null member as PRESENT (isset() does not), so
+		 * "type": null is rejected too; an omitted member stays tolerated
+		 * (the role, content, and stop_reason members carry the validation
+		 * weight). The strict !== also covers non-string values.
 		 */
-		if ( isset( $data['type'] ) && ( ! \is_string( $data['type'] ) || 'message' !== $data['type'] ) ) {
+		if ( \array_key_exists( 'type', $data ) && 'message' !== $data['type'] ) {
 			throw ResponseException::fromInvalidData( 'z.ai', 'type', 'The response envelope did not identify itself as a message.' );
 		}
 

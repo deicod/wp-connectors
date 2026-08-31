@@ -384,18 +384,25 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
-    public function testAContradictoryEnvelopeTypeIsRejected()
+    /**
+     * @dataProvider provideContradictoryEnvelopeTypes
+     */
+    public function testAContradictoryEnvelopeTypeIsRejected($typeValue, $present)
     {
-        // Verifier residual on Codex R5: a type:"error" envelope carrying
-        // an otherwise-valid body must not parse as a generation.
-        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+        // R6 #1 adds the explicit-null case: isset() treated "type": null
+        // as an omitted member; array_key_exists() sees it as present.
+        $payload = array(
             'id' => 'msg_env',
-            'type' => 'error',
             'role' => 'assistant',
             'content' => array(array('type' => 'text', 'text' => 'Ambiguous content.')),
             'stop_reason' => 'end_turn',
             'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
-        )));
+        );
+        if ($present) {
+            $payload['type'] = $typeValue;
+        }
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode($payload));
 
         try {
             $result = $this->model()->generateTextResult($this->prompt());
@@ -404,6 +411,33 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             $this->assertStringContainsString('message', $e->getMessage());
             $this->assertStringNotContainsString('Ambiguous content.', $e->getMessage());
         }
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideContradictoryEnvelopeTypes()
+    {
+        return array(
+            'type error' => array('error', true),
+            'type null (explicit)' => array(null, true),
+            'type non-string' => array(7, true),
+            'type banana' => array('banana', true),
+        );
+    }
+
+    public function testAnOmittedEnvelopeTypeStaysTolerated()
+    {
+        // The documented tolerance applies ONLY to an omitted member.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_noenv',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'Fine.')),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        $this->assertSame('Fine.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
     /**

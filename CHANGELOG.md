@@ -8,6 +8,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ### Fixed (zai / M2 — Codex PR review, round 6)
 
+- An explicitly-null response envelope `type` (`"type": null`) is now
+  rejected like any contradictory type value: isset() treated null as an
+  omitted member; the presence check now uses array_key_exists(), so
+  only a genuinely omitted member keeps the documented tolerance.
+
 - The Debug logging checkbox renders again on Settings → z.ai: the
   field was still attached to the pre-refactor option-group section id,
   which no registered section uses — `do_settings_sections()` renders
