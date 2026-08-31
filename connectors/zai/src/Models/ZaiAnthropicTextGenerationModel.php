@@ -273,18 +273,34 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *
 	 * @param array $function_declarations Declared functions (list of FunctionDeclaration).
 	 * @return array The prepared tools parameter (list of tool objects).
+	 * @throws InvalidArgumentException When a parameter schema is a non-empty list.
 	 */
 	protected function prepare_tools_param( array $function_declarations ): array {
 		$tools = array();
 
 		foreach ( $function_declarations as $declaration ) {
-			// The Messages protocol requires input_schema on every tool — an
-			// OBJECT — even for functions without parameters. Both the
-			// absent schema (null) and an EMPTY array schema () normalize
-			// to the empty-object schema; a raw empty array would
-			// JSON-encode as [] and fail upstream validation (Codex R1
-			// finding 5).
+			/*
+			 * The Messages protocol requires input_schema on every tool —
+			 * an OBJECT — even for functions without parameters. Both the
+			 * absent schema (null) and an EMPTY array schema () normalize
+			 * to the empty-object schema; a raw empty array would
+			 * JSON-encode as [] and fail upstream validation (Codex R1
+			 * finding 5). A NON-EMPTY sequential schema (Codex R7 #3)
+			 * serializes as a JSON LIST — same failure, so it is rejected
+			 * before transport with the same surface as the
+			 * invocation-arguments validation (R4 #4), never silently
+			 * re-shaped: the list test is exact (json_encode emits an array
+			 * only for 0-based sequential keys).
+			 */
 			$input_schema = $declaration->getParameters();
+
+			if ( \is_array( $input_schema ) && array() !== $input_schema
+				&& \array_keys( $input_schema ) === \range( 0, \count( $input_schema ) - 1 ) ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires tool parameter schemas to be a JSON object (a non-empty list was given).'
+				);
+			}
+
 			if ( null === $input_schema || array() === $input_schema ) {
 				$input_schema = array(
 					'type'       => 'object',

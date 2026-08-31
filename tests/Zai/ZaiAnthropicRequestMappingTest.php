@@ -440,6 +440,56 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame(array('first' => 'a', 1 => 'b'), $body['messages'][1]['content'][0]['input']);
     }
 
+    public function testSequentialArrayParameterSchemasAreRejectedBeforeTransport()
+    {
+        // Codex R7 #3: a non-empty SEQUENTIAL parameter array serializes
+        // input_schema as a JSON LIST — the tools contract requires an
+        // object, so reject before transport instead of a 400 upstream.
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('pick', 'Picks', array('type', 'string')))->toArray(),
+            ),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('A sequential-array parameter schema must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('JSON object', $e->getMessage());
+            $this->assertStringContainsString('non-empty list', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testObjectShapedParameterSchemasStillPass()
+    {
+        // String-keyed and mixed-key schemas encode as objects and pass;
+        // null and empty keep their {} normalization (R1 #5).
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('get_weather', 'Weather', array(
+                    'type' => 'object',
+                    'properties' => array('city' => array('type' => 'string')),
+                )))->toArray(),
+                (new FunctionDeclaration('pick', 'Picks', array('first' => 'a', 1 => 'b')))->toArray(),
+            ),
+        ));
+
+        $this->model($config)->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+
+        $raw = (string) $this->sdkHttpAttempts()[0]['body'];
+        $this->assertStringContainsString('"input_schema":{"type":"object","properties":{"city":{"type":"string"}}}', $raw);
+        $this->assertStringContainsString('"input_schema":{"first":"a","1":"b"}', $raw, 'A mixed-key schema encodes as an object member.');
+        $this->assertStringNotContainsString('"input_schema":[', $raw);
+    }
+
     public function testMultimodalTextRequestSnapshot()
     {
         // Multiple text parts in one message (text-only multimodality): both

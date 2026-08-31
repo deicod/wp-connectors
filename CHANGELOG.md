@@ -13,6 +13,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   normalized into a no-argument FunctionCall: the Messages protocol
   requires the member, and an empty call is represented by `{}`
   alone (supersedes the R2-era tolerance; `{}` stays legitimate).
+- A FunctionDeclaration whose parameter schema is a non-empty
+  SEQUENTIAL array is rejected before transport: it serializes
+  `input_schema` as a JSON LIST and the tools contract requires an
+  object (upstream 400). String-keyed and mixed-key schemas still
+  encode as objects; null/empty keep their `{}` normalization.
 
 ### Fixed (zai / M2 — Codex PR review, round 6)
 
