@@ -1,0 +1,752 @@
+<?php
+/**
+ * Task 2.6 — Messages response, streaming, and error mapping tests.
+ *
+ * Covers non-streaming parsing (content blocks, tool_use, thinking, stop
+ * reasons, usage), the Anthropic SSE event sequence incl. interleaved
+ * text/tool deltas, malformed frames, a final event without trailing blank
+ * line, error events, every required error-status mapping with redaction of
+ * upstream bodies (which may contain secrets), the typed WP_Error mapper,
+ * and the real core-builder dispatch path.
+ *
+ * @package wp-connectors
+ */
+
+declare( strict_types=1 );
+
+use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Common\Exception\TokenLimitReachedException;
+use WordPress\AiClient\Messages\DTO\Message;
+use WordPress\AiClient\Messages\DTO\MessagePart;
+use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use WordPress\AiClient\Providers\Http\Exception\ClientException;
+use WordPress\AiClient\Providers\Http\Exception\NetworkException;
+use WordPress\AiClient\Providers\Http\Exception\ServerException;
+use WordPress\AiClient\Results\Enums\FinishReasonEnum;
+use Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel;
+use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
+use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
+use Deicod\WpConnectors\Zai\Support\ErrorMapper;
+
+final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
+{
+    /**
+     * Wired model instance.
+     *
+     * @return ZaiAnthropicTextGenerationModel
+     */
+    private function model()
+    {
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $model = ZaiAnthropicProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+
+        return $model;
+    }
+
+    /**
+     * @return list<Message>
+     */
+    private function prompt()
+    {
+        return array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))));
+    }
+
+    /*
+     * Non-streaming success.
+     */
+
+    public function testParsesContentStopReasonAndUsage()
+    {
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_01ABC',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'Hello there.')),
+            'model' => 'glm-5.3',
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 7, 'output_tokens' => 3),
+        )));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hello there.', $result->toText());
+        $this->assertSame('msg_01ABC', $result->getId());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+        $this->assertSame(7, $result->getTokenUsage()->getPromptTokens());
+        $this->assertSame(3, $result->getTokenUsage()->getCompletionTokens());
+        $this->assertSame(10, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    public function testCacheTokenVariantsCountAsPromptTokens()
+    {
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_cache',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'ok')),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 5, 'cache_creation_input_tokens' => 2, 'cache_read_input_tokens' => 10, 'output_tokens' => 4),
+        )));
+
+        $usage = $this->model()->generateTextResult($this->prompt())->getTokenUsage();
+
+        $this->assertSame(17, $usage->getPromptTokens());
+        $this->assertSame(4, $usage->getCompletionTokens());
+        $this->assertSame(21, $usage->getTotalTokens());
+    }
+
+    public function testParsesThinkingAsThoughtPart()
+    {
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_think',
+            'role' => 'assistant',
+            'content' => array(
+                array('type' => 'thinking', 'thinking' => 'pondering...'),
+                array('type' => 'text', 'text' => 'Answer.'),
+            ),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 4, 'output_tokens' => 2),
+        )));
+
+        $parts = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts();
+
+        $this->assertCount(2, $parts);
+        $this->assertTrue($parts[0]->getChannel()->isThought());
+        $this->assertSame('pondering...', $parts[0]->getText());
+        $this->assertSame('Answer.', $parts[1]->getText());
+    }
+
+    public function testParsesToolUseAndFinishReason()
+    {
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_tool',
+            'role' => 'assistant',
+            'content' => array(array(
+                'type' => 'tool_use',
+                'id' => 'toolu_01XYZ',
+                'name' => 'get_weather',
+                'input' => array('city' => 'Oslo'),
+            )),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 9, 'output_tokens' => 6),
+        )));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $call = $result->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame('toolu_01XYZ', $call->getId());
+        $this->assertSame('get_weather', $call->getName());
+        $this->assertSame(array('city' => 'Oslo'), $call->getArgs());
+        $this->assertSame(FinishReasonEnum::toolCalls(), $result->getCandidates()[0]->getFinishReason());
+    }
+
+    public function testEmptyToolUseInputNormalizesToNullArgs()
+    {
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_tool_empty',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'tool_use', 'id' => 'toolu_02', 'name' => 'ping', 'input' => new stdClass())),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertNull($call->getArgs(), 'An empty input object means "no arguments".');
+    }
+
+    /**
+     * @dataProvider provideStopReasons
+     */
+    public function testStopReasonsMapToFinishReasons($stopReason, $expected)
+    {
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('x', null, $stopReason));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame($expected, $result->getCandidates()[0]->getFinishReason());
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideStopReasons()
+    {
+        return array(
+            'end_turn' => array('end_turn', FinishReasonEnum::stop()),
+            'stop_sequence' => array('stop_sequence', FinishReasonEnum::stop()),
+            'pause_turn' => array('pause_turn', FinishReasonEnum::stop()),
+            'tool_use' => array('tool_use', FinishReasonEnum::toolCalls()),
+            'refusal' => array('refusal', FinishReasonEnum::contentFilter()),
+        );
+    }
+
+    public function testMaxTokensStopReasonThrowsTheTypedTokenLimit()
+    {
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('trunc', null, 'max_tokens'));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A max_tokens stop reason must throw.');
+        } catch (TokenLimitReachedException $e) {
+            $this->assertStringContainsString('token limit', $e->getMessage());
+        }
+    }
+
+    /*
+     * Malformed payloads: fixed, redacted messages.
+     */
+
+    /**
+     * @dataProvider provideMalformedBodies
+     */
+    public function testMalformedPayloadsFailWithFixedSafeMessages($body)
+    {
+        $upstream = '<img src=x onerror=alert(1)>Bearer ' . FakeSecrets::apiKey();
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A malformed payload must throw.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertRedacted($e->getMessage(), $upstream);
+            $this->assertStringNotContainsString('<img', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideMalformedBodies()
+    {
+        return array(
+            'not json' => array('not json at all'),
+            'missing content' => array((string) wp_json_encode(array('id' => 'm', 'stop_reason' => 'end_turn'))),
+            'content not a list' => array((string) wp_json_encode(array('content' => array('text' => 'x'), 'stop_reason' => 'end_turn'))),
+            'unknown block type' => array((string) wp_json_encode(array('content' => array(array('type' => 'hologram', 'x' => 1)), 'stop_reason' => 'end_turn'))),
+            'text block without text' => array((string) wp_json_encode(array('content' => array(array('type' => 'text')), 'stop_reason' => 'end_turn'))),
+            'tool_use without id' => array((string) wp_json_encode(array('content' => array(array('type' => 'tool_use', 'name' => 'x', 'input' => array())), 'stop_reason' => 'end_turn'))),
+            'missing stop_reason' => array((string) wp_json_encode(array('content' => array(array('type' => 'text', 'text' => 'x'))))),
+            'unknown stop_reason' => array((string) wp_json_encode(array('content' => array(array('type' => 'text', 'text' => 'x')), 'stop_reason' => 'quantum_decoherence'))),
+        );
+    }
+
+    /*
+     * SSE aggregation: the Anthropic event sequence.
+     */
+
+    public function testStreamsSimpleTextDeltas()
+    {
+        $body = implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_s","role":"assistant","content":[],"usage":{"input_tokens":25,"output_tokens":1}}}',
+            '',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+            '',
+            'event: ping',
+            'data: {"type":"ping"}',
+            '',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}',
+            '',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo world"}}',
+            '',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            '',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":15}}',
+            '',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hello world', $result->toText());
+        $this->assertSame('msg_s', $result->getId());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+        $this->assertSame(25, $result->getTokenUsage()->getPromptTokens());
+        $this->assertSame(15, $result->getTokenUsage()->getCompletionTokens());
+    }
+
+    public function testStreamsInterleavedTextThinkingAndToolDeltas()
+    {
+        $body = implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_mix","role":"assistant","content":[],"usage":{"input_tokens":10,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Checking "}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"weather."}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":1}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_9","name":"get_weather","input":{}}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":"}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"\\"Oslo\\"}"}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":2}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":42}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $message = $result->toMessage();
+
+        $parts = $message->getParts();
+        $this->assertCount(3, $parts);
+        $this->assertTrue($parts[0]->getChannel()->isThought());
+        $this->assertSame('hmm', $parts[0]->getText());
+        $this->assertSame('Checking weather.', $parts[1]->getText());
+
+        $call = $parts[2]->getFunctionCall();
+        $this->assertSame('toolu_9', $call->getId());
+        $this->assertSame('get_weather', $call->getName());
+        $this->assertSame(array('city' => 'Oslo'), $call->getArgs(), 'input_json_delta fragments concatenate into the tool input.');
+        $this->assertSame(FinishReasonEnum::toolCalls(), $result->getCandidates()[0]->getFinishReason());
+        $this->assertSame(42, $result->getTokenUsage()->getCompletionTokens());
+    }
+
+    public function testStreamParserToleratesSplitFramesCrlfCommentsAndMalformedEvents()
+    {
+        $body = ''
+            . 'event: message_start' . "\r\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_x","content":[],"usage":{"input_tokens":3,"output_tokens":1}}}' . "\r\n\r\n"
+            . ': keep-alive comment' . "\r\n\r\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"A"}}' . "\n\n"
+            . 'data: this is not json' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"B"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        // Feed in awkwardly-sized pieces to prove frames may split anywhere.
+        foreach (str_split($body, 13) as $piece) {
+            $aggregator->feed($piece);
+        }
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->is_done());
+        // Seven well-formed events (start, block start, two deltas, block
+        // stop, message_delta, message_stop); the one bad-JSON frame counts
+        // as malformed instead.
+        $this->assertSame(7, $aggregator->event_count());
+        $this->assertSame(1, $aggregator->malformed_count());
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame('AB', $aggregated['content'][0]['text']);
+        $this->assertSame('end_turn', $aggregated['stop_reason']);
+    }
+
+    public function testStreamWithoutTrailingBlankLineKeepsTheFinalEvent()
+    {
+        // A response that ends right after the last event field (no blank
+        // line) must not lose that frame.
+        $body = ''
+            . 'event: message_start' . "\n\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_f","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Tail frame."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n\n"
+            . 'event: message_delta' . "\n\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}';
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $this->assertSame('Tail frame.', $result->toText());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+    }
+
+    public function testEventStreamDetectedByBodyPrefixWithoutContentType()
+    {
+        $body = ''
+            . 'event: message_start' . "\n\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_p","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Body-detected."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n\n"
+            . 'event: message_delta' . "\n\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n"
+            . 'event: message_stop' . "\n\n";
+
+        $this->queueSdkResponse(200, array(), $body);
+
+        $this->assertSame('Body-detected.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    public function testStreamWithoutMessageStopStillAggregates()
+    {
+        // message_stop is conventional for termination, not required to
+        // parse what already arrived.
+        $body = ''
+            . 'event: message_start' . "\n\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_n","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: message_delta' . "\n\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    public function testAnErrorEventFailsWithAFixedSafeMessage()
+    {
+        $secret = FakeSecrets::apiKey();
+        $body = ''
+            . 'event: message_start' . "\n\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_e","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: error' . "\n\n"
+            . 'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded,Bearer ' . $secret . '"}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An error event must throw.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('error event', $e->getMessage());
+            $this->assertRedacted($e->getMessage(), $secret);
+            $this->assertStringNotContainsString('Overloaded', $e->getMessage(), 'Upstream error text must not be echoed.');
+        }
+    }
+
+    public function testAnAllMalformedStreamFailsSafely()
+    {
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), "data: broken\n\ndata: also broken\n\n");
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An all-malformed stream must throw.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('z.ai', $e->getMessage());
+            $this->assertStringNotContainsString('broken', $e->getMessage(), 'Raw event payloads must not be echoed.');
+        }
+    }
+
+    public function testUnknownStreamEventsAreIgnored()
+    {
+        $body = ''
+            . 'event: message_start' . "\n\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_u","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: some_future_event' . "\n\n"
+            . 'data: {"type":"some_future_event","payload":"whatever"}' . "\n\n"
+            . 'event: content_block_start' . "\n\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
+            . 'event: message_delta' . "\n\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('OK.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    /*
+     * Error mapping and redaction (shared catalog).
+     */
+
+    /**
+     * @dataProvider provideErrorStatuses
+     */
+    public function testErrorStatusesMapToSafeTypedExceptions($status, $expectedClass)
+    {
+        // Upstream error bodies may echo request material, including the
+        // credential itself: the exception message must never include it.
+        $secret = FakeSecrets::apiKey();
+        $body = HttpResponseFactory::anthropicErrorBody('invalid x-api-key: Bearer ' . $secret, 'authentication_error');
+
+        $this->queueSdkResponse($status, array('Content-Type' => 'application/json'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail("Status {$status} must throw.");
+        } catch (\Exception $e) {
+            $this->assertInstanceOf($expectedClass, $e);
+            $this->assertSame($status, $e->getCode());
+            $this->assertRedacted($e->getMessage(), $secret);
+            $this->assertStringNotContainsString('invalid x-api-key', $e->getMessage(), 'Upstream error text must not be copied.');
+        }
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideErrorStatuses()
+    {
+        return array(
+            '401' => array(401, ClientException::class),
+            '403' => array(403, ClientException::class),
+            '429' => array(429, ClientException::class),
+            '418' => array(418, ClientException::class),
+            '500' => array(500, ServerException::class),
+            '503' => array(503, ServerException::class),
+            '307' => array(307, WordPress\AiClient\Providers\Http\Exception\RedirectException::class),
+        );
+    }
+
+    public function testTheSharedErrorCatalogGuidesBothSurfaces()
+    {
+        // z.ai 429 is also code 1113 (plan/balance mismatch, record 0006):
+        // the one redacted catalog message must guide both surfaces.
+        $message = ErrorMapper::safe_http_message(429);
+
+        $this->assertStringContainsString('rate limiting', $message);
+        $this->assertStringContainsString('plan/balance mismatch', $message);
+    }
+
+    public function testNoRetriesAreAttemptedOn429()
+    {
+        $this->queueSdkResponse(429, array(), HttpResponseFactory::anthropicErrorBody('slow down'));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+        } catch (ClientException $e) {
+            // Expected.
+        }
+
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'v1 must not retry rate-limited requests.');
+    }
+
+    /*
+     * Typed WP_Error boundary.
+     */
+
+    public function testGenerateTextReturnsTheResultOnSuccess()
+    {
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('Hi.'));
+
+        $result = $this->model()->generate_text($this->prompt());
+
+        $this->assertNotWPError($result);
+        $this->assertSame('Hi.', $result->toText());
+    }
+
+    /**
+     * @dataProvider provideBoundaryErrorCodes
+     */
+    public function testGenerateTextYieldsTypedWpErrorsAtTheBoundary($status, $expectedCode)
+    {
+        $secret = FakeSecrets::apiKey();
+        $this->queueSdkResponse($status, array(), HttpResponseFactory::anthropicErrorBody('upstream echoes Bearer ' . $secret));
+
+        $error = $this->model()->generate_text($this->prompt());
+
+        $this->assertWPError($error, $expectedCode);
+        $this->assertSame($status, $error->get_error_data()['status']);
+        $this->assertRedacted($error->get_error_message(), $secret);
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideBoundaryErrorCodes()
+    {
+        return array(
+            '401' => array(401, ErrorMapper::CODE_UNAUTHORIZED),
+            '403' => array(403, ErrorMapper::CODE_FORBIDDEN),
+            '429' => array(429, ErrorMapper::CODE_RATE_LIMITED),
+            '418' => array(418, ErrorMapper::CODE_CLIENT_ERROR),
+            '500' => array(500, ErrorMapper::CODE_UPSTREAM_ERROR),
+            '503' => array(503, ErrorMapper::CODE_UPSTREAM_ERROR),
+            '307' => array(307, ErrorMapper::CODE_REDIRECT_ERROR),
+        );
+    }
+
+    public function testTokenLimitSurfacesAsTheTypedTokenLimitError()
+    {
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('trunc', null, 'max_tokens'));
+
+        $error = $this->model()->generate_text($this->prompt());
+
+        $this->assertWPError($error, ErrorMapper::CODE_TOKEN_LIMIT);
+        $this->assertStringContainsString('token limit', $error->get_error_message());
+    }
+
+    public function testGenerateTextMapsTransportFailuresToTypedWpErrors()
+    {
+        $this->allowUnmockedHttp = true;
+
+        $error = $this->model()->generate_text($this->prompt());
+
+        $this->assertWPError($error, ErrorMapper::CODE_TRANSPORT_ERROR);
+        $this->assertRedacted($error->get_error_message(), FakeSecrets::apiKey());
+    }
+
+    public function testTransportFailureSurfacesAsNetworkException()
+    {
+        $this->allowUnmockedHttp = true;
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A transport failure must throw.');
+        } catch (NetworkException $e) {
+            $this->assertStringContainsString('blocked', $e->getMessage());
+        }
+    }
+
+    public function testUnboundDirectModelSurfacesTheBindingHintNotAGenericError()
+    {
+        $this->primeZaiAnthropicDiscoveryTransient();
+
+        // Bare factory call: no transporter and no request auth — only
+        // ProviderRegistry::getProviderModel() binds them.
+        $model = ZaiAnthropicProvider::model('glm-5.3');
+
+        $error = $model->generate_text($this->prompt());
+
+        $this->assertWPError($error, ErrorMapper::CODE_ERROR);
+        $this->assertStringContainsString('instance not set', $error->get_error_message());
+        $this->assertStringContainsString('AiClient', $error->get_error_message());
+    }
+
+    /*
+     * The REAL dispatch path: the genuine WP core prompt builder
+     * (WP_AI_Client_Prompt_Builder) → the SDK PromptBuilder → the FINAL
+     * ZaiAnthropicTextGenerationModel::generateTextResult() → core's fixed
+     * exception_to_wp_error() conversion. These tests prove what callers of
+     * wp_ai_client_prompt(...)->using_provider('zai_anthropic')->generate_text()
+     * actually receive: CORE codes, zai-safe messages (core passes the
+     * exception message through verbatim — no filter exists), and correct
+     * HTTP statuses.
+     *
+     * Requires the WordPress core source; set WP_CONNECTORS_TEST_WP_ROOT
+     * (defaults to ~/wp-ai-research/wordpress when present). Skipped
+     * otherwise — never fails a checkout without core.
+     */
+
+    /**
+     * Loads the real core prompt builder class file.
+     *
+     * @return class-string<WP_AI_Client_Prompt_Builder>
+     */
+    private function corePromptBuilderClass(): string
+    {
+        $home = (string) getenv('HOME');
+        $wpRoot = (string) (getenv('WP_CONNECTORS_TEST_WP_ROOT') ?: ($home !== '' ? $home . '/wp-ai-research/wordpress' : ''));
+        $file = $wpRoot . '/wp-includes/ai-client/class-wp-ai-client-prompt-builder.php';
+
+        if ('' === $wpRoot || ! is_file($file)) {
+            $this->markTestSkipped('WP core source not found (set WP_CONNECTORS_TEST_WP_ROOT to the WordPress checkout).');
+        }
+
+        require_once $file;
+
+        return 'WP_AI_Client_Prompt_Builder';
+    }
+
+    /**
+     * Boots the provider into the registry and settles the availability
+     * verdict (the SDK's model resolution probes isConfigured() first, which
+     * would otherwise consume the queued generation response).
+     *
+     * @return WP_AI_Client_Prompt_Builder
+     */
+    private function corePromptBuilder()
+    {
+        $class = $this->corePromptBuilderClass();
+
+        $this->primeZaiAnthropicDiscoveryTransient();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, FakeSecrets::apiKey());
+        Deicod\WpConnectors\Zai\Plugin::register(AiClient::defaultRegistry());
+        AiClient::defaultRegistry()->setProviderRequestAuthentication(
+            'zai_anthropic',
+            new ApiKeyRequestAuthentication(FakeSecrets::apiKey())
+        );
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
+        $this->assertTrue(ZaiAnthropicProvider::availability()->isConfigured(), 'Availability must settle before generation.');
+
+        return new $class(AiClient::defaultRegistry(), 'Hello');
+    }
+
+    public function testCoreBuilderPathReturnsGeneratedTextOnSuccess()
+    {
+        $builder = $this->corePromptBuilder();
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('Via core.'));
+
+        $text = $builder->using_provider('zai_anthropic')->generate_text();
+
+        $this->assertSame('Via core.', $text);
+    }
+
+    /**
+     * @dataProvider provideCoreBuilderErrorCases
+     */
+    public function testCoreBuilderPathYieldsCoreCodesWithZaiSafeMessages($status, $expectedCoreCode)
+    {
+        $builder = $this->corePromptBuilder();
+
+        $secret = FakeSecrets::apiKey();
+        $this->queueSdkResponse($status, array(), HttpResponseFactory::anthropicErrorBody('upstream echoes Bearer ' . $secret));
+
+        $result = $builder->using_provider('zai_anthropic')->generate_text();
+
+        $this->assertWPError($result, $expectedCoreCode);
+        $data = $result->get_error_data();
+        $this->assertSame($status, $data['status'], 'Core must derive the REST status from the exception code.');
+        $this->assertArrayHasKey('exception_class', $data, 'Core records the exception class in the error data.');
+        $this->assertSame(
+            ErrorMapper::safe_http_message($status),
+            $result->get_error_message(),
+            'The verbatim-passed message must be exactly the shared safe-catalog text.'
+        );
+        $this->assertRedacted($result->get_error_message(), $secret);
+        $this->assertStringNotContainsString('upstream echoes', $result->get_error_message(), 'Raw upstream body must never reach the message.');
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideCoreBuilderErrorCases()
+    {
+        return array(
+            '401' => array(401, 'prompt_client_error'),
+            '429' => array(429, 'prompt_client_error'),
+            '503' => array(503, 'prompt_upstream_server_error'),
+        );
+    }
+}

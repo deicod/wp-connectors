@@ -6,6 +6,36 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Added (zai / M2 — `zai_anthropic` endpoint resolution, auth, metadata, Messages protocol; Tasks 2.2–2.6)
+
+- Anthropic-surface endpoint resolver with the four SPEC §3.1 `/anthropic`
+  bases; `/v1/messages` and `/v1/models` are appended exactly once (a base
+  already carrying a suffix is normalized first), and the per-surface
+  canonical `baseUrl()` stays fixed.
+- Requests authenticate with `Authorization: Bearer <key>` plus
+  `anthropic-version: 2023-06-01`; `x-api-key` is never sent (unverified on
+  z.ai). Exactly one of each header leaves the authentication method, even
+  over a stale preset value.
+- Custom (non-OpenAI-compat) model directory: opportunistic, transient-
+  cached `/v1/models` discovery keyed provider+plan+region (12 h) with the
+  shared plan-partitioned GLM fallback on every failure shape; the
+  fallback is never cached, so a later valid key can still discover.
+- Full Messages request mapping: system instruction, alternating
+  user/assistant content blocks, tools + tool results (empty arguments
+  encode as `{}`), JSON output guidance with `outputSchema` embedded in
+  the system prompt (native `output_format` is unverified on z.ai), and
+  the protocol-required `max_tokens` with a 4096 default. Role-order
+  violations and unsupported options fail before any transport work.
+- Messages response and stream mapping: content blocks (text, thinking,
+  tool_use), stop reasons, usage (cache token variants included), and the
+  Anthropic SSE event sequence (message_start, content_block_start/delta/
+  stop, message_delta, message_stop, ping, error) incl. interleaved
+  text/thinking/tool deltas, split frames, malformed events, and a final
+  event without a trailing blank line. Errors map through the one shared
+  redacted catalog; a max_tokens stop surfaces as the typed token-limit
+  error. The protocol-neutral SSE frame splitting moved into a shared
+  `SseFrameBuffer` used by both aggregators (extend, not fork).
+
 ### Added (zai / M2 — second provider `zai_anthropic`, Task 2.1)
 
 - The `zai` plugin now registers a second provider, `zai_anthropic`

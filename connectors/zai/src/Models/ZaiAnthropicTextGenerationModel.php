@@ -53,6 +53,7 @@ use WordPress\AiClient\Results\Enums\FinishReasonEnum;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
 use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
+use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 
@@ -468,10 +469,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	/**
 	 * Parses a Messages API response into an SDK result object.
 	 *
-	 * Every failure message here is a FIXED string: upstream field values
-	 * (stop reasons, content block types) are never interpolated, because
-	 * ResponseException messages travel verbatim into core's WP_Error
-	 * conversion.
+	 * A `text/event-stream` response (or a body starting with `event:` /
+	 * `data:`) is aggregated first: Anthropic SSE events — message_start,
+	 * content_block_start/delta/stop, message_delta, message_stop, ping —
+	 * are merged into ONE consolidated Messages payload and run through the
+	 * standard non-streaming parser. Every failure message is a FIXED
+	 * string: upstream field values (stop reasons, content block types,
+	 * error events) are never interpolated, because ResponseException
+	 * messages travel verbatim into core's WP_Error conversion.
 	 *
 	 * @since 0.2.0
 	 *
@@ -483,6 +488,57 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *                           TokenLimitReachedException instead).
 	 */
 	protected function parseResponseToGenerativeAiResult( Response $response ): GenerativeAiResult {
+		$body = (string) $response->getBody();
+
+		$is_event_stream = false !== stripos( (string) $response->getHeaderAsString( 'Content-Type' ), 'text/event-stream' )
+			|| 0 === strpos( ltrim( $body ), 'event:' )
+			|| 0 === strpos( ltrim( $body ), 'data:' );
+
+		if ( ! $is_event_stream ) {
+			return $this->parse_message_body( $response );
+		}
+
+		$aggregator = new AnthropicSseAggregator();
+		$aggregator->feed( $body );
+		$aggregator->finish();
+
+		if ( $aggregator->has_error() ) {
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'stream',
+				'The message stream contained an error event.'
+			);
+		}
+
+		$aggregated = $aggregator->aggregated();
+
+		if ( null === $aggregated ) {
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'stream',
+				'No usable message event was received.'
+			);
+		}
+
+		$consolidated = new Response(
+			200,
+			array( 'Content-Type' => array( 'application/json' ) ),
+			(string) wp_json_encode( $aggregated )
+		);
+
+		return $this->parse_message_body( $consolidated );
+	}
+
+	/**
+	 * Runs the non-streaming Messages parser over a JSON response.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response $response The Messages response.
+	 * @return GenerativeAiResult The parsed result.
+	 * @throws ResponseException When the payload is malformed.
+	 */
+	private function parse_message_body( Response $response ): GenerativeAiResult {
 		$data = $response->getData();
 
 		if ( ! \is_array( $data ) || ! isset( $data['content'] ) || ! \is_array( $data['content'] ) ) {

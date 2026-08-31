@@ -296,7 +296,7 @@ documented exception.
   Check this task only after focused fixtures cover every advertised option and unsupported input
   fails before HTTP.
 
-- [ ] **Task 2.6 — Implement Messages response/stream mapping.** Normalize message content,
+- [x] **Task 2.6 — Implement Messages response/stream mapping.** Normalize message content,
   tool-use blocks, stop reasons, usage, and Anthropic SSE event sequences into SDK results. Reuse
   only protocol-neutral error/redaction helpers from M1. Check this task only after success,
   interleaved content/tool deltas, malformed stream, 401/403/429/5xx, and transport tests pass.

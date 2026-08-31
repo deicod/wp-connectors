@@ -1,0 +1,110 @@
+<?php
+/**
+ * Protocol-neutral server-sent-events frame splitter.
+ *
+ * Handles the SSE transport framing both protocol adapters share: chunks are
+ * fed in as received, line endings are normalized (CR, LF, and CRLF may mix
+ * freely), and complete frames — separated by a blank line — are queued for
+ * consumption via pull(). The EVENT PAYLOAD semantics (event names, data
+ * shapes, completion sentinels) stay with each protocol's aggregator.
+ *
+ * A trailing CR is held back between feed() calls because it may still
+ * extend to CRLF when the next chunk arrives; finish() flushes whatever
+ * remains — a response may end directly after the last field line with no
+ * blank line following it, and that remainder is a real final frame, not a
+ * split chunk.
+ *
+ * @since 0.2.0
+ *
+ * @package wp-connectors
+ */
+
+declare( strict_types=1 );
+
+namespace Deicod\WpConnectors\Zai\Support;
+
+/**
+ * Frame splitter for server-sent-events streams.
+ *
+ * @since 0.2.0
+ */
+final class SseFrameBuffer {
+
+	/**
+	 * Buffered bytes not yet forming a complete frame: line endings
+	 * normalized to LF, except possibly one trailing CR that may still
+	 * extend to CRLF when more data arrives.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	private $buffer = '';
+
+	/**
+	 * Completed frames, in arrival order.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	private $frames = array();
+
+	/**
+	 * Feeds a raw chunk of the event stream.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $chunk Raw bytes as received from the transport.
+	 * @return void
+	 */
+	public function feed( string $chunk ): void {
+		$this->buffer .= $chunk;
+
+		$held_back_cr = '';
+		if ( "\r" === substr( $this->buffer, -1 ) ) {
+			$held_back_cr = "\r";
+			$this->buffer = substr( $this->buffer, 0, -1 );
+		}
+
+		$this->buffer = str_replace( array( "\r\n", "\r" ), "\n", $this->buffer ) . $held_back_cr;
+
+		$pos = strpos( $this->buffer, "\n\n" );
+		while ( false !== $pos ) {
+			$frame        = substr( $this->buffer, 0, $pos );
+			$this->buffer = substr( $this->buffer, $pos + 2 );
+
+			$this->frames[] = $frame;
+
+			$pos = strpos( $this->buffer, "\n\n" );
+		}
+	}
+
+	/**
+	 * Marks the stream complete, flushing any final unterminated frame.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 */
+	public function finish(): void {
+		$remaining    = str_replace( array( "\r\n", "\r" ), "\n", $this->buffer );
+		$this->buffer = '';
+
+		if ( '' !== $remaining ) {
+			$this->frames[] = $remaining;
+		}
+	}
+
+	/**
+	 * Returns the next complete frame, in arrival order.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return string|null Frame contents (without the separating blank line),
+	 *                     or null when none remain.
+	 */
+	public function pull(): ?string {
+		return array_shift( $this->frames );
+	}
+}

@@ -8,9 +8,10 @@
  *
  * Handles the OpenAI/z.ai streaming conventions: `data:` lines (multi-line
  * data joined), `[DONE]` sentinel, comment lines (`:`), ignorable `event:`/
- * `id:`/`retry:` fields, split frames (chunks may end mid-frame), CR/LF/CRLF
- * line terminators mixed freely, and malformed JSON events (counted and
- * skipped, never fatal).
+ * `id:`/`retry:` fields, malformed JSON events (counted and skipped, never
+ * fatal), and — via the shared SseFrameBuffer — split frames (chunks may end
+ * mid-frame), CR/LF/CRLF line terminators mixed freely, and a final
+ * unterminated frame.
  *
  * @since 0.1.0
  *
@@ -29,15 +30,15 @@ namespace Deicod\WpConnectors\Zai\Support;
 final class SseAggregator {
 
 	/**
-	 * Buffered bytes not yet forming a complete frame: line endings
-	 * normalized to LF, except possibly one trailing CR that may still
-	 * extend to CRLF when more data arrives.
+	 * The protocol-neutral frame splitter (shared with the Anthropic
+	 * aggregator): buffering, line-ending normalization, and frame
+	 * separation live there; event semantics here.
 	 *
-	 * @since 0.1.0
+	 * @since 0.2.0
 	 *
-	 * @var string
+	 * @var SseFrameBuffer
 	 */
-	private $buffer = '';
+	private $frame_buffer;
 
 	/**
 	 * Decoded data events (chat.completion.chunk shapes), in order.
@@ -67,13 +68,19 @@ final class SseAggregator {
 	private $malformed = 0;
 
 	/**
+	 * Constructor.
+	 *
+	 * @since 0.2.0
+	 */
+	public function __construct() {
+		$this->frame_buffer = new SseFrameBuffer();
+	}
+
+	/**
 	 * Feeds a raw chunk of the event stream.
 	 *
-	 * SSE allows CR, LF, or CRLF line terminators, mixed freely, so the
-	 * buffer is normalized to LF before frame splitting; a trailing CR is
-	 * held back because it may still extend to CRLF when the next chunk
-	 * arrives. Frames are separated by a blank line (two consecutive LF
-	 * after normalization).
+	 * Frames are separated by a blank line; the shared SseFrameBuffer
+	 * normalizes mixed CR/LF/CRLF terminators and split chunks.
 	 *
 	 * @since 0.1.0
 	 *
@@ -81,25 +88,8 @@ final class SseAggregator {
 	 * @return void
 	 */
 	public function feed( string $chunk ): void {
-		$this->buffer .= $chunk;
-
-		$held_back_cr = '';
-		if ( "\r" === substr( $this->buffer, -1 ) ) {
-			$held_back_cr = "\r";
-			$this->buffer = substr( $this->buffer, 0, -1 );
-		}
-
-		$this->buffer = str_replace( array( "\r\n", "\r" ), "\n", $this->buffer ) . $held_back_cr;
-
-		$pos = strpos( $this->buffer, "\n\n" );
-		while ( false !== $pos ) {
-			$frame        = substr( $this->buffer, 0, $pos );
-			$this->buffer = substr( $this->buffer, $pos + 2 );
-
-			$this->consume_frame( $frame );
-
-			$pos = strpos( $this->buffer, "\n\n" );
-		}
+		$this->frame_buffer->feed( $chunk );
+		$this->consume_ready_frames();
 	}
 
 	/**
@@ -108,22 +98,34 @@ final class SseAggregator {
 	 * A response may end directly after the last `data:` line with no blank
 	 * line following it; since feed() receives the complete body before
 	 * finish(), whatever remains buffered is a real final frame, not a split
-	 * chunk. A trailing CR is now definitively a line terminator (no further
-	 * data can extend it to CRLF), so the remainder is fully normalized
-	 * before dispatch. Discarding it would lose the final event — a
-	 * single-event stream would fail as zai_invalid_response, a multi-event
-	 * stream its last content.
+	 * chunk. Discarding it would lose the final event — a single-event
+	 * stream would fail as zai_invalid_response, a multi-event stream its
+	 * last content.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
 	public function finish(): void {
-		$remaining    = str_replace( array( "\r\n", "\r" ), "\n", $this->buffer );
-		$this->buffer = '';
+		$this->frame_buffer->finish();
+		$this->consume_ready_frames();
+	}
 
-		if ( '' !== $remaining ) {
-			$this->consume_frame( $remaining );
+	/**
+	 * Consumes every frame the buffer has completed so far.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 */
+	private function consume_ready_frames(): void {
+		while ( true ) {
+			$frame = $this->frame_buffer->pull();
+			if ( null === $frame ) {
+				break;
+			}
+
+			$this->consume_frame( $frame );
 		}
 	}
 
