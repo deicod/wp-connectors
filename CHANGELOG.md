@@ -12,6 +12,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   rejected like any contradictory type value: isset() treated null as an
   omitted member; the presence check now uses array_key_exists(), so
   only a genuinely omitted member keeps the documented tolerance.
+- A streamed `message_start` declaring a role other than `assistant`
+  (explicit `user`, `null`, or any other value) is now rejected: the
+  aggregator hardcodes `role:assistant` in the consolidated payload, so
+  such a stream previously bypassed the model's exact-role check — a
+  bypass the non-streaming path never had. An omitted streamed role
+  keeps the documented assistant default.
 
 - The Debug logging checkbox renders again on Settings → z.ai: the
   field was still attached to the pre-refactor option-group section id,

@@ -550,6 +550,23 @@ final class AnthropicSseAggregator {
 	private function dispatch_event( string $type, array $data, $raw ): void {
 		switch ( $type ) {
 			case 'message_start':
+				/*
+				 * Codex R6 #2: the streamed envelope role must be validated
+				 * HERE — aggregated() fabricates role:assistant, which would
+				 * otherwise make a user/other-role stream slip past the
+				 * model's exact-role check (a bypass the non-streaming path
+				 * does not have). Absent → assistant default (documented
+				 * tolerance for streams that omit it); 'assistant' → ok;
+				 * anything else (null included — array_key_exists treats it
+				 * as present) → the stream is corrupt.
+				 */
+				if ( \is_object( $raw ) && isset( $raw->message ) && \is_object( $raw->message )
+					&& property_exists( $raw->message, 'role' ) && 'assistant' !== $raw->message->role ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				$message = isset( $data['message'] ) && \is_array( $data['message'] ) ? $data['message'] : array();
 				if ( isset( $message['id'] ) && \is_string( $message['id'] ) ) {
 					$this->message_id = $message['id'];

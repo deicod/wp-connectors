@@ -426,6 +426,63 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testAStreamedUserRoleIsRejectedNotFabricatedAsAssistant()
+    {
+        // Codex R6 #2: the aggregator hardcodes role:assistant in the
+        // consolidated payload, so a streamed message_start with
+        // role:user slipped past the model's exact-role check — a bypass
+        // the non-streaming path does not have.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_su","role":"user","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Misattributed."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed user role must be rejected, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('Misattributed.', $e->getMessage());
+        }
+    }
+
+    public function testAStreamedNullRoleIsRejectedAndAnOmittedRoleStaysTolerated()
+    {
+        // Explicit null role (array_key_exists semantics) is corrupt; an
+        // omitted role keeps the documented assistant default.
+        foreach (array('"role":null,', '') as $roleFragment) {
+            $body = ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{' . $roleFragment . '"id":"msg_sr","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+                . 'event: content_block_delta' . "\n"
+                . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Chunk."}}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+            $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+            if ('' === $roleFragment) {
+                $this->assertSame('Chunk.', $this->model()->generateTextResult($this->prompt())->toText(), 'An omitted streamed role keeps the assistant default.');
+            } else {
+                try {
+                    $this->model()->generateTextResult($this->prompt());
+                    $this->fail('An explicit null streamed role must be rejected.');
+                } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                    $this->assertStringContainsString('malformed event frame', $e->getMessage());
+                }
+            }
+        }
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.
