@@ -234,10 +234,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * Builds the JSON-output guidance for the system prompt, or '' when
 	 * neither JSON output signal was given.
 	 *
-	 * outputSchema is advertised independently of outputMimeType, so EITHER
-	 * signal requests guidance: a schema without the MIME option must not
-	 * be silently discarded into an unconstrained request (Codex R1
-	 * finding 4).
+	 * The outputSchema option is advertised independently of
+	 * outputMimeType, so EITHER signal requests guidance: a schema without
+	 * the MIME option must not be silently discarded into an unconstrained
+	 * request (Codex R1 finding 4).
 	 *
 	 * @since 0.2.0
 	 *
