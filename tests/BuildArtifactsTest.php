@@ -18,12 +18,25 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 {
     private const FIXTURE = 'example-connector';
 
+    /**
+     * Whether dist/checksums.txt existed (and its content) before this
+     * class ran — a prepared dist/ directory's release manifest must
+     * survive every build test (Codex R1 finding 3), so tearDown restores
+     * it instead of deleting it when it pre-existed.
+     *
+     * @var string|null
+     */
+    private static $checksumsBefore = null;
+
     public static function setUpBeforeClass(): void
     {
         $dist = self::distDir();
         if (! is_dir($dist)) {
             mkdir($dist, 0755, true);
         }
+
+        $manifest = $dist . '/checksums.txt';
+        self::$checksumsBefore = is_file($manifest) ? (string) file_get_contents($manifest) : null;
     }
 
     protected function tearDown(): void
@@ -35,7 +48,16 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         foreach (glob(self::distDir() . '/connectors-' . self::FIXTURE . '-*') ?: array() as $file) {
             @unlink($file);
         }
-        @unlink(self::distDir() . '/checksums.txt');
+
+        // The shared manifest: restore a prepared one byte-for-byte (builds
+        // merge their own entries into it); delete it only when the class
+        // itself introduced it.
+        $manifest = self::distDir() . '/checksums.txt';
+        if (null !== self::$checksumsBefore) {
+            file_put_contents($manifest, self::$checksumsBefore);
+        } else {
+            @unlink($manifest);
+        }
 
         parent::tearDown();
     }
@@ -61,14 +83,39 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      *
      * The one plugin registers zai and zai_anthropic; the standalone zip
      * must carry both providers' source trees, pass the inspector, and stay
-     * self-contained. The zip is removed afterwards so a released artifact
-     * in dist/ is never silently clobbered by a test run.
+     * self-contained.
+     *
+     * Codex R1 finding 3: a build run rewrites the zip, its .sha256
+     * sidecar, and the zip's entry in dist/checksums.txt — so ALL THREE
+     * pieces of release-verification state are snapshotted and restored
+     * (or removed when the test introduced them), leaving a prepared
+     * dist/ directory exactly as it was. The preservation itself is
+     * asserted after the restore.
      */
     public function testRealZaiArtifactShipsBothProvidersAndStaysStandalone()
     {
         $zipPath = self::distDir() . '/connectors-zai-0.1.0.zip';
-        $existed = is_file($zipPath);
-        $previous = $existed ? (string) file_get_contents($zipPath) : '';
+        $sidecarPath = $zipPath . '.sha256';
+        $manifestPath = self::distDir() . '/checksums.txt';
+
+        // Seed verification state when none exists, so the preservation
+        // assertions always exercise the restore path.
+        $sidecarSeed = "0000000000000000000000000000000000000000000000000000000000000000  connectors-zai-0.1.0.zip\n";
+        $manifestSeed = "0000000000000000000000000000000000000000000000000000000000000000  connectors-zai-0.1.0.zip\n";
+
+        $zipExisted = is_file($zipPath);
+        $zipPrevious = $zipExisted ? (string) file_get_contents($zipPath) : '';
+        $sidecarExisted = is_file($sidecarPath);
+        $sidecarPrevious = $sidecarExisted ? (string) file_get_contents($sidecarPath) : $sidecarSeed;
+        $manifestExisted = is_file($manifestPath);
+        $manifestPrevious = $manifestExisted ? (string) file_get_contents($manifestPath) : $manifestSeed;
+
+        if (! $sidecarExisted) {
+            file_put_contents($sidecarPath, $sidecarSeed);
+        }
+        if (! $manifestExisted) {
+            file_put_contents($manifestPath, $manifestSeed);
+        }
 
         try {
             $built = WpConnectorsBuild::buildPlugin(__DIR__ . '/../connectors/zai', self::distDir());
@@ -108,15 +155,32 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             });
             $this->assertSame(array('zai/uninstall.php', 'zai/zai.php'), array_values($mains));
         } finally {
-            if ($existed && $previous !== (string) file_get_contents($zipPath)) {
-                // Restore the pre-existing artifact byte-for-byte.
-                file_put_contents($zipPath, $previous);
-            } elseif (! $existed && is_file($zipPath)) {
+            // Restore-or-remove every file the build touched.
+            if ($zipExisted) {
+                if ($zipPrevious !== (string) file_get_contents($zipPath)) {
+                    file_put_contents($zipPath, $zipPrevious);
+                }
+            } elseif (is_file($zipPath)) {
                 @unlink($zipPath);
             }
-            if (is_file($zipPath . '.sha256')) {
-                @unlink($zipPath . '.sha256');
-            }
+
+            file_put_contents($sidecarPath, $sidecarPrevious);
+            file_put_contents($manifestPath, $manifestPrevious);
+        }
+
+        // Post-restore: the release-verification state is byte-identical
+        // to what was there before the build (fails if any piece was
+        // clobbered or deleted).
+        $this->assertSame($sidecarPrevious, (string) file_get_contents($sidecarPath), 'The checksum sidecar must survive the test byte-for-byte.');
+        $this->assertSame($manifestPrevious, (string) file_get_contents($manifestPath), 'The checksum manifest must survive the test byte-for-byte.');
+
+        // Remove only what this test introduced (a prepared dist/ keeps its
+        // real state; tearDown's guarded manifest cleanup is a no-op then).
+        if (! $sidecarExisted) {
+            @unlink($sidecarPath);
+        }
+        if (! $manifestExisted) {
+            @unlink($manifestPath);
         }
     }
 

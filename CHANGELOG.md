@@ -19,6 +19,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   own combining rule — instead of being rejected pre-transport; generic
   chat histories with repeated turns now round-trip. An empty prompt and
   a non-user first message are still rejected.
+- The real-artifact build test no longer damages release-verification
+  state: the zip, its `.sha256` sidecar, and the zip's entry in
+  `dist/checksums.txt` are all snapshotted and restored (or removed when
+  the test introduced them), and the class tearDown restores a prepared
+  manifest instead of deleting it — a prepared `dist/` directory is left
+  exactly as it was, verified by post-restore assertions.
 
 ### Fixed (zai / M2 — independent review round)
 
