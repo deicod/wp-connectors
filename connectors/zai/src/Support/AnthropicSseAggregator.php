@@ -504,9 +504,23 @@ final class AnthropicSseAggregator {
 			return;
 		}
 
-		$type = \is_string( $event_name )
-			? $event_name
-			: ( isset( $decoded['type'] ) && \is_string( $decoded['type'] ) ? $decoded['type'] : '' );
+		$payload_type = isset( $decoded['type'] ) && \is_string( $decoded['type'] ) ? $decoded['type'] : '';
+		$type         = \is_string( $event_name ) ? $event_name : $payload_type;
+
+		/*
+		 * Codex R7 #6: when BOTH declarations are present as strings they
+		 * must AGREE — the event: field always won, so `event: ping` with a
+		 * content_block_delta payload was ignored as keep-alive and the
+		 * answer completed with the content chunk missing. A contradiction
+		 * is a corrupt frame; frames with only one declaration keep their
+		 * existing behavior.
+		 */
+		if ( \is_string( $event_name ) && '' !== $payload_type && $event_name !== $payload_type ) {
+			++$this->malformed;
+			$this->malformed_event = true;
+
+			return;
+		}
 
 		/*
 		 * Object-ness oracle (Codex R3 #1/#2): the associative decode above

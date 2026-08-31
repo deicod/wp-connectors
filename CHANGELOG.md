@@ -22,6 +22,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   invalidates the stream: the silent accumulator reset discarded every
   fragment collected before the duplicate while the completion still
   reported success with altered content.
+- An SSE frame whose `event:` field and `data.type` member are BOTH
+  present as strings but disagree now invalidates the stream: the field
+  always won, so `event: ping` carrying a `content_block_delta` payload
+  was ignored as keep-alive and the answer completed with the content
+  chunk missing. Frames with only one declaration keep their behavior.
 
 ### Fixed (zai / M2 — Codex PR review, round 6)
 
