@@ -148,6 +148,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $sidecarPath = self::distDir() . '/connectors-zai-0.1.0.zip.sha256';
         $manifestPath = self::distDir() . '/checksums.txt';
+        $manifestExisted = is_file($manifestPath);
         $this->assertFileDoesNotExist($sidecarPath, 'Precondition: no lingering zai sidecar (fresh or preserved dist).');
 
         try {
@@ -166,7 +167,12 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         }
 
         $this->assertFileDoesNotExist($sidecarPath, 'The introduced sidecar must be removed even on a failing path.');
-        $this->assertFileDoesNotExist($manifestPath, 'The introduced manifest must be removed even on a failing path.');
+        if (! $manifestExisted) {
+            // On a prepared dist/ the helper must (and does) keep the real
+            // manifest — the removal postcondition only holds when the test
+            // environment had none.
+            $this->assertFileDoesNotExist($manifestPath, 'The introduced manifest must be removed even on a failing path.');
+        }
     }
 
     /**
