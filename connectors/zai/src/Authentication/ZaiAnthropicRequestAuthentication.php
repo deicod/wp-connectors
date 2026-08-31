@@ -48,9 +48,12 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 	/**
 	 * Authenticates the request with Bearer auth and the version header.
 	 *
-	 * The withHeader() call replaces any existing value, so exactly ONE
-	 * Authorization header (Bearer) and ONE anthropic-version header leave this method —
-	 * never x-api-key, never a duplicate credential header.
+	 * Any pre-existing x-api-key header is REMOVED first (Codex R4 #5): a
+	 * reused or decorated request could otherwise carry a stale second
+	 * credential alongside the Bearer key, violating this class's
+	 * never-x-api-key contract. The withHeader() calls replace existing
+	 * values, so exactly ONE Authorization header (Bearer) and ONE
+	 * anthropic-version header leave this method.
 	 *
 	 * @since 0.2.0
 	 *
@@ -58,9 +61,43 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 	 * @return Request The authenticated request.
 	 */
 	public function authenticateRequest( Request $request ): Request {
+		$request = self::without_x_api_key( $request );
 		$request = $request->withHeader( 'anthropic-version', self::ANTHROPIC_VERSION );
 
 		return $request->withHeader( 'Authorization', 'Bearer ' . $this->getApiKey() );
+	}
+
+	/**
+	 * Strips any x-api-key header (case-insensitively) from a request.
+	 *
+	 * The SDK's HeadersCollection has no removal API, so the request is
+	 * rebuilt from its remaining headers with method, URI, body/data, and
+	 * transport options carried over verbatim.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Request $request The request to strip.
+	 * @return Request The request without any x-api-key header.
+	 */
+	private static function without_x_api_key( Request $request ): Request {
+		if ( ! $request->hasHeader( 'x-api-key' ) ) {
+			return $request;
+		}
+
+		$headers = array();
+		foreach ( $request->getHeaders() as $name => $values ) {
+			if ( 'x-api-key' !== strtolower( (string) $name ) ) {
+				$headers[ $name ] = $values;
+			}
+		}
+
+		return new Request(
+			$request->getMethod(),
+			$request->getUri(),
+			$headers,
+			$request->getData() ?? $request->getBody(),
+			$request->getOptions()
+		);
 	}
 
 	/**

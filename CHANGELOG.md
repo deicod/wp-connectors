@@ -6,6 +6,16 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 4)
+
+- `authenticateRequest()` now strips any pre-existing `x-api-key`
+  header (case-insensitively) before setting Bearer + anthropic-version:
+  a reused or decorated request could otherwise transmit a stale second
+  credential alongside the Bearer key, violating the never-x-api-key
+  contract. The SDK's header collection has no removal API, so the
+  request is rebuilt from its remaining headers with method, URI,
+  body/data, and transport options carried over verbatim.
+
 ### Fixed (zai / M2 — Codex PR review, round 3)
 
 - `"input": []` (the empty JSON LIST) and boolean tool inputs are now

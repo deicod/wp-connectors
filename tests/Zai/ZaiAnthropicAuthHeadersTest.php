@@ -124,6 +124,39 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         $this->assertSame($wrapped, ZaiAnthropicRequestAuthentication::wrap($wrapped), 'Already-wrapped instances pass through.');
     }
 
+    public function testAPreExistingXApiKeyHeaderIsRemoved()
+    {
+        // Codex R4 #5: a reused/decorated request already carrying an
+        // x-api-key header must lose it — the stale second credential may
+        // never travel alongside the Bearer key.
+        $key = FakeSecrets::apiKey();
+        $authentication = new ZaiAnthropicRequestAuthentication($key);
+
+        foreach (array('x-api-key', 'X-Api-Key', 'X-API-KEY') as $casing) {
+            $request = new SdkRequest(
+                HttpMethodEnum::POST(),
+                'https://api.z.ai/api/anthropic/v1/messages',
+                array(
+                    $casing => 'stale-credential-value',
+                    'Authorization' => 'Token stale',
+                    'Content-Type' => 'application/json',
+                ),
+                array('model' => 'glm-5.3', 'max_tokens' => 8)
+            );
+
+            $authenticated = $authentication->authenticateRequest($request);
+
+            $this->assertNull($authenticated->getHeader('x-api-key'), "A pre-existing {$casing} header must be removed (lookup is case-insensitive).");
+            $this->assertNotContains(strtolower($casing), array_map('strtolower', array_keys($authenticated->getHeaders())), 'No casing variant may survive.');
+            $this->assertSame(array('Bearer ' . $key), $authenticated->getHeader('Authorization'));
+            $this->assertSame(array('2023-06-01'), $authenticated->getHeader('anthropic-version'));
+
+            // The rebuild carries unrelated headers and the payload verbatim.
+            $this->assertSame(array('application/json'), $authenticated->getHeader('Content-Type'), 'Unrelated headers must survive the strip.');
+            $this->assertSame('{"model":"glm-5.3","max_tokens":8}', (string) $authenticated->getBody(), 'The request body must survive the header strip unchanged.');
+        }
+    }
+
     public function testTheWrapFunnelFailsClosedOnForeignAuthTypes()
     {
         $foreign = new class implements WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface {
