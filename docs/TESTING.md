@@ -74,20 +74,26 @@ secrets, never in the repository:
 Live tests must skip (not fail) when the variable is absent, never print
 token material, and are excluded from every automated gate.
 
-For the z.ai connector there is also a standalone probe CLI (Task 1.9) that
-reads the key at runtime from `ZAI_LIVE_API_KEY`,
+For the z.ai connector there is also a standalone probe CLI (Tasks 1.9/2.7)
+that reads the key at runtime from `ZAI_LIVE_API_KEY`,
 `WP_CONNECTORS_TEST_ZAI_API_KEY`, or `~/.config/z.ai/api_key` and prints
 only safe facts (endpoint URLs, statuses, model IDs, generated text,
 timings — never the key):
 
 ```bash
-php bin/zai-live-probe.php [--plan=coding|general] [--region=intl|cn]
+php bin/zai-live-probe.php [--surface=openai|anthropic] [--plan=coding|general] [--region=intl|cn]
 ```
 
-Note: a Coding Plan key used against the general (pay-as-you-go) endpoint
-receives HTTP 429 with z.ai error code 1113 ("Insufficient balance or no
-resource package") — an account property, surfaced by the plugin as the
-typed rate-limit error.
+`--surface=anthropic` probes the Messages-protocol provider (its plan
+default is `general` per record 0007; the coding-surface Messages routes
+cannot generate as of 2026-08-31). Without flags the probe uses each
+provider's defaults: openai coding+intl, anthropic general+intl.
+
+Note: a Coding Plan key used against the general (pay-as-you-go)
+OPENAI-SURFACE endpoint receives HTTP 429 with z.ai error code 1113
+("Insufficient balance or no resource package") — an account property,
+surfaced by the plugin as the typed rate-limit error. (The Anthropic
+surface did not reproduce that gate during the record-0007 probes.)
 
 ## Artifacts
 
