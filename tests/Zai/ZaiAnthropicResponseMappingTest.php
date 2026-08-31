@@ -748,6 +748,46 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('OK.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
+    /**
+     * @dataProvider provideAbsentOrNullStartInputs
+     */
+    public function testAbsentOrNullStreamedStartInputsAreRejected($startBlockJson)
+    {
+        // Verifier sweep on Codex R7 (sibling of #1): the streamed start
+        // block still normalized an absent/null input member into a
+        // fabricated no-argument call — the exact shape #1 rejects on the
+        // non-streaming path.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_abs","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":' . $startBlockJson . '}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('An absent/null streamed start input must be rejected, got a call: ' . wp_json_encode($result->toMessage()->getParts()[0]->getFunctionCall()->getArgs()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideAbsentOrNullStartInputs()
+    {
+        return array(
+            'start input omitted' => array('{"type":"tool_use","id":"toolu_a1","name":"ping"}'),
+            'start input explicit null' => array('{"type":"tool_use","id":"toolu_a2","name":"ping","input":null}'),
+        );
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.

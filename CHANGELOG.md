@@ -12,7 +12,10 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   to `null` is now rejected as a typed parse error instead of being
   normalized into a no-argument FunctionCall: the Messages protocol
   requires the member, and an empty call is represented by `{}`
-  alone (supersedes the R2-era tolerance; `{}` stays legitimate).
+  alone (supersedes the R2-era tolerance; `{}` stays legitimate). The
+  streamed `content_block_start` path got the same strictness (verifier
+  sweep sibling): an absent or explicitly-null start-block input also
+  invalidates the stream instead of fabricating a no-argument call.
 - A FunctionDeclaration whose parameter schema is a non-empty
   SEQUENTIAL array is rejected before transport: it serializes
   `input_schema` as a JSON LIST and the tools contract requires an

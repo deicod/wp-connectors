@@ -741,11 +741,13 @@ final class AnthropicSseAggregator {
 	 *
 	 * A tool_use block's ORIGINAL input shape is validated here against the
 	 * raw (non-associative) decode (Codex R3 #2): an object becomes the
-	 * initial input value, a missing/null input member stays the no-argument
-	 * placeholder, and anything else (scalar, boolean, JSON list —
-	 * including []) marks the block malformed. {} is NEVER silently
-	 * substituted for a malformed value: that fabricated a valid
-	 * no-argument tool call the model never produced.
+	 * initial input value, a MISSING or explicitly-NULL input member marks
+	 * the block malformed (Codex R7 #1 sibling — the protocol requires the
+	 * member, an empty call is {} alone; normalizing it to a placeholder
+	 * fabricated a valid no-argument tool call the model never produced),
+	 * and anything else (scalar, boolean, JSON list — including []) also
+	 * marks the block malformed. {} is NEVER silently substituted for a
+	 * malformed value.
 	 *
 	 * @since 0.2.0
 	 *
@@ -759,12 +761,19 @@ final class AnthropicSseAggregator {
 
 		$input = new \stdClass();
 
-		if ( 'tool_use' === $type && null !== $raw_block && \property_exists( $raw_block, 'input' ) ) {
-			$raw_input = $raw_block->input;
+		if ( 'tool_use' === $type && null !== $raw_block ) {
+			if ( ! \property_exists( $raw_block, 'input' ) ) {
+				// Absent member (Codex R7 #1 sibling).
+				$this->malformed_tool_input = true;
+			}
+
+			$raw_input = \property_exists( $raw_block, 'input' ) ? $raw_block->input : null;
 
 			if ( null === $raw_input ) {
-				// Explicit null: no-argument call (same as a missing member).
-				$input = new \stdClass();
+				if ( \property_exists( $raw_block, 'input' ) ) {
+					// Explicit null (Codex R7 #1 sibling).
+					$this->malformed_tool_input = true;
+				}
 			} elseif ( \is_object( $raw_input ) ) {
 				$assoc = json_decode( (string) wp_json_encode( $raw_input ), true );
 				$input = \is_array( $assoc ) && array() !== $assoc ? $assoc : new \stdClass();
