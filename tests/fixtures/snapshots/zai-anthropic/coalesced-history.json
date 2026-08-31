@@ -1,0 +1,44 @@
+{
+    "url": "https://api.z.ai/api/anthropic/v1/messages",
+    "body": {
+        "model": "glm-5.3",
+        "max_tokens": 4096,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "One."
+                    },
+                    {
+                        "type": "text",
+                        "text": "Two."
+                    }
+                ]
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hi."
+                    },
+                    {
+                        "type": "text",
+                        "text": "Again."
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Three."
+                    }
+                ]
+            }
+        ]
+    }
+}

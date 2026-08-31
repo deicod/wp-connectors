@@ -14,6 +14,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   could have executed a side-effecting tool with inputs the model never
   produced. The legitimate empty-object stream (`{}`) still yields a
   no-argument call.
+- Consecutive same-role turns (two user turns in a row, etc.) are now
+  coalesced into one message with merged content blocks — the protocol's
+  own combining rule — instead of being rejected pre-transport; generic
+  chat histories with repeated turns now round-trip. An empty prompt and
+  a non-user first message are still rejected.
 
 ### Fixed (zai / M2 — independent review round)
 

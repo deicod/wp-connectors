@@ -541,21 +541,55 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
-    public function testConsecutiveSameRoleMessagesAreRejectedBeforeTransport()
+    public function testConsecutiveSameRoleMessagesAreCoalescedIntoOneTurn()
     {
+        // Codex R1 finding 2: the Messages protocol combines adjacent turns
+        // of the same role — such histories must coalesce into a valid
+        // request, not be rejected.
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('One.'))),
             new Message(MessageRoleEnum::user(), array(new MessagePart('Two.'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart('Hi.'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart('Again.'))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Three.'))),
         );
 
-        try {
-            $this->model()->generateTextResult($prompt);
-            $this->fail('Consecutive same-role messages must be rejected.');
-        } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('alternate', $e->getMessage());
-        }
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
 
-        $this->assertNoHttpRequests();
+        $this->assertSame(array(
+            array('role' => 'user', 'content' => array(
+                array('type' => 'text', 'text' => 'One.'),
+                array('type' => 'text', 'text' => 'Two.'),
+            )),
+            array('role' => 'assistant', 'content' => array(
+                array('type' => 'text', 'text' => 'Hi.'),
+                array('type' => 'text', 'text' => 'Again.'),
+            )),
+            array('role' => 'user', 'content' => array(
+                array('type' => 'text', 'text' => 'Three.'),
+            )),
+        ), $body['messages'], 'Adjacent same-role turns merge, blocks in order; roles still alternate after coalescing.');
+
+        $this->assertMatchesSnapshot('coalesced-history', $url, $body);
+    }
+
+    public function testAGenericChatHistoryWithRepeatedUserTurnsRoundTrips()
+    {
+        // The shape generic histories produce (system note, question,
+        // clarification, answer, follow-up).
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('What is X?'))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Context: it is a test.'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart('X is ...'))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart('And Y?'))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertCount(3, $body['messages']);
+        $this->assertSame('user', $body['messages'][0]['role']);
+        $this->assertCount(2, $body['messages'][0]['content']);
+        $this->assertSame('And Y?', $body['messages'][2]['content'][0]['text']);
     }
 
     public function testAFunctionCallPartWithoutAnIdIsRejectedBeforeTransport()

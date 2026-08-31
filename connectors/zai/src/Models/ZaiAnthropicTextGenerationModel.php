@@ -294,6 +294,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	/**
 	 * Prepares the messages parameter for the API request.
 	 *
+	 * Adjacent turns of the SAME role are coalesced into one message (their
+	 * content blocks merged in order) — the Messages protocol's own
+	 * combining rule for this shape, which generic chat histories
+	 * legitimately contain (Codex R1 finding 2); coalescing here means the
+	 * request stays valid without rejecting such histories.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param array $messages Messages to prepare (list of Message).
@@ -303,9 +309,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$prepared = array();
 
 		foreach ( $messages as $message ) {
+			$role   = $this->message_role_string( $message->getRole() );
+			$blocks = $this->message_content_blocks( $message );
+
+			$last = \count( $prepared ) - 1;
+			if ( $last >= 0 && $prepared[ $last ]['role'] === $role ) {
+				$prepared[ $last ]['content'] = array_merge( $prepared[ $last ]['content'], $blocks );
+				continue;
+			}
+
 			$prepared[] = array(
-				'role'    => $this->message_role_string( $message->getRole() ),
-				'content' => $this->message_content_blocks( $message ),
+				'role'    => $role,
+				'content' => $blocks,
 			);
 		}
 
@@ -780,10 +795,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
-	 * Enforces the Messages protocol's role-order constraints.
+	 * Enforces the Messages protocol's role constraints that coalescing
+	 * cannot repair.
 	 *
-	 * Messages must start with the user role and strictly alternate
-	 * user/assistant; violations are rejected before any HTTP request with a
+	 * Consecutive same-role turns are COALESCED by prepare_messages_param()
+	 * (the protocol combines adjacent turns of one role), so alternation is
+	 * no longer a validation concern (Codex R1 finding 2). What remains
+	 * genuinely invalid: an empty prompt, and a first message that does not
+	 * use the user role — both are rejected before any HTTP request with a
 	 * precise message instead of surfacing as an upstream 400.
 	 *
 	 * @since 0.2.0
@@ -799,24 +818,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			);
 		}
 
-		$previous_role = '';
-
-		foreach ( $prompt as $message ) {
-			$role = $this->message_role_string( $message->getRole() );
-
-			if ( '' === $previous_role ) {
-				if ( 'user' !== $role ) {
-					throw new InvalidArgumentException(
-						'The zai_anthropic provider requires the first message to use the user role.'
-					);
-				}
-			} elseif ( $role === $previous_role ) {
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires user and assistant messages to alternate.'
-				);
-			}
-
-			$previous_role = $role;
+		$first_role = $this->message_role_string( $prompt[0]->getRole() );
+		if ( 'user' !== $first_role ) {
+			throw new InvalidArgumentException(
+				'The zai_anthropic provider requires the first message to use the user role.'
+			);
 		}
 	}
 
