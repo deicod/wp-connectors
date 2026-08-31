@@ -47,8 +47,14 @@ hand-written mock of the SDK itself.
 - Use `HttpResponseFactory` for response bodies (OpenAI shapes, OAuth
   errors, WP/PSR-7 wrappers).
 - `bin/scan-secrets.php` (also in `composer check` and the artifact
-  inspector) rejects live-credential shapes; lines carrying fixture markers
-  are allowed. **Never paste real credentials or raw captured payloads.**
+  inspector) rejects live-credential shapes. Exemptions are structured,
+  never a bare word on the line: a line is exempt only when it carries the
+  strict comment marker `// secrets:allow` (or `# secrets:allow`), and a
+  matched value is exempt only when the value itself is recognizable as a
+  fake — placeholder shapes (`${ZAI_KEY}`, `<api-key>`) or well-known dummy
+  segments (`sk-proj-TEST-…`, `YOUR_API_KEY`, the `wpct_fixture_` prefix).
+  A real-looking key on a line that merely mentions "fixture" IS flagged.
+  **Never paste real credentials or raw captured payloads.**
 
 ## Live, credentialed tests (opt-in only)
 

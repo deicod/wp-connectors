@@ -5,9 +5,10 @@
  *   php bin/scan-secrets.php            # the whole repository
  *   php bin/scan-secrets.php path ...   # specific files/directories
  *
- * Exits non-zero when any live-credential shape is found (fixture-marked
- * lines are allowed). Also wired into `composer check` and into the artifact
- * inspector.
+ * Exits non-zero when any live-credential shape is found. Only structured
+ * exemptions apply: a strict "secrets:allow" comment marker on the line, or
+ * a matched value recognizable as a fake (see bin/lib/secret-scanner.php).
+ * Also wired into `composer check` and into the artifact inspector.
  *
  * @package wp-connectors
  */

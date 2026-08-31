@@ -268,12 +268,106 @@ function wp_connectors_anchored_include_escapes_plugin($file, $include, array $l
 }
 
 /**
+ * Reasons an include-target expression cannot be proven to stay in-root.
+ *
+ * An expression is PROVEN in-root when it is anchored on __DIR__ or ABSPATH,
+ * contains no upward dirname(__DIR__/__FILE__) call, no dynamic ${...}
+ * literal segment, and at least one quoted literal whose static '..' path
+ * (when present) still resolves inside the plugin dir via
+ * wp_connectors_anchored_include_escapes_plugin(). Anchored expressions
+ * whose only runtime pieces trail the anchor as '/'-joined segments (the
+ * mandated PSR-4 autoloader's class-name mapping) count as proven.
+ *
+ * @param string $file       Absolute path of the file containing the include.
+ * @param string $expression Include-target expression to analyze.
+ * @param string $pluginDir  Absolute plugin directory.
+ * @return list<string> Violation reasons (empty when provably in-root).
+ */
+function wp_connectors_include_expression_reasons($file, $expression, $pluginDir)
+{
+    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $expression)) {
+        return array( 'escapes upward through dirname()' );
+    }
+    if (strpos($expression, '__DIR__') === false && strpos($expression, 'ABSPATH') === false) {
+        return array( 'is not anchored to __DIR__ or ABSPATH' );
+    }
+    if (! preg_match_all('/[\'"]([^\'"]+)[\'"]/', $expression, $matches)) {
+        return array( 'combines the anchor with unresolvable runtime segments' );
+    }
+    foreach ($matches[1] as $literal) {
+        if (strpos($literal, '${') !== false) {
+            return array( 'contains a dynamic ${...} segment' );
+        }
+    }
+    if (wp_connectors_anchored_include_escapes_plugin($file, $expression, $matches[1], $pluginDir)) {
+        return array( 'resolves outside the plugin dir' );
+    }
+
+    return array();
+}
+
+/**
+ * Reasons a literal-free include/require cannot be proven to stay in-root.
+ *
+ * An include like `require $dependency;` carries no quoted literal, so the
+ * scanner cannot see its target in the statement itself and would report
+ * nothing — letting conventions, the builder, and the inspector package a
+ * plugin that fails standalone. Strict allow: a plain-variable target passes
+ * only when EVERY same-file assignment before the include resolves through
+ * wp_connectors_include_expression_reasons() to a provably in-root path;
+ * any other expression (unassigned variable, function call, array access,
+ * runtime-built path) must prove itself the same way or is reported.
+ *
+ * @param string $file      Absolute path of the file containing the include.
+ * @param string $code      Comment-stripped source of that file.
+ * @param string $include   The include statement (starts at the keyword).
+ * @param int    $offset    Byte offset of the statement within $code.
+ * @param string $pluginDir Absolute plugin directory.
+ * @return list<string> Violation reasons (empty when provably in-root).
+ */
+function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $pluginDir)
+{
+    $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($include)), " \t\n\r();");
+
+    if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $argument)) {
+        $assignments = array();
+        if (preg_match_all('/' . '\$' . preg_quote(substr($argument, 1), '/') . '\s*(?:\.)?=(?![=>])[^;]+;/', $code, $matches, PREG_OFFSET_CAPTURE)) {
+            foreach ($matches[0] as $assignment) {
+                if ($assignment[1] >= $offset) {
+                    // Assigned after the include — the include cannot read it.
+                    continue;
+                }
+                $assignments[] = $assignment[0];
+            }
+        }
+        if ($assignments === array()) {
+            return array( sprintf('variable %s has no resolvable same-file assignment', $argument) );
+        }
+        $reasons = array();
+        foreach ($assignments as $assignment) {
+            $expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
+            foreach (wp_connectors_include_expression_reasons($file, $expression, $pluginDir) as $reason) {
+                $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
+            }
+        }
+
+        return $reasons;
+    }
+
+    $reasons = wp_connectors_include_expression_reasons($file, $argument, $pluginDir);
+
+    return $reasons === array() ? array() : array( sprintf('expression %s', $reasons[0]) );
+}
+
+/**
  * Checks that no PHP file in the plugin escapes the plugin directory.
  *
  * Flags include/require statements with unanchored literal paths, upward
  * dirname() escapes, __DIR__-anchored includes whose '..' segments resolve
- * outside the plugin dir, runtime references to vendor/autoload or Composer,
- * and any reference to the repository-level shared/ source.
+ * outside the plugin dir, literal-free includes whose target (a variable or
+ * runtime expression) cannot be proven to stay inside the plugin dir, runtime
+ * references to vendor/autoload or Composer, and any reference to the
+ * repository-level shared/ source.
  *
  * @param string $pluginDir Absolute plugin directory.
  * @return list<string> Violation messages ("<slug>: <file>: <message>").
@@ -294,19 +388,26 @@ function wp_connectors_self_containment_violations($pluginDir)
         $code = wp_connectors_strip_comments((string) file_get_contents($path));
         $relative = str_replace($pluginDir . '/', '', $path);
 
-        if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $code, $includes)) {
+        if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $code, $includes, PREG_OFFSET_CAPTURE)) {
             foreach ($includes[0] as $include) {
-                if (preg_match_all('/[\'"]([^\'"]+)[\'"]/', $include, $literals)) {
+                if (preg_match_all('/[\'"]([^\'"]+)[\'"]/', $include[0], $literals)) {
                     foreach ($literals[1] as $literal) {
                         $dynamic = (strpos($literal, '${') !== false);
-                        $anchored = strpos($include, '__DIR__') !== false || strpos($include, 'ABSPATH') !== false;
-                        $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include);
+                        $anchored = strpos($include[0], '__DIR__') !== false || strpos($include[0], 'ABSPATH') !== false;
+                        $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include[0]);
                         if ((! $anchored && ! $dynamic) || $escapesUp) {
-                            $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include));
+                            $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
                         }
                     }
-                    if (wp_connectors_anchored_include_escapes_plugin($path, $include, $literals[1], $pluginDir)) {
-                        $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include));
+                    if (wp_connectors_anchored_include_escapes_plugin($path, $include[0], $literals[1], $pluginDir)) {
+                        $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
+                    }
+                } else {
+                    // No quoted literal: the target is hidden behind a variable
+                    // or a runtime expression the scanner cannot see. Strict
+                    // allow — only targets provably inside the plugin root pass.
+                    foreach (wp_connectors_hidden_include_reasons($path, $code, $include[0], $include[1], $pluginDir) as $reason) {
+                        $violations[] = sprintf('%s: %s includes a target not provably inside the plugin dir (%s): %s', $slug, $relative, $reason, trim($include[0]));
                     }
                 }
             }

@@ -72,7 +72,7 @@
         "check": "Full offline validation entry point: syntax lint, PHPCS (WordPress + PHP 7.4 compatibility), static analysis, convention enforcement, and the PHPUnit suite. Never contacts the network.",
         "lint": "PHP syntax check (php -l) over all repository PHP sources, excluding vendor/tools/dist.",
         "conventions": "Enforce docs/CONVENTIONS.md over every plugin directory (headers, text domain, version constant, autoloader, self-containment).",
-        "scan-secrets": "Scan repository sources for live-credential patterns (fixture-marked lines allowed).",
+        "scan-secrets": "Scan repository sources for live-credential patterns (only the strict secrets:allow marker or recognizably fake values are exempt).",
         "phpcs": "PHP_CodeSniffer with the WordPress coding standard.",
         "phpcs-compat": "PHPCompatibility scan pinned to the supported PHP range (7.4-8.4).",
         "phpstan": "PHPStan static analysis.",

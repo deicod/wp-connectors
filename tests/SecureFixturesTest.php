@@ -40,8 +40,8 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         );
 
         // ...and the documented pairing rule keeps stored fixtures clean:
-        // a zai-shaped key may only be stored next to its marker.
-        $line = $key . ' // fixture';
+        // a zai-shaped key may only be stored next to the strict marker.
+        $line = $key . ' // secrets:allow';
         $this->assertSame(array(), wp_connectors_scan_string($line, 'marked'));
     }
 
@@ -160,6 +160,52 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $report = implode("\n", $findings);
         $this->assertStringContainsString('zai-key', $report);
         $this->assertStringContainsString('github-token', $report);
+    }
+
+    public function testScannerDoesNotBypassOnBareFixtureWord()
+    {
+        // Regression for the loose fixture-marker exemption: a line merely
+        // CONTAINING the substring "fixture" must no longer suppress the
+        // scan — a real credential on such a line stays detectable.
+        $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+        $openaiKey = 'sk-proj-' . bin2hex(random_bytes(20));
+
+        $contents = "\$fixture_key = \"{$zaiKey}\";\n"
+            . '// fixture-shaped sample credentials for the docs' . "\n"
+            . "fixture {$openaiKey} token\n";
+
+        $findings = wp_connectors_scan_string($contents, 'fixtureword');
+
+        $report = implode("\n", $findings);
+        $this->assertStringContainsString('fixtureword:1 zai-key', $report);
+        $this->assertStringContainsString('fixtureword:3 openai-anthropic-key', $report);
+        // The old loose comment marker ("// fixture") no longer exempts either.
+        $loose = wp_connectors_scan_string($zaiKey . ' // fixture', 'loose');
+        $this->assertStringContainsString('zai-key', implode("\n", $loose));
+    }
+
+    public function testScannerExemptsOnlyStrictMarkerAndFakeValues()
+    {
+        // (a) The strict marker comment — and only it — exempts a line.
+        $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+        $this->assertSame(array(), wp_connectors_scan_string($zaiKey . ' // secrets:allow', 'sl'));
+        $this->assertSame(array(), wp_connectors_scan_string('# secrets:allow ' . $zaiKey, 'hash'));
+        // A lookalike token outside a comment is not the marker.
+        $fakeMarker = wp_connectors_scan_string("\$note = 'secrets:allow'; key = \"{$zaiKey}\";", 'fakemarker');
+        $this->assertStringContainsString('zai-key', implode("\n", $fakeMarker));
+
+        // (b) Values recognizable as fakes pass without any marker: well-known
+        // dummy segments, placeholder shapes, sequential filler.
+        $this->assertSame(array(), wp_connectors_scan_string('sk-proj-TEST-PLACEHOLDER-0123456789', 'dummy'));
+        $this->assertSame(array(), wp_connectors_scan_string('token = sk-ant-YOUR_KEY_abcdefgh1234', 'yourkey'));
+        $this->assertSame(array(), wp_connectors_scan_string('key = ${ZAI_API_KEY}', 'curly'));
+        $this->assertSame(array(), wp_connectors_scan_string('key = <api-key>', 'angle'));
+
+        // ...while shape-identical live-looking values stay flagged.
+        $this->assertStringContainsString(
+            'openai-anthropic-key',
+            implode("\n", wp_connectors_scan_string('sk-proj-' . str_repeat('q', 40), 'live'))
+        );
     }
 
     public function testScannerAcceptsRepoSources()

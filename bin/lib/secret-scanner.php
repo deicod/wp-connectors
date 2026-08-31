@@ -4,8 +4,12 @@
  * inspector).
  *
  * Detects live-credential shapes (API keys, OAuth tokens, JWTs, private
- * keys) in files. Lines containing obvious fixture markers are allowed so
- * tests and documentation can discuss fake credentials freely.
+ * keys) in files. Exemptions are structured, never a bare word on the line:
+ * a line is skipped only when it carries the strict "secrets:allow" comment
+ * marker, and a match is skipped only when the matched VALUE itself is
+ * recognizable as a fake (placeholder shapes, well-known dummy segments) —
+ * see wp_connectors_allow_marker_pattern() and
+ * wp_connectors_is_recognizably_fake_secret().
  *
  * Findings deliberately never include the matched text — only file, line,
  * and pattern — so the scanner itself can never leak a secret into logs.
@@ -39,22 +43,45 @@ function wp_connectors_secret_patterns()
 }
 
 /**
- * Marker substrings that mark a line as containing fixture/example data.
+ * The strict line-exemption marker for deliberate fixture/example secrets.
  *
- * Deliberately NARROW: only unambiguous fixture markers. Generic prose words
- * ("example", "sample", "dummy", "fake", "xxx") must NOT be here — a real
- * credential on a line that merely mentions such a word would bypass the
- * scan.
+ * A line is exempt ONLY when the marker appears inside a comment on that
+ * line: `$key = '…'; // secrets:allow` (also `#`, `/* … *\/`, and ` * `
+ * docblock continuations). A bare word like "fixture" anywhere on the line
+ * exempts nothing — a real credential sitting on a line that merely
+ * mentions "fixture" must still be flagged.
  *
- * @return list<string>
+ * @return string PCRE pattern matching the marker inside a comment.
  */
-function wp_connectors_fixture_markers()
+function wp_connectors_allow_marker_pattern()
 {
-    return array(
-        'fixture', 'not-a-real', 'notareal', 'test-value', 'your-',
-        '<key>', 'redacted', 'wpct_', 'abcdefgh', '0123456789abcdef',
-        'placeholder',
-    );
+    return '/(?:^|\s)(?:\/\/|#|\/\*|\*)\s*secrets:allow\b/';
+}
+
+/**
+ * Whether a matched secret VALUE is recognizable as a fake.
+ *
+ * Recognizable fakes are verifiable from the value itself: placeholder
+ * shapes wrapped entirely in ${…} or <…>, well-known dummy segments
+ * bounded by separators (sk-proj-TEST-…, YOUR_API_KEY, test-key-…,
+ * wpct_fixture_…, not-a-real-…), and obvious sequential filler. Anything
+ * else must be treated as live. This mirrors the line-level marker rule:
+ * prose words around the value never exempt it, only the value's own shape
+ * can.
+ *
+ * @param string $value The matched secret text (never reported verbatim).
+ * @return bool True when the value is verifiably not a live credential.
+ */
+function wp_connectors_is_recognizably_fake_secret($value)
+{
+    if (preg_match('/^\$\{[^}]+\}$/', $value) || preg_match('/^<[^>]+>$/', $value)) {
+        return true;
+    }
+    if (preg_match('/(?:^|[-_\s])(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)(?:[-_\s]|$)/i', $value)) {
+        return true;
+    }
+
+    return (bool) preg_match('/0123456789abcdef|abcdefgh/i', $value);
 }
 
 /**
@@ -67,23 +94,20 @@ function wp_connectors_fixture_markers()
 function wp_connectors_scan_string($contents, $label)
 {
     $findings = array();
-    $markers = wp_connectors_fixture_markers();
+    $allowMarker = wp_connectors_allow_marker_pattern();
     $lines = explode("\n", $contents);
     foreach ($lines as $index => $line) {
-        $lineLower = strtolower($line);
-        $marked = false;
-        foreach ($markers as $marker) {
-            if (strpos($lineLower, $marker) !== false) {
-                $marked = true;
-
-                break;
-            }
-        }
-        if ($marked) {
+        if (preg_match($allowMarker, $line) === 1) {
             continue;
         }
         foreach (wp_connectors_secret_patterns() as $name => $pattern) {
-            if (preg_match($pattern[0], $line) === 1) {
+            if (preg_match_all($pattern[0], $line, $matches) === 0) {
+                continue;
+            }
+            foreach ($matches[0] as $matched) {
+                if (wp_connectors_is_recognizably_fake_secret($matched)) {
+                    continue;
+                }
                 // Never include the matched text in the finding.
                 $findings[] = sprintf('%s:%d %s (%s)', $label, $index + 1, $name, $pattern[1]);
 

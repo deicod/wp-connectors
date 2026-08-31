@@ -26,8 +26,10 @@ final class FakeSecrets
 
     /**
      * A key shaped like a real z.ai key (32hex.16hex) but built from a
-     * runtime-random value and flagged via the companion marker. Use only
-     * for redaction/format tests; the marker must be stored alongside it.
+     * runtime-random value and exempted only via the strict companion
+     * marker. Use only for redaction/format tests; an exact
+     * `// secrets:allow` comment must be stored alongside it (a bare
+     * "fixture" word exempts nothing).
      *
      * @return string
      */

@@ -380,6 +380,63 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * Includes hidden behind variables (finding: `require $dependency;`
+     * carries no quoted literal, so an indirectly assigned escaping path
+     * reported nothing and shipped in artifacts).
+     */
+
+    public function testLiteralFreeIncludesAreResolvedStrictly()
+    {
+        $tempPlugin = self::distDir() . '/.hidden-include-test/hidden-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src/Settings', 0755, true);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\HiddenDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+        file_put_contents($tempPlugin . '/src/support.php', "<?php\n// loaded via variable includes\n");
+        // (a) Escaping literal assigned to a variable: the anchored-traversal
+        // analysis must see through the assignment.
+        file_put_contents($tempPlugin . '/escape-via-var.php', "<?php\n\$dependency = dirname(__DIR__, 2) . '/other-plugin/bootstrap.php';\nrequire \$dependency;\n");
+        // (b) In-root literal behind a variable: resolves inside the root.
+        file_put_contents($tempPlugin . '/src/ok-via-var.php', "<?php\n\$support = __DIR__ . '/support.php';\nrequire \$support;\n");
+        // (b2) Anchored-but-inside '..' behind a variable (R4-protected shape).
+        file_put_contents($tempPlugin . '/src/Settings/ok-nested-via-var.php', "<?php\n\$up = __DIR__ . '/../support.php';\nrequire \$up;\n");
+        // (c1) Variable with no resolvable same-file assignment.
+        file_put_contents($tempPlugin . '/unresolved.php', "<?php\nrequire \$unknown;\n");
+        // (c2) Runtime-built, unanchored assignment.
+        file_put_contents($tempPlugin . '/runtime.php', "<?php\n\$path = get_template_directory() . '/x.php';\nrequire \$path;\n");
+        // (c3) Non-variable expression the scanner cannot resolve.
+        file_put_contents($tempPlugin . '/indirect.php', "<?php\nrequire \$config['path'];\n");
+
+        $violations = wp_connectors_self_containment_violations($tempPlugin);
+
+        $byFile = array();
+        foreach ($violations as $violation) {
+            foreach (array( 'escape-via-var.php', 'src/ok-via-var.php', 'src/Settings/ok-nested-via-var.php', 'unresolved.php', 'runtime.php', 'indirect.php', 'src/autoload.php' ) as $relative) {
+                if (strpos($violation, $relative) !== false) {
+                    $byFile[$relative] = ($byFile[$relative] ?? 0) + 1;
+                }
+            }
+        }
+        $this->assertSame(1, $byFile['escape-via-var.php'] ?? 0, 'An escaping literal assigned to a variable must be flagged: ' . implode("\n", $violations));
+        $this->assertSame(1, $byFile['unresolved.php'] ?? 0, 'An unresolvable variable include must be flagged.');
+        $this->assertSame(1, $byFile['runtime.php'] ?? 0, 'A runtime-built unanchored include must be flagged.');
+        $this->assertSame(1, $byFile['indirect.php'] ?? 0, 'A non-variable indirect include must be flagged.');
+        $this->assertSame(0, $byFile['src/ok-via-var.php'] ?? 0, 'An in-root literal behind a variable must still be allowed.');
+        $this->assertSame(0, $byFile['src/Settings/ok-nested-via-var.php'] ?? 0, 'A nested-but-inside variable include must still be allowed.');
+        $this->assertSame(0, $byFile['src/autoload.php'] ?? 0, 'The mandated PSR-4 autoloader include must stay clean.');
+
+        $report = implode("\n", $violations);
+        $this->assertStringContainsString('not provably inside the plugin dir', $report);
+        $this->assertStringContainsString('escapes upward through dirname()', $report);
+        $this->assertStringContainsString('no resolvable same-file assignment', $report);
+        $this->assertStringContainsString('is not anchored to __DIR__ or ABSPATH', $report);
+
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
+    /*
      * Duplicate plugin headers (finding: the parser kept the LAST value while
      * WordPress's get_file_data() keeps the FIRST).
      */
