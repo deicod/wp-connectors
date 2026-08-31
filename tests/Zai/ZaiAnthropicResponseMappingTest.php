@@ -345,6 +345,45 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
      * Malformed payloads: fixed, redacted messages.
      */
 
+    public function testContextWindowExhaustionGetsItsOwnAdvice()
+    {
+        // Codex R5 #4: model_context_window_exceeded is NOT a max_tokens
+        // case — raising maxTokens cannot recover it and leaves even less
+        // room; the advice must be to reduce the input.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('partial', null, 'model_context_window_exceeded'));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Context-window exhaustion must throw.');
+        } catch (TokenLimitReachedException $e) {
+            $this->assertStringContainsString('context window', $e->getMessage());
+            $this->assertStringContainsString('truncate the history or shorten the prompt', $e->getMessage());
+            $this->assertStringNotContainsString('Raise maxTokens', $e->getMessage(), 'The maxTokens advice must stay on the max_tokens case only.');
+            $this->assertNull($e->getMaxTokens(), 'No output-token limit is attributable to context-window exhaustion.');
+        }
+
+        // The typed WP_Error boundary carries the same distinction.
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('partial', null, 'model_context_window_exceeded'));
+        $error = $this->model()->generate_text($this->prompt());
+
+        $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_TOKEN_LIMIT);
+        $this->assertStringContainsString('context window', $error->get_error_message());
+        $this->assertStringNotContainsString('configured token limit', $error->get_error_message());
+    }
+
+    public function testGenuineMaxTokensKeepsTheRaiseAdvice()
+    {
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('trunc', null, 'max_tokens'));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('max_tokens must throw.');
+        } catch (TokenLimitReachedException $e) {
+            $this->assertStringContainsString('Raise maxTokens', $e->getMessage());
+            $this->assertSame(4096, $e->getMaxTokens());
+        }
+    }
+
     /**
      * @dataProvider provideNonAssistantRoles
      */

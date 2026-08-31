@@ -26,6 +26,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   fabricated an assistant turn or exposed the payload as a generated
   USER message — both now fail as a typed parse error instead of
   mis-attributing content into downstream history.
+- `model_context_window_exceeded` is no longer folded into the
+  `max_tokens` case: the model's overall CONTEXT window being exhausted
+  cannot be recovered by raising maxTokens (it leaves even less room),
+  so it now carries its own advice — reduce the input, truncate the
+  history, shorten the prompt — and a null typed maxTokens payload that
+  ErrorMapper keys on; the raise-maxTokens advice stays on genuine
+  `max_tokens` stop reasons only.
 
 ### Fixed (zai / M2 — Codex PR review, round 4)
 

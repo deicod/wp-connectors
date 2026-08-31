@@ -878,7 +878,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				return FinishReasonEnum::contentFilter();
 
 			case 'max_tokens':
-			case 'model_context_window_exceeded':
 				$max_tokens = absint( $this->getConfig()->getMaxTokens() ?? self::DEFAULT_MAX_TOKENS );
 
 				throw new TokenLimitReachedException(
@@ -888,6 +887,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer from absint(), formatted via %d.
 					),
 					$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer payload for the typed accessor, from absint().
+				);
+
+			case 'model_context_window_exceeded':
+				/*
+				 * Codex R5 #4: the model's overall CONTEXT window is
+				 * exhausted — raising maxTokens cannot recover it (it
+				 * leaves even less room), so this gets its own advice and
+				 * a null typed payload to distinguish it from the
+				 * max_tokens case (ErrorMapper keys on that).
+				 */
+				throw new TokenLimitReachedException(
+					esc_html__( 'The generation stopped because the conversation exceeds the model\'s context window. Reduce the input — truncate the history or shorten the prompt — and try again.', 'zai' ),
+					null
 				);
 		}
 

@@ -238,9 +238,20 @@ final class ErrorMapper {
 		}
 
 		if ( $exception instanceof TokenLimitReachedException ) {
+			/*
+			 * Codex R5 #4: a null typed payload means the model's CONTEXT
+			 * window was exhausted (model_context_window_exceeded) — advice
+			 * to raise maxTokens cannot recover that and leaves even less
+			 * room, so the guidance differs from the genuine output-token
+			 * limit case.
+			 */
+			$message = null === $exception->getMaxTokens()
+				? __( 'The generation stopped because the conversation exceeds the model\'s context window. Reduce the input — truncate the history or shorten the prompt — and try again.', 'zai' )
+				: __( 'The generation stopped because the configured token limit was reached.', 'zai' );
+
 			return new \WP_Error(
 				self::CODE_TOKEN_LIMIT,
-				__( 'The generation stopped because the configured token limit was reached.', 'zai' ),
+				$message,
 				array( 'status' => 400 )
 			);
 		}
