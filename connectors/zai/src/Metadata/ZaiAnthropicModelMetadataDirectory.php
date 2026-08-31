@@ -14,10 +14,22 @@
  *
  * The fallback is plan-partitioned exactly like the zai provider's (SPEC
  * §3.3): coding subscriptions expose a restricted, coding-suitable model
- * set; the general pay-as-you-go API exposes the full catalog. The
- * Anthropic surface of O1 (does /v1/models answer with a valid key?) is
- * unprobed, so the static fallback is authoritative until evidence lands
- * (Task 2.4/2.7).
+ * set; the general pay-as-you-go API exposes the full catalog.
+ *
+ * O1 (Anthropic surface): GET {base}/v1/models exists (existence
+ * probe-verified 401-with-dummy-token, SPEC §3.1) but its behavior with a
+ * VALID key is UNPROBED, so the tested static fallback is authoritative;
+ * discovery is attempted opportunistically (a 2xx with a list of chat IDs
+ * wins and is cached), and every failure shape — 401/404/5xx, malformed
+ * body, no usable chat IDs, transport — falls back without poisoning the
+ * cache, so a later valid key can still discover. The Task 2.7 live probe
+ * records the credentialed outcome.
+ *
+ * The discovery cache is a WordPress transient scoped to the endpoint
+ * identity (provider + plan + region, via ZaiAnthropicEndpoint::cache_key()),
+ * so a warm cache can never serve another endpoint's catalog after a
+ * settings change. There is no other cache layer: this class implements the
+ * SDK interface directly and keeps no in-memory state.
  *
  * @since 0.2.0
  *
@@ -28,12 +40,17 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Metadata;
 
+use Throwable;
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Providers\Contracts\ModelMetadataDirectoryInterface;
 use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithHttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithRequestAuthenticationInterface;
+use WordPress\AiClient\Providers\Http\DTO\Request;
+use WordPress\AiClient\Providers\Http\DTO\Response;
+use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
+use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\Traits\WithHttpTransporterTrait;
 use WordPress\AiClient\Providers\Http\Traits\WithRequestAuthenticationTrait;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
@@ -69,6 +86,15 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 * @var string
 	 */
 	public const CACHE_PREFIX = 'zai_connector_zai_anthropic_models_';
+
+	/**
+	 * Seconds a successful discovery response stays cached per endpoint.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	public const DISCOVERY_TTL = 12 * HOUR_IN_SECONDS;
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.
@@ -144,11 +170,12 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	}
 
 	/**
-	 * Returns the model map for the CURRENT endpoint: the plan-specific
-	 * static fallback.
+	 * Returns the model map for the CURRENT endpoint: cached discovery,
+	 * discovery, or the plan-specific static fallback.
 	 *
 	 * The plan/region options are read at call time, so a settings change
-	 * swaps the catalog on the very next lookup.
+	 * swaps the cache identity and catalog on the very next lookup — a warm
+	 * cache can never serve another endpoint's models.
 	 *
 	 * @since 0.2.0
 	 *
@@ -156,20 +183,108 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 */
 	private function models_map(): array {
 		$endpoint = ZaiAnthropicEndpoint::for_current_settings();
+		$cache_id = self::CACHE_PREFIX . md5( $endpoint->cache_key() );
 
-		return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
+		$cached_ids = get_transient( $cache_id );
+		if ( \is_array( $cached_ids ) ) {
+			return $this->map_from_ids( $cached_ids );
+		}
+
+		try {
+			$ids = $this->discover_model_ids( $endpoint );
+		} catch ( Throwable $e ) {
+			// Discovery failure is never fatal and never cached: the
+			// plan-partitioned static fallback keeps the provider usable
+			// while a later valid key can still discover.
+			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
+		}
+
+		set_transient( $cache_id, $ids, self::DISCOVERY_TTL );
+
+		return $this->map_from_ids( $ids );
+	}
+
+	/**
+	 * Discovers chat-capable model IDs from the endpoint's /v1/models route.
+	 *
+	 * Both common list shapes carry data[].id entries, so the parser accepts
+	 * the Anthropic shape (data + display_name/created_at) and the OpenAI
+	 * shape (data + object/created/owned_by) alike. Any malformed shape, a
+	 * non-2xx status, or a list with no usable chat IDs throws, which
+	 * models_map() turns into the plan fallback.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param ZaiAnthropicEndpoint $endpoint The endpoint to discover from.
+	 * @return list<string> Chat-capable model IDs, unsorted.
+	 * @throws ResponseException On any non-usable discovery response.
+	 */
+	private function discover_model_ids( ZaiAnthropicEndpoint $endpoint ): array {
+		$request = new Request( HttpMethodEnum::GET(), $endpoint->models_url() );
+		$request = $this->getRequestAuthentication()->authenticateRequest( $request );
+
+		$response = $this->getHttpTransporter()->send( $request );
+
+		if ( ! $response->isSuccessful() ) {
+			throw ResponseException::fromMissingData( 'z.ai', 'data' );
+		}
+
+		return $this->parse_model_ids( $response );
+	}
+
+	/**
+	 * Parses a model-list response into chat-capable IDs.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response $response The /v1/models response.
+	 * @return list<string> Chat-capable model IDs.
+	 * @throws ResponseException When the response shape is malformed or no
+	 *                           usable chat ID remains.
+	 */
+	private function parse_model_ids( Response $response ): array {
+		$data = $response->getData();
+
+		if ( ! \is_array( $data ) || ! isset( $data['data'] ) || ! \is_array( $data['data'] ) ) {
+			throw ResponseException::fromMissingData( 'z.ai', 'data' );
+		}
+
+		$ids = array();
+		foreach ( $data['data'] as $entry ) {
+			if ( ! \is_array( $entry ) || ! isset( $entry['id'] ) || ! \is_string( $entry['id'] ) || '' === $entry['id'] ) {
+				throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Every entry must carry a non-empty string "id".' );
+			}
+
+			$ids[] = $entry['id'];
+		}
+
+		// IDs without known chat support are dropped BEFORE anything is
+		// cached — advertising them would route them to /v1/messages where
+		// they cannot work (chat-support evidence lives in the shared
+		// ZaiModelCatalog, never the family-name grammar).
+		$chat_ids = array();
+		foreach ( $ids as $id ) {
+			if ( ZaiModelCatalog::is_chat_model( $id ) ) {
+				$chat_ids[] = $id;
+			}
+		}
+
+		if ( array() === $chat_ids ) {
+			throw ResponseException::fromMissingData( 'z.ai', 'data' );
+		}
+
+		return $chat_ids;
 	}
 
 	/**
 	 * Builds the sorted metadata map for a list of model IDs.
 	 *
-	 * IDs without known chat support are dropped: advertising them would
-	 * route them to /v1/messages where they cannot work (chat-support
-	 * evidence lives in the shared ZaiModelCatalog).
+	 * IDs without known chat support are dropped, so a transient warmed by
+	 * an older version can never resurface a non-chat model either.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param array $ids Model IDs (fallback or discovered).
+	 * @param array $ids Model IDs (fallback, cached, or discovered).
 	 * @return array<string, ModelMetadata> Map of model ID to metadata.
 	 */
 	private function map_from_ids( array $ids ): array {

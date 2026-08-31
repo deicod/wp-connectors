@@ -248,6 +248,26 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
+     * Primes the zai_anthropic discovery transient for the CURRENT endpoint.
+     *
+     * Same purpose as primeZaiDiscoveryTransient() for the second provider:
+     * tests that only mock the /v1/messages transport call this first, so no
+     * unexpected /v1/models attempt disturbs their recorded requests.
+     *
+     * @param list<string> $ids Model IDs to advertise (default glm-5.3).
+     * @return void
+     */
+    protected function primeZaiAnthropicDiscoveryTransient(array $ids = array( 'glm-5.3' ))
+    {
+        set_transient(
+            \Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX
+                . md5( \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->cache_key() ),
+            $ids,
+            \Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::DISCOVERY_TTL
+        );
+    }
+
+    /**
      * Recorded wp_remote_* attempts.
      *
      * @return list<array{method: string, url: string, args: array}>

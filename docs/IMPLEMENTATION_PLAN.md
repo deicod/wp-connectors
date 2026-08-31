@@ -277,7 +277,7 @@ documented exception.
   depend on unverified `x-api-key` support. Check this task only after exact-header tests prove no
   duplicate/conflicting auth header and logging tests prove full redaction.
 
-- [ ] **Task 2.4 — Implement Anthropic metadata/catalog.** Create the custom metadata directory,
+- [x] **Task 2.4 — Implement Anthropic metadata/catalog.** Create the custom metadata directory,
   static GLM fallback, capability declarations, sorting, optional cached `/v1/models` discovery,
   and graceful failure policy. The discovery cache MUST be scoped by endpoint identity
   (provider/plan/region in the cache key, or invalidation on settings change) exactly as in

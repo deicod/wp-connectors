@@ -101,6 +101,68 @@ final class HttpResponseFactory
     }
 
     /**
+     * Anthropic-shape /v1/models success body.
+     *
+     * @param list<string> $modelIds Model IDs.
+     * @return string JSON body.
+     */
+    public static function anthropicModelsBody(array $modelIds)
+    {
+        $models = array();
+        $previous = null;
+        foreach ($modelIds as $modelId) {
+            $models[] = array(
+                'id' => $modelId,
+                'type' => 'model',
+                'display_name' => strtoupper(str_replace('-', ' ', $modelId)),
+                'created_at' => '2026-01-01T00:00:00Z',
+            );
+            $previous = $modelId;
+        }
+
+        return (string) wp_json_encode(array(
+            'data' => $models,
+            'first_id' => $modelIds !== array() ? $modelIds[0] : null,
+            'has_more' => false,
+            'last_id' => $previous,
+        ));
+    }
+
+    /**
+     * Anthropic-shape /v1/messages success body.
+     *
+     * @param string                                            $text Assistant text.
+     * @param list<array<string, mixed>>|null                   $content Optional full content block list.
+     * @param string                                            $stopReason Stop reason.
+     * @return string JSON body.
+     */
+    public static function anthropicMessagesBody($text, array $content = null, $stopReason = 'end_turn')
+    {
+        return (string) wp_json_encode(array(
+            'id' => 'msg_fixture',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => $content !== null ? $content : array(array( 'type' => 'text', 'text' => $text )),
+            'model' => 'glm-5.3',
+            'stop_reason' => $stopReason,
+            'stop_sequence' => null,
+            'usage' => array( 'input_tokens' => 10, 'output_tokens' => 5 ),
+        ));
+    }
+
+    /**
+     * Anthropic-shape error body.
+     *
+     * @param string $message Error message (fixture text only).
+     * @param string $type Error type.
+     * @return string JSON body.
+     */
+    public static function anthropicErrorBody($message, $type = 'invalid_request_error')
+    {
+        return (string) wp_json_encode(array( 'type' => 'error', 'error' => array( 'type' => $type, 'message' => $message ) ));
+    }
+
+    /**
      * OAuth error body (RFC 6749 section 5.2).
      *
      * @param string $error Error code, e.g. "invalid_grant".
