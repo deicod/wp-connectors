@@ -1,0 +1,22 @@
+{
+    "url": "https://api.z.ai/api/coding/anthropic/v1/messages",
+    "body": {
+        "model": "glm-5.3",
+        "max_tokens": 4096,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Summarize the following document."
+                    },
+                    {
+                        "type": "text",
+                        "text": "Chapter 1: It was a dark and stormy night..."
+                    }
+                ]
+            }
+        ]
+    }
+}

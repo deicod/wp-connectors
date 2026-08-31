@@ -131,12 +131,12 @@ final class HttpResponseFactory
     /**
      * Anthropic-shape /v1/messages success body.
      *
-     * @param string                                            $text Assistant text.
-     * @param list<array<string, mixed>>|null                   $content Optional full content block list.
-     * @param string                                            $stopReason Stop reason.
+     * @param string                          $text Assistant text.
+     * @param list<array<string, mixed>>|null $content Optional full content block list.
+     * @param string                          $stopReason Stop reason.
      * @return string JSON body.
      */
-    public static function anthropicMessagesBody($text, array $content = null, $stopReason = 'end_turn')
+    public static function anthropicMessagesBody($text, ?array $content = null, $stopReason = 'end_turn')
     {
         return (string) wp_json_encode(array(
             'id' => 'msg_fixture',

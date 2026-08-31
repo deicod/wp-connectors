@@ -289,7 +289,7 @@ documented exception.
   Check this task only after static/discovered/fallback tests pass for BOTH plan selections,
   and the Anthropic half of O1 is documented accurately.
 
-- [ ] **Task 2.5 — Implement Messages request mapping.** Translate system instruction, alternating
+- [x] **Task 2.5 — Implement Messages request mapping.** Translate system instruction, alternating
   chat content blocks, text and supported images, tools/tool results, JSON output guidance,
   `outputSchema`, max tokens, temperature, top-p, and stop sequences to the Anthropic-compatible
   Messages format. Handle protocol constraints such as required max tokens and role ordering.

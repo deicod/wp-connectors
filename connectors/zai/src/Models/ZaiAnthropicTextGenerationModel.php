@@ -172,6 +172,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	/**
 	 * Prepares the Messages API request parameters after rejecting unsupported input.
 	 *
+	 * Structured output travels as JSON GUIDANCE in the system prompt, not as
+	 * a native output_format parameter: z.ai's support for Anthropic's
+	 * structured-outputs beta (anthropic-beta header + output_format) is
+	 * unverified, while instruction-guided JSON works on every
+	 * Messages-compatible endpoint (documented as the v1 behavior).
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param array $prompt Prompt messages (list of Message).
@@ -190,6 +196,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		);
 
 		$system_instruction = $config->getSystemInstruction();
+		$json_guidance      = $this->json_output_guidance();
+		if ( '' !== $json_guidance ) {
+			$system_instruction = \is_string( $system_instruction ) && '' !== $system_instruction
+				? $system_instruction . "\n\n" . $json_guidance
+				: $json_guidance;
+		}
 		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
 			$params['system'] = $system_instruction;
 		}
@@ -209,7 +221,73 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			$params['stop_sequences'] = $stop_sequences;
 		}
 
+		$function_declarations = $config->getFunctionDeclarations();
+		if ( \is_array( $function_declarations ) ) {
+			$params['tools'] = $this->prepare_tools_param( $function_declarations );
+		}
+
 		return $params;
+	}
+
+	/**
+	 * Builds the JSON-output guidance for the system prompt, or '' when JSON
+	 * output was not requested.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return string Guidance text (possibly embedding the outputSchema).
+	 */
+	private function json_output_guidance(): string {
+		$config = $this->getConfig();
+
+		if ( 'application/json' !== $config->getOutputMimeType() ) {
+			return '';
+		}
+
+		$guidance = __( 'Respond with a single JSON value only — no markdown fences, no commentary, no surrounding text.', 'zai' );
+
+		$output_schema = $config->getOutputSchema();
+		if ( \is_array( $output_schema ) ) {
+			$guidance .= "\n" . sprintf(
+				/* translators: %s: a JSON Schema document (compact JSON). */
+				__( 'The JSON value must conform to this JSON Schema: %s', 'zai' ),
+				(string) wp_json_encode( $output_schema )
+			);
+		}
+
+		return $guidance;
+	}
+
+	/**
+	 * Prepares the tools parameter for the API request.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $function_declarations Declared functions (list of FunctionDeclaration).
+	 * @return array The prepared tools parameter (list of tool objects).
+	 */
+	protected function prepare_tools_param( array $function_declarations ): array {
+		$tools = array();
+
+		foreach ( $function_declarations as $declaration ) {
+			// The Messages protocol requires input_schema on every tool,
+			// even for functions without parameters (empty object schema).
+			$input_schema = $declaration->getParameters();
+			if ( null === $input_schema ) {
+				$input_schema = array(
+					'type'       => 'object',
+					'properties' => new \stdClass(),
+				);
+			}
+
+			$tools[] = array(
+				'name'         => $declaration->getName(),
+				'description'  => $declaration->getDescription(),
+				'input_schema' => $input_schema,
+			);
+		}
+
+		return $tools;
 	}
 
 	/**
@@ -287,6 +365,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *
 	 * @param MessagePart $part The message part.
 	 * @return array<string, mixed>|null The block, or null when dropped.
+	 * @throws InvalidArgumentException When a tool part carries no identity.
 	 */
 	protected function message_part_block( MessagePart $part ): ?array {
 		if ( $part->getType()->isText() ) {
@@ -297,6 +376,45 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			return array(
 				'type' => 'text',
 				'text' => (string) $part->getText(),
+			);
+		}
+
+		if ( $part->getType()->isFunctionCall() ) {
+			$function_call = $part->getFunctionCall();
+			if ( null === $function_call || null === $function_call->getId() || null === $function_call->getName() ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires every function-call part to carry an id and a name.'
+				);
+			}
+
+			// The Messages protocol requires an OBJECT for tool_use input;
+			// PHP's empty array would encode as [], so empty args become an
+			// empty object explicitly (official-plugin normalization).
+			$input = $function_call->getArgs();
+			if ( null === $input || ( \is_array( $input ) && array() === $input ) ) {
+				$input = new \stdClass();
+			}
+
+			return array(
+				'type'  => 'tool_use',
+				'id'    => $function_call->getId(),
+				'name'  => $function_call->getName(),
+				'input' => $input,
+			);
+		}
+
+		if ( $part->getType()->isFunctionResponse() ) {
+			$function_response = $part->getFunctionResponse();
+			if ( null === $function_response || null === $function_response->getId() ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires every function-response part to carry the tool_use id it answers.'
+				);
+			}
+
+			return array(
+				'type'        => 'tool_result',
+				'tool_use_id' => $function_response->getId(),
+				'content'     => (string) wp_json_encode( $function_response->getResponse() ),
 			);
 		}
 
@@ -534,6 +652,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		if ( null !== $config->getCandidateCount() ) {
 			throw new InvalidArgumentException(
 				'The zai_anthropic provider does not support candidateCount (multiple candidates).'
+			);
+		}
+
+		// max_tokens is required and must be positive; a zero/negative value
+		// would be a protocol error upstream.
+		if ( null !== $config->getMaxTokens() && 1 > $config->getMaxTokens() ) {
+			throw new InvalidArgumentException(
+				'The zai_anthropic provider requires maxTokens to be a positive number.'
 			);
 		}
 
