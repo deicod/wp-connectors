@@ -363,16 +363,37 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * before any transport work, with a precise message instead (review
 	 * finding).
 	 *
+	 * Tool parts are validated against their message's role (Codex R5 #1):
+	 * the Messages protocol requires tool_use blocks in ASSISTANT turns
+	 * and tool_result blocks in USER turns, so a FunctionCall in a user
+	 * message or a FunctionResponse in an assistant message is rejected
+	 * before transport instead of failing upstream with a 400.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param Message $message The message.
 	 * @return list<array<string, mixed>> Content blocks.
-	 * @throws InvalidArgumentException When the message has no translatable parts.
+	 * @throws InvalidArgumentException When the message has no translatable
+	 *                                   parts or a tool part sits in an
+	 *                                   incompatible role.
 	 */
 	protected function message_content_blocks( Message $message ): array {
-		$blocks = array();
+		$is_assistant = $message->getRole()->isModel();
+		$blocks       = array();
 
 		foreach ( $message->getParts() as $part ) {
+			if ( $part->getType()->isFunctionCall() && ! $is_assistant ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires function-call (tool_use) parts to sit in assistant messages.'
+				);
+			}
+
+			if ( $part->getType()->isFunctionResponse() && $is_assistant ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires function-response (tool_result) parts to sit in user messages.'
+				);
+			}
+
 			$block = $this->message_part_block( $part );
 			if ( null !== $block ) {
 				$blocks[] = $block;

@@ -500,6 +500,75 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    /**
+     * Builds a Message whose parts bypass the SDK DTO's own role check.
+     *
+     * The SDK's Message constructor ALREADY rejects a FunctionCall in a
+     * user message and a FunctionResponse in a model message, so the
+     * malformed history the finding describes can only arrive from an SDK
+     * bypass (a relaxed future DTO, a different SDK version, unserialized
+     * state). Swapping the private parts via the repo's established
+     * reflection pattern simulates exactly that; the provider-level guard
+     * must reject it before transport.
+     *
+     * @param MessageRoleEnum $role The (valid) role to construct with.
+     * @param list<MessagePart> $bypassParts The incompatible parts to inject.
+     * @return Message
+     */
+    private function messageWithBypassedParts(MessageRoleEnum $role, array $bypassParts): Message
+    {
+        $message = new Message($role, array(new MessagePart('placeholder')));
+
+        return Closure::bind(
+            static function () use ($message, $bypassParts): Message {
+                $message->parts = $bypassParts;
+
+                return $message;
+            },
+            null,
+            Message::class
+        )();
+    }
+
+    public function testAFunctionCallInAUserMessageIsRejectedBeforeTransport()
+    {
+        // Codex R5 #1: tool_use belongs in assistant turns — a user turn
+        // carrying it would 400 upstream.
+        $prompt = array(
+            $this->messageWithBypassedParts(MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionCall('call_u', 'ping', array())),
+            )),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A function call in a user message must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('assistant messages', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAFunctionResponseInAnAssistantMessageIsRejectedBeforeTransport()
+    {
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            $this->messageWithBypassedParts(MessageRoleEnum::model(), array(
+                new MessagePart(new FunctionResponse('call_v', 'ping', array('ok' => 1))),
+            )),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A function response in an assistant message must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('user messages', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testEmptyTextPartsAreDroppedBeforeTransport()
     {
         // Codex R4 #2: the Messages protocol rejects empty text blocks —

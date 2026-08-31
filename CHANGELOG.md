@@ -6,6 +6,16 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 5)
+
+- Tool parts are validated against their message's role before
+  transport: a FunctionCall in a user message or a FunctionResponse in
+  an assistant message (histories the Messages protocol rejects with a
+  400) now fail with the typed invalid-request error. The SDK's Message
+  DTO already blocks both pairings at every construction path, so the
+  guard is defense-in-depth for SDK bypasses (relaxed future DTO,
+  unserialized state) — pinned by a reflection-bypass regression test.
+
 ### Fixed (zai / M2 — Codex PR review, round 4)
 
 - `authenticateRequest()` now strips any pre-existing `x-api-key`
