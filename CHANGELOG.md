@@ -6,6 +6,17 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 3)
+
+- `"input": []` (the empty JSON LIST) and boolean tool inputs are now
+  rejected on the regular Messages response path: associative decoding
+  collapses `{}` and `[]` to the same empty PHP array, so object-ness is
+  decided against a parallel NON-associative decode of the body (the raw
+  value is stdClass only for objects). `{}` and a missing input member
+  stay legitimate no-argument calls. The SSE consolidated payload now
+  preserves `{}` as an object across the aggregator/model boundary for
+  the same reason.
+
 ### Fixed (zai / M2 — Codex PR review, round 2)
 
 - The non-streaming Messages response path now applies the same

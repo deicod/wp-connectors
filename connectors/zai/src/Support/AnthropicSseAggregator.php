@@ -372,6 +372,14 @@ final class AnthropicSseAggregator {
 					}
 
 					$input = json_decode( $block['json'], true );
+
+					// The empty object {} must survive the consolidated
+					// boundary as an OBJECT: an associative empty array
+					// would re-encode as the empty list [] and fail the
+					// model's raw object-ness oracle (Codex R3 #1).
+					if ( ! \is_array( $input ) || array() === $input ) {
+						$input = new \stdClass();
+					}
 				}
 
 				return array(

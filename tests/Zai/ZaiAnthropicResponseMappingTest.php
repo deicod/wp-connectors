@@ -206,6 +206,46 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertRedacted($error->get_error_message(), '/etc/hosts');
     }
 
+    public function testAnEmptyJsonListToolUseInputFailsAsATypedParseError()
+    {
+        // Codex R3 #1: associative decoding collapses "input":[] and
+        // "input":{} to the same empty PHP array — the empty LIST must not
+        // slip through as a fabricated no-argument call.
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_tool_emptylist',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'tool_use', 'id' => 'toolu_06', 'name' => 'delete_file', 'input' => array())),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('An empty-list tool input must fail, got a call with args: ' . wp_json_encode($result->toMessage()->getParts()[0]->getFunctionCall()->getArgs()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('non-object input', $e->getMessage());
+            $this->assertStringNotContainsString('delete_file', $e->getMessage());
+        }
+    }
+
+    public function testABooleanToolUseInputFailsAsATypedParseError()
+    {
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_tool_bool',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'tool_use', 'id' => 'toolu_07', 'name' => 'ping', 'input' => true)),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A boolean tool input must fail.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('non-object input', $e->getMessage());
+        }
+    }
+
     public function testAScalarToolUseInputFailsAsATypedParseError()
     {
         $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(

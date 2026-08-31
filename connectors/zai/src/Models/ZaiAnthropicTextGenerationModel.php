@@ -586,17 +586,32 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			throw ResponseException::fromMissingData( 'z.ai', 'content' );
 		}
 
+		/*
+		 * Object-ness oracle (Codex R3 #1): getData() decodes the body
+		 * ASSOCIATIVELY, which collapses the JSON object {} and the JSON
+		 * list [] into the same empty PHP array. A parallel non-
+		 * associative decode of the same body preserves the distinction
+		 * ({} is stdClass, [] is an array) and is handed to each content
+		 * block alongside the associative value.
+		 */
+		$raw            = json_decode( (string) $response->getBody() );
+		$raw_content_ok = \is_object( $raw ) && isset( $raw->content ) && \is_array( $raw->content );
+
 		$role = isset( $data['role'] ) && 'user' === $data['role']
 			? MessageRoleEnum::user()
 			: MessageRoleEnum::model();
 
 		$parts = array();
-		foreach ( $data['content'] as $part_data ) {
+		foreach ( $data['content'] as $index => $part_data ) {
 			if ( ! \is_array( $part_data ) ) {
 				throw ResponseException::fromInvalidData( 'z.ai', 'content', 'Every content entry must be an object.' );
 			}
 
-			$part = $this->parse_content_block( $part_data );
+			$raw_part = $raw_content_ok && isset( $raw->content[ $index ] ) && \is_object( $raw->content[ $index ] )
+				? $raw->content[ $index ]
+				: null;
+
+			$part = $this->parse_content_block( $part_data, $raw_part );
 			if ( null !== $part ) {
 				$parts[] = $part;
 			}
@@ -642,11 +657,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param array<string, mixed> $part_data The content block.
+	 * @param array<string, mixed> $part_data The content block (associative decode).
+	 * @param stdClass|null        $raw_part  The same block from a NON-
+	 *                                        associative decode — the
+	 *                                        object-ness oracle for tool
+	 *                                         inputs (Codex R3 #1), null
+	 *                                        when unavailable.
 	 * @return MessagePart|null The part, or null for ignorable block types.
 	 * @throws ResponseException When a known block type has a malformed shape.
 	 */
-	private function parse_content_block( array $part_data ): ?MessagePart {
+	private function parse_content_block( array $part_data, ?\stdClass $raw_part ): ?MessagePart {
 		$type = $part_data['type'] ?? null;
 
 		switch ( $type ) {
@@ -672,22 +692,54 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				}
 
 				/*
-				 * Object-ness validation (Codex R2 #1), mirroring the R1 SSE
-				 * fix: tool arguments must be a JSON OBJECT. A missing or
-				 * null input member and the empty object {} are legitimate
-				 * no-argument calls; scalars and JSON lists (integer keys)
-				 * are malformed and fail as a typed parse error — passing
+				 * Object-ness validation (Codex R2 #1 / R3 #1), mirroring
+				 * the R1 SSE fix: tool arguments must be a JSON OBJECT. The
+				 * RAW (non-associative) decode decides the shape exactly —
+				 * {} and missing/null are legitimate no-argument calls;
+				 * scalars, booleans, and JSON lists (including the empty
+				 * list []) fail as a typed parse error, because passing
 				 * them through would hand a consumer fabricated or invalid
-				 * arguments for a possibly side-effecting tool.
+				 * arguments for a possibly side-effecting tool. Without a
+				 * raw block (defensive: should not happen) the strictest
+				 * associative fallback (is_object_shape) rejects the
+				 * ambiguous empty array with the empty list.
 				 */
-				$args = isset( $part_data['input'] ) ? $part_data['input'] : null;
-				if ( null !== $args && ! self::is_object_shape( $args ) ) {
-					throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block carried a non-object input value.' );
-				}
-				if ( \is_array( $args ) && array() === $args ) {
-					// An empty object means "no arguments" (official-plugin
-					// normalization).
-					$args = null;
+				if ( null === $raw_part ) {
+					/*
+					 * No raw oracle (defensive: should not happen): the
+					 * strictest associative probe decides — it also rejects
+					 * the ambiguous empty array ({} and [] are
+					 * indistinguishable here, so both fail).
+					 */
+					$args = isset( $part_data['input'] ) ? $part_data['input'] : null;
+
+					if ( null !== $args && ! self::is_object_shape( $args ) ) {
+						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block carried a non-object input value.' );
+					}
+
+					if ( \is_array( $args ) && array() === $args ) {
+						$args = null;
+					}
+				} else {
+					$raw_input = \property_exists( $raw_part, 'input' ) ? $raw_part->input : null;
+
+					if ( null === $raw_input ) {
+						// Missing input member or explicit null: no-argument call.
+						$args = null;
+					} elseif ( \is_object( $raw_input ) ) {
+						$args = isset( $part_data['input'] ) && \is_array( $part_data['input'] )
+							? $part_data['input']
+							: array();
+
+						if ( array() === $args ) {
+							// The empty object {} means "no arguments"
+							// (official-plugin normalization).
+							$args = null;
+						}
+					} else {
+						// Scalar, boolean, or JSON list (including []).
+						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block carried a non-object input value.' );
+					}
 				}
 
 				return new MessagePart( new FunctionCall( $part_data['id'], $part_data['name'], $args ) );
@@ -703,14 +755,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
-	 * Whether a decoded JSON value has an OBJECT shape (Codex R2 #1).
+	 * Whether a decoded JSON value has an OBJECT shape (Codex R2 #1, R3 #1).
 	 *
-	 * The response body is decoded associatively, so a JSON object and a
-	 * JSON list both arrive as PHP arrays; the shape test is the key type —
-	 * objects (including the empty object {}) carry string keys only. The
-	 * pathological numeric-keyed JSON object ({"0":…}) is
-	 * indistinguishable from a list after an associative decode and is
-	 * rejected with it.
+	 * The response body is decoded associatively, so JSON objects and JSON
+	 * lists both arrive as PHP arrays — and the EMPTY object {} and the
+	 * empty list [] collapse to the same empty array, which key inspection
+	 * cannot tell apart. Re-encoding restores the distinction: only JSON
+	 * objects encode with a leading brace. Lists (including []), scalars,
+	 * booleans, and null all fail the probe. The pathological
+	 * numeric-keyed JSON object ({"0":…}) is indistinguishable from a list
+	 * after an associative decode and is rejected with it.
 	 *
 	 * @since 0.2.0
 	 *
@@ -722,13 +776,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			return false;
 		}
 
-		foreach ( array_keys( $value ) as $key ) {
-			if ( ! \is_string( $key ) ) {
-				return false;
-			}
-		}
+		$encoded = wp_json_encode( $value );
 
-		return true;
+		return \is_string( $encoded ) && '{' === substr( $encoded, 0, 1 );
 	}
 
 	/**
