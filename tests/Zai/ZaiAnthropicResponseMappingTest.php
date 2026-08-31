@@ -1153,6 +1153,55 @@ $body = ''
         $this->assertSame('', $result->toText(), 'The unknown delta contributes no text; the stream completes.');
     }
 
+    public function testAToolDeltaWithoutAStartBlockInvalidatesTheStream()
+    {
+        // Codex R5 #2: an input_json_delta for an index whose
+        // content_block_start was never received previously defaulted to a
+        // text accumulator — the fragments were collected and ignored, so
+        // a tool_use completion "succeeded" with NO FunctionCall at all.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ns","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"city\":\"Oslo\"}"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $parts = $result->toMessage()->getParts();
+            $this->fail('A tool delta without a start block must fail, got parts: ' . wp_json_encode($parts));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
+    public function testATextDeltaWithoutAStartBlockStaysTolerated()
+    {
+        // Documented tolerance (Codex R5 #2): a genuine TEXT delta for an
+        // unseen index keeps the tolerant text-default — the chunk is
+        // still accumulated and surfaced, never dropped.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ts","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Recovered chunk."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Recovered chunk.', $result->toText(), 'A lost start event for a text block must not lose the text.');
+    }
+
     public function testAnErrorEventFailsWithAFixedSafeMessage()
     {
         $secret = FakeSecrets::apiKey();

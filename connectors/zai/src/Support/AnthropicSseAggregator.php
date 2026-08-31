@@ -728,11 +728,30 @@ final class AnthropicSseAggregator {
 	 * @return void
 	 */
 	private function apply_delta( int $index, array $data ): void {
+		$delta = isset( $data['delta'] ) && \is_array( $data['delta'] ) ? $data['delta'] : array();
+
 		if ( ! isset( $this->blocks[ $index ] ) ) {
+			/*
+			 * Codex R5 #2: a TOOL delta for an index whose
+			 * content_block_start was never received means the stream is
+			 * damaged or resumed mid-flight. Defaulting the unseen index
+			 * to a TEXT accumulator made the JSON fragments collect where
+			 * content_block_payload() ignores them — the tool_use
+			 * completion "succeeded" with NO FunctionCall at all. Tool
+			 * deltas invalidate the stream. A genuine TEXT (or thinking)
+			 * delta on an unseen index keeps the tolerant default below:
+			 * the text is still accumulated and surfaced — a documented,
+			 * tested tolerance for streams that simply lost their start
+			 * event.
+			 */
+			if ( isset( $delta['type'] ) && 'input_json_delta' === $delta['type'] ) {
+				$this->malformed_tool_input = true;
+
+				return;
+			}
+
 			$this->start_block( $index, array( 'type' => 'text' ), null );
 		}
-
-		$delta = isset( $data['delta'] ) && \is_array( $data['delta'] ) ? $data['delta'] : array();
 
 		if ( isset( $delta['type'] ) && \is_string( $delta['type'] ) ) {
 			switch ( $delta['type'] ) {

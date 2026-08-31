@@ -15,6 +15,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   DTO already blocks both pairings at every construction path, so the
   guard is defense-in-depth for SDK bypasses (relaxed future DTO,
   unserialized state) — pinned by a reflection-bypass regression test.
+- An `input_json_delta` for a stream index whose `content_block_start`
+  was never received now invalidates the stream: the previous tolerant
+  default created a text accumulator, so the tool's JSON fragments were
+  collected and ignored and a tool_use completion "succeeded" with no
+  FunctionCall at all. A genuine text (or thinking) delta on an unseen
+  index keeps the documented tolerance — the chunk is still surfaced.
 
 ### Fixed (zai / M2 — Codex PR review, round 4)
 
