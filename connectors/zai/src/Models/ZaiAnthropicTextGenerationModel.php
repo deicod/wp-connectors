@@ -650,6 +650,21 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		/*
+		 * Codex R6 #5: the top-level content member must be a JSON ARRAY.
+		 * The associative decode collapses a JSON object {} into the same
+		 * empty PHP array as an empty list, so "content": {} slipped past
+		 * the is_array() check above and returned a successful candidate
+		 * with no parts. The raw (non-associative) decode preserves the
+		 * distinction: only a JSON array decodes to a PHP list.
+		 */
+		$raw_body = json_decode( (string) $response->getBody() );
+		if ( ! \is_object( $raw_body ) || ! \is_array( $raw_body->content ) ) {
+			if ( \is_object( $raw_body ) && property_exists( $raw_body, 'content' ) ) {
+				throw ResponseException::fromInvalidData( 'z.ai', 'content', 'The message content must be a JSON array.' );
+			}
+		}
+
+		/*
 		 * Object-ness oracle (Codex R3 #1): getData() decodes the body
 		 * ASSOCIATIVELY, which collapses the JSON object {} and the JSON
 		 * list [] into the same empty PHP array. A parallel non-
@@ -657,7 +672,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * ({} is stdClass, [] is an array) and is handed to each content
 		 * block alongside the associative value.
 		 */
-		$raw            = json_decode( (string) $response->getBody() );
+		$raw            = $raw_body;
 		$raw_content_ok = \is_object( $raw ) && isset( $raw->content ) && \is_array( $raw->content );
 
 		/*

@@ -613,6 +613,44 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Pondering.', $parts[0]->getText());
     }
 
+    public function testAnObjectShapedContentMemberIsRejected()
+    {
+        // Codex R6 #5: "content": {} collapses to the same empty PHP array
+        // as an empty list under associative decoding, so it parsed as a
+        // successful candidate with no parts.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"id":"msg_oc","type":"message","role":"assistant","content":{},"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('An object-shaped content member must be rejected, got parts: ' . wp_json_encode($result->toMessage()->getParts()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('JSON array', $e->getMessage());
+        }
+
+        // Numeric-keyed object: associative decode yields a non-empty
+        // "list-looking" array — the raw decode still sees an object.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"id":"msg_oc2","type":"message","role":"assistant","content":{"0":{"type":"text","text":"x"}},"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A numeric-keyed object content member must be rejected.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('JSON array', $e->getMessage());
+        }
+    }
+
+    public function testAnExplicitlyEmptyContentListStaysProtocolLegal()
+    {
+        // content: [] is protocol-legal (pre-output refusals) — only the
+        // OBJECT shape is rejected.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"id":"msg_ec","type":"message","role":"assistant","content":[],"stop_reason":"refusal","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame(array(), $result->toMessage()->getParts());
+        $this->assertSame(FinishReasonEnum::contentFilter(), $result->getCandidates()[0]->getFinishReason());
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.

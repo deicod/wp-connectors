@@ -32,6 +32,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   side effect, a thinking delta on a start-less index now seeds a
   thinking accumulator, so its content surfaces instead of being
   dropped (supersedes the R5 tolerance note).
+- A top-level `content` member that is a JSON OBJECT (`"content": {}`
+  or numeric-keyed) is now rejected: associative decoding collapses it
+  onto the empty-array/PHP-array shapes of a legal list, so it
+  previously parsed as a successful candidate with no parts. The raw
+  decode's array/object distinction decides; `"content": []` stays
+  protocol-legal.
 
 - The Debug logging checkbox renders again on Settings → z.ai: the
   field was still attached to the pre-refactor option-group section id,
