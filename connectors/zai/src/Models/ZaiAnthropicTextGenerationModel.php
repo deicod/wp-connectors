@@ -1005,12 +1005,49 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$id = isset( $data['id'] ) && \is_string( $data['id'] ) ? $data['id'] : '';
 
-		$usage_data = isset( $data['usage'] ) && \is_array( $data['usage'] ) ? $data['usage'] : array();
-		$input      = (int) ( $usage_data['input_tokens'] ?? 0 )
+		/*
+		 * Codex R14 #5: a PRESENT usage member must be a JSON OBJECT whose
+		 * supplied token counts are non-negative integers — a list-shaped
+		 * [1,2] passes is_array() and strings, bools, floats, and
+		 * negatives survived the (int) casts below as plausible token
+		 * accounting on a successful generation. Object-ness oracle (the
+		 * R3 #1 pattern): the raw decode distinguishes a JSON object
+		 * (stdClass) from a list (array), with the repo's sequential-key
+		 * test as the fallback when the oracle is unavailable. An ABSENT
+		 * usage member keeps the documented default-zero tolerance; an
+		 * explicitly-null member is PRESENT (array_key_exists) and
+		 * therefore rejected.
+		 */
+		$usage_data = array();
+		if ( \array_key_exists( 'usage', $data ) ) {
+			$usage_data      = \is_array( $data['usage'] ) ? $data['usage'] : null;
+			$usage_is_object = false;
+
+			if ( null !== $usage_data ) {
+				if ( \is_object( $raw ) && \property_exists( $raw, 'usage' ) ) {
+					$usage_is_object = \is_object( $raw->usage );
+				} else {
+					$usage_is_object = array() === $usage_data
+						|| \array_keys( $usage_data ) !== \range( 0, \count( $usage_data ) - 1 );
+				}
+			}
+
+			if ( ! $usage_is_object ) {
+					throw ResponseException::fromInvalidData( 'z.ai', 'usage', 'The usage member must be a JSON object.' );
+			}
+
+			foreach ( array( 'input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens' ) as $member ) {
+				if ( \array_key_exists( $member, $usage_data ) && ( ! \is_int( $usage_data[ $member ] ) || $usage_data[ $member ] < 0 ) ) {
+						throw ResponseException::fromInvalidData( 'z.ai', 'usage', 'Token counts must be non-negative integers.' );
+				}
+			}
+		}
+
+		$input  = (int) ( $usage_data['input_tokens'] ?? 0 )
 			+ (int) ( $usage_data['cache_creation_input_tokens'] ?? 0 )
 			+ (int) ( $usage_data['cache_read_input_tokens'] ?? 0 );
-		$output     = (int) ( $usage_data['output_tokens'] ?? 0 );
-		$usage      = new TokenUsage( $input, $output, $input + $output );
+		$output = (int) ( $usage_data['output_tokens'] ?? 0 );
+		$usage  = new TokenUsage( $input, $output, $input + $output );
 
 		$additional = $data;
 		unset( $additional['id'], $additional['role'], $additional['content'], $additional['stop_reason'], $additional['usage'] );

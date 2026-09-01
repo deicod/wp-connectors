@@ -1427,6 +1427,64 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
     }
 
     /**
+     * @dataProvider provideMalformedUsageValues
+     */
+    public function testMalformedTokenUsageValuesAreRejected($usageJson)
+    {
+        /*
+         * Codex R14 #5: a present usage member must be a JSON object of
+         * non-negative integer counts — lists, strings, bools, floats,
+         * and negatives previously survived the (int) casts as plausible
+         * token accounting on a successful generation.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"msg_mu","type":"message","role":"assistant","content":[{"type":"text","text":"Ok."}],"stop_reason":"end_turn","usage":' . $usageJson . '}');
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A malformed usage member must be rejected, got usage: ' . wp_json_encode($result->getTokenUsage()->toArray()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('usage', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideMalformedUsageValues()
+    {
+        return array(
+            'json list' => array('[1,2]'),
+            'string count' => array('{"input_tokens":"5","output_tokens":1}'),
+            'negative count' => array('{"input_tokens":1,"output_tokens":-3}'),
+            'bool count' => array('{"input_tokens":true,"output_tokens":1}'),
+            'float count' => array('{"input_tokens":1.5,"output_tokens":1}'),
+            'explicit null' => array('null'),
+            'scalar' => array('5'),
+        );
+    }
+
+    public function testValidAndAbsentTokenUsageStillParse()
+    {
+        // Guards: {} is a valid zero usage; cache members sum in; an
+        // absent usage member keeps the documented default-zero tolerance.
+        $this->queueSdkResponse(200, array(), '{"id":"msg_vu1","type":"message","role":"assistant","content":[{"type":"text","text":"A."}],"stop_reason":"end_turn","usage":{}}');
+        $this->queueSdkResponse(200, array(), '{"id":"msg_vu2","type":"message","role":"assistant","content":[{"type":"text","text":"B."}],"stop_reason":"end_turn","usage":{"input_tokens":0,"cache_creation_input_tokens":4,"cache_read_input_tokens":6,"output_tokens":0}}');
+        $this->queueSdkResponse(200, array(), '{"id":"msg_vu3","type":"message","role":"assistant","content":[{"type":"text","text":"C."}],"stop_reason":"end_turn"}');
+
+        $empty = $this->model()->generateTextResult($this->prompt())->getTokenUsage();
+        $this->assertSame(0, $empty->getPromptTokens(), 'An empty usage object means zero tokens.');
+        $this->assertSame(0, $empty->getCompletionTokens());
+
+        $cached = $this->model()->generateTextResult($this->prompt())->getTokenUsage();
+        $this->assertSame(10, $cached->getPromptTokens(), 'Cache members sum into the prompt side, zeros included.');
+        $this->assertSame(0, $cached->getCompletionTokens());
+
+        $absent = $this->model()->generateTextResult($this->prompt())->getTokenUsage();
+        $this->assertSame(0, $absent->getPromptTokens(), 'An absent usage member keeps the default-zero tolerance.');
+        $this->assertSame(0, $absent->getCompletionTokens());
+    }
+
+    /**
      * @dataProvider provideStreamedEnvelopeTypes
      */
     public function testAStreamedEnvelopeTypeOtherThanMessageInvalidatesTheStream($messageStartData)

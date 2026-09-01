@@ -42,6 +42,16 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   malformed response. List-shaped catalogs (including the empty list's
   existing fallback) are unchanged.
 
+- A malformed `usage` member on a successful response is now rejected:
+  a list-shaped `[1,2]` passed `is_array()`, and strings (`"5"`),
+  bools (`true`), floats, and negatives survived the integer casts as
+  plausible prompt/completion/total accounting. A present usage member
+  must now be a JSON object whose supplied token counts
+  (`input_tokens`, `cache_creation_input_tokens`,
+  `cache_read_input_tokens`, `output_tokens`) are non-negative
+  integers; an absent member keeps the documented default-zero
+  tolerance, and a valid `{}` still means zero tokens.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving
