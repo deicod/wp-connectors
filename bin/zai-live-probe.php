@@ -224,6 +224,19 @@ try {
     ) );
     zai_live_probe_report( 'model used', $model_id );
     zai_live_probe_report( 'generated text', trim( $result->toText() ) );
+
+    /*
+     * Codex R17 review-body finding: a successfully parsed but EMPTY
+     * answer is not an acceptance pass — the sentinel prompt has a
+     * known non-empty reply, so blank (or whitespace-only) output means
+     * the route answered nothing and the probe must fail like the other
+     * acceptance steps instead of reporting PASS over a blank value.
+     */
+    if ( '' === trim( $result->toText() ) ) {
+        zai_live_probe_report( 'generation', 'FAILED: the model returned empty output for the sentinel prompt' );
+        $exit = 1;
+    }
+
     zai_live_probe_report( 'usage total tokens', $result->getTokenUsage()->getTotalTokens() );
     zai_live_probe_report( 'generation ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
 } catch ( Exception $e ) {

@@ -129,6 +129,14 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   compatibility path obey the same rule, and in-order multi-block
   streams are unchanged.
 
+### Fixed (zai / M2 — Codex PR review, round 17 review body)
+
+- The live probe fails on empty generation output: a successfully
+  parsed but blank (or whitespace-only) answer to the sentinel prompt
+  was reported without affecting the verdict, so all three acceptance
+  steps could end in `PASS` despite producing no answer. Empty output
+  now fails the probe like the other acceptance steps.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving
