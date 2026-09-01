@@ -6,6 +6,16 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 12)
+
+- A `message_start` whose `message` member is missing, null, a list, or
+  a scalar now invalidates the stream instead of satisfying the
+  completion prerequisite: later valid content and `message_delta`
+  previously fabricated an assistant envelope with a blank id and zero
+  input usage — a bypass of the missing-message_start guard. The
+  prerequisite is set only after the payload carries a valid message
+  object; a well-formed message_start aggregates exactly as before.
+
 ### Fixed (zai / M2 — Codex PR review, round 11)
 
 - Tool-answer completeness is now evaluated at the coalesced WIRE-turn

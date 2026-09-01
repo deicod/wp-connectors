@@ -629,6 +629,23 @@ final class AnthropicSseAggregator {
 	private function dispatch_event( string $type, array $data, $raw ): void {
 		switch ( $type ) {
 			case 'message_start':
+				/*
+				 * Codex R12 #1: the completion prerequisite is satisfied
+				 * only by a message_start that actually carries a valid
+				 * message OBJECT — a missing, null, scalar, or list message
+				 * previously set message_started unconditionally, letting
+				 * later valid content and message_delta fabricate an
+				 * assistant envelope with a blank id and zero input usage
+				 * (a bypass of the R8 #3 missing-start guard). An invalid
+				 * payload marks the stream malformed in the same channel as
+				 * the role violation; message_started stays untouched.
+				 */
+				if ( ! \is_object( $raw ) || ! isset( $raw->message ) || ! \is_object( $raw->message ) ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				$this->message_started = true;
 
 				/*
@@ -641,8 +658,7 @@ final class AnthropicSseAggregator {
 				 * anything else (null included — array_key_exists treats it
 				 * as present) → the stream is corrupt.
 				 */
-				if ( \is_object( $raw ) && isset( $raw->message ) && \is_object( $raw->message )
-					&& property_exists( $raw->message, 'role' ) && 'assistant' !== $raw->message->role ) {
+				if ( property_exists( $raw->message, 'role' ) && 'assistant' !== $raw->message->role ) {
 					$this->malformed_event = true;
 
 					return;

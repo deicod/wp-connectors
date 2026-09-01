@@ -1006,6 +1006,71 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * @dataProvider provideInvalidMessageStartPayloads
+     */
+    public function testAnInvalidMessageStartPayloadInvalidatesTheStream($startDataJson)
+    {
+        // Codex R12 #1: a message_start without a valid message OBJECT
+        // previously satisfied the completion prerequisite anyway — later
+        // valid content and message_delta fabricated an assistant
+        // envelope with blank id and zero input usage.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: ' . $startDataJson . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Fabricated."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('An invalid message_start payload must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('Fabricated.', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideInvalidMessageStartPayloads()
+    {
+        return array(
+            'message member missing' => array('{"type":"message_start"}'),
+            'message member null' => array('{"type":"message_start","message":null}'),
+            'message member list' => array('{"type":"message_start","message":[]}'),
+            'message member scalar' => array('{"type":"message_start","message":"hi"}'),
+        );
+    }
+
+    public function testAValidMessageStartStillAggregatesNormally()
+    {
+        // Guard against regression of the R8 #3 / R6 #2 acceptance path.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ok","role":"assistant","content":[],"usage":{"input_tokens":7,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Fine."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Fine.', $result->toText());
+        $this->assertSame('msg_ok', $result->getId());
+        $this->assertSame(7, $result->getTokenUsage()->getPromptTokens());
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.
