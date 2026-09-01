@@ -29,6 +29,14 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   produce a successful response from a known-malformed start payload.
   Valid starts (including an initial empty string) keep their values.
 
+- A response — non-streaming or consolidated stream — containing two
+  `tool_use` blocks with the same NON-EMPTY id is now rejected as
+  malformed: both parsed independently into two ambiguous `FunctionCall`
+  parts, which a consumer cannot correlate results to and which hits
+  this adapter's own outbound duplicate-id rejection when the assistant
+  turn is replayed after tools may already have executed. Distinct ids
+  and single tool calls are unchanged.
+
 ### Fixed (zai / M2 — Codex PR review, round 12)
 
 - A `message_start` whose `message` member is missing, null, a list, or

@@ -1244,6 +1244,98 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Initial. More.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
+    public function testADuplicateToolUseIdInAResponseIsRejected()
+    {
+        // Codex R13 #4: two tool_use blocks with the same NON-EMPTY id are
+        // ambiguous identities — a consumer cannot correlate results to
+        // calls, and replaying the assistant turn hits this adapter's own
+        // outbound duplicate-id rejection after tools may have executed.
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_dupid',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(
+                array('type' => 'tool_use', 'id' => 'toolu_same', 'name' => 'ping', 'input' => new stdClass()),
+                array('type' => 'tool_use', 'id' => 'toolu_same', 'name' => 'pong', 'input' => new stdClass()),
+            ),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A duplicate tool_use id must be rejected, got: ' . wp_json_encode($result->toMessage()->getParts()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('same id', $e->getMessage());
+        }
+    }
+
+    public function testADuplicateToolUseIdInAConsolidatedStreamIsRejected()
+    {
+        // The consolidated stream path funnels into the same content loop,
+        // so the same verdict must hold when the duplicates arrive as two
+        // distinct streamed blocks instead of one JSON body.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_dupstream","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_dup","name":"ping","input":{}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_dup","name":"pong","input":{}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed duplicate tool_use id must be rejected, got: ' . wp_json_encode($result->toMessage()->getParts()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('same id', $e->getMessage());
+        }
+    }
+
+    public function testDistinctAndSingleToolUseIdsStillPassThrough()
+    {
+        // Guards: distinct ids produce both FunctionCalls, and a single
+        // tool_use keeps its identity — only NON-EMPTY duplicates reject.
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_two',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(
+                array('type' => 'tool_use', 'id' => 'toolu_a', 'name' => 'ping', 'input' => new stdClass()),
+                array('type' => 'tool_use', 'id' => 'toolu_b', 'name' => 'pong', 'input' => new stdClass()),
+            ),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_one',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(
+                array('type' => 'tool_use', 'id' => 'toolu_only', 'name' => 'ping', 'input' => array('x' => 1)),
+            ),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        $two = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts();
+        $this->assertCount(2, $two, 'Two DISTINCT tool_use ids must both pass through.');
+        $this->assertSame('toolu_a', $two[0]->getFunctionCall()->getId());
+        $this->assertSame('toolu_b', $two[1]->getFunctionCall()->getId());
+
+        $one = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts();
+        $this->assertCount(1, $one, 'A single tool_use must keep working unchanged.');
+        $this->assertSame('toolu_only', $one[0]->getFunctionCall()->getId());
+        $this->assertSame(array('x' => 1), $one[0]->getFunctionCall()->getArgs());
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.

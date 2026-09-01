@@ -932,7 +932,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$role = MessageRoleEnum::model();
 
-		$parts = array();
+		$parts         = array();
+		$seen_tool_ids = array();
 		foreach ( $data['content'] as $index => $part_data ) {
 			if ( ! \is_array( $part_data ) ) {
 				throw ResponseException::fromInvalidData( 'z.ai', 'content', 'Every content entry must be an object.' );
@@ -943,6 +944,25 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				: null;
 
 			$part = $this->parse_content_block( $part_data, $raw_part );
+
+			/*
+			 * Codex R13 #4: two tool_use blocks with the same NON-EMPTY id
+			 * are ambiguous identities — a consumer cannot correlate
+			 * results to calls, and replaying the assistant turn hits this
+			 * adapter's own outbound duplicate-id rejection after tools may
+			 * have executed. Rejected in the same channel as other
+			 * malformed content blocks; empty/absent ids keep their
+			 * existing malformed-id handling untouched.
+			 */
+			if ( null !== $part && 'tool_use' === ( $part_data['type'] ?? null )
+				&& isset( $part_data['id'] ) && \is_string( $part_data['id'] ) && '' !== $part_data['id'] ) {
+				if ( isset( $seen_tool_ids[ $part_data['id'] ] ) ) {
+					throw ResponseException::fromInvalidData( 'z.ai', 'content', 'Two tool_use blocks carried the same id.' );
+				}
+
+				$seen_tool_ids[ $part_data['id'] ] = true;
+			}
+
 			if ( null !== $part ) {
 				$parts[] = $part;
 			}
