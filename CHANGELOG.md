@@ -200,6 +200,18 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   id when `message_start.message.id` is absent. One rejection where the
   two paths merge covers both.
 
+- The public direct-generation path refuses stale environment keys: a
+  credential from `ZAI_ANTHROPIC_API_KEY` cannot be deleted by a region
+  switch, so the settings layer marks that exact key region-pending and
+  the availability layer persists definitive invalid verdicts — yet
+  generation authenticated unconditionally, sending the old region's
+  credential to the newly selected regional endpoint even while the
+  connector reported disconnected. A new availability-layer gate
+  (reusing its own state readers, no probe request) is consulted with
+  the model's exact credential before authenticating, and generation is
+  refused while the key is region-pending or carries a fresh matching
+  invalid verdict.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

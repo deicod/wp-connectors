@@ -230,9 +230,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			// timezone change alters no input to this subtraction, so the
 			// elapsed-time math can never go negative ("fresh" for hours).
 			// Marker-less states predate the UTC switch — see STATE_CLOCK_UTC.
-			$fresh = ( $state['clock'] ?? '' ) === self::STATE_CLOCK_UTC
-				&& isset( $state['checked_at'] )
-				&& ( current_time( 'timestamp', true ) - (int) $state['checked_at'] ) < self::STATE_TTL; // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.RequestedUTC -- time() would bypass the deterministic (injectable) clock the TTL tests rely on.
+			$fresh = self::state_is_fresh( $state );
 
 			if ( $fresh ) {
 				if ( $region_pending ) {
@@ -432,6 +430,83 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 
 		return $endpoint_class::for_current_settings()->region() === $region
 			&& hash_equals( $fingerprint, hash( 'sha256', $key ) );
+	}
+
+	/**
+	 * Reports whether a stored verdict is still inside its trust TTL.
+	 *
+	 * UTC on BOTH sides (current_time() with $gmt, not time(), so the
+	 * deterministic test clock still drives TTL expiry): a site timezone
+	 * change alters no input to this subtraction, so the elapsed-time
+	 * math can never go negative ("fresh" for hours). Marker-less states
+	 * predate the UTC switch — see STATE_CLOCK_UTC.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<string, mixed> $state Stored validated state.
+	 * @return bool True while the verdict is within STATE_TTL seconds.
+	 */
+	private static function state_is_fresh( array $state ): bool {
+		return ( $state['clock'] ?? '' ) === self::STATE_CLOCK_UTC
+			&& isset( $state['checked_at'] )
+			&& ( current_time( 'timestamp', true ) - (int) $state['checked_at'] ) < self::STATE_TTL; // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.RequestedUTC -- time() would bypass the deterministic (injectable) clock the TTL tests rely on.
+	}
+
+	/**
+	 * Reports whether the effective credential must be REFUSED for
+	 * generation (Codex R19 #3).
+	 *
+	 * An env/constant credential cannot be deleted by a region switch, so
+	 * the settings layer marks that exact key region-pending and this
+	 * layer persists definitive invalid verdicts — but the public
+	 * direct-generation path authenticated unconditionally, sending the
+	 * old region's credential to the newly selected endpoint while the
+	 * connector reported disconnected. This gate READS the same state the
+	 * other layers record (reusing this class's own readers — no
+	 * duplicated logic, no network probe): a region-pending flag binding
+	 * the effective key to the currently selected region, or a fresh
+	 * stored verdict that definitively rejected this exact key+endpoint
+	 * binding, refuses generation.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param ApiKeyRequestAuthentication|null $authentication The model's
+	 *                                                        own auth when
+	 *                                                        available (the
+	 *                                                        exact credential
+	 *                                                        about to
+	 *                                                        authenticate);
+	 *                                                        null falls back
+	 *                                                        to effective_key().
+	 * @return string|null 'region_pending' or 'invalid_verdict' when
+	 *                     generation must be refused, null when allowed.
+	 */
+	public function generation_refusal_reason( ?ApiKeyRequestAuthentication $authentication = null ): ?string {
+		$effective = null !== $authentication && '' !== $authentication->getApiKey()
+			? array(
+				'key'    => $authentication->getApiKey(),
+				'source' => $this->key_source( $authentication->getApiKey() ),
+			)
+			: $this->effective_key();
+
+		if ( '' === $effective['key'] ) {
+			// Not this gate's concern: the request surfaces its own auth error.
+			return null;
+		}
+
+		if ( $this->region_switch_pending( $effective['key'] ) ) {
+			return 'region_pending';
+		}
+
+		$state = $this->stored_state();
+		if ( \is_array( $state )
+			&& ( $state['binding'] ?? '' ) === $this->binding( $effective['source'], $effective['key'] )
+			&& self::state_is_fresh( $state )
+			&& self::VERDICT_INVALID === ( $state['valid'] ?? null ) ) {
+			return 'invalid_verdict';
+		}
+
+		return null;
 	}
 
 	/**

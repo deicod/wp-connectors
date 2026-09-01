@@ -37,6 +37,7 @@ use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessagePartChannelEnum;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Providers\ApiBasedImplementation\AbstractApiBasedModel;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
@@ -53,6 +54,7 @@ use WordPress\AiClient\Results\Enums\FinishReasonEnum;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
 use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
+use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
@@ -148,9 +150,39 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *
 	 * @param array $prompt Prompt messages (list of Message).
 	 * @return GenerativeAiResult The generation result.
-	 * @throws \Exception On transport, HTTP, or parsing failures (typed, safe messages).
+	 * Transport, HTTP, and parsing failures throw their typed SDK
+	 * exceptions with fixed, safe messages (see the parse/throw helpers).
+	 *
+	 * @throws InvalidArgumentException When the credential gate refuses
+	 *                                  the active key (Codex R19:
+	 *                                  region-pending or an invalid
+	 *                                  verdict for the selected endpoint).
 	 */
 	public function generateTextResult( array $prompt ): GenerativeAiResult {
+		/*
+		 * Codex R19 #3: an env/constant credential cannot be deleted by a
+		 * region switch, so the settings layer marks that exact key
+		 * region-pending and the availability layer persists definitive
+		 * invalid verdicts — yet this public direct-generation path
+		 * authenticated unconditionally, sending the old region's credential
+		 * to the newly selected regional endpoint even while the connector
+		 * reported disconnected. The gate REUSES the availability layer's
+		 * own state readers (no duplicated logic, no probe request) with
+		 * the model's exact credential.
+		 */
+		$authentication = $this->getRequestAuthentication();
+		if ( $authentication instanceof ApiKeyRequestAuthentication ) {
+			$refusal = ( new ZaiAnthropicProviderAvailability() )->generation_refusal_reason( $authentication );
+
+			if ( null !== $refusal ) {
+				throw new InvalidArgumentException(
+					'region_pending' === $refusal
+						? 'The zai_anthropic provider refuses generation: the active environment credential is pending revalidation after a region switch.'
+						: 'The zai_anthropic provider refuses generation: the active credential was rejected for the selected endpoint.'
+				);
+			}
+		}
+
 		$params = $this->prepareGenerateTextParams( $prompt );
 
 		$request = new Request(

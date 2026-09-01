@@ -32,6 +32,27 @@ use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
 {
     /**
+     * Model instance wired to the harness transport with an EXACT key.
+     *
+     * For credential-state tests that bind flags/verdicts to a specific
+     * key (FakeSecrets::apiKey() is random per call, so the model must
+     * carry the captured value). The discovery transient is primed so
+     * exactly ONE request is recorded.
+     *
+     * @param string $key The exact API key the model authenticates with.
+     * @return ZaiAnthropicTextGenerationModel
+     */
+    private function modelWithKey(string $key)
+    {
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $model = ZaiAnthropicProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        return $model;
+    }
+
+    /**
      * Model instance wired to the harness transport with a fixture key.
      *
      * The discovery transient is primed so exactly ONE request is recorded.
@@ -536,6 +557,73 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         list($url, $body) = $this->captureRequest($prompt, $this->model());
 
         $this->assertSame('{"temp_c":21}', $body['messages'][2]['content'][0]['content'], 'The tool_result carries the exact JSON.' );
+    }
+
+    public function testGenerationIsRefusedWhileTheCredentialIsRegionPending()
+    {
+        /*
+         * R19 (inline 3906739389): an env-sourced credential cannot be
+         * deleted by a region switch — the settings layer marks it
+         * region-pending, and the direct-generation path must honor that
+         * state instead of authenticating unconditionally.
+         */
+        $model = $this->modelWithKey($key = FakeSecrets::apiKey());
+        $region = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->region();
+        update_option(\Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => $region,
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        try {
+            $model->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('Generation must be refused while the credential is region-pending.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('pending revalidation after a region switch', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testGenerationIsRefusedWhileAMatchingInvalidVerdictExists()
+    {
+        // R19 (inline 3906739389): a definitive invalid verdict for the
+        // exact key+endpoint binding refuses generation.
+        $model = $this->modelWithKey($key = FakeSecrets::apiKey());
+        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings();
+        $binding = hash('sha256', 'runtime|' . $endpoint->cache_key() . '|' . $key);
+
+        update_option(\Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::STATE_OPTION, array(
+            'binding' => $binding,
+            'valid' => 'invalid',
+            'checked_at' => time(),
+            'clock' => 'utc',
+        ));
+
+        try {
+            $model->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('Generation must be refused while a matching invalid verdict exists.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('rejected for the selected endpoint', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testGenerationProceedsUnderValidCredentialState()
+    {
+        // Guard: with no pending flag and no invalid verdict, generation
+        // authenticates as before (a queued response completes).
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('Allowed.'));
+
+        $text = $this->model()->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ))->toText();
+
+        $this->assertSame('Allowed.', $text);
     }
 
     public function testEmptyDeclaredToolNamesAreRejectedBeforeTransport()
