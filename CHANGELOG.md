@@ -152,6 +152,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   an upstream 400. Identity errors surface before the schema checks
   (first-bad-wins); valid multi-tool configs are unchanged.
 
+- Splitting fed SSE bodies is linear-time as well: the frame splitter
+  copied the entire unconsumed suffix once per delimiter, so feeding a
+  complete response with thousands of token-delta frames (one
+  `feed($body)` call, as both model parsers do) was quadratic — ~3.1 s
+  to split 80k small frames versus ~12 ms with the new offset scan,
+  which discards the consumed prefix once after the loop. Draining was
+  already constant-time since round 15; chunk-boundary semantics,
+  `finish()` flushing, and buffer reuse are byte-identical.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

@@ -88,6 +88,145 @@ final class SseFrameBufferTest extends WpConnectorsTestCase
         $this->assertNull($buffer->pull());
     }
 
+    public function testTwentyThousandFramesSplitInOneFeed()
+    {
+        // Codex R18 #1 volume harness: one feed() of 20k frames splits
+        // exactly — count, boundaries, and order all preserved.
+        $total = 20000;
+
+        $body = '';
+        for ($i = 0; $i < $total; $i++) {
+            $body .= 'data: frame-' . $i . "\n\n";
+        }
+
+        $buffer = new SseFrameBuffer();
+        $buffer->feed($body);
+        $buffer->finish();
+
+        $this->assertSame('data: frame-0', $buffer->pull(), 'The first frame is intact.');
+        for ($i = 1; $i < $total - 1; $i++) {
+            $this->assertSame('data: frame-' . $i, $buffer->pull());
+        }
+        $this->assertSame('data: frame-' . ($total - 1), $buffer->pull(), 'The last frame is intact.');
+        $this->assertNull($buffer->pull());
+    }
+
+    public function testEightyThousandFramesFeedAndDrainQuickly()
+    {
+        /*
+         * Codex R18 #1 fails-before perf guard: the offset scan is
+         * linear (~12 ms feed + ~12 ms drain for 80k frames on the
+         * reference Pi), while the old copy-per-delimiter split took
+         * ~3.1 s at the same size. The 2.0 s bound holds ~87x headroom
+         * over the post-fix measurement yet sits far below the old
+         * quadratic cost, so it stays stable under load while still
+         * failing the shape it guards against.
+         */
+        $total = 80000;
+
+        $body = '';
+        for ($i = 0; $i < $total; $i++) {
+            $body .= 'data: x' . $i . "\n\n";
+        }
+
+        $start = microtime(true);
+
+        $buffer = new SseFrameBuffer();
+        $buffer->feed($body);
+        $buffer->finish();
+
+        $count = 0;
+        while (null !== $buffer->pull()) {
+            $count++;
+        }
+
+        $elapsed = microtime(true) - $start;
+
+        $this->assertSame($total, $count, 'Every frame is split and drained.');
+        $this->assertLessThan(2.0, $elapsed, 'Splitting and draining 80k frames must stay far below the old quadratic cost.');
+    }
+
+    /**
+     * @dataProvider provideAwkwardChunkBoundaries
+     */
+    public function testChunkBoundariesSplitIdenticallyToASingleShotFeed($chunks)
+    {
+        /*
+         * Codex R18 #1 (iii): the offset scan must not change
+         * chunk-boundary behavior — a stream fed in awkward pieces
+         * yields the SAME frames as one single-shot feed, including a
+         * boundary inside a CRLF-CRLF delimiter, one between the two
+         * blank-line newlines, and a trailing CR held across feeds.
+         */
+        $whole = implode('', $chunks);
+
+        $single = new SseFrameBuffer();
+        $single->feed($whole);
+        $single->finish();
+
+        $pieced = new SseFrameBuffer();
+        foreach ($chunks as $chunk) {
+            $pieced->feed($chunk);
+        }
+        $pieced->finish();
+
+        $expected = array();
+        while (null !== ($frame = $single->pull())) {
+            $expected[] = $frame;
+        }
+        $actual = array();
+        while (null !== ($frame = $pieced->pull())) {
+            $actual[] = $frame;
+        }
+
+        $this->assertSame($expected, $actual, 'Chunked feeding yields the single-shot frames.');
+        $this->assertNotSame(array(), $expected, 'The fixture must produce at least one frame.');
+    }
+
+    /**
+     * @return array<string, list<list<string>>>
+     */
+    public function provideAwkwardChunkBoundaries()
+    {
+        return array(
+            'boundary inside a CRLF-CRLF delimiter' => array(
+                array("data: a\r\n\r", "\ndata: b\r\n\r\n"),
+            ),
+            'boundary between the two blank-line newlines' => array(
+                array("data: a\n", "\ndata: b\n\n"),
+            ),
+            'trailing CR held across feeds' => array(
+                array("data: a\n\ndata: b\r", "\r\n\r\ndata: c\n\n"),
+            ),
+            'one byte at a time' => array(
+                str_split("data: a\n\ndata: b\r\n\r\n"),
+            ),
+        );
+    }
+
+    public function testFinishFlushesTheFinalUnterminatedFrameAfterALargeFeed()
+    {
+        // Codex R18 #1 (iv): the flush still fires after the offset scan
+        // consumed thousands of frames in the same feed.
+        $total = 5000;
+
+        $body = '';
+        for ($i = 0; $i < $total; $i++) {
+            $body .= 'data: frame-' . $i . "\n\n";
+        }
+        $body .= 'data: final-unterminated';
+
+        $buffer = new SseFrameBuffer();
+        $buffer->feed($body);
+        $buffer->finish();
+
+        for ($i = 0; $i < $total; $i++) {
+            $buffer->pull();
+        }
+        $this->assertSame('data: final-unterminated', $buffer->pull(), 'The unterminated tail flushes as the last frame.');
+        $this->assertNull($buffer->pull());
+    }
+
     public function testMixedLineEndingsStillSplitFrames()
     {
         // Regression guard for the framing the cursor change must not

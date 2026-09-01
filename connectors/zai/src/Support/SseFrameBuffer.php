@@ -85,14 +85,27 @@ final class SseFrameBuffer {
 
 		$this->buffer = str_replace( array( "\r\n", "\r" ), "\n", $this->buffer ) . $held_back_cr;
 
-		$pos = strpos( $this->buffer, "\n\n" );
+		/*
+		 * Codex R18 #1: the split scans with an OFFSET into the same
+		 * string and discards the consumed prefix ONCE, after the loop.
+		 * The previous shape reassigned $this->buffer inside the loop —
+		 * one full-suffix copy per delimiter — so feeding a complete
+		 * response with thousands of token-delta frames (as both model
+		 * parsers do in one feed($body) call) made frame splitting
+		 * quadratic even after the R15 #4 cursor made draining
+		 * constant-time (~3.1 s for 80k small frames).
+		 */
+		$offset = 0;
+		$pos    = strpos( $this->buffer, "\n\n", $offset );
 		while ( false !== $pos ) {
-			$frame        = substr( $this->buffer, 0, $pos );
-			$this->buffer = substr( $this->buffer, $pos + 2 );
+			$this->frames[] = substr( $this->buffer, $offset, $pos - $offset );
 
-			$this->frames[] = $frame;
+			$offset = $pos + 2;
+			$pos    = strpos( $this->buffer, "\n\n", $offset );
+		}
 
-			$pos = strpos( $this->buffer, "\n\n" );
+		if ( $offset > 0 ) {
+			$this->buffer = substr( $this->buffer, $offset );
 		}
 	}
 
