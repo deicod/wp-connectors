@@ -677,6 +677,22 @@ final class AnthropicSseAggregator {
 					return;
 				}
 
+				/*
+				 * Codex R14 #1: an envelope that explicitly declares a type OTHER
+				 * than "message" (e.g. an error object wearing an assistant role)
+				 * contradicts the generation aggregated() builds, which hardcodes
+				 * the envelope type — the non-streaming path rejects the same
+				 * contradictory shape. A PRESENT type must be exactly "message"
+				 * (explicit null is present and therefore rejected, mirroring the
+				 * non-streaming array_key_exists semantics); an ABSENT type stays
+				 * tolerated like the documented envelope tolerances above.
+				 */
+				if ( property_exists( $raw->message, 'type' ) && 'message' !== $raw->message->type ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				$message = isset( $data['message'] ) && \is_array( $data['message'] ) ? $data['message'] : array();
 				if ( isset( $message['id'] ) && \is_string( $message['id'] ) ) {
 					$this->message_id = $message['id'];

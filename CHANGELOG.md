@@ -6,6 +6,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 14)
+
+- A streamed envelope that explicitly declares a nested `message.type`
+  other than `message` (e.g. an error object wearing an assistant role)
+  now invalidates the stream: `aggregated()` hardcodes the envelope
+  type, so the contradictory shape succeeded where the non-streaming
+  path rejects it. An explicit `message` type and an absent type member
+  keep the documented tolerance.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

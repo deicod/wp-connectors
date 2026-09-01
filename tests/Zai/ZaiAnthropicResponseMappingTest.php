@@ -1336,6 +1336,84 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(array('x' => 1), $one[0]->getFunctionCall()->getArgs());
     }
 
+    /**
+     * @dataProvider provideStreamedEnvelopeTypes
+     */
+    public function testAStreamedEnvelopeTypeOtherThanMessageInvalidatesTheStream($messageStartData)
+    {
+        // Codex R14 #1: a message_start whose message explicitly declares
+        // a type other than "message" (here an error object wearing an
+        // assistant role) contradicts the generation aggregated() builds —
+        // the non-streaming path rejects the same shape.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: ' . $messageStartData . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Ghost."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A contradictory streamed envelope type must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideStreamedEnvelopeTypes()
+    {
+        return array(
+            'error type' => array('{"type":"message_start","message":{"id":"msg_et1","role":"assistant","type":"error","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}'),
+            'unrelated type' => array('{"type":"message_start","message":{"id":"msg_et2","role":"assistant","type":"ping","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}'),
+            'explicit null type' => array('{"type":"message_start","message":{"id":"msg_et3","role":"assistant","type":null,"content":[],"usage":{"input_tokens":1,"output_tokens":1}}}'),
+        );
+    }
+
+    /**
+     * @dataProvider provideToleratedStreamedEnvelopeTypes
+     */
+    public function testAStreamedEnvelopeTypeOfMessageOrAbsentStaysTolerated($messageStartData)
+    {
+        // Guard: only a PRESENT non-"message" type rejects — an explicit
+        // "message" and an absent member keep the documented tolerance.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: ' . $messageStartData . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Fine."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('Fine.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideToleratedStreamedEnvelopeTypes()
+    {
+        return array(
+            'explicit message type' => array('{"type":"message_start","message":{"id":"msg_et4","role":"assistant","type":"message","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}'),
+            'absent type member' => array('{"type":"message_start","message":{"id":"msg_et5","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}'),
+        );
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.
