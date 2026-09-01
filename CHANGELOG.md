@@ -212,6 +212,18 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   refused while the key is region-pending or carries a fresh matching
   invalid verdict.
 
+### Fixed (zai / M2 — Codex PR review, round 20)
+
+- Model enumeration no longer discloses a stale environment key to a
+  newly selected region: an env/constant credential that survived an
+  `intl`/`cn` switch is region-pending (or carries a definitive invalid
+  verdict), and while the generation path already refused it, the
+  `/v1/models` discovery request still authenticated with it. The
+  directory now consults the same availability gate — skipped
+  discovery degrades to the static plan catalog (never fatal, never
+  cached), and no authenticated request leaves until the credential is
+  revalidated.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

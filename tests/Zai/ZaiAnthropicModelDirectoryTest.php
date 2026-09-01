@@ -348,6 +348,66 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame(array('glm-5.3'), $second, 'An absent has_more member keeps the current behavior.');
     }
 
+    public function testDiscoveryIsSkippedWhileTheCredentialIsRegionPending()
+    {
+        /*
+         * R20 (inline 3907008518): an env credential that survives a
+         * region switch must not be disclosed to the newly selected
+         * endpoint by model ENUMERATION — the static fallback serves and
+         * no authenticated request leaves.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        $directory = $this->directory($key);
+
+        $region = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->region();
+        update_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => $region,
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        $models = $directory->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The static plan catalog serves while the credential is region-pending.');
+        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The fallback is not cached.');
+        $this->assertSame(array(), WpHarness::$sdk_http_attempts, 'No authenticated discovery request may leave.');
+    }
+
+    public function testDiscoveryIsSkippedWhileAMatchingInvalidVerdictExists()
+    {
+        // R20 (inline 3907008518): a definitive invalid verdict for the
+        // exact key+endpoint binding also gates enumeration.
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        $directory = $this->directory($key);
+
+        $binding = hash('sha256', 'runtime|zai_anthropic|coding|intl|' . $key);
+        update_option(ZaiAnthropicPlanRegionSettings::STATE_OPTION, array(
+            'binding' => $binding,
+            'valid' => 'invalid',
+            'checked_at' => time(),
+            'clock' => 'utc',
+        ));
+
+        $models = $directory->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The static plan catalog serves while the credential verdict is invalid.');
+        $this->assertSame(array(), WpHarness::$sdk_http_attempts, 'No authenticated discovery request may leave.');
+    }
+
+    public function testDiscoveryProceedsUnderValidCredentialState()
+    {
+        // Guard: no pending flag and no invalid verdict — discovery
+        // authenticates and discovers as before.
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
+
+        $models = $this->directory()->listModelMetadata();
+
+        $this->assertSame(array('glm-5.3'), $this->idList($models), 'Valid state still discovers live.');
+        $this->assertCount(1, WpHarness::$sdk_http_attempts, 'The authenticated discovery request left exactly once.');
+    }
+
     public function testMalformedDiscoveryResponsesFallBack()
     {
         $this->selectEndpoint('coding', 'intl');
