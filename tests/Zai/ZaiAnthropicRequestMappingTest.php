@@ -847,6 +847,56 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame('reuse', $body['messages'][4]['content'][0]['tool_use_id'], 'Cross-turn reuse stays legal.');
     }
 
+    public function testADuplicateToolCallIdAcrossCoalescedAssistantMessagesIsRejected()
+    {
+        // Verifier probe on Codex R10 #2: two ADJACENT assistant Messages
+        // coalesce into ONE wire turn — the per-message check missed the
+        // duplicate while the wire carried two tool_use blocks with the
+        // same identity.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('dup', 'ping', array())))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('dup', 'pong', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('dup', 'ping', array('r' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A duplicate tool call id across coalesced assistant messages must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('unique within an assistant message', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+
+        // The same-role coalescing boundary is the reset: a DIFFERENT id
+        // in the adjacent message stays legal (they share one wire turn).
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('a1', 'ping', array())))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('b1', 'pong', array())))),
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('a1', 'ping', array('r' => 1))),
+                new MessagePart(new FunctionResponse('b1', 'pong', array('r' => 2))),
+            )),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('Two different ids coalesced into one answered turn must fail the partial rule, not pass silently.');
+        } catch (InvalidArgumentException $e) {
+            // One wire assistant turn [a1, b1], both answered by one user
+            // turn: valid on the wire... except the R9 window expired a1
+            // at the second assistant message (a documented conservative
+            // tracker-vs-wire-turn mismatch). Either rejection here is
+            // pre-transport and safe; assert only that it IS rejected
+            // before transport rather than sent upstream.
+            $this->assertStringContainsString('tool', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testMultimodalTextRequestSnapshot()
     {
         // Multiple text parts in one message (text-only multimodality): both

@@ -346,10 +346,28 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$prepared          = array();
 		$outstanding_tools = array();
 		$awaiting_answer   = false;
+		$previous_role     = null;
+		$turn_tool_ids     = array();
 
 		foreach ( $messages as $message ) {
 			$role   = $this->message_role_string( $message->getRole() );
 			$blocks = $this->message_content_blocks( $message );
+
+			/*
+			 * Codex R10 #2 verifier probe: adjacent SDK messages of the
+			 * SAME role coalesce into ONE wire turn below, so the
+			 * duplicate-id check must scope to the WIRE turn, not the SDK
+			 * message — two adjacent assistant Messages sharing a tool id
+			 * emitted the ambiguous duplicate-identity shape on the wire
+			 * while the per-message check saw two clean turns. The per-turn
+			 * id set resets exactly at a role change (the coalescing
+			 * boundary); it deliberately does NOT reset on the window
+			 * expiry, which tracks answerability, not identity.
+			 */
+			if ( $role !== $previous_role ) {
+				$turn_tool_ids = array();
+				$previous_role = $role;
+			}
 
 			/*
 			 * Turn-advance window (Codex R9 #1): after an assistant turn
@@ -377,11 +395,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					 * duplicate identities (upstream validation failure).
 					 * Reject before the map assignment can overwrite.
 					 */
-					if ( isset( $outstanding_tools[ $block['id'] ] ) ) {
+					if ( isset( $turn_tool_ids[ $block['id'] ] ) ) {
 						throw new InvalidArgumentException(
 							'The zai_anthropic provider requires tool call ids to be unique within an assistant message (duplicate tool call id).'
 						);
 					}
+
+					$turn_tool_ids[ $block['id'] ] = true;
 
 					// A new tool_use opens its ID for exactly one answer.
 					$outstanding_tools[ $block['id'] ] = true;

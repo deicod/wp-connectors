@@ -28,6 +28,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   with the content before the missing start silently absent. Unknown
   (future) delta types keep the seeded tolerance — they carry no
   content this aggregator maps.
+- The duplicate tool-call-id check is scoped to the coalesced WIRE turn,
+  not the SDK message: two adjacent assistant Messages sharing a tool id
+  coalesce into one wire turn and previously slipped the per-message
+  check while emitting the ambiguous duplicate-identity shape
+  (verifier probe on round 10).
 
 ### Fixed (zai / M2 — Codex PR review, round 9)
 
