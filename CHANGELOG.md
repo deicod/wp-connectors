@@ -90,6 +90,17 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   same null-on-exhaustion); the queue compacts itself once drained, so
   a reused buffer instance accepts new feeds.
 
+### Fixed (zai / M2 — Codex PR review, round 16)
+
+- `message_stop` is now required before an aggregation is returned: a
+  transport that ended after a valid `message_delta` left `stop_reason`
+  populated, so the truncated stream was returned as a successful
+  generation while `is_done()` was false. A missing terminal event is
+  the same corruption class as the missing `message_start` — the stream
+  is marked malformed and no payload is built. This inverts an earlier
+  tolerance that treated `message_stop` as conventional; stream
+  fixtures now close their lifecycle explicitly.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

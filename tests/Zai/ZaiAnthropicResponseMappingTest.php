@@ -72,7 +72,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
     }
 
     /**
@@ -493,7 +495,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
                 . 'event: message_delta' . "\n"
-                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
             $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -731,7 +735,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -755,7 +761,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1079,7 +1087,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1256,7 +1266,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1306,7 +1318,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1428,7 +1442,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1520,7 +1536,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":' . $usageJson . '}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":' . $usageJson . '}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1564,7 +1582,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":' . $usageJson . '}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":' . $usageJson . '}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1598,7 +1618,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1636,7 +1658,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1706,7 +1730,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2002,10 +2028,46 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Body-detected.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
-    public function testStreamWithoutMessageStopStillAggregates()
+    public function testAggregatedRequiresMessageStopBeforeReturningAPayload()
     {
-        // message_stop is conventional for termination, not required to
-        // parse what already arrived.
+        // Codex R16 #1 (i), at the aggregator boundary: the truncated
+        // stream must be null AND flagged malformed — never a payload a
+        // caller could treat as success while is_done() is false.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_tr","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Truncated."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $aggregator = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertFalse($aggregator->is_done(), 'message_stop never arrived.');
+        $this->assertNull($aggregator->aggregated(), 'No payload may be built without the terminal event.');
+        $this->assertTrue($aggregator->has_malformed_event(), 'A stream missing message_stop is malformed, not merely incomplete.');
+
+        // The terminal message completes the same stream cleanly.
+        $aggregator->feed("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
+        $aggregator->finish();
+        $this->assertTrue($aggregator->is_done());
+        $this->assertNotNull($aggregator->aggregated(), 'A completed stream aggregates normally.');
+    }
+
+    public function testAStreamTruncatedBeforeMessageStopFails()
+    {
+        /*
+         * Codex R16 #1 inverts the old tolerance: a transport that ends
+         * after a valid message_delta but before message_stop is a
+         * TRUNCATED stream, not a complete generation — stop_reason
+         * being populated must not legitimize it.
+         */
         $body = ''
             . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_n","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
@@ -2020,7 +2082,12 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
-        $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream truncated before message_stop must fail, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
     }
 
     public function testATruncatedStreamWithoutAStopReasonFailsSafely()
@@ -2467,7 +2534,9 @@ $body = ''
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2488,7 +2557,9 @@ $body = ''
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2706,6 +2777,8 @@ $body = ''
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: message_stop' . "\n"
             . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
@@ -2737,7 +2810,9 @@ $body = ''
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2762,7 +2837,9 @@ $body = ''
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Lost."}}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2790,7 +2867,9 @@ $body = ''
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2860,7 +2939,9 @@ $body = ''
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n";
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 

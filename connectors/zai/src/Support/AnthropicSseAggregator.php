@@ -391,6 +391,21 @@ final class AnthropicSseAggregator {
 			return null;
 		}
 
+		/*
+		 * Codex R16 #1: the terminal event is REQUIRED — a transport that
+		 * ends after a valid message_delta but before message_stop left
+		 * stop_reason populated, so the truncated stream was returned as a
+		 * successful generation while is_done() was still false. A missing
+		 * message_stop is the same corruption class as the missing
+		 * message_start above: mark the stream malformed and return null
+		 * (never a soft null a caller might read as "no completion yet").
+		 */
+		if ( ! $this->done ) {
+			$this->malformed_event = true;
+
+			return null;
+		}
+
 		$content = array();
 		foreach ( $this->ordered_blocks() as $block ) {
 			$mapped = $this->content_block_payload( $block );
