@@ -2109,6 +2109,65 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAMessageDeltaBeforeMessageStartInvalidatesAtDispatch()
+    {
+        // Codex R17 #1 (i): the flag is set the moment the early delta is
+        // consumed — before any later frames arrive.
+        $aggregator = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $aggregator->feed("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n");
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_malformed_event(), 'A message_delta before message_start must invalidate at dispatch.');
+    }
+
+    public function testALateMessageStartDoesNotLaunderAnEarlyMessageDelta()
+    {
+        /*
+         * Codex R17 #1 (ii): the finding's exact scenario — the final
+         * metadata first, then a valid envelope and terminal event. The
+         * malformed flag is sticky; the empty stream shape must FAIL.
+         */
+        $body = ''
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_early_delta","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('An early message_delta laundered by a late start must fail, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testAnEarlyMessageStopDoesNotLaunderThroughALateStart()
+    {
+        // Codex R17 #1 (probe (b) extension): message_stop-before-start
+        // latched done while the envelope was missing; a late start plus
+        // delta then completed an empty generation. Same sticky gate.
+        $body = ''
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_early_stop","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('An early message_stop laundered by a late start must fail, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testAStreamTruncatedBeforeMessageStopFails()
     {
         /*

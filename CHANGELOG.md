@@ -110,6 +110,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   launder the early content. Normal ordering (message_start, blocks,
   metadata, message_stop) is unchanged.
 
+### Fixed (zai / M2 — Codex PR review, round 17)
+
+- `message_delta` — and, by the same rule, `message_stop` — now
+  require `message_start` at dispatch time, like content-block events
+  since round 16: final metadata or a terminal event that arrived
+  before the envelope was laundered by a later valid start into a
+  successful (empty) completion carrying the late metadata. The
+  malformed flag is sticky, so the late start cannot repair it.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

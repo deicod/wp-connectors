@@ -899,6 +899,20 @@ final class AnthropicSseAggregator {
 
 			case 'message_delta':
 				/*
+				 * Codex R17 #1: final metadata requires the envelope, exactly
+				 * like content-block events (R16 #2) — a message_delta that
+				 * arrived before message_start was laundered by a later valid
+				 * start into a successful empty completion carrying the late
+				 * metadata. The flag is sticky; the late start cannot repair
+				 * it.
+				 */
+				if ( ! $this->message_started ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
+				/*
 				 * Codex R9 #2: the protocol sends exactly ONE message_delta.
 				 * A second one silently overwrote the first stop reason and
 				 * usage — end_turn then tool_use made the completed result
@@ -948,6 +962,19 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'message_stop':
+				/*
+				 * Codex R17 #1 (verifier-probe extension): the TERMINAL event
+				 * equally requires the envelope — a message_stop before
+				 * message_start, followed by a late start and a message_delta,
+				 * laundered into a successful empty completion because done
+				 * latched while the envelope was still missing.
+				 */
+				if ( ! $this->message_started ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				/*
 				 * Codex R8 #2: message_stop is TERMINAL. Frames after it
 				 * were still dispatched and could modify the returned
