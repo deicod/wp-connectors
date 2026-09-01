@@ -142,6 +142,19 @@ update_option( $key_option, $key );
 $exit = 0;
 
 // 1. Availability (authenticated models probe with persisted verdict).
+/*
+ * Codex R13 #5: the availability verdict is persisted under the selected
+ * provider's validation-state option with a five-minute TTL — a repeat
+ * probe within that window would report "connected" from the cached
+ * verdict without making the documented authenticated request, even if
+ * the route is currently unavailable or the credential was revoked.
+ * The state option is a cache of a past check (safe to clear from a
+ * probe), so it is deleted first exactly like the discovery transient
+ * below: this step must always exercise the live network path.
+ */
+$state_option = 'anthropic' === $surface ? ZaiAnthropicProviderAvailability::STATE_OPTION : ZaiProviderAvailability::STATE_OPTION;
+delete_option( $state_option );
+
 $start = microtime( true );
 $configured = $provider_class::availability()->isConfigured();
 zai_live_probe_report( 'availability', $configured ? 'connected' : 'NOT connected' );

@@ -15,20 +15,17 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   message metadata and complete successfully with text or tool
   arguments received post-`message_delta`. Streams whose content events
   all precede the `message_delta` aggregate exactly as before.
-
 - A second `message_start` — even a valid one — now invalidates the
   stream: the R12 payload validation ran on every event, so a duplicate
   passed it and overwrote the first message id and input-token usage
   while the generated content still succeeded. The protocol sends
   exactly one; the already-started state is now guarded like duplicate
   block starts and duplicate message deltas.
-
 - A `text`/`thinking` start block that omits its content member or
   supplies a non-string now invalidates the stream instead of silently
   fabricating an empty initial value; later valid deltas could then
   produce a successful response from a known-malformed start payload.
   Valid starts (including an initial empty string) keep their values.
-
 - A response — non-streaming or consolidated stream — containing two
   `tool_use` blocks with the same NON-EMPTY id is now rejected as
   malformed: both parsed independently into two ambiguous `FunctionCall`
@@ -36,6 +33,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   this adapter's own outbound duplicate-id rejection when the assistant
   turn is replayed after tools may already have executed. Distinct ids
   and single tool calls are unchanged.
+- The live probe now clears the selected provider's validation-state
+  option before its availability step: within the five-minute TTL the
+  persisted verdict previously satisfied the "live" acceptance check
+  without any network request, so a revoked credential or unavailable
+  route could still report `connected` (mirroring the discovery-transient
+  clear the probe already performs).
 
 ### Fixed (zai / M2 — Codex PR review, round 12)
 
