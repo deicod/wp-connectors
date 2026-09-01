@@ -310,6 +310,8 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             'not json at all',
             '{"object":"list"}',
             '{"data":{"id":"not-a-list"}}',
+            '{"data":{"only":{"id":"glm-5.3"}}}',
+            '{"data":{}}',
             '{"data":[{"no_id":true}]}',
             '{"data":[]}',
         );

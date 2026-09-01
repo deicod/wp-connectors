@@ -79,6 +79,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   this adapter's own outbound duplicate-id rejection when the assistant
   turn is replayed after tools may already have executed. Distinct ids
   and single tool calls are unchanged.
+- The openai-surface `/v1/models` parse requires its discovery data to
+  be a JSON list too (the R14 verifier's twin of the fix above): an
+  object-shaped catalog passed the same associative `is_array()` check
+  on the zai surface's directory and was likewise cached as successful
+  live discovery. Same oracle, same fallback.
+
 - The live probe now clears the selected provider's validation-state
   option before its availability step: within the five-minute TTL the
   persisted verdict previously satisfied the "live" acceptance check
