@@ -323,9 +323,14 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
     /**
      * @dataProvider provideStopReasons
      */
-    public function testStopReasonsMapToFinishReasons($stopReason, $expected)
+    public function testStopReasonsMapToFinishReasons($stopReason, $expected, $content = null)
     {
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('x', null, $stopReason));
+        /*
+         * Codex R14 #2: stop_reason must match the content, so the
+         * tool_use case carries a real tool block (a text-only body with
+         * a tool_use reason is now rejected — see the dedicated tests).
+         */
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('x', $content, $stopReason));
 
         $result = $this->model()->generateTextResult($this->prompt());
 
@@ -341,7 +346,7 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             'end_turn' => array('end_turn', FinishReasonEnum::stop()),
             'stop_sequence' => array('stop_sequence', FinishReasonEnum::stop()),
             'pause_turn' => array('pause_turn', FinishReasonEnum::stop()),
-            'tool_use' => array('tool_use', FinishReasonEnum::toolCalls()),
+            'tool_use' => array('tool_use', FinishReasonEnum::toolCalls(), array(array('type' => 'tool_use', 'id' => 'toolu_fr', 'name' => 'ping', 'input' => new stdClass()))),
             'refusal' => array('refusal', FinishReasonEnum::contentFilter()),
         );
     }
@@ -1334,6 +1339,91 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertCount(1, $one, 'A single tool_use must keep working unchanged.');
         $this->assertSame('toolu_only', $one[0]->getFunctionCall()->getId());
         $this->assertSame(array('x' => 1), $one[0]->getFunctionCall()->getArgs());
+    }
+
+    public function testAToolUseStopReasonWithoutToolCallsIsRejected()
+    {
+        // Codex R14 #2: stop_reason tool_use with only text content
+        // signals toolCalls() with nothing to execute.
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_tuft',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'No call.')),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A tool_use stop reason without a tool call must be rejected, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('stop reason did not match', $e->getMessage());
+        }
+    }
+
+    /**
+     * @dataProvider provideOrdinaryStopReasons
+     */
+    public function testToolCallsUnderAnOrdinaryStopReasonAreRejected($stopReason)
+    {
+        // Codex R14 #2 (converse): a FunctionCall paired with a
+        // completion reason executes nothing while signaling completion.
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_tuos',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'tool_use', 'id' => 'toolu_tuos', 'name' => 'ping', 'input' => new stdClass())),
+            'stop_reason' => $stopReason,
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail("A tool call under stop reason {$stopReason} must be rejected.");
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('stop reason did not match', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideOrdinaryStopReasons()
+    {
+        return array(
+            'end_turn' => array('end_turn'),
+            'stop_sequence' => array('stop_sequence'),
+            'pause_turn' => array('pause_turn'),
+            'refusal' => array('refusal'),
+        );
+    }
+
+    public function testAConsolidatedStreamWithToolUseStopReasonButNoToolBlockIsRejected()
+    {
+        // The consolidated stream path funnels into the same conversion:
+        // message_delta declaring tool_use while only text was streamed
+        // must fail exactly like the non-streaming shape.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_tust","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Only text."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed tool_use stop reason without a tool call must be rejected, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('stop reason did not match', $e->getMessage());
+        }
     }
 
     /**

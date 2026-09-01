@@ -15,6 +15,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   path rejects it. An explicit `message` type and an absent type member
   keep the documented tolerance.
 
+- A stop reason that contradicts the parsed content is now rejected:
+  `stop_reason: tool_use` without any `tool_use` block returned a
+  `toolCalls()` signal with nothing to execute, and tool blocks paired
+  with an ordinary completion reason (`end_turn`, `stop_sequence`,
+  `pause_turn`, `refusal`) executed nothing while signaling completion.
+  The check runs in the shared conversion (non-streaming and
+  consolidated streams) after the typed truncation exceptions, so
+  `max_tokens`/`model_context_window_exceeded` keep their precedence.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

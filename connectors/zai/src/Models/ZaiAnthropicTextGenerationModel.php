@@ -974,6 +974,28 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$finish_reason = $this->finish_reason_for( (string) $data['stop_reason'] );
 
+		/*
+		 * Codex R14 #2: the stop reason must match the parsed content — a
+		 * tool_use reason with no FunctionCall signals toolCalls() with
+		 * nothing to execute, and tool blocks under an ordinary completion
+		 * reason (end_turn/stop_sequence/pause_turn/refusal) execute
+		 * nothing while signaling completion. Checked AFTER
+		 * finish_reason_for() so the typed truncation exceptions keep
+		 * precedence; same typed channel as the duplicate-id rejection
+		 * above.
+		 */
+		$has_tool_call = false;
+		foreach ( $parts as $part ) {
+			if ( null !== $part->getFunctionCall() ) {
+				$has_tool_call = true;
+				break;
+			}
+		}
+
+		if ( ( 'tool_use' === $data['stop_reason'] ) !== $has_tool_call ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'stop_reason', 'The stop reason did not match the response content.' );
+		}
+
 		$candidates = array(
 			new Candidate(
 				new Message( $role, $parts ),
