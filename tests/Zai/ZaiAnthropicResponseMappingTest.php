@@ -1485,6 +1485,154 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
     }
 
     /**
+     * @dataProvider provideMalformedStreamedDeltaUsage
+     */
+    public function testAMalformedMessageDeltaUsageInvalidatesTheStream($usageJson)
+    {
+        /*
+         * Codex R15 #1: the aggregator previously cast the streamed
+         * output_tokens before parse_message_body()'s strict validator
+         * could see the original type — numeric strings, floats, bools,
+         * negatives, and list-shaped usage all became plausible counts
+         * (a list silently became zero).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_mdu","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":' . $usageJson . '}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A malformed message_delta usage must fail the stream, got usage: ' . wp_json_encode($result->getTokenUsage()->toArray()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideMalformedStreamedDeltaUsage()
+    {
+        return array(
+            'json list' => array('[1,2]'),
+            'numeric string' => array('{"output_tokens":"5"}'),
+            'float' => array('{"output_tokens":3.7}'),
+            'bool' => array('{"output_tokens":true}'),
+            'negative int' => array('{"output_tokens":-3}'),
+            'explicit null member' => array('{"output_tokens":null}'),
+        );
+    }
+
+    /**
+     * @dataProvider provideValidStreamedDeltaUsage
+     */
+    public function testAValidOrAbsentMessageDeltaUsageStillAggregates($usageJson)
+    {
+        // Guards: zero is a valid count; an absent usage member keeps
+        // the documented default-zero tolerance.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_vdu","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":' . $usageJson . '}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('ok', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideValidStreamedDeltaUsage()
+    {
+        return array(
+            'zero count' => array('{"output_tokens":0}'),
+            'absent usage member' => array('{}'),
+        );
+    }
+
+    /**
+     * @dataProvider provideMalformedStreamedStartUsage
+     */
+    public function testAMalformedMessageStartUsageInvalidatesTheStream($messageUsageJson)
+    {
+        // Codex R15 #1, input side: the same shapes in message_start.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_msu","content":[],"usage":' . $messageUsageJson . '}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A malformed message_start usage must fail the stream, got usage: ' . wp_json_encode($result->getTokenUsage()->toArray()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideMalformedStreamedStartUsage()
+    {
+        return array(
+            'numeric string input' => array('{"input_tokens":"5"}'),
+            'bool cache member' => array('{"input_tokens":1,"cache_read_input_tokens":true}'),
+            'json list' => array('[7]'),
+        );
+    }
+
+    public function testValidMessageStartCacheMembersStillAggregate()
+    {
+        // Guard: valid cache members (zeros included) sum into the
+        // input side.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_vsu","content":[],"usage":{"input_tokens":0,"cache_creation_input_tokens":4,"cache_read_input_tokens":6,"output_tokens":0}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('ok', $result->toText());
+        $this->assertSame(10, $result->getTokenUsage()->getPromptTokens(), 'Cache members sum into the input side.');
+    }
+
+    /**
      * @dataProvider provideStreamedEnvelopeTypes
      */
     public function testAStreamedEnvelopeTypeOtherThanMessageInvalidatesTheStream($messageStartData)
@@ -1725,9 +1873,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             'event: content_block_start',
             'data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_9","name":"get_weather","input":{}}}',
             'event: content_block_delta',
-            'data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":"}}',
+            'data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"city\":"}}',
             'event: content_block_delta',
-            'data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"\\"Oslo\\"}"}}',
+            'data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"\"Oslo\"}"}}',
             'event: content_block_stop',
             'data: {"type":"content_block_stop","index":2}',
             'event: message_delta',
@@ -2442,7 +2590,7 @@ $body = ''
             . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_ns","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
-            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"city\":\"Oslo\"}"}}' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{"city":"Oslo"}"}}' . "\n\n"
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"

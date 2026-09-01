@@ -52,6 +52,18 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   integers; an absent member keeps the documented default-zero
   tolerance, and a valid `{}` still means zero tokens.
 
+### Fixed (zai / M2 — Codex PR review, round 15)
+
+- Streamed usage is validated BEFORE the aggregator's casts store it:
+  a numeric string, float, boolean, or negative in
+  `message_delta.usage.output_tokens` (or the three input-token fields
+  of `message_start`) was normalized into an integer before the
+  consolidated response reached the strict usage validator, and a
+  list-shaped usage silently became zero because the named member was
+  absent. A present streamed usage must now be object-shaped with
+  non-negative integer members (same rule as the response validator);
+  absent members keep the default-zero tolerance.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

@@ -697,7 +697,22 @@ final class AnthropicSseAggregator {
 				if ( isset( $message['id'] ) && \is_string( $message['id'] ) ) {
 					$this->message_id = $message['id'];
 				}
-				if ( isset( $message['usage'] ) && \is_array( $message['usage'] ) ) {
+				if ( \array_key_exists( 'usage', $message ) ) {
+					/*
+					 * Codex R15 #1: streamed usage is validated BEFORE the casts
+					 * store it — the casts previously normalized "5", 3.7, true,
+					 * and negatives into plausible counts, and a list-shaped
+					 * usage silently became zero (the named member is absent),
+					 * all before parse_message_body()'s strict validator could
+					 * see the original types.
+					 */
+					$raw_message_usage = \is_object( $raw->message ) && \property_exists( $raw->message, 'usage' ) ? $raw->message->usage : null;
+					if ( ! self::streamed_usage_is_valid( $message['usage'], $raw_message_usage ) ) {
+						$this->malformed_event = true;
+
+						return;
+					}
+
 					$this->input_tokens = (int) ( $message['usage']['input_tokens'] ?? 0 )
 						+ (int) ( $message['usage']['cache_creation_input_tokens'] ?? 0 )
 						+ (int) ( $message['usage']['cache_read_input_tokens'] ?? 0 );
@@ -860,7 +875,15 @@ final class AnthropicSseAggregator {
 				if ( isset( $data['delta'] ) && \is_array( $data['delta'] ) && isset( $data['delta']['stop_reason'] ) && \is_string( $data['delta']['stop_reason'] ) ) {
 					$this->stop_reason = $data['delta']['stop_reason'];
 				}
-				if ( isset( $data['usage'] ) && \is_array( $data['usage'] ) ) {
+				if ( \array_key_exists( 'usage', $data ) ) {
+					// Codex R15 #1: same validation as message_start's input side.
+					$raw_usage = \is_object( $raw ) && \property_exists( $raw, 'usage' ) ? $raw->usage : null;
+					if ( ! self::streamed_usage_is_valid( $data['usage'], $raw_usage ) ) {
+						$this->malformed_event = true;
+
+						return;
+					}
+
 					$this->output_tokens = (int) ( $data['usage']['output_tokens'] ?? 0 );
 				}
 				return;
@@ -894,6 +917,55 @@ final class AnthropicSseAggregator {
 		}
 
 		// Unknown event types are ignored (forward compatibility).
+	}
+
+	/**
+	 * Validates a streamed usage member BEFORE any cast stores it
+	 * (Codex R15 #1).
+	 *
+	 * A present usage must be an object-shaped array (a JSON list [1,2]
+	 * passes is_array() after the associative decode, and its named
+	 * members are then absent) whose SUPPLIED known token members are
+	 * non-negative integers. Absent members stay tolerated (the
+	 * default-zero tolerance is documented); a violation marks the
+	 * stream malformed instead of normalizing the value into plausible
+	 * accounting. Object-ness comes from the non-associative decode (the
+	 * R3 #1 oracle), with the repo's sequential-key test as fallback
+	 * when the oracle value is unavailable.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $usage     The associatively decoded usage member.
+	 * @param mixed $raw_usage The same member from the non-associative
+	 *                         decode, or null when unavailable.
+	 * @return bool True when absent-shape-safe and valid; false marks the
+	 *              stream malformed.
+	 */
+	private static function streamed_usage_is_valid( $usage, $raw_usage ): bool {
+		if ( ! \is_array( $usage ) ) {
+			// Present but scalar or null — not a usage object.
+			return false;
+		}
+
+		if ( null === $raw_usage ) {
+			// Oracle unavailable: the sequential-key list test.
+			$is_object = array() === $usage
+				|| \array_keys( $usage ) !== \range( 0, \count( $usage ) - 1 );
+		} else {
+			$is_object = \is_object( $raw_usage );
+		}
+
+		if ( ! $is_object ) {
+			return false;
+		}
+
+		foreach ( array( 'input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens' ) as $member ) {
+			if ( \array_key_exists( $member, $usage ) && ( ! \is_int( $usage[ $member ] ) || $usage[ $member ] < 0 ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
