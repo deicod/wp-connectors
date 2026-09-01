@@ -83,13 +83,11 @@ $region = isset( $args['region'] ) ? (string) $args['region'] : 'intl';
  * key lookup or network call.
  */
 if ( ! in_array( $plan, array( 'coding', 'general' ), true ) ) {
-    fwrite( STDERR, "live-probe: --plan must be coding or general
-" );
+    fwrite( STDERR, "live-probe: --plan must be coding or general\n" );
     exit( 2 );
 }
 if ( ! in_array( $region, array( 'intl', 'cn' ), true ) ) {
-    fwrite( STDERR, "live-probe: --region must be intl or cn
-" );
+    fwrite( STDERR, "live-probe: --region must be intl or cn\n" );
     exit( 2 );
 }
 
@@ -157,7 +155,25 @@ delete_option( $state_option );
 
 $start = microtime( true );
 $configured = $provider_class::availability()->isConfigured();
-zai_live_probe_report( 'availability', $configured ? 'connected' : 'NOT connected' );
+
+/*
+ * R17b verifier sweep: isConfigured() answers TRUE for an INCONCLUSIVE
+ * probe when no stored verdict remains (the delete above removed it) —
+ * the credential is merely "not yet disproven", a save-blocking default
+ * that must not masquerade as a live acceptance pass. A DEFINITIVE
+ * verdict always persists fresh state, so a missing state option after
+ * the call means the request itself failed (transport error, 5xx, 429,
+ * 404, region distrust): report the step as inconclusive and fail it
+ * instead of printing connected.
+ */
+$definitive_state = get_option( $state_option );
+if ( ! is_array( $definitive_state ) ) {
+    zai_live_probe_report( 'availability', 'INCONCLUSIVE (no definitive live verdict)' );
+    $exit = 1;
+} else {
+    zai_live_probe_report( 'availability', $configured ? 'connected' : 'NOT connected' );
+}
+
 zai_live_probe_report( 'availability ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
 
 /*

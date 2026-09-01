@@ -131,6 +131,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ### Fixed (zai / M2 — Codex PR review, round 17 review body)
 
+- The live probe reports an INCONCLUSIVE availability verdict instead
+  of a vacuous `connected`: after the round-13 state-option clear, a
+  probe request that fails outright (transport error, 5xx, 429, 404,
+  region distrust) answers `isConfigured()` with the credential-"not
+  yet disproven" default without persisting a verdict — the step now
+  requires the freshly persisted definitive state and fails otherwise.
 - The live probe fails on empty generation output: a successfully
   parsed but blank (or whitespace-only) answer to the sentinel prompt
   was reported without affecting the verdict, so all three acceptance
