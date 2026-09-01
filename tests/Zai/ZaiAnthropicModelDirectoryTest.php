@@ -288,6 +288,66 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame(ZaiModelCatalog::GENERAL_MODELS, $this->idList($models));
     }
 
+    public function testAPaginatedDiscoveryPageFallsBackAndIsNotCached()
+    {
+        /*
+         * Codex R15 #3 (option a): a partial page with has_more: true is
+         * NOT a catalog — caching it for 12 hours would freeze the
+         * directory to one page and drop known in-plan models.
+         */
+        $this->selectEndpoint('coding', 'intl');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}],"has_more":true,"first_id":"glm-5.3","last_id":"glm-5.3"}');
+
+        $models = $this->directory()->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'An incomplete page falls back to the static plan catalog.');
+        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The partial page must not be cached.');
+    }
+
+    /**
+     * @dataProvider provideHasMoreShapes
+     */
+    public function testNonBooleanHasMoreValuesFailDiscoveryToo($hasMoreJson)
+    {
+        // STRICT shape: "true"/1/null are not the documented bool.
+        $this->selectEndpoint('coding', 'intl');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}],' . $hasMoreJson . '}');
+
+        $models = $this->directory()->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'A non-boolean has_more falls back like an incomplete page.');
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideHasMoreShapes()
+    {
+        return array(
+            'string true' => array('"has_more":"true"'),
+            'integer one' => array('"has_more":1'),
+            'explicit null' => array('"has_more":null'),
+        );
+    }
+
+    public function testACompletePageWithHasMoreFalseOrAbsentStillDiscovers()
+    {
+        // Guards: has_more:false is a complete page; an absent member is
+        // the pre-existing shape.
+        $this->selectEndpoint('coding', 'intl');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}],"has_more":false}');
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}]}');
+
+        $first = $this->idList($this->directory()->listModelMetadata());
+        $this->assertSame(array('glm-5.3'), $first, 'has_more:false is a complete page.');
+
+        $second = $this->idList($this->directory()->listModelMetadata());
+        $this->assertSame(array('glm-5.3'), $second, 'An absent has_more member keeps the current behavior.');
+    }
+
     public function testMalformedDiscoveryResponsesFallBack()
     {
         $this->selectEndpoint('coding', 'intl');

@@ -271,6 +271,23 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list must be a JSON list.' );
 		}
 
+		/*
+		 * Codex R15 #3 — decision: treat an incomplete page as discovery
+		 * FAILURE (option a) rather than following the after_id cursor. A
+		 * partial catalog with has_more: true would otherwise be cached for
+		 * 12 hours, freezing the directory to one page and dropping known
+		 * in-plan models; cursor-following would add a transport loop to a
+		 * connector whose discovery is opportunistic (the static plan
+		 * catalog is authoritative), so the strict path is to fall back to
+		 * it — the page says it is incomplete, therefore it is not a
+		 * catalog. STRICT bool: a present has_more that is not exactly
+		 * false (string "true", 1, null) is not the documented shape and
+		 * fails the same way.
+		 */
+		if ( \array_key_exists( 'has_more', $data ) && false !== $data['has_more'] ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list reported additional pages.' );
+		}
+
 		$ids = array();
 		foreach ( $data['data'] as $entry ) {
 			if ( ! \is_array( $entry ) || ! isset( $entry['id'] ) || ! \is_string( $entry['id'] ) || '' === $entry['id'] ) {
