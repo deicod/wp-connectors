@@ -51,6 +51,22 @@ final class SseFrameBuffer {
 	private $frames = array();
 
 	/**
+	 * Read cursor into the completed-frame queue (Codex R15 #4).
+	 *
+	 * The array_shift() reindexes the remaining array on every pull, so
+	 * draining a long stream (thousands of token-delta frames) was
+	 * quadratic in the frame count; the cursor keeps each pull
+	 * constant-time. The queue is compacted — cursor and frames both
+	 * reset — as soon as the cursor passes the last frame, so a drained
+	 * buffer retains nothing and a reused instance accepts new feeds.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	private $cursor = 0;
+
+	/**
 	 * Feeds a raw chunk of the event stream.
 	 *
 	 * @since 0.2.0
@@ -105,6 +121,25 @@ final class SseFrameBuffer {
 	 *                     or null when none remain.
 	 */
 	public function pull(): ?string {
-		return array_shift( $this->frames );
+		$count = \count( $this->frames );
+
+		if ( $this->cursor >= $count ) {
+			// Fully drained: compact so a reused buffer starts clean.
+			$this->frames = array();
+			$this->cursor = 0;
+
+			return null;
+		}
+
+		$frame = $this->frames[ $this->cursor ];
+		++$this->cursor;
+
+		if ( $this->cursor >= \count( $this->frames ) ) {
+			// This was the last frame: drop the queue immediately.
+			$this->frames = array();
+			$this->cursor = 0;
+		}
+
+		return $frame;
 	}
 }

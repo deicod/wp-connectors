@@ -82,6 +82,14 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   (including `"true"`, `1`, `null`) fails the same way. `has_more:
   false` and an absent member discover exactly as before.
 
+- Draining the SSE frame queue is now constant-time per frame: every
+  `array_shift()` reindexed the remaining PHP array, so consuming a
+  long stream (thousands of token-delta frames) was quadratic in the
+  frame count — ~57 s to drain 200k frames versus ~5 ms with the new
+  read cursor. Public behavior is unchanged (same frames, same order,
+  same null-on-exhaustion); the queue compacts itself once drained, so
+  a reused buffer instance accepts new feeds.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving
