@@ -64,6 +64,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   non-negative integer members (same rule as the response validator);
   absent members keep the default-zero tolerance.
 
+- The final `message_delta` is no longer accepted while a content
+  block is still open: a stream that started a block but lost its
+  `content_block_stop` frame completed successfully with a truncated
+  block lifecycle. Every started (or seeded) block index must be
+  stopped before the final metadata is accepted; streams with no blocks
+  and fully-stopped multi-block streams behave exactly as before.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

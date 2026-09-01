@@ -69,6 +69,8 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: ' . $deltaJson . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
     }
@@ -488,6 +490,8 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
                 . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
                 . 'event: content_block_delta' . "\n"
                 . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Chunk."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
                 . 'event: message_delta' . "\n"
                 . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -698,6 +702,8 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: ping' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Lost chunk."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -722,6 +728,8 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -831,6 +839,8 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Final."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -856,6 +866,8 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -1064,6 +1076,8 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Fine."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -1999,6 +2013,8 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n";
 
@@ -2173,6 +2189,8 @@ $body = ''
             . 'data: {"type":"message_start","message":{"id":"msg_sb2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: ' . $list_start . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2199,6 +2217,8 @@ $body = ''
             . 'data: {"type":"message_start","message":{"id":"msg_sb3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: ' . $empty_list_start . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2223,6 +2243,8 @@ $body = ''
             . 'data: {"type":"message_start","message":{"id":"msg_sb4","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s4","name":"ping","input":{}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2245,6 +2267,8 @@ $body = ''
             . 'data: {"type":"message_start","message":{"id":"msg_sb5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s5","name":"get_weather","input":{"city":"Oslo"}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2326,6 +2350,8 @@ $body = ''
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_ep","name":"get_weather","input":{"city":"Oslo"}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2438,6 +2464,8 @@ $body = ''
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -2457,6 +2485,8 @@ $body = ''
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -2659,6 +2689,91 @@ $body = ''
         }
     }
 
+    public function testAFinalDeltaWithAnUnclosedBlockInvalidatesTheStream()
+    {
+        /*
+         * Codex R15 #2: a stream that loses its content_block_stop frame
+         * completed successfully with a truncated block lifecycle — the
+         * final metadata must not be accepted while a block is open.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ob","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Truncated."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A message_delta with an unclosed block must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testFullyStoppedMultiBlockStreamsStillAggregate()
+    {
+        // Guard: two blocks, both stopped, aggregate in order.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_mb","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"One "}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"two."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $parts = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts();
+        $this->assertCount(2, $parts, 'Both stopped blocks survive into the message.');
+        $this->assertSame('One ', $parts[0]->getText());
+        $this->assertSame('two.', $parts[1]->getText());
+    }
+
+    public function testAStreamWithOneOpenBlockAmongStoppedOnesInvalidates()
+    {
+        // Codex R15 #2 (iv): block 0 stopped, block 1 never stopped.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ob2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Lost."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A message_delta with one unclosed block among stopped ones must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testAnUnknownDeltaOnAnUnseenIndexStillSeedsAndCompletes()
     {
         /*
@@ -2672,6 +2787,8 @@ $body = ''
             . 'data: {"type":"message_start","message":{"id":"msg_us","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n";
 
@@ -2740,6 +2857,8 @@ $body = ''
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n";
 

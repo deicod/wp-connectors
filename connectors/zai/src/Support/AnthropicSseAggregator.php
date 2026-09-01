@@ -870,6 +870,22 @@ final class AnthropicSseAggregator {
 					return;
 				}
 
+				/*
+				 * Codex R15 #2: the final metadata frame requires a CLOSED
+				 * block lifecycle — a stream that loses a content_block_stop
+				 * completed successfully with a truncated block lifecycle.
+				 * Every started (or seeded) block index must be stopped
+				 * before the delta is accepted; a stream with zero blocks
+				 * keeps its existing behavior.
+				 */
+				foreach ( $this->blocks as $open_index => $_open_block ) {
+					if ( ! isset( $this->stopped_indexes[ $open_index ] ) ) {
+						$this->malformed_event = true;
+
+						return;
+					}
+				}
+
 				$this->message_delta_received = true;
 
 				if ( isset( $data['delta'] ) && \is_array( $data['delta'] ) && isset( $data['delta']['stop_reason'] ) && \is_string( $data['delta']['stop_reason'] ) ) {
