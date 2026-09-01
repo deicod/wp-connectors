@@ -440,6 +440,62 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame(array('first' => 'a', 1 => 'b'), $body['messages'][1]['content'][0]['input']);
     }
 
+    /**
+     * @dataProvider provideUnencodableToolResults
+     */
+    public function testUnencodableToolResultsAreRejectedBeforeTransport($response, $label)
+    {
+        /*
+         * R18 (inline 3906485711): wp_json_encode() failure on a tool
+         * result was string-cast to '' — the request succeeded while
+         * telling the model the tool returned nothing. Rejected pre-
+         * transport now, in the tool-result validation channel.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_enc', 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_enc', 'get_weather', $response)))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail("[{$label}] An unencodable tool result must be rejected.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not JSON-encode a tool result', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideUnencodableToolResults()
+    {
+        $recursive = array('ok' => 1);
+        $recursive['self'] = &$recursive;
+
+        return array(
+            'NAN value' => array(NAN, 'NAN value'),
+            'resource value' => array(fopen('php://memory', 'r'), 'resource value'),
+            'recursive array' => array($recursive, 'recursive array'),
+        );
+    }
+
+    public function testEncodableToolResultsStillSerialize()
+    {
+        // Guard: ordinary payloads keep their exact JSON content.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_ok', 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_ok', 'get_weather', array('temp_c' => 21))))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('{"temp_c":21}', $body['messages'][2]['content'][0]['content'], 'The tool_result carries the exact JSON.' );
+    }
+
     public function testEmptyDeclaredToolNamesAreRejectedBeforeTransport()
     {
         /*

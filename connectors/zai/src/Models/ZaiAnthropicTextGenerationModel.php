@@ -737,10 +737,26 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				);
 			}
 
+			/*
+			 * R18 (inline 3906485711): an unencodable tool-result value — NAN,
+			 * a resource, a recursive structure — makes wp_json_encode()
+			 * return false, which the string cast silently turned into '': the
+			 * request then succeeded structurally while telling the model the
+			 * tool returned NO content, corrupting the conversation. The
+			 * serialization failure is a typed pre-transport rejection in the
+			 * same channel as the other tool-result validations.
+			 */
+			$encoded = wp_json_encode( $function_response->getResponse() );
+			if ( false === $encoded ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider could not JSON-encode a tool result (unencodable value such as NAN, a resource, or a recursive structure).'
+				);
+			}
+
 			return array(
 				'type'        => 'tool_result',
 				'tool_use_id' => $function_response->getId(),
-				'content'     => (string) wp_json_encode( $function_response->getResponse() ),
+				'content'     => $encoded,
 			);
 		}
 

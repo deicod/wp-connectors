@@ -798,12 +798,10 @@ function absint($maybeint)
 
 function wp_json_encode($data, $options = 0)
 {
-    $json = json_encode($data, $options);
-    if (false === $json) {
-        return 'null';
-    }
-
-    return $json;
+    // Core semantics: string on success, FALSE on failure (the earlier
+    // 'null' fallback masked unencodable values — NAN, resources,
+    // recursion — behind a successful-looking "null" string).
+    return json_encode($data, $options);
 }
 
 function wp_unslash($value)

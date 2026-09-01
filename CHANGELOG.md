@@ -161,6 +161,18 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   already constant-time since round 15; chunk-boundary semantics,
   `finish()` flushing, and buffer reuse are byte-identical.
 
+### Fixed (zai / M2 — Codex PR review, round 18, second batch)
+
+- An unencodable tool-result value is rejected before transport:
+  `wp_json_encode()` failure on a `FunctionResponse` (NAN, a resource,
+  a recursive structure) was string-cast to `''`, so the request
+  succeeded structurally while telling the model the tool returned no
+  content — corrupting the conversation instead of reporting the
+  serialization failure. The typed pre-transport rejection now fires in
+  the same channel as the other tool-result validations, and the test
+  harness's `wp_json_encode` stub matches core's string-or-false
+  semantics (it previously masked failures behind a `"null"` string).
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving
