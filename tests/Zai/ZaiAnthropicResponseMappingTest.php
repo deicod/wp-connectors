@@ -1182,6 +1182,68 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * @dataProvider provideMalformedStartMembers
+     */
+    public function testMalformedInitialTextOrThinkingMembersInvalidateTheStream($startJson)
+    {
+        // Codex R13 #3: a text/thinking start block missing its content
+        // member (or with a non-string value) silently fabricated an empty
+        // initial value and later deltas succeeded.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_mm","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: ' . $startJson . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Later."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A malformed start member must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideMalformedStartMembers()
+    {
+        return array(
+            'text missing' => array('{"type":"content_block_start","index":0,"content_block":{"type":"text"}}'),
+            'text int' => array('{"type":"content_block_start","index":0,"content_block":{"type":"text","text":7}}'),
+            'text null' => array('{"type":"content_block_start","index":0,"content_block":{"type":"text","text":null}}'),
+            'thinking missing' => array('{"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}'),
+            'thinking int' => array('{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":7}}'),
+        );
+    }
+
+    public function testValidInitialTextAndThinkingMembersStillAggregate()
+    {
+        // Guard: valid starts keep their initial values (incl. empty '').
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_vm","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Initial."}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" More."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('Initial. More.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.

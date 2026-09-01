@@ -23,6 +23,12 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   exactly one; the already-started state is now guarded like duplicate
   block starts and duplicate message deltas.
 
+- A `text`/`thinking` start block that omits its content member or
+  supplies a non-string now invalidates the stream instead of silently
+  fabricating an empty initial value; later valid deltas could then
+  produce a successful response from a known-malformed start payload.
+  Valid starts (including an initial empty string) keep their values.
+
 ### Fixed (zai / M2 — Codex PR review, round 12)
 
 - A `message_start` whose `message` member is missing, null, a list, or

@@ -939,6 +939,25 @@ final class AnthropicSseAggregator {
 			return;
 		}
 
+		/*
+		 * Codex R13 #3: the known non-tool block types REQUIRE their
+		 * content member — a missing or non-string text/thinking member
+		 * previously defaulted to '' and a later valid delta produced a
+		 * successful response whose start payload was malformed (unlike
+		 * the equivalent malformed deltas and non-streaming blocks).
+		 */
+		if ( 'text' === $type && ( ! array_key_exists( 'text', $block ) || ! \is_string( $block['text'] ) ) ) {
+			$this->malformed_event = true;
+
+			return;
+		}
+
+		if ( 'thinking' === $type && ( ! array_key_exists( 'thinking', $block ) || ! \is_string( $block['thinking'] ) ) ) {
+			$this->malformed_event = true;
+
+			return;
+		}
+
 		$input = new \stdClass();
 
 		if ( 'tool_use' === $type && null !== $raw_block ) {
