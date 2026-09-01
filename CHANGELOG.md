@@ -21,6 +21,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   byte-identical repeat is rejected — the payloads may differ, so a
   repeat is never an idempotent no-op (supersedes the R8 verifier's
   tolerance judgment).
+- Empty tool-call identities are rejected before transport in BOTH
+  directions: a FunctionCall or FunctionResponse with `''` as its ID
+  (or `''` name) passed the null-only guards and emitted a tool_use /
+  tool_result block with an empty identity — Messages requires
+  non-empty ids and names — and an inbound `tool_use` block with an
+  empty id/name now fails the typed parse error instead of producing a
+  FunctionCall with an empty identity.
 
 ### Fixed (zai / M2 — Codex PR review, round 8)
 

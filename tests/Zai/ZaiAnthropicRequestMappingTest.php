@@ -670,6 +670,60 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    /**
+     * @dataProvider provideEmptyToolIdentities
+     */
+    public function testEmptyToolCallIdentitiesAreRejectedBeforeTransport($call, $needle)
+    {
+        // Codex R9 #3: '' passes the null-only guard and emitted a tool_use
+        // block with an empty identity — Messages requires non-empty ids
+        // and names (upstream 400).
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart($call))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An empty tool identity must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString($needle, $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideEmptyToolIdentities()
+    {
+        return array(
+            'empty id' => array(new FunctionCall('', 'ping', array()), 'non-empty id and name'),
+            'empty name' => array(new FunctionCall('call_e', '', array()), 'non-empty id and name'),
+        );
+    }
+
+    public function testAnEmptyToolResultIdIsRejectedBeforeTransport()
+    {
+        // A user FunctionResponse with '' id (the SDK DTO permits it in
+        // user messages) must fail the non-empty check before transport.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_r', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('', 'ping', array('ok' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An empty tool-result id must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('non-empty tool_use id', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testMultimodalTextRequestSnapshot()
     {
         // Multiple text parts in one message (text-only multimodality): both
@@ -1074,7 +1128,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($prompt);
             $this->fail('A function-call part without an id must be rejected.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('id and a name', $e->getMessage());
+            $this->assertStringContainsString('non-empty id and name', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();

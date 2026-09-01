@@ -525,9 +525,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		if ( $part->getType()->isFunctionCall() ) {
 			$function_call = $part->getFunctionCall();
-			if ( null === $function_call || null === $function_call->getId() || null === $function_call->getName() ) {
+
+			/*
+			 * Codex R9 #3: the Messages protocol requires NON-EMPTY tool
+			 * ids and names — an empty string passes the null-only guard
+			 * and emitted a tool_use block with an empty identity (upstream
+			 * 400).
+			 */
+			if ( null === $function_call
+				|| null === $function_call->getId() || '' === $function_call->getId()
+				|| null === $function_call->getName() || '' === $function_call->getName() ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires every function-call part to carry an id and a name.'
+					'The zai_anthropic provider requires every function-call part to carry a non-empty id and name.'
 				);
 			}
 
@@ -567,9 +576,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		if ( $part->getType()->isFunctionResponse() ) {
 			$function_response = $part->getFunctionResponse();
-			if ( null === $function_response || null === $function_response->getId() ) {
+			if ( null === $function_response || null === $function_response->getId() || '' === $function_response->getId() ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires every function-response part to carry the tool_use id it answers.'
+					'The zai_anthropic provider requires every function-response part to carry the non-empty tool_use id it answers.'
 				);
 			}
 
@@ -870,8 +879,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				return new MessagePart( $part_data['thinking'], MessagePartChannelEnum::thought() );
 
 			case 'tool_use':
+				// Codex R9 #3: identities must be non-empty strings, not
+				// merely present — an empty id/name is a corrupt block.
 				foreach ( array( 'id', 'name' ) as $member ) {
-					if ( ! isset( $part_data[ $member ] ) || ! \is_string( $part_data[ $member ] ) ) {
+					if ( ! isset( $part_data[ $member ] ) || ! \is_string( $part_data[ $member ] ) || '' === $part_data[ $member ] ) {
 						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its identity members.' );
 					}
 				}

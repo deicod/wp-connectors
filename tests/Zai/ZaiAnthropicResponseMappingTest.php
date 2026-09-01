@@ -1002,6 +1002,33 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAnEmptyToolUseIdentityIsRejected()
+    {
+        // Codex R9 #3 inbound: '' id/name passed the isset+is_string
+        // guard and produced a FunctionCall with an empty identity.
+        foreach (array('id', 'name') as $member) {
+            $block = array('type' => 'tool_use', 'input' => array());
+            $block[ $member ] = '';
+            $block[ 'id' === $member ? 'name' : 'id' ] = 'kept';
+
+            $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+                'id' => 'msg_ei',
+                'type' => 'message',
+                'role' => 'assistant',
+                'content' => array($block),
+                'stop_reason' => 'tool_use',
+                'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+            )));
+
+            try {
+                $this->model()->generateTextResult($this->prompt());
+                $this->fail("An empty tool_use {$member} must be rejected.");
+            } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                $this->assertStringContainsString('identity members', $e->getMessage());
+            }
+        }
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.
