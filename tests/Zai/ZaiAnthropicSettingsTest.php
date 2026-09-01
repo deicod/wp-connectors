@@ -328,6 +328,77 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
     }
 
     /*
+     * Effective-region comparison (Codex R11 #2).
+     */
+
+    /**
+     * @dataProvider provideCorruptStoredRegionsSavingTheDefault
+     */
+    public function testSavingTheDefaultOverACorruptStoredRegionKeepsTheKey($corrupt)
+    {
+        // Codex R11 #2: a corrupt stored value already routes to the
+        // default — saving the displayed default is NOT a region switch,
+        // and must not delete a valid credential whose effective endpoint
+        // never changed.
+        $this->bootPlugin();
+        update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, $corrupt);
+        update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array('binding' => 'x'));
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'valid-intl-key');
+
+        // The save path: Settings API sanitized value becomes the new
+        // stored value; core fires the update hook with (raw old, new).
+        $new = sanitize_text_field('intl');
+        do_action('update_option_' . ZaiAnthropicPlanRegionSettings::OPTION_REGION, $corrupt, $new);
+
+        $this->assertSame(
+            'valid-intl-key',
+            get_option(ZaiAnthropicProviderAvailability::KEY_OPTION),
+            'The effective endpoint never changed: the key must survive.'
+        );
+        // Nothing is invalidated when the effective regions match — the
+        // early return skips the whole switch handling (key AND state).
+        $this->assertSame(array('binding' => 'x'), get_option(ZaiAnthropicProviderAvailability::STATE_OPTION));
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideCorruptStoredRegionsSavingTheDefault()
+    {
+        return array(
+            'garbage string' => array('bogus'),
+            'empty string' => array(''),
+            'whitespace' => array('  '),
+            'upper case' => array('INTL'),
+        );
+    }
+
+    public function testAGenuineRegionSwitchStillDeletesTheKey()
+    {
+        $this->bootPlugin();
+        update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'intl');
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'intl-key');
+
+        do_action('update_option_' . ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'intl', 'cn');
+
+        $this->assertFalse(
+            get_option(ZaiAnthropicProviderAvailability::KEY_OPTION, false),
+            'Genuinely different effective regions: the key is deleted as before.'
+        );
+    }
+
+    public function testSavingTheSameRegionKeepsTheKey()
+    {
+        $this->bootPlugin();
+        update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'cn');
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'cn-key');
+
+        do_action('update_option_' . ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'cn', 'cn');
+
+        $this->assertSame('cn-key', get_option(ZaiAnthropicProviderAvailability::KEY_OPTION), 'No change: the key survives.');
+    }
+
+    /*
      * SDK-absent safety (Codex R2 #3) and identifier consistency.
      */
 

@@ -535,7 +535,17 @@ abstract class AbstractPlanRegionSettings {
 	 * @return void
 	 */
 	public static function handle_region_change( $old_value, $new_value ): void {
-		if ( (string) $old_value === (string) $new_value ) {
+		/*
+		 * Codex R11 #2: compare EFFECTIVE regions, not raw values. A
+		 * corrupt stored value ('bogus', '', whitespace, wrong case)
+		 * already routes to the default region for every real request —
+		 * get_region() normalizes on read — so saving the displayed
+		 * default on top of it is NOT a switch: the raw-vs-sanitized
+		 * comparison would otherwise delete a perfectly valid credential
+		 * whose effective endpoint never changed. Both sides run through
+		 * the same normalization get_region() uses.
+		 */
+		if ( self::effective_region( $old_value ) === self::effective_region( $new_value ) ) {
 			return;
 		}
 
@@ -549,6 +559,23 @@ abstract class AbstractPlanRegionSettings {
 				? $new_value
 				: static::get_region()
 		);
+	}
+
+	/**
+	 * Normalizes a raw hook/stored value to its effective region.
+	 *
+	 * The same allowlist fallback get_region() applies on read: any value
+	 * outside REGIONS (corrupt garbage, wrong type, wrong case) routes to
+	 * the default region, because that is the endpoint every real request
+	 * actually uses with that value stored.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $value Raw hook or stored option value.
+	 * @return string The effective region ('intl' or 'cn').
+	 */
+	private static function effective_region( $value ): string {
+		return self::sanitize_stored( $value, self::REGIONS, self::DEFAULT_REGION );
 	}
 
 	/**

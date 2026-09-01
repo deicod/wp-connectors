@@ -21,6 +21,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   assistant tool messages form ONE answerable turn (partially answering
   it is the R10 partial rejection, superseding the R9 window-replacement
   probe), and only an intervening USER turn genuinely breaks adjacency.
+- The region-change hook compares EFFECTIVE regions before invalidating
+  the credential: a corrupt stored value ('bogus', empty, whitespace,
+  wrong case) already routes to the default region on every read, so
+  saving the displayed default on top of it is not a switch — the
+  raw-vs-sanitized comparison previously deleted a valid key whose
+  effective endpoint never changed. Both hook values now run through
+  the same normalization get_region() uses; only genuinely different
+  effective regions invalidate. Genuine switches and same-value saves
+  behave exactly as before.
 
 ### Fixed (zai / M2 — Codex PR review, round 10)
 
