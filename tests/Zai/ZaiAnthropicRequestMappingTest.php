@@ -807,6 +807,46 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testADuplicateToolCallIdInOneTurnIsRejectedBeforeTransport()
+    {
+        // Codex R10 #2: two tool_use blocks with the same ID — identical
+        // names or different — are ambiguous identities; a single result
+        // satisfied linkage while the wire carried duplicates.
+        foreach (array('ping', 'pong') as $second_name) {
+            $prompt = array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+                new Message(MessageRoleEnum::model(), array(
+                    new MessagePart(new FunctionCall('dup', 'ping', array())),
+                    new MessagePart(new FunctionCall('dup', $second_name, array())),
+                )),
+            );
+
+            try {
+                $this->model()->generateTextResult($prompt);
+                $this->fail("A duplicate tool call id (second name {$second_name}) must be rejected.");
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('unique within an assistant message', $e->getMessage());
+            }
+        }
+
+        $this->assertNoHttpRequests();
+
+        // ID reuse ACROSS turns (different assistant messages) stays legal
+        // (R9 probe area — do not regress).
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('reuse', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('reuse', 'ping', array('r' => 1))))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('reuse', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('reuse', 'ping', array('r' => 2))))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('reuse', $body['messages'][1]['content'][0]['id']);
+        $this->assertSame('reuse', $body['messages'][4]['content'][0]['tool_use_id'], 'Cross-turn reuse stays legal.');
+    }
+
     public function testMultimodalTextRequestSnapshot()
     {
         // Multiple text parts in one message (text-only multimodality): both

@@ -16,6 +16,11 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   request failed upstream with a 400. Fully-answered multi-tool turns
   and end-of-history unanswered turns (the normal tool loop) are
   unaffected.
+- Two FunctionCall parts sharing the same ID within ONE assistant turn
+  are rejected before transport: the map assignment silently overwrote
+  the first entry, so a single later result satisfied linkage while the
+  wire carried two ambiguous tool_use identities. ID reuse across
+  DIFFERENT turns stays legal.
 
 ### Fixed (zai / M2 — Codex PR review, round 9)
 

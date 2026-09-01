@@ -370,6 +370,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			foreach ( $blocks as $block ) {
 				if ( 'tool_use' === $block['type'] ) {
+					/*
+					 * Codex R10 #2: two tool_use blocks with the SAME id in
+					 * one assistant turn are ambiguous — a single later
+					 * result would satisfy linkage while the wire carries
+					 * duplicate identities (upstream validation failure).
+					 * Reject before the map assignment can overwrite.
+					 */
+					if ( isset( $outstanding_tools[ $block['id'] ] ) ) {
+						throw new InvalidArgumentException(
+							'The zai_anthropic provider requires tool call ids to be unique within an assistant message (duplicate tool call id).'
+						);
+					}
+
 					// A new tool_use opens its ID for exactly one answer.
 					$outstanding_tools[ $block['id'] ] = true;
 					$opens_tools                       = true;
