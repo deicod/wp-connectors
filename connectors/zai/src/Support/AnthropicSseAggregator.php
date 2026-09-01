@@ -967,28 +967,33 @@ final class AnthropicSseAggregator {
 
 		if ( ! isset( $this->blocks[ $index ] ) ) {
 			/*
-			 * Codex R5 #2: a TOOL delta for an index whose
+			/*
+			 * Codex R5 #2 / R10 #3: a delta for an index whose
 			 * content_block_start was never received means the stream is
-			 * damaged or resumed mid-flight. Defaulting the unseen index
-			 * to a TEXT accumulator made the JSON fragments collect where
-			 * content_block_payload() ignores them — the tool_use
-			 * completion "succeeded" with NO FunctionCall at all. Tool
-			 * deltas invalidate the stream. A genuine TEXT or THINKING
-			 * delta on an unseen index keeps the tolerant default below —
-			 * the accumulator is seeded with the delta's OWN block type,
-			 * so the recovered chunk is accumulated and surfaced (documented
-			 * and tested; the R5 note about thought content being dropped
-			 * no longer applies — a thinking delta now seeds a thinking
-			 * block).
+			 * damaged or resumed mid-flight — the content before the
+			 * missing start is silently absent, and defaulting the unseen
+			 * index to a synthesized accumulator returned a successful
+			 * TRUNCATED completion (for tool deltas, one with NO
+			 * FunctionCall at all). ALL known delta types now require an
+			 * existing started block and invalidate the stream otherwise;
+			 * unknown (future) delta types keep the seed below — they carry
+			 * no content this aggregator maps, so seeding loses nothing.
 			 */
-			if ( isset( $delta['type'] ) && 'input_json_delta' === $delta['type'] ) {
-				$this->malformed_tool_input = true;
+			if ( isset( $delta['type'] ) && \is_string( $delta['type'] ) ) {
+				if ( 'input_json_delta' === $delta['type'] ) {
+					$this->malformed_tool_input = true;
 
-				return;
+					return;
+				}
+
+				if ( 'text_delta' === $delta['type'] || 'thinking_delta' === $delta['type'] ) {
+					$this->malformed_event = true;
+
+					return;
+				}
 			}
 
-			$seed_type = isset( $delta['type'] ) && 'thinking_delta' === $delta['type'] ? 'thinking' : 'text';
-			$this->start_block( $index, array( 'type' => $seed_type ), null );
+			$this->start_block( $index, array( 'type' => 'text' ), null );
 		}
 
 		/*

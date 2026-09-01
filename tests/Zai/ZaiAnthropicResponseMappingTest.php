@@ -608,29 +608,6 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
-    public function testAMatchingThinkingDeltaOnASeededThinkingBlockSurfaces()
-    {
-        // With conflicting deltas now rejected, an unseen-index thinking
-        // delta seeds a THINKING accumulator, so its content surfaces as a
-        // thought part instead of being silently dropped (R5 note
-        // superseded).
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ct","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
-            . 'event: content_block_delta' . "\n"
-            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Pondering."}}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
-
-        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
-
-        $parts = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts();
-
-        $this->assertCount(1, $parts);
-        $this->assertTrue($parts[0]->getChannel()->isThought());
-        $this->assertSame('Pondering.', $parts[0]->getText());
-    }
-
     public function testAnObjectShapedContentMemberIsRejected()
     {
         // Codex R6 #5: "content": {} collapses to the same empty PHP array
@@ -1931,24 +1908,64 @@ $body = ''
         }
     }
 
-    public function testATextDeltaWithoutAStartBlockStaysTolerated()
+    public function testATextDeltaWithoutAStartBlockInvalidatesTheStream()
     {
-        // Documented tolerance (Codex R5 #2): a genuine TEXT delta for an
-        // unseen index keeps the tolerant text-default — the chunk is
-        // still accumulated and surfaced, never dropped.
+        // Codex R10 #3 supersedes the R5 #2 text tolerance: a text delta
+        // for an unseen index means the stream began mid-block or lost a
+        // content_block_start — content before the missing start is
+        // silently absent, and the synthesized accumulator returned a
+        // successful TRUNCATED completion. Rejected like the tool path.
         $body = ''
             . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_ts","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
-            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Recovered chunk."}}' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Truncated chunk."}}' . "\n\n"
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A text delta without a start block must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('Truncated chunk.', $e->getMessage());
+        }
+    }
+
+    public function testAThinkingDeltaWithoutAStartBlockInvalidatesTheStream()
+    {
+        // Same rule on the thinking path (Codex R10 #3).
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_tsn","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":2,"delta":{"type":"thinking_delta","thinking":"Orphan thought."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A thinking delta without a start block must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testAnUnknownDeltaTypeWithoutAStartBlockStaysSeeded()
+    {
+        // Unknown (future) delta types carry no content this aggregator
+        // maps, so the seeded tolerance loses nothing (Codex R10 #3 note).
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $this->streamWithDelta(
+            '{"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}'
+        ));
+
         $result = $this->model()->generateTextResult($this->prompt());
 
-        $this->assertSame('Recovered chunk.', $result->toText(), 'A lost start event for a text block must not lose the text.');
+        $this->assertSame('', $result->toText(), 'The unknown delta contributes no text; the stream completes.');
     }
 
     public function testAnErrorEventFailsWithAFixedSafeMessage()

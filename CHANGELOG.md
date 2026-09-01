@@ -21,6 +21,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   the first entry, so a single later result satisfied linkage while the
   wire carried two ambiguous tool_use identities. ID reuse across
   DIFFERENT turns stays legal.
+- A text or thinking delta for a stream index whose
+  `content_block_start` was never received now invalidates the stream
+  (the same typed error the tool-delta path already raised): the
+  synthesized accumulator returned a successful truncated completion
+  with the content before the missing start silently absent. Unknown
+  (future) delta types keep the seeded tolerance — they carry no
+  content this aggregator maps.
 
 ### Fixed (zai / M2 — Codex PR review, round 9)
 
