@@ -1072,7 +1072,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			),
 		);
 
-		$id = isset( $data['id'] ) && \is_string( $data['id'] ) ? $data['id'] : '';
+		/*
+		 * R19 (inline 3906739381): a successful response must carry a
+		 * NON-EMPTY string id — the fallback returned a result with no
+		 * message identity, and the consolidated-stream path shared the gap
+		 * because the aggregator fabricates an empty id when
+		 * message_start.message.id is absent. Both paths merge HERE, so one
+		 * rejection covers them (same typed channel as the other response
+		 * identity checks).
+		 */
+		if ( ! isset( $data['id'] ) || ! \is_string( $data['id'] ) || '' === $data['id'] ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'id', 'The response did not carry a non-empty message id.' );
+		}
+
+		$id = $data['id'];
 
 		/*
 		 * Codex R14 #5: a PRESENT usage member must be a JSON OBJECT whose

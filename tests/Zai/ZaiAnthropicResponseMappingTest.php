@@ -2261,6 +2261,67 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('', $result->toText(), 'The aggregated text stays empty.');
     }
 
+    /**
+     * @dataProvider provideMissingResponseIds
+     */
+    public function testAResponseWithoutANonEmptyIdIsRejected($idMember, $label)
+    {
+        // R19 (inline 3906739381): the '' fallback returned a result with
+        // no message identity — absent, empty, and non-string ids reject.
+        $this->queueSdkResponse(200, array(), '{"type":"message","role":"assistant"' . $idMember . ',"content":[{"type":"text","text":"Ok."}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail("[{$label}] must be rejected, got id: " . wp_json_encode($result->getId()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('non-empty message id', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideMissingResponseIds()
+    {
+        return array(
+            'absent id member' => array('', 'absent id member'),
+            'empty id' => array(',"id":""', 'empty id'),
+            'non-string id' => array(',"id":17', 'non-string id'),
+            'null id' => array(',"id":null', 'null id'),
+        );
+    }
+
+    public function testAConsolidatedStreamWithoutAMessageIdIsRejected()
+    {
+        /*
+         * R19 (inline 3906739381), stream side: the aggregator fabricates
+         * an empty id when message_start.message.id is absent — the
+         * fabricated identity must not flow through as a success.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Ok."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A consolidated stream without a message id must be rejected, got id: ' . wp_json_encode($result->getId()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('non-empty message id', $e->getMessage());
+        }
+    }
+
     public function testAStreamTruncatedBeforeMessageStopFails()
     {
         /*

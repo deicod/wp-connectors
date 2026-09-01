@@ -193,6 +193,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   schema. The typed pre-transport rejection now fires in the same
   channel as the round-18 tool-result encoding failure.
 
+- A successful response must carry a non-empty string `id`: the
+  fallback returned a `GenerativeAiResult` with no message identity
+  when `id` was absent, empty, or non-string, and the consolidated-
+  stream path shared the gap because the aggregator fabricates an empty
+  id when `message_start.message.id` is absent. One rejection where the
+  two paths merge covers both.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving
