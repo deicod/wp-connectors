@@ -242,6 +242,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @since 0.2.0
 	 *
 	 * @return string Guidance text (possibly embedding the outputSchema).
+	 * @throws InvalidArgumentException When the configured outputSchema
+	 *                                  cannot be JSON-encoded (Codex R19).
 	 */
 	private function json_output_guidance(): string {
 		$config = $this->getConfig();
@@ -256,10 +258,26 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$guidance = __( 'Respond with a single JSON value only — no markdown fences, no commentary, no surrounding text.', 'zai' );
 
 		if ( \is_array( $output_schema ) ) {
+			/*
+			 * R19 (inline 3906739372): a constructible but unencodable
+			 * outputSchema — NAN, invalid UTF-8, a recursive structure — makes
+			 * wp_json_encode() return false, which the string cast silently
+			 * turned into '': the guidance ended in "JSON Schema: " and the
+			 * model produced unconstrained output even though the caller
+			 * requested a schema. Rejected before transport in the same
+			 * channel as the R18 tool-result encoding failure.
+			 */
+			$encoded_schema = wp_json_encode( $output_schema );
+			if ( false === $encoded_schema ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider could not JSON-encode the configured output schema (unencodable value such as NAN, invalid UTF-8, or a recursive structure).'
+				);
+			}
+
 			$guidance .= "\n" . sprintf(
 				/* translators: %s: a JSON Schema document (compact JSON). */
 				__( 'The JSON value must conform to this JSON Schema: %s', 'zai' ),
-				(string) wp_json_encode( $output_schema )
+				$encoded_schema
 			);
 		}
 

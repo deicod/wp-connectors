@@ -182,6 +182,17 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   next to the empty-name check; distinct-name configurations are
   unchanged.
 
+### Fixed (zai / M2 — Codex PR review, round 19)
+
+- An unencodable `outputSchema` is rejected before transport: a
+  constructible but non-JSON-encodable value (NAN, invalid UTF-8, a
+  recursive structure) made the guidance encoder return false, which
+  the string cast silently turned into an empty string — the request
+  succeeded with guidance ending in `JSON Schema: `, so the model
+  produced unconstrained output even though the caller requested a
+  schema. The typed pre-transport rejection now fires in the same
+  channel as the round-18 tool-result encoding failure.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

@@ -196,6 +196,48 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertMatchesSnapshot('structured-output', $url, $body);
     }
 
+    /**
+     * @dataProvider provideUnencodableOutputSchemas
+     */
+    public function testUnencodableOutputSchemasAreRejectedBeforeTransport($schema, $label)
+    {
+        /*
+         * R19 (inline 3906739372): the encode failure was string-cast to
+         * '' — the guidance ended in "JSON Schema: " and the model
+         * produced unconstrained output despite the caller's schema.
+         */
+        $config = ModelConfig::fromArray(array(
+            'outputMimeType' => 'application/json',
+            'outputSchema' => $schema,
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(
+                array(new Message(MessageRoleEnum::user(), array(new MessagePart('Capital of France?'))))
+            );
+            $this->fail("[{$label}] An unencodable output schema must be rejected.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not JSON-encode the configured output schema', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideUnencodableOutputSchemas()
+    {
+        $recursive = array('type' => 'object');
+        $recursive['self'] = &$recursive;
+
+        return array(
+            'NAN inside the schema' => array(array('type' => NAN), 'NAN inside the schema'),
+            'recursive schema' => array($recursive, 'recursive schema'),
+            'invalid UTF-8 inside the schema' => array(array('type' => "\xB1\x31"), 'invalid UTF-8 inside the schema'),
+        );
+    }
+
     public function testJsonMimeTypeWithoutSchemaStillGuides()
     {
         $config = ModelConfig::fromArray(array('outputMimeType' => 'application/json'));
