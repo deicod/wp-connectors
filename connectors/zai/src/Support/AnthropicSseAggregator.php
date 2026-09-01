@@ -676,6 +676,18 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'content_block_start':
+				/*
+				 * Codex R13 #1: content events after the final message_delta
+				 * mutated the accumulators — the completion then succeeded with
+				 * text or tool args received after the final message metadata.
+				 * Rejected in the same channel as the duplicate-delta guard.
+				 */
+				if ( $this->message_delta_received ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				$index = self::raw_block_index( $raw );
 
 				if ( null === $index ) {
@@ -706,6 +718,12 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'content_block_delta':
+				if ( $this->message_delta_received ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				/*
 				 * Verifier sweep on Codex R4: a decodable-but-wrong-shape
 				 * delta is the same corruption class as an undecodable one
@@ -760,6 +778,12 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'content_block_stop':
+				if ( $this->message_delta_received ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				// The event still names an index, and a malformed one marks
 				// the stream corrupt (R6 #4 class).
 				$index = self::raw_block_index( $raw );

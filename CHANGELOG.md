@@ -6,6 +6,16 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 13)
+
+- Content-block events (`content_block_start`/`delta`/`stop`) arriving
+  AFTER the final `message_delta` now invalidate the stream: the
+  duplicate-delta guard only forbade another `message_delta`, so a
+  damaged stream could keep mutating the accumulators after the final
+  message metadata and complete successfully with text or tool
+  arguments received post-`message_delta`. Streams whose content events
+  all precede the `message_delta` aggregate exactly as before.
+
 ### Fixed (zai / M2 — Codex PR review, round 12)
 
 - A `message_start` whose `message` member is missing, null, a list, or

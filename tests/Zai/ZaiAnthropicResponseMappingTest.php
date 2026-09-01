@@ -1071,6 +1071,81 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(7, $result->getTokenUsage()->getPromptTokens());
     }
 
+    /**
+     * @dataProvider provideLateContentEvents
+     */
+    public function testContentEventsAfterMessageDeltaInvalidateTheStream($lateEventFrames)
+    {
+        // Codex R13 #1: content events after the final message_delta
+        // mutated the accumulators — the completion succeeded with text or
+        // tool args received after the final message metadata.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ld","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Before."}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . $lateEventFrames
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A content event after message_delta must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideLateContentEvents()
+    {
+        return array(
+            'late delta' => array(
+                'event: content_block_delta' . "\n"
+                . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"After."}}' . "\n\n",
+            ),
+            'late start (new index)' => array(
+                'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n",
+            ),
+            'late stop' => array(
+                'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":0}' . "\n\n",
+            ),
+        );
+    }
+
+    public function testContentEventsBeforeMessageDeltaStillAggregate()
+    {
+        // Guard: the normal order (all content events BEFORE the final
+        // message metadata) must keep aggregating.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ok3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Fine."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('Fine.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.
