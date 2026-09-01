@@ -101,6 +101,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   tolerance that treated `message_stop` as conventional; stream
   fixtures now close their lifecycle explicitly.
 
+- Content-block events now require `message_start` at dispatch time:
+  the missing-start guard only fired when the flag was still false at
+  the END of the stream, so a late-but-valid `message_start`
+  legitimized content blocks that had arrived before it and a complete
+  lifecycle then produced a successful response from an invalidly
+  ordered stream. The malformed flag is sticky — the late start cannot
+  launder the early content. Normal ordering (message_start, blocks,
+  metadata, message_stop) is unchanged.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

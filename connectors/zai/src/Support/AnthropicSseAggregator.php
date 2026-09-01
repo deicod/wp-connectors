@@ -736,6 +736,20 @@ final class AnthropicSseAggregator {
 
 			case 'content_block_start':
 				/*
+				 * Codex R16 #2: content events REQUIRE message_start at
+				 * dispatch time — the aggregated() guard only fires when the
+				 * flag is still false at the END, so a late-but-valid
+				 * message_start legitimized content that arrived before it.
+				 * The malformed flag is sticky; the late start cannot launder
+				 * the early content.
+				 */
+				if ( ! $this->message_started ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
+				/*
 				 * Codex R13 #1: content events after the final message_delta
 				 * mutated the accumulators — the completion then succeeded with
 				 * text or tool args received after the final message metadata.
@@ -777,6 +791,13 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'content_block_delta':
+				// Codex R16 #2: as above — content before message_start.
+				if ( ! $this->message_started ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				if ( $this->message_delta_received ) {
 					$this->malformed_event = true;
 
@@ -837,6 +858,13 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'content_block_stop':
+				// Codex R16 #2: as above — content before message_start.
+				if ( ! $this->message_started ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				if ( $this->message_delta_received ) {
 					$this->malformed_event = true;
 
