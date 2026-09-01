@@ -327,21 +327,25 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * legitimately contain (Codex R1 finding 2); coalescing here means the
 	 * request stays valid without rejecting such histories.
 	 *
-	 * Tool-result linkage (Codex R8 #5): every tool_result block must answer
-	 * a PRECEDING tool_use block's ID, exactly once. Outstanding IDs are
-	 * tracked while the messages are walked in order — an unmatched
-	 * (stale/mistyped/unknown) or duplicate tool_result ID is rejected
-	 * before transport instead of failing upstream with a 400.
+	 * Tool-result linkage (Codex R8 #5 / R9 #1): every tool_result block
+	 * must answer a tool_use from the IMMEDIATELY PRECEDING assistant
+	 * turn, exactly once. Outstanding IDs are opened by an assistant
+	 * turn's tool_use blocks and may ONLY be answered by the very next
+	 * user turn — once any other turn advances past that window, the IDs
+	 * expire: a stale result later in the history is rejected before
+	 * transport (as are unmatched/mistyped/duplicate results) instead of
+	 * failing upstream with a 400.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @param array $messages Messages to prepare (list of Message).
 	 * @return array The prepared messages parameter (list of content messages).
-	 * @throws InvalidArgumentException When a tool_result ID is unmatched or answered twice.
+	 * @throws InvalidArgumentException When a tool_result ID is unmatched, stale, or answered twice.
 	 */
 	protected function prepare_messages_param( array $messages ): array {
 		$prepared          = array();
 		$outstanding_tools = array();
+		$awaiting_answer   = false;
 
 		foreach ( $messages as $message ) {
 			$role   = $this->message_role_string( $message->getRole() );
@@ -354,13 +358,49 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				} elseif ( 'tool_result' === $block['type'] ) {
 					if ( ! isset( $outstanding_tools[ $block['tool_use_id'] ] ) ) {
 						throw new InvalidArgumentException(
-							'The zai_anthropic provider requires every tool result to answer a preceding tool call with the same id (unmatched or duplicate tool result).'
+							'The zai_anthropic provider requires every tool result to answer the preceding assistant tool call with the same id (unmatched, stale, or duplicate tool result).'
 						);
 					}
 
 					// Each tool_use ID may be answered exactly once.
 					unset( $outstanding_tools[ $block['tool_use_id'] ] );
 				}
+			}
+
+			/*
+			 * Turn-advance window (Codex R9 #1): after an assistant turn
+			 * that opened tool_use IDs, ONLY the immediately following user
+			 * turn may answer them. Any turn past that window expires the
+			 * outstanding IDs — a later user turn's tool_result is stale and
+			 * must be rejected, exactly as the protocol would upstream. An
+			 * assistant turn that opens no tool calls clears nothing and any
+			 * previously emptied window simply stays empty.
+			 */
+			$opens_tools = false;
+			if ( 'assistant' === $role ) {
+				foreach ( $blocks as $block ) {
+					if ( 'tool_use' === $block['type'] ) {
+						$opens_tools = true;
+						break;
+					}
+				}
+			}
+
+			if ( $awaiting_answer ) {
+				/*
+				 * The window closes after the immediately following turn,
+				 * and every ID expires with it: a non-user turn intervening
+				 * is corrupt ordering, and the answering user turn itself
+				 * must carry ALL of the assistant turn's results (the
+				 * multi-tool rule) — anything unconsumed never legitimately
+				 * survives past this point.
+				 */
+				$outstanding_tools = array();
+				$awaiting_answer   = false;
+			}
+
+			if ( $opens_tools ) {
+				$awaiting_answer = true;
 			}
 
 			$last = \count( $prepared ) - 1;

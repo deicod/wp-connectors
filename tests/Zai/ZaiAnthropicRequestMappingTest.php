@@ -505,7 +505,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($prompt);
             $this->fail('An unmatched tool result must be rejected.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('preceding tool call', $e->getMessage());
+            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();
@@ -527,7 +527,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($prompt);
             $this->fail('A duplicate tool result must be rejected.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('preceding tool call', $e->getMessage());
+            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();
@@ -555,7 +555,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($prompt);
             $this->fail('A tool result answering a later tool call must be rejected.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('preceding tool call', $e->getMessage());
+            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();
@@ -578,6 +578,96 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame('tool_result', $body['messages'][2]['content'][0]['type']);
         $this->assertSame('c1', $body['messages'][2]['content'][0]['tool_use_id']);
         $this->assertSame('c2', $body['messages'][4]['content'][0]['tool_use_id']);
+    }
+
+    public function testAToolResultAfterAnInterveningTurnIsRejected()
+    {
+        // Codex R9 #1: the result must sit in the user turn IMMEDIATELY
+        // following the assistant tool-use turn — an intervening turn
+        // expires the outstanding ID, so a later result is stale.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_i', 'ping', array())))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart('An intervening assistant turn.'))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_i', 'ping', array('ok' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A tool result after an intervening turn must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+
+        // Same for an intervening USER turn before the result's turn.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_j', 'ping', array())))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart('Hold.'))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart('A different user matter.'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart('More.'))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_j', 'ping', array('ok' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A stale tool result several turns later must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAMultiToolAssistantTurnAnsweredInOneUserTurnStillPasses()
+    {
+        // Codex R9 #1 multi-tool case: one assistant turn opens several
+        // tool_use blocks; the NEXT user turn answers them all.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Both, please.'))),
+            new Message(MessageRoleEnum::model(), array(
+                new MessagePart(new FunctionCall('m1', 'get_weather', array('city' => 'Oslo'))),
+                new MessagePart(new FunctionCall('m2', 'get_time', array('zone' => 'CET'))),
+            )),
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('m1', 'get_weather', array('temp_c' => 21))),
+                new MessagePart(new FunctionResponse('m2', 'get_time', array('hour' => 14))),
+            )),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertCount(2, $body['messages'][2]['content']);
+        $this->assertSame('m1', $body['messages'][2]['content'][0]['tool_use_id']);
+        $this->assertSame('m2', $body['messages'][2]['content'][1]['tool_use_id']);
+    }
+
+    public function testAMultiToolTurnPartiallyAnsweredThenResumedIsRejected()
+    {
+        // Both tool_use blocks opened by ONE assistant turn must be
+        // answered by the SAME next user turn: a result arriving a turn
+        // later is stale even though its ID was never answered.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(
+                new MessagePart(new FunctionCall('p1', 'ping', array())),
+                new MessagePart(new FunctionCall('p2', 'pong', array())),
+            )),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('p1', 'ping', array('r' => 1))))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart('Continuing.'))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('p2', 'pong', array('r' => 2))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A result for an expired multi-tool ID must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
     }
 
     public function testMultimodalTextRequestSnapshot()

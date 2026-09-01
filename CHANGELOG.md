@@ -6,6 +6,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 9)
+
+- Tool results must now arrive in the user turn IMMEDIATELY following
+  the assistant tool-use turn: an intervening turn (assistant or user)
+  expires the outstanding tool-use IDs, so a stale result later in the
+  history is rejected before transport. Multi-tool assistant turns must
+  be answered entirely by that one next user turn — a result arriving a
+  turn later is stale even if its ID was never answered.
+
 ### Fixed (zai / M2 — Codex PR review, round 8)
 
 - A delta arriving after an index's `content_block_stop` still appended
