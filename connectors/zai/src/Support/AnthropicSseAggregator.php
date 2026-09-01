@@ -1055,7 +1055,6 @@ final class AnthropicSseAggregator {
 
 		if ( ! isset( $this->blocks[ $index ] ) ) {
 			/*
-			/*
 			 * Codex R5 #2 / R10 #3: a delta for an index whose
 			 * content_block_start was never received means the stream is
 			 * damaged or resumed mid-flight — the content before the
