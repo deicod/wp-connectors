@@ -724,6 +724,43 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testASecondAssistantToolTurnReplacesTheAnswerWindow()
+    {
+        // Verifier probe on Codex R9 #1: assistant(A) → assistant(B) →
+        // user(result B) — A is stale (a different turn intervened), but
+        // B belongs to the IMMEDIATELY preceding tool turn and must be
+        // answerable. The window close must run BEFORE the new turn's
+        // blocks open their IDs.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_a', 'ping', array())))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_b', 'pong', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_b', 'pong', array('r' => 2))))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('call_b', $body['messages'][2]['content'][0]['tool_use_id']);
+
+        // The stale A result in the same position is still rejected.
+        WpHarness::$sdk_http_attempts = array();
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_a2', 'ping', array())))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_b2', 'pong', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_a2', 'ping', array('r' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A result for the superseded (stale) tool turn must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testMultimodalTextRequestSnapshot()
     {
         // Multiple text parts in one message (text-only multimodality): both

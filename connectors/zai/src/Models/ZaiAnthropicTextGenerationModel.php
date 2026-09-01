@@ -351,10 +351,28 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			$role   = $this->message_role_string( $message->getRole() );
 			$blocks = $this->message_content_blocks( $message );
 
+			/*
+			 * Turn-advance window (Codex R9 #1): after an assistant turn
+			 * that opened tool_use IDs, ONLY the immediately following user
+			 * turn may answer them. A NON-USER turn intervening expires the
+			 * window BEFORE its own blocks run — otherwise an assistant
+			 * tool turn following an unanswered one would have its freshly
+			 * opened IDs wiped by the older window's close (verifier probe:
+			 * assistant(A) → assistant(B) → user(result B) must accept B
+			 * while A stays stale).
+			 */
+			if ( $awaiting_answer && 'user' !== $role ) {
+				$outstanding_tools = array();
+				$awaiting_answer   = false;
+			}
+
+			$opens_tools = false;
+
 			foreach ( $blocks as $block ) {
 				if ( 'tool_use' === $block['type'] ) {
 					// A new tool_use opens its ID for exactly one answer.
 					$outstanding_tools[ $block['id'] ] = true;
+					$opens_tools                       = true;
 				} elseif ( 'tool_result' === $block['type'] ) {
 					if ( ! isset( $outstanding_tools[ $block['tool_use_id'] ] ) ) {
 						throw new InvalidArgumentException(
@@ -367,33 +385,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				}
 			}
 
-			/*
-			 * Turn-advance window (Codex R9 #1): after an assistant turn
-			 * that opened tool_use IDs, ONLY the immediately following user
-			 * turn may answer them. Any turn past that window expires the
-			 * outstanding IDs — a later user turn's tool_result is stale and
-			 * must be rejected, exactly as the protocol would upstream. An
-			 * assistant turn that opens no tool calls clears nothing and any
-			 * previously emptied window simply stays empty.
-			 */
-			$opens_tools = false;
-			if ( 'assistant' === $role ) {
-				foreach ( $blocks as $block ) {
-					if ( 'tool_use' === $block['type'] ) {
-						$opens_tools = true;
-						break;
-					}
-				}
-			}
-
 			if ( $awaiting_answer ) {
 				/*
-				 * The window closes after the immediately following turn,
-				 * and every ID expires with it: a non-user turn intervening
-				 * is corrupt ordering, and the answering user turn itself
-				 * must carry ALL of the assistant turn's results (the
-				 * multi-tool rule) — anything unconsumed never legitimately
-				 * survives past this point.
+				 * The answering user turn has been processed; the window
+				 * closes after it and every unconsumed ID expires with it
+				 * (the multi-tool rule: the assistant turn's results must
+				 * ALL arrive in this one turn).
 				 */
 				$outstanding_tools = array();
 				$awaiting_answer   = false;
