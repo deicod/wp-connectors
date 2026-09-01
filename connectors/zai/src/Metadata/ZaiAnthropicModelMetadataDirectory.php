@@ -255,6 +255,22 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			throw ResponseException::fromMissingData( 'z.ai', 'data' );
 		}
 
+		/*
+		 * Codex R14 #4: the catalog must be a JSON LIST. The associative
+		 * decode collapses an object-shaped {"data":{"only":{"id":...}}}
+		 * into a PHP array that passes is_array(), and the foreach then
+		 * iterates the object's VALUES as entries — a malformed catalog
+		 * was treated as successful live discovery and cached for 12
+		 * hours. Object-ness oracle (R3 #1 pattern): only a JSON array
+		 * decodes to a PHP list; an object decodes to stdClass. An
+		 * object-shaped data member falls back like every other
+		 * malformed discovery response.
+		 */
+		$raw_body = json_decode( (string) $response->getBody() );
+		if ( ! \is_object( $raw_body ) || ! isset( $raw_body->data ) || ! \is_array( $raw_body->data ) ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list must be a JSON list.' );
+		}
+
 		$ids = array();
 		foreach ( $data['data'] as $entry ) {
 			if ( ! \is_array( $entry ) || ! isset( $entry['id'] ) || ! \is_string( $entry['id'] ) || '' === $entry['id'] ) {

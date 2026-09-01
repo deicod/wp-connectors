@@ -295,6 +295,8 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $bodies = array(
             'not json at all',
             '{"data":{"id":"not-a-list"}}',
+            '{"data":{"only":{"id":"glm-5.3"}}}',
+            '{"data":{}}',
             '{"data":[{"no_id":true}]}',
             '{"data":[]}',
             '{"data":[{"id":"embedding-3"},{"id":"cogview-4"}]}',

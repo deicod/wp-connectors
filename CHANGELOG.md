@@ -32,6 +32,16 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   value, so such streams still complete with empty text. Known delta
   types on an unseen index remain rejected.
 
+- Discovery data on the zai_anthropic surface must be a JSON list: an
+  object-shaped catalog (`{"data":{"only":{"id":"glm-5.3"}}}`) passed
+  the associative `is_array()` check and iterated its VALUES as
+  entries, so a malformed `/v1/models` response was treated as
+  successful live discovery and cached for 12 hours. The raw
+  object-ness oracle now rejects an object-shaped `data` member, and
+  discovery falls back to the static catalog exactly like every other
+  malformed response. List-shaped catalogs (including the empty list's
+  existing fallback) are unchanged.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving
