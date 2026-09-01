@@ -124,6 +124,15 @@ final class AnthropicSseAggregator {
 	private $message_started = false;
 
 	/**
+	 * Whether the (single) message_delta event was received (Codex R9 #2).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $message_delta_received = false;
+
+	/**
 	 * Event names the aggregator actively dispatches on (Codex R4 #3).
 	 *
 	 * A frame DECLARING one of these names with an undecodable payload is a
@@ -762,6 +771,23 @@ final class AnthropicSseAggregator {
 				return;
 
 			case 'message_delta':
+				/*
+				 * Codex R9 #2: the protocol sends exactly ONE message_delta.
+				 * A second one silently overwrote the first stop reason and
+				 * usage — end_turn then tool_use made the completed result
+				 * report toolCalls() with no corresponding function call.
+				 * A repeat is a corrupt stream, never an overwrite (the
+				 * payloads may differ, so it is NOT an idempotent no-op —
+				 * superseding the R8 verifier's tolerance judgment).
+				 */
+				if ( $this->message_delta_received ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
+				$this->message_delta_received = true;
+
 				if ( isset( $data['delta'] ) && \is_array( $data['delta'] ) && isset( $data['delta']['stop_reason'] ) && \is_string( $data['delta']['stop_reason'] ) ) {
 					$this->stop_reason = $data['delta']['stop_reason'];
 				}

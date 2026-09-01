@@ -14,6 +14,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   history is rejected before transport. Multi-tool assistant turns must
   be answered entirely by that one next user turn — a result arriving a
   turn later is stale even if its ID was never answered.
+- A duplicate `message_delta` event now invalidates the stream: the
+  protocol sends exactly one, and the later one silently overwrote the
+  first stop reason and usage (end_turn then tool_use made the result
+  report `toolCalls()` with no corresponding function call). Even a
+  byte-identical repeat is rejected — the payloads may differ, so a
+  repeat is never an idempotent no-op (supersedes the R8 verifier's
+  tolerance judgment).
 
 ### Fixed (zai / M2 — Codex PR review, round 8)
 
