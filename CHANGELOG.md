@@ -15,6 +15,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   input usage — a bypass of the missing-message_start guard. The
   prerequisite is set only after the payload carries a valid message
   object; a well-formed message_start aggregates exactly as before.
+- A user wire turn answering tool calls must carry its `tool_result`
+  blocks BEFORE any text block: text preceding a result (across the
+  coalescing merge or within a single SDK message's block order) passed
+  local validation — the linkage checks consume IDs regardless of
+  position — and failed upstream with a 400. Misordered turns are now a
+  typed pre-transport rejection; results-then-text order and text-only
+  turns are unaffected.
 
 ### Fixed (zai / M2 — Codex PR review, round 11)
 

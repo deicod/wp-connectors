@@ -944,6 +944,93 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testTextBeforeACoalescedToolResultIsRejected()
+    {
+        // Codex R12 #2 (a): a text Message adjacent-before a
+        // FunctionResponse Message merges into a user wire turn with text
+        // before the tool_result — Anthropic requires results first.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('o1', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Here you go:'))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('o1', 'ping', array('ok' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('Text before a coalesced tool result must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('precede text blocks', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testTextBeforeAToolResultInOneMessageIsRejected()
+    {
+        // Codex R12 #2 (b): the same invalid order inside a single SDK
+        // message's block array.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('o2', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart('Result follows:'),
+                new MessagePart(new FunctionResponse('o2', 'ping', array('ok' => 1))),
+            )),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('Text before a tool result within one message must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('precede text blocks', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testToolResultsFirstThenTextIsAcceptedInOrder()
+    {
+        // Codex R12 #2 (iii): results first, then trailing text — valid,
+        // and the wire payload keeps that order.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('o3', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('o3', 'ping', array('ok' => 1))),
+                new MessagePart('Thanks, continuing.'),
+            )),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('tool_result', $body['messages'][2]['content'][0]['type']);
+        $this->assertSame('text', $body['messages'][2]['content'][1]['type'], 'Trailing text after the results keeps its position.');
+    }
+
+    public function testATextOnlyUserTurnUnrelatedToToolsIsUnaffected()
+    {
+        // Codex R12 #2 (iv): plain user text with no tool_result anywhere
+        // is not an answering turn — no ordering judgment applies.
+        $config = ModelConfig::fromArray(array('systemInstruction' => 'You are terse.'));
+
+        list($url, $body) = $this->captureRequest(
+            array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('Hello.'))),
+                new Message(MessageRoleEnum::user(), array(new MessagePart('More context.')),
+                ),
+            ),
+            $this->model($config)
+        );
+
+        $this->assertSame(array(
+            array('role' => 'user', 'content' => array(
+                array('type' => 'text', 'text' => 'Hello.'),
+                array('type' => 'text', 'text' => 'More context.'),
+            )),
+        ), $body['messages']);
+    }
+
     public function testMultimodalTextRequestSnapshot()
     {
         // Multiple text parts in one message (text-only multimodality): both

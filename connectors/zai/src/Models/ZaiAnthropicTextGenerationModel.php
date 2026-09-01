@@ -414,8 +414,28 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			$last = \count( $prepared ) - 1;
 			if ( $last >= 0 && $prepared[ $last ]['role'] === $role ) {
-				$prepared[ $last ]['content'] = array_merge( $prepared[ $last ]['content'], $blocks );
+				/*
+				 * Codex R12 #2: the coalescing merge must not produce a
+				 * user wire turn with text BEFORE its tool_result blocks —
+				 * Anthropic requires tool results to precede any text in
+				 * the turn answering tool calls, and the linkage checks
+				 * consume IDs regardless of position, so this order passed
+				 * local validation and 400'd upstream. Judged on the MERGED
+				 * turn (which also covers a single SDK message whose blocks
+				 * are already misordered).
+				 */
+				$merged = array_merge( $prepared[ $last ]['content'], $blocks );
+
+				if ( 'user' === $role ) {
+					$this->reject_text_before_tool_results( $merged );
+				}
+
+				$prepared[ $last ]['content'] = $merged;
 				continue;
+			}
+
+			if ( 'user' === $role ) {
+				$this->reject_text_before_tool_results( $blocks );
 			}
 
 			$prepared[] = array(
@@ -437,6 +457,48 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		return $prepared;
+	}
+
+	/**
+	 * Rejects text blocks preceding tool-result blocks in a user turn.
+	 *
+	 * Anthropic requires tool_result blocks to come FIRST — before any
+	 * text block — in the user turn that answers tool calls (Codex R12
+	 * #2). Runs on the fully merged wire turn so both shapes are caught:
+	 * a text Message adjacent-before a FunctionResponse Message, and a
+	 * single SDK message whose blocks array already has text first. A user
+	 * turn with no tool_result blocks is not an answering turn and is not
+	 * judged here.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param list<array<string, mixed>> $blocks The merged wire-turn blocks.
+	 * @return void
+	 * @throws InvalidArgumentException When a text block precedes a tool_result block.
+	 */
+	private function reject_text_before_tool_results( array $blocks ): void {
+		$has_tool_result = false;
+		foreach ( $blocks as $block ) {
+			if ( 'tool_result' === $block['type'] ) {
+				$has_tool_result = true;
+				break;
+			}
+		}
+
+		if ( ! $has_tool_result ) {
+			return;
+		}
+
+		$seen_text = false;
+		foreach ( $blocks as $block ) {
+			if ( 'text' === $block['type'] ) {
+				$seen_text = true;
+			} elseif ( 'tool_result' === $block['type'] && $seen_text ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires tool results to precede text blocks in the user turn following a tool call.'
+				);
+			}
+		}
 	}
 
 	/**
