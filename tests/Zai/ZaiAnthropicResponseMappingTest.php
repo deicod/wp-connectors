@@ -1146,6 +1146,42 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Fine.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
+    public function testASecondValidMessageStartInvalidatesTheStream()
+    {
+        // Codex R13 #2: a second VALID message_start overwrote the first
+        // id and input usage while the content still succeeded.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"first","content":[],"usage":{"input_tokens":11,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Content."}}' . "\n\n"
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"second","content":[],"usage":{"input_tokens":99,"output_tokens":1}}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A second message_start must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+
+        // The R12 invalid-payload rejection must not regress.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'),
+            'event: message_start' . "\n" . 'data: {"type":"message_start"}' . "\n\n" . 'event: message_delta' . "\n" . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n");
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An invalid message_start payload must still fail.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testAnOmittedEnvelopeTypeStaysTolerated()
     {
         // The documented tolerance applies ONLY to an omitted member.

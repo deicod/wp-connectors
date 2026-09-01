@@ -630,6 +630,19 @@ final class AnthropicSseAggregator {
 		switch ( $type ) {
 			case 'message_start':
 				/*
+				 * Codex R13 #2: the protocol sends exactly ONE message_start.
+				 * A second (even valid) one overwrote the first message id
+				 * and input-token usage while the generated content still
+				 * succeeded — guarded exactly like duplicate block starts and
+				 * duplicate message deltas.
+				 */
+				if ( $this->message_started ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
+				/*
 				 * Codex R12 #1: the completion prerequisite is satisfied
 				 * only by a message_start that actually carries a valid
 				 * message OBJECT — a missing, null, scalar, or list message

@@ -16,6 +16,13 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   arguments received post-`message_delta`. Streams whose content events
   all precede the `message_delta` aggregate exactly as before.
 
+- A second `message_start` — even a valid one — now invalidates the
+  stream: the R12 payload validation ran on every event, so a duplicate
+  passed it and overwrote the first message id and input-token usage
+  while the generated content still succeeded. The protocol sends
+  exactly one; the already-started state is now guarded like duplicate
+  block starts and duplicate message deltas.
+
 ### Fixed (zai / M2 — Codex PR review, round 12)
 
 - A `message_start` whose `message` member is missing, null, a list, or
