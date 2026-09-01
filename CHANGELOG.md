@@ -24,6 +24,14 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   consolidated streams) after the typed truncation exceptions, so
   `max_tokens`/`model_context_window_exceeded` keep their precedence.
 
+- The forward-compatible unknown-delta seed is intact after round 13's
+  start-member validation: an unknown future delta type for an index
+  with NO preceding content_block_start seeded a bare type-only text
+  block, which the new guard marks malformed — breaking the intended
+  tolerance. The synthesized block now carries an explicit empty text
+  value, so such streams still complete with empty text. Known delta
+  types on an unseen index remain rejected.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

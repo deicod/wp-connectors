@@ -1081,7 +1081,20 @@ final class AnthropicSseAggregator {
 				}
 			}
 
-			$this->start_block( $index, array( 'type' => 'text' ), null );
+			/*
+			 * Codex R14 #3: the seed must satisfy the R13 #3 start-member
+			 * validation — a bare type-only text block is malformed there.
+			 * Unknown (future) delta types still carry no content this
+			 * aggregator maps, so an empty initial text value loses nothing.
+			 */
+			$this->start_block(
+				$index,
+				array(
+					'type' => 'text',
+					'text' => '',
+				),
+				null
+			);
 		}
 
 		/*

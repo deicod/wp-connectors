@@ -2453,6 +2453,29 @@ $body = ''
         }
     }
 
+    public function testAnUnknownDeltaOnAnUnseenIndexStillSeedsAndCompletes()
+    {
+        /*
+         * Codex R14 #3: the forward-compatible seed path itself — NO
+         * content_block_start precedes the unknown delta, so the
+         * synthesized block must satisfy the R13 #3 start-member
+         * validation. The stream completes with empty text.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_us","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('', $result->toText(), 'The unknown delta seeds a valid empty block; the stream completes.');
+    }
+
     public function testAnUnknownDeltaTypeWithoutAStartBlockStaysSeeded()
     {
         // Unknown (future) delta types carry no content this aggregator
