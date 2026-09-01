@@ -386,6 +386,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				);
 			}
 
+			/*
+			 * R20 (inline 3907008524): an unencodable schema value — NAN,
+			 * invalid UTF-8, a resource, a recursive structure — reached the
+			 * request untouched, so generation failed in the transport's
+			 * whole-request serialization instead of producing the adapter's
+			 * pre-transport configuration error. Validated with the same
+			 * wp_json_encode() oracle the output-schema (R19) and tool-result
+			 * (R18) rejections use; the empty schema keeps its object
+			 * normalization below.
+			 */
+			if ( \is_array( $input_schema ) && array() !== $input_schema
+				&& false === wp_json_encode( $input_schema ) ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider could not JSON-encode a declared tool parameter schema (unencodable value such as NAN, invalid UTF-8, or a recursive structure).'
+				);
+			}
+
 			if ( null === $input_schema || array() === $input_schema ) {
 				$input_schema = array(
 					'type'       => 'object',

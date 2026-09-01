@@ -699,6 +699,51 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    /**
+     * @dataProvider provideUnencodableToolSchemas
+     */
+    public function testUnencodableToolSchemasAreRejectedBeforeTransport($schema, $label)
+    {
+        /*
+         * R20 (inline 3907008524): an unencodable parameter schema used to
+         * surface in the transport's whole-request serialization; the
+         * adapter's pre-transport configuration error is the right
+         * channel (as for output schemas and tool results).
+         */
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('ping', 'Pings', $schema))->toArray(),
+            ),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail("[{$label}] An unencodable tool parameter schema must be rejected.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not JSON-encode a declared tool parameter schema', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideUnencodableToolSchemas()
+    {
+        $recursive = array('type' => 'object');
+        $recursive['self'] = &$recursive;
+
+        return array(
+            'NAN inside the schema' => array(array('type' => NAN), 'NAN inside the schema'),
+            'invalid UTF-8 inside the schema' => array(array('type' => "\xB1\x31"), 'invalid UTF-8 inside the schema'),
+            'resource inside the schema' => array(array('type' => fopen('php://memory', 'r')), 'resource inside the schema'),
+            'recursive schema' => array($recursive, 'recursive schema'),
+        );
+    }
+
     public function testAllValidDeclarationsStillEmitTheirNames()
     {
         // Guard: multi-tool configs keep the exact names in the tools

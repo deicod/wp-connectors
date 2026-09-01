@@ -224,6 +224,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   cached), and no authenticated request leaves until the credential is
   revalidated.
 
+- A declared tool's parameter schema is JSON-validated before
+  transport: an unencodable value (NAN, invalid UTF-8, a resource, a
+  recursive structure) previously reached the request untouched and
+  failed in the transport's whole-request serialization instead of
+  producing the adapter's typed pre-transport configuration error —
+  the same `wp_json_encode()` oracle the output-schema and tool-result
+  rejections already use. Empty schemas keep their empty-object
+  normalization.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving
