@@ -6,6 +6,22 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 11)
+
+- Tool-answer completeness is now evaluated at the coalesced WIRE-turn
+  boundary, not per SDK message: a multi-tool answer split across
+  ADJACENT user `Message` objects was rejected after the first message
+  even though the adapter's same-role coalescing emits one valid wire
+  user turn containing every result. The window now advances only at a
+  role change (or end of history) — the partial-answer rejection fires
+  exactly there. Consistently, the stale/expiry semantics are also
+  wire-level now: an intervening ASSISTANT text message coalesces into
+  the tool turn (its following result is wire-adjacent and valid — the
+  R9 SDK-level 'intervening turn' rejection is superseded), adjacent
+  assistant tool messages form ONE answerable turn (partially answering
+  it is the R10 partial rejection, superseding the R9 window-replacement
+  probe), and only an intervening USER turn genuinely breaks adjacency.
+
 ### Fixed (zai / M2 — Codex PR review, round 10)
 
 - A partially answered tool-call turn is now rejected before transport:

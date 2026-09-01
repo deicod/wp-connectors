@@ -580,32 +580,16 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame('c2', $body['messages'][4]['content'][0]['tool_use_id']);
     }
 
-    public function testAToolResultAfterAnInterveningTurnIsRejected()
+    public function testAToolResultAfterAnInterveningUserTurnIsRejected()
     {
-        // Codex R9 #1: the result must sit in the user turn IMMEDIATELY
-        // following the assistant tool-use turn — an intervening turn
-        // expires the outstanding ID, so a later result is stale.
-        $prompt = array(
-            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
-            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_i', 'ping', array())))),
-            new Message(MessageRoleEnum::model(), array(new MessagePart('An intervening assistant turn.'))),
-            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_i', 'ping', array('ok' => 1))))),
-        );
-
-        try {
-            $this->model()->generateTextResult($prompt);
-            $this->fail('A tool result after an intervening turn must be rejected.');
-        } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
-        }
-
-        $this->assertNoHttpRequests();
-
-        // Same for an intervening USER turn before the result's turn.
+        // Codex R9 #1 at the WIRE level (R11 #1 refinement): the result
+        // must sit in the user turn IMMEDIATELY following the coalesced
+        // assistant tool-use turn. An intervening USER turn answers
+        // nothing and closes the window — a later result is stale, and the
+        // unanswered call surfaces as the R10 #1 partial rejection.
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
             new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_j', 'ping', array())))),
-            new Message(MessageRoleEnum::model(), array(new MessagePart('Hold.'))),
             new Message(MessageRoleEnum::user(), array(new MessagePart('A different user matter.'))),
             new Message(MessageRoleEnum::model(), array(new MessagePart('More.'))),
             new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_j', 'ping', array('ok' => 1))))),
@@ -615,10 +599,30 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($prompt);
             $this->fail('A stale tool result several turns later must be rejected.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
+            $this->assertStringContainsString('partially answered', $e->getMessage(), 'The unanswered call surfaces as the partial rejection before the stale result is even reached.');
         }
 
         $this->assertNoHttpRequests();
+    }
+
+    public function testAnInterveningAssistantTextMessageCoalescesNotStales()
+    {
+        // Codex R11 #1: an intervening ASSISTANT text SDK message coalesces
+        // with the tool turn into ONE wire assistant turn — the following
+        // user result is wire-adjacent and valid, no longer an SDK-level
+        // 'intervening turn'.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_i', 'ping', array())))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart('An intervening assistant turn.'))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_i', 'ping', array('ok' => 1))))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('tool_use', $body['messages'][1]['content'][0]['type']);
+        $this->assertSame('text', $body['messages'][1]['content'][1]['type'], 'The assistant text coalesces into the tool turn.');
+        $this->assertSame('tool_result', $body['messages'][2]['content'][0]['type']);
     }
 
     public function testAMultiToolAssistantTurnAnsweredInOneUserTurnStillPasses()
@@ -729,13 +733,13 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
-    public function testASecondAssistantToolTurnReplacesTheAnswerWindow()
+    public function testMergedAssistantToolMessagesFormOneAnswerableTurn()
     {
-        // Verifier probe on Codex R9 #1: assistant(A) → assistant(B) →
-        // user(result B) — A is stale (a different turn intervened), but
-        // B belongs to the IMMEDIATELY preceding tool turn and must be
-        // answerable. The window close must run BEFORE the new turn's
-        // blocks open their IDs.
+        // Codex R11 #1 (supersedes the R9 SDK-level window-replacement
+        // probe): assistant(A) → assistant(B) are ADJACENT same-role SDK
+        // messages that coalesce into ONE wire assistant turn — its user
+        // turn must answer BOTH calls. Answering only B is a partially
+        // answered wire turn (R10 #1), not a window replacement.
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
             new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_a', 'ping', array())))),
@@ -743,27 +747,31 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_b', 'pong', array('r' => 2))))),
         );
 
-        list($url, $body) = $this->captureRequest($prompt, $this->model());
-
-        $this->assertSame('call_b', $body['messages'][2]['content'][0]['tool_use_id']);
-
-        // The stale A result in the same position is still rejected.
-        WpHarness::$sdk_http_attempts = array();
-        $prompt = array(
-            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
-            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_a2', 'ping', array())))),
-            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_b2', 'pong', array())))),
-            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_a2', 'ping', array('r' => 1))))),
-        );
-
         try {
             $this->model()->generateTextResult($prompt);
-            $this->fail('A result for the superseded (stale) tool turn must be rejected.');
+            $this->fail('A partially answered merged tool turn must be rejected.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
+            $this->assertStringContainsString('partially answered', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();
+
+        // Fully answered across the two adjacent messages: one valid wire
+        // turn.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Both.'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('a1', 'ping', array())))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('b1', 'pong', array())))),
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('a1', 'ping', array('r' => 1))),
+                new MessagePart(new FunctionResponse('b1', 'pong', array('r' => 2))),
+            )),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('a1', $body['messages'][2]['content'][0]['tool_use_id']);
+        $this->assertSame('b1', $body['messages'][2]['content'][1]['tool_use_id']);
     }
 
     public function testAPartiallyAnsweredToolTurnIsRejectedBeforeTransport()
@@ -870,7 +878,8 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
 
         // The same-role coalescing boundary is the reset: a DIFFERENT id
-        // in the adjacent message stays legal (they share one wire turn).
+        // in the adjacent message stays legal — and under the R11 #1
+        // wire-level completeness rule, both ids form ONE answerable turn.
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
             new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('a1', 'ping', array())))),
@@ -881,17 +890,55 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             )),
         );
 
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('a1', $body['messages'][2]['content'][0]['tool_use_id']);
+        $this->assertSame('b1', $body['messages'][2]['content'][1]['tool_use_id'], 'One wire turn, both answered — valid.');
+    }
+
+    public function testASplitAnswerAcrossAdjacentUserMessagesIsOneWireTurn()
+    {
+        // Codex R11 #1 core case: results for a multi-tool assistant turn
+        // split across ADJACENT SDK user messages coalesce into ONE
+        // wire-level user turn containing every result — previously the
+        // completeness check ran after the first SDK message and rejected
+        // the still-outstanding call.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Both, split.'))),
+            new Message(MessageRoleEnum::model(), array(
+                new MessagePart(new FunctionCall('s1', 'get_weather', array('city' => 'Oslo'))),
+                new MessagePart(new FunctionCall('s2', 'get_time', array('zone' => 'CET'))),
+            )),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('s1', 'get_weather', array('temp_c' => 21))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('s2', 'get_time', array('hour' => 14))))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        // ONE wire user turn carrying both results, in order.
+        $this->assertCount(3, $body['messages']);
+        $this->assertSame('user', $body['messages'][2]['role']);
+        $this->assertSame('tool_result', $body['messages'][2]['content'][0]['type']);
+        $this->assertSame('s1', $body['messages'][2]['content'][0]['tool_use_id']);
+        $this->assertSame('s2', $body['messages'][2]['content'][1]['tool_use_id']);
+
+        // Still missing a result after the FULL coalesced turn → rejected.
+        WpHarness::$sdk_http_attempts = array();
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Split, incomplete.'))),
+            new Message(MessageRoleEnum::model(), array(
+                new MessagePart(new FunctionCall('u1', 'ping', array())),
+                new MessagePart(new FunctionCall('u2', 'pong', array())),
+            )),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('u1', 'ping', array('r' => 1))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Plain continuation text.'))),
+        );
+
         try {
             $this->model()->generateTextResult($prompt);
-            $this->fail('Two different ids coalesced into one answered turn must fail the partial rule, not pass silently.');
+            $this->fail('A still-incomplete answer after full coalescing must be rejected.');
         } catch (InvalidArgumentException $e) {
-            // One wire assistant turn [a1, b1], both answered by one user
-            // turn: valid on the wire... except the R9 window expired a1
-            // at the second assistant message (a documented conservative
-            // tracker-vs-wire-turn mismatch). Either rejection here is
-            // pre-transport and safe; assert only that it IS rejected
-            // before transport rather than sent upstream.
-            $this->assertStringContainsString('tool', $e->getMessage());
+            $this->assertStringContainsString('partially answered', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();

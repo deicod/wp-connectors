@@ -354,34 +354,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			$blocks = $this->message_content_blocks( $message );
 
 			/*
-			 * Codex R10 #2 verifier probe: adjacent SDK messages of the
-			 * SAME role coalesce into ONE wire turn below, so the
-			 * duplicate-id check must scope to the WIRE turn, not the SDK
-			 * message — two adjacent assistant Messages sharing a tool id
-			 * emitted the ambiguous duplicate-identity shape on the wire
-			 * while the per-message check saw two clean turns. The per-turn
-			 * id set resets exactly at a role change (the coalescing
-			 * boundary); it deliberately does NOT reset on the window
-			 * expiry, which tracks answerability, not identity.
+			 * Turn boundary = role change: adjacent SDK messages of the same
+			 * role coalesce into ONE wire turn below, so all turn-scoped
+			 * validation runs HERE, once per coalesced turn — (a) the
+			 * duplicate-id check scopes to the wire turn (Codex R10 #2
+			 * verifier probe: two adjacent assistant Messages sharing a tool
+			 * id must reject), and (b) the R9/R10 answer window closes only
+			 * when the answering COALESCED user turn has fully ended
+			 * (Codex R11 #1): checking after each SDK message rejected a
+			 * legitimately split answer (result A in SDK user message 1,
+			 * result B in the immediately adjacent message 2) before the
+			 * coalescing below could merge them into the one valid wire
+			 * turn.
 			 */
 			if ( $role !== $previous_role ) {
+				$this->advance_answer_window( $awaiting_answer, $outstanding_tools, $previous_role, $role );
+
 				$turn_tool_ids = array();
 				$previous_role = $role;
-			}
-
-			/*
-			 * Turn-advance window (Codex R9 #1): after an assistant turn
-			 * that opened tool_use IDs, ONLY the immediately following user
-			 * turn may answer them. A NON-USER turn intervening expires the
-			 * window BEFORE its own blocks run — otherwise an assistant
-			 * tool turn following an unanswered one would have its freshly
-			 * opened IDs wiped by the older window's close (verifier probe:
-			 * assistant(A) → assistant(B) → user(result B) must accept B
-			 * while A stays stale).
-			 */
-			if ( $awaiting_answer && 'user' !== $role ) {
-				$outstanding_tools = array();
-				$awaiting_answer   = false;
 			}
 
 			$opens_tools = false;
@@ -418,26 +408,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				}
 			}
 
-			if ( $awaiting_answer ) {
-				/*
-				 * The answering user turn has been processed and the window
-				 * closes after it. Anthropic requires this ONE turn to
-				 * carry results for ALL of the assistant turn's tool calls:
-				 * anything still outstanding is a PARTIALLY answered turn
-				 * (Codex R10 #1) — the history would fail upstream with a
-				 * 400, so reject before transport rather than silently
-				 * discarding the unanswered calls.
-				 */
-				if ( array() !== $outstanding_tools ) {
-					throw new InvalidArgumentException(
-						'The zai_anthropic provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).'
-					);
-				}
-
-				$outstanding_tools = array();
-				$awaiting_answer   = false;
-			}
-
 			if ( $opens_tools ) {
 				$awaiting_answer = true;
 			}
@@ -454,7 +424,73 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			);
 		}
 
+		/*
+		 * End of history is the final coalesced-turn boundary: a window
+		 * answered by the LAST user turn is judged for completeness after
+		 * that turn's full coalescing (Codex R11 #1), while an unanswered
+		 * trailing assistant tool turn stays open — the normal tool loop.
+		 */
+		if ( $awaiting_answer && 'user' === $previous_role && array() !== $outstanding_tools ) {
+			throw new InvalidArgumentException(
+				'The zai_anthropic provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).'
+			);
+		}
+
 		return $prepared;
+	}
+
+	/**
+	 * Advances the tool-answer window across a coalesced-turn boundary.
+	 *
+	 * Called when the incoming turn's role differs from the previous
+	 * turn's — i.e., exactly once per WIRE turn (adjacent same-role SDK
+	 * messages coalesce; Codex R11 #1). A window opened by an assistant
+	 * tool turn is judged here:
+	 *
+	 * - previous turn 'assistant' + incoming 'user': the answering turn
+	 *   BEGINS — the outstanding IDs stay answerable (the user turn's own
+	 *   results consume them as its messages are processed).
+	 * - previous turn 'assistant' + incoming non-user: the tool turn's
+	 *   results never arrive — expire the IDs (R9 stale semantics).
+	 * - previous turn 'user': the answering coalesced turn has ENDED —
+	 *   every ID must have been answered (R10 #1 partial rule, evaluated
+	 *   only now that the split messages have merged, per R11 #1).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param bool        $awaiting_answer   Whether a tool-answer window is open (by ref).
+	 * @param array       $outstanding_tools Outstanding tool-use IDs (by ref).
+	 * @param string|null $previous_role     Role of the coalesced turn that just ended.
+	 * @param string      $role              Role of the incoming coalesced turn.
+	 * @return void
+	 * @throws InvalidArgumentException When a completed user turn left IDs unanswered.
+	 */
+	private function advance_answer_window( bool &$awaiting_answer, array &$outstanding_tools, $previous_role, string $role ): void {
+		if ( ! $awaiting_answer ) {
+			return;
+		}
+
+		if ( 'assistant' === $previous_role ) {
+			if ( 'user' !== $role ) {
+				// The tool turn's results never arrived: expire.
+				$outstanding_tools = array();
+				$awaiting_answer   = false;
+			}
+
+			// Incoming user: the answering turn begins — keep the IDs.
+			return;
+		}
+
+		if ( 'user' === $previous_role ) {
+			// The answering coalesced user turn has ended.
+			if ( array() !== $outstanding_tools ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).'
+				);
+			}
+
+			$awaiting_answer = false;
+		}
 	}
 
 	/**
