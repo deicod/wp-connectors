@@ -173,6 +173,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   harness's `wp_json_encode` stub matches core's string-or-false
   semantics (it previously masked failures behind a `"null"` string).
 
+- Duplicate declared tool names are rejected before transport: two
+  `FunctionDeclaration` entries under one name were both emitted even
+  though a returned `tool_use` identifies the selected declaration only
+  by that name — the caller could not determine which declaration the
+  model selected and might validate or execute the call against the
+  wrong tool. Duplicates now throw the typed pre-transport rejection
+  next to the empty-name check; distinct-name configurations are
+  unchanged.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

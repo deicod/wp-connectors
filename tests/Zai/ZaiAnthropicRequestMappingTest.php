@@ -544,6 +544,31 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testDuplicateDeclaredToolNamesAreRejectedBeforeTransport()
+    {
+        /*
+         * R18 (inline 3906485728): a tool_use names only the function —
+         * two declarations under one name make the selection ambiguous.
+         */
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('get_weather', 'Weather in metric', array('type' => 'object', 'properties' => array('city' => array('type' => 'string')))))->toArray(),
+                (new FunctionDeclaration('get_weather', 'Weather in imperial', array('type' => 'object', 'properties' => array('city' => array('type' => 'string')))))->toArray(),
+            ),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('Duplicate declared tool names must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('unique names', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testAllValidDeclarationsStillEmitTheirNames()
     {
         // Guard: multi-tool configs keep the exact names in the tools

@@ -276,7 +276,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @throws InvalidArgumentException When a parameter schema is a non-empty list.
 	 */
 	protected function prepare_tools_param( array $function_declarations ): array {
-		$tools = array();
+		$tools          = array();
+		$declared_names = array();
 
 		foreach ( $function_declarations as $declaration ) {
 			/*
@@ -296,6 +297,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					'The zai_anthropic provider requires declared tool functions to carry a non-empty name.'
 				);
 			}
+
+			/*
+			 * R18 (inline 3906485728): a returned tool_use identifies the
+			 * selected declaration ONLY by name — two declarations sharing a
+			 * name make that identification ambiguous (the caller may
+			 * validate or execute the call against the wrong tool), so a
+			 * duplicate is a typed pre-transport rejection like the empty
+			 * name above.
+			 */
+			if ( isset( $declared_names[ $name ] ) ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires declared tool functions to carry unique names.'
+				);
+			}
+
+			$declared_names[ $name ] = true;
 
 			/*
 			 * The Messages protocol requires input_schema on every tool —
