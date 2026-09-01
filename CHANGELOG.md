@@ -119,6 +119,16 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   successful (empty) completion carrying the late metadata. The
   malformed flag is sticky, so the late start cannot repair it.
 
+- Streamed block starts must form the contiguous zero-based sequence:
+  a truncated stream that lost block 0 but delivered a complete block
+  at index 1 passed the non-negative-integer index check, and the
+  arrival-order repacking made the gap invisible — the surviving block
+  became content position 0 of a successful but truncated completion.
+  Any gap or reorder (a started index other than the next expected one)
+  now invalidates the stream; synthesized seeds from the unknown-delta
+  compatibility path obey the same rule, and in-order multi-block
+  streams are unchanged.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving

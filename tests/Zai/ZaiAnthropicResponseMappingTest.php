@@ -2168,6 +2168,99 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testNoncontiguousBlockStartsInvalidateTheStream()
+    {
+        /*
+         * Codex R17 #2: block starts must extend the contiguous zero-based
+         * sequence — a lost block 0 (first start at 1), a skipped middle
+         * index (0 then 2), and a reordered arrival (1 before 0) are all
+         * truncated/reordered streams, never successful completions.
+         */
+        $bodies = array(
+            'first start at index 1 (block 0 lost)' => ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_g1","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: {"type":"message_stop"}' . "\n\n",
+            'skipped middle index (0 then 2)' => ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_g2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}' . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":2}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: {"type":"message_stop"}' . "\n\n",
+            'reordered arrival (1 before 0)' => ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_g3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: {"type":"message_stop"}' . "\n\n",
+        );
+
+        foreach ($bodies as $label => $body) {
+            $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+            try {
+                $result = $this->model()->generateTextResult($this->prompt());
+                $this->fail("[{$label}] must fail the stream, got: " . wp_json_encode($result->toText()));
+            } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                $this->assertStringContainsString('malformed event frame', $e->getMessage(), "[{$label}] must be the typed malformed-event rejection.");
+            }
+        }
+    }
+
+    public function testInOrderContiguousStartsStillAggregate()
+    {
+        // Codex R17 #2 guard: starts 0 then 1, in order, complete fine.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_c1","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $parts = $result->toMessage()->getParts();
+        $this->assertCount(2, $parts, 'Both in-order blocks survive as parts.');
+        $this->assertSame('', $parts[0]->getText());
+        $this->assertSame('', $parts[1]->getText());
+        $this->assertSame('', $result->toText(), 'The aggregated text stays empty.');
+    }
+
     public function testAStreamTruncatedBeforeMessageStopFails()
     {
         /*

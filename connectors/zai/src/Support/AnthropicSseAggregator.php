@@ -1171,6 +1171,26 @@ final class AnthropicSseAggregator {
 			return;
 		}
 
+		/*
+		 * Codex R17 #2: started indexes must form the contiguous
+		 * zero-based sequence {0..N-1} — a truncated stream that lost
+		 * block 0 but delivered a complete block at index 1 passed the
+		 * non-negative-integer check, and ordered_blocks() repacks by
+		 * arrival order, so the gap was invisible downstream and the
+		 * surviving block became content position 0 of a successful but
+		 * truncated completion. Duplicates are already rejected above,
+		 * so the map size IS the next expected index; any smaller
+		 * (reordering) or larger (gap) value fails here. Synthesized
+		 * seeds (unknown-delta compatibility path) enter through this
+		 * same method and obey the same rule — a seed occupies an index
+		 * the way a started block does.
+		 */
+		if ( \count( $this->blocks ) !== $index ) {
+			$this->malformed_event = true;
+
+			return;
+		}
+
 		$this->blocks[ $index ] = array(
 			'type'     => $type,
 			'text'     => isset( $block['text'] ) && \is_string( $block['text'] ) ? $block['text'] : '',
