@@ -647,22 +647,27 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
     public function testAMultiToolTurnPartiallyAnsweredThenResumedIsRejected()
     {
         // Both tool_use blocks opened by ONE assistant turn must be
-        // answered by the SAME next user turn: a result arriving a turn
-        // later is stale even though its ID was never answered.
+        // answered by the SAME next user turn. R10 #1 made the partial
+        // answer itself the rejection point (this fixture answers only p1),
+        // so a fully-answered first turn is used to prove the later result
+        // is still stale.
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
             new Message(MessageRoleEnum::model(), array(
                 new MessagePart(new FunctionCall('p1', 'ping', array())),
                 new MessagePart(new FunctionCall('p2', 'pong', array())),
             )),
-            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('p1', 'ping', array('r' => 1))))),
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('p1', 'ping', array('r' => 1))),
+                new MessagePart(new FunctionResponse('p2', 'pong', array('r' => 2))),
+            )),
             new Message(MessageRoleEnum::model(), array(new MessagePart('Continuing.'))),
-            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('p2', 'pong', array('r' => 2))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('p1', 'ping', array('r' => 3))))),
         );
 
         try {
             $this->model()->generateTextResult($prompt);
-            $this->fail('A result for an expired multi-tool ID must be rejected.');
+            $this->fail('A re-answered (stale) tool id must be rejected.');
         } catch (InvalidArgumentException $e) {
             $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
         }
@@ -756,6 +761,47 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->fail('A result for the superseded (stale) tool turn must be rejected.');
         } catch (InvalidArgumentException $e) {
             $this->assertStringContainsString('preceding assistant tool call', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAPartiallyAnsweredToolTurnIsRejectedBeforeTransport()
+    {
+        // Codex R10 #1: the assistant turn opens two calls; the next user
+        // turn answers only one — the unanswered remainder was silently
+        // discarded and the (400-failing) history sent.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Both.'))),
+            new Message(MessageRoleEnum::model(), array(
+                new MessagePart(new FunctionCall('q1', 'ping', array())),
+                new MessagePart(new FunctionCall('q2', 'pong', array())),
+            )),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('q1', 'ping', array('r' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A partially answered tool turn must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('answer every tool call', $e->getMessage());
+            $this->assertStringContainsString('partially answered', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+
+        // Zero answers is equally partial.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('q3', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Not a result.'))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A fully unanswered tool turn followed by a plain user turn must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('partially answered', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();

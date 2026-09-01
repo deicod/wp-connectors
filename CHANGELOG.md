@@ -6,6 +6,17 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — Codex PR review, round 10)
+
+- A partially answered tool-call turn is now rejected before transport:
+  when the user turn following an assistant tool turn answers only some
+  of its tool calls (or none), the unanswered remainder was silently
+  discarded and the history sent — Anthropic requires that one user turn
+  to carry results for ALL of the preceding turn's tool calls, so the
+  request failed upstream with a 400. Fully-answered multi-tool turns
+  and end-of-history unanswered turns (the normal tool loop) are
+  unaffected.
+
 ### Fixed (zai / M2 — Codex PR review, round 9)
 
 - Tool results must now arrive in the user turn IMMEDIATELY following

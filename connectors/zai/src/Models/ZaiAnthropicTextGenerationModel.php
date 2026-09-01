@@ -387,11 +387,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			if ( $awaiting_answer ) {
 				/*
-				 * The answering user turn has been processed; the window
-				 * closes after it and every unconsumed ID expires with it
-				 * (the multi-tool rule: the assistant turn's results must
-				 * ALL arrive in this one turn).
+				 * The answering user turn has been processed and the window
+				 * closes after it. Anthropic requires this ONE turn to
+				 * carry results for ALL of the assistant turn's tool calls:
+				 * anything still outstanding is a PARTIALLY answered turn
+				 * (Codex R10 #1) — the history would fail upstream with a
+				 * 400, so reject before transport rather than silently
+				 * discarding the unanswered calls.
 				 */
+				if ( array() !== $outstanding_tools ) {
+					throw new InvalidArgumentException(
+						'The zai_anthropic provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).'
+					);
+				}
+
 				$outstanding_tools = array();
 				$awaiting_answer   = false;
 			}
