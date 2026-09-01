@@ -440,6 +440,74 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame(array('first' => 'a', 1 => 'b'), $body['messages'][1]['content'][0]['input']);
     }
 
+    public function testEmptyDeclaredToolNamesAreRejectedBeforeTransport()
+    {
+        /*
+         * Codex R18 #2: the declaration path had no identity validation —
+         * an empty-name FunctionDeclaration reached the endpoint's tools
+         * array only to fail with an upstream 400. The DTO coerces names
+         * to string, so '' is the constructible empty identity.
+         */
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('', 'Nameless', null))->toArray(),
+            ),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('An empty declared tool name must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('non-empty name', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAnEmptyNameAmongValidDeclarationsIsRejectedFirst()
+    {
+        // First-bad-wins: a valid sibling does not launder the empty one.
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('valid_tool', 'Valid', null))->toArray(),
+                (new FunctionDeclaration('', 'Nameless', null))->toArray(),
+            ),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('An empty declared tool name must be rejected even beside valid declarations.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('non-empty name', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAllValidDeclarationsStillEmitTheirNames()
+    {
+        // Guard: multi-tool configs keep the exact names in the tools
+        // array — only the empty identity is new.
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('get_weather', 'Weather', array('type' => 'object', 'properties' => array('city' => array('type' => 'string')))))->toArray(),
+                (new FunctionDeclaration('ping', 'Pings', null))->toArray(),
+            ),
+        ));
+
+        list($url, $body) = $this->captureRequest(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ), $this->model($config));
+
+        $this->assertSame('get_weather', $body['tools'][0]['name']);
+        $this->assertSame('ping', $body['tools'][1]['name']);
+        $this->assertCount(2, $body['tools']);
+    }
+
     public function testSequentialArrayParameterSchemasAreRejectedBeforeTransport()
     {
         // Codex R7 #3: a non-empty SEQUENTIAL parameter array serializes

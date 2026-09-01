@@ -280,6 +280,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		foreach ( $function_declarations as $declaration ) {
 			/*
+			 * Codex R18 #2: a declared tool with an EMPTY name is the same
+			 * malformed identity the call and tool-result paths already
+			 * reject before transport (Messages requires a non-empty
+			 * identity) — the declaration path must not be the bypass that
+			 * sends it upstream to a 400. The DTO constructor coerces the
+			 * name to a string, so '' is the only constructible empty
+			 * identity. Identity errors surface BEFORE the schema checks
+			 * (first-bad-wins), matching the call path's ordering.
+			 */
+			$name = $declaration->getName();
+
+			if ( '' === $name ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires declared tool functions to carry a non-empty name.'
+				);
+			}
+
+			/*
 			 * The Messages protocol requires input_schema on every tool —
 			 * an OBJECT — even for functions without parameters. Both the
 			 * absent schema (null) and an EMPTY array schema () normalize
@@ -309,7 +327,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			}
 
 			$tools[] = array(
-				'name'         => $declaration->getName(),
+				'name'         => $name,
 				'description'  => $declaration->getDescription(),
 				'input_schema' => $input_schema,
 			);

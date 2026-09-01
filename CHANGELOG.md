@@ -143,6 +143,15 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   steps could end in `PASS` despite producing no answer. Empty output
   now fails the probe like the other acceptance steps.
 
+### Fixed (zai / M2 — Codex PR review, round 18)
+
+- A `FunctionDeclaration` with an empty name is rejected before
+  transport: the declaration path had none of the identity validation
+  the tool-call and tool-result paths already perform, so a malformed
+  configuration reached the endpoint's `tools` array only to fail with
+  an upstream 400. Identity errors surface before the schema checks
+  (first-bad-wins); valid multi-tool configs are unchanged.
+
 ### Fixed (zai / M2 — Codex PR review, round 13)
 
 - Content-block events (`content_block_start`/`delta`/`stop`) arriving
