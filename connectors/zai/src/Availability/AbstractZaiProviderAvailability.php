@@ -46,6 +46,7 @@ namespace Deicod\WpConnectors\Zai\Availability;
 
 use Throwable;
 use WordPress\AiClient\Providers\Contracts\ProviderAvailabilityInterface;
+use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithHttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithRequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
@@ -534,6 +535,63 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		}
 
 		return null;
+	}
+
+	/**
+	 * Refusal decision for the authentication instance a consumer would
+	 * authenticate with (GLM4 #9).
+	 *
+	 * The credential-refusal gate was copy-pasted at FOUR credential
+	 * consumers — both model surfaces' refuse_refused_credentials() and
+	 * both metadata directories' discovery gates — with already-divergent
+	 * wiring, so the same credential state could reach each consumer's
+	 * own idea of the rule and GLM3 #9 had to fix one copy in
+	 * isolation. This ONE predicate is the gate every consumer consults:
+	 * it applies the ApiKey-shape skip (foreign/unset wiring is not the
+	 * gate's concern) and delegates to generation_refusal_reason() with
+	 * the consumer's exact credential — the same state now yields the
+	 * same decision on every surface. Consumers keep their own error
+	 * SURFACES (the models' typed InvalidArgumentException, the
+	 * directories' never-fatal discovery fallback) and their own wiring
+	 * choices (the zai_anthropic model reads the RAW wired instance so a
+	 * foreign wiring failure surfaces as the 500 binding error, GLM3
+	 * #9; the zai_anthropic directory reads its protocol-wrapping
+	 * override).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param RequestAuthenticationInterface|null $authentication The wired
+	 *                                        authentication the consumer
+	 *                                        would authenticate with, or
+	 *                                        null when unwired.
+	 * @return string|null 'region_pending' or 'invalid_verdict' when the
+	 *                     gate refuses, null when it does not apply.
+	 */
+	public function generation_refusal_for_wired_authentication( ?RequestAuthenticationInterface $authentication ): ?string {
+		if ( ! $authentication instanceof ApiKeyRequestAuthentication ) {
+			return null;
+		}
+
+		return $this->generation_refusal_reason( $authentication );
+	}
+
+	/**
+	 * The fixed refusal message for a gate decision (GLM4 #9).
+	 *
+	 * Both model surfaces built these strings inline, one provider label
+	 * apart; one builder keeps the wording from drifting between the
+	 * surfaces the way the gate itself did.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $provider_label Provider name for the message ('zai' or 'zai_anthropic').
+	 * @param string $reason         Refusal reason from the gate.
+	 * @return string The fixed, safe message.
+	 */
+	public static function refusal_message( string $provider_label, string $reason ): string {
+		return 'region_pending' === $reason
+			? sprintf( 'The %s provider refuses generation: the active environment credential is pending revalidation after a region switch.', $provider_label )
+			: sprintf( 'The %s provider refuses generation: the active credential was rejected for the selected endpoint.', $provider_label );
 	}
 
 	/**

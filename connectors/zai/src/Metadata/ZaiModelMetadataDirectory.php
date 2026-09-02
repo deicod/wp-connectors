@@ -31,7 +31,6 @@ namespace Deicod\WpConnectors\Zai\Metadata;
 
 use Throwable;
 use WordPress\AiClient\AiClient;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -260,16 +259,17 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 			 * region — the generation path refuses it (R19), but
 			 * enumeration still authenticated with it here, disclosing the
 			 * old-region key to the newly selected endpoint. The SAME
-			 * availability gate is consulted (reused, not duplicated):
-			 * while refused, the authenticated request never happens and
+			 * availability gate is consulted (reused, not duplicated —
+			 * GLM4 #9: through the shared
+			 * generation_refusal_for_wired_authentication() predicate the
+			 * models and the zai_anthropic directory also use): while
+			 * refused, the authenticated request never happens and
 			 * discovery degrades to the static plan fallback via the catch
 			 * below — never fatal, cached at most as the 60s negative
 			 * marker (GLM1 #6), so a later definitive verdict can discover
 			 * again.
 			 */
-			$authentication = $this->getRequestAuthentication();
-			if ( $authentication instanceof ApiKeyRequestAuthentication
-				&& null !== ( new ZaiProviderAvailability() )->generation_refusal_reason( $authentication ) ) {
+			if ( null !== ( new ZaiProviderAvailability() )->generation_refusal_for_wired_authentication( $this->getRequestAuthentication() ) ) {
 				throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Discovery skipped: the credential is pending revalidation or was rejected for this endpoint.' );
 			}
 

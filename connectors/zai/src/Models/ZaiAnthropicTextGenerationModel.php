@@ -38,7 +38,6 @@ use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessagePartChannelEnum;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Providers\ApiBasedImplementation\AbstractApiBasedModel;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
@@ -215,12 +214,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * RuntimeException-only catch for a foreign
 		 * RequestAuthenticationInterface, surfacing it as a 400
 		 * zai_invalid_request thrown BEFORE validate_request(). The twin
-		 * reads its plain SDK getter, where the instanceof check below
-		 * makes the foreign-wiring skip decision; the availability gate
-		 * keys on the API key alone, which the raw instance carries.
-		 * wrap() now refuses foreign wiring with the same
-		 * binding-failure RuntimeException, so wherever the failure
+		 * reads its plain SDK getter, where the gate helper's
+		 * ApiKey-shape skip makes the foreign-wiring decision; the
+		 * availability gate keys on the API key alone, which the raw
+		 * instance carries. wrap() now refuses foreign wiring with the
+		 * same binding-failure RuntimeException, so wherever the failure
 		 * eventually surfaces it maps to 500 zai_error, never 400.
+		 *
+		 * GLM4 #9: the gate PREDICATE and the refusal messages live on
+		 * the availability layer now (generation_refusal_for_wired_authentication()
+		 * / refusal_message()), shared with the OpenAI twin and both
+		 * metadata directories — the four copies could diverge per
+		 * surface before, and had already started to.
 		 */
 		try {
 			$authentication = parent::getRequestAuthentication();
@@ -228,18 +233,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			return;
 		}
 
-		if ( ! $authentication instanceof ApiKeyRequestAuthentication ) {
-			return;
-		}
-
-		$refusal = ( new ZaiAnthropicProviderAvailability() )->generation_refusal_reason( $authentication );
+		$refusal = ( new ZaiAnthropicProviderAvailability() )->generation_refusal_for_wired_authentication( $authentication );
 
 		if ( null !== $refusal ) {
-			throw new InvalidArgumentException(
-				'region_pending' === $refusal
-					? 'The zai_anthropic provider refuses generation: the active environment credential is pending revalidation after a region switch.'
-					: 'The zai_anthropic provider refuses generation: the active credential was rejected for the selected endpoint.'
-			);
+			$message = ZaiAnthropicProviderAvailability::refusal_message( 'zai_anthropic', $refusal );
+
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new InvalidArgumentException( $message );
 		}
 	}
 

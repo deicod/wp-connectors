@@ -30,7 +30,6 @@ use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -177,6 +176,12 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * the pre-gate exception ORDER is preserved for callers that
 		 * misuse an unbound model while ALSO carrying invalid options
 		 * (verifier nit on GLM1 #1: the gate must not steal that error).
+		 *
+		 * GLM4 #9: the gate PREDICATE and the refusal messages live on
+		 * the availability layer now
+		 * (generation_refusal_for_wired_authentication() /
+		 * refusal_message()), shared with the zai_anthropic twin and
+		 * both metadata directories.
 		 */
 		try {
 			$authentication = $this->getRequestAuthentication();
@@ -184,18 +189,13 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			return;
 		}
 
-		if ( ! $authentication instanceof ApiKeyRequestAuthentication ) {
-			return;
-		}
-
-		$refusal = ( new ZaiProviderAvailability() )->generation_refusal_reason( $authentication );
+		$refusal = ( new ZaiProviderAvailability() )->generation_refusal_for_wired_authentication( $authentication );
 
 		if ( null !== $refusal ) {
-			throw new InvalidArgumentException(
-				'region_pending' === $refusal
-					? 'The zai provider refuses generation: the active environment credential is pending revalidation after a region switch.'
-					: 'The zai provider refuses generation: the active credential was rejected for the selected endpoint.'
-			);
+			$message = ZaiProviderAvailability::refusal_message( 'zai', $refusal );
+
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new InvalidArgumentException( $message );
 		}
 	}
 

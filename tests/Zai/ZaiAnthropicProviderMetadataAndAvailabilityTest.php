@@ -13,6 +13,7 @@
 declare( strict_types=1 );
 
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
@@ -283,5 +284,66 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         } finally {
             putenv('ZAI_ANTHROPIC_API_KEY');
         }
+    }
+
+    public function testTheSharedCredentialGateHelperServesEveryConsumer()
+    {
+        /*
+         * GLM4 #9: the credential-refusal gate was copy-pasted at four
+         * consumers (both model surfaces, both metadata directories)
+         * with already-divergent wiring — the anthropic model read the
+         * raw parent getter while the anthropic directory read its
+         * wrapping override, and each copy carried its own predicate and
+         * messages. One predicate decides for all four now; this pin
+         * holds its contract: foreign/unset wiring is not the gate's
+         * concern, an ApiKey instance delegates to the same state
+         * readers, and both model surfaces throw the one builder's
+         * fixed wording.
+         */
+        $key = FakeSecrets::apiKey();
+        $availability = $this->availability($key);
+
+        // Not the gate's concern: null and foreign wiring.
+        $this->assertNull($availability->generation_refusal_for_wired_authentication(null));
+        $foreign = new class implements RequestAuthenticationInterface {
+            public function authenticateRequest(WordPress\AiClient\Providers\Http\DTO\Request $request): WordPress\AiClient\Providers\Http\DTO\Request
+            {
+                return $request;
+            }
+
+            public static function getJsonSchema(): array
+            {
+                return array();
+            }
+        };
+        $this->assertNull($availability->generation_refusal_for_wired_authentication($foreign));
+
+        // Clean state: an ApiKey instance passes the gate.
+        $this->assertNull($availability->generation_refusal_for_wired_authentication(new ApiKeyRequestAuthentication($key)));
+
+        // Region-pending state binding this exact key to the selected
+        // region: the shared predicate reports it and the shared builder
+        // emits the fixed message both model surfaces throw.
+        $region = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->region();
+        update_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => $region,
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        $wired = new ApiKeyRequestAuthentication($key);
+        $this->assertSame('region_pending', $availability->generation_refusal_for_wired_authentication($wired));
+        $this->assertSame(
+            'region_pending',
+            $availability->generation_refusal_reason($wired),
+            'The shared predicate must decide exactly as the state readers do.'
+        );
+        $this->assertSame(
+            'The zai_anthropic provider refuses generation: the active environment credential is pending revalidation after a region switch.',
+            ZaiAnthropicProviderAvailability::refusal_message('zai_anthropic', 'region_pending')
+        );
+        $this->assertSame(
+            'The zai provider refuses generation: the active credential was rejected for the selected endpoint.',
+            ZaiProviderAvailability::refusal_message('zai', 'invalid_verdict')
+        );
     }
 }
