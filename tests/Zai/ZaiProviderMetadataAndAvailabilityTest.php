@@ -345,8 +345,10 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
 
         // Switch region: same key, same instance — the endpoint-bound binding
         // is now stale, so the very next check must probe the NEW endpoint.
+        // (No region row exists yet, so the first save travels core's
+        // add_option() delegation — GLM1 #7 — and fires the ADD hook.)
         update_option(PlanRegionSettings::OPTION_REGION, 'cn');
-        $this->assertSame(1, did_action('update_option_' . PlanRegionSettings::OPTION_REGION));
+        $this->assertSame(1, did_action('add_option_' . PlanRegionSettings::OPTION_REGION));
 
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token invalid in this region'));
         $this->assertFalse($instance->isConfigured(), 'An international key must not count as connected on the China endpoint.');

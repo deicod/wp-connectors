@@ -232,6 +232,18 @@ function update_option($option, $value, $autoload = null)
         return false;
     }
 
+    /*
+     * Core semantics (see add_option()'s docblock below): a save for a
+     * MISSING row delegates to add_option(), which fires ONLY the
+     * add_option_ hook family — never update_option_{$option} or
+     * updated_option (code-review GLM1 #7; the stub previously fired the
+     * update family here, so tests emulating a first persisted save
+     * exercised the wrong hook path).
+     */
+    if (! array_key_exists($option, WpHarness::$options)) {
+        return add_option($option, $value, '', $autoload);
+    }
+
     WpHarness::$options[ $option ] = $value;
     if (null !== $autoload) {
         WpHarness::$option_autoload[ $option ] = (bool) $autoload;
