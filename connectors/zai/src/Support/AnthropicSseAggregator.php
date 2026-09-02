@@ -522,7 +522,20 @@ final class AnthropicSseAggregator {
 					 * the model's own object-ness oracle then rejected the
 					 * response — the raw decode survives regardless of key
 					 * shape (and keeps {} an object, Codex R3 #1).
+					 *
+					 * GLM4 #2: the accumulated JSON must also decode to a
+					 * value that can REPLAY (1e999 → INF, a beyond-int
+					 * integer → lossy float); accepting it would hand the
+					 * model a FunctionCall whose arguments detonate at the
+					 * transport on the turn's very first replay — the same
+					 * reason non-object decodes fail above.
 					 */
+					if ( ! ToolArgsReplayGuard::is_replayable( $decoded ) ) {
+						$this->malformed_tool_input = true;
+
+						return null;
+					}
+
 					$input = $decoded;
 				}
 
@@ -1236,8 +1249,17 @@ final class AnthropicSseAggregator {
 				 * associative re-decode turned nested empty objects into []
 				 * and numeric-keyed objects into lists in the consolidated
 				 * payload.
+				 *
+				 * GLM4 #2: the initial input must equally decode to a
+				 * REPLAYABLE value (INF/precision-loss floats are the
+				 * conversation-poison class; see the accumulated-JSON
+				 * path's guard).
 				 */
-				$input = $raw_input;
+				if ( ! ToolArgsReplayGuard::is_replayable( $raw_input ) ) {
+					$this->malformed_tool_input = true;
+				} else {
+					$input = $raw_input;
+				}
 			} else {
 				// A scalar, boolean, or JSON list value (an empty list
 				// included) — malformed streamed tool arguments.

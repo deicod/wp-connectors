@@ -382,6 +382,128 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(FinishReasonEnum::toolCalls(), $result->getCandidates()[0]->getFinishReason());
     }
 
+    /**
+     * @dataProvider provideNonReplayableToolInputJson
+     */
+    public function testNonReplayableToolArgumentsAreRejectedBeforeAcceptance($inputJson, $label)
+    {
+        /*
+         * GLM4 #2: 1e999 decodes to INF and a beyond-PHP_INT_MAX integer
+         * literal to a lossy float — both handed a consumer a FunctionCall
+         * whose replay throws at the transport, poisoning every later
+         * request of the conversation (the GLM3 #1 parse/replay contract,
+         * applied to argument VALUES). Raw body strings so the wire
+         * carries the exact numeric literals.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"msg_nr","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_nr","name":"get_weather","input":' . $inputJson . '}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail("[{$label}] Non-replayable tool arguments must be rejected, got: " . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('cannot be replayed', $e->getMessage());
+        }
+
+        // The typed boundary surfaces the same verdict.
+        $this->queueSdkResponse(200, array(), '{"id":"msg_nr","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_nr","name":"get_weather","input":' . $inputJson . '}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
+        $error = $this->model()->generate_text($this->prompt());
+        $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_INVALID_RESPONSE);
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideNonReplayableToolInputJson()
+    {
+        return array(
+            'INF float (1e999)' => array('{"amount":1e999}', 'INF float (1e999)'),
+            'beyond-int integer' => array('{"count":12345678901234567890}', 'beyond-int integer'),
+            'nested beyond-int integer' => array('{"rows":[{"id":99999999999999999999}]}', 'nested beyond-int integer'),
+        );
+    }
+
+    public function testOrdinaryNumericToolArgumentsStillParse()
+    {
+        // Positive control for the GLM4 #2 guard: ints and in-range floats
+        // still parse (0.25 keeps its fractional form on every PHP
+        // version's encoder, so the decoded type is float everywhere).
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_ok_nums',
+            'role' => 'assistant',
+            'content' => array(array(
+                'type' => 'tool_use',
+                'id' => 'toolu_ok',
+                'name' => 'get_weather',
+                'input' => array('count' => 42, 'price' => 19.99, 'ratio' => 0.25),
+            )),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame(array('count' => 42, 'price' => 19.99, 'ratio' => 0.25), $call->getArgs());
+    }
+
+    public function testStreamedNonReplayableToolArgumentsFailAsAStreamParseError()
+    {
+        /*
+         * GLM4 #2, streamed twin: the accumulated input_json_delta JSON
+         * decodes to INF — the aggregator's acceptance point flags it in
+         * the same channel as truncated tool JSON, never a fabricated
+         * call that would detonate on replay.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_nrs","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nrs","name":"get_weather","input":{}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"amount\":1e999}"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('Streamed non-replayable tool arguments must fail, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
+    public function testStreamedNonReplayableInitialToolInputFailsAsAStreamParseError()
+    {
+        // GLM4 #2: the content_block_start's OWN input object is an
+        // acceptance point too — an initial INF argument must not ride a
+        // block that received no input_json_delta at all.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_nri","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nri","name":"get_weather","input":{"amount":1e999}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-replayable initial tool input must fail, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
     public function testEmptyToolUseInputNormalizesToNullArgs()
     {
         $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(

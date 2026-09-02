@@ -59,6 +59,7 @@ use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
+use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 
 /**
  * Text generation model for zai_anthropic.
@@ -1549,6 +1550,26 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						// list included).
 						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block carried a non-object input value.' );
 					}
+				}
+
+				/*
+				 * GLM4 #2 (parse/replay agreement, the GLM3 #1 contract
+				 * applied to argument VALUES): 1e999 decodes to INF and an
+				 * integer beyond PHP_INT_MAX to a lossy float — a turn
+				 * carrying either cannot re-enter a request (the replay
+				 * would throw at the transport's whole-request encode and
+				 * poison every later request of the conversation), so it
+				 * is rejected pre-acceptance, here, instead of handing a
+				 * consumer arguments that detonate on replay. The shared
+				 * guard is the same one the SSE acceptance points use, so
+				 * the two transports of one generation never diverge.
+				 */
+				if ( null !== $args && ! ToolArgsReplayGuard::is_replayable( $args ) ) {
+					throw ResponseException::fromInvalidData(
+						'z.ai',
+						'content',
+						'A tool_use block carried arguments that cannot be replayed (an unencodable or precision-loss value was decoded).'
+					);
 				}
 
 				return new MessagePart( new FunctionCall( $part_data['id'], $part_data['name'], $args ) );
