@@ -14,6 +14,7 @@
 declare( strict_types=1 );
 
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
@@ -592,7 +593,16 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     {
         $this->primeZaiAnthropicDiscoveryTransient();
 
+        /*
+         * GLM4 #12: the assertion must pin the SDK-typed exception the
+         * directory actually throws — the file previously never imported
+         * it, so expectException() bound the GLOBAL
+         * \InvalidArgumentException, which the SDK exception merely
+         * subclasses: a regression to an untyped throw would have kept
+         * passing.
+         */
         $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('totally-unknown');
         $this->directory()->getModelMetadata('totally-unknown');
     }
 
