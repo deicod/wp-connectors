@@ -2421,6 +2421,42 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    /**
+     * @dataProvider provideNonStringStopReasons
+     */
+    public function testANonStringStopReasonIsRejectedWithoutAStringCast($stopReasonJson, $label)
+    {
+        /*
+         * GLM2 #5: stop_reason was the only envelope member without an
+         * is_string shape guard — a non-scalar value hit the (string)
+         * cast and emitted an Array-to-string warning before the typed
+         * rejection; on warning-strict installs (this suite converts
+         * warnings to exceptions) the parse aborted with an ErrorException
+         * instead of the ResponseException every sibling member raises.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"msg_fixture","type":"message","role":"assistant","content":[{"type":"text","text":"Ok."}],"stop_reason":' . $stopReasonJson . ',"usage":{"input_tokens":1,"output_tokens":1}}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail("[{$label}] stop_reason must be rejected by the shape guard.");
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('string stop reason', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideNonStringStopReasons()
+    {
+        return array(
+            'list stop reason' => array('["end_turn"]', 'list'),
+            'object stop reason' => array('{"reason":"end_turn"}', 'object'),
+            'integer stop reason' => array('17', 'integer'),
+            'boolean stop reason' => array('true', 'boolean'),
+        );
+    }
+
     public function testAConsolidatedStreamWithoutAMessageIdIsRejected()
     {
         /*

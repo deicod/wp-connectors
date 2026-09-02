@@ -1121,7 +1121,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			throw ResponseException::fromMissingData( 'z.ai', 'stop_reason' );
 		}
 
-		$finish_reason = $this->finish_reason_for( (string) $data['stop_reason'] );
+		/*
+		 * GLM2 #5: every sibling envelope member (type, role, id) gets an
+		 * is_string shape guard, but stop_reason was only (string)-cast —
+		 * a non-scalar value emitted an Array-to-string warning before the
+		 * typed rejection and, on warning-strict installs (a custom
+		 * set_error_handler, PHPUnit), aborted the parse with an
+		 * ErrorException-family Throwable that bypassed this channel.
+		 */
+		if ( ! \is_string( $data['stop_reason'] ) ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'stop_reason', 'The message did not carry a string stop reason.' );
+		}
+
+		$finish_reason = $this->finish_reason_for( $data['stop_reason'] );
 
 		/*
 		 * Codex R14 #2: the stop reason must match the parsed content — a
