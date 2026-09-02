@@ -186,6 +186,49 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
     }
 
+    /**
+     * @dataProvider provideMangledContentTypeStreamLeads
+     */
+    public function testStreamsSniffedByBodyLeadWhenTheContentTypeIsMangled($lead, $label)
+    {
+        /*
+         * GLM4 #3: this surface's sniff recognized only a leading 'data:'
+         * line, so the exact scenario the Anthropic twin's GLM3 #5/#7
+         * fixes cite — a gateway that mangles/omits the
+         * text/event-stream Content-Type AND prepends a BOM or a
+         * ': keepalive' comment — misrouted the stream to the JSON
+         * parser and died as 'The chat-completions payload was
+         * malformed' although the shared SseFrameBuffer would have
+         * framed it fine. Both surfaces now sniff through the shared
+         * EventStreamSniff.
+         */
+        $body = $lead . implode("\n\n", array(
+            'data: {"id":"chatcmpl-sniff","choices":[{"index":0,"delta":{"role":"assistant","content":"Sniffed anyway."},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/octet-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Sniffed anyway.', $result->toText(), "[{$label}] The body lead must sniff as an event stream.");
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideMangledContentTypeStreamLeads()
+    {
+        return array(
+            'leading comment line' => array(': keepalive' . "\n\n", 'leading comment line'),
+            'leading UTF-8 BOM' => array("\xEF\xBB\xBF", 'leading UTF-8 BOM'),
+            'BOM then comment line' => array("\xEF\xBB\xBF: keepalive" . "\n\n", 'BOM then comment line'),
+            'leading event field' => array('event: message' . "\n\n", 'leading event field'),
+        );
+    }
+
     public function testStreamsToolCallDeltasMergedAcrossChunks()
     {
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), implode("\n\n", array(

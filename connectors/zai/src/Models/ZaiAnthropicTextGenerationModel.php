@@ -57,6 +57,7 @@ use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
+use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
@@ -1048,18 +1049,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * a leading BOM (the aggregator strips its own copy, GLM3 #7) and
 		 * also accepts a comment line: ':' can only be SSE framing — a
 		 * JSON body never starts with one.
+		 *
+		 * GLM4 #3: the mechanism lives in the shared EventStreamSniff so
+		 * the OpenAI surface's copy (which still recognized a bare
+		 * 'data:' leader) can never drift from this one again.
 		 */
-		$sniff = ltrim( $body, " \t\r\n" );
-		if ( 0 === strpos( $sniff, "\xEF\xBB\xBF" ) ) {
-			$sniff = ltrim( substr( $sniff, 3 ), " \t\r\n" );
-		}
-
-		$is_event_stream = false !== stripos( (string) $response->getHeaderAsString( 'Content-Type' ), 'text/event-stream' )
-			|| 0 === strpos( $sniff, 'event:' )
-			|| 0 === strpos( $sniff, 'data:' )
-			|| 0 === strpos( $sniff, ':' );
-
-		if ( ! $is_event_stream ) {
+		if ( ! EventStreamSniff::matches( $body, $response->getHeaderAsString( 'Content-Type' ) ) ) {
 			return $this->parse_message_body( $response );
 		}
 

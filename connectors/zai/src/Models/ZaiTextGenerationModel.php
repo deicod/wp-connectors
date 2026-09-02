@@ -42,6 +42,7 @@ use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
+use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
@@ -220,10 +221,18 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	protected function parseResponseToGenerativeAiResult( Response $response ): GenerativeAiResult { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated override name.
 		$body = (string) $response->getBody();
 
-		$is_event_stream = false !== stripos( (string) $response->getHeaderAsString( 'Content-Type' ), 'text/event-stream' )
-			|| 0 === strpos( ltrim( $body ), 'data:' );
-
-		if ( ! $is_event_stream ) {
+		/*
+		 * GLM4 #3: the shared EventStreamSniff — the BOM skip, ':'
+		 * comment-line and 'event:' recognition the Anthropic surface
+		 * gained in GLM3 #5/#7 now apply here too. This surface's old
+		 * inline copy recognized only a leading 'data:' line, so a
+		 * mangled/omitted Content-Type plus a leading BOM or ': keepalive'
+		 * comment misrouted the stream to the JSON parser and every such
+		 * streamed generation died as 'The chat-completions payload was
+		 * malformed' although the shared SseFrameBuffer would have framed
+		 * the stream fine.
+		 */
+		if ( ! EventStreamSniff::matches( $body, $response->getHeaderAsString( 'Content-Type' ) ) ) {
 			return $this->parseNonStreamBody( $response );
 		}
 
