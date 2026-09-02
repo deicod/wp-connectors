@@ -448,7 +448,19 @@ abstract class AbstractPlanRegionSettings {
 	 * @return void
 	 */
 	public static function guard_settings_save(): void {
-		$option_page = isset( $_POST['option_page'] ) ? sanitize_key( wp_unslash( $_POST['option_page'] ) ) : '';
+		/*
+		 * GLM3 #8: a form-mangled array POST ('option_page[]=x' from any
+		 * logged-in user) must not reach sanitize_key() — core returns ''
+		 * for non-scalars there (its is_scalar() guard), but the explicit
+		 * is_string() check keeps this guard's own contract independent
+		 * of sanitize_key's coercion semantics and of harness stubs (the
+		 * test stub previously (string)-casted the value, masking array
+		 * inputs entirely). An array option_page is not our settings
+		 * form; the early return below ignores the request.
+		 */
+		$option_page = isset( $_POST['option_page'] ) && \is_string( $_POST['option_page'] )
+			? sanitize_key( wp_unslash( $_POST['option_page'] ) )
+			: '';
 		if ( self::OPTION_GROUP !== $option_page ) {
 			return;
 		}

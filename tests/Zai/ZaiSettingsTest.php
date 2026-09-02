@@ -148,6 +148,30 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertNotEmpty(WpHarness::$settings_errors);
     }
 
+    public function testAnArrayOptionPageValueIsIgnoredByTheGuard()
+    {
+        /*
+         * GLM3 #8: a mangled 'option_page[]=x' POST from any logged-in
+         * user must never reach sanitize_key() — the guard's is_string
+         * check ignores the request as not-our-form (no strip, no
+         * notice), and the sanitize_key stub now mirrors core's
+         * is_scalar() semantics, so it would answer '' for the array
+         * even if it did.
+         */
+        $this->bootPlugin();
+        $this->asAnonymous();
+        $_POST = array(
+            'option_page' => array('zai_connector'),
+            PlanRegionSettings::OPTION_PLAN => 'general',
+        );
+
+        do_action('admin_init');
+
+        $this->assertSame(array('zai_connector'), $_POST['option_page'], 'Not our form: the group identifier is untouched.');
+        $this->assertArrayHasKey(PlanRegionSettings::OPTION_PLAN, $_POST, 'Not our form: the guard must not strip anything.');
+        $this->assertSame(array(), WpHarness::$settings_errors, 'No unauthorized notice for a request that is not our form.');
+    }
+
     public function testTheUnauthorizedNoticeIsEmittedOncePerSave()
     {
         /*

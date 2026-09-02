@@ -31,6 +31,27 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      * no option row delegates to add_option() and fires ONLY the
      * add_option_ hook family; real updates fire the update family.
      */
+    public function testSanitizeKeyMirrorsCoreScalarSemantics()
+    {
+        /*
+         * GLM3 #8: core sanitizes only SCALAR keys — an array POST value
+         * yields '' (never a coerced string, never a TypeError), and the
+         * sanitize_key filter still fires with the original value. The
+         * stub's earlier (string) cast masked array inputs, so the
+         * settings guard could not be tested against them.
+         */
+        $seen = null;
+        add_filter('sanitize_key', function ($sanitized, $raw) use (&$seen) {
+            $seen = $raw;
+            return $sanitized;
+        }, 10, 2);
+
+        $this->assertSame('', sanitize_key(array('x')), 'A non-scalar key returns the empty string, as in core.');
+        $this->assertSame(array('x'), $seen, 'The filter still receives the original raw value.');
+        $this->assertSame('abc_def-1', sanitize_key('ABC_def-1!'));
+        $this->assertSame('42', sanitize_key(42));
+    }
+
     public function testUpdateOptionOnAMissingRowDelegatesToAddOptionHooks()
     {
         update_option('wpct_probe_opt', 'first');

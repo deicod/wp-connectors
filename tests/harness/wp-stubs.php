@@ -917,7 +917,19 @@ function sanitize_text_field($str)
 
 function sanitize_key($key)
 {
-    return preg_replace('/[^a-z0-9_\-]/', '', strtolower((string) $key));
+    // Core semantics (wp-includes/formatting.php): only SCALAR keys are
+    // sanitized — a non-scalar (an array POST value, say) yields '' after
+    // the filter, never a coerced string and never a TypeError. The
+    // earlier `(string)` cast diverged from core and silently masked
+    // array inputs (GLM3 #8).
+    $sanitized_key = '';
+
+    if (is_scalar($key)) {
+        $sanitized_key = strtolower((string) $key);
+        $sanitized_key = preg_replace('/[^a-z0-9_\-]/', '', $sanitized_key);
+    }
+
+    return apply_filters('sanitize_key', $sanitized_key, $key);
 }
 
 function sanitize_email($email)
