@@ -6,6 +6,101 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM2 code review)
+
+- A conversation history ending on an assistant turn with unanswered
+  `tool_use` blocks is now rejected before transport with the adapter's
+  typed tool-linkage error. The end-of-history completeness check
+  required the last turn to be a `user` turn, so the trailing unanswered
+  tool turn shipped to the wire and failed as an upstream 400 surfaced
+  through the generic client-error channel. A trailing assistant TEXT
+  turn (the prefill shape) stays legitimate.
+
+- Scalar tool-call arguments are rejected before transport: the outbound
+  `tool_use` input validation caught only non-empty sequential arrays, so
+  a scalar argument (a string like `'Oslo'`, an int, a bool, NAN/INF
+  floats) reached the wire as a non-object `input` — an upstream 400
+  with the generic surface, or a raw `JsonException` from the transport's
+  whole-request encode for the unencodable floats — despite the adjacent
+  comment claiming scalars were rejected. The empty string joins null
+  and the empty array in the `{}` no-argument normalization; `stdClass`
+  arguments (the inbound parser's nested object-ness preservation) pass
+  untouched.
+
+- The zai_anthropic credential gate no longer reads the wired
+  authentication before `validate_request()` runs: an unbound model
+  (directly constructed, without the registry binding) carrying invalid
+  options threw the SDK's binding `RuntimeException` instead of the
+  typed option rejection — the exact divergence the zai (OpenAI)
+  surface's gate already guards against. The gate is extracted to
+  `refuse_refused_credentials()` mirroring the twin, and skips unbound
+  models so the typed rejection wins on both surfaces.
+
+- NAN temperature/top_p values are rejected by the sampling-parameter
+  range guard: NAN compares false against both bounds of the
+  closed-interval check, so the unencodable float reached the transport
+  and threw a raw `JsonException` instead of the typed rejection the
+  guard exists to produce. `is_nan()` is checked explicitly alongside
+  the bounds.
+
+- A non-string `stop_reason` is rejected by an `is_string` shape guard
+  like every sibling envelope member (type, role, id): the bare
+  `(string)` cast on a list-shaped value emitted an Array-to-string
+  warning before the typed rejection and, on warning-strict installs,
+  aborted the parse with an `ErrorException`-family throwable that
+  bypassed the `zai_invalid_response` channel.
+
+- The live probe (`bin/zai-live-probe.php`) clears the negative-cache
+  markers alongside the positive caches before its acceptance steps: a
+  re-run within the 60-second marker TTL of one transient failure served
+  the cached inconclusive verdicts (`DISCOVERY FALLBACK`,
+  `INCONCLUSIVE`) with zero live requests instead of exercising the live
+  network path. New
+  `AbstractZaiProviderAvailability::clear_probe_miss_marker()` derives
+  and deletes the exact binding-scoped marker the next consult would
+  read (the transient-name construction is shared with the writer).
+
+- Uninstall enumerates and deletes the availability probe-miss
+  transients, whose names embed an md5 of the credential+endpoint
+  binding and are therefore unknowable at uninstall time: the rows are
+  matched by option-name prefix via one prepared LIKE query per state
+  option and removed through `delete_transient()` (which also removes
+  the timeout companion row), per site on multisite. The test harness
+  gains a minimal `wpdb` stub so the sweep is exercised by the existing
+  single-site and multisite uninstall tests.
+
+- One unauthorized settings save records exactly one
+  `zai_connector_unauthorized` settings error: both provider settings
+  classes hook their guard on the shared option group, so the strip-and-
+  notify path ran once per provider and appended byte-identical errors.
+  The strip stays per-guard (idempotent); the emission consults the
+  core getter `get_settings_errors()` scoped to the group's setting slug
+  and stays silent when the notice already exists. (The verifier round
+  caught the first cut consulting `settings_errors()` — a display
+  function that echoes and returns void in real WordPress — and a
+  harness wpdb LIKE emulation that stripped `esc_like()`'s underscore
+  escapes; both are fixed with regression pins.)
+
+### Changed (zai / M2 — GLM2 code review)
+
+- The five request-usage rejections the two surfaces advertise
+  identically (candidateCount, text-only output modalities, the MIME
+  whitelist, text-only input, custom options) and the output MIME list
+  are shared once in `Support/AdvertisedUsageGuard`, consumed by both
+  model classes' `validate_request()` — they were verbatim twins under
+  the `AdvertisedOptionGuard` call introduced to stop exactly that
+  duplication pattern. Messages are byte-identical; surface-specific
+  checks stay in the owning models.
+
+- The streamed Messages parse passes the aggregator's consolidated
+  payload through decoded instead of round-tripping it through the wire
+  format (one `wp_json_encode` into a synthetic Response plus two whole-
+  payload re-decodes per streamed generation are gone). The non-streamed
+  parser keeps both decodes exactly as before; the streamed path relies
+  on the aggregator's already-unambiguous shapes (tool input stays the
+  raw-decoded object, usage is object-keyed, content is a constructed
+  list), with object-ness guarantees unchanged.
+
 ### Fixed (zai / M2 — GLM1 code review)
 
 - Failed model discovery is negatively cached for 60 seconds per
