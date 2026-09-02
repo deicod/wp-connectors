@@ -30,6 +30,7 @@ namespace Deicod\WpConnectors\Zai\Metadata;
 
 use Throwable;
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -37,6 +38,7 @@ use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleModelMetadataDirectory;
+use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
@@ -180,6 +182,26 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		}
 
 		try {
+			/*
+			 * Code review GLM1 #1 (sibling of the zai_anthropic surface's
+			 * R20 gate): an env/constant credential that survives an
+			 * intl/cn switch is region-pending (or carries a definitive
+			 * invalid verdict) and must not be reused against the other
+			 * region — the generation path refuses it (R19), but
+			 * enumeration still authenticated with it here, disclosing the
+			 * old-region key to the newly selected endpoint. The SAME
+			 * availability gate is consulted (reused, not duplicated):
+			 * while refused, the authenticated request never happens and
+			 * discovery degrades to the static plan fallback via the catch
+			 * below — never fatal, so a later definitive verdict can
+			 * discover again.
+			 */
+			$authentication = $this->getRequestAuthentication();
+			if ( $authentication instanceof ApiKeyRequestAuthentication
+				&& null !== ( new ZaiProviderAvailability() )->generation_refusal_reason( $authentication ) ) {
+				throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Discovery skipped: the credential is pending revalidation or was rejected for this endpoint.' );
+			}
+
 			// Parent performs the HTTP request (against the resolved endpoint),
 			// throws on non-2xx, and parses via parseResponseToModelMetadataList().
 			$discovered = parent::sendListModelsRequest();

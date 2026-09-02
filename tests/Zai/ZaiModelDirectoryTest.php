@@ -119,6 +119,25 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
      * Discovery.
      */
 
+    /**
+     * Fresh directory wired to the harness transporter with an EXACT key.
+     *
+     * For credential-state tests that bind flags/verdicts to a specific key
+     * (FakeSecrets::apiKey() is random per call, so the directory must carry
+     * the captured value).
+     *
+     * @param string $key The exact API key the directory authenticates with.
+     * @return ZaiModelMetadataDirectory
+     */
+    private function directoryWithKey(string $key): ZaiModelMetadataDirectory
+    {
+        $directory = new ZaiModelMetadataDirectory();
+        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        return $directory;
+    }
+
     public function testDiscoveryHitsTheSelectedEndpointAndCaches()
     {
         $this->selectEndpoint('coding', 'intl');
@@ -142,6 +161,57 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         }, $second->listModelMetadata());
         $this->assertSame($ids, $cachedIds);
         $this->assertCount(1, $this->sdkHttpAttempts());
+    }
+
+    public function testDiscoveryIsSkippedWhileTheCredentialIsRegionPending()
+    {
+        /*
+         * Code-review GLM1 #1: the R19/R20 credential-refusal gate was
+         * consulted only by the zai_anthropic surface — this (OpenAI)
+         * surface's discovery still authenticated a region-pending env/
+         * constant key against the newly selected endpoint. The SAME
+         * availability gate must refuse enumeration here, degrading to the
+         * static plan fallback WITHOUT any authenticated request.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(PlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => 'intl',
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        $models = $this->directoryWithKey($key)->listModelMetadata();
+
+        $this->assertSame(
+            ZaiModelCatalog::ids_for_plan('coding'),
+            $this->idList($models),
+            'Discovery must degrade to the plan fallback while the credential is region-pending.'
+        );
+        $this->assertNoHttpRequests();
+    }
+
+    public function testDiscoveryIsSkippedWhileAMatchingInvalidVerdictExists()
+    {
+        // Code-review GLM1 #1: a definitive invalid verdict for the exact
+        // key+endpoint binding must refuse enumeration on this surface too.
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        $binding = hash('sha256', 'runtime|' . \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() . '|' . $key);
+        update_option(PlanRegionSettings::STATE_OPTION, array(
+            'binding' => $binding,
+            'valid' => 'invalid',
+            'checked_at' => time(),
+            'clock' => 'utc',
+        ));
+
+        $models = $this->directoryWithKey($key)->listModelMetadata();
+
+        $this->assertSame(
+            ZaiModelCatalog::ids_for_plan('coding'),
+            $this->idList($models),
+            'Discovery must degrade to the plan fallback while the credential carries an invalid verdict.'
+        );
+        $this->assertNoHttpRequests();
     }
 
     public function testDiscoveryCacheExpires()

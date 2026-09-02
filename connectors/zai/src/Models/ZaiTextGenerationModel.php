@@ -29,6 +29,7 @@ namespace Deicod\WpConnectors\Zai\Models;
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -38,6 +39,7 @@ use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\Exception\ServerException;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleTextGenerationModel;
 use WordPress\AiClient\Results\DTO\GenerativeAiResult;
+use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
@@ -129,18 +131,66 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
-	 * Prepares the request parameters after rejecting unsupported input.
+	 * Prepares the request parameters after refusing refused credentials and
+	 * rejecting unsupported input.
+	 *
+	 * The SDK's generateTextResult() is FINAL, so this params hook is the
+	 * earliest pre-transport boundary this surface owns — the credential
+	 * gate runs here, before any request build, authentication, or
+	 * transport.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @param array $prompt Prompt messages (list of Message).
 	 * @return array<string, mixed> API request parameters.
-	 * @throws InvalidArgumentException When an unsupported option/model combination is used.
+	 * @throws InvalidArgumentException When the credential gate refuses the
+	 *                                  active key, or an unsupported
+	 *                                  option/model combination is used.
 	 */
 	protected function prepareGenerateTextParams( array $prompt ): array {
+		$this->refuse_refused_credentials();
+
 		$this->validate_request( $prompt );
 
 		return parent::prepareGenerateTextParams( $prompt );
+	}
+
+	/**
+	 * Refuses generation for credentials the availability layer distrusts.
+	 *
+	 * Code review GLM1 #1: the R19/R20 credential-refusal gate was consulted
+	 * only by the zai_anthropic surface, so this (OpenAI) surface still
+	 * authenticated a region-pending or definitively-rejected env/constant
+	 * key after a region switch — sending the old region's credential to the
+	 * newly selected endpoint (cross-region disclosure) while the connector
+	 * reported disconnected. The gate REUSES the availability layer's own
+	 * state readers (no duplicated logic, no probe request) with the model's
+	 * exact credential, exactly like the zai_anthropic surface's
+	 * generateTextResult() gate.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return void
+	 * @throws InvalidArgumentException When the credential is region-pending
+	 *                                  or carries a fresh invalid verdict
+	 *                                  for the selected endpoint.
+	 */
+	private function refuse_refused_credentials(): void {
+		$authentication = $this->getRequestAuthentication();
+
+		if ( ! $authentication instanceof ApiKeyRequestAuthentication ) {
+			return;
+		}
+
+		$refusal = ( new ZaiProviderAvailability() )->generation_refusal_reason( $authentication );
+
+		if ( null !== $refusal ) {
+			throw new InvalidArgumentException(
+				'region_pending' === $refusal
+					? 'The zai provider refuses generation: the active environment credential is pending revalidation after a region switch.'
+					: 'The zai provider refuses generation: the active credential was rejected for the selected endpoint.'
+			);
+		}
 	}
 
 	/**

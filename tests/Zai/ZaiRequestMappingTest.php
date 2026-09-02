@@ -383,4 +383,70 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
 
         $this->assertNoHttpRequests();
     }
+
+    /*
+     * Credential refusal gate (R19/R20, extended to this surface by
+     * code-review GLM1 #1).
+     */
+
+    public function testGenerationIsRefusedWhileTheCredentialIsRegionPending()
+    {
+        /*
+         * The R19 refusal gate was wired only into the zai_anthropic
+         * surface; this (OpenAI) surface's generation still authenticated a
+         * region-pending credential against the newly selected endpoint —
+         * exactly the cross-region disclosure the gate exists to block.
+         */
+        $this->primeZaiDiscoveryTransient();
+        $key = FakeSecrets::apiKey();
+        $model = ZaiProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        update_option(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->region(),
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        try {
+            $model->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('Generation must be refused while the credential is region-pending.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('pending revalidation after a region switch', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testGenerationIsRefusedWhileAMatchingInvalidVerdictExists()
+    {
+        // A definitive invalid verdict for the exact key+endpoint binding
+        // refuses generation on this surface too.
+        $this->primeZaiDiscoveryTransient();
+        $key = FakeSecrets::apiKey();
+        $model = ZaiProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        $binding = hash('sha256', 'runtime|' . \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() . '|' . $key);
+        update_option(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::STATE_OPTION, array(
+            'binding' => $binding,
+            'valid' => 'invalid',
+            'checked_at' => time(),
+            'clock' => 'utc',
+        ));
+
+        try {
+            $model->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('Generation must be refused while a matching invalid verdict exists.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('rejected for the selected endpoint', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
 }
