@@ -31,6 +31,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Models;
 
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Common\Exception\TokenLimitReachedException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
@@ -159,29 +160,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *                                  verdict for the selected endpoint).
 	 */
 	public function generateTextResult( array $prompt ): GenerativeAiResult {
-		/*
-		 * Codex R19 #3: an env/constant credential cannot be deleted by a
-		 * region switch, so the settings layer marks that exact key
-		 * region-pending and the availability layer persists definitive
-		 * invalid verdicts — yet this public direct-generation path
-		 * authenticated unconditionally, sending the old region's credential
-		 * to the newly selected regional endpoint even while the connector
-		 * reported disconnected. The gate REUSES the availability layer's
-		 * own state readers (no duplicated logic, no probe request) with
-		 * the model's exact credential.
-		 */
-		$authentication = $this->getRequestAuthentication();
-		if ( $authentication instanceof ApiKeyRequestAuthentication ) {
-			$refusal = ( new ZaiAnthropicProviderAvailability() )->generation_refusal_reason( $authentication );
-
-			if ( null !== $refusal ) {
-				throw new InvalidArgumentException(
-					'region_pending' === $refusal
-						? 'The zai_anthropic provider refuses generation: the active environment credential is pending revalidation after a region switch.'
-						: 'The zai_anthropic provider refuses generation: the active credential was rejected for the selected endpoint.'
-				);
-			}
-		}
+		$this->refuse_refused_credentials();
 
 		$params = $this->prepareGenerateTextParams( $prompt );
 
@@ -200,6 +179,60 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$this->throwIfNotSuccessful( $response );
 
 		return $this->parseResponseToGenerativeAiResult( $response );
+	}
+
+	/**
+	 * Refuses generation for credentials the availability layer distrusts.
+	 *
+	 * Codex R19 #3: an env/constant credential cannot be deleted by a
+	 * region switch, so the settings layer marks that exact key
+	 * region-pending and the availability layer persists definitive
+	 * invalid verdicts — yet this public direct-generation path
+	 * authenticated unconditionally, sending the old region's credential
+	 * to the newly selected regional endpoint even while the connector
+	 * reported disconnected. The gate REUSES the availability layer's
+	 * own state readers (no duplicated logic, no probe request) with
+	 * the model's exact credential, exactly like the zai (OpenAI)
+	 * surface's prepareGenerateTextParams() gate.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 * @throws InvalidArgumentException When the credential is region-pending
+	 *                                  or carries a fresh invalid verdict
+	 *                                  for the selected endpoint.
+	 */
+	private function refuse_refused_credentials(): void {
+		/*
+		 * GLM2 #3: an unbound model (no wired auth) is not this gate's
+		 * concern — skip it and let the request fail exactly where it did
+		 * before the gate existed (the SDK's authenticateRequest()
+		 * RuntimeException), so the pre-gate exception ORDER is preserved
+		 * for callers that misuse an unbound model while ALSO carrying
+		 * invalid options (the OpenAI twin's verifier nit on GLM1 #1
+		 * guards the same divergence; this surface now mirrors it, instead
+		 * of throwing the binding RuntimeException before
+		 * validate_request() can reject the options).
+		 */
+		try {
+			$authentication = $this->getRequestAuthentication();
+		} catch ( RuntimeException $e ) {
+			return;
+		}
+
+		if ( ! $authentication instanceof ApiKeyRequestAuthentication ) {
+			return;
+		}
+
+		$refusal = ( new ZaiAnthropicProviderAvailability() )->generation_refusal_reason( $authentication );
+
+		if ( null !== $refusal ) {
+			throw new InvalidArgumentException(
+				'region_pending' === $refusal
+					? 'The zai_anthropic provider refuses generation: the active environment credential is pending revalidation after a region switch.'
+					: 'The zai_anthropic provider refuses generation: the active credential was rejected for the selected endpoint.'
+			);
+		}
 	}
 
 	/**

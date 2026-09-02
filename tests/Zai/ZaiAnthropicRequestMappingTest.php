@@ -777,6 +777,35 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame('Allowed.', $text);
     }
 
+    public function testAnUnboundModelWithInvalidOptionsYieldsTheOptionRejection()
+    {
+        /*
+         * GLM2 #3: the credential gate called getRequestAuthentication()
+         * unguarded, so an unbound model (no wired auth — the direct
+         * ZaiAnthropicProvider::model() path) carrying invalid options
+         * threw the SDK's binding RuntimeException BEFORE validate_request()
+         * could reject them; the OpenAI twin's gate guards exactly this
+         * divergence and is the model for the fix. The gate now skips an
+         * unbound model, so the typed option rejection wins.
+         */
+        $config = ModelConfig::fromArray(array('candidateCount' => 2));
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $model = ZaiAnthropicProvider::model('glm-5.3', $config);
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        // Deliberately NO setRequestAuthentication(): the model is unbound.
+
+        try {
+            $model->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('An unbound model with invalid options must still yield the typed option rejection.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('candidateCount', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testEmptyDeclaredToolNamesAreRejectedBeforeTransport()
     {
         /*
