@@ -11,14 +11,10 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Provider;
 
-use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Common\Exception\RuntimeException;
-use WordPress\AiClient\Providers\ApiBasedImplementation\AbstractApiProvider;
 use WordPress\AiClient\Providers\Contracts\ModelMetadataDirectoryInterface;
 use WordPress\AiClient\Providers\Contracts\ProviderAvailabilityInterface;
 use WordPress\AiClient\Providers\DTO\ProviderMetadata;
-use WordPress\AiClient\Providers\Enums\ProviderTypeEnum;
-use WordPress\AiClient\Providers\Http\Enums\RequestAuthenticationMethod;
 use WordPress\AiClient\Providers\Models\Contracts\ModelInterface;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
@@ -38,7 +34,7 @@ use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
  *
  * @since 0.2.0
  */
-final class ZaiAnthropicProvider extends AbstractApiProvider {
+final class ZaiAnthropicProvider extends AbstractZaiProvider {
 
 	/**
 	 * Connector ID used by core (connectors_ai_zai_anthropic_api_key option
@@ -59,29 +55,6 @@ final class ZaiAnthropicProvider extends AbstractApiProvider {
 	 * @var string
 	 */
 	public const PROVIDER_NAME = 'z.ai (Anthropic API)';
-
-	/**
-	 * Key-management portal for the international region (z.ai).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	public const INTL_CREDENTIALS_URL = 'https://z.ai/manage/apikey/apikey';
-
-	/**
-	 * Key-management portal for the China region (open.bigmodel.cn).
-	 *
-	 * Regions use separate accounts and separate API keys (SPEC §3.3), so
-	 * the advertised link must follow the selected region — a China admin
-	 * sent to the z.ai portal lands on an account their key can never
-	 * live in.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	public const CN_CREDENTIALS_URL = 'https://open.bigmodel.cn/usercenter/apikeys';
 
 	/**
 	 * The canonical base URL: international region, general plan.
@@ -129,72 +102,37 @@ final class ZaiAnthropicProvider extends AbstractApiProvider {
 	}
 
 	/**
-	 * Builds the provider metadata constructor arguments for an SDK version.
-	 *
-	 * Description requires SDK >= 1.2.0 and the logo path SDK >= 1.3.0; both
-	 * are appended only when the given SDK version supports them (the guard
-	 * pattern from the official provider plugin, architecture record 0003).
-	 * The parameter defaults to the detected SDK version and exists so tests
-	 * can cover the minimum and newer metadata shapes.
+	 * The provider's card display name.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param string|null $sdk_version SDK version to build for, or null for AiClient::VERSION.
-	 * @return list<mixed> Positional ProviderMetadata constructor arguments.
+	 * @return string Display name.
 	 */
-	public static function provider_metadata_args( ?string $sdk_version = null ): array {
-		$version = $sdk_version ?? AiClient::VERSION;
-
-		$args = array(
-			self::PROVIDER_ID,
-			self::PROVIDER_NAME,
-			ProviderTypeEnum::cloud(),
-			self::credentials_url(),
-			RequestAuthenticationMethod::apiKey(),
-		);
-
-		if ( version_compare( $version, '1.2.0', '>=' ) ) {
-			$args[] = self::translated_description();
-		}
-
-		if ( version_compare( $version, '1.3.0', '>=' ) ) {
-			$args[] = dirname( __DIR__, 2 ) . '/assets/zai.svg';
-		}
-
-		return $args;
+	protected static function provider_display_name(): string {
+		return self::PROVIDER_NAME;
 	}
 
 	/**
-	 * The key-management URL of the currently selected region's portal.
-	 *
-	 * The zai_anthropic region option is read at metadata-build time
-	 * (provider registration, once per request): like the rest of the
-	 * provider metadata, a region change is reflected from the next request
-	 * on. The zai provider's region selection is never consulted.
+	 * The provider's description text (shared base translates it).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return string Credentials portal URL for the current region.
+	 * @return string Description.
 	 */
-	private static function credentials_url(): string {
-		return 'cn' === ZaiAnthropicPlanRegionSettings::get_region()
-			? self::CN_CREDENTIALS_URL
-			: self::INTL_CREDENTIALS_URL;
-	}
-
-	/**
-	 * Returns the translated provider description.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return string Description text.
-	 */
-	private static function translated_description(): string {
-		if ( \function_exists( '__' ) ) {
-			return __( 'GLM text generation via the z.ai Anthropic-compatible API.', 'zai' );
-		}
-
+	protected static function provider_description(): string {
 		return 'GLM text generation via the z.ai Anthropic-compatible API.';
+	}
+
+	/**
+	 * The currently selected region of THIS provider's settings (the zai
+	 * provider's region selection is never consulted).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return string 'intl' or 'cn'.
+	 */
+	protected static function selected_region(): string {
+		return ZaiAnthropicPlanRegionSettings::get_region();
 	}
 
 	/**

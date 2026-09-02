@@ -33,16 +33,15 @@ use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
-use WordPress\AiClient\Providers\Http\Exception\ClientException;
-use WordPress\AiClient\Providers\Http\Exception\RedirectException;
 use WordPress\AiClient\Providers\Http\Exception\ResponseException;
-use WordPress\AiClient\Providers\Http\Exception\ServerException;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleTextGenerationModel;
 use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
+use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 
 /**
@@ -51,6 +50,7 @@ use Deicod\WpConnectors\Zai\Support\SseAggregator;
  * @since 0.1.0
  */
 final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGenerationModel {
+	use ThrowsSafeHttpErrors;
 
 	/**
 	 * Output MIME types the z.ai surface supports.
@@ -194,47 +194,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
-	 * Throws a SAFE, typed SDK exception when the response is not successful.
-	 *
-	 * The SDK defaults embed the upstream error body in the exception message;
-	 * z.ai error bodies can echo request material (up to and including
-	 * credential fragments). This override builds the message from
-	 * ErrorMapper's shared catalog instead, because this exception travels
-	 * the real dispatch path: core's prompt builder converts it to WP_Error
-	 * passing the message through VERBATIM (no filter on that path), so the
-	 * redaction must already be complete here. The exception TYPES are the
-	 * SDK's own, so core's fixed instanceof mapping keeps producing the
-	 * right code and HTTP status.
-	 *
-	 * No retries in v1: a non-2xx response always throws exactly once.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param Response $response The HTTP response to check.
-	 * @return void
-	 * @throws ClientException   For 4xx responses.
-	 * @throws ServerException   For 5xx responses.
-	 * @throws RedirectException For 3xx responses.
-	 */
-	protected function throwIfNotSuccessful( Response $response ): void {
-		if ( $response->isSuccessful() ) {
-			return;
-		}
-
-		$status = absint( $response->getStatusCode() );
-
-		if ( $status >= 500 ) {
-			throw new ServerException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-		}
-
-		if ( $status >= 400 ) {
-			throw new ClientException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-		}
-
-		throw new RedirectException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-	}
-
-	/**
 	 * Parses non-streaming AND SSE responses into SDK result objects.
 	 *
 	 * A `text/event-stream` response (or a body starting with `data:`) is
@@ -324,7 +283,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	private function validate_request( array $prompt ): void {
 		$config = $this->getConfig();
 
-		$this->reject_unsupported_options( $config->toArray() );
+		/*
+		 * GLM1 #11: the unsupported-option rejection is shared with the
+		 * zai_anthropic surface (was a verbatim twin, one label apart).
+		 */
+		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), 'z.ai' );
 
 		// Multiple candidates are not advertised.
 		if ( null !== $config->getCandidateCount() ) {
@@ -370,43 +333,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			throw new InvalidArgumentException(
 				'The z.ai provider does not support custom options.'
 			);
-		}
-	}
-
-	/**
-	 * Rejects config keys that are not part of the advertised option set.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param array<string, mixed> $config_as_array The model config as an array.
-	 * @return void
-	 * @throws InvalidArgumentException When a non-advertised option carries a value.
-	 */
-	private function reject_unsupported_options( array $config_as_array ): void {
-		$unsupported = array(
-			'presencePenalty'        => 'presence penalty',
-			'frequencyPenalty'       => 'frequency penalty',
-			'topK'                   => 'top-k',
-			'logprobs'               => 'logprobs',
-			'topLogprobs'            => 'top logprobs',
-			'webSearch'              => 'web search',
-			'outputFileType'         => 'output file types',
-			'outputMediaOrientation' => 'output media orientation',
-			'outputMediaAspectRatio' => 'output media aspect ratio',
-			'outputSpeechVoice'      => 'output speech voice',
-		);
-
-		foreach ( $unsupported as $key => $label ) {
-			$value = $config_as_array[ $key ] ?? null;
-
-			if ( null !== $value && array() !== $value && false !== $value ) {
-				throw new InvalidArgumentException(
-					sprintf(
-						'The z.ai provider does not support %s.',
-						$label // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-					)
-				);
-			}
 		}
 	}
 }

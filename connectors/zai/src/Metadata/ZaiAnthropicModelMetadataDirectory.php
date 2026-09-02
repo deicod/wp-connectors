@@ -301,99 +301,14 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			throw ResponseException::fromMissingData( 'z.ai', 'data' );
 		}
 
-		return $this->parse_model_ids( $response, $endpoint->plan() );
-	}
-
-	/**
-	 * Parses a model-list response into chat-capable IDs.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param Response $response The /v1/models response.
-	 * @param string   $plan     The active plan (the discovered list is
-	 *                           intersected with its catalog, Codex R3 #4).
-	 * @return list<string> Chat-capable, in-plan model IDs.
-	 * @throws ResponseException When the response shape is malformed or no
-	 *                           usable chat ID remains.
-	 */
-	private function parse_model_ids( Response $response, string $plan ): array {
-		$data = $response->getData();
-
-		if ( ! \is_array( $data ) || ! isset( $data['data'] ) || ! \is_array( $data['data'] ) ) {
-			throw ResponseException::fromMissingData( 'z.ai', 'data' );
-		}
-
 		/*
-		 * Codex R14 #4: the catalog must be a JSON LIST. The associative
-		 * decode collapses an object-shaped {"data":{"only":{"id":...}}}
-		 * into a PHP array that passes is_array(), and the foreach then
-		 * iterates the object's VALUES as entries — a malformed catalog
-		 * was treated as successful live discovery and cached for 12
-		 * hours. Object-ness oracle (R3 #1 pattern): only a JSON array
-		 * decodes to a PHP list; an object decodes to stdClass. An
-		 * object-shaped data member falls back like every other
-		 * malformed discovery response.
+		 * GLM1 #11: the list parsing (shape checks, has_more rejection,
+		 * chat filter, plan intersection) is SHARED with the zai surface's
+		 * directory via ZaiModelListParser — the two copies had already
+		 * drifted twice (the has_more rejection and the plan intersection
+		 * existed only here).
 		 */
-		$raw_body = json_decode( (string) $response->getBody() );
-		if ( ! \is_object( $raw_body ) || ! isset( $raw_body->data ) || ! \is_array( $raw_body->data ) ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list must be a JSON list.' );
-		}
-
-		/*
-		 * Codex R15 #3 — decision: treat an incomplete page as discovery
-		 * FAILURE (option a) rather than following the after_id cursor. A
-		 * partial catalog with has_more: true would otherwise be cached for
-		 * 12 hours, freezing the directory to one page and dropping known
-		 * in-plan models; cursor-following would add a transport loop to a
-		 * connector whose discovery is opportunistic (the static plan
-		 * catalog is authoritative), so the strict path is to fall back to
-		 * it — the page says it is incomplete, therefore it is not a
-		 * catalog. STRICT bool: a present has_more that is not exactly
-		 * false (string "true", 1, null) is not the documented shape and
-		 * fails the same way.
-		 */
-		if ( \array_key_exists( 'has_more', $data ) && false !== $data['has_more'] ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list reported additional pages.' );
-		}
-
-		$ids = array();
-		foreach ( $data['data'] as $entry ) {
-			if ( ! \is_array( $entry ) || ! isset( $entry['id'] ) || ! \is_string( $entry['id'] ) || '' === $entry['id'] ) {
-				throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Every entry must carry a non-empty string "id".' );
-			}
-
-			$ids[] = $entry['id'];
-		}
-
-		/*
-		 * IDs without known chat support are dropped BEFORE anything is
-		 * cached — advertising them would route them to /v1/messages where
-		 * they cannot work (chat-support evidence lives in the shared
-		 * ZaiModelCatalog, never the family-name grammar).
-		 */
-		$chat_ids = array();
-		foreach ( $ids as $id ) {
-			if ( ZaiModelCatalog::is_chat_model( $id ) ) {
-				$chat_ids[] = $id;
-			}
-		}
-
-		/*
-		 * Codex R3 #4: the live /v1/models route returns the SAME
-		 * full-catalog list on the coding plan (record 0007), but the
-		 * coding subscription exposes only its restricted model set —
-		 * discovered IDs are intersected with the ACTIVE plan's catalog
-		 * before caching, so the coding provider never advertises
-		 * general-only GLM 4.x entries. The general catalog IS the full
-		 * observed list, so the general plan's behavior is unchanged.
-		 */
-		$chat_ids = array_values( array_intersect( $chat_ids, ZaiModelCatalog::ids_for_plan( $plan ) ) );
-
-		if ( array() === $chat_ids ) {
-			throw ResponseException::fromMissingData( 'z.ai', 'data' );
-		}
-
-		return $chat_ids;
+		return ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan() );
 	}
 
 	/**

@@ -273,13 +273,14 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	/**
 	 * Parses an OpenAI-shape model-list response into metadata.
 	 *
-	 * Any malformed shape (missing/non-list `data`, entries without string
-	 * IDs) throws, which sendListModelsRequest() turns into the fallback.
-	 * IDs without known chat support (e.g. a future embedding/image model
-	 * on the general endpoint) are dropped BEFORE metadata is assigned —
-	 * advertising them with full chat capabilities would only route them to
-	 * /chat/completions where they cannot work; a list with no usable chat
-	 * IDs left also throws, yielding the plan fallback.
+	 * GLM1 #11: the list parsing is SHARED with the zai_anthropic surface's
+	 * directory via ZaiModelListParser — the two copies had drifted twice
+	 * (the R15 has_more rejection and the R3 #4 plan intersection existed
+	 * only on the Anthropic side, so this surface advertised general-only
+	 * models on the coding plan and accepted an incomplete page as a
+	 * catalog). Malformed shapes, incomplete pages, and lists with no
+	 * usable in-plan chat IDs throw, which sendListModelsRequest() turns
+	 * into the fallback.
 	 *
 	 * @since 0.1.0
 	 *
@@ -288,41 +289,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * @throws ResponseException When the response shape is malformed.
 	 */
 	protected function parseResponseToModelMetadataList( Response $response ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated abstract method name.
-		$data = $response->getData();
-
-		if ( ! \is_array( $data ) || ! isset( $data['data'] ) || ! \is_array( $data['data'] ) ) {
-			throw ResponseException::fromMissingData( 'z.ai', 'data' );
-		}
-
-		/*
-		 * R14 verifier twin (of Codex R14 #4, fixed on the anthropic
-		 * surface in the same round): the catalog must be a JSON LIST. The
-		 * associative decode collapses an object-shaped
-		 * {"data":{"only":{"id":...}}} into a PHP array that passes
-		 * is_array(), and the foreach then iterates the object's VALUES as
-		 * entries — a malformed catalog was treated as successful live
-		 * discovery and cached. Object-ness oracle (R3 #1 pattern): only a
-		 * JSON array decodes to a PHP list; an object decodes to stdClass.
-		 */
-		$raw_body = json_decode( (string) $response->getBody() );
-		if ( ! \is_object( $raw_body ) || ! isset( $raw_body->data ) || ! \is_array( $raw_body->data ) ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list must be a JSON list.' );
-		}
-
-		$ids = array();
-		foreach ( $data['data'] as $entry ) {
-			if ( ! \is_array( $entry ) || ! isset( $entry['id'] ) || ! \is_string( $entry['id'] ) || '' === $entry['id'] ) {
-				throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Every entry must carry a non-empty string "id".' );
-			}
-
-			$ids[] = $entry['id'];
-		}
-
-		$ids = $this->filter_chat_ids( $ids );
-
-		if ( array() === $ids ) {
-			throw ResponseException::fromMissingData( 'z.ai', 'data' );
-		}
+		$ids = ZaiModelListParser::parse_chat_ids( $response, ZaiEndpoint::for_current_settings()->plan() );
 
 		$models = array();
 		foreach ( $ids as $id ) {

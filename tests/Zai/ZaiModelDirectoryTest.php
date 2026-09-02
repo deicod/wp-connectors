@@ -148,7 +148,13 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             return $m->getId();
         }, $first->listModelMetadata());
 
-        $this->assertCount(10, $ids);
+        /*
+         * GLM1 #11 drift closure: discovery on the coding plan is
+         * intersected with the plan catalog (previously zai-surface-only),
+         * so the full 10-model observed list keeps exactly the coding
+         * plan's GLM 5.x set, sorted newest-first.
+         */
+        $this->assertSame(array('glm-5.3', 'glm-5.3-flash', 'glm-5.2', 'glm-5.1', 'glm-5', 'glm-5-turbo'), $ids);
         $attempts = $this->sdkHttpAttempts();
         $this->assertCount(1, $attempts);
         $this->assertSame('https://api.z.ai/api/coding/paas/v4/models', $attempts[0]['url']);
@@ -212,6 +218,40 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             'Discovery must degrade to the plan fallback while the credential carries an invalid verdict.'
         );
         $this->assertNoHttpRequests();
+    }
+
+    public function testAPaginatedDiscoveryPageFallsBackAndIsNotCached()
+    {
+        /*
+         * Code-review GLM1 #11 (drift closure): the R15 has_more rejection
+         * existed only on the zai_anthropic side's parser — the shared
+         * parsing now applies it to BOTH surfaces: an incomplete page is
+         * not a catalog, so it must fall back and never reach the
+         * positive cache.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"object":"list","data":[{"id":"glm-5.3"}],"has_more":true,"first_id":"glm-5.3","last_id":"glm-5.3"}');
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()), 'A paginated page must fall back to the plan catalog.');
+        $this->assertFalse(get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl')), 'A paginated page must not be positively cached.');
+    }
+
+    public function testCodingPlanDiscoveryIsIntersectedWithThePlanCatalog()
+    {
+        /*
+         * Code-review GLM1 #11 (drift closure): the R3 #4 plan
+         * intersection existed only on the zai_anthropic side — the OpenAI
+         * surface advertised general-only models on the coding plan. The
+         * shared parsing intersects BOTH surfaces with the ACTIVE plan's
+         * catalog before anything is cached.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-4.7', 'glm-4.5')));
+
+        $ids = $this->idList($this->directory()->listModelMetadata());
+
+        $this->assertSame(array('glm-5.3'), $ids, 'General-only GLM 4.x entries must not be advertised on the coding plan.');
+        $this->assertSame(array('glm-5.3'), array_values((array) get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl'))), 'The cache must hold the intersected list.');
     }
 
     public function testDiscoveryCacheExpires()
