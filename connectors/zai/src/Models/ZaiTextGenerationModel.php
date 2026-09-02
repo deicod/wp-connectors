@@ -40,6 +40,7 @@ use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
+use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
@@ -52,15 +53,6 @@ use Deicod\WpConnectors\Zai\Support\SseAggregator;
  */
 final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGenerationModel {
 	use ThrowsSafeHttpErrors;
-
-	/**
-	 * Output MIME types the z.ai surface supports.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var list<string>
-	 */
-	const SUPPORTED_OUTPUT_MIME_TYPES = array( 'text/plain', 'application/json' );
 
 	/**
 	 * Builds the request against the CURRENT plan/region endpoint.
@@ -302,50 +294,13 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 */
 		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), 'z.ai' );
 
-		// Multiple candidates are not advertised.
-		if ( null !== $config->getCandidateCount() ) {
-			throw new InvalidArgumentException(
-				'The z.ai provider does not support candidateCount (multiple candidates).'
-			);
-		}
-
-		// Output modalities: text only.
-		$output_modalities = $config->getOutputModalities();
-		if ( \is_array( $output_modalities ) ) {
-			foreach ( $output_modalities as $modality ) {
-				if ( ! $modality->isText() ) {
-					throw new InvalidArgumentException(
-						'The z.ai provider only supports text output modalities.'
-					);
-				}
-			}
-		}
-
-		// Structured output only in the two advertised MIME types.
-		$output_mime_type = $config->getOutputMimeType();
-		if ( null !== $output_mime_type && ! \in_array( $output_mime_type, self::SUPPORTED_OUTPUT_MIME_TYPES, true ) ) {
-			throw new InvalidArgumentException(
-				'The z.ai provider supports outputMimeType values text/plain and application/json only.'
-			);
-		}
-
-		// Text-only input: no file (image/audio/document) parts in any message.
-		foreach ( $prompt as $message ) {
-			foreach ( $message->getParts() as $part ) {
-				if ( $part->getType()->isFile() ) {
-					throw new InvalidArgumentException(
-						'The z.ai provider only supports text input in v1; file (image/audio/document) message parts are rejected.'
-					);
-				}
-			}
-		}
-
-		// Custom options are not advertised; passing them is rejected rather
-		// than silently forwarded to the API.
-		if ( array() !== $config->getCustomOptions() ) {
-			throw new InvalidArgumentException(
-				'The z.ai provider does not support custom options.'
-			);
-		}
+		/*
+		 * GLM2 #9: the five usage rejections the two surfaces advertise
+		 * IDENTICALLY (candidateCount, text-only output modalities, the
+		 * MIME whitelist, text-only input, custom options) are shared too
+		 * — they were verbatim twins directly under this call, the exact
+		 * duplication pattern the guard above was extracted to stop.
+		 */
+		AdvertisedUsageGuard::reject_unsupported( $config, $prompt, 'z.ai' );
 	}
 }

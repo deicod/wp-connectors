@@ -54,6 +54,7 @@ use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
+use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
@@ -79,15 +80,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @var int
 	 */
 	public const DEFAULT_MAX_TOKENS = 4096;
-
-	/**
-	 * Output MIME types the z.ai Anthropic surface supports.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var list<string>
-	 */
-	const SUPPORTED_OUTPUT_MIME_TYPES = array( 'text/plain', 'application/json' );
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.
@@ -1524,12 +1516,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 */
 		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), 'zai_anthropic' );
 
-		// Multiple candidates are not advertised.
-		if ( null !== $config->getCandidateCount() ) {
-			throw new InvalidArgumentException(
-				'The zai_anthropic provider does not support candidateCount (multiple candidates).'
-			);
-		}
+		/*
+		 * GLM2 #9: the five usage rejections the two surfaces advertise
+		 * IDENTICALLY (candidateCount, text-only output modalities, the
+		 * MIME whitelist, text-only input, custom options) are shared too
+		 * — they were verbatim twins directly under this call, the exact
+		 * duplication pattern the guard above was extracted to stop.
+		 */
+		AdvertisedUsageGuard::reject_unsupported( $config, $prompt, 'zai_anthropic' );
 
 		// max_tokens is required and must be positive; a zero/negative value
 		// would be a protocol error upstream.
@@ -1564,45 +1558,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		if ( null !== $top_p && ( \is_nan( $top_p ) || $top_p < 0 || $top_p > 1 ) ) {
 			throw new InvalidArgumentException(
 				'The zai_anthropic provider requires top_p between 0 and 1 (the Anthropic Messages protocol range).'
-			);
-		}
-
-		// Output modalities: text only.
-		$output_modalities = $config->getOutputModalities();
-		if ( \is_array( $output_modalities ) ) {
-			foreach ( $output_modalities as $modality ) {
-				if ( ! $modality->isText() ) {
-					throw new InvalidArgumentException(
-						'The zai_anthropic provider only supports text output modalities.'
-					);
-				}
-			}
-		}
-
-		// Structured output only in the two advertised MIME types.
-		$output_mime_type = $config->getOutputMimeType();
-		if ( null !== $output_mime_type && ! \in_array( $output_mime_type, self::SUPPORTED_OUTPUT_MIME_TYPES, true ) ) {
-			throw new InvalidArgumentException(
-				'The zai_anthropic provider supports outputMimeType values text/plain and application/json only.'
-			);
-		}
-
-		// Text-only input: no file (image/audio/document) parts in any message.
-		foreach ( $prompt as $message ) {
-			foreach ( $message->getParts() as $part ) {
-				if ( $part->getType()->isFile() ) {
-					throw new InvalidArgumentException(
-						'The zai_anthropic provider only supports text input in v1; file (image/audio/document) message parts are rejected.'
-					);
-				}
-			}
-		}
-
-		// Custom options are not advertised; passing them is rejected rather
-		// than silently forwarded to the API.
-		if ( array() !== $config->getCustomOptions() ) {
-			throw new InvalidArgumentException(
-				'The zai_anthropic provider does not support custom options.'
 			);
 		}
 
