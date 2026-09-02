@@ -254,6 +254,53 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame(array('glm-5.3'), array_values((array) get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl'))), 'The cache must hold the intersected list.');
     }
 
+    public function testAConcurrentPlanSaveDuringTheRoundTripDoesNotReTargetTheParse()
+    {
+        /*
+         * GLM3 #10: parseResponseToModelMetadataList() re-resolved the
+         * CURRENT settings at parse time, so a plan save landing during
+         * the HTTP round-trip filtered the coding endpoint's response
+         * with the GENERAL catalog and cached the wrong (general-only)
+         * list under the coding endpoint's key for the 12h TTL. The
+         * endpoint is now captured at request time — the Anthropic
+         * twin's semantics for this surface's SDK-mediated flow. The
+         * plan save is injected mid-round-trip by a wrapping transporter.
+         */
+        $this->selectEndpoint('coding', 'intl');
+
+        $inner = AiClient::defaultRegistry()->getHttpTransporter();
+        $directory = new ZaiModelMetadataDirectory();
+        $directory->setHttpTransporter(new class($inner) implements \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface {
+            private $inner;
+
+            public function __construct($inner)
+            {
+                $this->inner = $inner;
+            }
+
+            public function send(\WordPress\AiClient\Providers\Http\DTO\Request $request, ?\WordPress\AiClient\Providers\Http\DTO\RequestOptions $options = null): \WordPress\AiClient\Providers\Http\DTO\Response
+            {
+                // The concurrent save lands after the request was built
+                // against the coding endpoint, before the response parses.
+                update_option(PlanRegionSettings::OPTION_PLAN, 'general');
+
+                return $this->inner->send($request, $options);
+            }
+        });
+        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-4.7', 'glm-4.5')));
+
+        $ids = $this->idList($directory->listModelMetadata());
+
+        $this->assertSame(array('glm-5.3'), $ids, 'The coding endpoint must keep its plan intersection despite the mid-flight plan save.');
+        $this->assertSame(
+            array('glm-5.3'),
+            array_values((array) get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl'))),
+            'The coding endpoint cache must hold the coding-intersected list.'
+        );
+    }
+
     public function testDiscoveryCacheExpires()
     {
         $this->freezeTime(1700000000);

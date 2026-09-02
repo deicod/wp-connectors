@@ -118,6 +118,23 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	}
 
 	/**
+	 * The endpoint captured at discovery REQUEST time (GLM3 #10).
+	 *
+	 * Set by sendListModelsRequest() immediately before the SDK's
+	 * synchronous request/parse call and cleared after; read by
+	 * createRequest() and parseResponseToModelMetadataList() so a
+	 * concurrent plan/region save during the HTTP round-trip cannot
+	 * retarget the URL or the plan filter out from under the response
+	 * — matching the zai_anthropic twin, whose own HTTP flow passes the
+	 * captured $endpoint->plan() explicitly.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var ZaiEndpoint|null
+	 */
+	private $discovery_endpoint;
+
+	/**
 	 * Scopes the SDK-level cache key to the CURRENT endpoint.
 	 *
 	 * The SDK wraps sendListModelsRequest() in its own cache
@@ -190,9 +207,17 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * @return Request
 	 */
 	protected function createRequest( HttpMethodEnum $method, string $path, array $headers = array(), $data = null ): Request {
+		/*
+		 * GLM3 #10: while a discovery request is in flight, the endpoint
+		 * CAPTURED at request time is authoritative — the current-settings
+		 * read stays for any defensive direct call outside the discovery
+		 * flow.
+		 */
+		$endpoint = $this->discovery_endpoint ?? ZaiEndpoint::for_current_settings();
+
 		return new Request(
 			$method,
-			ZaiEndpoint::for_current_settings()->api_url( $path ),
+			$endpoint->api_url( $path ),
 			$headers,
 			$data
 		);
@@ -248,6 +273,17 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 				throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Discovery skipped: the credential is pending revalidation or was rejected for this endpoint.' );
 			}
 
+			/*
+			 * GLM3 #10: capture the endpoint at REQUEST time. The SDK's
+			 * synchronous call below builds the request (createRequest())
+			 * and parses the response (parseResponseToModelMetadataList());
+			 * a concurrent settings save during the HTTP round-trip must
+			 * not make either judge by the NEW plan/region — the response
+			 * is the OLD endpoint's, and the result is cached under the
+			 * OLD endpoint's key below.
+			 */
+			$this->discovery_endpoint = $endpoint;
+
 			// Parent performs the HTTP request (against the resolved endpoint),
 			// throws on non-2xx, and parses via parseResponseToModelMetadataList().
 			$discovered = parent::sendListModelsRequest();
@@ -262,6 +298,9 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 			set_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX, true, self::NEGATIVE_TTL );
 
 			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
+		} finally {
+			// GLM3 #10: the capture scopes to this one request/parse cycle.
+			$this->discovery_endpoint = null;
 		}
 
 		$ids = array_keys( $discovered );
@@ -289,7 +328,21 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * @throws ResponseException When the response shape is malformed.
 	 */
 	protected function parseResponseToModelMetadataList( Response $response ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated abstract method name.
-		$ids = ZaiModelListParser::parse_chat_ids( $response, ZaiEndpoint::for_current_settings()->plan() );
+
+		/*
+		 * GLM3 #10: the plan filter uses the endpoint CAPTURED at request
+		 * time (sendListModelsRequest() sets it; the zai_anthropic twin
+		 * passes its captured $endpoint->plan() explicitly through its own
+		 * HTTP flow). Re-resolving the current settings HERE let a
+		 * concurrent plan save during the HTTP round-trip filter the old
+		 * endpoint's response with the NEW plan's catalog and cache the
+		 * wrong list under the old endpoint's key for the 12h TTL. The
+		 * current-settings fallback covers any defensive direct call
+		 * outside the discovery flow.
+		 */
+		$endpoint = $this->discovery_endpoint ?? ZaiEndpoint::for_current_settings();
+
+		$ids = ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan() );
 
 		$models = array();
 		foreach ( $ids as $id ) {
