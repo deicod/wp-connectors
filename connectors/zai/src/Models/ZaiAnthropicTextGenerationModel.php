@@ -1016,8 +1016,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$role = MessageRoleEnum::model();
 
-		$parts         = array();
-		$seen_tool_ids = array();
+		$parts            = array();
+		$seen_tool_ids    = array();
+		$dropped_unmapped = false;
 		foreach ( $data['content'] as $index => $part_data ) {
 			if ( ! \is_array( $part_data ) ) {
 				throw ResponseException::fromInvalidData( 'z.ai', 'content', 'Every content entry must be an object.' );
@@ -1049,6 +1050,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			if ( null !== $part ) {
 				$parts[] = $part;
+			} else {
+				// A known-but-unmapped block was dropped (see the
+				// KNOWN LIMITATION note in parse_content_block()).
+				$dropped_unmapped = true;
 			}
 		}
 
@@ -1077,7 +1082,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		if ( ( 'tool_use' === $data['stop_reason'] ) !== $has_tool_call ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'stop_reason', 'The stop reason did not match the response content.' );
+			/*
+			 * Code-review #15 (diagnosability only — no new rejections):
+			 * when unmapped block types were dropped, say so in the
+			 * message; a content-only-dropped-blocks response is otherwise
+			 * indistinguishable from a corrupt stop_reason.
+			 */
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'stop_reason',
+				$dropped_unmapped
+					? 'The stop reason did not match the response content (unmapped block types were dropped).'
+					: 'The stop reason did not match the response content.'
+			);
 		}
 
 		$candidates = array(
@@ -1258,7 +1275,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			case 'redacted_thinking':
 			case 'server_tool_use':
 			case 'web_search_tool_result':
-				// Provider-internal blocks carry no SDK representation.
+				/*
+				 * KNOWN LIMITATION (code-review #15, documented not fixed):
+				 * these provider-internal block types carry no SDK
+				 * representation and are silently DROPPED. Accepted as of
+				 * 2026-09-01 because they are an upstream quirk — this
+				 * connector's own requests send client function tools
+				 * only, so it cannot trigger server_tool_use /
+				 * web_search_tool_result / redacted_thinking itself. The
+				 * failure surface stays typed, never silent-empty: a
+				 * response whose content is ONLY unmapped blocks produces
+				 * no parts, which the stop-reason/content consistency
+				 * check below rejects as a ResponseException
+				 * (zai_invalid_response) whose message names the dropped
+				 * blocks when that was the case. The streamed path drops
+				 * the same shapes earlier (see the aggregator's
+				 * content_block_payload()).
+				 */
 				return null;
 		}
 

@@ -88,6 +88,20 @@ token-limit error path). Usage uses `input_tokens`/`output_tokens` as
 mapped. `claude-glm`'s `glm-5.3[1m]` IDs work only through Claude Code's
 own flow — the plugin advertises the plain IDs the API itself lists.
 
+**Known limitation — unmapped content block types (documented, not
+fixed; code review 2026-09-02):** `server_tool_use`,
+`web_search_tool_result`, and `redacted_thinking` blocks carry no SDK
+representation and are silently dropped by the response mapping (the
+SSE aggregator drops any unknown block type the same way). Accepted
+because this is an upstream quirk the connector cannot trigger itself —
+its requests send client function tools only (as of 2026-09-01 no live
+response has carried these types). The failure surface stays typed, never
+silent-empty: a response whose content consists ONLY of unmapped blocks
+produces no parts and is rejected by the stop-reason/content consistency
+check as `zai_invalid_response`, with the message naming the dropped
+blocks when that was the case. Revisit if z.ai starts emitting
+server-side tool blocks on this surface.
+
 ## Consequences
 
 - `ZaiAnthropicEndpoint::MESSAGES_ROUTE_BY_PLAN` = coding `/messages`,

@@ -534,8 +534,12 @@ final class AnthropicSseAggregator {
 				);
 		}
 
-		// Unknown block types (server tool use, search results, future
-		// additions) are dropped rather than mis-mapped.
+		/*
+		 * Unknown block types (server tool use, search results, future
+		 * additions) are dropped rather than mis-mapped — the streamed half
+		 * of the KNOWN LIMITATION documented at the model's
+		 * parse_content_block() drop site (code-review #15).
+		 */
 		return null;
 	}
 
