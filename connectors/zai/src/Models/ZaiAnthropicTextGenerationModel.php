@@ -987,9 +987,27 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	protected function parseResponseToGenerativeAiResult( Response $response ): GenerativeAiResult {
 		$body = (string) $response->getBody();
 
+		/*
+		 * GLM3 #5: when the gateway omits (or mangles) the
+		 * text/event-stream Content-Type, this sniff decides the parser —
+		 * and it recognized only 'event:'/'data:' as the first
+		 * non-whitespace bytes. A legal SSE comment line (': keepalive')
+		 * or a UTF-8 BOM before the first field misrouted the stream to
+		 * the JSON parser, which failed with 'Missing the "content" key'
+		 * instead of returning the aggregated completion. The sniff skips
+		 * a leading BOM (the aggregator strips its own copy, GLM3 #7) and
+		 * also accepts a comment line: ':' can only be SSE framing — a
+		 * JSON body never starts with one.
+		 */
+		$sniff = ltrim( $body, " \t\r\n" );
+		if ( 0 === strpos( $sniff, "\xEF\xBB\xBF" ) ) {
+			$sniff = ltrim( substr( $sniff, 3 ), " \t\r\n" );
+		}
+
 		$is_event_stream = false !== stripos( (string) $response->getHeaderAsString( 'Content-Type' ), 'text/event-stream' )
-			|| 0 === strpos( ltrim( $body ), 'event:' )
-			|| 0 === strpos( ltrim( $body ), 'data:' );
+			|| 0 === strpos( $sniff, 'event:' )
+			|| 0 === strpos( $sniff, 'data:' )
+			|| 0 === strpos( $sniff, ':' );
 
 		if ( ! $is_event_stream ) {
 			return $this->parse_message_body( $response );

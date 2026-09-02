@@ -301,6 +301,63 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('msg_s_bom', $result->getId());
     }
 
+    public function testAStreamOpeningWithACommentLineIsSniffedAsEventStream()
+    {
+        /*
+         * GLM3 #5: without the event-stream Content-Type, the body sniff
+         * decided the parser — and a legal SSE comment line
+         * (': keepalive') as the first non-whitespace content was not a
+         * recognized prefix, so the stream misrouted to the JSON parser
+         * and failed with 'Missing the "content" key' instead of
+         * returning the aggregated completion.
+         */
+        $body = ': keepalive' . "\n\n" . implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_s_cmt","role":"assistant","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Comment-tolerant."}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array(), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Comment-tolerant.', $result->toText());
+    }
+
+    public function testABomPrefixedStreamWithoutTheContentTypeIsSniffedAsEventStream()
+    {
+        // GLM3 #5 + GLM3 #7: a BOM before the first field must not
+        // misroute the body to the JSON parser when the header is
+        // missing; the aggregator then strips the BOM itself.
+        $body = "\xEF\xBB\xBF" . implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_s_bom2","role":"assistant","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Sniffed anyway."}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array(), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Sniffed anyway.', $result->toText());
+    }
+
     public function testParsesToolUseAndFinishReason()
     {
         $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
