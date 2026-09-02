@@ -710,6 +710,43 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertArrayNotHasKey('stop_sequences', $body, 'An empty stop_sequences array must be omitted, not forwarded.');
     }
 
+    /**
+     * @dataProvider provideMalformedStopSequences
+     */
+    public function testMalformedStopSequenceEntriesAreRejectedBeforeTransport(array $sequences)
+    {
+        /*
+         * GLM3 #3: the SDK setter checks only list-ness, so non-string
+         * and empty-string entries reached the wire and failed upstream
+         * with the generic misattributed 400 message — the typed
+         * pre-transport rejection applies to every entry, like the
+         * neighboring malformed-input checks.
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setStopSequences($sequences);
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('Malformed stop sequence entries must be rejected before transport: ' . wp_json_encode($sequences));
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('requires every stop sequence to be a non-empty string', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function provideMalformedStopSequences()
+    {
+        return array(
+            'integer entry' => array(array(0)),
+            'empty string entry' => array(array('')),
+            'null after a valid entry' => array(array('END', null)),
+            'list entry' => array(array(array('END'))),
+        );
+    }
+
     public function testGenerationIsRefusedWhileTheCredentialIsRegionPending()
     {
         /*

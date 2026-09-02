@@ -283,6 +283,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 */
 		$stop_sequences = $config->getStopSequences();
 		if ( \is_array( $stop_sequences ) && array() !== $stop_sequences ) {
+			/*
+			 * GLM3 #3: the SDK setter checks only LIST-ness, so a
+			 * non-string or empty-string entry ([0], [''], ['END', null])
+			 * reached the wire verbatim and failed upstream with the
+			 * generic misattributed client-error message instead of the
+			 * typed pre-transport rejection every neighboring malformed
+			 * input (empty tool names, NAN temperature, list-shaped tool
+			 * args) already receives. Per-element validation, first
+			 * bad entry wins.
+			 */
+			foreach ( $stop_sequences as $sequence ) {
+				if ( ! \is_string( $sequence ) || '' === $sequence ) {
+					throw new InvalidArgumentException(
+						'The zai_anthropic provider requires every stop sequence to be a non-empty string.'
+					);
+				}
+			}
+
 			$params['stop_sequences'] = $stop_sequences;
 		}
 
