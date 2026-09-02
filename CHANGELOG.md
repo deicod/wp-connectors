@@ -6,6 +6,107 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM3 code review)
+
+- An inbound turn with zero translatable parts no longer parses as a
+  successful generation: the parser accepted an empty text block
+  (`{"type":"text","text":""}`) and thinking-only turns, but the
+  outbound mapper drops exactly those parts and rejects the turn on
+  replay — one such response permanently poisoned the conversation
+  history, and every later request in that conversation failed
+  pre-transport until the turn was removed (the streamed path shared
+  the gap). The parser now applies the outbound contract at parse time:
+  a turn that cannot be replayed cannot be a generation.
+
+- A response whose content list is empty or consists only of unmapped
+  block types no longer parses as a SUCCESS with zero parts: the
+  stop-reason/content consistency check cross-checked `tool_use` alone,
+  contradicting the guarantee documented at the `parse_content_block()`
+  drop site — consumers hit the SDK's untyped `toText()`
+  RuntimeException instead of the typed `zai_invalid_response` channel.
+  Zero-part responses now reject regardless of the stop reason, with a
+  message naming the dropped blocks when that was the case. One pinned
+  tolerance is preserved: `content:[]` under `stop_reason` `refusal` is
+  the protocol's pre-output-refusal shape and keeps surfacing as a
+  successful `contentFilter` result.
+
+- Stop sequences are validated per element before transport: entries
+  were only checked for list-ness, so a non-string or empty-string
+  entry (`[0]`, `['']`, `['END', null]`) reached the wire verbatim and
+  failed upstream with the generic misattributed client-error message
+  instead of the typed `zai_invalid_request` rejection every
+  neighboring malformed input already receives.
+
+- Invalid-UTF-8 strings in text parts, the system instruction, and stop
+  sequences are rejected before transport via the raw `json_encode()`
+  oracle — the same primitive the SDK transport's request-body encode
+  throws on (`mb_check_encoding()` was considered and rejected:
+  WordPress does not require ext-mbstring; core's `wp_json_encode()`
+  was rejected too after the verifier round confirmed empirically that
+  its sanity fallback lossily rescues invalid UTF-8 and never returns
+  `false` for a string, which would have made the guards dead code in
+  production). Previously these strings detonated as a raw
+  `JsonException` in the transport's whole-request encode and surfaced
+  as the generic 500 `zai_error` while the same unencodable value in a
+  tool result got the precise typed 400 rejection.
+
+- A stream-shaped body opening with a legal SSE comment line
+  (`: keepalive`) or a UTF-8 BOM is no longer misrouted to the JSON
+  parser when the gateway omits or mangles the `text/event-stream`
+  Content-Type (it failed with `Missing the "content" key` instead of
+  returning the aggregated completion): the body sniff recognizes a
+  leading comment line — `:` can only be SSE framing, a JSON body never
+  starts with one — and skips a leading BOM.
+
+- Trailing frames after `message_stop` are routed by their `event:`
+  name: the keepalive whitelist matched only data payloads decoding to
+  exactly `{"type":"ping"}`, so a type-less ping (`event: ping` +
+  `data: {}`), an OpenAI-style `data: [DONE]` sentinel appended by a
+  gateway, or an error event all marked the stream malformed and
+  discarded an otherwise fully-received generation. Pings and `[DONE]`
+  sentinels are now tolerated, error events set the error flag (the
+  typed stream-error message, not the generic corruption one), and
+  every other post-termination frame is still corrupt; where both the
+  event name and the payload type declare, they must agree.
+
+- A leading UTF-8 BOM prepended by a gateway/CDN is stripped once at
+  stream start in the shared SSE frame splitter (both surfaces
+  inherit): the BOM previously glued itself to the first frame, which
+  then matched no `data:`/`event:` prefix and was silently dropped —
+  not even counted malformed — so a single-event stream aggregated to
+  null and a multi-event stream lost its first delta. A BOM split
+  across chunks is held until its bytes disambiguate; a mid-stream BOM
+  stays frame content.
+
+- The settings-save guard requires a string `option_page` before
+  calling `sanitize_key()`, and the harness's `sanitize_key` stub now
+  mirrors core exactly (scalar-only sanitization, no string coercion,
+  the `sanitize_key` filter firing with the raw value). Verified
+  against core source: `sanitize_key()` guards with `is_scalar()` and
+  returns `''` for non-scalars, so there is no production TypeError —
+  the defect was the stub's `(string)` cast silently masking array
+  POSTs (`option_page[]=x`), which a `FoundationHarnessTest` fidelity
+  pin now prevents from recurring.
+
+- A foreign (non-API-key) request-authentication wiring on the
+  zai_anthropic surface no longer surfaces as a 400
+  `zai_invalid_request` thrown before option validation: the credential
+  gate consulted its protocol-wrapping `getRequestAuthentication()`
+  override, whose `wrap()` threw through the gate's
+  RuntimeException-only catch. The gate now reads the raw wired
+  instance (the OpenAI twin's instanceof early-return pattern), and
+  `wrap()` refuses foreign wiring with the binding-family
+  `RuntimeException` — so wherever a wiring failure eventually surfaces
+  (model request-build, directory discovery, availability probe) it
+  maps to 500 `zai_error`, never the caller-input 400 channel.
+
+- OpenAI-surface model discovery parses and caches with the endpoint
+  captured at request time, matching the zai_anthropic twin: the parse
+  re-resolved the current settings, so a plan save landing during the
+  HTTP round-trip filtered the old endpoint's response with the new
+  plan's catalog and cached the wrong list under the old endpoint's key
+  for the 12-hour discovery TTL.
+
 ### Fixed (zai / M2 — GLM2 code review)
 
 - A conversation history ending on an assistant turn with unanswered
