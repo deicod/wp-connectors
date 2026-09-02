@@ -592,22 +592,31 @@ final class AnthropicSseAggregator {
 		}
 
 		/*
-		 * Codex R8 #2: after message_stop terminated the stream, only
-		 * keepalive traffic (comments and pings) may follow. Any other
-		 * data frame is a corrupt post-termination event.
+		 * Codex R8 #2: message_stop is TERMINAL — frames after it may not
+		 * touch the completed generation.
 		 *
-		 * GLM3 #6: the keepalive whitelist matched only data payloads
-		 * decoding to exactly {"type":"ping"} — it ignored the frame's
-		 * event: name, so a type-less ping ('event: ping' + 'data: {}'),
-		 * an OpenAI-style 'data: [DONE]' sentinel appended by a gateway,
-		 * and error events all set malformed_event and discarded an
-		 * otherwise fully-received generation. Trailing frames are now
-		 * ROUTED BY EVENT NAME (the payload's own type member decides
-		 * only for event-less frames, and where BOTH declare they must
-		 * agree — the Codex R7 #6 rule): pings and [DONE] sentinels are
-		 * ignored; an error event sets the error flag so the model
-		 * surfaces its fixed typed error message instead of the generic
-		 * stream-corruption one; anything else is still corrupt.
+		 * GLM3 #6 routed trailing frames by event name instead of a
+		 * payload-only whitelist. GLM4 #6 completes that: trailing frames
+		 * are judged by the SAME RULES the main path applies, then one
+		 * post-termination policy:
+		 *
+		 * - the Codex R7 #6 agreement rule runs here too (event: field
+		 *   and payload type member must agree when both are present —
+		 *   the previous copy accepted a trailing 'event: error'
+		 *   regardless of a contradicting payload type);
+		 * - an undecodable payload invalidates ONLY when a DECLARED event
+		 *   name vouched for the frame (the main-path split);
+		 * - an error event (either declaration) sets the error flag — the
+		 *   model surfaces its fixed typed error message;
+		 * - a frame DECLARING any other known content-bearing event
+		 *   (message_start, content_block_*, message_delta, a second
+		 *   message_stop) would mutate a completed generation and stays
+		 *   corrupt;
+		 * - everything else — pings, [DONE] sentinels, and UNKNOWN event
+		 *   names or payload types (a future benign telemetry/heartbeat
+		 *   frame an intermediary may append, the same forward-compat
+		 *   class GLM3 #6 fixed) — no longer invalidates an otherwise
+		 *   fully-received generation.
 		 */
 		if ( $this->terminated && '' !== trim( implode( "\n", $data_lines ) ) ) {
 			$trailing = implode( "\n", $data_lines );
@@ -618,35 +627,53 @@ final class AnthropicSseAggregator {
 				return;
 			}
 
-			$probe        = json_decode( $trailing, true );
-			$payload_type = \is_array( $probe ) && isset( $probe['type'] ) && \is_string( $probe['type'] ) ? $probe['type'] : '';
+			$probe = json_decode( $trailing, true );
 
-			if ( \is_string( $event_name ) ) {
-				if ( 'ping' === $event_name ) {
-					// Event-declared ping: the payload may be type-less
-					// ('{}') or agree; a contradicting payload type falls
-					// through to the corrupt verdict below.
-					if ( '' === $payload_type || 'ping' === $payload_type ) {
-						return;
-					}
-				} elseif ( 'error' === $event_name ) {
-					// The payload is deliberately not retained; the model
-					// surfaces the fixed, redacted error message.
-					$this->error = true;
+			if ( ! \is_array( $probe ) ) {
+				// Undecodable: the main path counts it malformed and only
+				// invalidates when a DECLARED event name vouched for the
+				// frame; an event-less or unknown-named trailing frame is
+				// noise, not corruption of the completed generation.
+				++$this->malformed;
 
-					return;
+				if ( \is_string( $event_name ) && \in_array( $event_name, self::DECLARED_EVENTS, true ) ) {
+					$this->malformed_event = true;
 				}
-			} elseif ( 'ping' === $payload_type ) {
+
 				return;
-			} elseif ( 'error' === $payload_type ) {
+			}
+
+			$payload_type = isset( $probe['type'] ) && \is_string( $probe['type'] ) ? $probe['type'] : '';
+
+			// Codex R7 #6 agreement rule, shared with the main path.
+			if ( \is_string( $event_name ) && '' !== $payload_type && $event_name !== $payload_type ) {
+				++$this->malformed;
+				$this->malformed_event = true;
+
+				return;
+			}
+
+			$type = \is_string( $event_name ) ? $event_name : $payload_type;
+
+			if ( 'error' === $type ) {
+				// The payload is deliberately not retained; the model
+				// surfaces the fixed, redacted error message.
 				$this->error = true;
 
 				return;
 			}
 
-			++$this->malformed;
-			$this->malformed_event = true;
+			if ( \in_array( $type, self::DECLARED_EVENTS, true ) ) {
+				// A declared content-bearing event after the terminal
+				// message_stop would mutate a completed generation.
+				++$this->malformed;
+				$this->malformed_event = true;
 
+				return;
+			}
+
+			// Pings and unknown (future/intermediary) event names:
+			// benign trailing noise — the completed generation stands.
 			return;
 		}
 

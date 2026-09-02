@@ -1488,6 +1488,73 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAnUnknownEventAfterMessageStopDoesNotInvalidateTheCompletedGeneration()
+    {
+        /*
+         * GLM4 #6: the post-termination whitelist matched only its
+         * private keepalive entries — any trailing event name outside
+         * them (a future benign telemetry/heartbeat frame an
+         * intermediary appends) set malformed_event and discarded an
+         * otherwise FULLY-RECEIVED generation. Unknown trailing events
+         * are benign noise now; only frames DECLARING a known
+         * content-bearing event (or a genuine error event) still
+         * invalidate.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pt7","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: telemetry' . "\n"
+            . 'data: {"type":"telemetry","span":"abc123"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    public function testAnErrorDeclaredFrameWithAContradictingPayloadAfterMessageStopInvalidates()
+    {
+        /*
+         * GLM4 #6 (Codex R7 #6 agreement rule now shared by the trailing
+         * path): the old trailing copy accepted 'event: error' regardless
+         * of a contradicting payload type — the main path rejects exactly
+         * this contradiction. Corrupt verdict, not the error flag.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pt8","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: error' . "\n"
+            . 'data: {"type":"ping"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An error-named frame with a contradicting payload must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testAStreamWithoutMessageStartInvalidates()
     {
         // Codex R8 #3: omitting message_start fabricated an assistant
