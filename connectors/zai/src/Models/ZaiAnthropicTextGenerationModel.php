@@ -1534,16 +1534,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * surfaced only as an upstream 400 with the generic misattributed
 		 * message. Typed pre-transport rejection citing the range; never
 		 * silently clamped. Explicit comparisons: 0.0 is falsy but legal.
+		 *
+		 * GLM2 #4: NAN compares false against BOTH bounds, so the range
+		 * test alone let it through — the unencodable float then detonated
+		 * as a raw JsonException in the transport's whole-request encode
+		 * instead of this typed rejection. is_nan() is checked explicitly
+		 * (INF already fails the > 1 bound; -INF the < 0 one).
 		 */
 		$temperature = $config->getTemperature();
-		if ( null !== $temperature && ( $temperature < 0 || $temperature > 1 ) ) {
+		if ( null !== $temperature && ( \is_nan( $temperature ) || $temperature < 0 || $temperature > 1 ) ) {
 			throw new InvalidArgumentException(
 				'The zai_anthropic provider requires temperature between 0 and 1 (the Anthropic Messages protocol range).'
 			);
 		}
 
 		$top_p = $config->getTopP();
-		if ( null !== $top_p && ( $top_p < 0 || $top_p > 1 ) ) {
+		if ( null !== $top_p && ( \is_nan( $top_p ) || $top_p < 0 || $top_p > 1 ) ) {
 			throw new InvalidArgumentException(
 				'The zai_anthropic provider requires top_p between 0 and 1 (the Anthropic Messages protocol range).'
 			);

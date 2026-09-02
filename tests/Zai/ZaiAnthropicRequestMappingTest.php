@@ -2023,6 +2023,19 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('topP' => -1)), 'top_p between 0 and 1');
     }
 
+    public function testNanTemperatureAndTopPAreRejectedBeforeTransport()
+    {
+        /*
+         * GLM2 #4: NAN compares false against BOTH range bounds, so it
+         * slipped the GLM1 #8 guard and reached the transport, where the
+         * whole-request JSON encode threw a raw 'Inf and NaN cannot be
+         * JSON encoded' JsonException instead of the typed rejection the
+         * guard exists to produce.
+         */
+        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('temperature' => fdiv(0, 0))), 'temperature between 0 and 1');
+        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('topP' => fdiv(0, 0))), 'top_p between 0 and 1');
+    }
+
     public function testBoundaryTemperatureAndTopPAreForwardedVerbatim()
     {
         // The closed interval is legal: 0.0 and 1.0 forward verbatim
