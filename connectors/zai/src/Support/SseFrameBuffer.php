@@ -67,6 +67,19 @@ final class SseFrameBuffer {
 	private $cursor = 0;
 
 	/**
+	 * Whether the stream's first byte has arrived yet (the BOM window).
+	 *
+	 * A UTF-8 BOM is legal at stream start only, so the strip in feed()
+	 * runs exactly once, while this flag is true and no frame has been
+	 * consumed.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $awaiting_first_byte = true;
+
+	/**
 	 * Feeds a raw chunk of the event stream.
 	 *
 	 * @since 0.2.0
@@ -76,6 +89,31 @@ final class SseFrameBuffer {
 	 */
 	public function feed( string $chunk ): void {
 		$this->buffer .= $chunk;
+
+		/*
+		 * GLM3 #7: a UTF-8 BOM (\xEF\xBB\xBF) prepended by a gateway or
+		 * CDN glued itself to the first frame, where it matched no
+		 * 'data:'/'event:' prefix — the frame was silently dropped (not
+		 * even counted malformed), so a single-event stream aggregated to
+		 * null ('No usable ... event was received') and a multi-event
+		 * stream lost its first delta. The BOM is stripped at stream
+		 * start only; a chunk that delivers just a BOM PREFIX (a BOM
+		 * split across chunks) is held until the next byte disambiguates
+		 * it — SSE framing begins with ASCII field names, so a genuine
+		 * \xEF-led first byte cannot lose data by waiting.
+		 */
+		if ( $this->awaiting_first_byte && '' !== $this->buffer ) {
+			if ( "\xEF" === $this->buffer || "\xEF\xBB" === $this->buffer ) {
+				// Possibly a split BOM: wait for the next chunk.
+				return;
+			}
+
+			if ( 0 === strpos( $this->buffer, "\xEF\xBB\xBF" ) ) {
+				$this->buffer = substr( $this->buffer, 3 );
+			}
+
+			$this->awaiting_first_byte = false;
+		}
 
 		$held_back_cr = '';
 		if ( "\r" === substr( $this->buffer, -1 ) ) {

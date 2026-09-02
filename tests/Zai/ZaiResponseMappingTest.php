@@ -162,6 +162,30 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(7, $result->getTokenUsage()->getTotalTokens());
     }
 
+    public function testAStreamPrefixedWithAUtf8BomStillAggregates()
+    {
+        /*
+         * GLM3 #7: a gateway/CDN-prepended BOM glued itself to the first
+         * data: frame, which then matched no known prefix and was
+         * silently dropped — on this surface a single-event stream
+         * aggregated to null and failed with 'No usable
+         * chat.completion.chunk event was received.' The shared
+         * SseFrameBuffer now strips the BOM at stream start.
+         */
+        $body = "\xEF\xBB\xBF" . implode("\n\n", array(
+            'data: {"id":"chatcmpl-bom","choices":[{"index":0,"delta":{"role":"assistant","content":"Bom-proof."},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Bom-proof.', $result->toText());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+    }
+
     public function testStreamsToolCallDeltasMergedAcrossChunks()
     {
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), implode("\n\n", array(

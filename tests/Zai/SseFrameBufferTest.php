@@ -238,4 +238,69 @@ final class SseFrameBufferTest extends WpConnectorsTestCase
         $this->assertSame("event: b\ndata: 2", $buffer->pull());
         $this->assertNull($buffer->pull());
     }
+
+    public function testALeadingUtf8BomIsStrippedBeforeFraming()
+    {
+        /*
+         * GLM3 #7: a gateway-prepended BOM glued itself to the first
+         * frame, where it matched no 'data:'/'event:' prefix — the frame
+         * was silently dropped, so a single-event stream aggregated to
+         * null. The BOM is stripped at stream start; the first frame
+         * comes out byte-identical to a BOM-less stream.
+         */
+        $bom = "\xEF\xBB\xBF";
+
+        $buffer = new SseFrameBuffer();
+        $buffer->feed($bom . "event: a\ndata: 1\n\ndata: 2\n\n");
+        $buffer->finish();
+
+        $this->assertSame("event: a\ndata: 1", $buffer->pull(), 'The first frame must survive the BOM intact.');
+        $this->assertSame('data: 2', $buffer->pull());
+        $this->assertNull($buffer->pull());
+    }
+
+    public function testASplitUtf8BomIsHeldUntilItsBytesComplete()
+    {
+        // GLM3 #7: a BOM split across chunks must not half-strip — the
+        // held prefix disambiguates once the next byte arrives.
+        $buffer = new SseFrameBuffer();
+        $buffer->feed("\xEF");
+        $this->assertNull($buffer->pull(), 'A lone BOM first byte holds no frame yet.');
+
+        $buffer->feed("\xBB");
+        $this->assertNull($buffer->pull(), 'Two BOM bytes still hold.');
+
+        $buffer->feed("\xBFdata: b\n\n");
+        $this->assertSame('data: b', $buffer->pull(), 'The completed BOM strips and the frame survives intact.');
+        $this->assertNull($buffer->pull());
+    }
+
+    public function testAUtf8BomAfterTheFirstByteIsNotStripped()
+    {
+        // The strip window is stream start only: a BOM appearing later in
+        // the byte stream is ordinary (garbage) content and must survive
+        // into the frame untouched.
+        $buffer = new SseFrameBuffer();
+        $buffer->feed("data: a\n\n");
+        $this->assertSame('data: a', $buffer->pull());
+
+        $buffer->feed("data: \xEF\xBB\xBFembedded\n\n");
+        $buffer->finish();
+
+        $this->assertSame("data: \xEF\xBB\xBFembedded", $buffer->pull(), 'A mid-stream BOM is frame content, not a marker.');
+        $this->assertNull($buffer->pull());
+    }
+
+    public function testAnEmptyFirstChunkKeepsTheBomWindowOpen()
+    {
+        // An empty leading chunk (a transport no-op) must not close the
+        // strip window before any byte has arrived.
+        $buffer = new SseFrameBuffer();
+        $buffer->feed('');
+        $buffer->feed("\xEF\xBB\xBFdata: late\n\n");
+        $buffer->finish();
+
+        $this->assertSame('data: late', $buffer->pull());
+        $this->assertNull($buffer->pull());
+    }
 }

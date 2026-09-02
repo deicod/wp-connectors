@@ -268,6 +268,39 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAStreamPrefixedWithAUtf8BomStillAggregates()
+    {
+        /*
+         * GLM3 #7: a gateway/CDN-prepended BOM glued itself to the first
+         * event: frame, which then matched no known prefix and was
+         * silently dropped wholesale — the message_start event vanished
+         * and the whole stream failed as malformed. The shared
+         * SseFrameBuffer strips the BOM at stream start.
+         */
+        $body = "\xEF\xBB\xBF" . implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_s_bom","role":"assistant","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Bom-proof."}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Bom-proof.', $result->toText());
+        $this->assertSame('msg_s_bom', $result->getId());
+    }
+
     public function testParsesToolUseAndFinishReason()
     {
         $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
