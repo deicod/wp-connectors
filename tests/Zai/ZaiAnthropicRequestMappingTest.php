@@ -602,6 +602,29 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testExplicitlyClearedToolsAndStopSequencesAreOmitted()
+    {
+        /*
+         * Code-review GLM1 #4: the emission guards only checked
+         * is_array(), so explicitly-cleared lists (setters accept [] —
+         * array_is_list is true for it) were forwarded as "tools":[] /
+         * "stop_sequences":[], and the Messages API rejects an empty
+         * tools array with a 400. Empty is semantically "not set" for
+         * both fields: omitted.
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array());
+        $config->setStopSequences(array());
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
+            $this->model($config)
+        );
+
+        $this->assertArrayNotHasKey('tools', $body, 'An empty tools array must be omitted, not forwarded.');
+        $this->assertArrayNotHasKey('stop_sequences', $body, 'An empty stop_sequences array must be omitted, not forwarded.');
+    }
+
     public function testGenerationIsRefusedWhileTheCredentialIsRegionPending()
     {
         /*

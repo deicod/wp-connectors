@@ -249,13 +249,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			$params['top_p'] = $top_p;
 		}
 
+		/*
+		 * GLM1 #4: an explicitly-cleared list ([] — the setters accept it,
+		 * array_is_list is true for the empty list) means "not set" here,
+		 * not an empty wire member: the Messages API rejects "tools": []
+		 * with a 400 (and an empty stop_sequences adds nothing a missing
+		 * member does not). Both are omitted when empty.
+		 */
 		$stop_sequences = $config->getStopSequences();
-		if ( \is_array( $stop_sequences ) ) {
+		if ( \is_array( $stop_sequences ) && array() !== $stop_sequences ) {
 			$params['stop_sequences'] = $stop_sequences;
 		}
 
 		$function_declarations = $config->getFunctionDeclarations();
-		if ( \is_array( $function_declarations ) ) {
+		if ( \is_array( $function_declarations ) && array() !== $function_declarations ) {
 			$params['tools'] = $this->prepare_tools_param( $function_declarations );
 		}
 
