@@ -363,6 +363,55 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertArrayNotHasKey('modalities', $body);
     }
 
+    public function testExplicitZeroOptionValuesAreNeutralNotUnsupported()
+    {
+        /*
+         * Code-review GLM1 #12: reject_unsupported_options treated 0, '0',
+         * 0.0 and '' as "option set" while null/[]/false were tolerated —
+         * the setters are non-nullable, so explicitly NEUTRALIZING a
+         * previously set option with the only neutral value available
+         * (setTopK(0), setPresencePenalty(0.0)) hard-failed the request
+         * while setLogprobs(false) passed. Every falsy flavor is now
+         * equally "not set".
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setTopK(0);
+        $config->setTopLogprobs(0);
+        $config->setPresencePenalty(0.0);
+        $config->setFrequencyPenalty(0.0);
+        $config->setLogprobs(false);
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
+            $this->model($config)
+        );
+
+        $this->assertSame('glm-5.3', $body['model'], 'The request must proceed with falsy-neutral option values.');
+    }
+
+    public function testTheSharedGuardTreatsEveryFalsyFlavorAsNotSet()
+    {
+        // Direct unit coverage of the flavors the typed setters cannot
+        // express ('0', ''), plus a truthy control that still rejects.
+        \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array(
+            'topK' => '0',
+            'presencePenalty' => 0.0,
+            'frequencyPenalty' => 0,
+            'logprobs' => false,
+            'webSearch' => '',
+            'outputFileType' => array(),
+            'outputSpeechVoice' => null,
+        ), 'zai_anthropic');
+        $this->assertNoHttpRequests(); // flavor: no transport concern, just no crash
+
+        try {
+            \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array('presencePenalty' => 0.5), 'zai_anthropic');
+            $this->fail('A truthy unsupported value must still be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('presence penalty', $e->getMessage());
+        }
+    }
+
     /**
      * Asserts the config is rejected before any HTTP attempt.
      *

@@ -47,18 +47,25 @@ final class AdvertisedOptionGuard {
 	/**
 	 * Rejects config keys that are not part of the advertised option set.
 	 *
+	 * GLM1 #12: EVERY falsy flavor is equally "not set" (null, false, [],
+	 * 0, '0', 0.0, ''). The previous check treated 0/0.0/'0'/'' as "option
+	 * set", so explicitly NEUTRALIZING a previously set option with the
+	 * only neutral value available (the setters are non-nullable:
+	 * setTopK(0), setPresencePenalty(0.0)) hard-failed the request while
+	 * setLogprobs(false) passed.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param array<string, mixed> $config_as_array The model config as an array.
 	 * @param string               $provider_label  Provider name for the message ('z.ai' or 'zai_anthropic').
 	 * @return void
-	 * @throws InvalidArgumentException When a non-advertised option carries a value.
+	 * @throws InvalidArgumentException When a non-advertised option carries a truthy value.
 	 */
 	public static function reject_unsupported( array $config_as_array, string $provider_label ): void {
 		foreach ( self::UNSUPPORTED as $key => $label ) {
 			$value = $config_as_array[ $key ] ?? null;
 
-			if ( null !== $value && array() !== $value && false !== $value ) {
+			if ( ! empty( $value ) ) {
 				// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				throw new InvalidArgumentException(
 					sprintf(
