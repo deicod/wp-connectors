@@ -38,7 +38,11 @@ final class EventStreamSniff {
 	 * the body's first non-whitespace bytes (after an optional UTF-8 BOM,
 	 * which the shared SseFrameBuffer also strips) begin a field or
 	 * comment only SSE framing can produce — a JSON body never starts
-	 * with one.
+	 * with one. The id:/retry: fields (GLM4 #8) close the parity gap with
+	 * the aggregators, which already tolerate both mid-frame: a
+	 * nonconforming intermediary emitting "id: …" before the first
+	 * event/data field misrouted the whole stream to the JSON parser
+	 * even though every aggregator ignores those fields.
 	 *
 	 * @since 0.2.0
 	 *
@@ -58,6 +62,8 @@ final class EventStreamSniff {
 
 		return 0 === strpos( $sniff, 'event:' )
 			|| 0 === strpos( $sniff, 'data:' )
+			|| 0 === strpos( $sniff, 'id:' )
+			|| 0 === strpos( $sniff, 'retry:' )
 			|| 0 === strpos( $sniff, ':' );
 	}
 }

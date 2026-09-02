@@ -358,6 +358,52 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Sniffed anyway.', $result->toText());
     }
 
+    /**
+     * @dataProvider provideIgnoredFieldStreamLeads
+     */
+    public function testAStreamOpeningWithAnIdOrRetryFieldIsSniffedAsEventStream($lead, $label)
+    {
+        /*
+         * GLM4 #8: the sniff recognized 'event:'/'data:'/':'/a leading
+         * BOM but not 'id:'/'retry:' as a leading SSE field, although the
+         * aggregator explicitly tolerates both mid-stream — a
+         * nonconforming intermediary emitting "id: 42" before the first
+         * event field (with a mangled/missing Content-Type) failed all
+         * sniff conditions, routed to the JSON parser, and a valid
+         * streamed generation failed 'Missing the "content" key'.
+         */
+        $body = $lead . implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_s_id","role":"assistant","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Id-field tolerant."}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array(), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Id-field tolerant.', $result->toText(), "[{$label}] must sniff as an event stream.");
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideIgnoredFieldStreamLeads()
+    {
+        return array(
+            'leading id field' => array('id: 42' . "\n\n", 'leading id field'),
+            'leading retry field' => array('retry: 3000' . "\n\n", 'leading retry field'),
+        );
+    }
+
     public function testParsesToolUseAndFinishReason()
     {
         $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(

@@ -226,6 +226,10 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             'leading UTF-8 BOM' => array("\xEF\xBB\xBF", 'leading UTF-8 BOM'),
             'BOM then comment line' => array("\xEF\xBB\xBF: keepalive" . "\n\n", 'BOM then comment line'),
             'leading event field' => array('event: message' . "\n\n", 'leading event field'),
+            // GLM4 #8: the shared sniff also recognizes the id:/retry:
+            // SSE fields both aggregators tolerate mid-stream.
+            'leading id field' => array('id: 42' . "\n\n", 'leading id field'),
+            'leading retry field' => array('retry: 3000' . "\n\n", 'leading retry field'),
         );
     }
 
