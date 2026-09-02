@@ -42,11 +42,17 @@ function zai_connector_zai_uninstall_site() {
 	delete_option( 'zai_connector_zai_anthropic_region_pending' );
 
 	// Discovery cache transients for every endpoint combination of both
-	// surfaces.
+	// surfaces, including the '_miss' negative-cache markers (GLM1 #6).
 	foreach ( array( 'coding', 'general' ) as $zai_connector_plan ) {
 		foreach ( array( 'intl', 'cn' ) as $zai_connector_region ) {
-			delete_transient( 'zai_connector_zai_models_' . md5( 'zai|' . $zai_connector_plan . '|' . $zai_connector_region ) );
-			delete_transient( 'zai_connector_zai_anthropic_models_' . md5( 'zai_anthropic|' . $zai_connector_plan . '|' . $zai_connector_region ) );
+			$zai_connector_cache_ids = array(
+				'zai_connector_zai_models_' . md5( 'zai|' . $zai_connector_plan . '|' . $zai_connector_region ),
+				'zai_connector_zai_anthropic_models_' . md5( 'zai_anthropic|' . $zai_connector_plan . '|' . $zai_connector_region ),
+			);
+			foreach ( $zai_connector_cache_ids as $zai_connector_cache_id ) {
+				delete_transient( $zai_connector_cache_id );
+				delete_transient( $zai_connector_cache_id . '_miss' );
+			}
 		}
 	}
 }

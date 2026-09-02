@@ -7,8 +7,9 @@
  * OpenAI list shape on both international bases, so discovery is the primary
  * path. The cn region is unprobed — the tested static fallback stays
  * authoritative there and on every discovery failure (401/404/malformed/
- * transport), which never poisons the cache: a later valid key can still
- * discover.
+ * transport), which never poisons the POSITIVE cache: failures are
+ * negatively cached for NEGATIVE_TTL (60) seconds only (GLM1 #6), so a
+ * later valid key can still discover.
  *
  * The discovery cache is a WordPress transient scoped to the endpoint
  * identity (provider + plan + region, via ZaiEndpoint::cache_key()), so a
@@ -58,6 +59,38 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * @var int
 	 */
 	public const DISCOVERY_TTL = 12 * HOUR_IN_SECONDS;
+
+	/**
+	 * Seconds a FAILED discovery suppresses repeat remote attempts
+	 * (code-review GLM1 #6).
+	 *
+	 * Failure is still never fatal — the plan fallback serves meanwhile —
+	 * and still retryable: after this short TTL the endpoint is probed
+	 * again, so a later valid key (or a recovered route) rediscovers
+	 * within a minute. Without it, every metadata lookup re-issued a
+	 * blocking doomed remote GET (the cn-region 404 shape on every
+	 * request). The marker lives at the endpoint-scoped key with the
+	 * NEGATIVE_CACHE_SUFFIX appended and is cleared by the same
+	 * invalidation paths as the positive cache.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var int
+	 */
+	public const NEGATIVE_TTL = 60;
+
+	/**
+	 * Suffix marking the negative (miss) cache entry for an endpoint key.
+	 *
+	 * Mirrored literally by the SDK-free settings invalidation and
+	 * uninstall.php (neither can autoload this class); tests pin the
+	 * mirror.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	public const NEGATIVE_CACHE_SUFFIX = '_miss';
 
 	/**
 	 * Transient prefix for discovery results; completed with md5(cache_key()).
@@ -125,9 +158,10 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * Never persists anything in the SDK cache layer (in-memory or PSR-16).
 	 *
 	 * Successful discoveries are persisted as the plugin transient inside
-	 * sendListModelsRequest() with DISCOVERY_TTL; fallbacks are never cached
-	 * at all. Storing here as well would leave warmed entries behind after
-	 * transient invalidation.
+	 * sendListModelsRequest() with DISCOVERY_TTL; fallbacks are cached at
+	 * most as the 60s negative marker (never here — see GLM1 #6). Storing
+	 * here as well would leave warmed entries behind after transient
+	 * invalidation.
 	 *
 	 * @since 0.1.0
 	 *
@@ -183,6 +217,15 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 			return $this->map_from_ids( $cached_ids );
 		}
 
+		/*
+		 * GLM1 #6: a recent discovery failure serves the fallback WITHOUT
+		 * another doomed remote attempt (a 60s miss marker — see
+		 * NEGATIVE_TTL; retryability is preserved after expiry).
+		 */
+		if ( get_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX ) ) {
+			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
+		}
+
 		try {
 			/*
 			 * Code review GLM1 #1 (sibling of the zai_anthropic surface's
@@ -195,8 +238,9 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 			 * availability gate is consulted (reused, not duplicated):
 			 * while refused, the authenticated request never happens and
 			 * discovery degrades to the static plan fallback via the catch
-			 * below — never fatal, so a later definitive verdict can
-			 * discover again.
+			 * below — never fatal, cached at most as the 60s negative
+			 * marker (GLM1 #6), so a later definitive verdict can discover
+			 * again.
 			 */
 			$authentication = $this->getRequestAuthentication();
 			if ( $authentication instanceof ApiKeyRequestAuthentication
@@ -208,10 +252,15 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 			// throws on non-2xx, and parses via parseResponseToModelMetadataList().
 			$discovered = parent::sendListModelsRequest();
 		} catch ( Throwable $e ) {
-			// Discovery failure is never fatal and never cached (in any
-			// layer — see setCache()/hasCache()): the plan-partitioned static
-			// fallback keeps the provider usable while a later valid key can
-			// still discover.
+			/*
+			 * Discovery failure is never fatal (in any layer — see
+			 * setCache()/hasCache()): the plan-partitioned static fallback
+			 * keeps the provider usable. It is cached only as the short
+			 * negative marker (GLM1 #6) so a later valid key can still
+			 * discover — after at most NEGATIVE_TTL seconds.
+			 */
+			set_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX, true, self::NEGATIVE_TTL );
+
 			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
 		}
 

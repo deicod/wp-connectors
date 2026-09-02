@@ -270,9 +270,15 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
 function delete_option($option)
 {
     if (! array_key_exists($option, WpHarness::$options)) {
+        // Core still runs the DELETE (and its caches) for a missing row;
+        // record the ATTEMPT so tests can pin "no needless delete" call
+        // shapes (e.g. availability state cleanup).
+        WpHarness::$delete_option_attempts[] = $option;
+
         return false;
     }
     unset(WpHarness::$options[ $option ], WpHarness::$option_autoload[ $option ]);
+    WpHarness::$delete_option_attempts[] = $option;
 
     return true;
 }

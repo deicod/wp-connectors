@@ -174,6 +174,31 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testKeylessIsConfiguredDoesNotDeleteStateOnEveryCall()
+    {
+        /*
+         * Code-review GLM1 #6: the keyless path called delete_option()
+         * unconditionally on EVERY isConfigured() call, even when no state
+         * row exists (ProviderRegistry consults availability on every
+         * request) — a needless database DELETE per call. The delete now
+         * runs only when a row is actually present.
+         */
+        $instance = new ZaiProviderAvailability();
+
+        $this->assertFalse($instance->isConfigured());
+        $this->assertFalse($instance->isConfigured());
+        $this->assertNotContains(
+            ZaiProviderAvailability::STATE_OPTION,
+            WpHarness::$delete_option_attempts,
+            'No delete_option() call may happen while no state row exists.'
+        );
+
+        // With a stale row present, the delete still runs (once is enough).
+        update_option(ZaiProviderAvailability::STATE_OPTION, array('binding' => 'stale', 'valid' => 'valid'));
+        $this->assertFalse($instance->isConfigured());
+        $this->assertContains(ZaiProviderAvailability::STATE_OPTION, WpHarness::$delete_option_attempts);
+    }
+
     public function testValidKeyProbesOnceAndPersistsStateWithoutTheKey()
     {
         $key = FakeSecrets::apiKey();

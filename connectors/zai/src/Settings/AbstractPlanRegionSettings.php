@@ -500,11 +500,15 @@ abstract class AbstractPlanRegionSettings {
 
 		// The discovery caches are endpoint-scoped by key (so is the cache
 		// identity itself), but clear the transients anyway so no stale entry
-		// survives an unexpected cache-key collision.
+		// survives an unexpected cache-key collision. The '_miss' suffix is
+		// the directories' negative-cache marker (GLM1 #6), mirrored here
+		// literally like the key composition itself (see STATE_OPTION for
+		// the SDK-free rationale).
 		foreach ( self::PLANS as $plan ) {
 			foreach ( self::REGIONS as $region ) {
 				$cache_id = static::CACHE_PREFIX . md5( static::CACHE_SCOPE . '|' . $plan . '|' . $region );
 				delete_transient( $cache_id );
+				delete_transient( $cache_id . '_miss' );
 			}
 		}
 	}

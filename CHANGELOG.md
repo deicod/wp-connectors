@@ -6,6 +6,20 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM1 code review)
+
+- Failed model discovery is negatively cached for 60 seconds per
+  endpoint: every metadata lookup (and every model instantiation) on a
+  persistently failing route — the China-region 404 shape — re-issued a
+  blocking doomed remote GET. The short miss marker keeps failure
+  non-fatal and retryable (after the TTL the endpoint is probed again)
+  and never touches the positive cache; the settings invalidation and
+  uninstall clear it with the positive cache.
+
+- A keyless `isConfigured()` no longer calls `delete_option()` on every
+  invocation: the availability state row is deleted only when it actually
+  exists, removing a needless database DELETE per request.
+
 ### Fixed (zai / M2 — Codex PR review, round 14)
 
 - A streamed envelope that explicitly declares a nested `message.type`
@@ -702,7 +716,8 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 - Custom (non-OpenAI-compat) model directory: opportunistic, transient-
   cached `/v1/models` discovery keyed provider+plan+region (12 h) with the
   shared plan-partitioned GLM fallback on every failure shape; the
-  fallback is never cached, so a later valid key can still discover.
+  fallback is not cached beyond a 60-second short-TTL negative cache
+  (still retryable), so a later valid key can still discover.
 - Full Messages request mapping: system instruction, alternating
   user/assistant content blocks, tools + tool results (empty arguments
   encode as `{}`), JSON output guidance with `outputSchema` embedded in

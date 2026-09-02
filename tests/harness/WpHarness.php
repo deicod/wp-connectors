@@ -31,6 +31,14 @@ final class WpHarness
     public static $option_autoload = array();
 
     /**
+     * Every option name passed to delete_option(), in order, whether or not
+     * a row existed (lets tests pin needless-delete call shapes).
+     *
+     * @var list<string>
+     */
+    public static $delete_option_attempts = array();
+
+    /**
      * Transients: name => array{value: mixed, expires_at: int|false}.
      *
      * @var array<string, array{value: mixed, expires_at: int|false}>
@@ -237,6 +245,7 @@ final class WpHarness
     {
         self::$options = array();
         self::$option_autoload = array();
+        self::$delete_option_attempts = array();
         self::$transients = array();
         self::$cron = array();
         self::$filters = array();

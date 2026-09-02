@@ -22,8 +22,9 @@
  * discovery is attempted opportunistically (a 2xx with a list of chat IDs
  * wins and is cached), and every failure shape — 401/404/5xx, malformed
  * body, no usable chat IDs, transport — falls back without poisoning the
- * cache, so a later valid key can still discover. The Task 2.7 live probe
- * records the credentialed outcome.
+ * POSITIVE cache: failures are negatively cached for NEGATIVE_TTL (60)
+ * seconds only (GLM1 #6), so a later valid key can still discover. The
+ * Task 2.7 live probe records the credentialed outcome.
  *
  * The discovery cache is a WordPress transient scoped to the endpoint
  * identity (provider + plan + region, via ZaiAnthropicEndpoint::cache_key()),
@@ -101,6 +102,38 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 * @var int
 	 */
 	public const DISCOVERY_TTL = 12 * HOUR_IN_SECONDS;
+
+	/**
+	 * Seconds a FAILED discovery suppresses repeat remote attempts
+	 * (code-review GLM1 #6).
+	 *
+	 * Failure is still never fatal — the plan fallback serves meanwhile —
+	 * and still retryable: after this short TTL the endpoint is probed
+	 * again, so a later valid key (or a recovered route) rediscovers
+	 * within a minute. Without it, every metadata lookup re-issued a
+	 * blocking doomed remote GET (the cn-region 404 shape on every
+	 * request). The marker lives at the endpoint-scoped key with the
+	 * NEGATIVE_CACHE_SUFFIX appended and is cleared by the same
+	 * invalidation paths as the positive cache.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	public const NEGATIVE_TTL = 60;
+
+	/**
+	 * Suffix marking the negative (miss) cache entry for an endpoint key.
+	 *
+	 * Mirrored literally by the SDK-free settings invalidation and
+	 * uninstall.php (neither can autoload this class); tests pin the
+	 * mirror.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const NEGATIVE_CACHE_SUFFIX = '_miss';
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.
@@ -196,12 +229,26 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			return $this->map_from_ids( $cached_ids );
 		}
 
+		/*
+		 * GLM1 #6: a recent discovery failure serves the fallback WITHOUT
+		 * another doomed remote attempt (a 60s miss marker — see
+		 * NEGATIVE_TTL; retryability is preserved after expiry).
+		 */
+		if ( get_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX ) ) {
+			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
+		}
+
 		try {
 			$ids = $this->discover_model_ids( $endpoint );
 		} catch ( Throwable $e ) {
-			// Discovery failure is never fatal and never cached: the
-			// plan-partitioned static fallback keeps the provider usable
-			// while a later valid key can still discover.
+			/*
+			 * Discovery failure is never fatal: the plan-partitioned static
+			 * fallback keeps the provider usable. It is cached only as the
+			 * short negative marker (GLM1 #6) so a later valid key can still
+			 * discover — after at most NEGATIVE_TTL seconds.
+			 */
+			set_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX, true, self::NEGATIVE_TTL );
+
 			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
 		}
 
@@ -236,7 +283,8 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		 * consulted (reused, not duplicated): while refused, the
 		 * authenticated request never happens and discovery degrades to the
 		 * static plan fallback via models_map()'s catch — never fatal,
-		 * never cached, so a later definitive verdict can discover again.
+		 * cached at most as the 60s negative marker (GLM1 #6), so a later
+		 * definitive verdict can discover again.
 		 */
 		$authentication = $this->getRequestAuthentication();
 		if ( $authentication instanceof ApiKeyRequestAuthentication

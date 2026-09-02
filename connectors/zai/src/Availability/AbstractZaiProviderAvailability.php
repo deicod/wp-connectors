@@ -209,8 +209,15 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		$effective = $this->effective_key();
 
 		if ( '' === $effective['key'] ) {
-			// Nothing to validate; drop any stale verdict.
-			delete_option( static::STATE_OPTION );
+			/*
+			 * Nothing to validate; drop any stale verdict — but only when
+			 * one exists (GLM1 #6): ProviderRegistry consults availability
+			 * on every request, and an unconditional delete_option() ran a
+			 * needless DELETE for the missing row each time.
+			 */
+			if ( null !== get_option( static::STATE_OPTION, null ) ) {
+				delete_option( static::STATE_OPTION );
+			}
 
 			return false;
 		}

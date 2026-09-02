@@ -431,8 +431,41 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         }
     }
 
+    public function testFailedDiscoveryIsNegativelyCachedForAShortTtl()
+    {
+        /*
+         * Code-review GLM1 #6: failed discovery was never negatively
+         * cached, so every metadata lookup re-issued a blocking doomed
+         * remote GET (the cn-region 404 shape pays this on every request).
+         * A SHORT bounded negative cache (60s) collapses the repeat remote
+         * calls while staying retryable: after the TTL the endpoint is
+         * probed again — never fatal, and the fallback still serves
+         * meanwhile.
+         */
+        $this->freezeTime(1700000000);
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(404, array(), HttpResponseFactory::anthropicErrorBody('no route'));
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()));
+        $this->assertCount(1, $this->sdkHttpAttempts());
+
+        // Within the TTL the fallback serves again with NO remote attempt.
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()));
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'The short negative cache must suppress the doomed repeat request.');
+
+        // The positive cache stays unset: only the miss marker exists.
+        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')));
+
+        // After the TTL, discovery is retryable and a valid endpoint wins.
+        $this->advanceTime(ZaiAnthropicModelMetadataDirectory::NEGATIVE_TTL + 1);
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.2')));
+        $this->assertCount(2, $this->idList($this->directory()->listModelMetadata()));
+        $this->assertCount(2, $this->sdkHttpAttempts());
+    }
+
     public function testFallbackIsNotCachedSoAValidKeyCanDiscoverLater()
     {
+        $this->freezeTime(1700000000);
         $this->selectEndpoint('coding', 'intl');
 
         $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('bad key'));
@@ -441,7 +474,12 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $cacheId = ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl');
         $this->assertFalse(get_transient($cacheId), 'No transient may exist after a failure.');
 
-        // ...so the next request attempts discovery again and succeeds.
+        /*
+         * ...so the next request attempts discovery again and succeeds
+         * (GLM1 #6: the short negative cache only spans NEGATIVE_TTL
+         * seconds — a later request past the TTL rediscovers).
+         */
+        $this->advanceTime(ZaiAnthropicModelMetadataDirectory::NEGATIVE_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.2')));
         $this->assertCount(2, $this->idList($this->directory()->listModelMetadata()));
         $this->assertCount(2, $this->sdkHttpAttempts());
