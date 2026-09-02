@@ -432,7 +432,10 @@ abstract class AbstractPlanRegionSettings {
 	 *   admin_init runs first — this guard strips the plugin's option keys
 	 *   from the request immediately, so nothing of ours can be persisted by
 	 *   any other write path in the same request. Every provider class hooks
-	 *   its own guard, so all providers' keys are stripped together.
+	 *   its own guard, so all providers' keys are stripped together; the
+	 *   unauthorized notice is emitted idempotently (GLM2 #8) — the shared
+	 *   group means the per-provider guards would otherwise append
+	 *   byte-identical errors for one unauthorized save.
 	 * - NONCE failure: core's check_admin_referer() terminates the request
 	 *   (wp_nonce_ays → wp_die) and never returns, so the nonce is left for
 	 *   core to enforce (this guard only verifies it AFTER the capability
@@ -468,6 +471,21 @@ abstract class AbstractPlanRegionSettings {
 
 			foreach ( array_unique( $strip ) as $option_name ) {
 				unset( $_POST[ $option_name ] );
+			}
+
+			/*
+			 * GLM2 #8: every provider class hooks its own guard on the
+			 * SHARED option group, so one unauthorized save reaches this
+			 * emission once per provider — appending byte-identical
+			 * 'zai_connector_unauthorized' errors. The strip above is
+			 * idempotent (unsetting twice is a no-op); the emission checks
+			 * for an existing error of the same code and stays silent, so
+			 * any path that renders settings errors prints the notice once.
+			 */
+			foreach ( settings_errors( self::OPTION_GROUP ) as $existing_error ) {
+				if ( \is_array( $existing_error ) && 'zai_connector_unauthorized' === ( $existing_error['code'] ?? null ) ) {
+					return;
+				}
 			}
 
 			add_settings_error(

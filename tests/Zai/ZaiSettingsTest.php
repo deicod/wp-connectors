@@ -148,6 +148,35 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertNotEmpty(WpHarness::$settings_errors);
     }
 
+    public function testTheUnauthorizedNoticeIsEmittedOncePerSave()
+    {
+        /*
+         * GLM2 #8: both provider settings classes hook their guard on the
+         * shared admin_init priority for the SHARED option group, so one
+         * unauthorized save ran the emission once per provider — two
+         * byte-identical 'zai_connector_unauthorized' settings errors
+         * (latent while core's options.php wp_dies before render, but any
+         * path that renders settings errors would print the notice twice).
+         * The emission is idempotent now: the strip still runs under every
+         * guard, the notice is added exactly once.
+         */
+        $this->bootPlugin();
+        $this->asAnonymous();
+        $_POST = array(
+            'option_page' => 'zai_connector',
+            PlanRegionSettings::OPTION_PLAN => 'general',
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_PLAN => 'general',
+        );
+
+        do_action('admin_init');
+
+        $this->assertSame(
+            1,
+            count(array_keys(array_column(WpHarness::$settings_errors, 'code'), 'zai_connector_unauthorized')),
+            'One unauthorized save must record exactly one unauthorized settings error, not one per provider guard.'
+        );
+    }
+
     public function testUnauthorizedSubmissionStripsEveryGroupOption()
     {
         /*
