@@ -1168,6 +1168,29 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$finish_reason = $this->finish_reason_for( $data['stop_reason'] );
 
 		/*
+		 * GLM3 #1 (parse/replay agreement): a response whose parsed turn
+		 * carries parts but ZERO translatable ones — an empty text block,
+		 * a thinking-only turn — parsed as a successful generation, while
+		 * the OUTBOUND mapper drops exactly those parts
+		 * (message_part_block()) and rejects the replayed turn
+		 * pre-transport. One such response permanently poisoned the
+		 * conversation history: every later request in that conversation
+		 * failed until the turn was removed. The parse now applies the
+		 * outbound contract at parse time — a turn that cannot be
+		 * replayed cannot be a generation. Checked after
+		 * finish_reason_for() so the typed truncation exceptions keep
+		 * their precedence (same ordering rule as the consistency check
+		 * below).
+		 */
+		if ( array() !== $parts && ! self::message_has_translatable_part( $parts ) ) {
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'content',
+				'The message carried no translatable (text, tool call, or tool result) part, so it cannot be replayed into the conversation history.'
+			);
+		}
+
+		/*
 		 * Codex R14 #2: the stop reason must match the parsed content — a
 		 * tool_use reason with no FunctionCall signals toolCalls() with
 		 * nothing to execute, and tool blocks under an ordinary completion
@@ -1408,6 +1431,35 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		throw ResponseException::fromInvalidData( 'z.ai', 'content', 'The message contained a block of an unsupported type.' );
+	}
+
+	/**
+	 * Whether a parsed part list carries a part the OUTBOUND mapper would
+	 * translate into a Messages content block (GLM3 #1).
+	 *
+	 * Mirrors message_part_block()'s keep/drop decisions exactly — a text
+	 * part on the default channel with NON-EMPTY text, a function call, or
+	 * a function response — so the inbound parser can enforce the same
+	 * contract it will be held to on replay: a turn that would map to zero
+	 * wire blocks cannot join the conversation history.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $parts The parsed parts of one turn (list of MessagePart).
+	 * @return bool True when at least one part is translatable.
+	 */
+	private static function message_has_translatable_part( array $parts ): bool {
+		foreach ( $parts as $part ) {
+			if ( $part->getType()->isFunctionCall() || $part->getType()->isFunctionResponse() ) {
+				return true;
+			}
+
+			if ( $part->getType()->isText() && ! $part->getChannel()->isThought() && '' !== (string) $part->getText() ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

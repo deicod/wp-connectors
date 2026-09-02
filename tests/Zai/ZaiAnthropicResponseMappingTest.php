@@ -57,16 +57,21 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
     /**
      * Builds a minimal valid stream around one content_block_delta payload.
      *
-     * @param string $deltaJson The delta event's data payload.
+     * @param string $deltaJson   The delta event's data payload.
+     * @param string $initialText The seeded text block's initial value (GLM3
+     *                            #1: fixtures that must COMPLETE carry
+     *                            translatable content — an empty-only block
+     *                            is a legitimate rejection now, not a
+     *                            success shape to pin).
      * @return string
      */
-    private function streamWithDelta(string $deltaJson): string
+    private function streamWithDelta(string $deltaJson, string $initialText = ''): string
     {
         return ''
             . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_sw","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_start' . "\n"
-            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":' . wp_json_encode($initialText) . '}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: ' . $deltaJson . "\n\n"
             . 'event: content_block_stop' . "\n"
@@ -157,6 +162,110 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertTrue($parts[0]->getChannel()->isThought());
         $this->assertSame('pondering...', $parts[0]->getText());
         $this->assertSame('Answer.', $parts[1]->getText());
+    }
+
+    public function testAnEmptyTextBlockRejectsInsteadOfPoisoningTheHistory()
+    {
+        /*
+         * GLM3 #1: content [{"type":"text","text":""}] parsed as a
+         * successful generation whose turn the OUTBOUND mapper refuses on
+         * replay — one such response made every later request in the
+         * conversation fail pre-transport. The parse rejects the turn
+         * itself, so the history can never be poisoned.
+         */
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_empty_text',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => '')),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A turn whose only part is an empty text block must not parse as a generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('no translatable', $e->getMessage());
+        }
+    }
+
+    public function testAThinkingOnlyTurnRejectsInsteadOfPoisoningTheHistory()
+    {
+        // GLM3 #1: thought-channel parts are dropped on replay, so a
+        // thinking-only turn is equally unreplayable.
+        $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
+            'id' => 'msg_think_only',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'thinking', 'thinking' => 'only thoughts')),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 1, 'output_tokens' => 1),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A thinking-only turn must not parse as a generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('no translatable', $e->getMessage());
+        }
+    }
+
+    public function testAStreamedThinkingOnlyTurnRejectsInsteadOfPoisoningTheHistory()
+    {
+        // GLM3 #1, streamed path: the aggregator passes thinking content
+        // through unconditionally, so the same poison reached histories
+        // via text/event-stream responses.
+        $body = implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_s_think","role":"assistant","content":[],"usage":{"input_tokens":3,"output_tokens":2}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"only thoughts"}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed thinking-only turn must not parse as a generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('no translatable', $e->getMessage());
+        }
+    }
+
+    public function testAStreamedEmptyTextBlockRejectsInsteadOfPoisoningTheHistory()
+    {
+        // GLM3 #1, streamed path: a text block that never receives a
+        // delta aggregates to text:"" — the same unreplayable turn.
+        $body = implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_s_empty","role":"assistant","content":[],"usage":{"input_tokens":3,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed turn whose only block is empty text must not parse as a generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('no translatable', $e->getMessage());
+        }
     }
 
     public function testParsesToolUseAndFinishReason()
@@ -2364,16 +2473,18 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
 
     public function testInOrderContiguousStartsStillAggregate()
     {
-        // Codex R17 #2 guard: starts 0 then 1, in order, complete fine.
+        // Codex R17 #2 guard: starts 0 then 1, in order, complete fine
+        // (GLM3 #1: the fixtures carry translatable text — an empty-only
+        // completion is a rejection now, not a success shape to pin).
         $body = ''
             . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_c1","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_start' . "\n"
-            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"One."}}' . "\n\n"
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: content_block_start' . "\n"
-            . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":"Two."}}' . "\n\n"
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
             . 'event: message_delta' . "\n"
@@ -2386,9 +2497,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $result = $this->model()->generateTextResult($this->prompt());
         $parts = $result->toMessage()->getParts();
         $this->assertCount(2, $parts, 'Both in-order blocks survive as parts.');
-        $this->assertSame('', $parts[0]->getText());
-        $this->assertSame('', $parts[1]->getText());
-        $this->assertSame('', $result->toText(), 'The aggregated text stays empty.');
+        $this->assertSame('One.', $parts[0]->getText());
+        $this->assertSame('Two.', $parts[1]->getText());
+        $this->assertSame('One.', $result->toText());
     }
 
     /**
@@ -3131,14 +3242,16 @@ $body = ''
     public function testUnknownDeltaTypesStayIgnorable()
     {
         // Forward compatibility: a future delta type (with object shape) is
-        // ignored and the stream completes.
+        // ignored and the stream completes (GLM3 #1: the fixture carries
+        // translatable text so completion stays assertable).
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $this->streamWithDelta(
-            '{"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}'
+            '{"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}',
+            'Baseline.'
         ));
 
         $result = $this->model()->generateTextResult($this->prompt());
 
-        $this->assertSame('', $result->toText(), 'The unknown delta contributes no text; the stream completes.');
+        $this->assertSame('Baseline.', $result->toText(), 'The unknown delta contributes no text; the stream completes.');
     }
 
     public function testAToolDeltaWithoutAStartBlockInvalidatesTheStream()
@@ -3317,13 +3430,17 @@ $body = ''
          * Codex R14 #3: the forward-compatible seed path itself — NO
          * content_block_start precedes the unknown delta, so the
          * synthesized block must satisfy the R13 #3 start-member
-         * validation. The stream completes with empty text.
+         * validation. A subsequent text delta proves the seed is a
+         * working text accumulator (GLM3 #1: the completion carries
+         * translatable content).
          */
         $body = ''
             . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_us","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Seeded."}}' . "\n\n"
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
@@ -3335,20 +3452,23 @@ $body = ''
 
         $result = $this->model()->generateTextResult($this->prompt());
 
-        $this->assertSame('', $result->toText(), 'The unknown delta seeds a valid empty block; the stream completes.');
+        $this->assertSame('Seeded.', $result->toText(), 'The unknown delta seeds a valid text block a later delta can append to; the stream completes.');
     }
 
     public function testAnUnknownDeltaTypeWithoutAStartBlockStaysSeeded()
     {
         // Unknown (future) delta types carry no content this aggregator
-        // maps, so the seeded tolerance loses nothing (Codex R10 #3 note).
+        // maps, so the seeded tolerance loses nothing (Codex R10 #3 note;
+        // GLM3 #1: the fixture carries translatable text so completion
+        // stays assertable).
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $this->streamWithDelta(
-            '{"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}'
+            '{"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}',
+            'Baseline.'
         ));
 
         $result = $this->model()->generateTextResult($this->prompt());
 
-        $this->assertSame('', $result->toText(), 'The unknown delta contributes no text; the stream completes.');
+        $this->assertSame('Baseline.', $result->toText(), 'The unknown delta contributes no text; the stream completes.');
     }
 
     public function testAnErrorEventFailsWithAFixedSafeMessage()
