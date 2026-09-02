@@ -171,6 +171,8 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * @since 0.1.0
 	 *
 	 * @return array<string, ModelMetadata> Map of model ID to metadata.
+	 * @throws ResponseException When the credential gate refuses enumeration
+	 *                           (caught below; never escapes this method).
 	 */
 	protected function sendListModelsRequest(): array {
 		$endpoint = ZaiEndpoint::for_current_settings();

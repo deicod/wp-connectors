@@ -888,14 +888,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$status = absint( $response->getStatusCode() );
 
 		if ( $status >= 500 ) {
-			throw new ServerException( esc_html( ErrorMapper::safe_http_message( $status ) ), absint( $status ) );
+			throw new ServerException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		if ( $status >= 400 ) {
-			throw new ClientException( esc_html( ErrorMapper::safe_http_message( $status ) ), absint( $status ) );
+			throw new ClientException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
-		throw new RedirectException( esc_html( ErrorMapper::safe_http_message( $status ) ), absint( $status ) );
+		throw new RedirectException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 	}
 
 	/**
@@ -1418,7 +1418,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				throw new TokenLimitReachedException(
 					sprintf(
 						/* translators: %d: the configured token limit. */
-						esc_html__( 'The generation stopped because the token limit was reached (%d). Raise maxTokens to continue longer answers.', 'zai' ),
+						__( 'The generation stopped because the token limit was reached (%d). Raise maxTokens to continue longer answers.', 'zai' ), // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 						$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer from absint(), formatted via %d.
 					),
 					$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer payload for the typed accessor, from absint().
@@ -1433,7 +1433,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * max_tokens case (ErrorMapper keys on that).
 				 */
 				throw new TokenLimitReachedException(
-					esc_html__( 'The generation stopped because the conversation exceeds the model\'s context window. Reduce the input — truncate the history or shorten the prompt — and try again.', 'zai' ),
+					__( 'The generation stopped because the conversation exceeds the model\'s context window. Reduce the input — truncate the history or shorten the prompt — and try again.', 'zai' ), // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 					null
 				);
 		}
@@ -1575,7 +1575,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				throw new InvalidArgumentException(
 					sprintf(
 						'The zai_anthropic provider does not support %s.',
-						esc_html( $label )
+						$label // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 					)
 				);
 			}

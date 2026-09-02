@@ -224,14 +224,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		$status = absint( $response->getStatusCode() );
 
 		if ( $status >= 500 ) {
-			throw new ServerException( esc_html( ErrorMapper::safe_http_message( $status ) ), absint( $status ) );
+			throw new ServerException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		if ( $status >= 400 ) {
-			throw new ClientException( esc_html( ErrorMapper::safe_http_message( $status ) ), absint( $status ) );
+			throw new ClientException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
-		throw new RedirectException( esc_html( ErrorMapper::safe_http_message( $status ) ), absint( $status ) );
+		throw new RedirectException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 	}
 
 	/**
@@ -403,7 +403,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				throw new InvalidArgumentException(
 					sprintf(
 						'The z.ai provider does not support %s.',
-						esc_html( $label )
+						$label // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 					)
 				);
 			}

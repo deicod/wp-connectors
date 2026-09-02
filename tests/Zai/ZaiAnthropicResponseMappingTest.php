@@ -398,6 +398,30 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString('configured token limit', $error->get_error_message());
     }
 
+    public function testExceptionMessagesAreNotPreEscaped()
+    {
+        /*
+         * Code-review GLM1 #5: exception messages were pre-escaped at
+         * construction (esc_html__/esc_html), so the context-window
+         * advice surfaced as "model&#039;s context window" through the
+         * paths that pass messages unescaped (core's verbatim
+         * exception->WP_Error conversion) and would DOUBLE-encode at any
+         * escape-at-output consumer. Message construction must use plain
+         * __(); escaping belongs to the display layer (ErrorMapper's twin
+         * message for the same condition already does).
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('partial', null, 'model_context_window_exceeded'));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Context-window exhaustion must throw.');
+        } catch (TokenLimitReachedException $e) {
+            $this->assertStringContainsString("model's context window", $e->getMessage(), 'The apostrophe must be plain text, not an HTML entity.');
+            $this->assertStringNotContainsString('&#039;', $e->getMessage());
+            $this->assertStringNotContainsString('&amp;', $e->getMessage());
+        }
+    }
+
     public function testGenuineMaxTokensKeepsTheRaiseAdvice()
     {
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('trunc', null, 'max_tokens'));
