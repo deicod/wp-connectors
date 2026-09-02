@@ -944,9 +944,19 @@ function absint($maybeint)
 
 function wp_json_encode($data, $options = 0)
 {
-    // Core semantics: string on success, FALSE on failure (the earlier
+    // Bare json_encode: string on success, FALSE on failure (the earlier
     // 'null' fallback masked unencodable values — NAN, resources,
     // recursion — behind a successful-looking "null" string).
+    //
+    // KNOWN DIVERGENCE (GLM3 verifier round): core's wp_json_encode()
+    // additionally runs a sanity fallback that LOSSILY rescues invalid
+    // UTF-8 in strings (substituting or stripping the bad bytes) and
+    // returns a successful encoding — core never returns false for a
+    // string. The R18/R19/R20 tool-result/schema oracles rely on the
+    // stricter bare-encode semantics this stub provides; the GLM3 #4
+    // wire-string guards therefore call raw json_encode() themselves
+    // instead of this function, so their behavior is identical under
+    // the stub and in production.
     return json_encode($data, $options);
 }
 

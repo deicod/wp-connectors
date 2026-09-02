@@ -277,10 +277,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			/*
 			 * GLM3 #4: the system member is a wire STRING — the same
 			 * invalid-UTF-8 rejection as text parts (see
-			 * message_part_block()), not the transport's raw JsonException
-			 * surfaced as the generic 500.
+			 * message_part_block() for the raw-json_encode() oracle
+			 * rationale), not the transport's raw JsonException surfaced
+			 * as the generic 500.
 			 */
-			if ( false === wp_json_encode( $system_instruction ) ) {
+			if ( false === json_encode( $system_instruction ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
 				throw new InvalidArgumentException(
 					'The zai_anthropic provider could not JSON-encode the system instruction (invalid UTF-8).'
 				);
@@ -326,7 +327,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				}
 
 				// GLM3 #4: same invalid-UTF-8 oracle as text parts.
-				if ( false === wp_json_encode( $sequence ) ) {
+				if ( false === json_encode( $sequence ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
 					throw new InvalidArgumentException(
 						'The zai_anthropic provider could not JSON-encode a stop sequence (invalid UTF-8).'
 					);
@@ -854,17 +855,21 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			}
 
 			/*
-			 * GLM3 #4: an invalid-UTF-8 string passed every is_string
-			 * check and detonated as a raw JsonException in the
-			 * transport's whole-request encode, surfacing as the generic
-			 * 500 (zai_error). Same wp_json_encode() oracle the tool
-			 * result/schema rejections use (R18/R19/R20) — for a string,
-			 * encoding fails on exactly the invalid-UTF-8 condition.
-			 * mb_check_encoding() is not an option here: WordPress does
-			 * not require ext-mbstring and the plugin declares no
-			 * extension beyond PHP itself.
+			 * GLM3 #4 (verifier round): an invalid-UTF-8 string passed
+			 * every is_string check and detonated as a raw JsonException
+			 * in the transport's whole-request encode, surfacing as the
+			 * generic 500 (zai_error). The oracle is RAW json_encode() —
+			 * the same primitive the SDK transport's Request::getBody()
+			 * throws on — NOT wp_json_encode(): core's
+			 * _wp_json_sanity_check() rescue loop lossily substitutes or
+			 * strips invalid UTF-8 and returns a SUCCESSFUL encoding, so
+			 * wp_json_encode() never returns false for a string in
+			 * production and a guard on it would be dead code (empirically
+			 * confirmed against core by the verifier round).
+			 * mb_check_encoding() is not an option either: WordPress does
+			 * not require ext-mbstring.
 			 */
-			if ( false === wp_json_encode( $text ) ) {
+			if ( false === json_encode( $text ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
 				throw new InvalidArgumentException(
 					'The zai_anthropic provider could not JSON-encode a message text part (invalid UTF-8).'
 				);

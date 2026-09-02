@@ -756,9 +756,12 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
          * and threw a raw JsonException from the transport's
          * whole-request encode, surfacing as the generic 500 (zai_error)
          * — while the same unencodable value inside a tool result got the
-         * precise typed 400 rejection (R18). Checked with the same
-         * wp_json_encode() oracle; mb_check_encoding() would require
-         * ext-mbstring, which WordPress does not guarantee.
+         * precise typed 400 rejection (R18). Checked with the RAW
+         * json_encode() oracle (verifier round: core's wp_json_encode()
+         * lossily rescues invalid UTF-8 and never returns false for a
+         * string, so a guard on it would be dead code in production);
+         * mb_check_encoding() would require ext-mbstring, which
+         * WordPress does not guarantee.
          */
         try {
             $this->model()->generateTextResult(array(
