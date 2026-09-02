@@ -2776,6 +2776,38 @@ $body = ''
         $this->assertSame(array('city' => 'Oslo'), $call->getArgs());
     }
 
+    public function testATopLevelNumericKeyedStartBlockInputStaysAnObject()
+    {
+        /*
+         * GLM2 #10: the consolidated payload now reaches the parser
+         * DECODED (no synthetic-Response encode/decode round trip), so
+         * the tool_use input arrives as the aggregator's raw stdClass —
+         * the oracle-less parse branch must keep top-level object-ness
+         * exactly as the raw-oracle branch did (GLM1 #2/#3): a purely
+         * numeric-keyed JSON object stays an object, never a PHP list.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_sb6","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s6","name":"pick","input":{"0":"x","1":"y"}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $args = $call->getArgs();
+        $this->assertInstanceOf(\stdClass::class, $args, 'A purely numeric-keyed object stays an object through the decoded pass-through.');
+        $this->assertSame('x', $args->{'0'});
+        $this->assertSame('y', $args->{'1'});
+    }
+
     public function testANullPartialJsonDeltaFailsAsAStreamParseError()
     {
         // Codex R4 #1: "partial_json": null was silently ignored (isset()

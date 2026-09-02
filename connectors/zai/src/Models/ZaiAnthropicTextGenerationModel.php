@@ -990,13 +990,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			);
 		}
 
-		$consolidated = new Response(
-			200,
-			array( 'Content-Type' => array( 'application/json' ) ),
-			(string) wp_json_encode( $aggregated )
-		);
-
-		return $this->parse_message_body( $consolidated );
+		/*
+		 * GLM2 #10: the aggregated payload is passed through DECODED. The
+		 * previous wp_json_encode() into a synthetic 200 Response forced
+		 * the parser to re-decode the whole payload twice (getData()'s
+		 * associative decode plus the raw-oracle decode) — three whole-
+		 * payload serialization passes per streamed generation on top of
+		 * the per-frame decodes the aggregator already did. The
+		 * aggregator's payload preserves every shape the parser needs (its
+		 * tool_use input stays the raw-decoded object, GLM1 #3; its usage
+		 * is object-keyed; its content is a constructed PHP list), so the
+		 * null raw oracle's documented fallbacks cover each member with
+		 * identical semantics and none of the round trip.
+		 */
+		return $this->parse_decoded_message( $aggregated, null );
 	}
 
 	/**
@@ -1009,8 +1016,42 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @throws ResponseException When the payload is malformed.
 	 */
 	private function parse_message_body( Response $response ): GenerativeAiResult {
-		$data = $response->getData();
+		return $this->parse_decoded_message( $response->getData(), self::raw_body_oracle( $response ) );
+	}
 
+	/**
+	 * Decodes the body non-associatively for the object-ness oracle.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response $response The Messages response.
+	 * @return \stdClass|null The object-decoded body, or null when it does
+	 *                       not decode to a JSON object (no oracle).
+	 */
+	private static function raw_body_oracle( Response $response ): ?\stdClass {
+		$raw = json_decode( (string) $response->getBody() );
+
+		return $raw instanceof \stdClass ? $raw : null;
+	}
+
+	/**
+	 * Runs the Messages parser over an already-decoded payload.
+	 *
+	 * The raw (non-associative) oracle is optional: the non-streaming path
+	 * always supplies it from the body, while the consolidated-stream path
+	 * (GLM2 #10) passes the aggregator's decoded payload with none — its
+	 * members carry no {}/[]-collapsible ambiguity (tool inputs stay
+	 * stdClass, usage is object-keyed, content is a constructed list), so
+	 * the documented fallbacks decide identically.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array|null     $data     The associatively decoded payload.
+	 * @param \stdClass|null $raw_body Non-associative decode of the same payload, or null.
+	 * @return GenerativeAiResult The parsed result.
+	 * @throws ResponseException When the payload is malformed.
+	 */
+	private function parse_decoded_message( $data, ?\stdClass $raw_body ): GenerativeAiResult {
 		if ( ! \is_array( $data ) || ! isset( $data['content'] ) || ! \is_array( $data['content'] ) ) {
 			throw ResponseException::fromMissingData( 'z.ai', 'content' );
 		}
@@ -1021,13 +1062,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * empty PHP array as an empty list, so "content": {} slipped past
 		 * the is_array() check above and returned a successful candidate
 		 * with no parts. The raw (non-associative) decode preserves the
-		 * distinction: only a JSON array decodes to a PHP list.
+		 * distinction: only a JSON array decodes to a PHP list. The
+		 * oracle-less (aggregated stream) payload needs no probe — its
+		 * content is constructed as a PHP list by the aggregator.
 		 */
-		$raw_body = json_decode( (string) $response->getBody() );
-		if ( ! \is_object( $raw_body ) || ! \is_array( $raw_body->content ) ) {
-			if ( \is_object( $raw_body ) && property_exists( $raw_body, 'content' ) ) {
-				throw ResponseException::fromInvalidData( 'z.ai', 'content', 'The message content must be a JSON array.' );
-			}
+		if ( null !== $raw_body && ! \is_array( $raw_body->content ?? null ) && \property_exists( $raw_body, 'content' ) ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'content', 'The message content must be a JSON array.' );
 		}
 
 		/*
@@ -1039,7 +1079,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * block alongside the associative value.
 		 */
 		$raw            = $raw_body;
-		$raw_content_ok = \is_object( $raw ) && isset( $raw->content ) && \is_array( $raw->content );
+		$raw_content_ok = null !== $raw && isset( $raw->content ) && \is_array( $raw->content );
 
 		/*
 		 * Verifier residual on Codex R5 + Codex R6 #1: a Messages response
@@ -1202,7 +1242,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			$usage_is_object = false;
 
 			if ( null !== $usage_data ) {
-				if ( \is_object( $raw ) && \property_exists( $raw, 'usage' ) ) {
+				if ( null !== $raw && \property_exists( $raw, 'usage' ) ) {
 					$usage_is_object = \is_object( $raw->usage );
 				} else {
 					$usage_is_object = array() === $usage_data
@@ -1298,19 +1338,27 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * ambiguous empty array with the empty list.
 				 */
 				if ( null === $raw_part ) {
-					/*
-					 * No raw oracle (defensive: should not happen): the
-					 * strictest associative probe decides — it also rejects
-					 * the ambiguous empty array ({} and [] are
-					 * indistinguishable here, so both fail).
-					 */
 					$args = isset( $part_data['input'] ) ? $part_data['input'] : null;
 
-					if ( null === $args || ! self::is_object_shape( $args ) ) {
+					if ( $args instanceof \stdClass ) {
+						/*
+						 * Already a decoded JSON object — the consolidated
+						 * stream path (GLM2 #10) hands the aggregator's
+						 * raw-preserved input (GLM1 #3) straight through
+						 * with no wire round trip: {} means no arguments
+						 * and any other object converts exactly like the
+						 * raw-oracle branch below it.
+						 */
+						$args = array() === get_object_vars( $args ) ? null : self::tool_args_from_raw( $args );
+					} elseif ( null === $args || ! self::is_object_shape( $args ) ) {
+						/*
+						 * No raw oracle (defensive: should not happen): the
+						 * strictest associative probe decides — it also rejects
+						 * the ambiguous empty array ({} and [] are
+						 * indistinguishable here, so both fail).
+						 */
 						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its input member.' );
-					}
-
-					if ( array() === $args ) {
+					} elseif ( array() === $args ) {
 						$args = null;
 					}
 				} else {
