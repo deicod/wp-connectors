@@ -29,7 +29,6 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Metadata;
 
-use Throwable;
 use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
@@ -53,11 +52,14 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	/**
 	 * Seconds a successful discovery response stays cached per endpoint.
 	 *
+	 * GLM4 #10: single-sourced from the shared ZaiDiscoveryCache (both
+	 * directories alias the same values, so their TTLs can never drift).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var int
 	 */
-	public const DISCOVERY_TTL = 12 * HOUR_IN_SECONDS;
+	public const DISCOVERY_TTL = ZaiDiscoveryCache::DISCOVERY_TTL;
 
 	/**
 	 * Seconds a FAILED discovery suppresses repeat remote attempts
@@ -76,7 +78,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 *
 	 * @var int
 	 */
-	public const NEGATIVE_TTL = 60;
+	public const NEGATIVE_TTL = ZaiDiscoveryCache::NEGATIVE_TTL;
 
 	/**
 	 * Suffix marking the negative (miss) cache entry for an endpoint key.
@@ -89,7 +91,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 *
 	 * @var string
 	 */
-	public const NEGATIVE_CACHE_SUFFIX = '_miss';
+	public const NEGATIVE_CACHE_SUFFIX = ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX;
 
 	/**
 	 * Transient prefix for discovery results; completed with md5(cache_key()).
@@ -226,87 +228,94 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * Lists the models for the current endpoint: cached discovery, discovery,
 	 * or the plan-specific static fallback.
 	 *
+	 * GLM4 #10: the cache orchestration (positive/negative transients,
+	 * TTLs, plan fallback) lives once in the shared ZaiDiscoveryCache —
+	 * the zai_anthropic surface's directory runs the identical flow
+	 * through it, so a caching-rule change can never land on one surface
+	 * only. This directory owns just its surface's discovery attempt
+	 * (discover_model_ids_via_sdk()).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, ModelMetadata> Map of model ID to metadata.
 	 * @throws ResponseException When the credential gate refuses enumeration
-	 *                           (caught below; never escapes this method).
+	 *                           (caught by the shared cache; never escapes
+	 *                           this method).
 	 */
 	protected function sendListModelsRequest(): array {
 		$endpoint = ZaiEndpoint::for_current_settings();
-		$cache_id = self::CACHE_PREFIX . md5( $endpoint->cache_key() );
 
-		$cached_ids = get_transient( $cache_id );
-		if ( \is_array( $cached_ids ) ) {
-			return $this->map_from_ids( $cached_ids );
+		$ids = ZaiDiscoveryCache::cached_ids(
+			self::CACHE_PREFIX . md5( $endpoint->cache_key() ),
+			$endpoint->plan(),
+			function () use ( $endpoint ): array {
+				return $this->discover_model_ids_via_sdk( $endpoint );
+			}
+		);
+
+		return ZaiDiscoveryCache::map_from_ids( $ids );
+	}
+
+	/**
+	 * Makes this surface's discovery attempt through the SDK parent.
+	 *
+	 * Runs inside the shared cache's try: every failure shape — a
+	 * refused credential (below), a non-2xx response, a malformed body,
+	 * a transport error thrown by the parent — propagates to the shared
+	 * catch, which marks the short negative cache and serves the plan
+	 * fallback.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param ZaiEndpoint $endpoint The endpoint captured at request time.
+	 * @return list<string> The discovered model IDs.
+	 * @throws ResponseException When the credential gate refuses enumeration.
+	 */
+	private function discover_model_ids_via_sdk( ZaiEndpoint $endpoint ): array {
+		/*
+		 * Code review GLM1 #1 (sibling of the zai_anthropic surface's
+		 * R20 gate): an env/constant credential that survives an
+		 * intl/cn switch is region-pending (or carries a definitive
+		 * invalid verdict) and must not be reused against the other
+		 * region — the generation path refuses it (R19), but
+		 * enumeration still authenticated with it here, disclosing the
+		 * old-region key to the newly selected endpoint. The SAME
+		 * availability gate is consulted (reused, not duplicated —
+		 * GLM4 #9: through the shared
+		 * generation_refusal_for_wired_authentication() predicate the
+		 * models and the zai_anthropic directory also use): while
+		 * refused, the authenticated request never happens and
+		 * discovery degrades to the static plan fallback via the shared
+		 * cache's catch — never fatal, cached at most as the 60s
+		 * negative marker (GLM1 #6), so a later definitive verdict can
+		 * discover again.
+		 */
+		if ( null !== ( new ZaiProviderAvailability() )->generation_refusal_for_wired_authentication( $this->getRequestAuthentication() ) ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Discovery skipped: the credential is pending revalidation or was rejected for this endpoint.' );
 		}
 
 		/*
-		 * GLM1 #6: a recent discovery failure serves the fallback WITHOUT
-		 * another doomed remote attempt (a 60s miss marker — see
-		 * NEGATIVE_TTL; retryability is preserved after expiry).
+		 * GLM3 #10: capture the endpoint at REQUEST time. The SDK's
+		 * synchronous call below builds the request (createRequest())
+		 * and parses the response (parseResponseToModelMetadataList());
+		 * a concurrent settings save during the HTTP round-trip must
+		 * not make either judge by the NEW plan/region — the response
+		 * is the OLD endpoint's, and the result is cached under the
+		 * OLD endpoint's key by the shared cache.
 		 */
-		if ( get_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX ) ) {
-			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
-		}
+		$this->discovery_endpoint = $endpoint;
 
 		try {
-			/*
-			 * Code review GLM1 #1 (sibling of the zai_anthropic surface's
-			 * R20 gate): an env/constant credential that survives an
-			 * intl/cn switch is region-pending (or carries a definitive
-			 * invalid verdict) and must not be reused against the other
-			 * region — the generation path refuses it (R19), but
-			 * enumeration still authenticated with it here, disclosing the
-			 * old-region key to the newly selected endpoint. The SAME
-			 * availability gate is consulted (reused, not duplicated —
-			 * GLM4 #9: through the shared
-			 * generation_refusal_for_wired_authentication() predicate the
-			 * models and the zai_anthropic directory also use): while
-			 * refused, the authenticated request never happens and
-			 * discovery degrades to the static plan fallback via the catch
-			 * below — never fatal, cached at most as the 60s negative
-			 * marker (GLM1 #6), so a later definitive verdict can discover
-			 * again.
-			 */
-			if ( null !== ( new ZaiProviderAvailability() )->generation_refusal_for_wired_authentication( $this->getRequestAuthentication() ) ) {
-				throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Discovery skipped: the credential is pending revalidation or was rejected for this endpoint.' );
-			}
-
-			/*
-			 * GLM3 #10: capture the endpoint at REQUEST time. The SDK's
-			 * synchronous call below builds the request (createRequest())
-			 * and parses the response (parseResponseToModelMetadataList());
-			 * a concurrent settings save during the HTTP round-trip must
-			 * not make either judge by the NEW plan/region — the response
-			 * is the OLD endpoint's, and the result is cached under the
-			 * OLD endpoint's key below.
-			 */
-			$this->discovery_endpoint = $endpoint;
-
-			// Parent performs the HTTP request (against the resolved endpoint),
-			// throws on non-2xx, and parses via parseResponseToModelMetadataList().
+			// Parent performs the HTTP request (against the resolved
+			// endpoint), throws on non-2xx, and parses via
+			// parseResponseToModelMetadataList().
 			$discovered = parent::sendListModelsRequest();
-		} catch ( Throwable $e ) {
-			/*
-			 * Discovery failure is never fatal (in any layer — see
-			 * setCache()/hasCache()): the plan-partitioned static fallback
-			 * keeps the provider usable. It is cached only as the short
-			 * negative marker (GLM1 #6) so a later valid key can still
-			 * discover — after at most NEGATIVE_TTL seconds.
-			 */
-			set_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX, true, self::NEGATIVE_TTL );
-
-			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
 		} finally {
 			// GLM3 #10: the capture scopes to this one request/parse cycle.
 			$this->discovery_endpoint = null;
 		}
 
-		$ids = array_keys( $discovered );
-		set_transient( $cache_id, $ids, self::DISCOVERY_TTL );
-
-		return $this->map_from_ids( $ids );
+		return array_keys( $discovered );
 	}
 
 	/**
@@ -352,46 +361,5 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		usort( $models, array( ZaiModelCatalog::class, 'sort_callback' ) );
 
 		return $models;
-	}
-
-	/**
-	 * Builds the sorted metadata map for a list of model IDs.
-	 *
-	 * IDs without known chat support are dropped, so a transient warmed by
-	 * an older version can never resurface a non-chat model either.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param array $ids   Model IDs (discovered, cached, or fallback).
-	 * @return array<string, ModelMetadata> Map of model ID to metadata.
-	 */
-	private function map_from_ids( array $ids ): array {
-		$models = array();
-		foreach ( $this->filter_chat_ids( $ids ) as $id ) {
-			$models[ $id ] = ZaiModelCatalog::metadata_for( $id );
-		}
-
-		uasort( $models, array( ZaiModelCatalog::class, 'sort_callback' ) );
-
-		return $models;
-	}
-
-	/**
-	 * Keeps only IDs with known chat support.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param array $ids Model IDs (any source; non-strings dropped).
-	 * @return list<string> Chat-capable model IDs.
-	 */
-	private function filter_chat_ids( array $ids ): array {
-		$chat_ids = array();
-		foreach ( $ids as $id ) {
-			if ( \is_string( $id ) && '' !== $id && ZaiModelCatalog::is_chat_model( $id ) ) {
-				$chat_ids[] = $id;
-			}
-		}
-
-		return $chat_ids;
 	}
 }

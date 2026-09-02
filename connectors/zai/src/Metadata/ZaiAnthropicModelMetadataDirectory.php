@@ -44,7 +44,6 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Metadata;
 
-use Throwable;
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Providers\Contracts\ModelMetadataDirectoryInterface;
 use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
@@ -96,11 +95,14 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	/**
 	 * Seconds a successful discovery response stays cached per endpoint.
 	 *
+	 * GLM4 #10: single-sourced from the shared ZaiDiscoveryCache (both
+	 * directories alias the same values, so their TTLs can never drift).
+	 *
 	 * @since 0.2.0
 	 *
 	 * @var int
 	 */
-	public const DISCOVERY_TTL = 12 * HOUR_IN_SECONDS;
+	public const DISCOVERY_TTL = ZaiDiscoveryCache::DISCOVERY_TTL;
 
 	/**
 	 * Seconds a FAILED discovery suppresses repeat remote attempts
@@ -119,7 +121,7 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 *
 	 * @var int
 	 */
-	public const NEGATIVE_TTL = 60;
+	public const NEGATIVE_TTL = ZaiDiscoveryCache::NEGATIVE_TTL;
 
 	/**
 	 * Suffix marking the negative (miss) cache entry for an endpoint key.
@@ -132,7 +134,7 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 *
 	 * @var string
 	 */
-	public const NEGATIVE_CACHE_SUFFIX = '_miss';
+	public const NEGATIVE_CACHE_SUFFIX = ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX;
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.
@@ -215,45 +217,27 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 * swaps the cache identity and catalog on the very next lookup — a warm
 	 * cache can never serve another endpoint's models.
 	 *
+	 * GLM4 #10: the cache orchestration (positive/negative transients,
+	 * TTLs, plan fallback) lives once in the shared ZaiDiscoveryCache —
+	 * the zai surface's directory runs the identical flow through it, so
+	 * a caching-rule change can never land on one surface only.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @return array<string, ModelMetadata> Map of model ID to metadata.
 	 */
 	private function models_map(): array {
 		$endpoint = ZaiAnthropicEndpoint::for_current_settings();
-		$cache_id = self::CACHE_PREFIX . md5( $endpoint->cache_key() );
 
-		$cached_ids = get_transient( $cache_id );
-		if ( \is_array( $cached_ids ) ) {
-			return $this->map_from_ids( $cached_ids );
-		}
+		$ids = ZaiDiscoveryCache::cached_ids(
+			self::CACHE_PREFIX . md5( $endpoint->cache_key() ),
+			$endpoint->plan(),
+			function () use ( $endpoint ): array {
+				return $this->discover_model_ids( $endpoint );
+			}
+		);
 
-		/*
-		 * GLM1 #6: a recent discovery failure serves the fallback WITHOUT
-		 * another doomed remote attempt (a 60s miss marker — see
-		 * NEGATIVE_TTL; retryability is preserved after expiry).
-		 */
-		if ( get_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX ) ) {
-			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
-		}
-
-		try {
-			$ids = $this->discover_model_ids( $endpoint );
-		} catch ( Throwable $e ) {
-			/*
-			 * Discovery failure is never fatal: the plan-partitioned static
-			 * fallback keeps the provider usable. It is cached only as the
-			 * short negative marker (GLM1 #6) so a later valid key can still
-			 * discover — after at most NEGATIVE_TTL seconds.
-			 */
-			set_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX, true, self::NEGATIVE_TTL );
-
-			return $this->map_from_ids( ZaiModelCatalog::ids_for_plan( $endpoint->plan() ) );
-		}
-
-		set_transient( $cache_id, $ids, self::DISCOVERY_TTL );
-
-		return $this->map_from_ids( $ids );
+		return ZaiDiscoveryCache::map_from_ids( $ids );
 	}
 
 	/**
@@ -308,29 +292,5 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		 * existed only here).
 		 */
 		return ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan() );
-	}
-
-	/**
-	 * Builds the sorted metadata map for a list of model IDs.
-	 *
-	 * IDs without known chat support are dropped, so a transient warmed by
-	 * an older version can never resurface a non-chat model either.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param array $ids Model IDs (fallback, cached, or discovered).
-	 * @return array<string, ModelMetadata> Map of model ID to metadata.
-	 */
-	private function map_from_ids( array $ids ): array {
-		$models = array();
-		foreach ( $ids as $id ) {
-			if ( \is_string( $id ) && '' !== $id && ZaiModelCatalog::is_chat_model( $id ) ) {
-				$models[ $id ] = ZaiModelCatalog::metadata_for( $id );
-			}
-		}
-
-		uasort( $models, array( ZaiModelCatalog::class, 'sort_callback' ) );
-
-		return $models;
 	}
 }

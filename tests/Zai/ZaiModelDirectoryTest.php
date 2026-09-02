@@ -16,6 +16,8 @@ use WordPress\AiClient\Messages\Enums\ModalityEnum;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use WordPress\AiClient\Providers\Models\Enums\OptionEnum;
+use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
+use Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
@@ -797,6 +799,28 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertCount(2, $this->sdkHttpAttempts());
     }
 
+    public function testBothDirectoriesShareTheDiscoveryCacheConstants()
+    {
+        /*
+         * GLM4 #10: the discovery orchestration was duplicated
+         * line-for-line between the two directories, so every caching
+         * change had to land twice. Both now alias the shared
+         * ZaiDiscoveryCache's constants and run its cached_ids() flow;
+         * this pin fails the moment one surface's values drift from the
+         * single source (the SDK-free settings invalidation and
+         * uninstall.php mirror the literal suffix value — those mirrors
+         * are pinned separately).
+         */
+        $this->assertSame(ZaiDiscoveryCache::DISCOVERY_TTL, ZaiModelMetadataDirectory::DISCOVERY_TTL);
+        $this->assertSame(ZaiDiscoveryCache::NEGATIVE_TTL, ZaiModelMetadataDirectory::NEGATIVE_TTL);
+        $this->assertSame(ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX, ZaiModelMetadataDirectory::NEGATIVE_CACHE_SUFFIX);
+        $this->assertSame(ZaiDiscoveryCache::DISCOVERY_TTL, ZaiAnthropicModelMetadataDirectory::DISCOVERY_TTL);
+        $this->assertSame(ZaiDiscoveryCache::NEGATIVE_TTL, ZaiAnthropicModelMetadataDirectory::NEGATIVE_TTL);
+        $this->assertSame(ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX, ZaiAnthropicModelMetadataDirectory::NEGATIVE_CACHE_SUFFIX);
+
+        // The external mirrors keep pinning the literal suffix value.
+        $this->assertSame('_miss', ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX);
+    }
 
     /**
      * @param list<ModelMetadata> $models
