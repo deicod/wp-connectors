@@ -747,6 +747,78 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testAnInvalidUtf8TextPartIsRejectedBeforeTransport()
+    {
+        /*
+         * GLM3 #4: a binary-mangled string passed every is_string check
+         * and threw a raw JsonException from the transport's
+         * whole-request encode, surfacing as the generic 500 (zai_error)
+         * — while the same unencodable value inside a tool result got the
+         * precise typed 400 rejection (R18). Checked with the same
+         * wp_json_encode() oracle; mb_check_encoding() would require
+         * ext-mbstring, which WordPress does not guarantee.
+         */
+        try {
+            $this->model()->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart("binary \xB1\x31 mangled"))),
+            ));
+            $this->fail('An invalid-UTF-8 text part must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not JSON-encode a message text part', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAnInvalidUtf8TextPartSurfacesAsTheTypedInvalidRequestError()
+    {
+        // GLM3 #4: the direct-use WP_Error boundary maps the rejection to
+        // zai_invalid_request (400), not the generic zai_error 500 the
+        // raw JsonException produced.
+        $error = $this->model()->generate_text(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart("binary \xB1\x31 mangled"))),
+        ));
+
+        $this->assertWPError($error, 'zai_invalid_request');
+    }
+
+    public function testAnInvalidUtf8SystemInstructionIsRejectedBeforeTransport()
+    {
+        // GLM3 #4: the system member is a wire string — same typed
+        // rejection as text parts.
+        $config = ModelConfig::fromArray(array());
+        $config->setSystemInstruction("system \xB1\x31");
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An invalid-UTF-8 system instruction must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not JSON-encode the system instruction', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAnInvalidUtf8StopSequenceIsRejectedBeforeTransport()
+    {
+        // GLM3 #4: stop sequences are wire strings too.
+        $config = ModelConfig::fromArray(array());
+        $config->setStopSequences(array('END', "stop \xB1\x31"));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An invalid-UTF-8 stop sequence must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not JSON-encode a stop sequence', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testGenerationIsRefusedWhileTheCredentialIsRegionPending()
     {
         /*

@@ -261,6 +261,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				: $json_guidance;
 		}
 		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
+			/*
+			 * GLM3 #4: the system member is a wire STRING — the same
+			 * invalid-UTF-8 rejection as text parts (see
+			 * message_part_block()), not the transport's raw JsonException
+			 * surfaced as the generic 500.
+			 */
+			if ( false === wp_json_encode( $system_instruction ) ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider could not JSON-encode the system instruction (invalid UTF-8).'
+				);
+			}
+
 			$params['system'] = $system_instruction;
 		}
 
@@ -297,6 +309,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				if ( ! \is_string( $sequence ) || '' === $sequence ) {
 					throw new InvalidArgumentException(
 						'The zai_anthropic provider requires every stop sequence to be a non-empty string.'
+					);
+				}
+
+				// GLM3 #4: same invalid-UTF-8 oracle as text parts.
+				if ( false === wp_json_encode( $sequence ) ) {
+					throw new InvalidArgumentException(
+						'The zai_anthropic provider could not JSON-encode a stop sequence (invalid UTF-8).'
 					);
 				}
 			}
@@ -819,6 +838,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			$text = (string) $part->getText();
 			if ( '' === $text ) {
 				return null;
+			}
+
+			/*
+			 * GLM3 #4: an invalid-UTF-8 string passed every is_string
+			 * check and detonated as a raw JsonException in the
+			 * transport's whole-request encode, surfacing as the generic
+			 * 500 (zai_error). Same wp_json_encode() oracle the tool
+			 * result/schema rejections use (R18/R19/R20) — for a string,
+			 * encoding fails on exactly the invalid-UTF-8 condition.
+			 * mb_check_encoding() is not an option here: WordPress does
+			 * not require ext-mbstring and the plugin declares no
+			 * extension beyond PHP itself.
+			 */
+			if ( false === wp_json_encode( $text ) ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider could not JSON-encode a message text part (invalid UTF-8).'
+				);
 			}
 
 			return array(
