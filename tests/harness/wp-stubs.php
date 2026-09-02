@@ -416,8 +416,16 @@ if (!class_exists('wpdb')) {
                 return array();
             }
 
-            // SQL LIKE (with esc_like() backslash escapes) to regex.
-            $like = stripslashes($matches[1]);
+            /*
+             * SQL LIKE (with esc_like() backslash escapes) to regex. No
+             * stripslashes() here: prepare()'s preg_replace replacement
+             * processing already collapsed addslashes()' doubled
+             * backslashes to singles, so a backslash in the captured
+             * literal is ALWAYS an esc_like() escape marking the next
+             * character literal (verifier round on GLM2 #7 — stripping
+             * them turned the escaped underscores back into wildcards).
+             */
+            $like = $matches[1];
             $regex = '';
             $length = strlen($like);
             for ($i = 0; $i < $length; $i++) {
@@ -1344,6 +1352,31 @@ function add_settings_error($setting, $code, $message, $type = 'error')
 function settings_errors($setting = '', $sanitize = false, $hide_on_update = false)
 {
     return WpHarness::$settings_errors;
+}
+
+/**
+ * Core-faithful getter for the registered settings errors: returns (does
+ * NOT print) the errors recorded for a setting slug, mirroring
+ * wp-admin/includes/template.php. The settings_errors() stub above keeps
+ * its historical return-the-array behavior for existing callers.
+ *
+ * @param string $setting_code Setting slug to filter by ('' for all).
+ * @return array<string, array<string, string>> Filtered errors.
+ */
+function get_settings_errors($setting_code = '')
+{
+    if ('' === $setting_code) {
+        return WpHarness::$settings_errors;
+    }
+
+    $matches = array();
+    foreach (WpHarness::$settings_errors as $key => $error) {
+        if (is_array($error) && (isset($error['setting']) ? $error['setting'] : '') === $setting_code) {
+            $matches[$key] = $error;
+        }
+    }
+
+    return $matches;
 }
 
 function do_settings_sections($page)

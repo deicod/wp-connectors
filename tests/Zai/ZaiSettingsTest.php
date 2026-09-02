@@ -177,6 +177,37 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         );
     }
 
+    public function testAForeignSettingsErrorWithTheSameCodeDoesNotSuppressTheNotice()
+    {
+        /*
+         * Verifier round on GLM2 #8: the dedup read is get_settings_errors()
+         * scoped to THIS group's setting slug (the core getter — its
+         * display-function sibling settings_errors() echoes HTML and
+         * returns void in real WordPress). A same-CODE error registered
+         * under a different setting (another plugin's coincidental reuse)
+         * is outside the scope and must not suppress this group's notice.
+         */
+        add_settings_error('some_other_plugin_group', 'zai_connector_unauthorized', 'unrelated notice');
+
+        $this->bootPlugin();
+        $this->asAnonymous();
+        $_POST = array(
+            'option_page' => 'zai_connector',
+            PlanRegionSettings::OPTION_PLAN => 'general',
+        );
+
+        do_action('admin_init');
+
+        $ours = array_filter(
+            get_settings_errors('zai_connector'),
+            static function ($error) {
+                return is_array($error) && 'zai_connector_unauthorized' === ($error['code'] ?? null);
+            }
+        );
+
+        $this->assertCount(1, $ours, 'The dedup scope is this group alone: exactly one notice of ours is recorded despite the foreign same-code error.');
+    }
+
     public function testUnauthorizedSubmissionStripsEveryGroupOption()
     {
         /*

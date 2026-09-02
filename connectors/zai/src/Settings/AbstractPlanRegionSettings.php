@@ -481,8 +481,14 @@ abstract class AbstractPlanRegionSettings {
 			 * idempotent (unsetting twice is a no-op); the emission checks
 			 * for an existing error of the same code and stays silent, so
 			 * any path that renders settings errors prints the notice once.
+			 *
+			 * Verifier round: the read uses get_settings_errors() — the
+			 * core GETTER. settings_errors() is a display function that
+			 * ECHOES the rendered notices and returns void, so consulting
+			 * it here would emit stray markup mid-request and never
+			 * deduplicate anything on a real install.
 			 */
-			foreach ( settings_errors( self::OPTION_GROUP ) as $existing_error ) {
+			foreach ( get_settings_errors( self::OPTION_GROUP ) as $existing_error ) {
 				if ( \is_array( $existing_error ) && 'zai_connector_unauthorized' === ( $existing_error['code'] ?? null ) ) {
 					return;
 				}

@@ -122,11 +122,22 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
     {
         $this->seedCurrentSite();
 
+        // Verifier round on GLM2 #7: a decoy row differing by ONE
+        // character where the real marker has an underscore must SURVIVE —
+        // pinning that the enumeration honors esc_like()'s literal
+        // underscores instead of matching them as single-char wildcards.
+        $decoy = 'zai_connector_zaiXkey_state_probe_' . md5( 'decoy' );
+        set_transient( $decoy, true, 60 );
+
         zai_connector_zai_uninstall_site();
         zai_connector_zai_uninstall_network(); // Single site: no-op.
 
         $this->assertCurrentSiteClean();
         $this->assertSame( 1, get_current_blog_id() );
+        $this->assertTrue(
+            get_transient( $decoy ),
+            'The prefix sweep must match literal underscores only — a one-character-off decoy row is not plugin-owned and must survive.'
+        );
     }
 
     public function testNetworkUninstallCleansEverySiteAndRestoresContext()
