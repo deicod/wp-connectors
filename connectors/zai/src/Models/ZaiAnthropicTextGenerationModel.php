@@ -443,13 +443,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * user turn — once any other turn advances past that window, the IDs
 	 * expire: a stale result later in the history is rejected before
 	 * transport (as are unmatched/mistyped/duplicate results) instead of
-	 * failing upstream with a 400.
+	 * failing upstream with a 400. A history that ends on the unanswered
+	 * assistant tool turn itself is rejected the same way (GLM2 #1): the
+	 * protocol demands the answering user turn before the replay ships.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @param array $messages Messages to prepare (list of Message).
 	 * @return array The prepared messages parameter (list of content messages).
-	 * @throws InvalidArgumentException When a tool_result ID is unmatched, stale, or answered twice.
+	 * @throws InvalidArgumentException When a tool_result ID is unmatched, stale, or answered twice, or the history ends on an unanswered tool turn.
 	 */
 	protected function prepare_messages_param( array $messages ): array {
 		$prepared          = array();
@@ -556,12 +558,25 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		/*
 		 * End of history is the final coalesced-turn boundary: a window
 		 * answered by the LAST user turn is judged for completeness after
-		 * that turn's full coalescing (Codex R11 #1), while an unanswered
-		 * trailing assistant tool turn stays open — the normal tool loop.
+		 * that turn's full coalescing (Codex R11 #1).
+		 *
+		 * GLM2 #1: a history that ENDS on the open assistant tool turn
+		 * itself is equally invalid — the Messages API requires every
+		 * tool_use to be followed by its tool_result blocks in the next
+		 * message, so such a request 400s upstream with the generic
+		 * client-error surface. The caller's tool loop must append the
+		 * answering user turn BEFORE replaying the conversation, never
+		 * send the unanswered trailing turn back to the wire.
 		 */
-		if ( $awaiting_answer && 'user' === $previous_role && array() !== $outstanding_tools ) {
+		if ( $awaiting_answer && array() !== $outstanding_tools ) {
+			if ( 'user' === $previous_role ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).'
+				);
+			}
+
 			throw new InvalidArgumentException(
-				'The zai_anthropic provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).'
+				'The zai_anthropic provider requires the final assistant tool call turn to be answered by a following user turn (unanswered tool call at the end of the conversation).'
 			);
 		}
 

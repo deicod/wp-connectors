@@ -406,6 +406,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
             new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_2', 'ping', null)))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_2', 'ping', array('ok' => 1))))),
         );
         $config = ModelConfig::fromArray(array(
             'functionDeclarations' => array(
@@ -478,6 +479,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             )),
             new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_a', 'get_weather', array('temp_c' => 21))))),
             new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_b', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_b', 'ping', array('ok' => 1))))),
         );
 
         list($url, $body) = $this->captureRequest($prompt, $this->model());
@@ -496,6 +498,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
             new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_c', 'pick', array('first' => 'a', 1 => 'b'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_c', 'pick', array('picked' => 'a'))))),
         );
 
         list($url, $body) = $this->captureRequest($prompt, $this->model());
@@ -968,6 +971,67 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame('tool_result', $body['messages'][2]['content'][0]['type']);
         $this->assertSame('c1', $body['messages'][2]['content'][0]['tool_use_id']);
         $this->assertSame('c2', $body['messages'][4]['content'][0]['tool_use_id']);
+    }
+
+    public function testAHistoryEndingOnAnAssistantToolTurnIsRejectedBeforeTransport()
+    {
+        /*
+         * GLM2 #1: the Messages API requires every tool_use to be followed
+         * by its tool_result blocks, so a history ending on the open
+         * assistant tool turn itself is invalid — previously it shipped and
+         * failed as an upstream 400 with the generic client-error surface
+         * instead of this typed pre-transport rejection.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('tail_call', 'ping', array())))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A history ending on an unanswered assistant tool turn must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('end of the conversation', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testATrailingAssistantToolTurnAfterACompleteRoundIsRejected()
+    {
+        // The completed first round stays valid; only the trailing
+        // unanswered second round fires the end-of-history rejection.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('done', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('done', 'ping', array('r' => 1))))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('open', 'pong', array())))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A trailing unanswered assistant tool turn must be rejected after a complete round too.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('end of the conversation', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testATrailingAssistantTextTurnStillShips()
+    {
+        // A trailing assistant turn WITHOUT tool calls is the protocol's
+        // prefill shape and stays legitimate — the GLM2 #1 rejection is
+        // scoped to unanswered tool turns only.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('Start a haiku about caches.'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart('Stale data whispers'))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('assistant', $body['messages'][1]['role']);
+        $this->assertSame('Stale data whispers', $body['messages'][1]['content'][0]['text']);
     }
 
     public function testAToolResultAfterAnInterveningUserTurnIsRejected()
