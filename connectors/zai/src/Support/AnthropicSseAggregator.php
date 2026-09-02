@@ -582,17 +582,59 @@ final class AnthropicSseAggregator {
 		 * Codex R8 #2: after message_stop terminated the stream, only
 		 * keepalive traffic (comments and pings) may follow. Any other
 		 * data frame is a corrupt post-termination event.
+		 *
+		 * GLM3 #6: the keepalive whitelist matched only data payloads
+		 * decoding to exactly {"type":"ping"} — it ignored the frame's
+		 * event: name, so a type-less ping ('event: ping' + 'data: {}'),
+		 * an OpenAI-style 'data: [DONE]' sentinel appended by a gateway,
+		 * and error events all set malformed_event and discarded an
+		 * otherwise fully-received generation. Trailing frames are now
+		 * ROUTED BY EVENT NAME (the payload's own type member decides
+		 * only for event-less frames, and where BOTH declare they must
+		 * agree — the Codex R7 #6 rule): pings and [DONE] sentinels are
+		 * ignored; an error event sets the error flag so the model
+		 * surfaces its fixed typed error message instead of the generic
+		 * stream-corruption one; anything else is still corrupt.
 		 */
 		if ( $this->terminated && '' !== trim( implode( "\n", $data_lines ) ) ) {
-			$type_probe   = json_decode( implode( "\n", $data_lines ), true );
-			$is_keepalive = \is_array( $type_probe ) && isset( $type_probe['type'] ) && 'ping' === $type_probe['type'];
+			$trailing = implode( "\n", $data_lines );
 
-			if ( ! $is_keepalive ) {
-				++$this->malformed;
-				$this->malformed_event = true;
+			if ( '[DONE]' === trim( $trailing ) ) {
+				// An OpenAI-style completion sentinel a gateway may
+				// append after the Anthropic stream has already ended.
+				return;
+			}
+
+			$probe        = json_decode( $trailing, true );
+			$payload_type = \is_array( $probe ) && isset( $probe['type'] ) && \is_string( $probe['type'] ) ? $probe['type'] : '';
+
+			if ( \is_string( $event_name ) ) {
+				if ( 'ping' === $event_name ) {
+					// Event-declared ping: the payload may be type-less
+					// ('{}') or agree; a contradicting payload type falls
+					// through to the corrupt verdict below.
+					if ( '' === $payload_type || 'ping' === $payload_type ) {
+						return;
+					}
+				} elseif ( 'error' === $event_name ) {
+					// The payload is deliberately not retained; the model
+					// surfaces the fixed, redacted error message.
+					$this->error = true;
+
+					return;
+				}
+			} elseif ( 'ping' === $payload_type ) {
+				return;
+			} elseif ( 'error' === $payload_type ) {
+				$this->error = true;
 
 				return;
 			}
+
+			++$this->malformed;
+			$this->malformed_event = true;
+
+			return;
 		}
 
 		$payload = implode( "\n", $data_lines );
