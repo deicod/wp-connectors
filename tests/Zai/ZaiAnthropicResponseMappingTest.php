@@ -792,6 +792,94 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(FinishReasonEnum::contentFilter(), $result->getCandidates()[0]->getFinishReason());
     }
 
+    public function testAnEmptyContentListUnderAnOrdinaryStopReasonRejects()
+    {
+        /*
+         * GLM3 #2: the parse_content_block() KNOWN LIMITATION guarantees a
+         * zero-parts rejection — but only a contradictory tool_use stop
+         * reason tripped the consistency check, so content:[] with
+         * end_turn parsed as a SUCCESS with zero parts (the caller then
+         * hit the SDK's untyped toText() RuntimeException). The refusal
+         * tolerance above stays the only documented exception.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"id":"msg_ec2","type":"message","role":"assistant","content":[],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An empty content list under an ordinary stop reason must not parse as a generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('no content blocks', $e->getMessage());
+        }
+    }
+
+    public function testUnmappedOnlyContentRejectsRegardlessOfTheStopReason()
+    {
+        // GLM3 #2: all-unmapped content previously parsed as a SUCCESS
+        // with zero parts; the message names the dropped blocks
+        // (code-review #15 diagnosability).
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_unmapped',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(
+                array('type' => 'redacted_thinking', 'data' => 'encrypted'),
+                array('type' => 'server_tool_use', 'id' => 'srv_1', 'name' => 'search', 'input' => new stdClass()),
+            ),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 2, 'output_tokens' => 1),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Unmapped-only content must not parse as a generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('all blocks were of unmapped types', $e->getMessage());
+        }
+    }
+
+    public function testAZeroPartResponseUnderToolUseReportsTheMissingContentNotTheMismatch()
+    {
+        // GLM3 #2 ordering pin: the zero-parts rejection wins over the
+        // stop-reason mismatch message (previously this shape reported
+        // "did not match the response content").
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"id":"msg_ec3","type":"message","role":"assistant","content":[],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An empty content list under tool_use must not parse as a generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('no content blocks', $e->getMessage());
+        }
+    }
+
+    public function testAStreamedUnmappedOnlyTurnRejects()
+    {
+        // GLM3 #2, streamed path: the aggregator drops unmapped block
+        // types at content_block_payload(), so the consolidated payload
+        // reaches the parser with an empty content list — the same
+        // zero-parts rejection applies.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_s_unmapped","role":"assistant","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srv_1","name":"search","input":{}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed unmapped-only turn must not parse as a generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('no content blocks', $e->getMessage());
+        }
+    }
+
     public function testADuplicateContentBlockStartInvalidatesTheStream()
     {
         // Codex R7 #4: a second start for the same index silently replaced

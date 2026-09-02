@@ -1191,6 +1191,31 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		/*
+		 * GLM3 #2: the parse_content_block() KNOWN LIMITATION guarantees
+		 * that a content list of ONLY unmapped blocks "rejects as a
+		 * ResponseException" — but the consistency check below
+		 * cross-checked tool_use alone, so an empty or unmapped-only
+		 * content list parsed as a SUCCESS with zero parts under every
+		 * ordinary stop reason, bypassing the typed zai_invalid_response
+		 * channel (consumers hit the SDK's untyped toText()
+		 * RuntimeException instead). Zero parts now rejects REGARDLESS of
+		 * the stop reason; the message names the dropped blocks when that
+		 * was the case (code-review #15). One documented tolerance stays:
+		 * an empty content list under stop_reason refusal is the
+		 * protocol's pre-output-refusal shape and keeps surfacing as a
+		 * successful contentFilter result.
+		 */
+		if ( array() === $parts && 'refusal' !== $data['stop_reason'] ) {
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'content',
+				$dropped_unmapped
+					? 'The message contained no usable content (all blocks were of unmapped types).'
+					: 'The message contained no content blocks.'
+			);
+		}
+
+		/*
 		 * Codex R14 #2: the stop reason must match the parsed content — a
 		 * tool_use reason with no FunctionCall signals toolCalls() with
 		 * nothing to execute, and tool blocks under an ordinary completion
@@ -1420,11 +1445,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * web_search_tool_result / redacted_thinking itself. The
 				 * failure surface stays typed, never silent-empty: a
 				 * response whose content is ONLY unmapped blocks produces
-				 * no parts, which the stop-reason/content consistency
-				 * check below rejects as a ResponseException
-				 * (zai_invalid_response) whose message names the dropped
-				 * blocks when that was the case. The streamed path drops
-				 * the same shapes earlier (see the aggregator's
+				 * no parts, which parse_decoded_message() rejects as a
+				 * ResponseException (zai_invalid_response) regardless of
+				 * the stop reason (GLM3 #2 made this guarantee real — the
+				 * empty-refusal tolerance is its one documented
+				 * exception), with a message naming the dropped blocks
+				 * when that was the case. The streamed path drops the
+				 * same shapes earlier (see the aggregator's
 				 * content_block_payload()).
 				 */
 				return null;
