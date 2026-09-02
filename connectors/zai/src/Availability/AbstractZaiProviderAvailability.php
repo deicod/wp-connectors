@@ -580,7 +580,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			return $this->probe();
 		}
 
-		$miss_transient = static::STATE_OPTION . '_probe_' . md5( $binding );
+		$miss_transient = self::probe_miss_transient_name( $binding );
 
 		if ( get_transient( $miss_transient ) ) {
 			return null;
@@ -595,6 +595,51 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		}
 
 		return $verdict;
+	}
+
+	/**
+	 * Deletes the probe-miss marker of the CURRENT effective binding
+	 * (code-review GLM2 #6).
+	 *
+	 * The live probe (bin/zai-live-probe.php) exists to exercise the LIVE
+	 * network path on every run, so it clears the positive caches (the
+	 * availability state option, the discovery transient) before its
+	 * acceptance steps — but the GLM1 #6 negative markers survived that
+	 * clearing, letting those steps serve a 60-second-old inconclusive
+	 * verdict (probe-miss, discovery '_miss') instead of the live request
+	 * they exist to verify. This derives the exact marker name the NEXT
+	 * isConfigured() consult would read for the current effective key and
+	 * endpoint — no network request — so callers that need a guaranteed
+	 * live probe can clear it alongside the positive state.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 */
+	public function clear_probe_miss_marker(): void {
+		$effective = $this->effective_key();
+
+		if ( '' === $effective['key'] ) {
+			// No effective credential: no binding, so no marker to clear.
+			return;
+		}
+
+		delete_transient( self::probe_miss_transient_name( $this->binding( $effective['source'], $effective['key'] ) ) );
+	}
+
+	/**
+	 * Builds the binding-scoped probe-miss transient name.
+	 *
+	 * One construction site shared by the writer (probe_with_negative_cache)
+	 * and the live-probe clearer, so the two can never drift apart.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $binding Credential+endpoint binding.
+	 * @return string Transient name holding the miss marker.
+	 */
+	private static function probe_miss_transient_name( string $binding ): string {
+		return static::STATE_OPTION . '_probe_' . md5( $binding );
 	}
 
 	/**

@@ -100,6 +100,7 @@ if ( '' === $key ) {
 update_option( 'zai_connector_zai_' . ( 'anthropic' === $surface ? 'anthropic_' : '' ) . 'plan', $plan );
 update_option( 'zai_connector_zai_' . ( 'anthropic' === $surface ? 'anthropic_' : '' ) . 'region', $region );
 
+use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
@@ -149,12 +150,23 @@ $exit = 0;
  * The state option is a cache of a past check (safe to clear from a
  * probe), so it is deleted first exactly like the discovery transient
  * below: this step must always exercise the live network path.
+ *
+ * GLM2 #6: the binding-scoped probe-MISS marker (GLM1 #6, 60s) is a
+ * cache of a past INCONCLUSIVE check and equally safe to clear — left
+ * in place it made this step report the cached inconclusive outcome
+ * (and fail) with zero live requests for up to a minute after one
+ * transient failure.
  */
 $state_option = 'anthropic' === $surface ? ZaiAnthropicProviderAvailability::STATE_OPTION : ZaiProviderAvailability::STATE_OPTION;
 delete_option( $state_option );
 
+$availability = $provider_class::availability();
+if ( $availability instanceof AbstractZaiProviderAvailability ) {
+    $availability->clear_probe_miss_marker();
+}
+
 $start = microtime( true );
-$configured = $provider_class::availability()->isConfigured();
+$configured = $availability->isConfigured();
 
 /*
  * R17b verifier sweep: isConfigured() answers TRUE for an INCONCLUSIVE
@@ -199,6 +211,7 @@ if ( ! $configured ) {
 $discovery_cache_id = ( 'anthropic' === $surface ? 'zai_connector_zai_anthropic_models_' : 'zai_connector_zai_models_' )
     . md5( $endpoint->cache_key() );
 delete_transient( $discovery_cache_id );
+delete_transient( $discovery_cache_id . '_miss' );
 
 $start = microtime( true );
 try {

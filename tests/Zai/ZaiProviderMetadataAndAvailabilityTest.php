@@ -587,6 +587,49 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertCount(3, $this->sdkHttpAttempts());
     }
 
+    public function testClearingTheProbeMissMarkerForcesALiveProbe()
+    {
+        /*
+         * GLM2 #6: the live probe clears its positive caches before the
+         * acceptance steps, but the binding-scoped probe-MISS marker
+         * survived that clearing — a run within PROBE_MISS_TTL of a
+         * transient failure served the cached inconclusive verdict with
+         * ZERO live requests. clear_probe_miss_marker() deletes the
+         * marker the NEXT consult would read for the CURRENT effective
+         * binding, so the consult after it probes the live route again.
+         */
+        $this->freezeTime(1700000000);
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        // One inconclusive probe plants the miss marker.
+        $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+        $this->assertTrue($instance->isConfigured());
+        $this->assertCount(1, $this->sdkHttpAttempts());
+
+        $this->assertTrue($instance->isConfigured(), 'Within the TTL the marker suppresses the repeat probe.');
+        $this->assertCount(1, $this->sdkHttpAttempts());
+
+        // The live-probe clearer removes exactly that marker...
+        $instance->clear_probe_miss_marker();
+
+        // ...so the next consult probes live again (a definitive answer
+        // this time, persisting the verdict).
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+        $this->assertTrue($instance->isConfigured());
+        $this->assertCount(2, $this->sdkHttpAttempts(), 'After clearing the marker the consult must probe the live route.');
+        $this->assertNotFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'The live verdict persists as usual.');
+    }
+
+    public function testClearingTheProbeMissMarkerIsANoOpWithoutACredential()
+    {
+        // No effective key: no binding, so no marker name to derive — the
+        // clearer must not error or invent one.
+        (new ZaiProviderAvailability())->clear_probe_miss_marker();
+
+        $this->addToAssertionCount(1);
+    }
+
     public function testRateLimitResponseDoesNotInvalidateAValidKey()
     {
         $this->freezeTime(1700000000);
