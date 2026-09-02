@@ -629,6 +629,56 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             'NAN value' => array(NAN, 'NAN value'),
             'resource value' => array(fopen('php://memory', 'r'), 'resource value'),
             'recursive array' => array($recursive, 'recursive array'),
+            /*
+             * GLM4 #1: under production wp_json_encode() this value was
+             * lossily rescued and shipped (the model was told altered tool
+             * output) — only the strict test stub made the old guard fire.
+             * The raw json_encode() oracle rejects it on real sites too.
+             */
+            'invalid UTF-8 value' => array("binary \xB1\x31 result", 'invalid UTF-8 value'),
+        );
+    }
+
+    /**
+     * @dataProvider provideUnencodableToolArguments
+     */
+    public function testUnencodableToolArgumentsAreRejectedBeforeTransport($args, $label)
+    {
+        /*
+         * GLM4 #1: the tool_use input passed every SHAPE check (object
+         * form) but its VALUES were never encodability-checked — NAN,
+         * invalid UTF-8, or a recursive structure reached the transport
+         * and threw its whole-request JsonException as the generic 500
+         * (zai_error) instead of this typed pre-transport rejection, the
+         * exact divergence GLM3 #4 closed for text parts.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_args', 'get_weather', $args)))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail("[{$label}] Unencodable tool arguments must be rejected before transport.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not JSON-encode tool arguments', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideUnencodableToolArguments()
+    {
+        $recursive = array('city' => 'Oslo');
+        $recursive['self'] = &$recursive;
+
+        return array(
+            'NAN argument value' => array(array('amount' => NAN), 'NAN argument value'),
+            'invalid UTF-8 argument value' => array(array('city' => "Os\xB1\x31lo"), 'invalid UTF-8 argument value'),
+            'recursive arguments' => array($recursive, 'recursive arguments'),
         );
     }
 

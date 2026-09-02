@@ -376,13 +376,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			/*
 			 * R19 (inline 3906739372): a constructible but unencodable
 			 * outputSchema — NAN, invalid UTF-8, a recursive structure — makes
-			 * wp_json_encode() return false, which the string cast silently
+			 * the encode return false, which the string cast silently
 			 * turned into '': the guidance ended in "JSON Schema: " and the
 			 * model produced unconstrained output even though the caller
 			 * requested a schema. Rejected before transport in the same
 			 * channel as the R18 tool-result encoding failure.
+			 *
+			 * GLM4 #1: the oracle is the RAW json_encode() — the same
+			 * primitive the GLM3 #4 wire-string guards use. Core's
+			 * wp_json_encode() lossily rescues invalid UTF-8 and never
+			 * returns false for a string in production, so a guard on it
+			 * was dead code outside the test stub.
 			 */
-			$encoded_schema = wp_json_encode( $output_schema );
+			$encoded_schema = json_encode( $output_schema ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round; GLM4 #1 extended it here).
 			if ( false === $encoded_schema ) {
 				throw new InvalidArgumentException(
 					'The zai_anthropic provider could not JSON-encode the configured output schema (unencodable value such as NAN, invalid UTF-8, or a recursive structure).'
@@ -475,12 +481,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * request untouched, so generation failed in the transport's
 			 * whole-request serialization instead of producing the adapter's
 			 * pre-transport configuration error. Validated with the same
-			 * wp_json_encode() oracle the output-schema (R19) and tool-result
-			 * (R18) rejections use; the empty schema keeps its object
-			 * normalization below.
+			 * RAW json_encode() oracle the output-schema (R19) and
+			 * tool-result (R18) rejections use (GLM4 #1: raw, not
+			 * wp_json_encode() — core's lossy UTF-8 rescue made that
+			 * variant dead code in production); the empty schema keeps its
+			 * object normalization below.
 			 */
 			if ( \is_array( $input_schema ) && array() !== $input_schema
-				&& false === wp_json_encode( $input_schema ) ) {
+				&& false === json_encode( $input_schema ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round; GLM4 #1 extended it here).
 				throw new InvalidArgumentException(
 					'The zai_anthropic provider could not JSON-encode a declared tool parameter schema (unencodable value such as NAN, invalid UTF-8, or a recursive structure).'
 				);
@@ -833,7 +841,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *
 	 * @param MessagePart $part The message part.
 	 * @return array<string, mixed>|null The block, or null when dropped.
-	 * @throws InvalidArgumentException When a tool part carries no identity.
+	 * @throws InvalidArgumentException When a tool part carries no identity
+	 *                                   or an unencodable argument value.
 	 */
 	protected function message_part_block( MessagePart $part ): ?array {
 		if ( $part->getType()->isText() ) {
@@ -936,6 +945,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				$input = new \stdClass();
 			}
 
+			/*
+			 * GLM4 #1: the shape checks above pass scalars, lists, and
+			 * objects, but said nothing about ENCODABILITY — an argument
+			 * value carrying NAN, invalid UTF-8, a resource, or a
+			 * recursive structure reached the transport and detonated in
+			 * its whole-request json_encode(..., JSON_THROW_ON_ERROR) as
+			 * an untyped JsonException (generic 500 zai_error), the exact
+			 * divergence the GLM3 #4 wire-string guards closed for text
+			 * parts. Same RAW-oracle rejection, same first-bad-wins
+			 * channel as the neighboring tool validations.
+			 */
+			if ( false === json_encode( $input ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider could not JSON-encode tool arguments (unencodable value such as NAN, invalid UTF-8, or a recursive structure).'
+				);
+			}
+
 			return array(
 				'type'  => 'tool_use',
 				'id'    => $function_call->getId(),
@@ -954,14 +980,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			/*
 			 * R18 (inline 3906485711): an unencodable tool-result value — NAN,
-			 * a resource, a recursive structure — makes wp_json_encode()
-			 * return false, which the string cast silently turned into '': the
+			 * a resource, a recursive structure — makes the encode return
+			 * false, which the string cast silently turned into '': the
 			 * request then succeeded structurally while telling the model the
 			 * tool returned NO content, corrupting the conversation. The
 			 * serialization failure is a typed pre-transport rejection in the
 			 * same channel as the other tool-result validations.
+			 *
+			 * GLM4 #1: the oracle is the RAW json_encode() (GLM3 #4's
+			 * core-faithful primitive) — under production wp_json_encode()
+			 * an invalid-UTF-8 tool result was lossily re-encoded and
+			 * shipped, telling the model altered tool output.
 			 */
-			$encoded = wp_json_encode( $function_response->getResponse() );
+			$encoded = json_encode( $function_response->getResponse() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round; GLM4 #1 extended it here).
 			if ( false === $encoded ) {
 				throw new InvalidArgumentException(
 					'The zai_anthropic provider could not JSON-encode a tool result (unencodable value such as NAN, a resource, or a recursive structure).'
