@@ -803,16 +803,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			/*
 			 * The Messages protocol requires an OBJECT for tool_use input.
-			 * Empty/absent args become an empty object explicitly
-			 * (official-plugin normalization; PHP's empty array would
-			 * encode as []). Any OTHER shape that would encode as a JSON
-			 * list or scalar — a non-empty sequential array like
-			 * array('Oslo'), or a scalar — is rejected BEFORE transport
-			 * (Codex R4 #4): upstream would answer a 400, and silently
-			 * re-shaping would silently alter the call's arguments. The
-			 * list test is exact: json_encode emits an array only for
-			 * 0-based sequential keys, so mixed/string-keyed arrays still
-			 * pass as objects.
+			 * Empty/absent args (null, the empty string, the empty array)
+			 * become an empty object explicitly (official-plugin
+			 * normalization; PHP's empty array would encode as []). Any
+			 * OTHER shape that would encode as a JSON list or scalar — a
+			 * non-empty sequential array like array('Oslo'), or a scalar
+			 * such as 'Oslo' or a float — is rejected BEFORE transport
+			 * (Codex R4 #4; scalars GLM2 #2): upstream would answer a 400,
+			 * and silently re-shaping would silently alter the call's
+			 * arguments. NAN and INF floats are scalars and are rejected
+			 * here too — they would otherwise surface as a raw JsonException
+			 * from the transport's whole-request encode. Objects (stdClass
+			 * values from the inbound parser's nested object-ness
+			 * preservation, GLM1 #2) already ARE JSON objects and pass
+			 * untouched. The list test is exact: json_encode emits an array
+			 * only for 0-based sequential keys, so mixed/string-keyed
+			 * arrays still pass as objects.
 			 */
 			$input = $function_call->getArgs();
 
@@ -823,7 +829,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				);
 			}
 
-			if ( null === $input || ( \is_array( $input ) && array() === $input ) ) {
+			if ( null !== $input && '' !== $input && ! \is_array( $input ) && ! \is_object( $input ) ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires tool arguments to be a JSON object (a scalar was given).'
+				);
+			}
+
+			if ( null === $input || '' === $input || ( \is_array( $input ) && array() === $input ) ) {
 				$input = new \stdClass();
 			}
 

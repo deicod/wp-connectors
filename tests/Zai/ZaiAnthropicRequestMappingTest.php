@@ -507,6 +507,88 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
     }
 
     /**
+     * @dataProvider provideScalarToolArguments
+     */
+    public function testScalarToolArgumentsAreRejectedBeforeTransport($args, $label)
+    {
+        /*
+         * GLM2 #2: a scalar input is not a JSON object — previously it
+         * passed the list-only check and shipped as e.g. "input":"Oslo"
+         * (an upstream 400 with the generic client-error surface), and a
+         * NAN float detonated in the transport's whole-request JSON
+         * encode as a raw JsonException.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_s', 'ping', $args)))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail("Scalar tool arguments ({$label}) must be rejected.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('JSON object', $e->getMessage());
+            $this->assertStringContainsString('scalar', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function provideScalarToolArguments()
+    {
+        return array(
+            'non-empty string' => array('Oslo', 'string'),
+            'integer' => array(3, 'integer'),
+            'float' => array(3.14, 'float'),
+            'NAN' => array(NAN, 'NAN float'),
+            'INF' => array(INF, 'INF float'),
+            'boolean' => array(true, 'boolean'),
+        );
+    }
+
+    public function testAnEmptyStringArgumentMeansNoArguments()
+    {
+        // The empty string is an absent-arguments shape some histories
+        // carry; it normalizes to the {} no-argument call exactly like
+        // null and the empty array.
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_e', 'ping', '')))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_e', 'ping', array('ok' => 1))))),
+        );
+
+        $this->model()->generateTextResult($prompt);
+
+        $raw = (string) $this->sdkHttpAttempts()[0]['body'];
+        $this->assertStringContainsString('"input":{}', $raw, 'An empty-string argument normalizes to the empty object.');
+        $this->assertStringNotContainsString('"input":""', $raw, 'The empty string must never reach the wire as the input value.');
+    }
+
+    public function testAnObjectToolArgumentPassesUntouched()
+    {
+        // A stdClass argument (the inbound parser's TOP-LEVEL object-ness
+        // preservation for numeric-keyed inputs, GLM1 #2) already IS a
+        // JSON object: the GLM2 #2 scalar rejection must not catch it.
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_o', 'pick', (object) array('0' => 'x'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_o', 'pick', array('picked' => 'x'))))),
+        );
+
+        $this->model()->generateTextResult($prompt);
+
+        $this->assertStringContainsString(
+            '"input":{"0":"x"}',
+            (string) $this->sdkHttpAttempts()[0]['body'],
+            'A stdClass argument encodes as the JSON object it already is.'
+        );
+    }
+
+    /**
      * @dataProvider provideUnencodableToolResults
      */
     public function testUnencodableToolResultsAreRejectedBeforeTransport($response, $label)
