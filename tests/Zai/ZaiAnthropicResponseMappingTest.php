@@ -2034,6 +2034,46 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('lit', $args['q']);
     }
 
+    public function testStreamedAndNonStreamedResultsExposeTheSameAdditionalFields()
+    {
+        /*
+         * Code-review GLM1 #9: the consolidated SSE payload carried only
+         * id/type/role/content/stop_reason/usage — message_start's model
+         * and message_delta's stop_sequence were never captured — while
+         * the non-streaming parse passes the whole body through, so the
+         * two transports of the same generation returned different fields
+         * to getAdditionalData() consumers.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('Hi.'));
+        $direct = $this->model()->generateTextResult($this->prompt())->getAdditionalData();
+
+        $this->assertSame(array('type', 'model', 'stop_sequence'), array_keys($direct));
+
+        $stream = implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_parity","role":"assistant","model":"glm-5.3","content":[],"usage":{"input_tokens":10,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":"END"},"usage":{"output_tokens":5}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $streamed = $this->model()->generateTextResult($this->prompt())->getAdditionalData();
+
+        $this->assertSame(array_keys($direct), array_keys($streamed), 'Both transports must expose the same additional fields.');
+        $this->assertSame('message', $streamed['type']);
+        $this->assertSame('glm-5.3', $streamed['model'], 'message_start\'s model must survive into the consolidated payload.');
+        $this->assertSame('END', $streamed['stop_sequence'], 'message_delta\'s stop_sequence must survive into the consolidated payload.');
+    }
+
     public function testStreamParserToleratesSplitFramesCrlfCommentsAndMalformedEvents()
     {
         $body = ''

@@ -61,6 +61,25 @@ final class AnthropicSseAggregator {
 	private $message_id;
 
 	/**
+	 * Model name from message_start (GLM1 #9: carried into the consolidated
+	 * payload so both transports expose the same fields).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string|null
+	 */
+	private $model;
+
+	/**
+	 * Stop sequence from message_delta (GLM1 #9: same parity purpose).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string|null
+	 */
+	private $stop_sequence;
+
+	/**
 	 * Input tokens reported with message_start (plus cache variants).
 	 *
 	 * @since 0.2.0
@@ -414,13 +433,21 @@ final class AnthropicSseAggregator {
 			}
 		}
 
+		/*
+		 * GLM1 #9: the consolidated payload carries the same always-present
+		 * members a non-streaming Messages body does (model from
+		 * message_start, stop_sequence from message_delta), so the two
+		 * transports of one generation expose identical result fields.
+		 */
 		return array(
-			'id'          => \is_string( $this->message_id ) ? $this->message_id : '',
-			'type'        => 'message',
-			'role'        => 'assistant',
-			'content'     => $content,
-			'stop_reason' => $this->stop_reason,
-			'usage'       => array(
+			'id'            => \is_string( $this->message_id ) ? $this->message_id : '',
+			'type'          => 'message',
+			'role'          => 'assistant',
+			'model'         => \is_string( $this->model ) ? $this->model : null,
+			'content'       => $content,
+			'stop_reason'   => $this->stop_reason,
+			'stop_sequence' => \is_string( $this->stop_sequence ) ? $this->stop_sequence : null,
+			'usage'         => array(
 				'input_tokens'  => $this->input_tokens ?? 0,
 				'output_tokens' => $this->output_tokens ?? 0,
 			),
@@ -713,6 +740,10 @@ final class AnthropicSseAggregator {
 				if ( isset( $message['id'] ) && \is_string( $message['id'] ) ) {
 					$this->message_id = $message['id'];
 				}
+				// GLM1 #9: envelope parity with the non-streaming body.
+				if ( isset( $message['model'] ) && \is_string( $message['model'] ) ) {
+					$this->model = $message['model'];
+				}
 				if ( \array_key_exists( 'usage', $message ) ) {
 					/*
 					 * Codex R15 #1: streamed usage is validated BEFORE the casts
@@ -948,6 +979,10 @@ final class AnthropicSseAggregator {
 
 				if ( isset( $data['delta'] ) && \is_array( $data['delta'] ) && isset( $data['delta']['stop_reason'] ) && \is_string( $data['delta']['stop_reason'] ) ) {
 					$this->stop_reason = $data['delta']['stop_reason'];
+				}
+				// GLM1 #9: envelope parity with the non-streaming body.
+				if ( isset( $data['delta']['stop_sequence'] ) && \is_string( $data['delta']['stop_sequence'] ) ) {
+					$this->stop_sequence = $data['delta']['stop_sequence'];
 				}
 				if ( \array_key_exists( 'usage', $data ) ) {
 					// Codex R15 #1: same validation as message_start's input side.
