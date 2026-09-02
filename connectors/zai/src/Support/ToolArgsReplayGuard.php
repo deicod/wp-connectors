@@ -41,9 +41,11 @@ final class ToolArgsReplayGuard {
 	 *
 	 * The oracle is the RAW json_encode() (the GLM3 #4 primitive — core's
 	 * wp_json_encode() lossily rescues invalid UTF-8 and would mask the
-	 * failure): the value must encode, and the encoding must be STABLE
-	 * under a decode/re-encode round trip (the "encode → decode must
-	 * reproduce a semantically equal value" contract). Additionally, a
+	 * failure): the value must encode, and the encoding must decode to a
+	 * SEMANTICALLY equal value that re-encodes stably (the "encode →
+	 * decode must reproduce a semantically equal value" contract; the
+	 * one benign encoding instability, negative zero, is accepted — see
+	 * the check below). Additionally, a
 	 * FINITE INTEGRAL float beyond the platform int range is rejected: it
 	 * can only be a wire integer json_decode() could not keep exact, so
 	 * replay would ship a silently altered value in e-notation.
@@ -67,11 +69,24 @@ final class ToolArgsReplayGuard {
 			return false;
 		}
 
-		$round_trip = json_encode( json_decode( $encoded ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
+		$decoded   = json_decode( $encoded ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
+		$roundtrip = json_encode( $decoded ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
 
-		if ( false === $round_trip || $encoded !== $round_trip ) {
-			// The value does not survive a decode/re-encode round trip
-			// unchanged — replay would alter it.
+		if ( false === $roundtrip ) {
+			// The encoded form does not decode: the turn cannot replay.
+			return false;
+		}
+
+		/*
+		 * The encoding must be STABLE under a decode/re-encode round
+		 * trip. The one BENIGN instability is negative zero (verifier
+		 * round on GLM4 #2): json_encode(-0.0) is "-0", whose decode is
+		 * the INT 0 — sign and float-ness both lost — re-encoding as "0".
+		 * The value is numerically identical and replays fine, so when
+		 * the encodings differ the two decoded trees are compared
+		 * SEMANTICALLY: only a genuinely altered value fails.
+		 */
+		if ( $roundtrip !== $encoded && json_decode( $roundtrip ) != $decoded ) { // phpcs:ignore Universal.Operators.StrictComparisons.LooseNotEqual -- the deliberate semantic-equality oracle (see the comment above).
 			return false;
 		}
 

@@ -491,6 +491,52 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(array('count' => 42, 'price' => 19.99, 'ratio' => 0.25), $call->getArgs());
     }
 
+    public function testNegativeZeroToolArgumentsStillParse()
+    {
+        /*
+         * Verifier round on GLM4 #2: json_encode(-0.0) is "-0", whose
+         * decode is the INT 0 (sign and float-ness lost) re-encoding as
+         * "0" — the byte-equality round-trip oracle false-positived on
+         * this one valid, replayable value and failed the whole
+         * generation. The oracle now compares the decoded trees
+         * semantically when the encodings differ, so negative zero
+         * passes on every acceptance path.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"msg_nz","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_nz","name":"convert","input":{"delta":-0.0}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        // -0.0 and 0.0 compare identically under assertSame; the pin is
+        // that the generation PARSES (no replay rejection).
+        $this->assertSame('convert', $call->getName());
+        $this->assertNotNull($call->getArgs());
+    }
+
+    public function testStreamedNegativeZeroToolArgumentsStillAggregate()
+    {
+        // Verifier round on GLM4 #2, streamed twin of the above.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_nzs","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nzs","name":"convert","input":{}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"delta\":-0.0}"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame('convert', $call->getName());
+        $this->assertNotNull($call->getArgs());
+    }
+
     public function testStreamedNonReplayableToolArgumentsFailAsAStreamParseError()
     {
         /*

@@ -6,6 +6,117 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM4 code review)
+
+- The R18/R19/R20 unencodable-value guards now use the RAW
+  `json_encode()` oracle (the GLM3 #4 primitive) instead of
+  `wp_json_encode()`: core's sanity fallback lossily rescues invalid
+  UTF-8 and never returns `false` for a string in production, so the
+  guards were dead code on real sites — only the deliberately stricter
+  test stub made the committed rejection tests pass. An invalid-UTF-8
+  tool result was silently re-encoded and shipped (the model was told
+  altered tool output), an unencodable declared tool schema or
+  outputSchema threw the transport's raw `JsonException` as the generic
+  500 `zai_error`, and the outbound `tool_use` input had no
+  encodability check at all (only shape checks) — all three oracles are
+  raw now and the outbound tool arguments gain the same typed
+  pre-transport rejection.
+
+- Tool arguments decoded from responses are round-trip checked before
+  acceptance: `1e999` decodes to INF and an integer beyond
+  `PHP_INT_MAX` to a lossy float, and both flowed into `FunctionCall`
+  args whose replay threw at the transport's whole-request encode —
+  poisoning every later request of that conversation (the GLM3 #1
+  "a turn that cannot be replayed cannot be a generation" contract,
+  applied to argument values). The new shared
+  `Support\ToolArgsReplayGuard` (raw-encode oracle, decode/re-encode
+  stability, and an integral-float-beyond-int-range walk) is enforced
+  at all three inbound acceptance points — the non-streaming parser
+  and both SSE acceptance points — so the two transports of one
+  generation can never diverge on what replays. (Verifier round: the
+  one benign encoding instability — negative zero, whose shortest
+  encoding `-0` decodes to the int `0` — is compared semantically and
+  accepted, so a valid `{"delta":-0.0}` argument still parses.)
+
+- The zai (OpenAI) surface's event-stream sniff reached parity with the
+  Anthropic twin through one shared `Support\EventStreamSniff`: the old
+  inline copy recognized only a leading `data:` line, so a gateway that
+  mangles or omits the `text/event-stream` Content-Type and prepends a
+  UTF-8 BOM, a `: keepalive` comment, or an `event:`/`id:`/`retry:`
+  field misrouted the stream to the JSON parser and every such streamed
+  generation died as "The chat-completions payload was malformed"
+  although the shared frame buffer would have parsed the stream fine.
+  The sniff recognizes all five SSE-only body leads now (a JSON body
+  never starts with one) and lives once, so the two surfaces cannot
+  drift again.
+
+- Explicitly-set falsy values of the wire-forwarded unsupported options
+  (`presencePenalty`, `frequencyPenalty`, `logprobs`, `topLogprobs`)
+  are rejected typed before transport: the SDK's OpenAI request builder
+  forwards every non-null value of these options onto the wire, so
+  neutralizing with the only non-nullable neutral value
+  (`setLogprobs(false)`, `setTopLogprobs(0)`, `setPresencePenalty(0.0)`)
+  passed the `!empty()` guard and then shipped `"logprobs":false` /
+  `"top_logprobs":0` / `"presence_penalty":0` anyway — a spec-faithful
+  OpenAI-compatible endpoint rejects `top_logprobs` without
+  `logprobs=true`, and the caller got the generic upstream error where
+  the guard exists to give the precise local one. The never-forwarded
+  options (`topK`, `webSearch`, the output-* family) keep the falsy
+  tolerance: a set value there is wire-inert.
+
+- A usage total past `PHP_INT_MAX` is a typed `zai_invalid_response`
+  instead of an uncaught `TypeError`: every member passed the
+  is_int/non-negative validation individually, but int+int overflow
+  silently promoted the sum to float and `TokenUsage`'s int-typed
+  constructor threw, surfacing as the generic 500 "The z.ai request
+  failed." The totals are computed with an explicit per-member bound
+  check (so no intermediate ever promotes and the exact-boundary total
+  `PHP_INT_MAX` stays representable), and the streamed input-side sum
+  is overflow-checked too.
+
+- Trailing SSE frames after `message_stop` are judged by the same
+  dispatch rules the main path applies instead of a private
+  post-termination whitelist: the old copy accepted a trailing
+  `event: error` regardless of a contradicting payload type (the main
+  path rejects event/payload contradictions), and any trailing event
+  name outside its whitelist — a future benign telemetry/heartbeat
+  frame — marked the whole stream corrupt and discarded an otherwise
+  fully-received generation. Error events still set the error flag,
+  frames declaring a known content-bearing event still invalidate (they
+  would mutate a completed generation), and unknown trailing names are
+  tolerated noise.
+
+- The x-api-key header strip no longer doubles a GET request's query
+  parameters: the request rebuild passed `getUri()` — which already
+  folds GET array data into the query string — together with the data
+  component, so the rebuilt request appended every parameter a second
+  time on its own next `getUri()` call. For that one shape the folded
+  URI now travels without the data component (wire-identical for GETs);
+  unreachable from the current plugin callers, but it is the
+  defense-in-depth reuse case the strip documents.
+
+- The credential-refusal gate lives once on
+  `AbstractZaiProviderAvailability` instead of copy-pasted at four
+  credential consumers (both model surfaces, both metadata
+  directories) with already-divergent wiring:
+  `generation_refusal_for_wired_authentication()` is the one predicate
+  all four consult and `refusal_message()` the one builder for both
+  model surfaces' fixed wording — the next gate-rule change can no
+  longer land on some surfaces and leave the others authenticating a
+  region-pending or definitively-rejected key against the newly
+  selected endpoint. The same single-source treatment went to the
+  discovery-cache orchestration (`Metadata\ZaiDiscoveryCache`: cache-id
+  build, negative marker, TTLs, plan fallback, and the chat-filtered
+  map — previously duplicated line-for-line between the two
+  directories) and to the Messages usage validation
+  (`Support\AnthropicUsageValidator` — the parser and the aggregator's
+  streamed copies had to be fixed in lockstep once already). The
+  unknown-model rejection test now pins the SDK-typed
+  `InvalidArgumentException` the directory actually throws (the file
+  never imported it, so the assertion bound the global class the SDK
+  exception merely subclasses — an untyped regression would have kept
+  passing).
+
 ### Fixed (zai / M2 — GLM3 code review)
 
 - An inbound turn with zero translatable parts no longer parses as a
