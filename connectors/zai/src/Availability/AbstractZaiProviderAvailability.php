@@ -130,6 +130,26 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	const STATE_TTL = 300;
 
 	/**
+	 * Seconds an INCONCLUSIVE probe suppresses repeat remote attempts,
+	 * scoped to the credential+endpoint binding (code-review GLM1 #6).
+	 *
+	 * The availability layer is consulted on every request
+	 * (ProviderRegistry::isProviderConfigured), and a persistently
+	 * inconclusive route — the unprobed cn /models 404 — paid one doomed
+	 * blocking HTTPS GET per consult. The marker stores NO verdict: a
+	 * cached inconclusive returns exactly what a live inconclusive probe
+	 * returns (configured-pending, or a stored matching verdict as the
+	 * fallback), so the configured-state semantics are untouched, and a
+	 * different key (new binding) or the same binding after the TTL probes
+	 * again immediately.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	const PROBE_MISS_TTL = 60;
+
+	/**
 	 * Clock marker stored with UTC-based timestamps.
 	 *
 	 * A stored state without this marker predates the UTC switch; its
@@ -255,7 +275,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			$fallback = self::VERDICT_VALID === ( $state['valid'] ?? null );
 		}
 
-		$verdict = $this->probe();
+		$verdict = $this->probe_with_negative_cache( $binding, $region_pending );
 
 		if ( null === $verdict ) {
 			// Inconclusive probe (transport error, 5xx, 429, 404 on the
@@ -532,6 +552,49 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	public static function mark_region_switch_pending( string $region ): void {
 		$settings_class = static::settings_class();
 		$settings_class::mark_region_switch_pending( $region );
+	}
+
+	/**
+	 * Probes with a SHORT binding-scoped negative cache (GLM1 #6).
+	 *
+	 * A recently-inconclusive probe for this exact key+endpoint binding
+	 * returns the same inconclusive outcome WITHOUT another doomed remote
+	 * attempt; definitive results drop any marker (and persist the verdict
+	 * as always). Nothing about the returned semantics changes — only the
+	 * repeat transport cost collapses for PROBE_MISS_TTL seconds.
+	 *
+	 * Region-switch distrust (the R19 contract) is EXEMPT: while the
+	 * effective key is region-pending, every consult must keep probing so
+	 * the definitive validation happens as soon as the endpoint can answer
+	 * — suppressing it would hold the connector falsely disconnected for
+	 * up to a minute after a switch even when the endpoint is ready.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $binding  Credential+endpoint binding.
+	 * @param bool   $distrusted Whether the region-pending distrust binds this key.
+	 * @return bool|null As probe(): true, false, or null (inconclusive).
+	 */
+	private function probe_with_negative_cache( string $binding, bool $distrusted ) {
+		if ( $distrusted ) {
+			return $this->probe();
+		}
+
+		$miss_transient = static::STATE_OPTION . '_probe_' . md5( $binding );
+
+		if ( get_transient( $miss_transient ) ) {
+			return null;
+		}
+
+		$verdict = $this->probe();
+
+		if ( null === $verdict ) {
+			set_transient( $miss_transient, true, self::PROBE_MISS_TTL );
+		} else {
+			delete_transient( $miss_transient );
+		}
+
+		return $verdict;
 	}
 
 	/**

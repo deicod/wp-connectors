@@ -389,27 +389,43 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame('glm-5.3', $body['model'], 'The request must proceed with falsy-neutral option values.');
     }
 
-    public function testTheSharedGuardTreatsEveryFalsyFlavorAsNotSet()
+    public function testAnthropicParsedToolCallReplaysThroughThisSurfaceWithObjectNess()
     {
-        // Direct unit coverage of the flavors the typed setters cannot
-        // express ('0', ''), plus a truthy control that still rejects.
-        \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array(
-            'topK' => '0',
-            'presencePenalty' => 0.0,
-            'frequencyPenalty' => 0,
-            'logprobs' => false,
-            'webSearch' => '',
-            'outputFileType' => array(),
-            'outputSpeechVoice' => null,
-        ), 'zai_anthropic');
-        $this->assertNoHttpRequests(); // flavor: no transport concern, just no crash
+        /*
+         * GLM1 #2 verifier pin: a FunctionCall parsed by the zai_anthropic
+         * surface carries stdClass markers for nested empty/numeric-keyed
+         * objects; replaying it through THIS (OpenAI) surface must preserve
+         * object-ness too — the vendor mapping serializes the args with
+         * json_encode(), which encodes nested stdClass as JSON objects.
+         */
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'),
+            '{"id":"msg_x","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_x","name":"search","input":{"filter":{},"tags":{"0":"x"},"q":"lit"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
 
-        try {
-            \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array('presencePenalty' => 0.5), 'zai_anthropic');
-            $this->fail('A truthy unsupported value must still be rejected.');
-        } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('presence penalty', $e->getMessage());
-        }
+        $anthropicModel = \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3');
+        $anthropicModel->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $anthropicModel->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+
+        $call = $anthropicModel->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ))->toMessage()->getParts()[0]->getFunctionCall();
+        $this->assertNotNull($call);
+
+        // Replay through THIS surface: the wire's tool-call arguments
+        // string must carry the same object shapes.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+        $this->model()->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart($call))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('toolu_x', 'search', array('ok' => true))))),
+        ));
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertStringContainsString(
+            '"arguments":"{\"filter\":{},\"tags\":{\"0\":\"x\"},\"q\":\"lit\"}"',
+            (string) $attempts[1]['body'],
+            'The OpenAI-surface replay must preserve the anthropic-parsed object shapes.'
+        );
     }
 
     /**

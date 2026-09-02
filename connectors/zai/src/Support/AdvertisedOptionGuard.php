@@ -66,14 +66,8 @@ final class AdvertisedOptionGuard {
 			$value = $config_as_array[ $key ] ?? null;
 
 			if ( ! empty( $value ) ) {
-				// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-				throw new InvalidArgumentException(
-					sprintf(
-						'The %s provider does not support %s.',
-						$provider_label,
-						$label
-					)
-				);
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+				throw new InvalidArgumentException( sprintf( 'The %s provider does not support %s.', $provider_label, $label ) );
 			}
 		}
 	}

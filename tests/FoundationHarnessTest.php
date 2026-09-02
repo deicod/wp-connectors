@@ -27,21 +27,12 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      */
 
     /**
-     * The provider registered by the plugin at init priority 5 must be
-     * visible to a core-style observer at init priority 15 (where
-     * _wp_connectors_init() performs auto-discovery in WP 7.0).
+     * Core option-write semantics (code-review GLM1 #7): a first save with
+     * no option row delegates to add_option() and fires ONLY the
+     * add_option_ hook family; real updates fire the update family.
      */
     public function testUpdateOptionOnAMissingRowDelegatesToAddOptionHooks()
     {
-        /*
-         * Code-review GLM1 #7: real WordPress delegates a first save (no
-         * option row) to add_option(), firing ONLY the add_option_ family;
-         * the stub fired update_option_{$option}/updated_option — so any
-         * test emulating a first persisted save with update_option()
-         * exercised the WRONG hook path (handle_region_change instead of
-         * handle_region_add, for instance), letting regressions in the
-         * add-path handlers pass the suite.
-         */
         update_option('wpct_probe_opt', 'first');
 
         $this->assertSame(1, did_action('add_option_wpct_probe_opt'), 'The add-option hook family fires for a first save.');
@@ -56,6 +47,11 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('second', get_option('wpct_probe_opt'));
     }
 
+    /**
+     * The provider registered by the plugin at init priority 5 must be
+     * visible to a core-style observer at init priority 15 (where
+     * _wp_connectors_init() performs auto-discovery in WP 7.0).
+     */
     public function testPluginRegistersBeforeCoreConnectorDiscovery()
     {
         $this->loadPlugin(self::PLUGIN_FILE, self::BOOT);

@@ -182,7 +182,27 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
             $this->assertArrayNotHasKey($stripped, $_POST, "The guard must strip {$stripped} from the request.");
         }
 
+        // Only OUR keys go: the group identifier itself (and anything
+        // unrelated) must survive, or the enumeration would over-strip.
+        $this->assertSame('zai_connector', $_POST['option_page']);
+
         $this->assertNotEmpty(WpHarness::$settings_errors);
+    }
+
+    public function testSettingsInvalidationClearsTheNegativeDiscoveryMarkers()
+    {
+        /*
+         * GLM1 #6 verifier nit: the directories' NEGATIVE_CACHE_SUFFIX
+         * ('_miss') is mirrored LITERALLY by this SDK-free invalidation —
+         * this pin keeps the mirror honest (deleting the sweep would fail
+         * the suite).
+         */
+        $miss = PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl') . '_miss';
+        set_transient($miss, true, 60);
+
+        PlanRegionSettings::handle_settings_change('coding', 'general');
+
+        $this->assertFalse(get_transient($miss), 'A plan change must clear the negative discovery marker with the positive cache.');
     }
 
     public function testAuthorizedUserWithoutValidNonceIsLeftToCoreEnforcement()

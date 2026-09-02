@@ -361,6 +361,7 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
 
     public function testRegionSwitchClearsTheStoredKeySoAnInconclusiveProbeCannotRideIt()
     {
+        $this->freezeTime(1700000000);
         // With the plugin's hooks active (the settings page save path), a
         // region switch must clear the STORED key too: clearing only the
         // verdict is not enough, because the cn /models probe 404s
@@ -399,7 +400,10 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         );
         $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 404 must not persist a verdict.');
 
-        // A later definitive answer about the cn key is honored.
+        // A later definitive answer about the cn key is honored (past the
+        // 60s binding miss marker — GLM1 #6; a fresh key save is a new
+        // binding and probes immediately regardless).
+        $this->advanceTime(ZaiProviderAvailability::PROBE_MISS_TTL + 1);
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad cn key'));
         $this->assertFalse($candidate->isConfigured());
     }
@@ -543,8 +547,49 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         }
     }
 
+    public function testInconclusiveProbesAreNegativelyCachedForAShortTtl()
+    {
+        /*
+         * Code-review GLM1 #6 (verifier must-fix): the finding's symptom
+         * covers the availability consult too — ProviderRegistry calls
+         * isConfigured() on every request, and a persistently inconclusive
+         * /models route (the cn 404 shape) paid one doomed blocking GET
+         * per consult. A 60s BINDING-scoped miss marker now suppresses the
+         * repeat remote calls; the returned value is exactly what a live
+         * inconclusive probe yields (configured-pending / stale-verdict
+         * fallback), a DIFFERENT key is a different binding and probes
+         * immediately, and the original binding is retryable after the
+         * TTL with definitive answers honored.
+         */
+        $this->freezeTime(1700000000);
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+        $this->assertTrue($instance->isConfigured());
+        $this->assertCount(1, $this->sdkHttpAttempts());
+
+        // Within the TTL: the same answer, NO new remote attempt.
+        $this->assertTrue($instance->isConfigured(), 'The cached inconclusive outcome must equal the live one (configured-pending).');
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'The short miss marker must suppress the doomed repeat probe.');
+
+        // A different key is a different binding: it probes immediately.
+        $other = $this->availability(FakeSecrets::apiKey());
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+        $this->assertTrue($other->isConfigured());
+        $this->assertCount(2, $this->sdkHttpAttempts());
+
+        // After the TTL the original binding is retryable and a definitive
+        // answer settles the state (never a fake connected state).
+        $this->advanceTime(ZaiProviderAvailability::PROBE_MISS_TTL + 1);
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad key'));
+        $this->assertFalse($instance->isConfigured());
+        $this->assertCount(3, $this->sdkHttpAttempts());
+    }
+
     public function testRateLimitResponseDoesNotInvalidateAValidKey()
     {
+        $this->freezeTime(1700000000);
         // z.ai returns 429 for plan mismatches on an otherwise VALID key
         // (error 1113, record 0006): the verdict must stay unpersisted and
         // the inconclusive probe must report configured-pending (true), not
@@ -557,13 +602,18 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
 
         $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 429 must not persist an invalid verdict.');
 
-        // And the next check probes again (no cached false verdict).
+        /*
+         * And the next check probes again (no cached false verdict; the
+         * 60s miss marker only spans PROBE_MISS_TTL seconds — GLM1 #6).
+         */
+        $this->advanceTime(ZaiProviderAvailability::PROBE_MISS_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
         $this->assertTrue($instance->isConfigured());
     }
 
     public function testCnRegionModels404DoesNotBlockKeySaving()
     {
+        $this->freezeTime(1700000000);
         // The cn /models path is unprobed and expected to 404 (record 0006):
         // a newly submitted key (core REST validation sets it as a runtime
         // candidate) must still be accepted — an unavailable probe ROUTE
@@ -581,9 +631,12 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertSame('https://open.bigmodel.cn/api/coding/paas/v4/models', $this->sdkHttpAttempts()[0]['url']);
         $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A 404 must not persist a verdict.');
 
-        // It also never settles into a fake connected state: the next check
-        // probes again and a definitive answer (if the route ever answers)
-        // is honored.
+        /*
+         * It also never settles into a fake connected state: the next check
+         * probes again and a definitive answer (if the route ever answers)
+         * is honored (past the 60s miss marker — GLM1 #6).
+         */
+        $this->advanceTime(ZaiProviderAvailability::PROBE_MISS_TTL + 1);
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad key'));
         $this->assertFalse($instance->isConfigured());
     }

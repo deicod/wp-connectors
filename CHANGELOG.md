@@ -16,6 +16,14 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   and never touches the positive cache; the settings invalidation and
   uninstall clear it with the positive cache.
 
+- Inconclusive AVAILABILITY probes carry the same 60-second binding-scoped
+  miss marker (verifier completion of the same finding): the per-request
+  `isConfigured()` consult no longer pays a doomed blocking GET on a
+  persistently inconclusive route. The marker stores no verdict — a cached
+  inconclusive returns exactly what a live one returns — and the
+  region-switch distrust flow stays EXEMPT so the definitive validation
+  happens as soon as the endpoint can answer.
+
 - A keyless `isConfigured()` no longer calls `delete_option()` on every
   invocation: the availability state row is deleted only when it actually
   exists, removing a needless database DELETE per request.

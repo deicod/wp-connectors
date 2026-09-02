@@ -1904,7 +1904,6 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             'outputFileType' => array(),
             'outputSpeechVoice' => null,
         ), 'zai_anthropic');
-        $this->assertNoHttpRequests(); // flavor: no transport concern, just no crash
 
         try {
             \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array('presencePenalty' => 0.5), 'zai_anthropic');

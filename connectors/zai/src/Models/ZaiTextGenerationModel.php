@@ -27,6 +27,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Models;
 
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
@@ -176,7 +177,19 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 *                                  for the selected endpoint.
 	 */
 	private function refuse_refused_credentials(): void {
-		$authentication = $this->getRequestAuthentication();
+		/*
+		 * An unbound model (no wired auth) is not this gate's concern: skip
+		 * it and let the request fail exactly where it did before the gate
+		 * existed (the SDK's authenticateRequest() RuntimeException), so
+		 * the pre-gate exception ORDER is preserved for callers that
+		 * misuse an unbound model while ALSO carrying invalid options
+		 * (verifier nit on GLM1 #1: the gate must not steal that error).
+		 */
+		try {
+			$authentication = $this->getRequestAuthentication();
+		} catch ( RuntimeException $e ) {
+			return;
+		}
 
 		if ( ! $authentication instanceof ApiKeyRequestAuthentication ) {
 			return;
