@@ -29,6 +29,10 @@ if (! defined('ABSPATH')) {
 
 require_once __DIR__ . '/WpHarness.php';
 
+// Snapshot the pristine request superglobals before any test can touch
+// them; reset() full-restores this state between tests (code-review #13).
+WpHarness::snapshotRequestSuperglobals();
+
 /*
  * -------------------------------------------------------------------------
  * Hooks (filters/actions).

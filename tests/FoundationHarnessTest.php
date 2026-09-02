@@ -48,6 +48,38 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * Request-superglobal isolation, part 1 (code-review #13): pollutes
+     * $_POST/$_GET/$_REQUEST en bloc exactly the way settings tests do.
+     * MUST run before testRequestSuperglobalsAreRestoredBetweenTests —
+     * PHPUnit executes same-class tests in declaration order.
+     */
+    public function testRequestSuperglobalPollutionForTheNextTest()
+    {
+        $_POST = array('option_page' => 'zai_connector', 'plan' => 'general', '_wpnonce' => 'stale');
+        $_GET = array('page' => 'zai-connector');
+        $_REQUEST = $_POST;
+
+        $this->assertSame('zai_connector', $_POST['option_page']);
+    }
+
+    /**
+     * Part 2: setUp()'s WpHarness::reset() must have restored the pristine
+     * bootstrap snapshot by now. The previous reset() only unset nonce
+     * keys, so the en-bloc assignment above leaked between tests
+     * (code-review #13) — an order-dependent failure waiting for
+     * --filter runs, suite reordering, or newly added tests.
+     */
+    public function testRequestSuperglobalsAreRestoredBetweenTests()
+    {
+        $this->assertArrayNotHasKey('option_page', $_POST, '$_POST must not leak between tests.');
+        $this->assertArrayNotHasKey('plan', $_POST, 'Non-nonce POST state must not leak either.');
+        $this->assertArrayNotHasKey('page', $_GET);
+        $this->assertSame(WpHarness::$request_superglobals_snapshot['POST'], $_POST, '$_POST must equal the pristine bootstrap snapshot.');
+        $this->assertSame(WpHarness::$request_superglobals_snapshot['GET'], $_GET, '$_GET must equal the pristine bootstrap snapshot.');
+        $this->assertSame(WpHarness::$request_superglobals_snapshot['REQUEST'], $_REQUEST, '$_REQUEST must equal the pristine bootstrap snapshot.');
+    }
+
+    /**
      * The provider registered by the plugin at init priority 5 must be
      * visible to a core-style observer at init priority 15 (where
      * _wp_connectors_init() performs auto-discovery in WP 7.0).

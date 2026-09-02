@@ -230,6 +230,17 @@ final class WpHarness
     public static $blog_options = array();
 
     /**
+     * Pristine request-superglobal state, snapshotted once at harness load
+     * (before any test can pollute it) and restored by reset() — full-
+     * restore semantics like the options state, because tests assign
+     * $_POST en bloc (code-review #13: a selective nonce-unset let
+     * non-nonce POST state leak between tests in the same process).
+     *
+     * @var array{GET: array, POST: array, REQUEST: array}|null
+     */
+    public static $request_superglobals_snapshot;
+
+    /**
      * Parked per-blog transient stores while switched away from that blog.
      *
      * @var array<int, array<string, array{value: mixed, expires_at: int|false}>>
@@ -274,8 +285,40 @@ final class WpHarness
         self::$last_get_sites_slice = null;
         self::$get_sites_repeat_count = 0;
 
-        // $_REQUEST derivatives leak between tests otherwise.
-        unset($_GET['_wpnonce'], $_POST['_wpnonce'], $_REQUEST['_wpnonce']);
+        /*
+         * Request superglobals get FULL-restore semantics (code-review
+         * #13): tests assign $_POST en bloc, so unsetting only the nonce
+         * keys let every other piece of request state leak between tests
+         * in the same process. The pristine snapshot is taken once at
+         * harness load (see snapshotRequestSuperglobals()).
+         */
+        if (self::$request_superglobals_snapshot !== null) {
+            $_GET = self::$request_superglobals_snapshot['GET'];
+            $_POST = self::$request_superglobals_snapshot['POST'];
+            $_REQUEST = self::$request_superglobals_snapshot['REQUEST'];
+        }
+    }
+
+    /**
+     * Captures the pristine request-superglobal state for reset().
+     *
+     * Called once at harness load (wp-stubs.php requires this file before
+     * anything else can touch the superglobals), never again — later
+     * calls would snapshot a polluted state as "pristine".
+     *
+     * @return void
+     */
+    public static function snapshotRequestSuperglobals()
+    {
+        if (self::$request_superglobals_snapshot !== null) {
+            return;
+        }
+
+        self::$request_superglobals_snapshot = array(
+            'GET' => $_GET,
+            'POST' => $_POST,
+            'REQUEST' => $_REQUEST,
+        );
     }
 
     /**
