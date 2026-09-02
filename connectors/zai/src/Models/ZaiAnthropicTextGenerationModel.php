@@ -1471,6 +1471,28 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			);
 		}
 
+		/*
+		 * GLM1 #8: the Messages protocol bounds temperature and top_p to
+		 * the CLOSED interval 0..1 — values the SDK and the OpenAI surface
+		 * accept (temperature up to 2.0) are protocol violations here that
+		 * surfaced only as an upstream 400 with the generic misattributed
+		 * message. Typed pre-transport rejection citing the range; never
+		 * silently clamped. Explicit comparisons: 0.0 is falsy but legal.
+		 */
+		$temperature = $config->getTemperature();
+		if ( null !== $temperature && ( $temperature < 0 || $temperature > 1 ) ) {
+			throw new InvalidArgumentException(
+				'The zai_anthropic provider requires temperature between 0 and 1 (the Anthropic Messages protocol range).'
+			);
+		}
+
+		$top_p = $config->getTopP();
+		if ( null !== $top_p && ( $top_p < 0 || $top_p > 1 ) ) {
+			throw new InvalidArgumentException(
+				'The zai_anthropic provider requires top_p between 0 and 1 (the Anthropic Messages protocol range).'
+			);
+		}
+
 		// Output modalities: text only.
 		$output_modalities = $config->getOutputModalities();
 		if ( \is_array( $output_modalities ) ) {

@@ -1831,6 +1831,40 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testOutOfRangeTemperatureAndTopPAreRejectedBeforeTransport()
+    {
+        /*
+         * Code-review GLM1 #8: temperature/top_p were forwarded verbatim
+         * with no bounds check, although values the SDK and the OpenAI
+         * surface accept (temperature up to 2.0) violate the Anthropic
+         * Messages protocol's 0..1 range — surfacing only as an upstream
+         * 400 with the generic misattributed message. Typed pre-transport
+         * rejection citing the range; no silent clamping.
+         */
+        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('temperature' => 1.5)), 'temperature between 0 and 1');
+        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('temperature' => 2.0)), 'temperature between 0 and 1');
+        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('temperature' => -0.1)), 'temperature between 0 and 1');
+        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('topP' => 1.5)), 'top_p between 0 and 1');
+        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('topP' => -1)), 'top_p between 0 and 1');
+    }
+
+    public function testBoundaryTemperatureAndTopPAreForwardedVerbatim()
+    {
+        // The closed interval is legal: 0.0 and 1.0 forward verbatim
+        // (0.0 is falsy — the guard must use explicit comparisons).
+        $config = ModelConfig::fromArray(array('temperature' => 0.0, 'topP' => 1.0));
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
+            $this->model($config)
+        );
+
+        // JSON round trip: boundary floats re-decode as ints — assert
+        // presence and exact numeric value.
+        $this->assertSame(0, $body['temperature']);
+        $this->assertSame(1, $body['top_p']);
+    }
+
     /**
      * Asserts the config is rejected before any HTTP attempt.
      *
