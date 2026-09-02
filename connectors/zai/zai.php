@@ -71,12 +71,16 @@ function boot(): void {
 
 	add_action( 'admin_notices', array( Plugin::class, 'render_dependency_notice' ) );
 
-	// Plan/region settings (Tasks 1.2/2.1) + debug logging (Task 1.8).
+	// Plan/region settings (Tasks 1.2/2.1) + debug logging (Task 1.8). The
+	// guards run at priority 20, AFTER every register_settings call (10):
+	// the guard enumerates the whole option group from the registration
+	// registry (code-review GLM1 #10), which is only complete once every
+	// registration has run.
 	add_action( 'admin_init', array( PlanRegionSettings::class, 'register_settings' ) );
-	add_action( 'admin_init', array( PlanRegionSettings::class, 'guard_settings_save' ) );
 	add_action( 'admin_init', array( ZaiAnthropicPlanRegionSettings::class, 'register_settings' ) );
-	add_action( 'admin_init', array( ZaiAnthropicPlanRegionSettings::class, 'guard_settings_save' ) );
 	add_action( 'admin_init', array( DebugSettings::class, 'register_settings' ) );
+	add_action( 'admin_init', array( PlanRegionSettings::class, 'guard_settings_save' ), 20 );
+	add_action( 'admin_init', array( ZaiAnthropicPlanRegionSettings::class, 'guard_settings_save' ), 20 );
 	add_action( 'admin_menu', array( PlanRegionSettings::class, 'register_page' ) );
 	add_action( 'admin_menu', array( ZaiAnthropicPlanRegionSettings::class, 'register_section' ), 20 );
 	add_action( 'admin_menu', array( DebugSettings::class, 'register_fields' ), 20 );

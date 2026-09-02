@@ -451,7 +451,24 @@ abstract class AbstractPlanRegionSettings {
 		}
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			unset( $_POST[ static::OPTION_PLAN ], $_POST[ static::OPTION_REGION ] );
+			/*
+			 * GLM1 #10: strip EVERY option registered under the group, not
+			 * just this class's plan/region pair — the plugin registers
+			 * more keys to the same group (the shared debug-logging flag),
+			 * and any member left in the request could be persisted by
+			 * another write path in this same request. The names come from
+			 * the group REGISTRATION (the guard hooks run after every
+			 * register_settings call), with this class's own pair as a
+			 * defensive floor for degenerate early-invocation contexts.
+			 */
+			$strip = array_merge(
+				array( static::OPTION_PLAN, static::OPTION_REGION ),
+				self::registered_group_option_names()
+			);
+
+			foreach ( array_unique( $strip ) as $option_name ) {
+				unset( $_POST[ $option_name ] );
+			}
 
 			add_settings_error(
 				self::OPTION_GROUP,
@@ -463,6 +480,34 @@ abstract class AbstractPlanRegionSettings {
 		}
 
 		check_admin_referer( self::OPTION_GROUP . '-options' );
+	}
+
+	/**
+	 * Returns every option name registered under the plugin's option group.
+	 *
+	 * Read from core's settings registry (`$wp_registered_settings`), so a
+	 * future option added to the group is stripped by the guard without a
+	 * second hardcoded list to keep in sync (code-review GLM1 #10).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return list<string> Option names registered for OPTION_GROUP.
+	 */
+	private static function registered_group_option_names(): array {
+		global $wp_registered_settings;
+
+		if ( ! \is_array( $wp_registered_settings ) ) {
+			return array();
+		}
+
+		$names = array();
+		foreach ( $wp_registered_settings as $option_name => $registration ) {
+			if ( \is_array( $registration ) && self::OPTION_GROUP === ( $registration['group'] ?? null ) ) {
+				$names[] = (string) $option_name;
+			}
+		}
+
+		return $names;
 	}
 
 	/**

@@ -1148,12 +1148,16 @@ function register_setting($option_group, $option_name, $args = array())
         (array) $args
     );
 
+    // Mirror core's global registry (same shape) so plugin code can use the
+    // idiomatic `global $wp_registered_settings` read.
+    $GLOBALS['wp_registered_settings'][ $option_name ] = WpHarness::$registered_settings[ $option_name ];
+
     return true;
 }
 
 function unregister_setting($option_group, $option_name)
 {
-    unset(WpHarness::$registered_settings[ $option_name ]);
+    unset(WpHarness::$registered_settings[ $option_name ], $GLOBALS['wp_registered_settings'][ $option_name ]);
 
     return true;
 }

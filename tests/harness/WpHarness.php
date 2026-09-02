@@ -259,6 +259,7 @@ final class WpHarness
         self::$sdk_mock_queue = array();
         self::$doing_it_wrong = array();
         self::$registered_settings = array();
+        unset($GLOBALS['wp_registered_settings']);
         self::$admin_pages = array();
         self::$settings_sections = array();
         self::$settings_fields = array();

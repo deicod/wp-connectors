@@ -148,6 +148,43 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertNotEmpty(WpHarness::$settings_errors);
     }
 
+    public function testUnauthorizedSubmissionStripsEveryGroupOption()
+    {
+        /*
+         * Code-review GLM1 #10: the capability-failure path stripped only
+         * the plan/region pair, leaving the group's third key — the
+         * debug-logging flag — in $_POST, contradicting the guard's
+         * documented 'nothing of ours can be persisted by any other write
+         * path in the same request' contract. The guard now strips EVERY
+         * option registered under the plugin's option group, enumerated
+         * from the group registration.
+         */
+        $this->bootPlugin();
+        $this->asAnonymous();
+        $_POST = array(
+            'option_page' => 'zai_connector',
+            PlanRegionSettings::OPTION_PLAN => 'general',
+            PlanRegionSettings::OPTION_REGION => 'cn',
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_PLAN => 'general',
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_REGION => 'cn',
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED => '1',
+        );
+
+        do_action('admin_init');
+
+        foreach (array(
+            PlanRegionSettings::OPTION_PLAN,
+            PlanRegionSettings::OPTION_REGION,
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_PLAN,
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_REGION,
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED,
+        ) as $stripped) {
+            $this->assertArrayNotHasKey($stripped, $_POST, "The guard must strip {$stripped} from the request.");
+        }
+
+        $this->assertNotEmpty(WpHarness::$settings_errors);
+    }
+
     public function testAuthorizedUserWithoutValidNonceIsLeftToCoreEnforcement()
     {
         $this->bootPlugin();
