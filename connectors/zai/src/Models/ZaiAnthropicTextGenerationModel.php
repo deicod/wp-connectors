@@ -205,9 +205,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * guards the same divergence; this surface now mirrors it, instead
 		 * of throwing the binding RuntimeException before
 		 * validate_request() can reject the options).
+		 *
+		 * GLM3 #9: the RAW wired instance is consulted here, not this
+		 * model's protocol-wrapping getRequestAuthentication() override —
+		 * its wrap() call threw the wiring failure THROUGH this
+		 * RuntimeException-only catch for a foreign
+		 * RequestAuthenticationInterface, surfacing it as a 400
+		 * zai_invalid_request thrown BEFORE validate_request(). The twin
+		 * reads its plain SDK getter, where the instanceof check below
+		 * makes the foreign-wiring skip decision; the availability gate
+		 * keys on the API key alone, which the raw instance carries.
+		 * wrap() now refuses foreign wiring with the same
+		 * binding-failure RuntimeException, so wherever the failure
+		 * eventually surfaces it maps to 500 zai_error, never 400.
 		 */
 		try {
-			$authentication = $this->getRequestAuthentication();
+			$authentication = parent::getRequestAuthentication();
 		} catch ( RuntimeException $e ) {
 			return;
 		}

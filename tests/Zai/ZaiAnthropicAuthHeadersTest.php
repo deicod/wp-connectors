@@ -13,7 +13,7 @@
 declare( strict_types=1 );
 
 use WordPress\AiClient\AiClient;
-use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
@@ -171,7 +171,13 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
             }
         };
 
-        $this->expectException(InvalidArgumentException::class);
+        /*
+         * GLM3 #9: the refusal is the binding-failure RuntimeException
+         * family (ErrorMapper: 500 zai_error) — the previous
+         * InvalidArgumentException made a wiring failure surface as a 400
+         * zai_invalid_request, the caller-input channel.
+         */
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('API-key authentication');
         ZaiAnthropicRequestAuthentication::wrap($foreign);
     }

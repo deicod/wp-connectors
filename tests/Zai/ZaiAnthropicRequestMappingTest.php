@@ -21,6 +21,8 @@ use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
+use WordPress\AiClient\Providers\Http\DTO\Request as SdkRequest;
 use WordPress\AiClient\Providers\Models\DTO\ModelConfig;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
 use WordPress\AiClient\Tools\DTO\FunctionDeclaration;
@@ -912,6 +914,79 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->assertStringContainsString('candidateCount', $e->getMessage());
         }
 
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * A foreign (non-API-key) authentication wiring for the GLM3 #9 tests.
+     *
+     * @return RequestAuthenticationInterface
+     */
+    private function foreignAuthentication()
+    {
+        return new class implements RequestAuthenticationInterface {
+            public function authenticateRequest(SdkRequest $request): SdkRequest
+            {
+                return $request;
+            }
+
+            public static function getJsonSchema(): array
+            {
+                return array();
+            }
+        };
+    }
+
+    public function testAForeignWiringWithInvalidOptionsYieldsTheOptionRejection()
+    {
+        /*
+         * GLM3 #9: the gate consulted its own wrap()-ing
+         * getRequestAuthentication() override, so a foreign
+         * RequestAuthenticationInterface wiring threw the wrap failure
+         * BEFORE validate_request() — a wiring failure misattributed as
+         * a 400 zai_invalid_request that also stole the typed option
+         * rejection's precedence. The gate now reads the RAW wired
+         * instance (the OpenAI twin's pattern): the gate skips foreign
+         * wiring, and the option rejection wins.
+         */
+        $config = ModelConfig::fromArray(array('candidateCount' => 2));
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $model = ZaiAnthropicProvider::model('glm-5.3', $config);
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication($this->foreignAuthentication());
+
+        try {
+            $model->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('A foreign wiring with invalid options must still yield the typed option rejection.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('candidateCount', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAForeignWiringSurfacesAsTheBindingErrorNotAnInvalidRequest()
+    {
+        /*
+         * GLM3 #9: with VALID options, the foreign-wiring failure
+         * surfaces at request-build time in the binding-failure
+         * RuntimeException family — ErrorMapper maps it to 500
+         * zai_error, not the 400 zai_invalid_request the wrap
+         * InvalidArgumentException produced before.
+         */
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $model = ZaiAnthropicProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication($this->foreignAuthentication());
+
+        $error = $model->generate_text(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+
+        $this->assertWPError($error, 'zai_error');
+        $this->assertStringContainsString('API-key authentication', $error->get_error_message(), 'The wiring failure message must identify the binding problem.');
         $this->assertNoHttpRequests();
     }
 

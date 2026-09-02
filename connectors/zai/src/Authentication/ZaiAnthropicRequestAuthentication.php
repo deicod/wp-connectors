@@ -24,7 +24,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Authentication;
 
-use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
@@ -117,7 +117,12 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 	 *
 	 * @param RequestAuthenticationInterface $authentication The wired authentication.
 	 * @return RequestAuthenticationInterface The Anthropic-surface authentication.
-	 * @throws InvalidArgumentException When the authentication type cannot carry this surface's protocol.
+	 * @throws RuntimeException When the authentication type cannot carry
+	 *                          this surface's protocol (GLM3 #9: the
+	 *                          binding-failure family — ErrorMapper maps it
+	 *                          to 500 zai_error, never 400
+	 *                          zai_invalid_request the way the previous
+	 *                          InvalidArgumentException did).
 	 */
 	public static function wrap( RequestAuthenticationInterface $authentication ): RequestAuthenticationInterface {
 		if ( $authentication instanceof self ) {
@@ -128,7 +133,7 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 			return new self( $authentication->getApiKey() );
 		}
 
-		throw new InvalidArgumentException(
+		throw new RuntimeException(
 			'The zai_anthropic provider requires an API-key authentication instance.'
 		);
 	}
