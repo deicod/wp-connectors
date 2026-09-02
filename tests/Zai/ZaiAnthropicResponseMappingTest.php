@@ -2199,6 +2199,71 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(0, $usage->getCompletionTokens());
     }
 
+    public function testTheSharedUsageValidatorIsTheSingleSourceForBothTransports()
+    {
+        /*
+         * GLM4 #11: the four-member usage validation existed twice —
+         * this parser's inline block and the aggregator's
+         * streamed_usage_is_valid() — hand-maintained in two layers
+         * until Codex R15 #1 had to fix both in lockstep once. The
+         * shared AnthropicUsageValidator now decides for both paths;
+         * this unit pin holds the contract the two transports share.
+         */
+        $validator = 'Deicod\WpConnectors\Zai\Support\AnthropicUsageValidator';
+
+        // Valid shapes: absent members, empty object, cache variants.
+        $this->assertNull($validator::failure_reason(array(), new stdClass()));
+        $this->assertNull($validator::failure_reason(array('input_tokens' => 3, 'cache_read_input_tokens' => 4, 'output_tokens' => 5), new stdClass()));
+        // Oracle-less fallback: sequential keys mean list, string keys mean object.
+        $this->assertNull($validator::failure_reason(array('input_tokens' => 1), null));
+        $this->assertSame('not_object', $validator::failure_reason(array(1, 2), null));
+
+        // Rejections both transports must share.
+        $this->assertSame('not_object', $validator::failure_reason(null, null), 'An explicitly-null usage is not an object.');
+        $this->assertSame('not_object', $validator::failure_reason('5', null), 'A scalar usage is not an object.');
+        $this->assertSame('not_object', $validator::failure_reason(array('input_tokens' => 1), array()), 'A raw LIST oracle value means the wire carried a list.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('input_tokens' => '5'), new stdClass()), 'A string count is a bad member.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('input_tokens' => -1), new stdClass()), 'A negative count is a bad member.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('output_tokens' => 1.5), new stdClass()), 'A float count is a bad member.');
+
+        // The overflow-checked totals (GLM4 #5) live in the same source.
+        $this->assertSame(PHP_INT_MAX, $validator::total(array('input_tokens' => PHP_INT_MAX, 'output_tokens' => 0)), 'The exact boundary total stays representable.');
+        $this->assertNull($validator::total(array('input_tokens' => PHP_INT_MAX, 'output_tokens' => 1)), 'A past-boundary total is null.');
+        $this->assertNull($validator::input_total(array('input_tokens' => PHP_INT_MAX, 'cache_read_input_tokens' => 1)), 'The input-side total detects overflow too.');
+    }
+
+    public function testAStreamedInputSideUsageOverflowInvalidatesTheStream()
+    {
+        /*
+         * GLM4 #11 (with GLM4 #5): the aggregator's input-side sum
+         * promoted past PHP_INT_MAX to float and rode the consolidated
+         * payload into the parser's member validation — rejected, but
+         * misattributed as a bad member. The shared validator's
+         * overflow-checked input_total() flags it at the validation
+         * layer instead.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ovs","content":[],"usage":{"input_tokens":' . PHP_INT_MAX . ',"cache_read_input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"x"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed input-side usage overflow must invalidate the stream, got: ' . wp_json_encode($result->getTokenUsage()->toArray()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testValidAndAbsentTokenUsageStillParse()
     {
         // Guards: {} is a valid zero usage; cache members sum in; an

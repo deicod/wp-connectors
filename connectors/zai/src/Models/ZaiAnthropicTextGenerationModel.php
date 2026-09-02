@@ -56,6 +56,7 @@ use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
+use Deicod\WpConnectors\Zai\Support\AnthropicUsageValidator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
@@ -1400,30 +1401,31 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * usage member keeps the documented default-zero tolerance; an
 		 * explicitly-null member is PRESENT (array_key_exists) and
 		 * therefore rejected.
+		 *
+		 * GLM4 #11: the validation lives in the shared
+		 * AnthropicUsageValidator — the aggregator's streamed copy had to
+		 * be fixed in lockstep once already (Codex R15 #1); one source
+		 * keeps the two transports of one generation identical.
 		 */
 		$usage_data = array();
 		if ( \array_key_exists( 'usage', $data ) ) {
-			$usage_data      = \is_array( $data['usage'] ) ? $data['usage'] : null;
-			$usage_is_object = false;
+			$raw_usage = null !== $raw && \property_exists( $raw, 'usage' ) ? $raw->usage : null;
+			$reason    = AnthropicUsageValidator::failure_reason(
+				\is_array( $data['usage'] ) ? $data['usage'] : null,
+				$raw_usage
+			);
 
-			if ( null !== $usage_data ) {
-				if ( null !== $raw && \property_exists( $raw, 'usage' ) ) {
-					$usage_is_object = \is_object( $raw->usage );
-				} else {
-					$usage_is_object = array() === $usage_data
-						|| \array_keys( $usage_data ) !== \range( 0, \count( $usage_data ) - 1 );
-				}
+			if ( null !== $reason ) {
+				throw ResponseException::fromInvalidData(
+					'z.ai',
+					'usage',
+					AnthropicUsageValidator::REASON_NOT_OBJECT === $reason
+						? 'The usage member must be a JSON object.'
+						: 'Token counts must be non-negative integers.'
+				);
 			}
 
-			if ( ! $usage_is_object ) {
-					throw ResponseException::fromInvalidData( 'z.ai', 'usage', 'The usage member must be a JSON object.' );
-			}
-
-			foreach ( array( 'input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens' ) as $member ) {
-				if ( \array_key_exists( $member, $usage_data ) && ( ! \is_int( $usage_data[ $member ] ) || $usage_data[ $member ] < 0 ) ) {
-						throw ResponseException::fromInvalidData( 'z.ai', 'usage', 'Token counts must be non-negative integers.' );
-				}
-			}
+			$usage_data = $data['usage'];
 		}
 
 		/*
@@ -1433,11 +1435,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * int-typed constructor then threw an uncaught TypeError that
 		 * surfaced as the generic 500 (zai_error) instead of the typed
 		 * zai_invalid_response every other malformed-usage shape
-		 * produces. usage_total() adds with an explicit bound check per
-		 * member, so no intermediate ever promotes and the boundary
-		 * total PHP_INT_MAX itself stays representable.
+		 * produces. The shared validator totals with an explicit bound
+		 * check per member, so no intermediate ever promotes and the
+		 * boundary total PHP_INT_MAX itself stays representable.
 		 */
-		$total = self::usage_total( $usage_data );
+		$total = AnthropicUsageValidator::total( $usage_data );
 
 		if ( null === $total ) {
 			throw ResponseException::fromInvalidData(
@@ -1643,39 +1645,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		return false;
-	}
-
-	/**
-	 * Sums the four usage members with exact overflow detection
-	 * (GLM4 #5).
-	 *
-	 * Every member is a validated non-negative int, but their sum can
-	 * exceed PHP_INT_MAX — PHP silently promotes an overflowing integer
-	 * sum to float, which detonates in TokenUsage's int-typed constructor
-	 * as an uncaught TypeError (generic 500) instead of the typed
-	 * malformed-usage rejection. The addition runs with an explicit
-	 * bound check per member so no intermediate ever promotes; the
-	 * boundary total PHP_INT_MAX itself stays representable.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param array<string, mixed> $usage_data Validated usage member.
-	 * @return int|null The four-member total, or null when it exceeds PHP_INT_MAX.
-	 */
-	private static function usage_total( array $usage_data ): ?int {
-		$total = 0;
-
-		foreach ( array( 'input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens' ) as $member ) {
-			$count = (int) ( $usage_data[ $member ] ?? 0 );
-
-			if ( $count > PHP_INT_MAX - $total ) {
-				return null;
-			}
-
-			$total += $count;
-		}
-
-		return $total;
 	}
 
 	/**
