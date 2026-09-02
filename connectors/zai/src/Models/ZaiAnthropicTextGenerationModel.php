@@ -1426,11 +1426,30 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			}
 		}
 
-		$input  = (int) ( $usage_data['input_tokens'] ?? 0 )
-			+ (int) ( $usage_data['cache_creation_input_tokens'] ?? 0 )
-			+ (int) ( $usage_data['cache_read_input_tokens'] ?? 0 );
+		/*
+		 * GLM4 #5: every member passed the is_int/>=0 validation above
+		 * individually, but their SUM can exceed PHP_INT_MAX — int+int
+		 * overflow silently promotes the sum to float, and TokenUsage's
+		 * int-typed constructor then threw an uncaught TypeError that
+		 * surfaced as the generic 500 (zai_error) instead of the typed
+		 * zai_invalid_response every other malformed-usage shape
+		 * produces. usage_total() adds with an explicit bound check per
+		 * member, so no intermediate ever promotes and the boundary
+		 * total PHP_INT_MAX itself stays representable.
+		 */
+		$total = self::usage_total( $usage_data );
+
+		if ( null === $total ) {
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'usage',
+				'The reported token counts exceed the platform integer range.'
+			);
+		}
+
 		$output = (int) ( $usage_data['output_tokens'] ?? 0 );
-		$usage  = new TokenUsage( $input, $output, $input + $output );
+		$input  = $total - $output; // Both non-negative ints with $total >= $output: in range by construction.
+		$usage  = new TokenUsage( $input, $output, $total );
 
 		$additional = $data;
 		unset( $additional['id'], $additional['role'], $additional['content'], $additional['stop_reason'], $additional['usage'] );
@@ -1624,6 +1643,39 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		return false;
+	}
+
+	/**
+	 * Sums the four usage members with exact overflow detection
+	 * (GLM4 #5).
+	 *
+	 * Every member is a validated non-negative int, but their sum can
+	 * exceed PHP_INT_MAX — PHP silently promotes an overflowing integer
+	 * sum to float, which detonates in TokenUsage's int-typed constructor
+	 * as an uncaught TypeError (generic 500) instead of the typed
+	 * malformed-usage rejection. The addition runs with an explicit
+	 * bound check per member so no intermediate ever promotes; the
+	 * boundary total PHP_INT_MAX itself stays representable.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<string, mixed> $usage_data Validated usage member.
+	 * @return int|null The four-member total, or null when it exceeds PHP_INT_MAX.
+	 */
+	private static function usage_total( array $usage_data ): ?int {
+		$total = 0;
+
+		foreach ( array( 'input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens' ) as $member ) {
+			$count = (int) ( $usage_data[ $member ] ?? 0 );
+
+			if ( $count > PHP_INT_MAX - $total ) {
+				return null;
+			}
+
+			$total += $count;
+		}
+
+		return $total;
 	}
 
 	/**

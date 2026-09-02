@@ -2093,6 +2093,45 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testUsageSummingPastThePlatformIntRangeIsRejectedTyped()
+    {
+        /*
+         * GLM4 #5: usage members are validated individually, but a SUM
+         * past PHP_INT_MAX promoted to float and TokenUsage's int-typed
+         * constructor threw an uncaught TypeError — the generic 500
+         * (zai_error) instead of the typed zai_invalid_response every
+         * other malformed-usage shape produces. Each member below passes
+         * the is_int/>=0 validation; only the sum overflows.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"msg_ovf","type":"message","role":"assistant","content":[{"type":"text","text":"Ok."}],"stop_reason":"end_turn","usage":{"input_tokens":' . PHP_INT_MAX . ',"cache_read_input_tokens":1,"output_tokens":0}}');
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A usage sum past PHP_INT_MAX must be rejected, got usage: ' . wp_json_encode($result->getTokenUsage()->toArray()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('platform integer range', $e->getMessage());
+        }
+
+        // The typed boundary surfaces the same verdict.
+        $this->queueSdkResponse(200, array(), '{"id":"msg_ovf","type":"message","role":"assistant","content":[{"type":"text","text":"Ok."}],"stop_reason":"end_turn","usage":{"input_tokens":' . PHP_INT_MAX . ',"cache_read_input_tokens":1,"output_tokens":0}}');
+        $error = $this->model()->generate_text($this->prompt());
+        $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_INVALID_RESPONSE);
+    }
+
+    public function testUsageAtTheExactPlatformIntBoundaryStillParses()
+    {
+        // Boundary control for GLM4 #5: a total of exactly PHP_INT_MAX
+        // (the largest representable sum) is NOT an overflow and must
+        // keep parsing as a successful generation.
+        $this->queueSdkResponse(200, array(), '{"id":"msg_edge","type":"message","role":"assistant","content":[{"type":"text","text":"Ok."}],"stop_reason":"end_turn","usage":{"input_tokens":' . ( PHP_INT_MAX - 5 ) . ',"cache_creation_input_tokens":2,"cache_read_input_tokens":3,"output_tokens":0}}');
+
+        $usage = $this->model()->generateTextResult($this->prompt())->getTokenUsage();
+
+        $this->assertSame(PHP_INT_MAX, $usage->getTotalTokens(), 'The exact-int-boundary total must parse.');
+        $this->assertSame(PHP_INT_MAX, $usage->getPromptTokens());
+        $this->assertSame(0, $usage->getCompletionTokens());
+    }
+
     public function testValidAndAbsentTokenUsageStillParse()
     {
         // Guards: {} is a valid zero usage; cache members sum in; an
