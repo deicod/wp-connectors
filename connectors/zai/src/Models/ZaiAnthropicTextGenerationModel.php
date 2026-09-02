@@ -1273,14 +1273,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						// Missing input member or explicit null (R7 #1).
 						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its input member.' );
 					} elseif ( \is_object( $raw_input ) ) {
-						$args = isset( $part_data['input'] ) && \is_array( $part_data['input'] )
-							? $part_data['input']
-							: array();
-
-						if ( array() === $args ) {
+						if ( array() === get_object_vars( $raw_input ) ) {
 							// The empty object {} means "no arguments"
 							// (official-plugin normalization).
 							$args = null;
+						} else {
+							$args = self::tool_args_from_raw( $raw_input );
 						}
 					} else {
 						// A scalar, boolean, or JSON list value (an empty
@@ -1326,6 +1324,62 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$encoded = wp_json_encode( $value );
 
 		return \is_string( $encoded ) && '{' === substr( $encoded, 0, 1 );
+	}
+
+	/**
+	 * Converts a raw-decoded tool input into the stored arguments value,
+	 * preserving JSON object-ness at EVERY level (code-review GLM1 #2).
+	 *
+	 * The associative decode collapses {} and [] into the same empty PHP
+	 * array and turns a numeric-keyed JSON object ({"0":"x"}) into a list —
+	 * information the outbound replay (message_part_block) could not
+	 * recover, so nested empty objects and numeric-keyed objects silently
+	 * re-encoded as JSON lists on the wire. This walk starts from the RAW
+	 * (non-associative) decode instead, keeping a PHP array wherever an
+	 * array re-encodes as an object unambiguously (any non-sequential key
+	 * set — consumer ergonomics unchanged for ordinary arguments) and a
+	 * stdClass wherever an array would re-encode as a list (the empty
+	 * object and the purely sequential-keyed object).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $value A value from a non-associative json_decode() tree.
+	 * @return mixed The same tree with object-ness preserved for encoding.
+	 */
+	private static function tool_args_from_raw( $value ) {
+		if ( $value instanceof \stdClass ) {
+			$properties = get_object_vars( $value );
+
+			$converted = array();
+			foreach ( $properties as $key => $member ) {
+				$converted[ $key ] = self::tool_args_from_raw( $member );
+			}
+
+			// An empty object, or one whose keys would re-encode the array
+			// as a JSON list, stays a stdClass (with converted members).
+			if ( array() === $converted
+				|| \array_keys( $converted ) === \range( 0, \count( $converted ) - 1 ) ) {
+				$object = new \stdClass();
+				foreach ( $converted as $key => $member ) {
+					$object->{$key} = $member;
+				}
+
+				return $object;
+			}
+
+			return $converted;
+		}
+
+		if ( \is_array( $value ) ) {
+			$converted = array();
+			foreach ( $value as $key => $member ) {
+				$converted[ $key ] = self::tool_args_from_raw( $member );
+			}
+
+			return $converted;
+		}
+
+		return $value;
 	}
 
 	/**

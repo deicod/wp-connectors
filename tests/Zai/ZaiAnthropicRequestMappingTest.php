@@ -559,6 +559,49 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame('{"temp_c":21}', $body['messages'][2]['content'][0]['content'], 'The tool_result carries the exact JSON.' );
     }
 
+    public function testParsedToolInputRoundTripsNestedObjectsOnReplay()
+    {
+        /*
+         * Code-review GLM1 #2: tool-call arguments lost JSON object-ness
+         * below the top level — the inbound tool_use input was stored from
+         * the associative decode, and the outbound replay normalized only a
+         * wholly-empty TOP-LEVEL array to stdClass, so nested empty objects
+         * and numeric-keyed objects silently re-encoded as JSON lists on
+         * the wire (verified: "filter":[] instead of "filter":{}).
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'),
+            '{"id":"msg_tool_obj","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_obj","name":"search","input":{"filter":{},"tags":{"0":"x"},"q":"lit"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        $result = $this->model()->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+        $call = $result->toMessage()->getParts()[0]->getFunctionCall();
+        $this->assertNotNull($call);
+
+        // The parse must PRESERVE object-ness at every level: the nested
+        // empty object and the numeric-keyed object stay objects.
+        $args = $call->getArgs();
+        $this->assertIsArray($args, 'A mixed-key top-level object stays an array for consumer ergonomics.');
+        $this->assertInstanceOf(\stdClass::class, $args['filter'], 'A nested empty object must stay an object, not collapse to [].');
+        $this->assertInstanceOf(\stdClass::class, $args['tags'], 'A nested numeric-keyed object must stay an object, not re-encode as a list.');
+
+        // Replay the assistant turn: the wire must carry the SAME shapes.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $this->model()->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart($call))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('toolu_obj', 'search', array('ok' => true))))),
+        ));
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(2, $attempts);
+        $this->assertStringContainsString(
+            '"input":{"filter":{},"tags":{"0":"x"},"q":"lit"}',
+            (string) $attempts[1]['body'],
+            'The replayed tool_use input must preserve nested object-ness byte-for-byte.'
+        );
+    }
+
     public function testGenerationIsRefusedWhileTheCredentialIsRegionPending()
     {
         /*
