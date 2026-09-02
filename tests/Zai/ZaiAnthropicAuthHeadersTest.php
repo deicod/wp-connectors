@@ -157,6 +157,60 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAGetWithDataAndXApiKeyIsStrippedWithoutDoublingTheQuery()
+    {
+        /*
+         * GLM4 #7: the strip rebuilt the Request from getUri() — which
+         * already folds GET array data into the query string — WHILE
+         * carrying the data component over, so the rebuilt request's own
+         * getUri() appended every query parameter a second time
+         * ('...?page=2&limit=50&page=2&limit=50'). Unreachable from the
+         * current plugin callers (their GETs carry no data), but this is
+         * the defense-in-depth reuse/decoration case the strip exists
+         * for, so the rebuild must be wire-identical.
+         */
+        $authentication = new ZaiAnthropicRequestAuthentication(FakeSecrets::apiKey());
+
+        $request = new SdkRequest(
+            HttpMethodEnum::GET(),
+            'https://api.z.ai/api/anthropic/v1/models',
+            array('x-api-key' => 'stale-credential-value'),
+            array('page' => 2, 'limit' => 50)
+        );
+
+        $authenticated = $authentication->authenticateRequest($request);
+
+        $this->assertNull($authenticated->getHeader('x-api-key'));
+        $this->assertSame(
+            'https://api.z.ai/api/anthropic/v1/models?page=2&limit=50',
+            $authenticated->getUri(),
+            'The query parameters must appear exactly once after the header strip.'
+        );
+        $this->assertSame(
+            'https://api.z.ai/api/anthropic/v1/models?page=2&limit=50',
+            $authenticated->toArray()['uri'],
+            'The wire form (toArray) must carry the query exactly once too.'
+        );
+    }
+
+    public function testAGetWithoutDataAndXApiKeyKeepsItsUriVerbatim()
+    {
+        // Control: a data-less GET (the shape the plugin's probe sends)
+        // strips the header with the URI untouched.
+        $authentication = new ZaiAnthropicRequestAuthentication(FakeSecrets::apiKey());
+
+        $request = new SdkRequest(
+            HttpMethodEnum::GET(),
+            'https://api.z.ai/api/anthropic/v1/models',
+            array('x-api-key' => 'stale-credential-value')
+        );
+
+        $authenticated = $authentication->authenticateRequest($request);
+
+        $this->assertNull($authenticated->getHeader('x-api-key'));
+        $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $authenticated->getUri());
+    }
+
     public function testTheWrapFunnelFailsClosedOnForeignAuthTypes()
     {
         $foreign = new class implements WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface {

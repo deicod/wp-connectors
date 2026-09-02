@@ -28,6 +28,7 @@ use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
+use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 
 /**
  * Bearer + protocol-version authentication for zai_anthropic.
@@ -74,6 +75,15 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 	 * rebuilt from its remaining headers with method, URI, body/data, and
 	 * transport options carried over verbatim.
 	 *
+	 * GLM4 #7: for a GET carrying array data, getUri() already folds the
+	 * data into the query string — a rebuild constructed with BOTH that
+	 * folded URI and the data component appended every query parameter a
+	 * SECOND time on its own next getUri() call
+	 * ('...?page=2&limit=50&page=2&limit=50'). For that one shape the
+	 * folded URI travels without the data component (getBody() is null
+	 * for GETs, so the wire output is identical); every other shape keeps
+	 * its original body/data component verbatim.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param Request $request The request to strip.
@@ -91,11 +101,19 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 			}
 		}
 
+		$uri  = $request->getUri();
+		$data = $request->getData() ?? $request->getBody();
+
+		if ( null !== $request->getData() && HttpMethodEnum::GET() === $request->getMethod() ) {
+			// The query string is already embedded in the folded URI.
+			$data = null;
+		}
+
 		return new Request(
 			$request->getMethod(),
-			$request->getUri(),
+			$uri,
 			$headers,
-			$request->getData() ?? $request->getBody(),
+			$data,
 			$request->getOptions()
 		);
 	}
