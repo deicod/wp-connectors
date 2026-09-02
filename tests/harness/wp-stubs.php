@@ -355,6 +355,110 @@ function delete_transient($transient)
 }
 
 /*
+ * Minimal wpdb for uninstall-style prefix enumerations: the probe-miss
+ * transient cleanup (connectors/zai/uninstall.php, GLM2 #7) enumerates
+ * option rows by an option_name LIKE pattern because the exact names
+ * embed a credential-binding hash. Only the surface that cleanup uses is
+ * implemented: esc_like(), prepare() with %s/%d placeholders, and the
+ * single-column SELECT ... LIKE ... get_col() shape. Storage is the
+ * harness's: real options come from WpHarness::$options, transient rows
+ * are presented in their _transient_<name> option_name form (the harness
+ * keeps them unprefixed in WpHarness::$transients). Scanning the CURRENT
+ * arrays keeps the stub per-site under switch_to_blog().
+ */
+if (!class_exists('wpdb')) {
+    class wpdb
+    {
+        /** @var string Options table name (matches core's property). */
+        public $options = 'wp_options';
+
+        /**
+         * Escapes LIKE wildcards in a literal for a LIKE pattern.
+         *
+         * @param string $text Literal text.
+         * @return string Escaped text.
+         */
+        public function esc_like($text)
+        {
+            return addcslashes((string) $text, '_%\\');
+        }
+
+        /**
+         * Substitutes %s/%d placeholders (single-argument shapes only).
+         *
+         * @param string $query Query with placeholders.
+         * @param mixed  ...$args Values to substitute.
+         * @return string Prepared query.
+         */
+        public function prepare($query, ...$args)
+        {
+            foreach ($args as $arg) {
+                if (is_int($arg) || is_float($arg)) {
+                    $replacement = (string) $arg;
+                } else {
+                    $replacement = "'" . addslashes((string) $arg) . "'";
+                }
+                $query = (string) preg_replace('/%s|%d/', $replacement, $query, 1);
+            }
+
+            return $query;
+        }
+
+        /**
+         * Runs the supported single-column option_name LIKE select.
+         *
+         * @param string $query Prepared query.
+         * @return list<string> Matching option names (sorted).
+         */
+        public function get_col($query)
+        {
+            if (!preg_match("/SELECT option_name FROM \\S+ WHERE option_name LIKE '(.*)'$/s", (string) $query, $matches)) {
+                return array();
+            }
+
+            // SQL LIKE (with esc_like() backslash escapes) to regex.
+            $like = stripslashes($matches[1]);
+            $regex = '';
+            $length = strlen($like);
+            for ($i = 0; $i < $length; $i++) {
+                $char = $like[$i];
+                if ('\\' === $char && $i + 1 < $length) {
+                    $regex .= preg_quote($like[++$i], '/');
+                    continue;
+                }
+                if ('%' === $char) {
+                    $regex .= '.*';
+                    continue;
+                }
+                if ('_' === $char) {
+                    $regex .= '.';
+                    continue;
+                }
+                $regex .= preg_quote($char, '/');
+            }
+
+            $names = array_keys(WpHarness::$options);
+            foreach (array_keys(WpHarness::$transients) as $transient) {
+                $names[] = '_transient_' . $transient;
+            }
+
+            $matches = array();
+            foreach (array_unique($names) as $name) {
+                if (preg_match('/^' . $regex . '$/s', $name)) {
+                    $matches[] = $name;
+                }
+            }
+
+            sort($matches);
+
+            return $matches;
+        }
+    }
+}
+
+$GLOBALS['wpdb'] = new wpdb();
+
+/*
  * -------------------------------------------------------------------------
  * Cron / scheduled events.
  * -------------------------------------------------------------------------

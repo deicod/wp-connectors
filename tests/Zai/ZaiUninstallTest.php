@@ -45,6 +45,10 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         update_option( 'zai_connector_zai_region_pending', array( 'region' => 'cn', 'fingerprint' => 'x' ) );
         set_transient( 'zai_connector_zai_models_' . md5( 'zai|coding|intl' ), array( 'glm-5.3' ), 3600 );
         set_transient( 'zai_connector_zai_models_' . md5( 'zai|coding|intl' ) . '_miss', true, 60 );
+        // GLM2 #7: probe-miss markers embed md5(sha256(binding)) — seeded
+        // with arbitrary hash tails, exactly like production rows whose
+        // keys the uninstaller never sees.
+        set_transient( 'zai_connector_zai_key_state_probe_' . md5( 'any-binding-hash' ), true, 60 );
 
         update_option( 'zai_connector_zai_anthropic_plan', 'general' );
         update_option( 'zai_connector_zai_anthropic_region', 'cn' );
@@ -52,6 +56,7 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         update_option( 'zai_connector_zai_anthropic_region_pending', array( 'region' => 'cn', 'fingerprint' => 'x' ) );
         set_transient( 'zai_connector_zai_anthropic_models_' . md5( 'zai_anthropic|coding|intl' ), array( 'glm-5.3' ), 3600 );
         set_transient( 'zai_connector_zai_anthropic_models_' . md5( 'zai_anthropic|coding|intl' ) . '_miss', true, 60 );
+        set_transient( 'zai_connector_zai_anthropic_key_state_probe_' . md5( 'another-binding-hash' ), true, 60 );
 
         update_option( 'connectors_ai_zai_api_key', $decoy_value );
         update_option( 'connectors_ai_zai_anthropic_api_key', $decoy_value );
@@ -94,6 +99,14 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         $this->assertFalse(
             get_transient( 'zai_connector_zai_anthropic_models_' . md5( 'zai_anthropic|coding|intl' ) . '_miss' ),
             'The second provider\'s negative discovery markers must be removed too (GLM1 #6).'
+        );
+        $this->assertFalse(
+            get_transient( 'zai_connector_zai_key_state_probe_' . md5( 'any-binding-hash' ) ),
+            'The availability probe-miss markers must be removed on uninstall (GLM2 #7).'
+        );
+        $this->assertFalse(
+            get_transient( 'zai_connector_zai_anthropic_key_state_probe_' . md5( 'another-binding-hash' ) ),
+            'The second provider\'s probe-miss markers must be removed too (GLM2 #7).'
         );
         $this->assertNotFalse(
             get_option( 'connectors_ai_zai_api_key', false ),

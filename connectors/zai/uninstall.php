@@ -8,7 +8,10 @@
  * site: options and transients are per-site (record 0004, rule 2), and a
  * network-activated uninstall runs once in the current site's context, so
  * every other blog keeps its data unless the cleanup switches to it
- * explicitly. The core-owned API key options
+ * explicitly. The negative-cache transients whose names embed a
+ * credential-binding hash (the availability probe-miss markers, GLM1 #6)
+ * are enumerated by option-name prefix rather than derived (GLM2 #7). The
+ * core-owned API key options
  * (connectors_ai_zai_api_key, connectors_ai_zai_anthropic_api_key) are
  * deliberately left for core/the user. Deactivation retains everything.
  *
@@ -53,6 +56,36 @@ function zai_connector_zai_uninstall_site() {
 				delete_transient( $zai_connector_cache_id );
 				delete_transient( $zai_connector_cache_id . '_miss' );
 			}
+		}
+	}
+
+	/*
+	 * Availability probe-miss transients (GLM1 #6): each name embeds an
+	 * md5 of the sha256 credential+endpoint BINDING, so the exact keys are
+	 * unknowable at uninstall time without the historical API keys — the
+	 * rows are ENUMERATED by their option-name prefix instead (GLM2 #7;
+	 * the discovery markers above can be derived, these structurally
+	 * cannot). delete_transient() also removes each name's matching
+	 * _transient_timeout_ row.
+	 */
+	global $wpdb;
+
+	$zai_connector_probe_prefixes = array(
+		'_transient_zai_connector_zai_key_state_probe_',
+		'_transient_zai_connector_zai_anthropic_key_state_probe_',
+	);
+
+	foreach ( $zai_connector_probe_prefixes as $zai_connector_probe_prefix ) {
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- one-shot uninstall sweep over rows whose names embed a credential-binding hash (unknowable, hence enumerated); there is no object cache to consult on uninstall and nothing persistent is introduced.
+		$zai_connector_probe_names = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
+				$wpdb->esc_like( $zai_connector_probe_prefix ) . '%'
+			)
+		);
+
+		foreach ( $zai_connector_probe_names as $zai_connector_probe_name ) {
+			delete_transient( substr( (string) $zai_connector_probe_name, strlen( '_transient_' ) ) );
 		}
 	}
 }
