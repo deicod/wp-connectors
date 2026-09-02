@@ -373,20 +373,69 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
          * (setTopK(0), setPresencePenalty(0.0)) hard-failed the request
          * while setLogprobs(false) passed. Every falsy flavor is now
          * equally "not set".
+         *
+         * GLM4 #4 narrowed the tolerance to the WIRE-INERT options: the
+         * request builder never forwards top-k, so setTopK(0) stays a
+         * neutral no-op (this test). The options it DOES forward whenever
+         * non-null (presence/frequency penalty, logprobs, top logprobs)
+         * reject even neutral values — see the next test: they would
+         * otherwise ship ("top_logprobs": 0 et al.) and buy the generic
+         * upstream error this guard exists to pre-empt.
          */
         $config = ModelConfig::fromArray(array());
         $config->setTopK(0);
-        $config->setTopLogprobs(0);
-        $config->setPresencePenalty(0.0);
-        $config->setFrequencyPenalty(0.0);
-        $config->setLogprobs(false);
 
         list($url, $body) = $this->captureRequest(
             array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
             $this->model($config)
         );
 
-        $this->assertSame('glm-5.3', $body['model'], 'The request must proceed with falsy-neutral option values.');
+        $this->assertSame('glm-5.3', $body['model'], 'The request must proceed with wire-inert falsy option values.');
+        $this->assertArrayNotHasKey('top_k', $body, 'A set-but-never-forwarded option must not appear on the wire.');
+    }
+
+    /**
+     * @dataProvider provideWireForwardedNeutralOptionValues
+     */
+    public function testWireForwardedNeutralOptionValuesAreRejectedBeforeTransport(callable $setter)
+    {
+        /*
+         * GLM4 #4: setLogprobs(false), setTopLogprobs(0),
+         * setPresencePenalty(0.0), setFrequencyPenalty(0.0) passed the
+         * !empty() guard — but the OpenAI-compatible request builder
+         * forwards every NON-NULL value of these options, so the neutral
+         * values shipped verbatim ("logprobs": false, "top_logprobs": 0,
+         * "presence_penalty": 0) and a spec-faithful endpoint rejected
+         * top_logprobs without logprobs=true with the GENERIC upstream
+         * error. The pinning test this replaces asserted only that the
+         * request proceeded — never that the keys were absent. Now the
+         * guard rejects the explicitly-set value typed, before transport.
+         */
+        $config = ModelConfig::fromArray(array());
+        $setter($config);
+
+        $this->assertRejectedBeforeTransport($config, 'would still be sent to the API');
+    }
+
+    /**
+     * @return array<string, list<callable>>
+     */
+    public function provideWireForwardedNeutralOptionValues()
+    {
+        return array(
+            'logprobs=false' => array(static function (ModelConfig $config): void {
+                $config->setLogprobs(false);
+            }),
+            'topLogprobs=0' => array(static function (ModelConfig $config): void {
+                $config->setTopLogprobs(0);
+            }),
+            'presencePenalty=0.0' => array(static function (ModelConfig $config): void {
+                $config->setPresencePenalty(0.0);
+            }),
+            'frequencyPenalty=0.0' => array(static function (ModelConfig $config): void {
+                $config->setFrequencyPenalty(0.0);
+            }),
+        );
     }
 
     public function testAnthropicParsedToolCallReplaysThroughThisSurfaceWithObjectNess()

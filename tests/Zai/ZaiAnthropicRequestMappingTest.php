@@ -2300,35 +2300,57 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
          * (setTopK(0), setPresencePenalty(0.0)) hard-failed the request
          * while setLogprobs(false) passed. Every falsy flavor is now
          * equally "not set".
+         *
+         * GLM4 #4 narrowed the tolerance to the WIRE-INERT options: this
+         * surface never emits unsupported parameters at all, and the
+         * shared guard keeps the zai twin's rule that the options the
+         * OpenAI request builder forwards (presence/frequency penalty,
+         * logprobs, top logprobs) reject even neutral values — see the
+         * zai surface's provider test. The rule is shared so a config
+         * accepted by one surface is accepted by the other.
          */
         $config = ModelConfig::fromArray(array());
         $config->setTopK(0);
-        $config->setTopLogprobs(0);
-        $config->setPresencePenalty(0.0);
-        $config->setFrequencyPenalty(0.0);
-        $config->setLogprobs(false);
 
         list($url, $body) = $this->captureRequest(
             array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
             $this->model($config)
         );
 
-        $this->assertSame('glm-5.3', $body['model'], 'The request must proceed with falsy-neutral option values.');
+        $this->assertSame('glm-5.3', $body['model'], 'The request must proceed with wire-inert falsy option values.');
     }
 
-    public function testTheSharedGuardTreatsEveryFalsyFlavorAsNotSet()
+    public function testTheSharedGuardTreatsWireInertFalsyFlavorsAsNotSet()
     {
-        // Direct unit coverage of the flavors the typed setters cannot
-        // express ('0', ''), plus a truthy control that still rejects.
+        /*
+         * Direct unit coverage of the flavors the typed setters cannot
+         * express ('0', '') for the WIRE-INERT options — the request
+         * builder never forwards these, so a set falsy value is a no-op.
+         * GLM4 #4: the wire-FORWARDED falsy flavors (presence penalty
+         * 0.0, logprobs false, ...) now reject instead — they would
+         * ship on the zai surface — plus a truthy control that still
+         * rejects.
+         */
         \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array(
             'topK' => '0',
-            'presencePenalty' => 0.0,
-            'frequencyPenalty' => 0,
-            'logprobs' => false,
             'webSearch' => '',
             'outputFileType' => array(),
             'outputSpeechVoice' => null,
         ), 'zai_anthropic');
+
+        foreach (array(
+            'presencePenalty' => 0.0,
+            'frequencyPenalty' => 0,
+            'logprobs' => false,
+            'topLogprobs' => 0,
+        ) as $key => $value) {
+            try {
+                \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array($key => $value), 'zai_anthropic');
+                $this->fail("An explicitly-set falsy {$key} must be rejected (it would ship on the zai surface).");
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('would still be sent to the API', $e->getMessage());
+            }
+        }
 
         try {
             \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array('presencePenalty' => 0.5), 'zai_anthropic');
