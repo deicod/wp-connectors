@@ -1944,6 +1944,72 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(42, $result->getTokenUsage()->getCompletionTokens());
     }
 
+    public function testStreamedNumericKeyedToolInputSurvivesAsAnObject()
+    {
+        /*
+         * Code-review GLM1 #3: a streamed tool_use input whose JSON object
+         * keys are exactly sequential numerics ({"0":"x"}) passed the
+         * aggregator's raw-stdClass oracle, but its associative decode was
+         * re-encoded as a JSON list in the consolidated payload, which the
+         * model's object-ness oracle then rejected — zai_invalid_response
+         * for a response the non-streaming path accepts. The consolidated
+         * tool input must stay the RAW object, never an assoc->re-encode
+         * round trip.
+         */
+        $body = implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_nk","role":"assistant","content":[],"usage":{"input_tokens":3,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nk","name":"pick","input":{}}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"0\\":"}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\\"x\\"}"}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $call = $result->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame('toolu_nk', $call->getId());
+        $this->assertSame('x', $call->getArgs()->{'0'}, 'A numeric-keyed streamed object must survive as an object, not a list.');
+    }
+
+    public function testStreamedStartBlockToolInputKeepsNestedObjectNess()
+    {
+        // GLM1 #3 sibling: the START-block input (no deltas) took the same
+        // associative round trip — a nested empty object re-encoded as [].
+        $body = implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_so","role":"assistant","content":[],"usage":{"input_tokens":3,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_so","name":"search","input":{"filter":{},"q":"lit"}}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $args = $result->toMessage()->getParts()[0]->getFunctionCall()->getArgs();
+
+        $this->assertInstanceOf(\stdClass::class, $args['filter'], 'A nested empty object in the start-block input must stay an object.');
+        $this->assertSame('lit', $args['q']);
+    }
+
     public function testStreamParserToleratesSplitFramesCrlfCommentsAndMalformedEvents()
     {
         $body = ''

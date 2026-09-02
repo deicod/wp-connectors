@@ -487,15 +487,16 @@ final class AnthropicSseAggregator {
 						return null;
 					}
 
-					$input = json_decode( $block['json'], true );
-
-					// The empty object {} must survive the consolidated
-					// boundary as an OBJECT: an associative empty array
-					// would re-encode as the empty list [] and fail the
-					// model's raw object-ness oracle (Codex R3 #1).
-					if ( ! \is_array( $input ) || array() === $input ) {
-						$input = new \stdClass();
-					}
+					/*
+					 * Code review GLM1 #3: the consolidated input stays the
+					 * RAW object. The previous associative decode →
+					 * re-encode round trip destroyed object-ness for
+					 * sequential-numeric keys ({"0":"x"} became ["x"]) and
+					 * the model's own object-ness oracle then rejected the
+					 * response — the raw decode survives regardless of key
+					 * shape (and keeps {} an object, Codex R3 #1).
+					 */
+					$input = $decoded;
 				}
 
 				return array(
@@ -1148,8 +1149,14 @@ final class AnthropicSseAggregator {
 					$this->malformed_tool_input = true;
 				}
 			} elseif ( \is_object( $raw_input ) ) {
-				$assoc = json_decode( (string) wp_json_encode( $raw_input ), true );
-				$input = \is_array( $assoc ) && array() !== $assoc ? $assoc : new \stdClass();
+				/*
+				 * GLM1 #3 (same round trip as the accumulated-JSON path):
+				 * the initial input stays the RAW object — the previous
+				 * associative re-decode turned nested empty objects into []
+				 * and numeric-keyed objects into lists in the consolidated
+				 * payload.
+				 */
+				$input = $raw_input;
 			} else {
 				// A scalar, boolean, or JSON list value (an empty list
 				// included) — malformed streamed tool arguments.
