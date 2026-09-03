@@ -359,6 +359,59 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(array(), $call->getArgs());
     }
 
+    public function testALateNonMergingUsageMemberDoesNotPoisonTheMergedOne()
+    {
+        /*
+         * GLM6 #3: the streamed validator compared the merged usage
+         * member against the raw oracle of the LAST usage-BEARING frame,
+         * while the merge takes the last frame whose usage was an ARRAY —
+         * so a trailing "usage":"corrupt" member handed the validator a
+         * frame the consolidated payload does not carry and rejected an
+         * otherwise-complete generation. The oracle now describes exactly
+         * the merged frame.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-ln","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-ln","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}',
+            'data: {"id":"chatcmpl-ln","usage":"corrupt"}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(5, $result->getTokenUsage()->getTotalTokens(), 'The merged usage member stands.');
+    }
+
+    public function testALateNullUsageMemberDoesNotLoseTheObjectNessOracle()
+    {
+        /*
+         * GLM6 #3 (null variant): a trailing "usage":null replaced the
+         * raw oracle with null, flipping the verdict through the
+         * validator's sequential-key fallback — a merged empty LIST
+         * usage was then tolerated where the non-streaming transport of
+         * the same provider rejects it. The null member does not merge,
+         * so it must not touch the oracle either.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-ln2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-ln2","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":[]}',
+            'data: {"id":"chatcmpl-ln2","usage":null}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A merged empty-list usage member must stay rejected despite the later null member.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage());
+        }
+    }
+
     public function testNonStreamingStringUsageMemberIsRejectedTyped()
     {
         /*

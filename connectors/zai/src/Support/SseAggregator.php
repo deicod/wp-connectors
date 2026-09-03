@@ -60,15 +60,20 @@ final class SseAggregator {
 	private $done = false;
 
 	/**
-	 * The usage member from a NON-associative decode of the last
-	 * usage-bearing frame, or null when none was seen (verifier round on
-	 * GLM5 #3).
+	 * The usage member from a NON-associative decode of the last frame
+	 * whose usage the merge actually takes, or null when none was seen
+	 * (verifier round on GLM5 #3; GLM6 #3 aligned the capture with the
+	 * merge rule).
 	 *
 	 * The associative merge cannot recover the usage member's JSON
 	 * object-ness ({} vs []), so the raw value travels along for the
 	 * model's shared UsageValidator — the same oracle the non-streaming
 	 * path derives from its body, keeping both transports of one
-	 * provider on identical usage rules.
+	 * provider on identical usage rules. Captured under the SAME
+	 * condition aggregated() merges by (present AND an array), so the
+	 * oracle always describes the frame the consolidated payload
+	 * carries — never a later non-merging usage member the payload
+	 * discards.
 	 *
 	 * @since 0.2.0
 	 *
@@ -407,8 +412,18 @@ final class SseAggregator {
 		 * rejects the empty list through its body oracle). The extra
 		 * decode runs only for frames that carry a usage member (~one
 		 * per stream).
+		 *
+		 * GLM6 #3: the capture condition is the SAME rule aggregated()
+		 * merges by (present AND an array) — previously every
+		 * usage-BEARING frame replaced the oracle, so a later
+		 * non-merging member ("usage":"corrupt", "usage":null) either
+		 * handed the validator a frame the consolidated payload does not
+		 * carry (rejecting a valid generation) or dropped the oracle
+		 * entirely (flipping the verdict through the sequential-key
+		 * fallback). The oracle and the merged member now always
+		 * describe the same frame.
 		 */
-		if ( \array_key_exists( 'usage', $decoded ) ) {
+		if ( isset( $decoded['usage'] ) && \is_array( $decoded['usage'] ) ) {
 			$raw_event       = json_decode( $data );
 			$this->raw_usage = \is_object( $raw_event ) ? ( $raw_event->usage ?? null ) : null;
 		}
@@ -417,8 +432,8 @@ final class SseAggregator {
 	}
 
 	/**
-	 * The usage member from a non-associative decode of the last
-	 * usage-bearing frame, or null when none was seen.
+	 * The usage member from a non-associative decode of the last frame
+	 * whose usage the merge takes, or null when none was seen.
 	 *
 	 * @since 0.2.0
 	 *
