@@ -244,6 +244,63 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTruncatedToolCallArgumentsAreRejectedNotSilentlyEmptied()
+    {
+        /*
+         * GLM6 #1: a non-streaming body carrying an arguments string that
+         * fails JSON decode left the SDK parent's null-args call standing
+         * (the replay guard tolerates null), so the generation SUCCEEDED
+         * with finish reason toolCalls and getArgs() null — a consumer
+         * could execute a possibly side-effecting tool with arguments the
+         * model never produced. Typed rejection now, never a fabricated
+         * empty call.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-tr","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_tr","type":"function","function":{"name":"get_weather","arguments":"{\"city\":"}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Truncated tool-call arguments must be rejected.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+        }
+    }
+
+    public function testStreamedToolCallArgumentsLosingAFragmentAreRejectedNotSilentlyEmptied()
+    {
+        /*
+         * GLM6 #1 (streamed half): a gateway dropping one arguments delta
+         * leaves the concatenated fragments invalid JSON — the exact
+         * corruption the non-streaming twin above rejects, reaching the
+         * same channel through the consolidated payload.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-trs","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_trs","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-trs","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]},"finish_reason":"tool_calls"}]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Fragment-losing streamed tool arguments must be rejected.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+        }
+    }
+
+    public function testALiteralJsonNullArgumentsStringKeepsTheParentSemantics()
+    {
+        // GLM6 #1 guard: only DECODE FAILURES reject — a literal "null"
+        // string is valid JSON and keeps the SDK parent's null-args
+        // semantics (the empty-call representation this surface documents).
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-nu","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_nu","type":"function","function":{"name":"ping","arguments":"null"}}]},"finish_reason":"tool_calls"}]}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertNull($call->getArgs());
+    }
+
     public function testNonStreamingStringUsageMemberIsRejectedTyped()
     {
         /*

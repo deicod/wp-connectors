@@ -376,6 +376,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * zai_anthropic surface gives the identical payload (GLM4 #2's
 	 * conversation-poisoning class, fixed there only).
 	 *
+	 * GLM6 #1 rejects arguments strings that fail JSON DECODE outright: the
+	 * decode failure used to leave the parent's null-args call standing
+	 * (the replay guard tolerates null), fabricating a no-argument tool
+	 * call from a truncated or fragment-losing stream.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param array<string, mixed> $tool_call_data The tool call (associative decode).
@@ -398,6 +403,30 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		if ( \is_string( $raw_arguments ) ) {
 			$raw = json_decode( $raw_arguments );
+
+			if ( null === $raw && \JSON_ERROR_NONE !== \json_last_error() ) {
+				/*
+				 * GLM6 #1: a decode failure left the SDK parent's null-args
+				 * call standing — the replay guard passes null (it encodes
+				 * fine), so a streamed response that lost one arguments
+				 * fragment (gateway drops/reorders a delta, so the
+				 * concatenated string is invalid JSON) or a non-streaming
+				 * body carrying a truncated arguments string SUCCEEDED with
+				 * finish reason toolCalls and getArgs() null: a consumer
+				 * could execute a possibly side-effecting tool with no
+				 * arguments the model never produced. Substituting {} would
+				 * fabricate a no-argument call the same way (the corruption
+				 * class the zai_anthropic twin's Codex R1/R7 rejections
+				 * exist to stop), so the response fails typed instead. A
+				 * literal "null" string decodes cleanly and keeps the SDK
+				 * parent's semantics.
+				 */
+				throw ResponseException::fromInvalidData(
+					'z.ai',
+					'tool_calls',
+					'A tool call carried an arguments string that is not valid JSON.'
+				);
+			}
 
 			if ( $raw instanceof \stdClass ) {
 				// GLM5 #1: preserve nested object-ness (see the docblock).
