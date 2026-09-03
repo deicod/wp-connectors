@@ -1319,12 +1319,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * channel (consumers hit the SDK's untyped toText()
 		 * RuntimeException instead). Zero parts now rejects REGARDLESS of
 		 * the stop reason; the message names the dropped blocks when that
-		 * was the case (code-review #15). One documented tolerance stays:
-		 * an empty content list under stop_reason refusal is the
-		 * protocol's pre-output-refusal shape and keeps surfacing as a
-		 * successful contentFilter result.
+		 * was the case (code-review #15).
+		 *
+		 * GLM5 #4 removed GLM3 #2's one documented tolerance (an empty
+		 * content list under stop_reason refusal parsing as a successful
+		 * contentFilter result): the turn that tolerance manufactured
+		 * carries ZERO parts, which this adapter's own outbound mapper
+		 * rejects pre-transport on replay ('requires every message to
+		 * carry at least one translatable part') — so appending it to the
+		 * history poisoned every later request of the conversation, the
+		 * exact violation the GLM3 #1 parse/replay-agreement contract
+		 * exists to prevent. A refusal that carries content (the
+		 * protocol's ordinary shape) still parses as a successful
+		 * contentFilter result; mapper and parser now agree on the empty
+		 * one.
 		 */
-		if ( array() === $parts && 'refusal' !== $data['stop_reason'] ) {
+		if ( array() === $parts ) {
 			throw ResponseException::fromInvalidData(
 				'z.ai',
 				'content',
@@ -1606,10 +1616,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * response whose content is ONLY unmapped blocks produces
 				 * no parts, which parse_decoded_message() rejects as a
 				 * ResponseException (zai_invalid_response) regardless of
-				 * the stop reason (GLM3 #2 made this guarantee real — the
-				 * empty-refusal tolerance is its one documented
-				 * exception), with a message naming the dropped blocks
-				 * when that was the case. The streamed path drops the
+				 * the stop reason (GLM3 #2 made this guarantee real; GLM5
+				 * #4 removed the empty-refusal tolerance so the guarantee
+				 * has no exception — a zero-part turn can never replay),
+				 * with a message naming the dropped blocks when that was
+				 * the case. The streamed path drops the
 				 * same shapes earlier (see the aggregator's
 				 * content_block_payload()).
 				 */

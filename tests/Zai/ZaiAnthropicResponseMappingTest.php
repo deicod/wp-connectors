@@ -1084,15 +1084,41 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
-    public function testAnExplicitlyEmptyContentListStaysProtocolLegal()
+    public function testAnEmptyContentListUnderRefusalRejectsAsUnreplayable()
     {
-        // content: [] is protocol-legal (pre-output refusals) — only the
-        // OBJECT shape is rejected.
+        /*
+         * GLM5 #4: GLM3 #2's documented tolerance (content:[] under
+         * stop_reason refusal parsing as a SUCCESSFUL contentFilter
+         * result) manufactured a ZERO-part assistant Message — a turn
+         * this adapter's own outbound mapper rejects pre-transport on
+         * replay, so appending it to the history poisoned every later
+         * request of the conversation until the turn was removed. A turn
+         * that cannot be replayed cannot be a generation (the GLM3 #1
+         * contract): the tolerance is gone and the empty list rejects
+         * through the typed channel regardless of the stop reason.
+         */
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"id":"msg_ec","type":"message","role":"assistant","content":[],"stop_reason":"refusal","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An empty content list under refusal must not parse as a generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('no content blocks', $e->getMessage());
+        }
+    }
+
+    public function testARefusalWithContentStillParsesAsContentFilter()
+    {
+        /*
+         * GLM5 #4: the protocol's ORDINARY refusal shape carries content —
+         * that path keeps surfacing as a successful contentFilter result
+         * (and replays: the text block maps straight back onto the wire).
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"id":"msg_rf","type":"message","role":"assistant","content":[{"type":"text","text":"I cannot help with that."}],"stop_reason":"refusal","usage":{"input_tokens":1,"output_tokens":1}}');
 
         $result = $this->model()->generateTextResult($this->prompt());
 
-        $this->assertSame(array(), $result->toMessage()->getParts());
+        $this->assertSame('I cannot help with that.', $result->toText());
         $this->assertSame(FinishReasonEnum::contentFilter(), $result->getCandidates()[0]->getFinishReason());
     }
 
@@ -1103,8 +1129,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
          * zero-parts rejection — but only a contradictory tool_use stop
          * reason tripped the consistency check, so content:[] with
          * end_turn parsed as a SUCCESS with zero parts (the caller then
-         * hit the SDK's untyped toText() RuntimeException). The refusal
-         * tolerance above stays the only documented exception.
+         * hit the SDK's untyped toText() RuntimeException). Since GLM5 #4
+         * there is no stop-reason exception left: zero parts reject
+         * unconditionally.
          */
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"id":"msg_ec2","type":"message","role":"assistant","content":[],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}');
 
