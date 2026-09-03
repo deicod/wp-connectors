@@ -523,7 +523,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * valid wire turn.
 			 */
 			if ( $role !== $previous_role ) {
-				$this->advance_answer_window( $awaiting_answer, $outstanding_tools, $previous_role, $role );
+				$this->advance_answer_window( $awaiting_answer, $outstanding_tools, $previous_role );
 
 				$previous_role = $role;
 			}
@@ -685,11 +685,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * messages coalesce; Codex R11 #1). A window opened by an assistant
 	 * tool turn is judged here:
 	 *
-	 * - previous turn 'assistant' + incoming 'user': the answering turn
-	 *   BEGINS — the outstanding IDs stay answerable (the user turn's own
-	 *   results consume them as its messages are processed).
-	 * - previous turn 'assistant' + incoming non-user: the tool turn's
-	 *   results never arrive — expire the IDs (R9 stale semantics).
+	 * - previous turn 'assistant': the answering USER turn BEGINS — the
+	 *   outstanding IDs stay answerable (the user turn's own results
+	 *   consume them as its messages are processed). The old expiry for a
+	 *   NON-user incoming role was provably dead (GLM5 #19):
+	 *   message_role_string() only ever produces 'user' or 'assistant',
+	 *   and this method runs only on role CHANGE, so an assistant turn
+	 *   can only ever be followed by a user turn here — the R9 stale
+	 *   semantics are carried entirely by the unmatched-result rejection
+	 *   on the consuming side.
 	 * - previous turn 'user': the answering coalesced turn has ENDED —
 	 *   every ID must have been answered (R10 #1 partial rule, evaluated
 	 *   only now that the split messages have merged, per R11 #1).
@@ -697,25 +701,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @since 0.2.0
 	 *
 	 * @param bool        $awaiting_answer   Whether a tool-answer window is open (by ref).
-	 * @param array       $outstanding_tools Outstanding tool-use IDs (by ref).
+	 * @param array       $outstanding_tools Outstanding tool-use IDs.
 	 * @param string|null $previous_role     Role of the coalesced turn that just ended.
-	 * @param string      $role              Role of the incoming coalesced turn.
 	 * @return void
 	 * @throws InvalidArgumentException When a completed user turn left IDs unanswered.
 	 */
-	private function advance_answer_window( bool &$awaiting_answer, array &$outstanding_tools, $previous_role, string $role ): void {
+	private function advance_answer_window( bool &$awaiting_answer, array $outstanding_tools, $previous_role ): void {
 		if ( ! $awaiting_answer ) {
-			return;
-		}
-
-		if ( 'assistant' === $previous_role ) {
-			if ( 'user' !== $role ) {
-				// The tool turn's results never arrived: expire.
-				$outstanding_tools = array();
-				$awaiting_answer   = false;
-			}
-
-			// Incoming user: the answering turn begins — keep the IDs.
 			return;
 		}
 
@@ -1515,11 +1507,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						 * No raw oracle (defensive: should not happen): the
 						 * strictest associative probe decides — it also rejects
 						 * the ambiguous empty array ({} and [] are
-						 * indistinguishable here, so both fail).
+						 * indistinguishable here, so both fail; the empty
+						 * array therefore needs no separate normalization —
+						 * GLM5 #19 removed the dead elseif that never ran
+						 * behind this rejecting branch).
 						 */
 						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its input member.' );
-					} elseif ( array() === $args ) {
-						$args = null;
 					}
 				} else {
 					$raw_input = \property_exists( $raw_part, 'input' ) ? $raw_part->input : null;
