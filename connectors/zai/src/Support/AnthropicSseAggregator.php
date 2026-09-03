@@ -661,18 +661,22 @@ final class AnthropicSseAggregator {
 			 * unknown-named one is noise, not corruption of the completed
 			 * generation).
 			 *
-			 * GLM6 #7: a TRAILING declaration is judged by the
-			 * GLM4 #6/GLM5 #18 post-termination policy
-			 * (handle_trailing_event()'s rules), which the undecodable
-			 * payload cannot be dispatched to — so they apply inline
-			 * here: an error declaration sets the error flag (the old
-			 * dedicated branch did; the shared check intercepted it first
-			 * and surfaced 'malformed event frame' instead of the
-			 * documented 'error event' message), while any other declared
-			 * name stays the corrupt-mutation rejection.
+			 * GLM6 #7: an error DECLARATION sets the error flag (the old
+			 * dedicated trailing branch did; the shared check intercepted
+			 * it first and surfaced 'malformed event frame' instead of the
+			 * documented 'error event' message).
+			 *
+			 * GLM7 #4: the rule covers BOTH phases — a PRE-termination
+			 * `event: error` with an undecodable payload (a proxy cutting
+			 * the connection mid-error-event) classified as a corrupt
+			 * FRAME, leaving has_error() false, so the upstream
+			 * availability failure surfaced as 'malformed event frame'
+			 * and any policy keyed on has_error() never fired. The
+			 * declaration itself is the error signal; the payload's
+			 * condition cannot un-declare it.
 			 */
 			if ( \is_string( $event_name ) && \in_array( $event_name, self::DECLARED_EVENTS, true ) ) {
-				if ( $this->terminated && 'error' === $event_name ) {
+				if ( 'error' === $event_name ) {
 					$this->error = true;
 				} else {
 					$this->malformed_event = true;
@@ -725,10 +729,21 @@ final class AnthropicSseAggregator {
 		 * declaration with a malformed payload, which must still set the
 		 * error flag (the old dedicated branch did; the shared check
 		 * intercepted it first and surfaced the wrong fixed message).
+		 *
+		 * GLM7 #4: an error declaration sets the error flag in THIS phase
+		 * too — `event: error` with a decodable non-object payload
+		 * (data: ["overloaded_error"]) pre-termination left has_error()
+		 * false and surfaced 'malformed event frame', the same
+		 * misclassification the undecodable branch above fixed.
 		 */
 		if ( ! $this->terminated && \in_array( $type, self::DECLARED_EVENTS, true ) && ! \is_object( $raw ) ) {
 			++$this->malformed;
-			$this->malformed_event = true;
+
+			if ( 'error' === $type ) {
+				$this->error = true;
+			} else {
+				$this->malformed_event = true;
+			}
 
 			return;
 		}

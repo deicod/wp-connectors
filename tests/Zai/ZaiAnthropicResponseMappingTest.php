@@ -1734,6 +1734,75 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAPreTerminationErrorEventWithAnUndecodablePayloadSetsTheErrorFlag()
+    {
+        /*
+         * GLM7 #4 (pre-termination half of GLM6 #7): a proxy cutting the
+         * connection mid-error-event emits `event: error` with a
+         * truncated JSON payload BEFORE message_stop — the undecodable
+         * branch's error handling was trailing-only, so the frame set
+         * malformed_event and the upstream availability failure surfaced
+         * as 'malformed event frame' (indistinguishable from protocol
+         * corruption; has_error()-keyed policies never fired). The
+         * declaration itself is the error signal in both phases.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pe1","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: error' . "\n"
+            . 'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded la' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_error(), 'A pre-termination error declaration with an undecodable payload must set the error flag.');
+        $this->assertFalse($aggregator->has_malformed_event(), 'The verdict is an error event, not protocol corruption.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A pre-termination error event with an undecodable payload must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('error event', $e->getMessage());
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testAPreTerminationErrorEventWithANonObjectPayloadSetsTheErrorFlag()
+    {
+        /*
+         * GLM7 #4 (non-object half): `event: error` with a decodable
+         * non-object payload (data: ["overloaded_error"]) before
+         * message_stop hit the object-shape gate, which set
+         * malformed_event — the same misclassification the undecodable
+         * branch fixed, one branch over.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pe2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: error' . "\n"
+            . 'data: ["overloaded_error"]' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_error(), 'A pre-termination error declaration with a non-object payload must set the error flag.');
+        $this->assertFalse($aggregator->has_malformed_event(), 'The verdict is an error event, not protocol corruption.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A pre-termination error event with a non-object payload must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('error event', $e->getMessage());
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testATrailingUndecodableDeclaredContentEventStillInvalidates()
     {
         // GLM6 #7 guard: only the trailing ERROR declaration changes
@@ -4099,7 +4168,13 @@ $body = ''
 
     public function testMalformedFramesOfOtherDeclaredEventsInvalidateTheStream()
     {
-        foreach (array('message_start', 'message_delta', 'message_stop', 'error') as $declared) {
+        /*
+         * GLM7 #4: 'error' left this list — an error DECLARATION with an
+         * undecodable payload sets the error flag now (see the dedicated
+         * pre-termination tests), not the corrupt-frame channel; the
+         * content-bearing declared names keep the malformed verdict.
+         */
+        foreach (array('message_start', 'content_block_delta', 'message_delta', 'message_stop') as $declared) {
             $body = ''
                 . 'event: ' . $declared . "\n"
                 . 'data: broken-' . $declared . "\n\n"
