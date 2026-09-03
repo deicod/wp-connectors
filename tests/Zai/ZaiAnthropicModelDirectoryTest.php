@@ -278,6 +278,35 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/models', $this->sdkHttpAttempts()[0]['url']);
     }
 
+    public function testRepeatedLookupsOnOneInstanceReuseTheBuiltMap()
+    {
+        /*
+         * GLM7 #13: the map (metadata objects, capability/option sets,
+         * sort) is a pure function of the resolved IDs, but every
+         * list/has/get call rebuilt it — core resolution makes two or
+         * more per request. The rebuild is memoized per transient
+         * CONTENT: repeated lookups return the SAME metadata instances,
+         * and a transient-content change (the read stays authoritative)
+         * swaps the memo key and rebuilds.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $this->primeZaiAnthropicDiscoveryTransient(array('glm-5.3', 'glm-5.2'));
+
+        $directory = $this->directory();
+
+        $first = $directory->getModelMetadata('glm-5.3');
+        $this->assertSame($first, $directory->getModelMetadata('glm-5.3'), 'A repeated get must reuse the built metadata object.');
+        $this->assertSame($first, $directory->listModelMetadata()[0], 'listModelMetadata() must reuse the built map.');
+        $this->assertTrue($directory->hasModelMetadata('glm-5.2'), 'The memoized map answers has-lookups.');
+
+        // A transient-content change rebuilds: the memo follows the IDs,
+        // not the instance.
+        $this->primeZaiAnthropicDiscoveryTransient(array('glm-5.2'));
+        $rebuilt = $directory->getModelMetadata('glm-5.2');
+        $this->assertNotSame($first, $rebuilt, 'New content must rebuild the map.');
+        $this->assertFalse($directory->hasModelMetadata('glm-5.3'), 'The rebuilt map reflects the new ID list.');
+    }
+
     /**
      * @dataProvider provideCredentialRejectionStatuses
      */
