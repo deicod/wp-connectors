@@ -522,6 +522,33 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(18, $result->getTokenUsage()->getTotalTokens());
     }
 
+    public function testTheStreamedConsolidationNoLongerRoundTripsThroughAJsonBody()
+    {
+        /*
+         * GLM6 #14 (verifier round): the decoded hand-off is
+         * behavior-preserving by design, so a behavioral parity test
+         * cannot discriminate it from the wp_json_encode()/getData()
+         * round trip it replaced. This pins the mechanism at the source
+         * level (the GLM6 #10 extraction-pattern precedent): the streamed
+         * consolidation must construct the pre-decoded Response and must
+         * not re-encode the aggregated payload.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match('/new PreDecodedResponse\(/', $source),
+            'The streamed consolidation must hand the parser the pre-decoded payload.'
+        );
+        $this->assertSame(
+            0,
+            preg_match('/wp_json_encode\(\s*\$aggregated/', $source),
+            'The aggregated payload must not be re-encoded into a synthetic body.'
+        );
+    }
+
     public function testNonStreamingStringUsageMemberIsRejectedTyped()
     {
         /*
