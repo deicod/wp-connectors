@@ -19,6 +19,7 @@ use WordPress\AiClient\Messages\Enums\MessagePartChannelEnum;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\Exception\ClientException;
 use WordPress\AiClient\Providers\Http\Exception\NetworkException;
+use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\Exception\ServerException;
 use WordPress\AiClient\Results\Enums\FinishReasonEnum;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
@@ -185,6 +186,62 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             (string) $attempts[1]['body'],
             'The zai surface replay must preserve the parsed object shapes.'
         );
+    }
+
+    public function testToolCallArgumentsDecodingToInfAreRejectedTyped()
+    {
+        /*
+         * GLM5 #2: 1e999 decodes to INF, which the SDK parent's outbound
+         * json_encode() turns into false — every later request of the
+         * conversation shipped "arguments": false. The shared replay guard
+         * (GLM4 #2, previously wired on the zai_anthropic surface only)
+         * rejects the value at parse time in this surface's typed channel.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-inf","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_inf","type":"function","function":{"name":"f","arguments":"{\"v\":1e999}"}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('INF tool arguments must be rejected.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+        }
+    }
+
+    public function testToolCallArgumentsBeyondIntRangeAreRejectedTyped()
+    {
+        /*
+         * GLM5 #2: an integer beyond PHP_INT_MAX decodes to a lossy float;
+         * replay would silently ship an altered e-notation value. The value
+         * sits clearly outside the ~2048-wide window above PHP_INT_MAX whose
+         * integers are indistinguishable after the decode (the guard's
+         * documented accepted residual).
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-big","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_big","type":"function","function":{"name":"f","arguments":"{\"n\":99999999999999999999}"}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Beyond-int-range tool arguments must be rejected.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+        }
+    }
+
+    public function testPreDecodedToolCallArgumentsWithInfAreRejectedTyped()
+    {
+        /*
+         * GLM5 #2 (fallback path): when the body carries the arguments as
+         * a pre-decoded JSON member (not a string), the SDK parent passes
+         * the value through untouched — an INF member reaches the guard
+         * through the same channel.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-arr","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_arr","type":"function","function":{"name":"f","arguments":{"v":1e999}}}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('INF inside pre-decoded tool arguments must be rejected.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+        }
     }
 
     public function testLengthFinishReasonMapsToLength()

@@ -47,6 +47,7 @@ use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
+use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 
 /**
  * Text generation model for z.ai.
@@ -285,7 +286,8 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
-	 * Parses one tool call with JSON object-ness preserved at every level.
+	 * Parses one tool call with JSON object-ness preserved at every level
+	 * and replayability enforced.
 	 *
 	 * The SDK parent decodes the wire arguments string ASSOCIATIVELY, which
 	 * collapses {} and [] into the same empty PHP array and turns a
@@ -302,12 +304,22 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * pre-decoded (non-string) arguments keep the SDK parent's semantics
 	 * untouched.
 	 *
+	 * GLM5 #2 then applies the shared Support\ToolArgsReplayGuard to the
+	 * final arguments value of EVERY path: 1e999 decodes to INF and an
+	 * integer beyond PHP_INT_MAX to a lossy float, and the parent's
+	 * outbound mapper json_encodes them with plain json_encode() —
+	 * returning false — so the wire carried "arguments": false on every
+	 * later request of the conversation instead of the typed rejection the
+	 * zai_anthropic surface gives the identical payload (GLM4 #2's
+	 * conversation-poisoning class, fixed there only).
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param array<string, mixed> $tool_call_data The tool call (associative decode).
 	 * @return \WordPress\AiClient\Messages\DTO\MessagePart|null The tool-call part, or null
 	 *                                              (the SDK caller then rejects the
 	 *                                              unexpected type).
+	 * @throws ResponseException When the arguments cannot replay onto the wire.
 	 */
 	protected function parseResponseChoiceMessageToolCallPart( array $tool_call_data ): ?MessagePart { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated override name.
 		$part = parent::parseResponseChoiceMessageToolCallPart( $tool_call_data );
@@ -316,25 +328,38 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			return $part;
 		}
 
+		$function_call = $part->getFunctionCall();
+		$args          = $function_call->getArgs();
+
 		$raw_arguments = $tool_call_data['function']['arguments'] ?? null;
 
-		if ( ! \is_string( $raw_arguments ) ) {
-			// A pre-decoded (non-string) arguments value: no wire JSON to
-			// re-derive object-ness from — the SDK parent's value stands.
-			return $part;
+		if ( \is_string( $raw_arguments ) ) {
+			$raw = json_decode( $raw_arguments );
+
+			if ( $raw instanceof \stdClass ) {
+				// GLM5 #1: preserve nested object-ness (see the docblock).
+				$args = ToolArgsObjectNess::from_raw( $raw );
+			}
 		}
 
-		$raw = json_decode( $raw_arguments );
-
-		if ( ! $raw instanceof \stdClass ) {
-			// A scalar or list root has no nested object-ness to preserve.
-			return $part;
+		// GLM5 #2: a value the outbound replay cannot losslessly re-encode
+		// must not become a generation — it would poison every later
+		// request of the conversation (see the docblock).
+		if ( ! ToolArgsReplayGuard::is_replayable( $args ) ) {
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'tool_calls',
+				'A tool call carried arguments that cannot be replayed (an unencodable or precision-loss value was decoded).'
+			);
 		}
 
-		$function_call = $part->getFunctionCall();
+		if ( $args === $function_call->getArgs() ) {
+			// No object-ness substitution happened: the parent's part stands.
+			return $part;
+		}
 
 		return new MessagePart(
-			new FunctionCall( $function_call->getId(), $function_call->getName(), ToolArgsObjectNess::from_raw( $raw ) )
+			new FunctionCall( $function_call->getId(), $function_call->getName(), $args )
 		);
 	}
 
