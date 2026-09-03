@@ -36,6 +36,7 @@ use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleTextGenerationModel;
 use WordPress\AiClient\Results\DTO\GenerativeAiResult;
+use WordPress\AiClient\Tools\DTO\FunctionCall;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
@@ -45,6 +46,7 @@ use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
+use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
 
 /**
  * Text generation model for z.ai.
@@ -280,6 +282,60 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				'The chat-completions payload was malformed.'
 			);
 		}
+	}
+
+	/**
+	 * Parses one tool call with JSON object-ness preserved at every level.
+	 *
+	 * The SDK parent decodes the wire arguments string ASSOCIATIVELY, which
+	 * collapses {} and [] into the same empty PHP array and turns a
+	 * numeric-keyed JSON object ({"0":"x"}) into a list — information the
+	 * outbound replay (the parent's getMessagePartToolCallData()
+	 * json_encode()) could not recover, so a nested empty or
+	 * numeric-keyed object silently re-encoded as a JSON list on the next
+	 * request of the conversation (code-review GLM5 #1: the GLM1 #2 fix
+	 * existed on the zai_anthropic surface only). The arguments string is
+	 * re-decoded NON-associatively here and run through the same shared
+	 * Support\ToolArgsObjectNess walk that surface uses, so a tool call
+	 * parsed by either surface carries — and replays with — identical
+	 * shapes. Root values that are not JSON objects (scalars, lists) and
+	 * pre-decoded (non-string) arguments keep the SDK parent's semantics
+	 * untouched.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<string, mixed> $tool_call_data The tool call (associative decode).
+	 * @return \WordPress\AiClient\Messages\DTO\MessagePart|null The tool-call part, or null
+	 *                                              (the SDK caller then rejects the
+	 *                                              unexpected type).
+	 */
+	protected function parseResponseChoiceMessageToolCallPart( array $tool_call_data ): ?MessagePart { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated override name.
+		$part = parent::parseResponseChoiceMessageToolCallPart( $tool_call_data );
+
+		if ( null === $part || null === $part->getFunctionCall() ) {
+			return $part;
+		}
+
+		$raw_arguments = $tool_call_data['function']['arguments'] ?? null;
+
+		if ( ! \is_string( $raw_arguments ) ) {
+			// A pre-decoded (non-string) arguments value: no wire JSON to
+			// re-derive object-ness from — the SDK parent's value stands.
+			return $part;
+		}
+
+		$raw = json_decode( $raw_arguments );
+
+		if ( ! $raw instanceof \stdClass ) {
+			// A scalar or list root has no nested object-ness to preserve.
+			return $part;
+		}
+
+		$function_call = $part->getFunctionCall();
+
+		return new MessagePart(
+			new FunctionCall( $function_call->getId(), $function_call->getName(), ToolArgsObjectNess::from_raw( $raw ) )
+		);
 	}
 
 	/**

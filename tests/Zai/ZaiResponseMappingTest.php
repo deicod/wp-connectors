@@ -21,6 +21,7 @@ use WordPress\AiClient\Providers\Http\Exception\ClientException;
 use WordPress\AiClient\Providers\Http\Exception\NetworkException;
 use WordPress\AiClient\Providers\Http\Exception\ServerException;
 use WordPress\AiClient\Results\Enums\FinishReasonEnum;
+use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
@@ -123,6 +124,67 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('get_weather', $call->getName());
         $this->assertSame(array('city' => 'Oslo'), $call->getArgs());
         $this->assertSame(FinishReasonEnum::toolCalls(), $result->getCandidates()[0]->getFinishReason());
+    }
+
+    public function testToolCallArgumentsPreserveNestedObjectNessThroughReplay()
+    {
+        /*
+         * GLM5 #1: the SDK parent's ASSOCIATIVE arguments decode collapses
+         * a nested {} to [] and a numeric-keyed object to a list, so this
+         * surface's own tool loop shipped ALTERED arguments on the very
+         * next replay ({"opts":{},"rows":{"0":"a"}} became
+         * {"opts":[],"rows":["a"]}) — the GLM1 #2 object-ness preservation
+         * existed on the zai_anthropic surface only. The parser re-derives
+         * the tree from a RAW decode through the same shared walk now, so
+         * the replay is byte-identical.
+         */
+        $this->queueSdkResponse(200, array(), wp_json_encode(array(
+            'id' => 'chatcmpl-obj',
+            'choices' => array(array(
+                'message' => array(
+                    'role' => 'assistant',
+                    'content' => null,
+                    'tool_calls' => array(array(
+                        'id' => 'call_obj',
+                        'type' => 'function',
+                        'function' => array('name' => 'do_thing', 'arguments' => '{"opts":{},"rows":{"0":"a"},"plain":{"k":"v"}}'),
+                    )),
+                ),
+                'finish_reason' => 'tool_calls',
+            )),
+        )));
+
+        $assistant = $this->model()->generateTextResult($this->prompt())->toMessage();
+
+        $args = $assistant->getParts()[0]->getFunctionCall()->getArgs();
+        $this->assertInstanceOf('stdClass', $args['opts'], 'A nested empty object must stay an object.');
+        $this->assertInstanceOf('stdClass', $args['rows'], 'A nested numeric-keyed object must stay an object.');
+        $this->assertSame(array('k' => 'v'), $args['plain'], 'An ordinary object keeps its ergonomic array form.');
+
+        // Replay the answered turn: the outbound arguments string must
+        // carry exactly the object shapes the model produced.
+        $this->queueSdkResponse(200, array(), wp_json_encode(array(
+            'id' => 'chatcmpl-after',
+            'choices' => array(array(
+                'message' => array('role' => 'assistant', 'content' => 'done'),
+                'finish_reason' => 'stop',
+            )),
+        )));
+
+        $this->model()->generateTextResult(array(
+            $this->prompt()[0],
+            $assistant,
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('call_obj', 'do_thing', array('ok' => true))),
+            )),
+        ));
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertStringContainsString(
+            '"arguments":"{\"opts\":{},\"rows\":{\"0\":\"a\"},\"plain\":{\"k\":\"v\"}}"',
+            (string) $attempts[1]['body'],
+            'The zai surface replay must preserve the parsed object shapes.'
+        );
     }
 
     public function testLengthFinishReasonMapsToLength()
