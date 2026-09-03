@@ -616,6 +616,27 @@ final class AnthropicSseAggregator {
 		$event_name = $fields['event'];
 
 		if ( null === $fields['data'] ) {
+			/*
+			 * GLM8 #1: a data-less frame is not invisible. An `event:
+			 * error` frame truncated right after its event: line (an
+			 * intermediary cut the error event before its data: line
+			 * could arrive) is the same corrupt error event its
+			 * undecodable- and non-object-payload siblings are (GLM7
+			 * #4: the declaration itself is the error signal; the
+			 * payload's condition cannot un-declare it) — counted
+			 * malformed and flagged like them, or a complete stream
+			 * followed by the bare declaration aggregated as a SUCCESS.
+			 * Every OTHER data-less declaration keeps its ignorable
+			 * status: a lost lifecycle event (message_start,
+			 * message_delta, message_stop) is caught by the
+			 * aggregated() absence guards in the same channel, and
+			 * unknown names are forward-compatible noise.
+			 */
+			if ( 'error' === $event_name ) {
+				++$this->malformed;
+				$this->error = true;
+			}
+
 			return;
 		}
 

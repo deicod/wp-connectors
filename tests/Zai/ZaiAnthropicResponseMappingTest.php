@@ -1865,6 +1865,166 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testATrailingErrorDeclarationWithoutADataLineFailsTheStream()
+    {
+        /*
+         * GLM8 #1 (trailing half): an `event: error` frame whose data:
+         * line was lost entirely — the error event truncated right after
+         * its event: line by an intermediary — early-returned before any
+         * event-name policy, so a COMPLETE valid stream followed by the
+         * bare declaration aggregated as a success: no error flag, no
+         * malformed count. The declaration itself is the error signal
+         * (the GLM7 #4 policy), exactly like the undecodable- and
+         * non-object-payload siblings pinned above.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_gl81a","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: error' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_error(), 'A bare error declaration with no data line must set the error flag.');
+        $this->assertFalse($aggregator->has_malformed_event(), 'The verdict is an error event, not protocol corruption.');
+        $this->assertSame(1, $aggregator->malformed_count(), 'The truncated error frame counts as one malformed event.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A bare trailing error declaration must fail the generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('error event', $e->getMessage());
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testAFinalErrorDeclarationCutBeforeTheBlankLineFailsTheStream()
+    {
+        /*
+         * GLM8 #1 (finish-flush half of the same finding): the stream cut
+         * BETWEEN the event: line and its terminating blank line leaves
+         * "event: error" as the final unterminated frame — finish()
+         * flushes it as a real frame, and before the fix its data-less
+         * shape was invisible there too (the typed error-event message
+         * downgraded to the generic 'malformed event frame' the
+         * aggregated() absence guards raise).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_gl81b","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: error';
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_error(), 'A flushed unterminated bare error declaration must set the error flag.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A final bare error declaration must fail the generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('error event', $e->getMessage());
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testAPreTerminationErrorDeclarationWithoutADataLineSetsTheErrorFlag()
+    {
+        // GLM8 #1 (pre-termination half): the bare declaration flips the
+        // flag in BOTH phases, mirroring the GLM7 #4 two-phase rule its
+        // payload-bearing siblings follow.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_gl81c","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: error' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_error(), 'A pre-termination bare error declaration must set the error flag.');
+        $this->assertFalse($aggregator->has_malformed_event(), 'The verdict is an error event, not protocol corruption.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A pre-termination bare error declaration must fail the generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('error event', $e->getMessage());
+        }
+    }
+
+    public function testABareNonErrorDeclarationWithoutADataLineStaysIgnorable()
+    {
+        /*
+         * GLM8 #1 guard: only the error DECLARATION changes verdict. A
+         * trailing unknown-named frame with no data line stays benign
+         * noise (the completed generation stands), and a lost lifecycle
+         * declaration (the message_delta frame reduced to its event:
+         * line) keeps failing through the aggregated() absence guards —
+         * the channel every other data-less shape already used.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_gl81d","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: telemetry' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
+
+        $truncated = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_gl81e","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: message_delta' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($truncated);
+        $aggregator->finish();
+        $this->assertNull($aggregator->aggregated(), 'A stream whose message_delta lost its payload does not aggregate.');
+
+        $this->assertFalse($aggregator->has_error(), 'A bare non-error declaration never sets the error flag.');
+        $this->assertTrue($aggregator->has_malformed_event(), 'A lost lifecycle declaration fails through the absence guards.');
+        $this->assertSame(0, $aggregator->malformed_count(), 'A data-less non-error frame counts as no malformed event.');
+    }
+
     public function testATrailingUndecodableDeclaredContentEventStillInvalidates()
     {
         // GLM6 #7 guard: only the trailing ERROR declaration changes
