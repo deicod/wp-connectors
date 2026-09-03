@@ -152,7 +152,14 @@ function zai_connector_zai_uninstall_site() {
 			)
 		);
 
-		foreach ( $zai_connector_probe_names as $zai_connector_probe_name ) {
+		/*
+			 * GLM5 #13: real wpdb::get_col() returns NULL (not an empty
+			 * array) on a database error — a foreach over null emitted a
+			 * warning and silently skipped the probe-miss cleanup while
+			 * uninstall reported success. The null coalesce keeps every
+			 * OTHER deletion in this uninstall running.
+			 */
+		foreach ( $zai_connector_probe_names ?? array() as $zai_connector_probe_name ) {
 			delete_transient( substr( (string) $zai_connector_probe_name, strlen( '_transient_' ) ) );
 		}
 	}

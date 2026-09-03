@@ -303,4 +303,73 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
             putenv( 'ZAI_API_KEY' );
         }
     }
+
+    public function testADatabaseErrorDuringTheProbeSweepDoesNotWarnOrSkipTheOtherCleanups()
+    {
+        /*
+         * GLM5 #13: real wpdb::get_col() returns NULL on a database
+         * error (deletion tooling racing the uninstall, say) — the
+         * foreach over null emitted a warning and aborted the sweep
+         * while uninstall reported success. The null coalesce keeps the
+         * surrounding deletions running; only the (failed) enumeration
+         * itself is lost.
+         */
+        $this->seedCurrentSite();
+
+        $real_wpdb = $GLOBALS['wpdb'];
+
+        $GLOBALS['wpdb'] = new class {
+            /** @var string Options table name (matches core's property). */
+            public $options = 'wp_options';
+
+            /**
+             * Escapes LIKE wildcards like the harness wpdb.
+             *
+             * @param string $text Literal text.
+             * @return string Escaped text.
+             */
+            public function esc_like( $text )
+            {
+                return addcslashes( (string) $text, '_%\\' );
+            }
+
+            /**
+             * Passes the query through.
+             *
+             * @param string   $query Query.
+             * @param mixed ...$args Values (unused).
+             * @return string The query.
+             */
+            public function prepare( $query, ...$args )
+            {
+                return $query;
+            }
+
+            /**
+             * Simulates the database error: null.
+             *
+             * @param string $query Query (unused).
+             * @return null
+             */
+            public function get_col( $query )
+            {
+                return null;
+            }
+        };
+
+        try {
+            zai_connector_zai_uninstall_site();
+        } finally {
+            $GLOBALS['wpdb'] = $real_wpdb;
+        }
+
+        // No warning aborted the run: every other plugin-owned deletion
+        // still happened.
+        $this->assertFalse( get_option( 'zai_connector_zai_plan', false ), 'The options deletions must survive the sweep failure.' );
+        $this->assertFalse( get_option( 'zai_connector_zai_anthropic_key_state', false ), 'The options deletions must survive the sweep failure.' );
+        $this->assertFalse(
+            get_transient( 'zai_connector_zai_models_' . md5( 'zai|coding|intl' ) ),
+			'The derivable discovery-cache deletions must survive the sweep failure.'
+        );
+    }
 }
