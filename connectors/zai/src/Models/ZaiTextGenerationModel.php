@@ -363,9 +363,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * re-decoded NON-associatively here and run through the same shared
 	 * Support\ToolArgsObjectNess walk that surface uses, so a tool call
 	 * parsed by either surface carries — and replays with — identical
-	 * shapes. Root values that are not JSON objects (scalars, lists) and
-	 * pre-decoded (non-string) arguments keep the SDK parent's semantics
-	 * untouched.
+	 * shapes. Root values that are not JSON objects (scalars, the empty
+	 * list) and pre-decoded (non-string) arguments keep the SDK parent's
+	 * semantics untouched; a NON-EMPTY list root runs the same walk so its
+	 * nested object shapes survive replay too (GLM6 #2 — the corruption
+	 * class one level down).
 	 *
 	 * GLM5 #2 then applies the shared Support\ToolArgsReplayGuard to the
 	 * final arguments value of EVERY path: 1e999 decodes to INF and an
@@ -428,8 +430,18 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				);
 			}
 
-			if ( $raw instanceof \stdClass ) {
-				// GLM5 #1: preserve nested object-ness (see the docblock).
+			if ( $raw instanceof \stdClass || \is_array( $raw ) ) {
+				/*
+				 * GLM5 #1: preserve nested object-ness (see the docblock).
+				 *
+				 * GLM6 #2: the walk also covers LIST-rooted arguments — a
+				 * JSON list root kept the SDK parent's associative decode,
+				 * whose NESTED empty and numeric-keyed objects re-encoded
+				 * as JSON lists on every later replay: the same corruption
+				 * class one level down. The walk preserves those nested
+				 * shapes while the root itself stays a list (an empty list
+				 * decodes identically on both paths, so nothing shifts).
+				 */
 				$args = ToolArgsObjectNess::from_raw( $raw );
 			}
 		}

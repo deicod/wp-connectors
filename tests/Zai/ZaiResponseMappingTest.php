@@ -301,6 +301,64 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertNull($call->getArgs());
     }
 
+    public function testListRootedToolCallArgumentsPreserveNestedObjectNessThroughReplay()
+    {
+        /*
+         * GLM6 #2: the object-ness walk ran only for stdClass roots, so a
+         * LIST-rooted arguments string kept the SDK parent's associative
+         * decode — whose nested empty and numeric-keyed objects re-encoded
+         * as JSON lists on every later replay ([{"a":{}},{"0":"x"}] became
+         * [{"a":[]},["x"]]), the GLM5 #1 corruption class one level down.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-lr","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_lr","type":"function","function":{"name":"batch","arguments":"[{\"a\":{}},{\"0\":\"x\"}]"}}]},"finish_reason":"tool_calls"}]}');
+
+        $assistant = $this->model()->generateTextResult($this->prompt())->toMessage();
+
+        $args = $assistant->getParts()[0]->getFunctionCall()->getArgs();
+        $this->assertIsArray($args, 'A list root must stay a list.');
+        $this->assertArrayHasKey(0, $args);
+        $this->assertInstanceOf('stdClass', $args[0]['a'], 'A nested empty object must stay an object under a list root.');
+        $this->assertInstanceOf('stdClass', $args[1], 'A nested numeric-keyed object must stay an object under a list root.');
+        $this->assertSame('x', $args[1]->{'0'});
+
+        // Replay the answered turn: the outbound arguments string must
+        // carry exactly the object shapes the model produced.
+        $this->queueSdkResponse(200, array(), wp_json_encode(array(
+            'id' => 'chatcmpl-lr-after',
+            'choices' => array(array(
+                'message' => array('role' => 'assistant', 'content' => 'done'),
+                'finish_reason' => 'stop',
+            )),
+        )));
+
+        $this->model()->generateTextResult(array(
+            $this->prompt()[0],
+            $assistant,
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('call_lr', 'batch', array('ok' => true))),
+            )),
+        ));
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertStringContainsString(
+            '"arguments":"[{\"a\":{}},{\"0\":\"x\"}]"',
+            (string) $attempts[1]['body'],
+            'The zai surface replay must preserve nested object shapes under a list root.'
+        );
+    }
+
+    public function testAnEmptyListRootedArgumentsStringKeepsTheParentSemantics()
+    {
+        // GLM6 #2 guard: an EMPTY list root has no nested members whose
+        // object-ness could be lost — it decodes identically through the
+        // walk and the SDK parent's associative decode alike.
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-el","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_el","type":"function","function":{"name":"ping","arguments":"[]"}}]},"finish_reason":"tool_calls"}]}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame(array(), $call->getArgs());
+    }
+
     public function testNonStreamingStringUsageMemberIsRejectedTyped()
     {
         /*
