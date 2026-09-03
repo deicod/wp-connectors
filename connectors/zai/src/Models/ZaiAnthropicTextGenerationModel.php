@@ -55,6 +55,7 @@ use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
+use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
@@ -280,16 +281,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
 			/*
 			 * GLM3 #4: the system member is a wire STRING — the same
-			 * invalid-UTF-8 rejection as text parts (see
-			 * message_part_block() for the raw-json_encode() oracle
-			 * rationale), not the transport's raw JsonException surfaced
-			 * as the generic 500.
+			 * invalid-UTF-8 rejection as text parts (the shared
+			 * JsonEncodeGuard's raw-oracle rationale), not the
+			 * transport's raw JsonException surfaced as the generic 500.
 			 */
-			if ( false === json_encode( $system_instruction ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider could not JSON-encode the system instruction (invalid UTF-8).'
-				);
-			}
+			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction' );
 
 			$params['system'] = $system_instruction;
 		}
@@ -331,11 +327,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				}
 
 				// GLM3 #4: same invalid-UTF-8 oracle as text parts.
-				if ( false === json_encode( $sequence ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
-					throw new InvalidArgumentException(
-						'The zai_anthropic provider could not JSON-encode a stop sequence (invalid UTF-8).'
-					);
-				}
+				JsonEncodeGuard::must_encode( $sequence, 'a stop sequence' );
 			}
 
 			$params['stop_sequences'] = $stop_sequences;
@@ -387,17 +379,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * channel as the R18 tool-result encoding failure.
 			 *
 			 * GLM4 #1: the oracle is the RAW json_encode() — the same
-			 * primitive the GLM3 #4 wire-string guards use. Core's
+			 * primitive the GLM3 #4 wire-string guards use (GLM5 #16:
+			 * single-sourced on the shared JsonEncodeGuard). Core's
 			 * wp_json_encode() lossily rescues invalid UTF-8 and never
 			 * returns false for a string in production, so a guard on it
 			 * was dead code outside the test stub.
 			 */
-			$encoded_schema = json_encode( $output_schema ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round; GLM4 #1 extended it here).
-			if ( false === $encoded_schema ) {
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider could not JSON-encode the configured output schema (unencodable value such as NAN, invalid UTF-8, or a recursive structure).'
-				);
-			}
+			$encoded_schema = JsonEncodeGuard::encode( $output_schema, 'the configured output schema' );
 
 			$guidance .= "\n" . sprintf(
 				/* translators: %s: a JSON Schema document (compact JSON). */
@@ -488,14 +476,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * RAW json_encode() oracle the output-schema (R19) and
 			 * tool-result (R18) rejections use (GLM4 #1: raw, not
 			 * wp_json_encode() — core's lossy UTF-8 rescue made that
-			 * variant dead code in production); the empty schema keeps its
+			 * variant dead code in production; GLM5 #16: single-sourced on
+			 * the shared JsonEncodeGuard); the empty schema keeps its
 			 * object normalization below.
 			 */
-			if ( \is_array( $input_schema ) && array() !== $input_schema
-				&& false === json_encode( $input_schema ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round; GLM4 #1 extended it here).
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider could not JSON-encode a declared tool parameter schema (unencodable value such as NAN, invalid UTF-8, or a recursive structure).'
-				);
+			if ( \is_array( $input_schema ) && array() !== $input_schema ) {
+				JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema' );
 			}
 
 			if ( null === $input_schema || array() === $input_schema ) {
@@ -876,22 +862,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * GLM3 #4 (verifier round): an invalid-UTF-8 string passed
 			 * every is_string check and detonated as a raw JsonException
 			 * in the transport's whole-request encode, surfacing as the
-			 * generic 500 (zai_error). The oracle is RAW json_encode() —
-			 * the same primitive the SDK transport's Request::getBody()
-			 * throws on — NOT wp_json_encode(): core's
-			 * _wp_json_sanity_check() rescue loop lossily substitutes or
-			 * strips invalid UTF-8 and returns a SUCCESSFUL encoding, so
-			 * wp_json_encode() never returns false for a string in
-			 * production and a guard on it would be dead code (empirically
-			 * confirmed against core by the verifier round).
-			 * mb_check_encoding() is not an option either: WordPress does
-			 * not require ext-mbstring.
+			 * generic 500 (zai_error). The oracle is the shared
+			 * JsonEncodeGuard's RAW json_encode() — the same primitive
+			 * the SDK transport's Request::getBody() throws on (GLM5 #16
+			 * single-sourced it; see there for why wp_json_encode() and
+			 * mb_check_encoding() are not options).
 			 */
-			if ( false === json_encode( $text ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider could not JSON-encode a message text part (invalid UTF-8).'
-				);
-			}
+			JsonEncodeGuard::must_encode( $text, 'a message text part' );
 
 			return array(
 				'type' => 'text',
@@ -962,14 +939,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * its whole-request json_encode(..., JSON_THROW_ON_ERROR) as
 			 * an untyped JsonException (generic 500 zai_error), the exact
 			 * divergence the GLM3 #4 wire-string guards closed for text
-			 * parts. Same RAW-oracle rejection, same first-bad-wins
-			 * channel as the neighboring tool validations.
+			 * parts. Same RAW-oracle rejection (GLM5 #16: the shared
+			 * JsonEncodeGuard), same first-bad-wins channel as the
+			 * neighboring tool validations.
 			 */
-			if ( false === json_encode( $input ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider could not JSON-encode tool arguments (unencodable value such as NAN, invalid UTF-8, or a recursive structure).'
-				);
-			}
+			JsonEncodeGuard::must_encode( $input, 'tool arguments' );
 
 			return array(
 				'type'  => 'tool_use',
@@ -997,16 +971,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * same channel as the other tool-result validations.
 			 *
 			 * GLM4 #1: the oracle is the RAW json_encode() (GLM3 #4's
-			 * core-faithful primitive) — under production wp_json_encode()
+			 * core-faithful primitive; GLM5 #16: single-sourced on the
+			 * shared JsonEncodeGuard) — under production wp_json_encode()
 			 * an invalid-UTF-8 tool result was lossily re-encoded and
 			 * shipped, telling the model altered tool output.
 			 */
-			$encoded = json_encode( $function_response->getResponse() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round; GLM4 #1 extended it here).
-			if ( false === $encoded ) {
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider could not JSON-encode a tool result (unencodable value such as NAN, a resource, or a recursive structure).'
-				);
-			}
+			$encoded = JsonEncodeGuard::encode( $function_response->getResponse(), 'a tool result' );
 
 			return array(
 				'type'        => 'tool_result',
