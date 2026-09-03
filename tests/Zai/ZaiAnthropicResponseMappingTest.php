@@ -1650,6 +1650,46 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testATrailingErrorEventWithANonObjectPayloadStillSetsTheErrorFlag()
+    {
+        /*
+         * Verifier round on GLM5 #18: the unified pipeline's object-shape
+         * check intercepted a post-message_stop 'event: error' frame
+         * whose payload was valid JSON but NOT an object, so the error
+         * policy never ran and the stream failed as 'malformed event
+         * frame' instead of 'error event' — the GLM4 #6 documented
+         * behavior ("an error event (either declaration) sets the error
+         * flag") that the old dedicated branch implemented. Trailing
+         * frames skip the object-shape gate (they carry no content into
+         * the completed generation; the name-based policy judges them).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pt9","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: error' . "\n"
+            . 'data: [1,2]' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A trailing error event must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('error event', $e->getMessage());
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testAStreamWithoutMessageStartInvalidates()
     {
         // Codex R8 #3: omitting message_start fabricated an assistant

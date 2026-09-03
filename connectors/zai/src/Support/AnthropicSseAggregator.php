@@ -679,8 +679,15 @@ final class AnthropicSseAggregator {
 		 * undecodable payload: is_array() cannot tell a JSON list from a
 		 * JSON object, the raw decode can. Flag it; unknown names stay
 		 * ignorable.
+		 *
+		 * Verifier round on GLM5 #18: PRE-termination only. A trailing
+		 * frame carries no content into the completed generation, so the
+		 * GLM4 #6 name-based policy judges it — including an error
+		 * declaration with a malformed payload, which must still set the
+		 * error flag (the old dedicated branch did; the shared check
+		 * intercepted it first and surfaced the wrong fixed message).
 		 */
-		if ( \in_array( $type, self::DECLARED_EVENTS, true ) && ! \is_object( $raw ) ) {
+		if ( ! $this->terminated && \in_array( $type, self::DECLARED_EVENTS, true ) && ! \is_object( $raw ) ) {
 			++$this->malformed;
 			$this->malformed_event = true;
 
