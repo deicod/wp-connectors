@@ -617,6 +617,30 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', 'zai' );
 		}
 
+		/*
+		 * Verifier round on GLM6 #5: the SDK parent ships the sampling
+		 * floats and the response-format schema verbatim too — a NAN
+		 * temperature/top_p or an unencodable outputSchema member reached
+		 * the transport's whole-request encode as the untyped
+		 * JsonException (generic 500), the exact divergence class the
+		 * walk exists to close (the zai_anthropic twin guards the schema
+		 * and rejects NAN temperature through its range checks).
+		 */
+		$temperature = $config->getTemperature();
+		if ( null !== $temperature ) {
+			JsonEncodeGuard::must_encode( $temperature, 'the temperature option', 'zai' );
+		}
+
+		$top_p = $config->getTopP();
+		if ( null !== $top_p ) {
+			JsonEncodeGuard::must_encode( $top_p, 'the top_p option', 'zai' );
+		}
+
+		$output_schema = $config->getOutputSchema();
+		if ( \is_array( $output_schema ) ) {
+			JsonEncodeGuard::must_encode( $output_schema, 'the configured output schema', 'zai' );
+		}
+
 		$stop_sequences = $config->getStopSequences();
 		if ( \is_array( $stop_sequences ) ) {
 			foreach ( $stop_sequences as $sequence ) {

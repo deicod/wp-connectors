@@ -690,6 +690,53 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    /**
+     * @dataProvider provideUnencodableConfigOptions
+     */
+    public function testUnencodableConfigOptionsAreRejectedBeforeTransport(callable $setter, string $needle)
+    {
+        /*
+         * Verifier round on GLM6 #5: the SDK parent ships temperature,
+         * top_p, and the response_format schema verbatim — a NAN float or
+         * an unencodable schema member detonated in the transport's
+         * whole-request json_encode as the untyped JsonException (generic
+         * 500), where every other caller-authored wire value rejects
+         * typed. The walk guards them like the rest.
+         */
+        $config = ModelConfig::fromArray(array());
+        $setter($config);
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An unencodable config option must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString($needle, $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideUnencodableConfigOptions()
+    {
+        return array(
+            'NAN temperature' => array(static function (ModelConfig $config): void {
+                $config->setTemperature(NAN);
+            }, 'The zai provider could not JSON-encode the temperature option'),
+            'NAN top_p' => array(static function (ModelConfig $config): void {
+                $config->setTopP(NAN);
+            }, 'The zai provider could not JSON-encode the top_p option'),
+            'unencodable output schema' => array(static function (ModelConfig $config): void {
+                $config->setOutputMimeType('application/json');
+                $config->setOutputSchema(array('properties' => array('bad' => "bin\xB1\x31ary")));
+            }, 'The zai provider could not JSON-encode the configured output schema'),
+        );
+    }
+
     /*
      * Credential refusal gate (R19/R20, extended to this surface by
      * code-review GLM1 #1).
