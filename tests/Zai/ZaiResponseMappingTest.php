@@ -548,6 +548,33 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testTheNonStreamingPathDecodesTheBodyOnceAndHandsOffPreDecoded()
+    {
+        /*
+         * GLM7 #9: the decoded hand-off is behavior-preserving by design
+         * (the entire non-streaming suite runs through it), so — the
+         * GLM6 #14 source-level precedent — this pins the mechanism: the
+         * non-streaming branch must hand the parser a PreDecodedResponse
+         * built from ONE shared decode, and reject_malformed_usage() must
+         * not re-read the Response (the vendor getData() re-decodes the
+         * whole body per call; three decodes where master paid one).
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
+        );
+
+        $this->assertSame(
+            2,
+            preg_match_all('/new PreDecodedResponse\(/', $source),
+            'Both the streamed and non-streamed paths must hand the parser the pre-decoded payload.'
+        );
+        $this->assertSame(
+            0,
+            preg_match('/reject_malformed_usage\(\s*\$response\s*\)/', $source),
+            'The usage pre-check must consume the shared decode, not a fresh Response read.'
+        );
+    }
+
     public function testNonStreamingStringUsageMemberIsRejectedTyped()
     {
         /*

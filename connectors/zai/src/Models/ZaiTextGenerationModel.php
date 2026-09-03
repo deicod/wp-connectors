@@ -218,17 +218,44 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 */
 		if ( ! EventStreamSniff::matches( $body, $response->getHeaderAsString( 'Content-Type' ) ) ) {
 			/*
-			 * GLM5 #3: the usage member is validated BEFORE the SDK parse:
-			 * a string/INF member reached the SDK parent's int-typed
-			 * TokenUsage constructor unvalidated (the shared validator was
-			 * wired into the Anthropic transports only) and detonated as a
-			 * raw strict-types TypeError, surfaced by the mapper's
-			 * catch-all as the generic 500 instead of the typed
+			 * GLM7 #9: ONE decode per flavor. reject_malformed_usage()'s
+			 * getData(), its raw-body oracle, and the SDK parent parser's
+			 * own uncached getData() (vendor Response::getData()
+			 * re-decodes per call) each paid a full-body json_decode —
+			 * three where master paid one. The associative decode here
+			 * replicates getData() exactly (empty/invalid bodies and
+			 * non-array JSON yield null) and travels to the parent through
+			 * the pre-decoded Response the streamed path already uses
+			 * (GLM6 #14); a body with no decodable payload keeps the
+			 * ORIGINAL Response so the parent's own missing-data
+			 * rejection fires unchanged.
+			 *
+			 * GLM5 #3 stands: the usage member is validated BEFORE the SDK
+			 * parse — a string/INF member reached the SDK parent's
+			 * int-typed TokenUsage constructor unvalidated (the shared
+			 * validator was wired into the Anthropic transports only) and
+			 * detonated as a raw strict-types TypeError, surfaced by the
+			 * mapper's catch-all as the generic 500 instead of the typed
 			 * zai_invalid_response.
 			 */
-			$this->reject_malformed_usage( $response );
+			$data = null;
+			if ( '' !== $body ) {
+				$decoded = json_decode( $body, true );
 
-			return $this->parseNonStreamBody( $response );
+				if ( \JSON_ERROR_NONE === \json_last_error() && \is_array( $decoded ) ) {
+					$data = $decoded;
+				}
+			}
+
+			$raw = json_decode( $body );
+
+			$this->reject_malformed_usage( $data, $raw );
+
+			return $this->parseNonStreamBody(
+				null !== $data
+					? new PreDecodedResponse( $response->getStatusCode(), $data )
+					: $response
+			);
 		}
 
 		$aggregator = new SseAggregator();
@@ -320,20 +347,22 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * Rejects a malformed usage member on a non-streaming response before
 	 * the SDK parse (GLM5 #3).
 	 *
+	 * GLM7 #9: takes the ALREADY-DECODED payload and raw oracle from the
+	 * caller (one associative and one non-associative decode per body,
+	 * shared with the pre-decoded hand-off) instead of re-reading the
+	 * Response — vendor Response::getData() re-decodes per call.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param Response $response The chat.completion response.
+	 * @param array|null $data The associatively decoded body (null when undecodable).
+	 * @param mixed      $raw  The non-associative decode of the same body.
 	 * @return void
 	 * @throws ResponseException When the usage member is malformed.
 	 */
-	private function reject_malformed_usage( Response $response ): void {
-		$data = $response->getData();
-
+	private function reject_malformed_usage( $data, $raw ): void {
 		if ( ! \is_array( $data ) || ! \array_key_exists( 'usage', $data ) ) {
 			return;
 		}
-
-		$raw = json_decode( (string) $response->getBody() );
 
 		self::reject_bad_usage(
 			$data['usage'],
