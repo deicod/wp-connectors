@@ -602,10 +602,12 @@ abstract class AbstractPlanRegionSettings {
 	 * conversion warning per side — silently skipping the
 	 * state/discovery-cache invalidation a plan change must perform.
 	 * Scalars keep the string-cast comparison (the normal payloads are
-	 * the enum strings, and null/'' equivalence stays unchanged for the
-	 * degenerate shapes); any non-scalar side falls back to STRICT
-	 * identity, so two distinct arrays compare CHANGED (invalidation
-	 * runs — the safe direction) without any string coercion.
+	 * the enum strings). Any pairing that is not scalar-on-SCALAR —
+	 * arrays among them, but also null against '' (null is not a scalar,
+	 * where the old cast equated them) — compares by STRICT identity, so
+	 * a mixed or distinct pair reads CHANGED (invalidation runs — the
+	 * safe direction; a needless invalidation in the degenerate null
+	 * case is idempotent) without any string coercion.
 	 *
 	 * @since 0.2.0
 	 *
