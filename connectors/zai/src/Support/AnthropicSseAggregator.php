@@ -605,92 +605,22 @@ final class AnthropicSseAggregator {
 		}
 
 		/*
-		 * Codex R8 #2: message_stop is TERMINAL — frames after it may not
-		 * touch the completed generation.
-		 *
-		 * GLM3 #6 routed trailing frames by event name instead of a
-		 * payload-only whitelist. GLM4 #6 completes that: trailing frames
-		 * are judged by the SAME RULES the main path applies, then one
-		 * post-termination policy:
-		 *
-		 * - the Codex R7 #6 agreement rule runs here too (event: field
-		 *   and payload type member must agree when both are present —
-		 *   the previous copy accepted a trailing 'event: error'
-		 *   regardless of a contradicting payload type);
-		 * - an undecodable payload invalidates ONLY when a DECLARED event
-		 *   name vouched for the frame (the main-path split);
-		 * - an error event (either declaration) sets the error flag — the
-		 *   model surfaces its fixed typed error message;
-		 * - a frame DECLARING any other known content-bearing event
-		 *   (message_start, content_block_*, message_delta, a second
-		 *   message_stop) would mutate a completed generation and stays
-		 *   corrupt;
-		 * - everything else — pings, [DONE] sentinels, and UNKNOWN event
-		 *   names or payload types (a future benign telemetry/heartbeat
-		 *   frame an intermediary may append, the same forward-compat
-		 *   class GLM3 #6 fixed) — no longer invalidates an otherwise
-		 *   fully-received generation.
+		 * GLM5 #18: ONE pipeline judges every frame — trailing frames
+		 * after the terminal message_stop (Codex R8 #2/GLM4 #6) ride the
+		 * SAME decode/agreement/object-shape rules the main path applies,
+		 * then dispatch_event() applies the one post-termination policy
+		 * (handle_trailing_event()). The trailing branch used to
+		 * re-implement these rules privately and had already diverged
+		 * once (GLM4 #6).
 		 */
-		if ( $this->terminated && '' !== trim( implode( "\n", $data_lines ) ) ) {
-			$trailing = implode( "\n", $data_lines );
+		$payload = implode( "\n", $data_lines );
 
-			if ( '[DONE]' === trim( $trailing ) ) {
-				// An OpenAI-style completion sentinel a gateway may
-				// append after the Anthropic stream has already ended.
-				return;
-			}
-
-			$probe = json_decode( $trailing, true );
-
-			if ( ! \is_array( $probe ) ) {
-				// Undecodable: the main path counts it malformed and only
-				// invalidates when a DECLARED event name vouched for the
-				// frame; an event-less or unknown-named trailing frame is
-				// noise, not corruption of the completed generation.
-				++$this->malformed;
-
-				if ( \is_string( $event_name ) && \in_array( $event_name, self::DECLARED_EVENTS, true ) ) {
-					$this->malformed_event = true;
-				}
-
-				return;
-			}
-
-			$payload_type = isset( $probe['type'] ) && \is_string( $probe['type'] ) ? $probe['type'] : '';
-
-			// Codex R7 #6 agreement rule, shared with the main path.
-			if ( \is_string( $event_name ) && '' !== $payload_type && $event_name !== $payload_type ) {
-				++$this->malformed;
-				$this->malformed_event = true;
-
-				return;
-			}
-
-			$type = \is_string( $event_name ) ? $event_name : $payload_type;
-
-			if ( 'error' === $type ) {
-				// The payload is deliberately not retained; the model
-				// surfaces the fixed, redacted error message.
-				$this->error = true;
-
-				return;
-			}
-
-			if ( \in_array( $type, self::DECLARED_EVENTS, true ) ) {
-				// A declared content-bearing event after the terminal
-				// message_stop would mutate a completed generation.
-				++$this->malformed;
-				$this->malformed_event = true;
-
-				return;
-			}
-
-			// Pings and unknown (future/intermediary) event names:
-			// benign trailing noise — the completed generation stands.
+		// An OpenAI-style [DONE] sentinel a gateway may append after the
+		// Anthropic stream has already ended is exactly that: noise.
+		if ( $this->terminated && '[DONE]' === trim( $payload ) ) {
 			return;
 		}
 
-		$payload = implode( "\n", $data_lines );
 		$decoded = json_decode( $payload, true );
 
 		if ( ! \is_array( $decoded ) ) {
@@ -702,7 +632,9 @@ final class AnthropicSseAggregator {
 			 * silently dropping it (a content delta, say) would return a
 			 * successful completion with that chunk of the answer missing.
 			 * Invalidate the stream; unknown event names and ping frames
-			 * stay ignorable.
+			 * stay ignorable (for trailing frames too: an event-less or
+			 * unknown-named one is noise, not corruption of the completed
+			 * generation).
 			 */
 			if ( \is_string( $event_name ) && \in_array( $event_name, self::DECLARED_EVENTS, true ) ) {
 				$this->malformed_event = true;
@@ -720,7 +652,9 @@ final class AnthropicSseAggregator {
 		 * content_block_delta payload was ignored as keep-alive and the
 		 * answer completed with the content chunk missing. A contradiction
 		 * is a corrupt frame; frames with only one declaration keep their
-		 * existing behavior.
+		 * existing behavior. Trailing frames agree by the same rule
+		 * (GLM4 #6: the old trailing copy accepted a trailing
+		 * 'event: error' regardless of a contradicting payload type).
 		 */
 		if ( \is_string( $event_name ) && '' !== $payload_type && $event_name !== $payload_type ) {
 			++$this->malformed;
@@ -753,13 +687,21 @@ final class AnthropicSseAggregator {
 			return;
 		}
 
-		++$this->events;
+		// Trailing frames do not count as consumed events: they can never
+		// contribute content to the completed generation.
+		if ( ! $this->terminated ) {
+			++$this->events;
+		}
 
 		$this->dispatch_event( $type, $decoded, $raw );
 	}
 
 	/**
 	 * Dispatches one decoded event by type.
+	 *
+	 * GLM5 #18: after the terminal message_stop, the (already fully
+	 * judged — see consume_frame()) frame lands here for the one
+	 * post-termination policy instead of the content dispatch.
 	 *
 	 * @since 0.2.0
 	 *
@@ -769,6 +711,12 @@ final class AnthropicSseAggregator {
 	 * @return void
 	 */
 	private function dispatch_event( string $type, array $data, $raw ): void {
+		if ( $this->terminated ) {
+			$this->handle_trailing_event( $type );
+
+			return;
+		}
+
 		switch ( $type ) {
 			case 'message_start':
 				/*
@@ -1132,11 +1080,13 @@ final class AnthropicSseAggregator {
 				 */
 				$this->done = true;
 
-				if ( $this->terminated ) {
-					// A second message_stop is itself post-termination.
-					$this->malformed_event = true;
-				}
-
+				/*
+				 * GLM5 #18: a SECOND message_stop can no longer reach
+				 * this case — dispatch_event() routes post-termination
+				 * frames to handle_trailing_event(), whose
+				 * declared-content-bearing rule invalidates them (the
+				 * old in-case duplicate check is subsumed).
+				 */
 				$this->terminated = true;
 				return;
 
@@ -1151,6 +1101,51 @@ final class AnthropicSseAggregator {
 		}
 
 		// Unknown event types are ignored (forward compatibility).
+	}
+
+	/**
+	 * Applies the post-termination policy to one fully-judged trailing
+	 * frame (Codex R8 #2, GLM4 #6; single-sourced here by GLM5 #18).
+	 *
+	 * The frame already passed the SAME decode/agreement/object-shape
+	 * pipeline every pre-termination frame passes (consume_frame()); all
+	 * that remains is what its type may do to a COMPLETED generation:
+	 *
+	 * - an error event (either declaration) sets the error flag — the
+	 *   model surfaces its fixed typed error message;
+	 * - a frame DECLARING any other known content-bearing event
+	 *   (message_start, content_block_*, message_delta, a second
+	 *   message_stop) would mutate a completed generation and stays
+	 *   corrupt;
+	 * - everything else — pings and UNKNOWN event names or payload types
+	 *   (a future benign telemetry/heartbeat frame an intermediary may
+	 *   append) — is trailing noise; the completed generation stands.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $type Event type (event: field or data.type).
+	 * @return void
+	 */
+	private function handle_trailing_event( string $type ): void {
+		if ( 'error' === $type ) {
+			// The payload is deliberately not retained; the model surfaces
+			// the fixed, redacted error message.
+			$this->error = true;
+
+			return;
+		}
+
+		if ( \in_array( $type, self::DECLARED_EVENTS, true ) ) {
+			// A declared content-bearing event after the terminal
+			// message_stop would mutate a completed generation.
+			++$this->malformed;
+			$this->malformed_event = true;
+
+			return;
+		}
+
+		// Pings and unknown (future/intermediary) event names: benign
+		// trailing noise — the completed generation stands.
 	}
 
 	/**
