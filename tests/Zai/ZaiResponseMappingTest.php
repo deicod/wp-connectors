@@ -691,6 +691,10 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             // SSE fields both aggregators tolerate mid-stream.
             'leading id field' => array('id: 42' . "\n\n", 'leading id field'),
             'leading retry field' => array('retry: 3000' . "\n\n", 'leading retry field'),
+            // GLM6 #11: PHP's default whitespace set — a NUL or vertical
+            // tab byte before the first field line must not stop the sniff.
+            'leading NUL byte' => array("\0\n", 'leading NUL byte'),
+            'leading vertical tab' => array("\x0B\n", 'leading vertical tab'),
         );
     }
 

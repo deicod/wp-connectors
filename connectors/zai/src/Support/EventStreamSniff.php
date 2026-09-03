@@ -55,9 +55,18 @@ final class EventStreamSniff {
 			return true;
 		}
 
-		$sniff = ltrim( $body, " \t\r\n" );
+		/*
+		 * GLM6 #11: PHP's DEFAULT ltrim charlist (space, tab, newline,
+		 * CR, NUL, vertical tab) — the narrowed " \t\r\n" list stopped
+		 * recognizing a stream whose first byte before the first field
+		 * line is NUL or vertical tab, misrouting it to the JSON parser
+		 * where master's bare ltrim() (and this surface's own history)
+		 * aggregated it. No parseable JSON body can start with those
+		 * bytes, so the wider set cannot misroute.
+		 */
+		$sniff = ltrim( $body );
 		if ( 0 === strpos( $sniff, "\xEF\xBB\xBF" ) ) {
-			$sniff = ltrim( substr( $sniff, 3 ), " \t\r\n" );
+			$sniff = ltrim( substr( $sniff, 3 ) );
 		}
 
 		return 0 === strpos( $sniff, 'event:' )
