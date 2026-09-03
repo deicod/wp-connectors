@@ -59,6 +59,7 @@ use Deicod\WpConnectors\Zai\Support\UsageValidator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
+use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
@@ -1110,22 +1111,43 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @throws ResponseException When the payload is malformed.
 	 */
 	private function parse_message_body( Response $response ): GenerativeAiResult {
-		return $this->parse_decoded_message( $response->getData(), self::raw_body_oracle( $response ) );
+		return $this->parse_body_string( (string) $response->getBody() );
 	}
 
 	/**
-	 * Decodes the body non-associatively for the object-ness oracle.
+	 * Runs the non-streaming Messages parser over a raw body string.
+	 *
+	 * GLM8 #3: a UTF-8 BOM prepended to an otherwise-valid JSON Messages
+	 * body — the same gateway/CDN threat class the SSE side strips
+	 * through the shared SseFrameBuffer — made the vendor
+	 * Response::getData() decode fail (JSON_ERROR_SYNTAX) and the whole
+	 * non-streaming generation died as 'Missing the "content" key': a
+	 * typed rejection of a valid completion one layer short of where this
+	 * branch's own BOM hardening stops. The canonical prefix strip
+	 * (strip_stream_prefix(), deliberately a no-op on BOM-less bodies)
+	 * runs before BOTH decodes here, so the associative parse and the
+	 * raw object-ness oracle always read the same cleaned body.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param Response $response The Messages response.
-	 * @return \stdClass|null The object-decoded body, or null when it does
-	 *                       not decode to a JSON object (no oracle).
+	 * @param string $body The raw response body.
+	 * @return GenerativeAiResult The parsed result.
+	 * @throws ResponseException When the payload is malformed.
 	 */
-	private static function raw_body_oracle( Response $response ): ?\stdClass {
-		$raw = json_decode( (string) $response->getBody() );
+	private function parse_body_string( string $body ): GenerativeAiResult {
+		$body = SseFrameBuffer::strip_stream_prefix( $body );
 
-		return $raw instanceof \stdClass ? $raw : null;
+		$decoded = json_decode( $body, true );
+		$raw     = json_decode( $body );
+
+		/*
+		 * The vendor getData() contract: null for an empty body, a decode
+		 * failure, or a non-array (scalar/null) value — mirrored here so
+		 * the parser sees exactly what it saw before the strip.
+		 */
+		$data = \is_array( $decoded ) ? $decoded : null;
+
+		return $this->parse_decoded_message( $data, $raw instanceof \stdClass ? $raw : null );
 	}
 
 	/**

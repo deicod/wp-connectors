@@ -126,6 +126,56 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(10, $result->getTokenUsage()->getTotalTokens());
     }
 
+    public function testABomPrefixedJsonBodyStillParses()
+    {
+        /*
+         * GLM8 #3: a UTF-8 BOM prepended to an otherwise-valid JSON
+         * Messages body made json_decode fail (JSON_ERROR_SYNTAX) and the
+         * whole non-streaming generation died as 'Missing the "content"
+         * key' — the same gateway/CDN threat class this PR's own SSE-side
+         * hardening (the shared SseFrameBuffer strip) already tolerates,
+         * one layer short. The canonical prefix strip runs before the
+         * JSON decode too, whitespace around the BOM included.
+         */
+        $payload = (string) wp_json_encode(array(
+            'id' => 'msg_bom_json',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'Bom-tolerant.')),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 7, 'output_tokens' => 3),
+        ));
+
+        foreach (array(
+            'bare BOM' => "\xEF\xBB\xBF" . $payload,
+            'whitespace then BOM' => " \xEF\xBB\xBF" . $payload,
+            'BOM then whitespace' => "\xEF\xBB\xBF " . $payload,
+        ) as $label => $body) {
+            $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), $body);
+
+            $result = $this->model()->generateTextResult($this->prompt());
+
+            $this->assertSame('Bom-tolerant.', $result->toText(), "[{$label}] The BOM must not fail the JSON parse.");
+            $this->assertSame('msg_bom_json', $result->getId(), "[{$label}] The id parses.");
+            $this->assertSame(10, $result->getTokenUsage()->getTotalTokens(), "[{$label}] The usage parses.");
+        }
+    }
+
+    public function testABomPrefixedNonJsonBodyStillFailsTyped()
+    {
+        // GLM8 #3 guard: the strip is a prefix tolerance, not a rescue —
+        // a BOM before garbage still fails the typed missing-data
+        // rejection exactly like the BOM-less body.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), "\xEF\xBB\xBFnot json at all");
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A BOM before a non-JSON body must still fail.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('content', $e->getMessage());
+        }
+    }
+
     public function testCacheTokenVariantsCountAsPromptTokens()
     {
         $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
