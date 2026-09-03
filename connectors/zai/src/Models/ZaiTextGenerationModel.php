@@ -425,6 +425,43 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
+	 * Guards one OUTBOUND tool call against unreplayable arguments.
+	 *
+	 * Verifier round on GLM5 #2: the replay guard ran on INBOUND-parsed
+	 * tool calls only — CALLER-supplied FunctionCall arguments (a tool
+	 * loop feeding back a computed value) still traveled through the SDK
+	 * parent's getMessagePartToolCallData(), whose plain json_encode()
+	 * returns false for an unencodable value (INF/NAN, invalid UTF-8) and
+	 * silently shipped "arguments": false on a generation that then
+	 * SUCCEEDED — the exact conversation-poisoning class the guard exists
+	 * to close, and one the zai_anthropic twin rejects typed before
+	 * transport (message_part_block() → JsonEncodeGuard). The same shared
+	 * ToolArgsReplayGuard now judges the outbound arguments of every
+	 * replayed call, in the same typed pre-transport channel.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param MessagePart $part The message part to map.
+	 * @return array<string, mixed>|null The tool-call data, or null when the part carries none.
+	 * @throws InvalidArgumentException When the tool arguments cannot replay onto the wire.
+	 */
+	protected function getMessagePartToolCallData( MessagePart $part ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated override name.
+		$data = parent::getMessagePartToolCallData( $part );
+
+		if ( null === $data || null === $part->getFunctionCall() ) {
+			return $data;
+		}
+
+		if ( ! ToolArgsReplayGuard::is_replayable( $part->getFunctionCall()->getArgs() ) ) {
+			throw new InvalidArgumentException(
+				'The zai provider could not replay tool call arguments (an unencodable or precision-loss value was given).'
+			);
+		}
+
+		return $data;
+	}
+
+	/**
 	 * Rejects option/model combinations the z.ai catalog does not advertise.
 	 *
 	 * Everything rejected here fails BEFORE any transport work, so callers

@@ -498,6 +498,36 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testUnencodableOutboundToolArgumentsAreRejectedBeforeTransport()
+    {
+        /*
+         * Verifier round on GLM5 #2: the replay guard ran on INBOUND
+         * parses only — caller-supplied FunctionCall arguments traveled
+         * through the SDK parent's plain json_encode(), whose false
+         * silently shipped "arguments": false on a generation that then
+         * SUCCEEDED. The outbound mapper guards with the same shared
+         * ToolArgsReplayGuard now, typed pre-transport.
+         */
+        $this->primeZaiDiscoveryTransient();
+        $model = ZaiProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('t1', 'tool', array('v' => INF))))),
+        );
+
+        try {
+            $model->generateTextResult($prompt);
+            $this->fail('Unencodable outbound tool arguments must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not replay tool call arguments', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     /*
      * Credential refusal gate (R19/R20, extended to this surface by
      * code-review GLM1 #1).
