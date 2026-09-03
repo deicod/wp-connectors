@@ -1143,6 +1143,28 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testANonStringBlockTypeRejectsInsteadOfLooselyMatching()
+    {
+        /*
+         * GLM5 #5: the unvalidated block type reached switch($type),
+         * whose loose == semantics accept a non-string as 'text' (true ==
+         * 'text' on all PHP versions; 0 == 'text' on the declared 7.4
+         * target), so {"type":true,"text":"hello"} PARSED into a
+         * successful generation instead of hitting the typed
+         * unsupported-type rejection — the coercion class the GLM2 #5
+         * is_string guard closed for stop_reason, closed for block types
+         * now.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"id":"msg_bt","type":"message","role":"assistant","content":[{"type":true,"text":"hello"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-string block type must be rejected, parsed instead: ' . $result->toText());
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('unsupported type', $e->getMessage());
+        }
+    }
+
     public function testUnmappedOnlyContentRejectsRegardlessOfTheStopReason()
     {
         // GLM3 #2: all-unmapped content previously parsed as a SUCCESS
@@ -2698,6 +2720,9 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             'missing content' => array((string) wp_json_encode(array('id' => 'm', 'stop_reason' => 'end_turn'))),
             'content not a list' => array((string) wp_json_encode(array('content' => array('text' => 'x'), 'stop_reason' => 'end_turn'))),
             'unknown block type' => array((string) wp_json_encode(array('content' => array(array('type' => 'hologram', 'x' => 1)), 'stop_reason' => 'end_turn'))),
+            'boolean block type' => array((string) wp_json_encode(array('content' => array(array('type' => true, 'text' => 'hello')), 'stop_reason' => 'end_turn'))),
+            'integer block type' => array((string) wp_json_encode(array('content' => array(array('type' => 0, 'text' => 'hello')), 'stop_reason' => 'end_turn'))),
+            'missing block type' => array((string) wp_json_encode(array('content' => array(array('text' => 'hello')), 'stop_reason' => 'end_turn'))),
             'text block without text' => array((string) wp_json_encode(array('content' => array(array('type' => 'text')), 'stop_reason' => 'end_turn'))),
             'tool_use without id' => array((string) wp_json_encode(array('content' => array(array('type' => 'tool_use', 'name' => 'x', 'input' => array())), 'stop_reason' => 'end_turn'))),
             'missing stop_reason' => array((string) wp_json_encode(array('content' => array(array('type' => 'text', 'text' => 'x'))))),

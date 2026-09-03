@@ -1492,6 +1492,21 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private function parse_content_block( array $part_data, ?\stdClass $raw_part ): ?MessagePart {
 		$type = $part_data['type'] ?? null;
 
+		/*
+		 * GLM5 #5: the unvalidated block type reached switch($type),
+		 * whose loose == semantics accept a non-string as a known type
+		 * (true == 'text' on every PHP version; 0 == 'text' on the
+		 * declared PHP 7.4 target), so a corrupt block like
+		 * {"type":true,"text":"hello"} PARSED instead of hitting the
+		 * typed unsupported-type rejection — the same coercion class the
+		 * GLM2 #5 is_string guard closed for stop_reason. A missing type
+		 * kept the same rejection through the switch default; the guard
+		 * now decides every non-string shape the same way.
+		 */
+		if ( ! \is_string( $type ) ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'content', 'The message contained a block of an unsupported type.' );
+		}
+
 		switch ( $type ) {
 			case 'text':
 				if ( ! isset( $part_data['text'] ) || ! \is_string( $part_data['text'] ) ) {
