@@ -660,7 +660,22 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		$stop_sequences = $config->getStopSequences();
 		if ( \is_array( $stop_sequences ) ) {
+			/*
+			 * GLM7 #7: encodability alone passed non-string and empty
+			 * entries verbatim ([''] and [0] encode fine, and the SDK
+			 * setter checks only list-ness), shipping "stop":[""] /
+			 * "stop":[0] upstream to a 400 with the generic misattributed
+			 * client-error message. Per-entry validation first, then the
+			 * encodability oracle — the zai_anthropic twin's GLM3 #3
+			 * contract.
+			 */
 			foreach ( $stop_sequences as $sequence ) {
+				if ( ! \is_string( $sequence ) || '' === $sequence ) {
+					throw new InvalidArgumentException(
+						'The zai provider requires every stop sequence to be a non-empty string.'
+					);
+				}
+
 				JsonEncodeGuard::must_encode( $sequence, 'a stop sequence', 'zai' );
 			}
 		}
@@ -705,9 +720,25 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * The id and name ride the wire verbatim inside the
 					 * tool_calls member; the ARGUMENTS are guarded by the
 					 * replay guard in getMessagePartToolCallData().
+					 *
+					 * GLM7 #7: the (string) casts let a NULL id or name
+					 * pass the encodability guard while null itself rode
+					 * the wire (the SDK parent copies it unvalidated) —
+					 * now the typed non-empty rejection the zai_anthropic
+					 * twin's Codex R9 #3 gives the identical shape, then
+					 * the encodability oracle on the real string.
 					 */
-					JsonEncodeGuard::must_encode( (string) $part->getFunctionCall()->getId(), 'a tool call id', 'zai' );
-					JsonEncodeGuard::must_encode( (string) $part->getFunctionCall()->getName(), 'a tool call name', 'zai' );
+					$function_call = $part->getFunctionCall();
+
+					if ( null === $function_call->getId() || '' === $function_call->getId()
+						|| null === $function_call->getName() || '' === $function_call->getName() ) {
+						throw new InvalidArgumentException(
+							'The zai provider requires every function-call part to carry a non-empty id and name.'
+						);
+					}
+
+					JsonEncodeGuard::must_encode( $function_call->getId(), 'a tool call id', 'zai' );
+					JsonEncodeGuard::must_encode( $function_call->getName(), 'a tool call name', 'zai' );
 				}
 			}
 		}

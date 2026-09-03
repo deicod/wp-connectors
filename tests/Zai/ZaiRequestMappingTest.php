@@ -589,6 +589,46 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    /**
+     * @dataProvider provideMalformedStopSequenceEntries
+     */
+    public function testMalformedStopSequenceEntriesAreRejectedBeforeTransport($sequences, $label)
+    {
+        /*
+         * GLM7 #7: the guard checked only JSON-encodability, so non-string
+         * and empty entries ([''], [0], ['END', null]) encoded fine and
+         * shipped verbatim ("stop":[""] reaches the wire because the SDK
+         * setter checks only list-ness) — the endpoint answered 400 with
+         * the generic misattributed message instead of the twin's typed
+         * pre-transport rejection (GLM3 #3 parity).
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setStopSequences($sequences);
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail("Malformed stop sequence entries must be rejected before transport: {$label}");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires every stop sequence to be a non-empty string.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideMalformedStopSequenceEntries()
+    {
+        return array(
+            'empty string entry' => array(array(''), 'empty string entry'),
+            'integer entry' => array(array(0), 'integer entry'),
+            'null entry' => array(array('END', null), 'null entry'),
+        );
+    }
+
     public function testAnInvalidUtf8StopSequenceIsRejectedBeforeTransport()
     {
         $config = ModelConfig::fromArray(array());
@@ -688,6 +728,45 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         }
 
         $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @dataProvider provideIdentitylessToolCalls
+     */
+    public function testIdentitylessReplayedToolCallsAreRejectedBeforeTransport($call, $label)
+    {
+        /*
+         * GLM7 #7: the (string) casts let a null id (or name) pass the
+         * encodability guard while null itself rode the tool_calls member
+         * verbatim — the typed rejection the zai_anthropic twin's Codex
+         * R9 #3 gives the identical shape.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart($call))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail("A {$label} must be rejected before transport.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires every function-call part to carry a non-empty id and name.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideIdentitylessToolCalls()
+    {
+        return array(
+            'null id' => array(new FunctionCall(null, 'tool', array('v' => 1)), 'null-id tool call'),
+            'empty id' => array(new FunctionCall('', 'tool', array('v' => 1)), 'empty-id tool call'),
+            'null name' => array(new FunctionCall('call_ok', null, array('v' => 1)), 'null-name tool call'),
+            'empty name' => array(new FunctionCall('call_ok', '', array('v' => 1)), 'empty-name tool call'),
+        );
     }
 
     /**
