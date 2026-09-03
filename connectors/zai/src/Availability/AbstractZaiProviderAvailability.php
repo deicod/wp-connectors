@@ -272,8 +272,9 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * The registry-wired authentication object is authoritative (it is what
 	 * actual requests authenticate with — including the candidate key core
 	 * sets during REST settings validation). When nothing is wired, the
-	 * core resolution order is mirrored: env var, then constant, then the
-	 * database option.
+	 * core resolution order applies: env var, then constant (both rungs
+	 * delegated to the SDK-free settings layer's shared
+	 * env_constant_ladder(), GLM7 #17), then the database option.
 	 *
 	 * @since 0.2.0
 	 *
@@ -293,22 +294,13 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			);
 		}
 
-		$env_value = getenv( static::KEY_ENV_NAME );
-		if ( \is_string( $env_value ) && '' !== $env_value ) {
-			return array(
-				'key'    => $env_value,
-				'source' => 'env',
-			);
-		}
+		$settings_class = static::settings_class();
 
-		if ( \defined( static::KEY_ENV_NAME ) ) {
-			$constant_value = \constant( static::KEY_ENV_NAME );
-			if ( \is_string( $constant_value ) && '' !== $constant_value ) {
-				return array(
-					'key'    => $constant_value,
-					'source' => 'constant',
-				);
-			}
+		foreach ( $settings_class::env_constant_ladder() as $source => $value ) {
+			return array(
+				'key'    => $value,
+				'source' => $source,
+			);
 		}
 
 		$db_value = get_option( static::KEY_OPTION, '' );
@@ -328,6 +320,10 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	/**
 	 * Derives the source label for a registry-wired key.
 	 *
+	 * The env/constant rungs match through the shared settings-layer
+	 * ladder (GLM7 #17); each source is compared independently, in
+	 * resolution order, exactly as the previous inline copies did.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $key The effective key value.
@@ -335,15 +331,11 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *                during REST validation before the value is stored).
 	 */
 	private function key_source( string $key ): string {
-		$env_value = getenv( static::KEY_ENV_NAME );
-		if ( \is_string( $env_value ) && '' !== $env_value && hash_equals( $env_value, $key ) ) {
-			return 'env';
-		}
+		$settings_class = static::settings_class();
 
-		if ( \defined( static::KEY_ENV_NAME ) ) {
-			$constant_value = \constant( static::KEY_ENV_NAME );
-			if ( \is_string( $constant_value ) && '' !== $constant_value && hash_equals( $constant_value, $key ) ) {
-				return 'constant';
+		foreach ( $settings_class::env_constant_ladder() as $source => $value ) {
+			if ( hash_equals( $value, $key ) ) {
+				return $source;
 			}
 		}
 

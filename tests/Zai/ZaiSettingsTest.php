@@ -534,6 +534,42 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheCredentialLadderIsTheOneSharedImplementation()
+    {
+        /*
+         * GLM7 #17: the env→constant resolution sequence was hand-rolled
+         * three times (this class's mark_region_switch_pending() and the
+         * availability base's effective_key()/key_source()). One shared
+         * env_constant_ladder() in the SDK-free settings layer serves
+         * every consumer; this pins its contract: ordered non-empty
+         * rungs, empty-string sources excluded, empty when none exists.
+         */
+        try {
+            putenv('ZAI_API_KEY=');
+            $this->assertSame(array(), PlanRegionSettings::env_constant_ladder(), 'No env value and no constant: the ladder is empty.');
+
+            $envKey = FakeSecrets::apiKey();
+            putenv('ZAI_API_KEY=' . $envKey);
+            $this->assertSame(array('env' => $envKey), PlanRegionSettings::env_constant_ladder(), 'The env rung carries its source label.');
+
+            $otherKey = FakeSecrets::apiKey();
+            putenv('ZAI_ANTHROPIC_API_KEY=' . $otherKey);
+            $this->assertSame(
+                array('env' => $otherKey),
+                ZaiAnthropicPlanRegionSettings::env_constant_ladder(),
+                'Each provider reads its OWN env name through the same shared implementation.'
+            );
+            $this->assertSame(
+                array('env' => $envKey),
+                PlanRegionSettings::env_constant_ladder(),
+                'The sibling provider\'s env value must not leak into this provider\'s ladder.'
+            );
+        } finally {
+            putenv('ZAI_API_KEY');
+            putenv('ZAI_ANTHROPIC_API_KEY');
+        }
+    }
+
     public function testRegionRewriteWithSameValueDoesNotInvalidate()
     {
         $this->bootPlugin();

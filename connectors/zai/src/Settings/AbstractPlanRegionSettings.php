@@ -628,6 +628,45 @@ abstract class AbstractPlanRegionSettings {
 	}
 
 	/**
+	 * The region-immutable credential ladder: env var, then constant
+	 * (GLM7 #17).
+	 *
+	 * The env→constant resolution sequence existed three times over —
+	 * this class's mark_region_switch_pending() and the availability
+	 * base's effective_key()/key_source() each hand-rolled it — the
+	 * exact duplication pattern that drifts silently when one copy
+	 * learns a rule. ONE implementation lives here, in the SDK-free
+	 * layer every consumer can reach (Codex R2 #3: the region switch
+	 * fires on sites without the SDK plugin, where the availability
+	 * class cannot be autoloaded at all).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return array<string, string> The non-empty ladder entries in
+	 *                               resolution order ('env' and/or
+	 *                               'constant', keyed by source label);
+	 *                               empty when neither exists.
+	 */
+	public static function env_constant_ladder(): array {
+		$ladder = array();
+
+		$env_value = getenv( static::KEY_ENV_NAME );
+		if ( \is_string( $env_value ) && '' !== $env_value ) {
+			$ladder['env'] = $env_value;
+		}
+
+		if ( \defined( static::KEY_ENV_NAME ) ) {
+			$constant_value = \constant( static::KEY_ENV_NAME );
+
+			if ( \is_string( $constant_value ) && '' !== $constant_value ) {
+				$ladder['constant'] = $constant_value;
+			}
+		}
+
+		return $ladder;
+	}
+
+	/**
 	 * Marks the region-immutable credential as pending definitive validation.
 	 *
 	 * Called on a region switch, AFTER the stored (database) key was
@@ -648,19 +687,12 @@ abstract class AbstractPlanRegionSettings {
 	 * @return void
 	 */
 	public static function mark_region_switch_pending( string $region ): void {
-		$credential = getenv( static::KEY_ENV_NAME );
-
-		if ( ! \is_string( $credential ) || '' === $credential ) {
-			$credential = '';
-
-			if ( \defined( static::KEY_ENV_NAME ) ) {
-				$constant_value = \constant( static::KEY_ENV_NAME );
-
-				if ( \is_string( $constant_value ) && '' !== $constant_value ) {
-					$credential = $constant_value;
-				}
-			}
-		}
+		/*
+		 * GLM7 #17: the env→constant resolution rides the shared
+		 * env_constant_ladder() (this was the third hand-rolled copy).
+		 */
+		$ladder     = static::env_constant_ladder();
+		$credential = $ladder['env'] ?? $ladder['constant'] ?? '';
 
 		if ( '' === $credential ) {
 			delete_option( static::REGION_PENDING_OPTION );
