@@ -652,6 +652,31 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testTheAggregatorKeepsOneAuthoritativeTerminationFlag()
+    {
+        /*
+         * GLM7 #16 (cleanup, no behavior change — the suite above pins
+         * the behavior): message_stop's termination state is ONE flag.
+         * The historical pair ($done + $terminated, always set in the
+         * same statement) invited divergence between the public
+         * is_done() answer and the internal trailing-frame gates.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
+        );
+
+        $this->assertSame(
+            0,
+            preg_match('/private \$done/', $source),
+            'The termination state must be the single $terminated flag.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/\$this->terminated = true;/', $source),
+            'The flag has exactly one assignment site (message_stop).'
+        );
+    }
+
     public function testTheObjectShapeProbeUsesTheRawJsonEncodeOracle()
     {
         /*

@@ -203,16 +203,14 @@ final class AnthropicSseAggregator {
 	private $error = false;
 
 	/**
-	 * Whether the message_stop event was received.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var bool
-	 */
-	private $done = false;
-
-	/**
 	 * Whether message_stop terminated the stream (Codex R8 #2).
+	 *
+	 * THE one authoritative termination state (GLM7 #16 collapsed the
+	 * historical pair): a second flag, always set in the same statement
+	 * as this one, existed only because the public is_done() getter
+	 * predated the internal trailing-frame policy reads — every consumer
+	 * (is_done(), the trailing-frame gates in consume_frame()/
+	 * dispatch_event()) now reads this one flag.
 	 *
 	 * @since 0.2.0
 	 *
@@ -333,12 +331,14 @@ final class AnthropicSseAggregator {
 	/**
 	 * Whether the message_stop event was received.
 	 *
+	 * Reads the single authoritative termination flag (GLM7 #16).
+	 *
 	 * @since 0.2.0
 	 *
 	 * @return bool True when the stream was terminated by message_stop.
 	 */
 	public function is_done(): bool {
-		return $this->done;
+		return $this->terminated;
 	}
 
 	/**
@@ -454,7 +454,7 @@ final class AnthropicSseAggregator {
 		 * message_start above: mark the stream malformed and return null
 		 * (never a soft null a caller might read as "no completion yet").
 		 */
-		if ( ! $this->done ) {
+		if ( ! $this->terminated ) {
 			$this->malformed_event = true;
 
 			return null;
@@ -1201,15 +1201,15 @@ final class AnthropicSseAggregator {
 				 * text/tool args/stop reason/usage while the response
 				 * succeeded. Consumption ends here; consume_frame() rejects
 				 * anything but keepalive traffic that follows.
-				 */
-				$this->done = true;
-
-				/*
+				 *
 				 * GLM5 #18: a SECOND message_stop can no longer reach
 				 * this case — dispatch_event() routes post-termination
 				 * frames to handle_trailing_event(), whose
 				 * declared-content-bearing rule invalidates them (the
 				 * old in-case duplicate check is subsumed).
+				 *
+				 * GLM7 #16: one flag, set once — is_done() and the
+				 * trailing-frame gates all read it.
 				 */
 				$this->terminated = true;
 				return;
