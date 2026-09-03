@@ -62,6 +62,15 @@ use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 /**
  * Provider availability with a persisted, credential-bound validated state.
  *
+ * GLM6 #12: every IDENTIFIER constant (the state/region-pending/key
+ * option names, the env/constant name, the refusal label) is DECLARED
+ * BY THE CHILD — this base carries no provider's defaults. A future
+ * child that overrides endpoint_class()/settings_class() but forgets
+ * one declaration gets an immediate undefined-constant fatal at its
+ * first use (loud), never a silent read/write of the zai provider's
+ * key and state options — the invariant this class's own binding
+ * scoping exists to guarantee.
+ *
  * @since 0.2.0
  */
 abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityInterface, WithHttpTransporterInterface, WithRequestAuthenticationInterface {
@@ -72,57 +81,6 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		setHttpTransporter as trait_set_transporter; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- trait method alias.
 	}
 	use WithRequestAuthenticationTrait;
-
-	/**
-	 * Plugin-owned option persisting the last validated state.
-	 *
-	 * Overridden per provider child; the base value is the zai provider's.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	const STATE_OPTION = 'zai_connector_zai_key_state';
-
-	/**
-	 * Plugin-owned option marking an environment/constant credential as
-	 * pending DEFINITIVE validation after a region switch.
-	 *
-	 * Holds array{region: string, fingerprint: string} — the new region and
-	 * a SHA-256 fingerprint of the credential that was effective when the
-	 * region changed (never the key itself). While the flag binds the
-	 * currently effective key, isConfigured() reports false on anything but
-	 * a definitive probe result; see mark_region_switch_pending().
-	 *
-	 * Overridden per provider child; the base value is the zai provider's.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	const REGION_PENDING_OPTION = 'zai_connector_zai_region_pending';
-
-	/**
-	 * The core-owned option holding this provider's API key.
-	 *
-	 * Overridden per provider child; the base value is the zai provider's.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	const KEY_OPTION = 'connectors_ai_zai_api_key';
-
-	/**
-	 * Environment variable / constant name core advertises for the key.
-	 *
-	 * Overridden per provider child; the base value is the zai provider's.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	const KEY_ENV_NAME = 'ZAI_API_KEY';
 
 	/**
 	 * Seconds a validated verdict stays authoritative before re-probing.
@@ -610,18 +568,6 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			? sprintf( 'The %s provider refuses generation: the active environment credential is pending revalidation after a region switch.', $provider_label )
 			: sprintf( 'The %s provider refuses generation: the active credential was rejected for the selected endpoint.', $provider_label );
 	}
-
-	/**
-	 * The provider label for the fixed refusal wording (GLM5 #17).
-	 *
-	 * Overridden per provider child ('zai_anthropic'); the base value is
-	 * the zai provider's, like every identifier constant here.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	const REFUSAL_LABEL = 'zai';
 
 	/**
 	 * Refuses MODEL GENERATION for a distrusted credential, or returns

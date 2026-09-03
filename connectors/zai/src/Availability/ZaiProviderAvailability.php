@@ -70,6 +70,18 @@ final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 	public const KEY_ENV_NAME = PlanRegionSettings::KEY_ENV_NAME;
 
 	/**
+	 * This provider's label in the shared refusal wording (GLM5 #17).
+	 *
+	 * GLM6 #12: declared here since the base stopped carrying the zai
+	 * provider's identifier defaults.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const REFUSAL_LABEL = 'zai';
+
+	/**
 	 * The provider's endpoint resolver class.
 	 *
 	 * @since 0.2.0

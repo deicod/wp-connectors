@@ -15,3 +15,27 @@ parameters:
 	# the same stubs the test harness loads).
 	bootstrapFiles:
 		- tests/harness/wp-stubs.php
+	ignoreErrors:
+		# GLM6 #12: the three shared bases reference CHILD-owned identifier
+		# constants through static:: by design — a provider child that
+		# forgets a declaration fails LOUDLY (undefined-constant fatal on a
+		# test-covered path) instead of silently inheriting a sibling
+		# provider's option names. PHPStan's type system cannot express
+		# abstract class constants (interface constants are treated as
+		# final, so the usual workaround is unavailable), so these accesses
+		# are suppressed HERE, pinned to their exact counts: a new or
+		# removed static:: identifier access in these files changes the
+		# count and fails analysis, forcing a conscious decision. The
+		# children's declarations are pinned by reflection tests instead.
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Settings/AbstractPlanRegionSettings.php
+			count: 25
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Availability/AbstractZaiProviderAvailability.php
+			count: 17
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Provider/AbstractZaiProvider.php
+			count: 1

@@ -11,7 +11,9 @@
 
 declare( strict_types=1 );
 
+use Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
+use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 
 final class ZaiSettingsTest extends WpConnectorsTestCase
 {
@@ -613,5 +615,49 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $output = (string) ob_get_clean();
 
         $this->assertSame('', $output, 'Unprivileged users must get no settings markup.');
+    }
+    public function testIdentifierConstantsAreChildOwnedNotInheritedDefaults()
+    {
+        /*
+         * GLM6 #12: the shared settings base ships NO provider's
+         * identifier constants (option names, section id, label, the
+         * SDK-free invalidation identifiers, the cache prefix/scope) —
+         * a future child forgetting a declaration must fail LOUD
+         * (undefined constant), never silently read and write the zai
+         * provider's options under runtime-dead base defaults. Only
+         * genuinely shared structure stays in the base.
+         */
+        $identifiers = array(
+            'OPTION_PLAN',
+            'OPTION_REGION',
+            'SECTION_ID',
+            'PROVIDER_LABEL',
+            'STATE_OPTION',
+            'REGION_PENDING_OPTION',
+            'KEY_OPTION',
+            'KEY_ENV_NAME',
+            'CACHE_PREFIX',
+            'CACHE_SCOPE',
+        );
+
+        $base = array();
+        foreach ((new \ReflectionClass(AbstractPlanRegionSettings::class))->getReflectionConstants() as $constant) {
+            if ($constant->getDeclaringClass()->getName() === AbstractPlanRegionSettings::class) {
+                $base[] = $constant->getName();
+            }
+        }
+
+        $this->assertSame(array(), array_values(array_intersect($identifiers, $base)), 'The settings base must not carry provider identifiers.');
+
+        foreach (array(PlanRegionSettings::class, ZaiAnthropicPlanRegionSettings::class) as $settings) {
+            $declared = array();
+            foreach ((new \ReflectionClass($settings))->getReflectionConstants() as $constant) {
+                if ($constant->getDeclaringClass()->getName() === $settings) {
+                    $declared[] = $constant->getName();
+                }
+            }
+
+            $this->assertSame(array(), array_values(array_diff($identifiers, $declared)), "{$settings} must declare every identifier constant.");
+        }
     }
 }

@@ -14,7 +14,11 @@ declare( strict_types=1 );
 
 use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Provider\AbstractZaiProvider;
+use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
@@ -928,5 +932,73 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertSame('invalid_verdict', $stored->generation_refusal_reason(), 'The invalid verdict must refuse the identical stored credential.');
         $this->assertFalse($stored->isConfigured(), 'The stored verdict must hold across the transition.');
         $this->assertCount(1, $this->sdkHttpAttempts(), 'No fresh probe may ride the stored verdict.');
+    }
+    public function testIdentifierConstantsAreChildOwnedNotInheritedDefaults()
+    {
+        /*
+         * GLM6 #12: the shared provider and availability bases ship NO
+         * provider's identifier constants — a future child forgetting a
+         * declaration must fail LOUD (undefined constant), never
+         * silently read and write the zai provider's options under
+         * runtime-dead base defaults.
+         */
+        $this->assertSame(
+            array(),
+            self::declared_constants_intersect(AbstractZaiProvider::class, array(
+                'PROVIDER_ID',
+            )),
+            'The provider base must not carry a provider ID default.'
+        );
+        $this->assertSame(
+            array(),
+            self::declared_constants_intersect(AbstractZaiProviderAvailability::class, array(
+                'STATE_OPTION',
+                'REGION_PENDING_OPTION',
+                'KEY_OPTION',
+                'KEY_ENV_NAME',
+                'REFUSAL_LABEL',
+            )),
+            'The availability base must not carry the zai provider identifiers.'
+        );
+
+        foreach (array(ZaiProvider::class, ZaiAnthropicProvider::class) as $provider) {
+            $this->assertContains('PROVIDER_ID', self::declared_constants($provider), "{$provider} must declare its connector ID.");
+        }
+
+        $identifiers = array('STATE_OPTION', 'REGION_PENDING_OPTION', 'KEY_OPTION', 'KEY_ENV_NAME', 'REFUSAL_LABEL');
+        foreach (array(ZaiProviderAvailability::class, ZaiAnthropicProviderAvailability::class) as $availability) {
+            $missing = array_diff($identifiers, self::declared_constants($availability));
+            $this->assertSame(array(), $missing, "{$availability} must declare every identifier constant.");
+        }
+    }
+
+    /**
+     * The constants a class declares ITSELF (inherited ones excluded).
+     *
+     * @param string $class Class name.
+     * @return list<string> Declared constant names.
+     */
+    private static function declared_constants(string $class): array
+    {
+        $names = array();
+        foreach ((new \ReflectionClass($class))->getReflectionConstants() as $constant) {
+            if ($constant->getDeclaringClass()->getName() === $class) {
+                $names[] = $constant->getName();
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * Which of the given names a class declares itself.
+     *
+     * @param string        $class Class name.
+     * @param list<string>  $names Constant names to probe.
+     * @return list<string> The intersecting declared names.
+     */
+    private static function declared_constants_intersect(string $class, array $names): array
+    {
+        return array_values(array_intersect($names, self::declared_constants($class)));
     }
 }

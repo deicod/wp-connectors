@@ -25,6 +25,12 @@ use WordPress\AiClient\Providers\Http\Enums\RequestAuthenticationMethod;
 /**
  * Base provider: region-following credentials URL and versioned metadata.
  *
+ * GLM6 #12: PROVIDER_ID is DECLARED BY THE CHILD — this base carries no
+ * provider's default. A future child that forgets the declaration gets
+ * an immediate undefined-constant fatal at its first metadata build
+ * (loud), never a silent registration under the zai provider's
+ * connector ID (the key option/env name core derives from it).
+ *
  * @since 0.2.0
  */
 abstract class AbstractZaiProvider extends AbstractApiProvider {
@@ -51,18 +57,6 @@ abstract class AbstractZaiProvider extends AbstractApiProvider {
 	 * @var string
 	 */
 	public const CN_CREDENTIALS_URL = 'https://open.bigmodel.cn/usercenter/apikeys';
-
-	/**
-	 * Connector ID used by core (the key option/env name derives from it).
-	 *
-	 * Overridden per provider child; the base value is the zai provider's
-	 * (the same convention the settings and availability bases use).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	public const PROVIDER_ID = 'zai';
 
 	/**
 	 * The provider's card display name.
