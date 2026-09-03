@@ -289,6 +289,37 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertFalse(get_transient($miss), 'A plan change must clear the negative discovery marker with the positive cache.');
     }
 
+    public function testDistinctCorruptArrayPayloadsStillInvalidate()
+    {
+        /*
+         * GLM5 #9: the (string)-cast comparison raised an Array-to-string
+         * warning per side and equated two DIFFERENT arrays
+         * ('Array' === 'Array'), silently skipping the state and
+         * discovery-cache invalidation a plan change must perform. The
+         * comparison is type-aware now: distinct arrays are CHANGED (no
+         * coercion, no warning).
+         */
+        update_option(PlanRegionSettings::STATE_OPTION, array('binding' => 'stale'), false);
+        $cache = PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl');
+        set_transient($cache, array('glm-5.3'), 3600);
+
+        PlanRegionSettings::handle_settings_change(array('corrupt' => 'x'), array('corrupt' => 'y'));
+
+        $this->assertNull(get_option(PlanRegionSettings::STATE_OPTION, null), 'A change between corrupt arrays must still clear the validated state.');
+        $this->assertFalse(get_transient($cache), 'A change between corrupt arrays must still clear the discovery cache.');
+    }
+
+    public function testIdenticalArrayPayloadsSkipInvalidation()
+    {
+        // GLM5 #9: strict identity — an unchanged (if corrupt) array value
+        // is NOT a change; the invalidation stays skipped without warnings.
+        update_option(PlanRegionSettings::STATE_OPTION, array('binding' => 'keep'), false);
+
+        PlanRegionSettings::handle_settings_change(array('same' => 1), array('same' => 1));
+
+        $this->assertSame(array('binding' => 'keep'), get_option(PlanRegionSettings::STATE_OPTION), 'Identical payloads must skip the invalidation.');
+    }
+
     public function testAuthorizedUserWithoutValidNonceIsLeftToCoreEnforcement()
     {
         $this->bootPlugin();

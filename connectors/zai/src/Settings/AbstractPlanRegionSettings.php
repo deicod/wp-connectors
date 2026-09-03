@@ -565,7 +565,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return void
 	 */
 	public static function handle_settings_change( $old_value, $new_value ): void {
-		if ( (string) $old_value === (string) $new_value ) {
+		if ( self::option_values_equal( $old_value, $new_value ) ) {
 			return;
 		}
 
@@ -592,6 +592,33 @@ abstract class AbstractPlanRegionSettings {
 				delete_transient( $cache_id . '_miss' );
 			}
 		}
+	}
+
+	/**
+	 * Whether two hook payloads represent the same option value (GLM5 #9).
+	 *
+	 * The previous (string) casts equated two DIFFERENT corrupt array
+	 * values ('Array' === 'Array') while raising an Array-to-string
+	 * conversion warning per side — silently skipping the
+	 * state/discovery-cache invalidation a plan change must perform.
+	 * Scalars keep the string-cast comparison (the normal payloads are
+	 * the enum strings, and null/'' equivalence stays unchanged for the
+	 * degenerate shapes); any non-scalar side falls back to STRICT
+	 * identity, so two distinct arrays compare CHANGED (invalidation
+	 * runs — the safe direction) without any string coercion.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $old_value Previous hook payload.
+	 * @param mixed $new_value New hook payload.
+	 * @return bool True when the values are equivalent.
+	 */
+	private static function option_values_equal( $old_value, $new_value ): bool {
+		if ( \is_scalar( $old_value ) && \is_scalar( $new_value ) ) {
+			return (string) $old_value === (string) $new_value;
+		}
+
+		return $old_value === $new_value;
 	}
 
 	/**
