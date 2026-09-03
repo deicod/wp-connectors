@@ -2413,6 +2413,119 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testStreamedMessageDeltaInputSideUsageCountsIntoTheConsolidatedTotal()
+    {
+        /*
+         * GLM6 #4: the message_delta handler validated the FULL usage
+         * member (input_tokens, cache variants, output_tokens) but stored
+         * only output_tokens — a stream whose message_start carried no
+         * usage member (tolerated) aggregated input_tokens 0 while the
+         * identical non-streaming body reported the delta's counts:
+         * silent usage/billing undercounting for streamed generations.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_di","content":[]}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":20,"cache_read_input_tokens":4,"output_tokens":5}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $usage = $this->model()->generateTextResult($this->prompt())->getTokenUsage();
+
+        $this->assertSame(24, $usage->getPromptTokens(), 'The delta input side (cache variants summed) must count in.');
+        $this->assertSame(5, $usage->getCompletionTokens());
+        $this->assertSame(29, $usage->getTotalTokens());
+    }
+
+    public function testStreamedMessageDeltaInputSideSupersedesTheStartEstimate()
+    {
+        // GLM6 #4: message_delta is the final metadata — its input
+        // accounting supersedes message_start's initial estimate, exactly
+        // like the one usage object of the identical non-streaming body.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_di2","content":[],"usage":{"input_tokens":3,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":20,"output_tokens":5}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $usage = $this->model()->generateTextResult($this->prompt())->getTokenUsage();
+
+        $this->assertSame(20, $usage->getPromptTokens(), 'The final input accounting must supersede the start estimate.');
+        $this->assertSame(5, $usage->getCompletionTokens());
+    }
+
+    public function testALegacyDeltaUsageCarryingOnlyOutputKeepsTheStartInput()
+    {
+        // GLM6 #4 guard: the legacy message_delta shape (output side only)
+        // reports no input accounting — message_start's estimate stands.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_di3","content":[],"usage":{"input_tokens":7,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $usage = $this->model()->generateTextResult($this->prompt())->getTokenUsage();
+
+        $this->assertSame(7, $usage->getPromptTokens());
+        $this->assertSame(3, $usage->getCompletionTokens());
+    }
+
+    public function testAStreamedDeltaInputSideOverflowInvalidatesTheStream()
+    {
+        // GLM6 #4: the delta input total is overflow-checked like
+        // message_start's (GLM4 #11) — a promoting sum must invalidate,
+        // never ride the consolidated payload as a float.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_di4","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"x"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":' . PHP_INT_MAX . ',"cache_read_input_tokens":1,"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed delta input-side overflow must invalidate the stream, got: ' . wp_json_encode($result->getTokenUsage()->toArray()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testValidAndAbsentTokenUsageStillParse()
     {
         // Guards: {} is a valid zero usage; cache members sum in; an

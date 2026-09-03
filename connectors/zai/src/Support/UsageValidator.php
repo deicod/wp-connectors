@@ -78,6 +78,24 @@ final class UsageValidator {
 	);
 
 	/**
+	 * The Anthropic usage members that count toward the INPUT side.
+	 *
+	 * The input total (message_start's stored count, and the
+	 * message_delta input side the aggregator stores, GLM6 #4) collapses
+	 * exactly these members, mirroring how the non-streaming parser's
+	 * TokenUsage prompt side derives from them.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	private const INPUT_SIDE_MEMBERS = array(
+		'input_tokens',
+		'cache_creation_input_tokens',
+		'cache_read_input_tokens',
+	);
+
+	/**
 	 * Validates a usage member BEFORE any cast stores it (Codex R15 #1).
 	 *
 	 * A present usage must be an object-shaped array (a JSON list [1,2]
@@ -167,6 +185,29 @@ final class UsageValidator {
 	}
 
 	/**
+	 * Whether the usage member carries any INPUT-side token count (GLM6 #4).
+	 *
+	 * The aggregator's message_delta handler decides through this probe
+	 * whether the frame's usage reports a FINAL input side (the current
+	 * Anthropic API shape) or only the output side (the legacy shape):
+	 * a zero from input_total() alone cannot distinguish the two.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<string, mixed> $usage Validated usage member.
+	 * @return bool True when at least one input-side member is present.
+	 */
+	public static function has_input_side( array $usage ): bool {
+		foreach ( self::INPUT_SIDE_MEMBERS as $member ) {
+			if ( \array_key_exists( $member, $usage ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Sums the three Anthropic input-side members with exact overflow
 	 * detection.
 	 *
@@ -179,10 +220,7 @@ final class UsageValidator {
 	 * @return int|null The input-side total, or null when it exceeds PHP_INT_MAX.
 	 */
 	public static function input_total( array $usage ): ?int {
-		return self::sum_members(
-			$usage,
-			array( 'input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens' )
-		);
+		return self::sum_members( $usage, self::INPUT_SIDE_MEMBERS );
 	}
 
 	/**

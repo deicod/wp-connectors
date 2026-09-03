@@ -89,6 +89,25 @@ final class AnthropicSseAggregator {
 	private $input_tokens;
 
 	/**
+	 * Input-side total reported with message_delta, or null when the
+	 * delta's usage carried no input-side member (GLM6 #4).
+	 *
+	 * The final-metadata frame is the protocol's last word on usage: the
+	 * current Anthropic API reports the FINAL input accounting there
+	 * (input_tokens plus the cache variants), superseding the initial
+	 * estimate message_start carried — while the legacy shape reports
+	 * only output_tokens, leaving the start-side input standing. Either
+	 * way the identical non-streaming body reports exactly one usage
+	 * object with the final counts, so the consolidated payload now
+	 * matches it.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int|null
+	 */
+	private $delta_input_tokens;
+
+	/**
 	 * Output tokens reported with message_delta.
 	 *
 	 * @since 0.2.0
@@ -438,6 +457,12 @@ final class AnthropicSseAggregator {
 		 * members a non-streaming Messages body does (model from
 		 * message_start, stop_sequence from message_delta), so the two
 		 * transports of one generation expose identical result fields.
+		 *
+		 * GLM6 #4: the input side prefers the FINAL accounting
+		 * message_delta reported (collapsed like message_start's, so the
+		 * parser's prompt-side derivation stays the one source) and falls
+		 * back to the start-side estimate when the delta's usage carried
+		 * no input member.
 		 */
 		return array(
 			'id'            => \is_string( $this->message_id ) ? $this->message_id : '',
@@ -448,7 +473,7 @@ final class AnthropicSseAggregator {
 			'stop_reason'   => $this->stop_reason,
 			'stop_sequence' => \is_string( $this->stop_sequence ) ? $this->stop_sequence : null,
 			'usage'         => array(
-				'input_tokens'  => $this->input_tokens ?? 0,
+				'input_tokens'  => $this->delta_input_tokens ?? $this->input_tokens ?? 0,
 				'output_tokens' => $this->output_tokens ?? 0,
 			),
 		);
@@ -1058,6 +1083,31 @@ final class AnthropicSseAggregator {
 						$this->malformed_event = true;
 
 						return;
+					}
+
+					/*
+					 * GLM6 #4: the input side the final-metadata frame
+					 * reports is stored too, not just output_tokens — the
+					 * handler validated all four members all along and
+					 * then silently discarded the input-side counts, so a
+					 * stream whose message_start carried no usage member
+					 * (tolerated) aggregated input_tokens 0 while the
+					 * identical non-streaming body reported 20: silent
+					 * usage/billing undercounting. The overflow-checked
+					 * total matches message_start's storage rule; a delta
+					 * carrying only the output side (the legacy shape)
+					 * leaves the start-side input standing.
+					 */
+					if ( \is_array( $data['usage'] ) && UsageValidator::has_input_side( $data['usage'] ) ) {
+						$delta_input = UsageValidator::input_total( $data['usage'] );
+
+						if ( null === $delta_input ) {
+							$this->malformed_event = true;
+
+							return;
+						}
+
+						$this->delta_input_tokens = $delta_input;
 					}
 
 					$this->output_tokens = (int) ( $data['usage']['output_tokens'] ?? 0 );
