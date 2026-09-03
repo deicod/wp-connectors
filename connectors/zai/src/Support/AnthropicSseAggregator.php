@@ -575,7 +575,20 @@ final class AnthropicSseAggregator {
 			}
 
 			if ( 0 === strpos( $line, 'event:' ) ) {
-				$event_name = ltrim( substr( $line, 6 ), ' ' );
+				/*
+				 * GLM5 #8: the field parser stripped only spaces
+				 * (ltrim(..., ' ')), so a spec-legal EMPTY 'event:' value
+				 * (the payload's type member governs) and a
+				 * tab-separated 'event:\t<name>' produced a name that
+				 * differed from the payload's type member — tripping the
+				 * Codex R7 #6 agreement rule and invalidating an
+				 * otherwise valid whole stream as a malformed event
+				 * frame. Field-value whitespace (spaces AND tabs, both
+				 * ends) is trimmed now, and an EMPTY name counts as
+				 * ABSENT (null), exactly like a frame without the field.
+				 */
+				$name       = trim( substr( $line, 6 ), " \t" );
+				$event_name = '' === $name ? null : $name;
 				continue;
 			}
 

@@ -2734,6 +2734,57 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
      * SSE aggregation: the Anthropic event sequence.
      */
 
+    /**
+     * @dataProvider provideEventFieldWhitespaceVariants
+     */
+    public function testWhitespaceSeparatedEventFieldValuesStillAggregate($event_lead)
+    {
+        /*
+         * GLM5 #8: the event: field parser stripped only spaces, so a
+         * spec-legal EMPTY 'event:' value (the payload's type member
+         * governs) and a tab-separated 'event:\t<name>' produced a name
+         * that differed from the payload's type member — the Codex R7 #6
+         * agreement rule invalidated an otherwise valid whole stream as
+         * a malformed event frame. Field-value whitespace is trimmed and
+         * an empty name counts as absent.
+         */
+        $body = ''
+            . $event_lead . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ws","content":[],"usage":{"input_tokens":3,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"A"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertFalse($aggregator->has_malformed_event(), 'A whitespace-mangled event: value must not invalidate the stream.');
+        $aggregated = $aggregator->aggregated();
+        $this->assertNotNull($aggregated);
+        $this->assertSame('A', $aggregated['content'][0]['text']);
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideEventFieldWhitespaceVariants()
+    {
+        return array(
+            'empty event value' => array('event:'),
+            'space-only event value' => array('event: '),
+            'tab-separated name' => array('event:' . "\t" . 'message_start'),
+            'space-then-tab name' => array('event: ' . "\t" . 'message_start'),
+        );
+    }
+
     public function testStreamsSimpleTextDeltas()
     {
         $body = implode("\n\n", array(
