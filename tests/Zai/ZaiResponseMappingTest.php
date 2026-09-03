@@ -829,6 +829,40 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(16, $result->getTokenUsage()->getTotalTokens());
     }
 
+    public function testAnEmptyPreSentinelUsageMemberDoesNotBlockTheTrailingGapFill()
+    {
+        /*
+         * Verifier round on GLM7 #2: an intermediate "usage":{} (a
+         * null-usage normalization several OpenAI-compatible gateways
+         * emit) passed the isset-merge, so the strict null gap-fill
+         * guard counted it as "usage already merged" — the appending
+         * gateway's real final usage chunk after the sentinel was
+         * silently dropped and the completed generation reported zero
+         * tokens where master's last-wins merge carried the real counts.
+         * An empty member carries no token data: it is gap-fillable.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-eu","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}],"usage":{}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-eu","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame(15, $aggregated['usage']['total_tokens'], 'The trailing usage must complete an empty pre-sentinel member.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(15, $result->getTokenUsage()->getTotalTokens(), 'Zero-token silent undercounting versus master is the exact regression GLM7 #2 fixes.');
+    }
+
     public function testPostSentinelFramesOpenNoNewTurnsAndCountMalformed()
     {
         /*

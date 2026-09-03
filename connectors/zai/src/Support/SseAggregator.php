@@ -350,7 +350,20 @@ final class SseAggregator {
 			}
 		}
 
-		if ( null === $usage && null !== $this->trailing_usage ) {
+		/*
+		 * Verifier round on GLM7 #2: "no usage merged" means no usage
+		 * DATA merged. An EMPTY pre-sentinel member ("usage":{} — or [],
+		 * both collapsing to the same empty array; several
+		 * OpenAI-compatible gateways emit it as a null-usage
+		 * normalization) passed the isset-merge above, so the strict
+		 * null check let it BLOCK the gap-fill and the completed
+		 * generation reported zero tokens where master's last-wins
+		 * merge carried the appending gateway's real counts — the exact
+		 * silent zeroing GLM7 #2 exists to fix. An empty member carries
+		 * no token counts, so completing it overwrites nothing; every
+		 * DATA-BEARING member (even a partial one) still stands.
+		 */
+		if ( ( null === $usage || array() === $usage ) && null !== $this->trailing_usage ) {
 			$usage           = $this->trailing_usage;
 			$this->raw_usage = $this->trailing_raw_usage;
 		}
