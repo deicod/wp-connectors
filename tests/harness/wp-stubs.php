@@ -446,8 +446,16 @@ if (!class_exists('wpdb')) {
             }
 
             $names = array_keys(WpHarness::$options);
-            foreach (array_keys(WpHarness::$transients) as $transient) {
-                $names[] = '_transient_' . $transient;
+            /*
+             * With a persistent object cache (GLM5 #12), transient values
+             * live outside wp_options: no _transient_ rows exist for the
+             * enumeration to find — the exact uninstall shape the direct
+             * probe-miss deletions exist to cover.
+             */
+            if (!WpHarness::$external_object_cache) {
+                foreach (array_keys(WpHarness::$transients) as $transient) {
+                    $names[] = '_transient_' . $transient;
+                }
             }
 
             $matches = array();

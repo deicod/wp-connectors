@@ -46,6 +46,19 @@ final class WpHarness
     public static $transients = array();
 
     /**
+     * Whether a persistent (external) object cache backs transients.
+     *
+     * Mirrors wp_using_ext_object_cache(): when true, transient values
+     * live in the object cache and NO _transient_ rows exist in
+     * wp_options — the wpdb stub therefore hides transient rows from its
+     * option-name enumeration (GLM5 #12: the uninstall probe-miss sweep
+     * must survive this shape through its direct deletions).
+     *
+     * @var bool
+     */
+    public static $external_object_cache = false;
+
+    /**
      * Scheduled events, WP-style: hook => list of event arrays.
      *
      * @var array<string, list<array{timestamp: int, args: array, id: string}>>
@@ -258,6 +271,7 @@ final class WpHarness
         self::$option_autoload = array();
         self::$delete_option_attempts = array();
         self::$transients = array();
+        self::$external_object_cache = false;
         self::$cron = array();
         self::$filters = array();
         self::$current_action_stack = array();

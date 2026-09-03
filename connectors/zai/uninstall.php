@@ -10,8 +10,10 @@
  * every other blog keeps its data unless the cleanup switches to it
  * explicitly. The negative-cache transients whose names embed a
  * credential-binding hash (the availability probe-miss markers, GLM1 #6)
- * are enumerated by option-name prefix rather than derived (GLM2 #7). The
- * core-owned API key options
+ * are enumerated by option-name prefix rather than derived (GLM2 #7) —
+ * PLUS deleted directly for every name derivable from the still-readable
+ * credentials, so a persistent object cache cannot hide them (GLM5 #12).
+ * The core-owned API key options
  * (connectors_ai_zai_api_key, connectors_ai_zai_anthropic_api_key) are
  * deliberately left for core/the user. Deactivation retains everything.
  *
@@ -67,7 +69,73 @@ function zai_connector_zai_uninstall_site() {
 	 * the discovery markers above can be derived, these structurally
 	 * cannot). delete_transient() also removes each name's matching
 	 * _transient_timeout_ row.
+	 *
+	 * GLM5 #12: the names DERIVABLE at uninstall time are ALSO deleted
+	 * directly, through the transients API — the row enumeration below
+	 * scans wp_options, which sees nothing when a persistent object cache
+	 * (Redis/Memcached) backs transients, so the deterministic markers
+	 * survived uninstall with no path that deleted them. Derivable means
+	 * the CURRENT credential values still readable here (the env var, the
+	 * constant, and the core-owned stored key option — deliberately left
+	 * below, hence readable) under every source label that can have
+	 * planted a marker, across every plan x region endpoint of both
+	 * surfaces; 'runtime' covers rows written before GLM5 #11 normalized
+	 * that label into 'database'. Historical keys' markers remain
+	 * enumerable only by the option-name sweep.
 	 */
+	$zai_connector_key_specs = array(
+		'zai'           => array(
+			'state_option' => 'zai_connector_zai_key_state',
+			'scope'        => 'zai',
+			'key_option'   => 'connectors_ai_zai_api_key',
+			'key_env_name' => 'ZAI_API_KEY',
+		),
+		'zai_anthropic' => array(
+			'state_option' => 'zai_connector_zai_anthropic_key_state',
+			'scope'        => 'zai_anthropic',
+			'key_option'   => 'connectors_ai_zai_anthropic_api_key',
+			'key_env_name' => 'ZAI_ANTHROPIC_API_KEY',
+		),
+	);
+
+	foreach ( $zai_connector_key_specs as $zai_connector_key_spec ) {
+		$zai_connector_current_keys = array();
+
+		$zai_connector_env_value = getenv( $zai_connector_key_spec['key_env_name'] );
+		if ( \is_string( $zai_connector_env_value ) && '' !== $zai_connector_env_value ) {
+			$zai_connector_current_keys[] = $zai_connector_env_value;
+		}
+
+		if ( \defined( $zai_connector_key_spec['key_env_name'] ) ) {
+			$zai_connector_constant_value = \constant( $zai_connector_key_spec['key_env_name'] );
+			if ( \is_string( $zai_connector_constant_value ) && '' !== $zai_connector_constant_value ) {
+				$zai_connector_current_keys[] = $zai_connector_constant_value;
+			}
+		}
+
+		$zai_connector_stored_value = get_option( $zai_connector_key_spec['key_option'], '' );
+		if ( \is_string( $zai_connector_stored_value ) && '' !== $zai_connector_stored_value ) {
+			$zai_connector_current_keys[] = $zai_connector_stored_value;
+		}
+
+		if ( array() === $zai_connector_current_keys ) {
+			continue;
+		}
+
+		foreach ( \array_unique( $zai_connector_current_keys ) as $zai_connector_current_key ) {
+			foreach ( array( 'coding', 'general' ) as $zai_connector_probe_plan ) {
+				foreach ( array( 'intl', 'cn' ) as $zai_connector_probe_region ) {
+					$zai_connector_probe_cache_key = $zai_connector_key_spec['scope'] . '|' . $zai_connector_probe_plan . '|' . $zai_connector_probe_region;
+
+					foreach ( array( 'env', 'constant', 'database', 'runtime' ) as $zai_connector_probe_source ) {
+						$zai_connector_probe_binding = hash( 'sha256', $zai_connector_probe_source . '|' . $zai_connector_probe_cache_key . '|' . $zai_connector_current_key );
+						delete_transient( $zai_connector_key_spec['state_option'] . '_probe_' . md5( $zai_connector_probe_binding ) );
+					}
+				}
+			}
+		}
+	}
+
 	global $wpdb;
 
 	$zai_connector_probe_prefixes = array(

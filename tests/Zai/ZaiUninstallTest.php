@@ -255,4 +255,52 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         $this->assertSame( 1, get_current_blog_id() );
         $this->assertFalse( restore_current_blog(), 'No dangling switch may remain.' );
     }
+
+    public function testProbeMissMarkersAreDeletedDirectlyUnderAnObjectCache()
+    {
+        /*
+         * GLM5 #12: the probe-miss cleanup enumerated wp_options rows via
+         * a raw LIKE sweep, which finds NOTHING when a persistent object
+         * cache (Redis/Memcached) backs transients — the deterministic
+         * markers survived uninstall with no path that deleted them. The
+         * derivable names (the current credential under every source
+         * label and endpoint combination) are deleted directly through
+         * the transients API now, so they go even when the option rows
+         * are invisible to the sweep. The database marker below is
+         * planted through the REAL availability flow, so its name is the
+         * layer's own — the pin holds the mirror honest.
+         */
+        WpHarness::$external_object_cache = true;
+
+        try {
+            // Database-source marker via the real availability flow: an
+            // inconclusive probe plants the negative-cache marker.
+            $db_key = FakeSecrets::apiKey();
+            update_option( 'connectors_ai_zai_api_key', $db_key );
+
+            $availability = new \Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability();
+            $availability->setHttpTransporter( \WordPress\AiClient\AiClient::defaultRegistry()->getHttpTransporter() );
+
+            $this->queueSdkResponse( 500, array(), 'boom' );
+            $this->assertTrue( $availability->isConfigured(), 'The inconclusive probe reports configured-pending.' );
+
+            // Env-source marker planted by the same formula.
+            putenv( 'ZAI_API_KEY=' . ( $env_key = FakeSecrets::apiKey() ) );
+            $env_marker = 'zai_connector_zai_key_state_probe_' . md5( hash( 'sha256', 'env|zai|general|cn|' . $env_key ) );
+            set_transient( $env_marker, true, 60 );
+
+            zai_connector_zai_uninstall_site();
+
+            $remaining = array();
+            foreach ( array_keys( WpHarness::$transients ) as $transient ) {
+                if ( false !== strpos( $transient, '_key_state_probe_' ) ) {
+                    $remaining[] = $transient;
+                }
+            }
+
+            $this->assertSame( array(), $remaining, 'Every derivable probe-miss marker must be deleted directly under an object cache: ' . wp_json_encode( $remaining ) );
+        } finally {
+            putenv( 'ZAI_API_KEY' );
+        }
+    }
 }
