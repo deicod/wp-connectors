@@ -2,7 +2,10 @@
 /**
  * Opt-in live smoke probe for the z.ai connector (Tasks 1.9 / 2.7).
  *
- *   php bin/zai-live-probe.php [--surface=openai|anthropic] [--plan=coding|general] [--region=intl|cn]
+ *   php bin/zai-live-probe.php [--surface openai|anthropic] [--plan coding|general] [--region intl|cn]
+ *
+ * Every long option accepts both the space-separated and the '='-attached
+ * value form (GLM8 #7).
  *
  * Reads a real API key at RUNTIME from the environment
  * (ZAI_LIVE_API_KEY or WP_CONNECTORS_TEST_ZAI_API_KEY) or from
@@ -65,14 +68,66 @@ function zai_live_probe_report( string $label, $value ): void
     printf( "%-24s %s\n", $label . ':', is_scalar( $value ) ? (string) $value : wp_json_encode( $value ) );
 }
 
-$args = getopt( '', array( 'surface::', 'plan::', 'region::' ) );
-$surface = isset( $args['surface'] ) ? (string) $args['surface'] : 'openai';
+/**
+ * Returns one long-option value, or the default when absent/malformed.
+ *
+ * GLM8 #7: getopt() returns an ARRAY for a repeated option — the old
+ * (string) cast emitted an Array-to-string notice and handed the
+ * whitelist checks the literal 'Array'. A malformed value normalizes to
+ * '' so the per-option whitelist rejects it with its own diagnostic.
+ *
+ * @param array  $args    The getopt() result.
+ * @param string $name    Option name (without leading dashes).
+ * @param string $default Value used when the option is absent.
+ * @return string The option value ('' when present but malformed).
+ */
+function zai_live_probe_option( array $args, string $name, string $default ): string
+{
+    if ( ! isset( $args[ $name ] ) ) {
+        return $default;
+    }
+
+    return \is_string( $args[ $name ] ) ? $args[ $name ] : '';
+}
+
+/*
+ * GLM8 #7: getopt's OPTIONAL-value '::' declarations (this probe's old
+ * form) capture only the '--option=value' syntax — the conventional
+ * space-separated '--option value' form returns false for every
+ * declared option, which the (string) cast turned into '' and rejected
+ * with a diagnostic that blamed the VALUE ('--surface must be openai or
+ * anthropic' for exactly that value). The REQUIRED-value ':'
+ * declarations below accept BOTH forms. Their one silent gap: a bare
+ * '--option' with no value at all drops out of the getopt() result
+ * entirely (or swallows the next token as its value), so the missing
+ * value is detected against the raw argv — a bare '--option' token
+ * whose following token is absent or itself option-led can only ever
+ * mean a missing value (none of this probe's values starts with '--').
+ */
+global $argv;
+$zai_probe_argv = $argv;
+
+foreach ( array( 'surface', 'plan', 'region' ) as $zai_probe_option_name ) {
+    $zai_probe_position = array_search( '--' . $zai_probe_option_name, $zai_probe_argv, true );
+    if ( false === $zai_probe_position ) {
+        continue;
+    }
+
+    $zai_probe_next = isset( $zai_probe_argv[ $zai_probe_position + 1 ] ) ? (string) $zai_probe_argv[ $zai_probe_position + 1 ] : null;
+    if ( null === $zai_probe_next || '--' === substr( $zai_probe_next, 0, 2 ) ) {
+        fwrite( STDERR, "live-probe: --{$zai_probe_option_name} requires a value (use --{$zai_probe_option_name} <value> or --{$zai_probe_option_name}=<value>)\n" );
+        exit( 2 );
+    }
+}
+
+$args = getopt( '', array( 'surface:', 'plan:', 'region:' ) );
+$surface = zai_live_probe_option( $args, 'surface', 'openai' );
 if ( ! in_array( $surface, array( 'openai', 'anthropic' ), true ) ) {
     fwrite( STDERR, "live-probe: --surface must be openai or anthropic\n" );
     exit( 2 );
 }
-$plan = isset( $args['plan'] ) ? (string) $args['plan'] : ( 'anthropic' === $surface ? 'general' : 'coding' );
-$region = isset( $args['region'] ) ? (string) $args['region'] : 'intl';
+$plan = zai_live_probe_option( $args, 'plan', 'anthropic' === $surface ? 'general' : 'coding' );
+$region = zai_live_probe_option( $args, 'region', 'intl' );
 
 /*
  * Codex R7 #2: a typo in --plan/--region was stored and REPORTED while
