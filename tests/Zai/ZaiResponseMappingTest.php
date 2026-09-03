@@ -420,15 +420,16 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(5, $result->getTokenUsage()->getTotalTokens(), 'The merged usage member stands.');
     }
 
-    public function testALateNullUsageMemberDoesNotLoseTheObjectNessOracle()
+    public function testALateNullUsageMemberChangesNothingAboutTheMergedUsage()
     {
         /*
-         * GLM6 #3 (null variant): a trailing "usage":null replaced the
-         * raw oracle with null, flipping the verdict through the
-         * validator's sequential-key fallback — a merged empty LIST
-         * usage was then tolerated where the non-streaming transport of
-         * the same provider rejects it. The null member does not merge,
-         * so it must not touch the oracle either.
+         * GLM6 #3 (null variant) originally pinned that a trailing
+         * "usage":null must not lose the raw oracle for the merged empty
+         * LIST member — GLM7 #8 then restored master semantics on this
+         * surface, where "usage":[] zero-defaults, so the shape no longer
+         * rejects here. The invariant that remains: the late null member
+         * does not merge and must not disturb the merged member's
+         * accounting (zeros, not an error).
          */
         $stream = implode("\n\n", array(
             'data: {"id":"chatcmpl-ln2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
@@ -439,12 +440,10 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
 
-        try {
-            $this->model()->generateTextResult($this->prompt());
-            $this->fail('A merged empty-list usage member must stay rejected despite the later null member.');
-        } catch (ResponseException $e) {
-            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage());
-        }
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(0, $result->getTokenUsage()->getTotalTokens(), 'The merged empty-list usage keeps master zero semantics despite the later null member.');
     }
 
     public function testAStreamedUnencodableNonUsageMemberIsRejectedTypedNotMasked()
@@ -627,14 +626,15 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
-    public function testStreamedEmptyListUsageMemberIsRejectedLikeNonStreamed()
+    public function testStreamedEmptyListUsageMemberKeepsMasterZeroSemantics()
     {
         /*
-         * Verifier round on GLM5 #3: the streamed validation passed NO
-         * raw oracle, so the validator's sequential-key fallback counted
-         * the EMPTY array as an object — a streamed final "usage":[] was
-         * accepted while the identical non-streamed member rejects. The
-         * aggregator hands the usage member's raw shape along now.
+         * GLM7 #8: master read token counts with ($usage['prompt_tokens']
+         * ?? 0), so a streamed final "usage":[] produced a SUCCESSFUL
+         * zero-defaulted generation on the legacy surface — semantics the
+         * GLM5 #3 shared validator silently dropped when it wired both
+         * surfaces onto one strict rule. The lenient mode restores them
+         * (the Anthropic surface keeps rejecting the identical shape).
          */
         $stream = implode("\n\n", array(
             'data: {"id":"chatcmpl-su3","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
@@ -644,12 +644,43 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
 
-        try {
-            $this->model()->generateTextResult($this->prompt());
-            $this->fail('A streamed empty-list usage member must be rejected typed.');
-        } catch (ResponseException $e) {
-            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage());
-        }
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(0, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    /**
+     * @dataProvider provideMasterToleratedUsageShapes
+     */
+    public function testMasterToleratedUsageShapesKeepSucceeding($usageFragment, $expectedTotal, $label)
+    {
+        /*
+         * GLM7 #8 (non-streamed half): "usage":null, "usage":[], and
+         * explicitly-null token members all zero-defaulted on master —
+         * the strict shared validator turned each into a typed rejection
+         * for every existing zai consumer. Lenient mode keeps the master
+         * verdicts; genuinely corrupt shapes (scalars, non-empty lists,
+         * string counts) still reject.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-mt","choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],' . $usageFragment . '}');
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('hi', $result->toText(), "{$label}: the generation must succeed.");
+        $this->assertSame($expectedTotal, $result->getTokenUsage()->getTotalTokens(), "{$label}: master zero/default semantics.");
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideMasterToleratedUsageShapes()
+    {
+        return array(
+            'null usage member' => array('"usage":null', 0, 'null usage member'),
+            'empty list usage member' => array('"usage":[]', 0, 'empty list usage member'),
+            'null prompt member' => array('"usage":{"prompt_tokens":null,"completion_tokens":3,"total_tokens":3}', 3, 'null prompt member'),
+        );
     }
 
     public function testStreamedEmptyObjectUsageMemberStaysTolerated()

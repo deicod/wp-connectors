@@ -349,6 +349,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * source the Anthropic transports validate through, so a usage-rule
 	 * change can never land on one surface only.
 	 *
+	 * GLM7 #8: this surface validates in the validator's LENIENT mode —
+	 * master read token counts with ($usage['prompt_tokens'] ?? 0), so
+	 * "usage":null, "usage":[], and explicitly-null members produced
+	 * successful zero-defaulted generations here before the shared
+	 * validator existed; the strict mode remains the Anthropic surface's
+	 * (and every genuinely corrupt shape — scalars, non-empty lists,
+	 * non-int counts — still rejects on both).
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param mixed $usage     The associatively decoded usage member.
@@ -358,7 +366,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @throws ResponseException When the usage member is malformed.
 	 */
 	private static function reject_bad_usage( $usage, $raw_usage ): void {
-		$reason = UsageValidator::failure_reason( $usage, $raw_usage, UsageValidator::OPENAI_MEMBERS );
+		$reason = UsageValidator::failure_reason( $usage, $raw_usage, UsageValidator::OPENAI_MEMBERS, true );
 
 		if ( null !== $reason ) {
 			throw ResponseException::fromInvalidData(

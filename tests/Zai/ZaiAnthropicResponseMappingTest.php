@@ -2521,6 +2521,22 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('bad_member', $validator::failure_reason(array('prompt_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS), 'A string OpenAI count is a bad member.');
         $this->assertSame('bad_member', $validator::failure_reason(array('completion_tokens' => INF), new stdClass(), $validator::OPENAI_MEMBERS), 'An INF OpenAI count is a bad member.');
         $this->assertNull($validator::failure_reason(array('input_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS), 'Foreign (Anthropic) members are not judged by the OpenAI list.');
+
+        /*
+         * GLM7 #8: the LENIENT mode is the legacy zai surface's master
+         * semantics — null usage, the empty list, and null-valued
+         * members count as absent (zeros); every genuinely corrupt shape
+         * keeps the strict rejection, and the default (this surface)
+         * rejects the same shapes it always did.
+         */
+        $this->assertNull($validator::failure_reason(null, null, $validator::OPENAI_MEMBERS, true), 'Lenient: a null usage member counts as absent.');
+        $this->assertNull($validator::failure_reason(array(), array(), $validator::OPENAI_MEMBERS, true), 'Lenient: the empty usage list counts as absent.');
+        $this->assertNull($validator::failure_reason(array('prompt_tokens' => null, 'completion_tokens' => 3), new stdClass(), $validator::OPENAI_MEMBERS, true), 'Lenient: a null token member counts as absent.');
+        $this->assertSame('not_object', $validator::failure_reason(array(1, 2), array(), $validator::OPENAI_MEMBERS, true), 'Lenient: a NON-empty list is still rejected.');
+        $this->assertSame('not_object', $validator::failure_reason('5', null, $validator::OPENAI_MEMBERS, true), 'Lenient: a scalar is still rejected.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('prompt_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS, true), 'Lenient: a string count is still rejected.');
+        $this->assertSame('not_object', $validator::failure_reason(null, null), 'Strict (default): a null usage member is rejected.');
+
         $this->assertSame('The usage member must be a JSON object.', $validator::message_for_reason('not_object'), 'One fixed rejection message per reason.');
         $this->assertSame('Token counts must be non-negative integers.', $validator::message_for_reason('bad_member'), 'One fixed rejection message per reason.');
     }

@@ -108,6 +108,18 @@ final class UsageValidator {
 	 * with the sequential-key test as fallback when the oracle value is
 	 * unavailable.
 	 *
+	 * GLM7 #8 adds the $lenient mode the legacy zai (OpenAI-surface)
+	 * transports validate through: master read token counts with
+	 * ($usage['prompt_tokens'] ?? 0), so "usage":null, "usage":[], and
+	 * explicitly-null token members all produced a SUCCESSFUL
+	 * zero-defaulted generation there — semantics the GLM5 #3 shared
+	 * validator silently dropped when it wired both surfaces onto one
+	 * strict rule. In lenient mode exactly those three shapes count as
+	 * absent (zeros): a null usage member, the EMPTY usage array, and a
+	 * null-valued known member; everything else (scalars, non-empty
+	 * lists, negative/string/float counts) keeps the strict rejection.
+	 * The Anthropic surface passes the default and is unchanged.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param mixed    $usage     The associatively decoded usage member.
@@ -115,12 +127,19 @@ final class UsageValidator {
 	 *                            decode, or null when unavailable.
 	 * @param string[] $members   The protocol's known token members
 	 *                            (ANTHROPIC_MEMBERS or OPENAI_MEMBERS).
+	 * @param bool     $lenient   The legacy zai surface's master
+	 *                            semantics: null/empty shapes count as
+	 *                            absent (GLM7 #8).
 	 * @return string|null Null when valid; REASON_NOT_OBJECT or
 	 *                     REASON_BAD_MEMBER when the caller must reject.
 	 */
-	public static function failure_reason( $usage, $raw_usage, array $members = self::ANTHROPIC_MEMBERS ): ?string {
+	public static function failure_reason( $usage, $raw_usage, array $members = self::ANTHROPIC_MEMBERS, bool $lenient = false ): ?string {
 		if ( ! \is_array( $usage ) ) {
 			// Present but scalar or null — not a usage object.
+			if ( $lenient && null === $usage ) {
+				return null;
+			}
+
 			return self::REASON_NOT_OBJECT;
 		}
 
@@ -133,11 +152,19 @@ final class UsageValidator {
 		}
 
 		if ( ! $is_object ) {
+			if ( $lenient && array() === $usage ) {
+				return null;
+			}
+
 			return self::REASON_NOT_OBJECT;
 		}
 
 		foreach ( $members as $member ) {
 			if ( \array_key_exists( $member, $usage ) && ( ! \is_int( $usage[ $member ] ) || $usage[ $member ] < 0 ) ) {
+				if ( $lenient && null === $usage[ $member ] ) {
+					continue;
+				}
+
 				return self::REASON_BAD_MEMBER;
 			}
 		}
