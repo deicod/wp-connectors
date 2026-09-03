@@ -18,7 +18,10 @@
  * The oracle was inlined at seven call sites with per-site messages
  * that had already drifted (three fix rounds touched them in lockstep);
  * one guard owns the oracle, the phpcs exemption, and the ONE message
- * template now — call sites name only the VALUE under guard.
+ * template now — call sites name only the VALUE under guard and the
+ * PROVIDER whose request it was going to ride (GLM6 #5: the guard serves
+ * both surfaces, so a hardcoded label would misattribute rejections on
+ * one of them).
  *
  * @since 0.2.0
  *
@@ -47,17 +50,22 @@ final class JsonEncodeGuard {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param mixed  $value  The wire value to encode.
-	 * @param string $subject What the value is, for the rejection message
-	 *                        (e.g. 'a stop sequence').
+	 * @param mixed  $value          The wire value to encode.
+	 * @param string $subject        What the value is, for the rejection message
+	 *                                (e.g. 'a stop sequence').
+	 * @param string $provider_label The consuming provider's name, for the
+	 *                                rejection message ('zai' or
+	 *                                'zai_anthropic'; GLM6 #5 — the guard is
+	 *                                shared by both surfaces, so the label
+	 *                                belongs to the call site).
 	 * @return string The JSON encoding.
 	 * @throws InvalidArgumentException When the value cannot encode.
 	 */
-	public static function encode( $value, string $subject ): string {
+	public static function encode( $value, string $subject, string $provider_label ): string {
 		$encoded = json_encode( $value ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
 
 		if ( false === $encoded ) {
-			throw new InvalidArgumentException( self::message( $subject ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new InvalidArgumentException( self::message( $provider_label, $subject ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		return $encoded;
@@ -71,14 +79,17 @@ final class JsonEncodeGuard {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param mixed  $value  The wire value to guard.
-	 * @param string $subject What the value is, for the rejection message.
+	 * @param mixed  $value          The wire value to guard.
+	 * @param string $subject        What the value is, for the rejection message.
+	 * @param string $provider_label The consuming provider's name, for the
+	 *                                rejection message ('zai' or
+	 *                                'zai_anthropic'; GLM6 #5).
 	 * @return void
 	 * @throws InvalidArgumentException When the value cannot encode.
 	 */
-	public static function must_encode( $value, string $subject ): void {
+	public static function must_encode( $value, string $subject, string $provider_label ): void {
 		if ( false === json_encode( $value ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
-			throw new InvalidArgumentException( self::message( $subject ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new InvalidArgumentException( self::message( $provider_label, $subject ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 	}
 
@@ -87,12 +98,14 @@ final class JsonEncodeGuard {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param string $subject What the value is (e.g. 'the system instruction').
+	 * @param string $provider_label The consuming provider's name.
+	 * @param string $subject        What the value is (e.g. 'the system instruction').
 	 * @return string The fixed, safe message.
 	 */
-	private static function message( string $subject ): string {
+	private static function message( string $provider_label, string $subject ): string {
 		return sprintf(
-			'The zai_anthropic provider could not JSON-encode %s (unencodable value such as NAN, invalid UTF-8, or a recursive structure).',
+			'The %s provider could not JSON-encode %s (unencodable value such as NAN, invalid UTF-8, or a recursive structure).',
+			$provider_label,
 			$subject
 		);
 	}

@@ -258,7 +258,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * JsonEncodeGuard's raw-oracle rationale), not the
 			 * transport's raw JsonException surfaced as the generic 500.
 			 */
-			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction' );
+			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', 'zai_anthropic' );
 
 			$params['system'] = $system_instruction;
 		}
@@ -300,7 +300,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				}
 
 				// GLM3 #4: same invalid-UTF-8 oracle as text parts.
-				JsonEncodeGuard::must_encode( $sequence, 'a stop sequence' );
+				JsonEncodeGuard::must_encode( $sequence, 'a stop sequence', 'zai_anthropic' );
 			}
 
 			$params['stop_sequences'] = $stop_sequences;
@@ -358,7 +358,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * returns false for a string in production, so a guard on it
 			 * was dead code outside the test stub.
 			 */
-			$encoded_schema = JsonEncodeGuard::encode( $output_schema, 'the configured output schema' );
+			$encoded_schema = JsonEncodeGuard::encode( $output_schema, 'the configured output schema', 'zai_anthropic' );
 
 			$guidance .= "\n" . sprintf(
 				/* translators: %s: a JSON Schema document (compact JSON). */
@@ -454,7 +454,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * object normalization below.
 			 */
 			if ( \is_array( $input_schema ) && array() !== $input_schema ) {
-				JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema' );
+				JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', 'zai_anthropic' );
 			}
 
 			if ( null === $input_schema || array() === $input_schema ) {
@@ -833,7 +833,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * single-sourced it; see there for why wp_json_encode() and
 			 * mb_check_encoding() are not options).
 			 */
-			JsonEncodeGuard::must_encode( $text, 'a message text part' );
+			JsonEncodeGuard::must_encode( $text, 'a message text part', 'zai_anthropic' );
 
 			return array(
 				'type' => 'text',
@@ -908,7 +908,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * JsonEncodeGuard), same first-bad-wins channel as the
 			 * neighboring tool validations.
 			 */
-			JsonEncodeGuard::must_encode( $input, 'tool arguments' );
+			JsonEncodeGuard::must_encode( $input, 'tool arguments', 'zai_anthropic' );
 
 			return array(
 				'type'  => 'tool_use',
@@ -941,7 +941,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * an invalid-UTF-8 tool result was lossily re-encoded and
 			 * shipped, telling the model altered tool output.
 			 */
-			$encoded = JsonEncodeGuard::encode( $function_response->getResponse(), 'a tool result' );
+			$encoded = JsonEncodeGuard::encode( $function_response->getResponse(), 'a tool result', 'zai_anthropic' );
 
 			return array(
 				'type'        => 'tool_result',

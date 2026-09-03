@@ -529,6 +529,168 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
     }
 
     /*
+     * GLM6 #5: wire-value encodability guards (the GLM3 #4/GLM4 #1
+     * oracle, ported from the zai_anthropic surface).
+     */
+
+    public function testAnInvalidUtf8TextPartIsRejectedBeforeTransport()
+    {
+        /*
+         * The SDK parent's request mapping copies the caller's text part
+         * to the wire unvalidated, so an invalid-UTF-8 string detonated
+         * in the transport's whole-request json_encode as an untyped
+         * JsonException — the mapper's catch-all surfaced it as the
+         * generic 500 instead of this typed pre-transport rejection.
+         */
+        try {
+            $this->model()->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart("Scraped \xB1\x31 garbage"))),
+            ));
+            $this->fail('An invalid-UTF-8 text part must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a message text part', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAThoughtChannelTextPartIsNotEncodabilityGuarded()
+    {
+        // GLM6 #5 guard: thought parts never ship (the parent drops them
+        // from the content mapping), so guarding them would over-reject.
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+
+        $this->model()->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart("Reasoning \xB1\x31 noise", \WordPress\AiClient\Messages\Enums\MessagePartChannelEnum::thought()),
+                new MessagePart('go'),
+            )),
+        ));
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts);
+        $this->assertStringNotContainsString("\xB1", (string) $attempts[0]['body'], 'The thought part must not ship.');
+    }
+
+    public function testAnInvalidUtf8SystemInstructionIsRejectedBeforeTransport()
+    {
+        $config = ModelConfig::fromArray(array());
+        $config->setSystemInstruction("System \xB1\x31 garbage");
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An invalid-UTF-8 system instruction must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode the system instruction', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAnInvalidUtf8StopSequenceIsRejectedBeforeTransport()
+    {
+        $config = ModelConfig::fromArray(array());
+        $config->setStopSequences(array("END\xB1\x31"));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An invalid-UTF-8 stop sequence must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a stop sequence', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAnInvalidUtf8ToolDeclarationIsRejectedBeforeTransport()
+    {
+        /*
+         * The declared name and description ride the tools member
+         * verbatim through the parent's prepareToolsParam() — only the
+         * parameter schema was shape-guarded (never encodability).
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('get_weather', "desc with \xB1\x31 invalid utf-8", array('type' => 'object')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An invalid-UTF-8 tool declaration must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a declared tool function description', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testUnencodableToolResultsAreRejectedBeforeTransport()
+    {
+        /*
+         * The SDK parent serializes the function response with plain
+         * json_encode() and string-casts the failure, so an unencodable
+         * tool result silently shipped as "content": false — telling the
+         * model the tool returned no output, the exact corruption class
+         * R18's guard fixed on the zai_anthropic surface.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_r', 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_r', 'get_weather', NAN)))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An unencodable tool result must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a tool result', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testUnencodableToolCallIdentitiesAreRejectedBeforeTransport()
+    {
+        // The id and name ride the tool_calls member verbatim; both are
+        // guarded like every other caller-authored wire string.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall("call_\xB1\x31", 'tool', array('v' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An invalid-UTF-8 tool call id must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a tool call id', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+
+        WpHarness::$sdk_http_attempts = array();
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_ok', "tool_\xB1\x31", array('v' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An invalid-UTF-8 tool call name must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a tool call name', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /*
      * Credential refusal gate (R19/R20, extended to this surface by
      * code-review GLM1 #1).
      */

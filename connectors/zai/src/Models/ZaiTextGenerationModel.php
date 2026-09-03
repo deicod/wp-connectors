@@ -42,6 +42,7 @@ use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
+use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
@@ -533,5 +534,108 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * duplication pattern the guard above was extracted to stop.
 		 */
 		AdvertisedUsageGuard::reject_unsupported( $config, $prompt, 'z.ai' );
+
+		/*
+		 * GLM6 #5: every caller-authored WIRE value the SDK parent's
+		 * request mapping ships verbatim is encodability-guarded here —
+		 * the GLM3 #4/GLM4 #1 guards existed on the zai_anthropic surface
+		 * only, so an invalid-UTF-8 (or NAN-bearing) text part or system
+		 * instruction detonated in the transport's whole-request
+		 * json_encode(..., JSON_THROW_ON_ERROR) as an untyped
+		 * JsonException, surfaced by the mapper's catch-all as the
+		 * generic 500 instead of this typed pre-transport 400. This
+		 * surface's mapping lives in the SDK parent (no per-site hooks
+		 * without duplicating it), so the walk runs once over the prompt
+		 * and configuration — every value the parent copies to the wire
+		 * unvalidated passes the same shared oracle the twin applies at
+		 * its mapping sites. Tool-call ARGUMENTS need no entry here: the
+		 * outbound replay guard below already rejects unencodable ones
+		 * typed.
+		 */
+		$this->guard_wire_values( $prompt );
+	}
+
+	/**
+	 * Rejects unencodable caller-authored wire values before transport
+	 * (GLM6 #5).
+	 *
+	 * The zai surface's request mapping is the SDK parent's
+	 * (prepareGenerateTextParams()), which copies the caller's strings and
+	 * tool-result values into the request params with at most type juggling
+	 * — never an encodability check — and the parent's tool-response
+	 * serialization uses plain json_encode(), whose failure string-casts to
+	 * 'content': false, telling the model the tool returned no output. One
+	 * walk over the prompt and the model configuration guards every such
+	 * value through the shared JsonEncodeGuard oracle (the same one the
+	 * zai_anthropic twin applies at its mapping sites), first-bad-wins,
+	 * before any request build or transport work.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $prompt Prompt messages (list of Message).
+	 * @return void
+	 * @throws InvalidArgumentException When a wire value cannot encode.
+	 */
+	private function guard_wire_values( array $prompt ): void {
+		$config = $this->getConfig();
+
+		$system_instruction = $config->getSystemInstruction();
+		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
+			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', 'zai' );
+		}
+
+		$stop_sequences = $config->getStopSequences();
+		if ( \is_array( $stop_sequences ) ) {
+			foreach ( $stop_sequences as $sequence ) {
+				JsonEncodeGuard::must_encode( $sequence, 'a stop sequence', 'zai' );
+			}
+		}
+
+		$function_declarations = $config->getFunctionDeclarations();
+		if ( \is_array( $function_declarations ) ) {
+			foreach ( $function_declarations as $declaration ) {
+				JsonEncodeGuard::must_encode( $declaration->getName(), 'a declared tool function name', 'zai' );
+				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', 'zai' );
+
+				$input_schema = $declaration->getParameters();
+				if ( \is_array( $input_schema ) ) {
+					JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', 'zai' );
+				}
+			}
+		}
+
+		foreach ( $prompt as $message ) {
+			foreach ( $message->getParts() as $part ) {
+				if ( $part->getType()->isText() && ! $part->getChannel()->isThought() ) {
+					// Only visible text ships (the parent drops thought
+					// parts, so guarding them would over-reject).
+					JsonEncodeGuard::must_encode( (string) $part->getText(), 'a message text part', 'zai' );
+					continue;
+				}
+
+				if ( $part->getType()->isFunctionResponse() && null !== $part->getFunctionResponse() ) {
+					/*
+					 * The parent's message mapping json_encodes the tool
+					 * response with plain json_encode() and string-casts
+					 * the failure — an unencodable result silently shipped
+					 * as "content": false (the R18 corruption class the
+					 * zai_anthropic surface fixed, with the identical
+					 * guard).
+					 */
+					JsonEncodeGuard::must_encode( $part->getFunctionResponse()->getResponse(), 'a tool result', 'zai' );
+					continue;
+				}
+
+				if ( $part->getType()->isFunctionCall() && null !== $part->getFunctionCall() ) {
+					/*
+					 * The id and name ride the wire verbatim inside the
+					 * tool_calls member; the ARGUMENTS are guarded by the
+					 * replay guard in getMessagePartToolCallData().
+					 */
+					JsonEncodeGuard::must_encode( (string) $part->getFunctionCall()->getId(), 'a tool call id', 'zai' );
+					JsonEncodeGuard::must_encode( (string) $part->getFunctionCall()->getName(), 'a tool call name', 'zai' );
+				}
+			}
+		}
 	}
 }
