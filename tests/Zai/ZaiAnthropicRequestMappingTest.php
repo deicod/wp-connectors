@@ -907,7 +907,9 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         // exact key+endpoint binding refuses generation.
         $model = $this->modelWithKey($key = FakeSecrets::apiKey());
         $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings();
-        $binding = hash('sha256', 'runtime|' . $endpoint->cache_key() . '|' . $key);
+        // GLM5 #11: the runtime (save-time candidate) source normalizes to the
+        // database identity at binding construction.
+        $binding = hash('sha256', 'database|' . $endpoint->cache_key() . '|' . $key);
 
         update_option(\Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::STATE_OPTION, array(
             'binding' => $binding,

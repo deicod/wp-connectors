@@ -202,9 +202,11 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
     {
         // Code-review GLM1 #1: a definitive invalid verdict for the exact
         // key+endpoint binding must refuse enumeration on this surface too.
+        // (GLM5 #11: the runtime save-time source normalizes to the
+        // 'database' identity at binding construction.)
         $this->selectEndpoint('coding', 'intl');
         $key = FakeSecrets::apiKey();
-        $binding = hash('sha256', 'runtime|' . \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() . '|' . $key);
+        $binding = hash('sha256', 'database|' . \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() . '|' . $key);
         update_option(PlanRegionSettings::STATE_OPTION, array(
             'binding' => $binding,
             'valid' => 'invalid',

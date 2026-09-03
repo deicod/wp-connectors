@@ -382,7 +382,9 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $key = FakeSecrets::apiKey();
         $directory = $this->directory($key);
 
-        $binding = hash('sha256', 'runtime|zai_anthropic|coding|intl|' . $key);
+        // GLM5 #11: the runtime (save-time candidate) source normalizes to the
+        // database identity at binding construction.
+        $binding = hash('sha256', 'database|zai_anthropic|coding|intl|' . $key);
         update_option(ZaiAnthropicPlanRegionSettings::STATE_OPTION, array(
             'binding' => $binding,
             'valid' => 'invalid',

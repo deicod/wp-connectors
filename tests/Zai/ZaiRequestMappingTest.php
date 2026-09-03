@@ -537,14 +537,16 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
     public function testGenerationIsRefusedWhileAMatchingInvalidVerdictExists()
     {
         // A definitive invalid verdict for the exact key+endpoint binding
-        // refuses generation on this surface too.
+        // refuses generation on this surface too. (GLM5 #11: the wired
+        // model key is a save-time candidate, so its binding normalizes
+        // to the 'database' identity at construction.)
         $this->primeZaiDiscoveryTransient();
         $key = FakeSecrets::apiKey();
         $model = ZaiProvider::model('glm-5.3');
         $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
 
-        $binding = hash('sha256', 'runtime|' . \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() . '|' . $key);
+        $binding = hash('sha256', 'database|' . \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() . '|' . $key);
         update_option(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::STATE_OPTION, array(
             'binding' => $binding,
             'valid' => 'invalid',

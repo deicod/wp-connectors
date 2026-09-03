@@ -418,6 +418,20 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		$endpoint_class = static::endpoint_class();
 		$endpoint       = $endpoint_class::for_current_settings();
 
+		/*
+		 * GLM5 #11: 'runtime' (core's save-time candidate label) and
+		 * 'database' (the same credential once stored) are ONE credential
+		 * identity — normalizing at binding construction keeps the binding
+		 * stable across the save→store transition, so a fresh invalid
+		 * verdict persisted while the candidate was wired still refuses
+		 * the identical credential once it is read back from the stored
+		 * option (the refusal gate previously computed a DIFFERENT binding
+		 * per label and let a definitively-rejected key through).
+		 */
+		if ( 'runtime' === $source ) {
+			$source = 'database';
+		}
+
 		return hash( 'sha256', $source . '|' . $endpoint->cache_key() . '|' . $key );
 	}
 

@@ -859,11 +859,53 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
 
     public function testRuntimeSourceForUnstoredRegistryKey()
     {
-        // Core sets a candidate key on the registry during REST validation
-        // before it is stored; its verdict binds to 'runtime'.
+        /*
+         * Core sets a candidate key on the registry during REST validation
+         * before it is stored. The SOURCE label stays 'runtime' (an
+         * unstored candidate), but its binding normalizes to the
+         * 'database' identity (GLM5 #11): the same credential, one
+         * binding, across the save→store transition.
+         */
         $candidate = FakeSecrets::apiKey();
         $instance = $this->availability($candidate);
 
         $this->assertSame('runtime', $instance->effective_key()['source']);
+    }
+
+    public function testAnInvalidVerdictPersistsAcrossTheSaveStoreTransition()
+    {
+        /*
+         * GLM5 #11: the refusal gate matched stored verdicts by
+         * binding(source,key), but key_source() labels the same
+         * credential 'runtime' at save time and 'database' once stored —
+         * a fresh invalid verdict persisted under the 'runtime' binding
+         * did not refuse the identical credential later read from the
+         * stored option. 'runtime' normalizes to 'database' at binding
+         * construction now: one credential identity across the
+         * transition.
+         */
+        $this->freezeTime(1700000000);
+        putenv('ZAI_API_KEY');
+        $key = FakeSecrets::apiKey();
+
+        // Save-time shape: core wires the candidate key (runtime source)
+        // and the endpoint definitively rejects it.
+        $candidate = $this->availability($key);
+        $this->queueSdkResponse(401, array(), '{"error":{"message":"bad key"}}');
+
+        $this->assertFalse($candidate->isConfigured(), 'The candidate key is definitively rejected.');
+        $this->assertSame('invalid', get_option(ZaiProviderAvailability::STATE_OPTION)['valid'], 'The rejection persists.');
+
+        // Stored shape: the same key value read back from the option (no
+        // wired auth) must inherit the definitive verdict — the gate
+        // refuses it and no fresh probe rides the stored binding.
+        update_option(ZaiProviderAvailability::KEY_OPTION, $key);
+
+        $stored = new ZaiProviderAvailability();
+        $stored->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+
+        $this->assertSame('invalid_verdict', $stored->generation_refusal_reason(), 'The invalid verdict must refuse the identical stored credential.');
+        $this->assertFalse($stored->isConfigured(), 'The stored verdict must hold across the transition.');
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'No fresh probe may ride the stored verdict.');
     }
 }
