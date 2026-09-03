@@ -359,6 +359,32 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(7, $result->getTokenUsage()->getTotalTokens());
     }
 
+    public function testFramesAppendedAfterTheDoneSentinelAreIgnoredNotMerged()
+    {
+        /*
+         * GLM5 #7: 'data: [DONE]' set the sentinel flag but nothing
+         * consulted it, so a frame an intermediary APPENDED after it
+         * still merged into the aggregated payload — content
+         * concatenated, finish reason and usage overwritten — silently
+         * mutating a completed generation. Trailing frames are ignored
+         * now (parity with the Anthropic twin's message_stop policy).
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), implode("\n\n", array(
+            'data: {"id":"chatcmpl-td","choices":[{"index":0,"delta":{"role":"assistant","content":"A"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-td","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":3,"total_tokens":7}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-td","choices":[{"index":0,"delta":{"content":"GHOST"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-td","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":99,"completion_tokens":99,"total_tokens":198}}',
+            '',
+        )));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('A', $result->toText(), 'Post-sentinel content must not merge into the completion.');
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason(), 'Post-sentinel finish reasons must not overwrite the completion.');
+        $this->assertSame(7, $result->getTokenUsage()->getTotalTokens(), 'Post-sentinel usage must not overwrite the completion.');
+    }
+
     public function testAStreamPrefixedWithAUtf8BomStillAggregates()
     {
         /*

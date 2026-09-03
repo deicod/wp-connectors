@@ -7,11 +7,12 @@
  * payload that the non-streaming response parser can consume.
  *
  * Handles the OpenAI/z.ai streaming conventions: `data:` lines (multi-line
- * data joined), `[DONE]` sentinel, comment lines (`:`), ignorable `event:`/
- * `id:`/`retry:` fields, malformed JSON events (counted and skipped, never
- * fatal), and — via the shared SseFrameBuffer — split frames (chunks may end
- * mid-frame), CR/LF/CRLF line terminators mixed freely, and a final
- * unterminated frame.
+ * data joined), `[DONE]` sentinel (TERMINAL — frames appended after it are
+ * ignored, never merged into the completed payload, GLM5 #7), comment
+ * lines (`:`), ignorable `event:`/`id:`/`retry:` fields, malformed JSON
+ * events (counted and skipped, never fatal), and — via the shared
+ * SseFrameBuffer — split frames (chunks may end mid-frame), CR/LF/CRLF
+ * line terminators mixed freely, and a final unterminated frame.
  *
  * @since 0.1.0
  *
@@ -328,6 +329,22 @@ final class SseAggregator {
 	 * @return void
 	 */
 	private function consume_frame( string $frame ): void {
+		/*
+		 * GLM5 #7: `data: [DONE]` is TERMINAL — the sentinel set the flag
+		 * but nothing consulted it, so frames an intermediary APPENDED
+		 * after it (the repo's own records document gateways doing exactly
+		 * that to this provider's streams) still merged into the
+		 * aggregated payload: content concatenated, finish reason and
+		 * usage overwritten — a completed generation silently mutated.
+		 * Parity with the Anthropic twin's GLM4 #6 trailing-frame policy:
+		 * frames after the terminal event are IGNORED, not merged (this
+		 * surface's frames carry no declared-event semantics to judge
+		 * them by, so everything after the sentinel is noise).
+		 */
+		if ( $this->done ) {
+			return;
+		}
+
 		$data_lines = array();
 
 		foreach ( explode( "\n", $frame ) as $line ) {
