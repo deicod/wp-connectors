@@ -1635,14 +1635,20 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
                 $this->model()->generateTextResult($prompt);
                 $this->fail("A duplicate tool call id (second name {$second_name}) must be rejected.");
             } catch (InvalidArgumentException $e) {
-                $this->assertStringContainsString('unique within an assistant message', $e->getMessage());
+                $this->assertStringContainsString('unique across the conversation', $e->getMessage());
             }
         }
 
         $this->assertNoHttpRequests();
 
-        // ID reuse ACROSS turns (different assistant messages) stays legal
-        // (R9 probe area — do not regress).
+        /*
+         * GLM5 #6: ID reuse ACROSS turns (different assistant messages)
+         * used to stay legal — the duplicate map reset at every role
+         * change, so two different, properly answered assistant turns
+         * shipped with the SAME identity (ambiguous tool-result
+         * correlation; a strict upstream implementation 400s). The
+         * uniqueness scope spans the whole conversation now.
+         */
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
             new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('reuse', 'ping', array())))),
@@ -1651,10 +1657,30 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('reuse', 'ping', array('r' => 2))))),
         );
 
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A duplicate tool call id across different assistant turns must be rejected.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('unique across the conversation', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+
+        // DIFFERENT ids across turns keep replaying fine.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('r1', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('r1', 'ping', array('r' => 1))))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('r2', 'ping', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('r2', 'ping', array('r' => 2))))),
+        );
+
         list($url, $body) = $this->captureRequest($prompt, $this->model());
 
-        $this->assertSame('reuse', $body['messages'][1]['content'][0]['id']);
-        $this->assertSame('reuse', $body['messages'][4]['content'][0]['tool_use_id'], 'Cross-turn reuse stays legal.');
+        $this->assertSame('r1', $body['messages'][1]['content'][0]['id']);
+        $this->assertSame('r2', $body['messages'][3]['content'][0]['id']);
+        $this->assertSame('r1', $body['messages'][2]['content'][0]['tool_use_id']);
+        $this->assertSame('r2', $body['messages'][4]['content'][0]['tool_use_id'], 'Distinct cross-turn ids stay legal.');
     }
 
     public function testADuplicateToolCallIdAcrossCoalescedAssistantMessagesIsRejected()
@@ -1674,7 +1700,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($prompt);
             $this->fail('A duplicate tool call id across coalesced assistant messages must be rejected.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('unique within an assistant message', $e->getMessage());
+            $this->assertStringContainsString('unique across the conversation', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();

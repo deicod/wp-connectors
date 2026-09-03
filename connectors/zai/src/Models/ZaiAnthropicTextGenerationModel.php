@@ -546,7 +546,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$outstanding_tools = array();
 		$awaiting_answer   = false;
 		$previous_role     = null;
-		$turn_tool_ids     = array();
+		$seen_tool_ids     = array();
 
 		foreach ( $messages as $message ) {
 			$role   = $this->message_role_string( $message->getRole() );
@@ -554,22 +554,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			/*
 			 * Turn boundary = role change: adjacent SDK messages of the same
-			 * role coalesce into ONE wire turn below, so all turn-scoped
-			 * validation runs HERE, once per coalesced turn — (a) the
-			 * duplicate-id check scopes to the wire turn (Codex R10 #2
-			 * verifier probe: two adjacent assistant Messages sharing a tool
-			 * id must reject), and (b) the R9/R10 answer window closes only
-			 * when the answering COALESCED user turn has fully ended
-			 * (Codex R11 #1): checking after each SDK message rejected a
-			 * legitimately split answer (result A in SDK user message 1,
-			 * result B in the immediately adjacent message 2) before the
-			 * coalescing below could merge them into the one valid wire
-			 * turn.
+			 * role coalesce into ONE wire turn below, so the answer-window
+			 * validation runs HERE, once per coalesced turn — the R9/R10
+			 * window closes only when the answering COALESCED user turn has
+			 * fully ended (Codex R11 #1): checking after each SDK message
+			 * rejected a legitimately split answer (result A in SDK user
+			 * message 1, result B in the immediately adjacent message 2)
+			 * before the coalescing below could merge them into the one
+			 * valid wire turn.
 			 */
 			if ( $role !== $previous_role ) {
 				$this->advance_answer_window( $awaiting_answer, $outstanding_tools, $previous_role, $role );
 
-				$turn_tool_ids = array();
 				$previous_role = $role;
 			}
 
@@ -583,14 +579,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					 * result would satisfy linkage while the wire carries
 					 * duplicate identities (upstream validation failure).
 					 * Reject before the map assignment can overwrite.
+					 *
+					 * GLM5 #6: the scope spans the WHOLE history, not the
+					 * coalesced turn ($turn_tool_ids reset at every role
+					 * change, so the same id reused across two different,
+					 * properly answered assistant turns passed local
+					 * validation and shipped — tool-result correlation is
+					 * ambiguous for consumers and a strict Anthropic
+					 * implementation upstream rejects the identity), which
+					 * is what the R10 #2 duplicate check exists to prevent.
 					 */
-					if ( isset( $turn_tool_ids[ $block['id'] ] ) ) {
+					if ( isset( $seen_tool_ids[ $block['id'] ] ) ) {
 						throw new InvalidArgumentException(
-							'The zai_anthropic provider requires tool call ids to be unique within an assistant message (duplicate tool call id).'
+							'The zai_anthropic provider requires tool call ids to be unique across the conversation (duplicate tool call id).'
 						);
 					}
 
-					$turn_tool_ids[ $block['id'] ] = true;
+					$seen_tool_ids[ $block['id'] ] = true;
 
 					// A new tool_use opens its ID for exactly one answer.
 					$outstanding_tools[ $block['id'] ] = true;
