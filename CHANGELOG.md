@@ -6,6 +6,93 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM7 code review)
+
+- Stream-merge parity and error channels: the legacy zai merge rejects
+  unusable chunk-choice and tool-call-delta indexes typed (missing,
+  null, non-integer, or negative indexes were silently skipped — losing
+  that delta's content from a successful stream — or int-coerced into
+  the WRONG accumulator, where the Anthropic twin added in this branch
+  rejects the identical corruption as a malformed event), and the
+  `[DONE]` sentinel now terminates the CONTENT stream only: a frame an
+  appending gateway emits after the sentinel still completes the payload
+  with terminal metadata it lacks — a finish reason for an accumulated
+  choice missing one, a usage member when no usage data merged — never
+  overwriting data already carried (GLM5 #7's mutation guard, narrowed
+  to the overwrite shapes it existed to stop), never opening new choice
+  turns, restoring master's behavior for the documented
+  final-chunk-after-sentinel gateway shape that previously failed the
+  SDK parse or silently zeroed token usage (verifier round: an EMPTY
+  pre-sentinel `"usage":{}` member carries no token data and is
+  completable too — it must not block the gap-fill). On the Anthropic
+  twin, an `event: error` DECLARATION with a malformed payload (truncated
+  JSON, or a decodable non-object) sets the error flag in BOTH phases —
+  a proxy cutting the connection mid-error-event previously surfaced as
+  "malformed event frame", indistinguishable from protocol corruption;
+  a lost or shapeless `message_delta` frame flags the stream malformed
+  through the same channel as its missing-`message_start`/`message_stop`
+  siblings instead of the vague "No usable message event" verdict.
+
+- Guard and message parity: the zai surface validates stop sequences
+  per entry (non-empty strings; `['']`/`[0]` encoded fine and shipped
+  verbatim) and requires non-empty tool-call ids and names typed (the
+  `(string)` casts let a null id pass while null rode the wire) — the
+  zai_anthropic twin's GLM3 #3/Codex R9 #3 contracts; the
+  `WIRE_FORWARDED` rejection keeps its shared RULE but justifies itself
+  truthfully per surface (the zai surface's SDK-parent builder really
+  would send the value; the zai_anthropic builder never emits those
+  keys, so its message cites the cross-surface option contract instead
+  of a forwarding it does not perform); and the zai_anthropic
+  tool-arguments judgment runs ONE serialization pass (the replay
+  guard's own first branch already proved encodability — the separate
+  `must_encode()` encoded the identical tree only to discard it, four
+  serializations per replayed call in a tool loop).
+
+- Availability and discovery plumbing: region-switch distrust no longer
+  bypasses the 60s probe-miss negative cache (every consult re-issued a
+  live blocking authenticated HTTPS probe — re-transmitting the
+  old-region credential to the new endpoint — for as long as the
+  endpoint answered inconclusively, with no cap); a definitive 401/403
+  on the zai_anthropic `/v1/models` route records the invalid verdict
+  through the availability layer's own persist path before throwing a
+  status-aware error naming the auth rejection (previously
+  indistinguishable from a malformed body and converted into a silent
+  60s `_miss` marker plus static-plan fallback with no persisted
+  verdict); and the live probe catches `Throwable` at both step
+  handlers, so a PHP `Error` from a strict-types mismatch reports the
+  step FAILED instead of crashing with an uncaught stack trace outside
+  the safe-facts contract.
+
+- Surface semantics restored and hot paths thinned: the legacy zai
+  surface keeps master's usage semantics through a lenient validator
+  mode (`"usage":null`, `"usage":[]`, and explicitly-null members count
+  as absent/zero — the GLM5 #3 shared validator had silently extended
+  the Anthropic surface's strict rejection to every existing zai
+  consumer; genuinely corrupt shapes still reject on both surfaces);
+  non-streaming bodies decode ONCE per flavor with the SDK parent
+  receiving the pre-decoded payload (three full-body parses where
+  master paid one); the zai_anthropic metadata map is memoized per
+  transient content (the full rebuild-plus-sort ran on every
+  list/has/get call — two or more per AI request — while the transient
+  read stays authoritative); the tool_use input shape probe uses the
+  RAW `json_encode()` oracle (production `wp_json_encode()` lossily
+  rescues invalid UTF-8, so the defensive branch decided differently
+  under the test stub than in production for the same payload); and the
+  env-to-constant credential ladder, hand-rolled three times over, is
+  one shared `env_constant_ladder()` in the SDK-free settings layer.
+
+- Structural cleanups, no behavior change: the Anthropic aggregator's
+  termination state is ONE flag (`$done` and `$terminated` were always
+  set in the same statement), and the `event:`/`data:` field parsing
+  copy-pasted between both aggregators' `consume_frame()` methods is
+  one shared `SseFieldParser` with its behavior contract pinned by a
+  dedicated suite. Deliberately left for later (verifier-swept,
+  low-value or latent): the `ZaiDiscoveryCache` empty-list positive
+  cache (unreachable by current parsers), the `PreDecodedResponse`
+  null-body/empty-headers latent hazards, `ZaiModelMetadataDirectory`'s
+  re-entrant `$discovery_endpoint`, the dead `Plugin::PROVIDER_ID`, and
+  the live probe's hardcoded option/cache literals.
+
 ### Fixed (zai / M2 — GLM6 code review)
 
 - Guard-parity round two — every guard suite this branch built had gaps
