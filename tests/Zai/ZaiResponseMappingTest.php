@@ -707,15 +707,17 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(7, $result->getTokenUsage()->getTotalTokens());
     }
 
-    public function testFramesAppendedAfterTheDoneSentinelAreIgnoredNotMerged()
+    public function testPostSentinelFramesDoNotMutateTheCompletedPayload()
     {
         /*
          * GLM5 #7: 'data: [DONE]' set the sentinel flag but nothing
-         * consulted it, so a frame an intermediary APPENDED after it
+         * consulted it, so frames an intermediary APPENDED after it
          * still merged into the aggregated payload — content
          * concatenated, finish reason and usage overwritten — silently
-         * mutating a completed generation. Trailing frames are ignored
-         * now (parity with the Anthropic twin's message_stop policy).
+         * mutating a completed generation. GLM7 #2 narrowed the policy:
+         * trailing frames may only COMPLETE the payload (see the
+         * gap-fill test below); overwriting data it already carries
+         * stays rejected.
          */
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), implode("\n\n", array(
             'data: {"id":"chatcmpl-td","choices":[{"index":0,"delta":{"role":"assistant","content":"A"},"finish_reason":null}]}',
@@ -731,6 +733,71 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('A', $result->toText(), 'Post-sentinel content must not merge into the completion.');
         $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason(), 'Post-sentinel finish reasons must not overwrite the completion.');
         $this->assertSame(7, $result->getTokenUsage()->getTotalTokens(), 'Post-sentinel usage must not overwrite the completion.');
+    }
+
+    public function testFinalUsageAndFinishReasonAfterTheDoneSentinelCompleteThePayload()
+    {
+        /*
+         * GLM7 #2: appending gateways emit the FINAL chunk (the one
+         * carrying finish_reason and usage) after the `data: [DONE]`
+         * sentinel — the repo's records document the shape. Master
+         * merged it; the GLM5 #7 wholesale drop made the completed
+         * generation fail the SDK parse (missing
+         * choices[0].finish_reason) or report zero token usage. The
+         * trailing terminal data gap-fills the payload now.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-tg","choices":[{"index":0,"delta":{"role":"assistant","content":"Completed"},"finish_reason":null}]}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-tg","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":5,"total_tokens":16}}',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame('stop', $aggregated['choices'][0]['finish_reason'], 'A trailing finish reason must complete a choice that lacks one.');
+        $this->assertSame(16, $aggregated['usage']['total_tokens'], 'A trailing usage member must fill the payload when none merged pre-sentinel.');
+        $this->assertSame(1, $aggregator->event_count(), 'Trailing frames must not count as content events.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Completed', $result->toText());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+        $this->assertSame(16, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    public function testPostSentinelFramesOpenNoNewTurnsAndCountMalformed()
+    {
+        /*
+         * GLM7 #2 (aggregator half): a trailing frame cannot create a
+         * choice accumulator (an unknown index is gap-fill-inert), its
+         * delta content never merges, and its malformed JSON still
+         * counts — master's decode pipeline, minus the content mutation.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-tn","choices":[{"index":0,"delta":{"role":"assistant","content":"Only"},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-tn","choices":[{"index":5,"delta":{"content":"GHOST"},"finish_reason":"length"}]}',
+            'data: not json',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+
+        $this->assertSame('Only', $aggregated['choices'][0]['message']['content'], 'Post-sentinel content must not merge.');
+        $this->assertArrayNotHasKey(1, $aggregated['choices'], 'A trailing unknown index must not open a new choice turn.');
+        $this->assertSame('stop', $aggregated['choices'][0]['finish_reason'], 'A trailing finish reason must not replace a present one.');
+        $this->assertSame(1, $aggregator->malformed_count(), 'A malformed post-sentinel frame must still count.');
+        $this->assertFalse($aggregator->has_malformed_event(), 'Well-formed trailing frames are not corruption.');
     }
 
     public function testAStreamPrefixedWithAUtf8BomStillAggregates()

@@ -7,12 +7,17 @@
  * payload that the non-streaming response parser can consume.
  *
  * Handles the OpenAI/z.ai streaming conventions: `data:` lines (multi-line
- * data joined), `[DONE]` sentinel (TERMINAL — frames appended after it are
- * ignored, never merged into the completed payload, GLM5 #7), comment
- * lines (`:`), ignorable `event:`/`id:`/`retry:` fields, malformed JSON
- * events (counted and skipped, never fatal), and — via the shared
- * SseFrameBuffer — split frames (chunks may end mid-frame), CR/LF/CRLF
- * line terminators mixed freely, and a final unterminated frame.
+ * data joined), `[DONE]` sentinel (TERMINAL — the content stream ends
+ * there: no delta, role, or tool-call fragment merges after it and no new
+ * choice turn opens, but a frame an appending gateway emits after the
+ * sentinel still COMPLETES the payload with terminal metadata it lacks —
+ * a finish_reason for an accumulated choice missing one, a usage member
+ * when none merged; never an overwrite of data already carried, GLM5 #7
+ * narrowed by GLM7 #2), comment lines (`:`), ignorable
+ * `event:`/`id:`/`retry:` fields, malformed JSON events (counted and
+ * skipped, never fatal), and — via the shared SseFrameBuffer — split
+ * frames (chunks may end mid-frame), CR/LF/CRLF line terminators mixed
+ * freely, and a final unterminated frame.
  *
  * @since 0.1.0
  *
@@ -89,6 +94,49 @@ final class SseAggregator {
 	 * @var int
 	 */
 	private $malformed = 0;
+
+	/**
+	 * The usage member of a POST-sentinel frame, or null when no trailing
+	 * frame carried one (GLM7 #2).
+	 *
+	 * Appending gateways emit the final usage-bearing chunk AFTER the
+	 * [DONE] sentinel; master merged it, GLM5 #7 dropped it, and the
+	 * completed generation then reported zero token usage. The trailing
+	 * member gap-fills the payload only when NO pre-sentinel usage
+	 * merged — it never replaces one (the mutation guard).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, mixed>|null
+	 */
+	private $trailing_usage = null;
+
+	/**
+	 * The raw (non-associative) usage value of the trailing frame whose
+	 * usage the gap-fill takes, or null — the oracle that travels with
+	 * $trailing_usage exactly the way $raw_usage travels with the
+	 * pre-sentinel merge (GLM6 #3's same-frame rule, GLM7 #2).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var mixed
+	 */
+	private $trailing_raw_usage = null;
+
+	/**
+	 * Finish reasons declared by POST-sentinel frames, keyed by choice
+	 * index, last declaration per index wins (GLM7 #2).
+	 *
+	 * Gap-fill only: aggregated() applies one to an accumulated choice
+	 * that still carries a null finish_reason — a trailing frame never
+	 * REPLACES a finish reason the payload already has, and an index
+	 * with no accumulated choice opens no new turn.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<int, mixed>
+	 */
+	private $trailing_finish_reasons = array();
 
 	/**
 	 * Whether a chunk choice or tool-call delta carried an index this
@@ -285,6 +333,28 @@ final class SseAggregator {
 			return null;
 		}
 
+		/*
+		 * GLM7 #2: post-sentinel terminal data COMPLETES the payload —
+		 * gap-fill only, never an overwrite. A finish reason an appending
+		 * gateway delivered after the [DONE] sentinel lands on the
+		 * accumulated choice that still lacks one (without it the SDK
+		 * parse dies on the missing choices[0].finish_reason, failing a
+		 * stream master completed); an already-present finish reason or
+		 * usage member stands, keeping GLM5 #7's completed-generation
+		 * mutation guard for exactly the overwrite shapes it existed to
+		 * stop. Indexes without an accumulated choice open no new turn.
+		 */
+		foreach ( $this->trailing_finish_reasons as $index => $reason ) {
+			if ( isset( $choices[ $index ] ) && null === $choices[ $index ]['finish_reason'] ) {
+				$choices[ $index ]['finish_reason'] = $reason;
+			}
+		}
+
+		if ( null === $usage && null !== $this->trailing_usage ) {
+			$usage           = $this->trailing_usage;
+			$this->raw_usage = $this->trailing_raw_usage;
+		}
+
 		// Reindex the merged tool calls ONCE, here: while merging, the
 		// accumulated per-choice lists stay keyed by STREAM index (the merge
 		// identity), so out-of-order (1 before 0), non-zero-starting, or
@@ -422,21 +492,18 @@ final class SseAggregator {
 	 */
 	private function consume_frame( string $frame ): void {
 		/*
-		 * GLM5 #7: `data: [DONE]` is TERMINAL — the sentinel set the flag
-		 * but nothing consulted it, so frames an intermediary APPENDED
-		 * after it (the repo's own records document gateways doing exactly
-		 * that to this provider's streams) still merged into the
-		 * aggregated payload: content concatenated, finish reason and
-		 * usage overwritten — a completed generation silently mutated.
-		 * Parity with the Anthropic twin's GLM4 #6 trailing-frame policy:
-		 * frames after the terminal event are IGNORED, not merged (this
-		 * surface's frames carry no declared-event semantics to judge
-		 * them by, so everything after the sentinel is noise).
+		 * GLM5 #7 established `data: [DONE]` as TERMINAL; GLM7 #2 narrows
+		 * what that terminates: the CONTENT stream (no delta, role, or
+		 * tool-call fragment merges after the sentinel, and no new choice
+		 * turn opens), not the frame pipeline. Frames an appending
+		 * gateway emits after the sentinel — the repo's own records
+		 * document exactly that behavior — are still parsed, malformed
+		 * ones still counted, and their TERMINAL metadata (finish reason,
+		 * usage) still completes the payload (see consume_trailing_frame()
+		 * and aggregated()'s gap-fill). Dropping every post-sentinel
+		 * frame wholesale failed streams master completed (missing
+		 * finish_reason) and silently zeroed their usage.
 		 */
-		if ( $this->done ) {
-			return;
-		}
-
 		$data_lines = array();
 
 		foreach ( explode( "\n", $frame ) as $line ) {
@@ -473,6 +540,12 @@ final class SseAggregator {
 			return;
 		}
 
+		if ( $this->done ) {
+			$this->consume_trailing_frame( $decoded, $data );
+
+			return;
+		}
+
 		/*
 		 * Verifier round on GLM5 #3: capture the usage member's RAW
 		 * (non-associative) shape for the model's validator — the
@@ -502,8 +575,59 @@ final class SseAggregator {
 	}
 
 	/**
+	 * Consumes one POST-sentinel frame's terminal metadata (GLM7 #2).
+	 *
+	 * The frame already passed the same decode pipeline a pre-sentinel
+	 * frame passes; all that may be taken from it is what completes the
+	 * payload: the usage member (captured raw alongside, GLM6 #3's
+	 * same-frame rule) and finish reasons for already-accumulated choice
+	 * indexes. Content-bearing members (delta, role, tool_calls) are
+	 * deliberately ignored — the completed generation's text cannot be
+	 * mutated — and choices with unusable indexes raise the GLM7 #1 flag
+	 * like their pre-sentinel twins.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<string, mixed> $decoded The decoded frame payload.
+	 * @param string               $data    The raw data string of the frame.
+	 * @return void
+	 */
+	private function consume_trailing_frame( array $decoded, string $data ): void {
+		if ( isset( $decoded['usage'] ) && \is_array( $decoded['usage'] ) ) {
+			$raw_event                = json_decode( $data );
+			$this->trailing_usage     = $decoded['usage'];
+			$this->trailing_raw_usage = \is_object( $raw_event ) ? ( $raw_event->usage ?? null ) : null;
+		}
+
+		if ( ! isset( $decoded['choices'] ) || ! \is_array( $decoded['choices'] ) ) {
+			return;
+		}
+
+		foreach ( $decoded['choices'] as $choice ) {
+			// GLM7 #1 parity: an unusable index in a trailing frame is the
+			// same corruption class as a pre-sentinel one.
+			if ( ! \is_array( $choice )
+				|| ! isset( $choice['index'] )
+				|| ! \is_int( $choice['index'] )
+				|| $choice['index'] < 0 ) {
+				$this->malformed_event = true;
+
+				continue;
+			}
+
+			if ( \array_key_exists( 'finish_reason', $choice ) && null !== $choice['finish_reason'] ) {
+				$this->trailing_finish_reasons[ $choice['index'] ] = $choice['finish_reason'];
+			}
+		}
+	}
+
+	/**
 	 * The usage member from a non-associative decode of the last frame
 	 * whose usage the merge takes, or null when none was seen.
+	 *
+	 * GLM7 #2: when a post-sentinel frame's usage gap-fills the payload,
+	 * aggregated() re-points this oracle at that trailing frame — the
+	 * value always describes the member the consolidated payload carries.
 	 *
 	 * @since 0.2.0
 	 *
