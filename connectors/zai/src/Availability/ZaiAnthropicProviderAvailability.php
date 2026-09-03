@@ -80,6 +80,15 @@ final class ZaiAnthropicProviderAvailability extends AbstractZaiProviderAvailabi
 	public const KEY_ENV_NAME = ZaiAnthropicPlanRegionSettings::KEY_ENV_NAME;
 
 	/**
+	 * This provider's label in the shared refusal wording (GLM5 #17).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const REFUSAL_LABEL = 'zai_anthropic';
+
+	/**
 	 * The provider's endpoint resolver class.
 	 *
 	 * @since 0.2.0

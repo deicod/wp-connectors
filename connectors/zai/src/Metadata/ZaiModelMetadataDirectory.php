@@ -281,18 +281,19 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		 * enumeration still authenticated with it here, disclosing the
 		 * old-region key to the newly selected endpoint. The SAME
 		 * availability gate is consulted (reused, not duplicated —
-		 * GLM4 #9: through the shared
-		 * generation_refusal_for_wired_authentication() predicate the
-		 * models and the zai_anthropic directory also use): while
-		 * refused, the authenticated request never happens and
-		 * discovery degrades to the static plan fallback via the shared
-		 * cache's catch — never fatal, cached at most as the 60s
-		 * negative marker (GLM1 #6), so a later definitive verdict can
-		 * discover again.
+		 * GLM4 #9: the shared predicate; GLM5 #17: the shared
+		 * refuse_discovery() wrapper the other credential consumers
+		 * also use): while refused, the authenticated request never
+		 * happens and discovery degrades to the static plan fallback
+		 * via the shared cache's catch — never fatal, cached at most
+		 * as the 60s negative marker (GLM1 #6), so a later definitive
+		 * verdict can discover again.
 		 */
-		if ( null !== ( new ZaiProviderAvailability() )->generation_refusal_for_wired_authentication( $this->getRequestAuthentication() ) ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Discovery skipped: the credential is pending revalidation or was rejected for this endpoint.' );
-		}
+		( new ZaiProviderAvailability() )->refuse_discovery(
+			function () {
+				return $this->getRequestAuthentication();
+			}
+		);
 
 		/*
 		 * GLM3 #10: capture the endpoint at REQUEST time. The SDK's

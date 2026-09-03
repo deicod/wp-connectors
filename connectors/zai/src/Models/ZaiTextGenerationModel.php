@@ -27,7 +27,6 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Models;
 
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
-use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Providers\Http\DTO\Request;
@@ -160,10 +159,16 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * authenticated a region-pending or definitively-rejected env/constant
 	 * key after a region switch — sending the old region's credential to the
 	 * newly selected endpoint (cross-region disclosure) while the connector
-	 * reported disconnected. The gate REUSES the availability layer's own
-	 * state readers (no duplicated logic, no probe request) with the model's
-	 * exact credential, exactly like the zai_anthropic surface's
-	 * generateTextResult() gate.
+	 * reported disconnected.
+	 *
+	 * GLM4 #9 moved the gate PREDICATE and the refusal messages to the
+	 * availability layer; GLM5 #17 absorbed the remaining wrapper
+	 * sequence (the unwired-model skip, the predicate call, the message
+	 * build, the throw) into the one refuse_generation() helper every
+	 * credential consumer consults. This surface's only contribution is
+	 * its WIRING: the model's own SDK getter for the authentication it
+	 * would authenticate with (an unwired model skips the gate, keeping
+	 * the pre-gate exception order — the GLM1 #1 verifier nit).
 	 *
 	 * @since 0.1.0
 	 *
@@ -173,34 +178,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 *                                  for the selected endpoint.
 	 */
 	private function refuse_refused_credentials(): void {
-		/*
-		 * An unbound model (no wired auth) is not this gate's concern: skip
-		 * it and let the request fail exactly where it did before the gate
-		 * existed (the SDK's authenticateRequest() RuntimeException), so
-		 * the pre-gate exception ORDER is preserved for callers that
-		 * misuse an unbound model while ALSO carrying invalid options
-		 * (verifier nit on GLM1 #1: the gate must not steal that error).
-		 *
-		 * GLM4 #9: the gate PREDICATE and the refusal messages live on
-		 * the availability layer now
-		 * (generation_refusal_for_wired_authentication() /
-		 * refusal_message()), shared with the zai_anthropic twin and
-		 * both metadata directories.
-		 */
-		try {
-			$authentication = $this->getRequestAuthentication();
-		} catch ( RuntimeException $e ) {
-			return;
-		}
-
-		$refusal = ( new ZaiProviderAvailability() )->generation_refusal_for_wired_authentication( $authentication );
-
-		if ( null !== $refusal ) {
-			$message = ZaiProviderAvailability::refusal_message( 'zai', $refusal );
-
-			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-			throw new InvalidArgumentException( $message );
-		}
+		( new ZaiProviderAvailability() )->refuse_generation(
+			function () {
+				return $this->getRequestAuthentication();
+			}
+		);
 	}
 
 	/**

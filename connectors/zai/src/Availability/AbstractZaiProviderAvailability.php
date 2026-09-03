@@ -45,6 +45,8 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Availability;
 
 use Throwable;
+use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\Contracts\ProviderAvailabilityInterface;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithHttpTransporterInterface;
@@ -52,6 +54,7 @@ use WordPress\AiClient\Providers\Http\Contracts\WithRequestAuthenticationInterfa
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
+use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\Traits\WithHttpTransporterTrait;
 use WordPress\AiClient\Providers\Http\Traits\WithRequestAuthenticationTrait;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
@@ -606,6 +609,89 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		return 'region_pending' === $reason
 			? sprintf( 'The %s provider refuses generation: the active environment credential is pending revalidation after a region switch.', $provider_label )
 			: sprintf( 'The %s provider refuses generation: the active credential was rejected for the selected endpoint.', $provider_label );
+	}
+
+	/**
+	 * The provider label for the fixed refusal wording (GLM5 #17).
+	 *
+	 * Overridden per provider child ('zai_anthropic'); the base value is
+	 * the zai provider's, like every identifier constant here.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const REFUSAL_LABEL = 'zai';
+
+	/**
+	 * Refuses MODEL GENERATION for a distrusted credential, or returns
+	 * quietly (GLM5 #17: the gate wrappers absorbed).
+	 *
+	 * The wrapper sequence BOTH model surfaces repeated by hand — read
+	 * the wired authentication (an UNWIRED model is not the gate's
+	 * concern: skipping preserves the pre-gate exception order for
+	 * callers that misuse an unbound model while also carrying invalid
+	 * options), consult the shared predicate, build the surface's fixed
+	 * message, throw — lives here once. Each surface passes ONLY its
+	 * wiring choice: the reader closure returning the authentication
+	 * instance it would authenticate with (the zai surface's own getter;
+	 * the zai_anthropic surface's RAW parent getter, so a foreign-wiring
+	 * failure surfaces as the 500 binding error rather than a 400
+	 * option-rejection, GLM3 #9).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param callable $authentication_reader Returns the wired
+	 *                                        RequestAuthenticationInterface
+	 *                                        (throws RuntimeException when
+	 *                                        unwired, which skips the gate).
+	 * @return void
+	 * @throws InvalidArgumentException When the gate refuses the credential.
+	 */
+	public function refuse_generation( callable $authentication_reader ): void {
+		try {
+			$authentication = $authentication_reader();
+		} catch ( RuntimeException $e ) {
+			return;
+		}
+
+		$refusal = $this->generation_refusal_for_wired_authentication( $authentication );
+
+		if ( null !== $refusal ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new InvalidArgumentException( self::refusal_message( static::REFUSAL_LABEL, $refusal ) );
+		}
+	}
+
+	/**
+	 * Refuses DISCOVERY ENUMERATION for a distrusted credential, or
+	 * returns quietly (GLM5 #17: the gate wrappers absorbed).
+	 *
+	 * The wrapper sequence BOTH metadata directories repeated by hand —
+	 * consult the shared predicate with the wired authentication, throw
+	 * the never-fatal discovery-skip ResponseException the shared cache
+	 * catch turns into the plan fallback — lives here once. An UNWIRED
+	 * directory skips the gate: the SDK's own request build then throws
+	 * the same binding failure into the same catch, so the fallback
+	 * still wins.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param callable $authentication_reader Returns the wired
+	 *                                        RequestAuthenticationInterface.
+	 * @return void
+	 * @throws ResponseException When the gate refuses the credential.
+	 */
+	public function refuse_discovery( callable $authentication_reader ): void {
+		try {
+			$authentication = $authentication_reader();
+		} catch ( RuntimeException $e ) {
+			return;
+		}
+
+		if ( null !== $this->generation_refusal_for_wired_authentication( $authentication ) ) {
+			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Discovery skipped: the credential is pending revalidation or was rejected for this endpoint.' );
+		}
 	}
 
 	/**

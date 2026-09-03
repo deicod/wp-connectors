@@ -31,7 +31,6 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Models;
 
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
-use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Common\Exception\TokenLimitReachedException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
@@ -186,10 +185,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * invalid verdicts — yet this public direct-generation path
 	 * authenticated unconditionally, sending the old region's credential
 	 * to the newly selected regional endpoint even while the connector
-	 * reported disconnected. The gate REUSES the availability layer's
-	 * own state readers (no duplicated logic, no probe request) with
-	 * the model's exact credential, exactly like the zai (OpenAI)
-	 * surface's prepareGenerateTextParams() gate.
+	 * reported disconnected.
+	 *
+	 * GLM4 #9 moved the gate PREDICATE and the refusal messages to the
+	 * availability layer; GLM5 #17 absorbed the remaining wrapper
+	 * sequence (the unwired-model skip, the predicate call, the message
+	 * build, the throw) into the one refuse_generation() helper every
+	 * credential consumer consults — an unbound model skips the gate,
+	 * preserving the pre-gate exception order (GLM2 #3). This surface's
+	 * only contribution is its WIRING: the RAW parent getter, not this
+	 * model's protocol-wrapping getRequestAuthentication() override —
+	 * the override's wrap() call threw a foreign-wiring failure through
+	 * the gate's RuntimeException-only skip as a 400 BEFORE
+	 * validate_request() (GLM3 #9); the availability gate keys on the
+	 * API key alone, which the raw instance carries, and wrap() refuses
+	 * foreign wiring with the same binding-failure RuntimeException, so
+	 * wherever the failure eventually surfaces it maps to 500 zai_error,
+	 * never 400.
 	 *
 	 * @since 0.2.0
 	 *
@@ -199,50 +211,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *                                  for the selected endpoint.
 	 */
 	private function refuse_refused_credentials(): void {
-		/*
-		 * GLM2 #3: an unbound model (no wired auth) is not this gate's
-		 * concern — skip it and let the request fail exactly where it did
-		 * before the gate existed (the SDK's authenticateRequest()
-		 * RuntimeException), so the pre-gate exception ORDER is preserved
-		 * for callers that misuse an unbound model while ALSO carrying
-		 * invalid options (the OpenAI twin's verifier nit on GLM1 #1
-		 * guards the same divergence; this surface now mirrors it, instead
-		 * of throwing the binding RuntimeException before
-		 * validate_request() can reject the options).
-		 *
-		 * GLM3 #9: the RAW wired instance is consulted here, not this
-		 * model's protocol-wrapping getRequestAuthentication() override —
-		 * its wrap() call threw the wiring failure THROUGH this
-		 * RuntimeException-only catch for a foreign
-		 * RequestAuthenticationInterface, surfacing it as a 400
-		 * zai_invalid_request thrown BEFORE validate_request(). The twin
-		 * reads its plain SDK getter, where the gate helper's
-		 * ApiKey-shape skip makes the foreign-wiring decision; the
-		 * availability gate keys on the API key alone, which the raw
-		 * instance carries. wrap() now refuses foreign wiring with the
-		 * same binding-failure RuntimeException, so wherever the failure
-		 * eventually surfaces it maps to 500 zai_error, never 400.
-		 *
-		 * GLM4 #9: the gate PREDICATE and the refusal messages live on
-		 * the availability layer now (generation_refusal_for_wired_authentication()
-		 * / refusal_message()), shared with the OpenAI twin and both
-		 * metadata directories — the four copies could diverge per
-		 * surface before, and had already started to.
-		 */
-		try {
-			$authentication = parent::getRequestAuthentication();
-		} catch ( RuntimeException $e ) {
-			return;
-		}
-
-		$refusal = ( new ZaiAnthropicProviderAvailability() )->generation_refusal_for_wired_authentication( $authentication );
-
-		if ( null !== $refusal ) {
-			$message = ZaiAnthropicProviderAvailability::refusal_message( 'zai_anthropic', $refusal );
-
-			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-			throw new InvalidArgumentException( $message );
-		}
+		( new ZaiAnthropicProviderAvailability() )->refuse_generation(
+			function () {
+				return parent::getRequestAuthentication();
+			}
+		);
 	}
 
 	/**
