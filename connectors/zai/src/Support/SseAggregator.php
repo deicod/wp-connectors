@@ -503,28 +503,18 @@ final class SseAggregator {
 		 * and aggregated()'s gap-fill). Dropping every post-sentinel
 		 * frame wholesale failed streams master completed (missing
 		 * finish_reason) and silently zeroed their usage.
+		 *
+		 * GLM7 #18: the field parsing (comment/empty lines, data: value
+		 * joining, the ignored id:/retry:/unknown fields) rides the one
+		 * shared SseFieldParser — this surface ignores the event name
+		 * (chat.completion.chunk frames carry no declared-event
+		 * semantics), exactly as it ignored event: lines before.
 		 */
-		$data_lines = array();
+		$data = SseFieldParser::parse( $frame )['data'];
 
-		foreach ( explode( "\n", $frame ) as $line ) {
-			if ( '' === $line || 0 === strpos( $line, ':' ) ) {
-				// Empty line or comment (keep-alive): ignore.
-				continue;
-			}
-
-			if ( 0 === strpos( $line, 'data:' ) ) {
-				$data_lines[] = ltrim( substr( $line, 5 ), ' ' );
-				continue;
-			}
-
-			// event:/id:/retry: and unknown fields are ignored.
-		}
-
-		if ( array() === $data_lines ) {
+		if ( null === $data ) {
 			return;
 		}
-
-		$data = implode( "\n", $data_lines );
 
 		if ( '[DONE]' === trim( $data ) ) {
 			$this->done = true;

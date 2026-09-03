@@ -606,42 +606,16 @@ final class AnthropicSseAggregator {
 	 * @return void
 	 */
 	private function consume_frame( string $frame ): void {
-		$event_name = null;
-		$data_lines = array();
+		/*
+		 * GLM7 #18: the field parsing (the GLM5 #8 event-value whitespace
+		 * rules included) rides the one shared SseFieldParser both
+		 * aggregators consume — the copy below had already been fixed in
+		 * isolation once.
+		 */
+		$fields     = SseFieldParser::parse( $frame );
+		$event_name = $fields['event'];
 
-		foreach ( explode( "\n", $frame ) as $line ) {
-			if ( '' === $line || 0 === strpos( $line, ':' ) ) {
-				// Empty line or comment (keep-alive): ignore.
-				continue;
-			}
-
-			if ( 0 === strpos( $line, 'event:' ) ) {
-				/*
-				 * GLM5 #8: the field parser stripped only spaces
-				 * (ltrim(..., ' ')), so a spec-legal EMPTY 'event:' value
-				 * (the payload's type member governs) and a
-				 * tab-separated 'event:\t<name>' produced a name that
-				 * differed from the payload's type member — tripping the
-				 * Codex R7 #6 agreement rule and invalidating an
-				 * otherwise valid whole stream as a malformed event
-				 * frame. Field-value whitespace (spaces AND tabs, both
-				 * ends) is trimmed now, and an EMPTY name counts as
-				 * ABSENT (null), exactly like a frame without the field.
-				 */
-				$name       = trim( substr( $line, 6 ), " \t" );
-				$event_name = '' === $name ? null : $name;
-				continue;
-			}
-
-			if ( 0 === strpos( $line, 'data:' ) ) {
-				$data_lines[] = ltrim( substr( $line, 5 ), ' ' );
-				continue;
-			}
-
-			// id:/retry: and unknown fields are ignored.
-		}
-
-		if ( array() === $data_lines ) {
+		if ( null === $fields['data'] ) {
 			return;
 		}
 
@@ -654,7 +628,7 @@ final class AnthropicSseAggregator {
 		 * re-implement these rules privately and had already diverged
 		 * once (GLM4 #6).
 		 */
-		$payload = implode( "\n", $data_lines );
+		$payload = $fields['data'];
 
 		// An OpenAI-style [DONE] sentinel a gateway may append after the
 		// Anthropic stream has already ended is exactly that: noise.
