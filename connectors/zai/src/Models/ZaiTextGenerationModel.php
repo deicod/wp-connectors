@@ -264,6 +264,29 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			self::reject_bad_usage( $aggregated['usage'], $aggregator->raw_usage() );
 		}
 
+		/*
+		 * GLM6 #6: the WHOLE consolidated payload is encodability-checked
+		 * before it is re-encoded — the usage check above names one
+		 * member, but the aggregator stores finish_reason and delta.role
+		 * VERBATIM (only null/isset checks), so a "finish_reason":1e999
+		 * frame decodes to INF, wp_json_encode($aggregated) returns false,
+		 * and the string cast collapsed the body to '': the SDK parse
+		 * then failed as the generic 'The chat-completions payload was
+		 * malformed.', masking the real cause (the same masking class
+		 * GLM5 #3 fixed for usage). The RAW json_encode() oracle (the
+		 * GLM3 #4 primitive — JSON strings from the frame decodes are
+		 * always valid UTF-8, so INF is the realistic survivor) rejects
+		 * the payload typed instead, in this surface's fixed-message
+		 * channel.
+		 */
+		if ( false === json_encode( $aggregated ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'stream',
+				'The consolidated stream payload carried a value that cannot be JSON-encoded.'
+			);
+		}
+
 		$consolidated = new Response(
 			$response->getStatusCode(),
 			array( 'Content-Type' => array( 'application/json' ) ),

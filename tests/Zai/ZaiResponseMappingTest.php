@@ -412,6 +412,33 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAStreamedUnencodableNonUsageMemberIsRejectedTypedNotMasked()
+    {
+        /*
+         * GLM6 #6: finish_reason (like delta.role) is stored verbatim by
+         * the aggregator's merge, so an INF value — "finish_reason":1e999
+         * — made wp_json_encode($aggregated) return false and the string
+         * cast collapsed the consolidated body to '': the SDK parse then
+         * failed as the generic 'payload was malformed', masking the real
+         * cause. The whole-payload encodability check rejects typed now.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-inf2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-inf2","choices":[{"index":0,"delta":{},"finish_reason":1e999}]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed unencodable non-usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('cannot be JSON-encoded', $e->getMessage());
+            $this->assertStringNotContainsString('malformed', $e->getMessage(), 'The generic masked message must not fire.');
+        }
+    }
+
     public function testNonStreamingStringUsageMemberIsRejectedTyped()
     {
         /*
