@@ -6,6 +6,117 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM5 code review)
+
+- The zai (OpenAI-compatible) surface reached inbound-hardening parity
+  with the zai_anthropic surface: four guards that had landed on the
+  Anthropic surface only now protect this surface's ordinary tool loop
+  too. Tool-call arguments are re-derived from a RAW (non-associative)
+  decode through the shared `Support\ToolArgsObjectNess` walk (moved
+  out of the Anthropic model, GLM1 #2), so a nested `{}` or
+  numeric-keyed object no longer re-encodes as a JSON list on the
+  conversation's very next replay — silently altered arguments the
+  model never produced. The shared `ToolArgsReplayGuard` (GLM4 #2)
+  rejects arguments decoding to INF (`1e999`) or a lossy
+  beyond-`PHP_INT_MAX` float before acceptance, where the SDK parent's
+  outbound plain `json_encode()` previously shipped
+  `"arguments": false` on every later request. And both transports
+  validate their usage member through the now-neutral shared validator
+  (`Support\UsageValidator`, renamed from `AnthropicUsageValidator`
+  and parameterized by member set): a string/INF member was a raw
+  strict-types `TypeError` from `TokenUsage` (generic 500), and a
+  streamed INF member collapsed the consolidated body to `''`, masking
+  the real cause as "payload was malformed". (Verifier round: the
+  replay guard also runs on OUTBOUND caller-supplied arguments — the
+  SDK parent's mapper plain-`json_encode()`s them, silently shipping
+  `"arguments": false` on a generation that then succeeded — and the
+  streamed usage validation now decides through a real object-ness
+  oracle the aggregator hands along, so a streamed final `"usage": []`
+  no longer slips past where the identical non-streamed member rejects.)
+
+- A Messages refusal turn that cannot be replayed is no longer a
+  generation (GLM5 #4, completing the GLM3 #1 parse/replay contract):
+  the documented tolerance for `content: []` under `stop_reason:
+  "refusal"` manufactured a ZERO-part assistant Message that this
+  adapter's own outbound mapper rejects pre-transport — appending it to
+  the history poisoned every later request of the conversation, and
+  `toText()` threw the SDK's untyped `RuntimeException`. Zero parts now
+  reject through the typed channel regardless of the stop reason; the
+  protocol's ordinary shape (refusal WITH content) still parses as a
+  successful `contentFilter` result and replays cleanly.
+
+- Two Anthropic-surface parser edges closed: the content-block `type`
+  member is `is_string`-guarded before the `switch` (loose `==`
+  semantics accepted `true`/`0` as `'text'` on the declared PHP 7.4
+  target, bypassing the typed unsupported-type rejection — the GLM2 #5
+  coercion class), and `tool_use` id uniqueness spans the WHOLE outbound
+  history instead of resetting at every role change (the same id reused
+  across two properly answered assistant turns shipped ambiguous
+  identities).
+
+- `data: [DONE]` is terminal on the OpenAI streaming surface: the
+  sentinel set a flag nothing consulted, so frames an intermediary
+  APPENDED after it still merged into the aggregated payload — content
+  concatenated, finish reason and usage overwritten — silently mutating
+  a completed generation (parity with the Anthropic twin's
+  message_stop latch). On the Anthropic aggregator, the `event:` field
+  parser trims field-value whitespace (spaces AND tabs, both ends) and
+  treats an EMPTY name as absent, so a spec-legal `event:` value or a
+  tab-separated `event:\t<name>` no longer trips the event/payload
+  agreement rule and invalidates an otherwise valid whole stream.
+
+- Plan/region settings invalidation compares hook payloads type-aware:
+  the previous `(string)` casts raised an Array-to-string warning per
+  side and equated two DIFFERENT corrupt array values
+  (`'Array' === 'Array'`), silently skipping the availability-state and
+  discovery-cache invalidation a plan change must perform. Scalars keep
+  their comparison; non-scalars compare by strict identity (distinct
+  arrays are CHANGED — the safe direction).
+
+- A DATABASE-only API key validates for real: the SDK registry wires
+  provider credentials from env/constant only, so whenever no auth was
+  wired the availability probe threw the binding `RuntimeException`,
+  counted inconclusive, and `isConfigured()` reported connected
+  (configured-pending) forever without a single validation request —
+  defeating the class's own "nonempty-but-invalid key must report
+  not-connected" contract. The unwired probe now authenticates with the
+  EFFECTIVE key through a per-surface `fallback_authentication()` hook
+  (protocol-wrapped on zai_anthropic). The credential binding is also
+  stable across the save→store transition: the `'runtime'` save-time
+  candidate label normalizes to the `'database'` identity at binding
+  construction, so a fresh invalid verdict persisted while the candidate
+  was wired still refuses the identical credential once it is read back
+  from the stored option.
+
+- Uninstall deletes the DERIVABLE probe-miss transients directly
+  through the transients API (the current env/constant/stored credential
+  under every source label, across every plan × region endpoint of both
+  surfaces): the wpdb option-name LIKE sweep sees nothing when a
+  persistent object cache (Redis/Memcached) backs transients, so the
+  binding-hashed markers survived uninstall with no path that deleted
+  them. The sweep itself is null-guarded (real `get_col()` returns null
+  on a database error — a foreach over null warned and silently skipped
+  the cleanup while uninstall reported success), and the debug flag
+  gained the `add_option_{option}` fresh-install companion so the first
+  persisted save of a disabled flag still clears the log. `ZAI_VERSION`
+  is defined behind a `defined()` guard: a foreign plugin defining the
+  same generic constant first no longer triggers a per-request notice.
+
+- Cleanup, same round: the raw-`json_encode()` encodability oracle is
+  single-sourced on `Support\JsonEncodeGuard` (seven inlined call sites
+  with drifted messages unified); the credential-refusal gate WRAPPERS
+  are absorbed into the availability layer's
+  `refuse_generation()`/`refuse_discovery()` (four hand-synced copies,
+  each surface now contributing only its wiring); the Anthropic SSE
+  aggregator runs every frame — including post-`message_stop` trailing
+  frames — through ONE decode/agreement pipeline with a single
+  post-termination policy handler (verifier round: trailing frames skip
+  the declared-object-shape gate, so an `event: error` frame with a
+  malformed payload still sets the error flag exactly as the GLM4 #6
+  policy documents); and two provably dead branches were removed with
+  their docblocks corrected (`advance_answer_window()`'s non-user
+  expiry and the empty-array `elseif` in `parse_content_block()`).
+
 ### Fixed (zai / M2 — GLM4 code review)
 
 - The R18/R19/R20 unencodable-value guards now use the RAW
