@@ -92,11 +92,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @return void
 	 */
 	public function setHttpTransporter( \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface $http_transporter ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
-		if ( ! $http_transporter instanceof LoggingHttpTransporter ) {
-			$http_transporter = new LoggingHttpTransporter( $http_transporter );
-		}
-
-		parent::setHttpTransporter( $http_transporter );
+		parent::setHttpTransporter( LoggingHttpTransporter::wrap( $http_transporter ) );
 	}
 
 	/**

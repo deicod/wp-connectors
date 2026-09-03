@@ -49,6 +49,27 @@ final class LoggingHttpTransporter implements HttpTransporterInterface {
 	}
 
 	/**
+	 * Wraps the transporter unless it already IS the logging decorator
+	 * (GLM6 #13).
+	 *
+	 * The idempotent wrap rule — install the debug logger on whatever
+	 * transporter arrives, never double-wrap — was copy-pasted in five
+	 * setHttpTransporter() overrides (both models, both metadata
+	 * directories, the availability base); a change to the rule would
+	 * have had to land in five places in lockstep, the exact drift
+	 * pattern the shared-support extractions exist to stop. Each override
+	 * now delegates here in one line.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param HttpTransporterInterface $transporter Transporter to install.
+	 * @return HttpTransporterInterface The transporter, wrapped when needed.
+	 */
+	public static function wrap( HttpTransporterInterface $transporter ): HttpTransporterInterface {
+		return $transporter instanceof self ? $transporter : new self( $transporter );
+	}
+
+	/**
 	 * Sends the request through the inner transporter, logging the round trip.
 	 *
 	 * @since 0.1.0

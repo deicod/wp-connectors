@@ -21,6 +21,7 @@ use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Settings\DebugSettings;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\DebugLogger;
+use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 
 final class ZaiObservabilityTest extends WpConnectorsTestCase
 {
@@ -297,5 +298,21 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
             return $entry['method'] . ' ' . $entry['status'];
         }, DebugLogger::entries());
         $this->assertSame(array('GET 200', 'GET 200'), $statuses);
+    }
+    public function testTheWrapHelperIsIdempotent()
+    {
+        /*
+         * GLM6 #13: the idempotent wrap rule (install the debug logger,
+         * never double-wrap) lived copy-pasted in five setHttpTransporter()
+         * overrides; the one shared helper owns it now. This pins the two
+         * behaviors every override relies on: a plain transporter is
+         * wrapped, the decorator itself passes through unchanged.
+         */
+        $plain = AiClient::defaultRegistry()->getHttpTransporter();
+
+        $wrapped = LoggingHttpTransporter::wrap($plain);
+        $this->assertInstanceOf(LoggingHttpTransporter::class, $wrapped, 'A plain transporter is wrapped.');
+
+        $this->assertSame($wrapped, LoggingHttpTransporter::wrap($wrapped), 'The decorator itself is never double-wrapped.');
     }
 }

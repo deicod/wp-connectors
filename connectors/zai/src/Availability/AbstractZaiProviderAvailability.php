@@ -172,11 +172,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return void
 	 */
 	public function setHttpTransporter( \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface $http_transporter ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
-		if ( ! $http_transporter instanceof LoggingHttpTransporter ) {
-			$http_transporter = new LoggingHttpTransporter( $http_transporter );
-		}
-
-		$this->trait_set_transporter( $http_transporter );
+		$this->trait_set_transporter( LoggingHttpTransporter::wrap( $http_transporter ) );
 	}
 
 	/**

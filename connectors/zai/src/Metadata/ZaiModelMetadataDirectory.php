@@ -111,11 +111,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * @return void
 	 */
 	public function setHttpTransporter( HttpTransporterInterface $http_transporter ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
-		if ( ! $http_transporter instanceof LoggingHttpTransporter ) {
-			$http_transporter = new LoggingHttpTransporter( $http_transporter );
-		}
-
-		parent::setHttpTransporter( $http_transporter );
+		parent::setHttpTransporter( LoggingHttpTransporter::wrap( $http_transporter ) );
 	}
 
 	/**
