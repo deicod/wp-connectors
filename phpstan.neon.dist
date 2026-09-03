@@ -34,7 +34,7 @@ parameters:
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Availability/AbstractZaiProviderAvailability.php
-			count: 17
+			count: 18
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Provider/AbstractZaiProvider.php

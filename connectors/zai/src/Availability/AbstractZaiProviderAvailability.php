@@ -727,6 +727,58 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	}
 
 	/**
+	 * Records a DEFINITIVE verdict about the effective credential that a
+	 * component OTHER than the probe learned (GLM7 #12).
+	 *
+	 * The zai_anthropic discovery route learns exactly what the probe
+	 * learns — a 401/403 is the endpoint itself rejecting the credential
+	 * — but its failures surfaced as the misattributed "Missing the
+	 * \"data\" key" ResponseException and the shared discovery cache
+	 * converted them into the silent 60s negative marker plus static-plan
+	 * fallback: no persisted verdict, so isConfigured() kept reporting
+	 * configured-pending and the refusal gates kept allowing the rejected
+	 * key until the marker expired. Recording through the probe's own
+	 * persist path keeps ONE verdict store: the state option is written
+	 * bound to the SAME credential+endpoint binding a probe verdict would
+	 * use, the binding's probe-miss marker is dropped (a definitive
+	 * answer is never blocked by one), and an open region-switch distrust
+	 * resolves — a definitive answer about the riding credential settles
+	 * it either way, the isConfigured() rule.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param bool                             $valid          The definitive verdict.
+	 * @param ApiKeyRequestAuthentication|null $authentication The credential the
+	 *                                                          rejecting request
+	 *                                                          authenticated with
+	 *                                                          (the wired instance),
+	 *                                                          or null to resolve
+	 *                                                          the effective key.
+	 * @return void
+	 */
+	public function record_definitive_verdict( bool $valid, ?ApiKeyRequestAuthentication $authentication = null ): void {
+		$effective = null !== $authentication && '' !== $authentication->getApiKey()
+			? array(
+				'key'    => $authentication->getApiKey(),
+				'source' => $this->key_source( $authentication->getApiKey() ),
+			)
+			: $this->effective_key();
+
+		if ( '' === $effective['key'] ) {
+			return;
+		}
+
+		$binding = $this->binding( $effective['source'], $effective['key'] );
+
+		$this->persist_state( $binding, $valid );
+		delete_transient( self::probe_miss_transient_name( $binding ) );
+
+		if ( $this->region_switch_pending( $effective['key'] ) ) {
+			delete_option( static::REGION_PENDING_OPTION );
+		}
+	}
+
+	/**
 	 * Builds the binding-scoped probe-miss transient name.
 	 *
 	 * One construction site shared by the writer (probe_with_negative_cache)

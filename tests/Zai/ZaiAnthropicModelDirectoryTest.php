@@ -278,6 +278,72 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/models', $this->sdkHttpAttempts()[0]['url']);
     }
 
+    /**
+     * @dataProvider provideCredentialRejectionStatuses
+     */
+    public function testCredentialRejectingDiscoveryPersistsTheInvalidVerdict($status, $label)
+    {
+        /*
+         * GLM7 #12: a definitive 401/403 on /v1/models is the same
+         * evidence the availability probe persists an invalid verdict for
+         * — previously it surfaced as the misattributed 'Missing the
+         * "data" key' error and converted into the silent 60s '_miss'
+         * marker plus fallback, so isConfigured() kept reporting
+         * configured-pending for a definitively rejected key. The verdict
+         * is recorded through the probe's own persist path: a subsequent
+         * availability consult answers from state with NO new request.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+        $this->queueSdkResponse($status, array(), HttpResponseFactory::anthropicErrorBody('token expired or incorrect', 'authentication_error'));
+
+        $models = $this->directory($key)->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), "{$label}: the fallback still serves.");
+        $this->assertCount(1, $this->sdkHttpAttempts(), "{$label}: exactly one discovery attempt.");
+
+        $state = get_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state, "{$label}: the invalid verdict must be persisted.");
+        $this->assertSame('invalid', $state['valid']);
+
+        $availability = new Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability();
+        $this->assertFalse($availability->isConfigured(), "{$label}: a definitively rejected key reports not-connected.");
+        $this->assertCount(1, $this->sdkHttpAttempts(), "{$label}: the fresh state answers without another request.");
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideCredentialRejectionStatuses()
+    {
+        return array(
+            'unauthorized' => array(401, 'unauthorized'),
+            'forbidden' => array(403, 'forbidden'),
+        );
+    }
+
+    public function testNonAuthDiscoveryFailurePersistsNoVerdict()
+    {
+        /*
+         * GLM7 #12 guard: only the definitive credential rejections
+         * persist — a 404 (the unprobed route shape) stays an
+         * inconclusive failure whose verdict store stays untouched.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+        $this->queueSdkResponse(404, array(), '{"type":"error","error":{"type":"not_found_error","message":"no route"}}');
+
+        $models = $this->directory($key)->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models));
+        $this->assertFalse(
+            get_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::STATE_OPTION, false),
+            'A non-auth failure must not persist a verdict.'
+        );
+    }
+
     public function testGeneralPlanFallbackContainsTheFullCatalog()
     {
         $this->selectEndpoint('general', 'cn');

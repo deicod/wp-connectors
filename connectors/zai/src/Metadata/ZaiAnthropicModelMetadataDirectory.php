@@ -45,11 +45,13 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Metadata;
 
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\Contracts\ModelMetadataDirectoryInterface;
 use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithHttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithRequestAuthenticationInterface;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -243,7 +245,9 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 * the Anthropic shape (data + display_name/created_at) and the OpenAI
 	 * shape (data + object/created/owned_by) alike. Any malformed shape, a
 	 * non-2xx status, or a list with no usable chat IDs throws, which
-	 * models_map() turns into the plan fallback.
+	 * models_map() turns into the plan fallback — a definitive 401/403
+	 * additionally records the invalid verdict through the availability
+	 * layer before throwing (GLM7 #12), exactly as the probe would.
 	 *
 	 * @since 0.2.0
 	 *
@@ -277,6 +281,41 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		$request = $this->getRequestAuthentication()->authenticateRequest( $request );
 
 		$response = $this->getHttpTransporter()->send( $request );
+
+		$status = $response->getStatusCode();
+
+		if ( 401 === $status || 403 === $status ) {
+			/*
+			 * GLM7 #12: the models route ANSWERED and rejected the
+			 * credential itself — the same definitive evidence the
+			 * availability probe persists an invalid verdict for. The
+			 * verdict is recorded through the probe's own persist path
+			 * (same binding, marker dropped, region distrust resolved) so
+			 * isConfigured() and the refusal gates see it immediately,
+			 * instead of the previous misattributed 'Missing the "data"
+			 * key' error converting into a silent 60s '_miss' marker plus
+			 * static-plan fallback with no persisted verdict. The thrown
+			 * error names the auth rejection — distinguishable from a
+			 * malformed body in the live probe's discovery report — and
+			 * the shared cache's catch still keeps discovery never-fatal.
+			 */
+			try {
+				$wired = $this->getRequestAuthentication();
+			} catch ( RuntimeException $unwired ) {
+				$wired = null;
+			}
+
+			( new ZaiAnthropicProviderAvailability() )->record_definitive_verdict(
+				false,
+				$wired instanceof ApiKeyRequestAuthentication ? $wired : null
+			);
+
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'data',
+				'Discovery failed: the credential was rejected for this endpoint.'
+			);
+		}
 
 		if ( ! $response->isSuccessful() ) {
 			throw ResponseException::fromMissingData( 'z.ai', 'data' );
