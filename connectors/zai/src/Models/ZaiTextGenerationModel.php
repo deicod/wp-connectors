@@ -253,12 +253,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 * below — an INF member makes wp_json_encode() return false,
 			 * collapsing the consolidated body to '' so the failure
 			 * surfaced as 'The chat-completions payload was malformed.',
-			 * masking the real cause. The oracle-less call is exact here:
-			 * the aggregated usage came through the aggregator's
-			 * associative decode, so the validator's sequential-key
-			 * fallback decides object-ness.
+			 * masking the real cause. The aggregator hands the usage
+			 * member's RAW shape along (verifier round: the associative
+			 * merge could not distinguish {} from [], so a streamed
+			 * "usage":[] was tolerated where the non-streaming transport
+			 * rejects it — the two transports of one provider now decide
+			 * through the same oracle).
 			 */
-			self::reject_bad_usage( $aggregated['usage'], null );
+			self::reject_bad_usage( $aggregated['usage'], $aggregator->raw_usage() );
 		}
 
 		$consolidated = new Response(

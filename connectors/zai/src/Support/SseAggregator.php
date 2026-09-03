@@ -60,6 +60,23 @@ final class SseAggregator {
 	private $done = false;
 
 	/**
+	 * The usage member from a NON-associative decode of the last
+	 * usage-bearing frame, or null when none was seen (verifier round on
+	 * GLM5 #3).
+	 *
+	 * The associative merge cannot recover the usage member's JSON
+	 * object-ness ({} vs []), so the raw value travels along for the
+	 * model's shared UsageValidator — the same oracle the non-streaming
+	 * path derives from its body, keeping both transports of one
+	 * provider on identical usage rules.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var mixed
+	 */
+	private $raw_usage = null;
+
+	/**
 	 * Number of data events that failed JSON decoding.
 	 *
 	 * @since 0.1.0
@@ -381,6 +398,33 @@ final class SseAggregator {
 			return;
 		}
 
+		/*
+		 * Verifier round on GLM5 #3: capture the usage member's RAW
+		 * (non-associative) shape for the model's validator — the
+		 * associative merge collapses {} and [] to the same empty array,
+		 * which the validator's sequential-key fallback must then
+		 * tolerate, diverging from the non-streaming transport (it
+		 * rejects the empty list through its body oracle). The extra
+		 * decode runs only for frames that carry a usage member (~one
+		 * per stream).
+		 */
+		if ( \array_key_exists( 'usage', $decoded ) ) {
+			$raw_event       = json_decode( $data );
+			$this->raw_usage = \is_object( $raw_event ) ? ( $raw_event->usage ?? null ) : null;
+		}
+
 		$this->events[] = $decoded;
+	}
+
+	/**
+	 * The usage member from a non-associative decode of the last
+	 * usage-bearing frame, or null when none was seen.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return mixed The raw usage value (object-ness oracle for the validator).
+	 */
+	public function raw_usage() {
+		return $this->raw_usage;
 	}
 }

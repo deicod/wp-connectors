@@ -322,6 +322,49 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testStreamedEmptyListUsageMemberIsRejectedLikeNonStreamed()
+    {
+        /*
+         * Verifier round on GLM5 #3: the streamed validation passed NO
+         * raw oracle, so the validator's sequential-key fallback counted
+         * the EMPTY array as an object — a streamed final "usage":[] was
+         * accepted while the identical non-streamed member rejects. The
+         * aggregator hands the usage member's raw shape along now.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-su3","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-su3","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":[]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed empty-list usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage());
+        }
+    }
+
+    public function testStreamedEmptyObjectUsageMemberStaysTolerated()
+    {
+        // Verifier round on GLM5 #3: the legitimate "usage":{} shape keeps
+        // its documented default-zero tolerance on BOTH transports.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-su4","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-su4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{}}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(0, $result->getTokenUsage()->getTotalTokens());
+    }
+
     public function testLengthFinishReasonMapsToLength()
     {
         $this->queueSdkResponse(200, array(), wp_json_encode(array(
