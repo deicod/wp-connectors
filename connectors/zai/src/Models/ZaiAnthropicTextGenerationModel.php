@@ -1265,7 +1265,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			}
 		}
 
-		if ( ! isset( $data['stop_reason'] ) ) {
+		/*
+		 * GLM8 #4: the Anthropic Messages schema types stop_reason as
+		 * string|null, so an explicitly-present null is schema-legal —
+		 * the old isset() presence probe treated it as MISSING and
+		 * discarded a successful generation as 'Missing data:
+		 * stop_reason'. Presence is judged with array_key_exists() (an
+		 * explicit null IS present); the null value itself maps to the
+		 * neutral natural-stop finish reason in finish_reason_for(),
+		 * still subject to the stop-reason/content consistency check
+		 * below. The typed missing-data rejection keeps covering the
+		 * genuinely ABSENT member.
+		 */
+		if ( ! \array_key_exists( 'stop_reason', $data ) ) {
 			throw ResponseException::fromMissingData( 'z.ai', 'stop_reason' );
 		}
 
@@ -1276,8 +1288,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * typed rejection and, on warning-strict installs (a custom
 		 * set_error_handler, PHPUnit), aborted the parse with an
 		 * ErrorException-family Throwable that bypassed this channel.
+		 *
+		 * GLM8 #4: null is the one non-string value that passes — the
+		 * schema's own nullable case above.
 		 */
-		if ( ! \is_string( $data['stop_reason'] ) ) {
+		if ( null !== $data['stop_reason'] && ! \is_string( $data['stop_reason'] ) ) {
 			throw ResponseException::fromInvalidData( 'z.ai', 'stop_reason', 'The message did not carry a string stop reason.' );
 		}
 
@@ -1711,12 +1726,27 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param string $stop_reason The upstream stop reason.
+	 * @param string|null $stop_reason The upstream stop reason (null is the
+	 *                                 schema-legal explicit case, GLM8 #4).
 	 * @return FinishReasonEnum The SDK finish reason.
 	 * @throws ResponseException          For unknown stop reasons (fixed message).
 	 * @throws TokenLimitReachedException When generation stopped at the token limit.
 	 */
-	private function finish_reason_for( string $stop_reason ): FinishReasonEnum {
+	private function finish_reason_for( ?string $stop_reason ): FinishReasonEnum {
+		/*
+		 * GLM8 #4: the Messages schema types stop_reason as string|null;
+		 * an explicit null is accepted, not treated as corruption. The
+		 * SDK's finish reason is non-nullable, so the null maps to the
+		 * neutral natural-stop value — the finish reason carrying the
+		 * least claim about why the model stopped — while the
+		 * stop-reason/content consistency check in parse_decoded_message()
+		 * still judges the turn exactly like any non-tool_use reason (a
+		 * null with tool calls stays a rejected contradiction).
+		 */
+		if ( null === $stop_reason ) {
+			return FinishReasonEnum::stop();
+		}
+
 		switch ( $stop_reason ) {
 			case 'end_turn':
 			case 'stop_sequence':

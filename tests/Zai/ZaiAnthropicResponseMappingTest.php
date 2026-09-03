@@ -176,6 +176,75 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAnExplicitNullStopReasonParsesAsANaturalStop()
+    {
+        /*
+         * GLM8 #4: the Messages schema types stop_reason as string|null,
+         * but the isset() presence probe treated an explicitly-present
+         * null as MISSING — 'Missing data: stop_reason' discarded a
+         * successful generation. The null is accepted now and maps to
+         * the neutral natural-stop finish reason; every ordinary parse
+         * field (text, id, usage) is unaffected.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_null_stop',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'No declared reason.')),
+            'stop_reason' => null,
+            'usage' => array('input_tokens' => 4, 'output_tokens' => 2),
+        )));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('No declared reason.', $result->toText());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+        $this->assertSame(6, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    public function testAnExplicitNullStopReasonWithToolUseBlocksStillRejects()
+    {
+        // GLM8 #4 guard: the null is accepted, not laundered — the
+        // stop-reason/content consistency check judges it like any
+        // non-tool_use reason, so tool blocks under a null stop reason
+        // stay a typed contradiction.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_null_stop_tools',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'tool_use', 'id' => 'toolu_1', 'name' => 'get_weather', 'input' => array('city' => 'Paris'))),
+            'stop_reason' => null,
+            'usage' => array('input_tokens' => 4, 'output_tokens' => 2),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Tool blocks under an explicit null stop reason must stay rejected.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('stop reason did not match', $e->getMessage());
+        }
+    }
+
+    public function testAnAbsentStopReasonStillFailsTyped()
+    {
+        // GLM8 #4 guard: only the explicitly-PRESENT null changed — a
+        // genuinely absent member keeps the typed missing-data rejection.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_no_stop',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'Unfinished.')),
+            'usage' => array('input_tokens' => 4, 'output_tokens' => 2),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An absent stop_reason must still fail.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('stop_reason', $e->getMessage());
+        }
+    }
+
     public function testCacheTokenVariantsCountAsPromptTokens()
     {
         $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
