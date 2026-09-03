@@ -1209,6 +1209,111 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testAnInvalidUtf8ToolDeclarationNameIsRejectedBeforeTransport()
+    {
+        // GLM6 #9: the declared name rides the tools member verbatim —
+        // encodability-guarded like every other wire string.
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration("tool_\xB1\x31", 'Looks up the weather.', array('type' => 'object')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An invalid-UTF-8 declared tool name must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai_anthropic provider could not JSON-encode a declared tool function name', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAnInvalidUtf8ToolDeclarationDescriptionIsRejectedBeforeTransport()
+    {
+        /*
+         * GLM6 #9: the description was only ever EMPTINESS-free — an
+         * unencodable one (from a DB row, say) reached the transport and
+         * its whole-request encode threw the raw JsonException the
+         * mapper's catch-all turned into the generic 500, instead of the
+         * typed 400 every neighboring wire string receives.
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('get_weather', "desc with \xB1\x31 invalid utf-8", array('type' => 'object')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An invalid-UTF-8 declared tool description must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai_anthropic provider could not JSON-encode a declared tool function description', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testInvalidUtf8ReplayedToolUseIdentitiesAreRejectedBeforeTransport()
+    {
+        // GLM6 #9: the replayed tool_use id/name are wire strings too.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall("call_\xB1\x31", 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse("call_\xB1\x31", 'get_weather', array('ok' => true))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An invalid-UTF-8 tool call id must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai_anthropic provider could not JSON-encode a tool call id', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+
+        WpHarness::$sdk_http_attempts = array();
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_ok', "get_weather_\xB1\x31", array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_ok', "get_weather_\xB1\x31", array('ok' => true))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An invalid-UTF-8 tool call name must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai_anthropic provider could not JSON-encode a tool call name', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAnInvalidUtf8ToolResultIdIsRejectedBeforeTransport()
+    {
+        // GLM6 #9: the tool_result tool_use_id is a wire string like the
+        // rest — encodability-guarded, not just emptiness-checked. (The
+        // answered call itself stays valid, isolating THIS guard; the
+        // identity guards above cover the call side.)
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_ok2', 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse("call_r_\xB1\x31", 'get_weather', array('ok' => true))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An invalid-UTF-8 tool result id must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai_anthropic provider could not JSON-encode a tool result tool_use id', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testAllValidDeclarationsStillEmitTheirNames()
     {
         // Guard: multi-tool configs keep the exact names in the tools

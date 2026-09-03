@@ -403,6 +403,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			}
 
 			/*
+			 * GLM6 #9: the identity and description strings ride the
+			 * tools member verbatim and were only ever EMPTINESS-checked —
+			 * an unencodable one (invalid UTF-8 from a DB row, say)
+			 * detonated in the transport's whole-request encode as the
+			 * generic 500 instead of the typed pre-transport 400 every
+			 * neighboring wire string receives.
+			 */
+			JsonEncodeGuard::must_encode( $name, 'a declared tool function name', 'zai_anthropic' );
+			JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', 'zai_anthropic' );
+
+			/*
 			 * R18 (inline 3906485728): a returned tool_use identifies the
 			 * selected declaration ONLY by name — two declarations sharing a
 			 * name make that identification ambiguous (the caller may
@@ -858,6 +869,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				);
 			}
 
+			// GLM6 #9: replayed identities are wire strings like every
+			// other — encodability-guarded, not just emptiness-checked.
+			JsonEncodeGuard::must_encode( $function_call->getId(), 'a tool call id', 'zai_anthropic' );
+			JsonEncodeGuard::must_encode( $function_call->getName(), 'a tool call name', 'zai_anthropic' );
+
 			/*
 			 * The Messages protocol requires an OBJECT for tool_use input.
 			 * Empty/absent args (null, the empty string, the empty array)
@@ -941,6 +957,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					'The zai_anthropic provider requires every function-response part to carry the non-empty tool_use id it answers.'
 				);
 			}
+
+			// GLM6 #9: the tool_use_id is a wire string like the rest.
+			JsonEncodeGuard::must_encode( $function_response->getId(), 'a tool result tool_use id', 'zai_anthropic' );
 
 			/*
 			 * R18 (inline 3906485711): an unencodable tool-result value — NAN,
