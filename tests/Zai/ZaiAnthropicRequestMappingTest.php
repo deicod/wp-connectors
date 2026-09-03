@@ -661,7 +661,13 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($prompt);
             $this->fail("[{$label}] Unencodable tool arguments must be rejected before transport.");
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('could not JSON-encode tool arguments', $e->getMessage());
+            /*
+             * GLM7 #11: the separate must_encode pass is gone — the
+             * replay guard's own first branch proves unencodability
+             * (single serialization), so its message carries both
+             * failure modes.
+             */
+            $this->assertStringContainsString('could not replay tool arguments', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();
