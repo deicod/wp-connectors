@@ -40,6 +40,25 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         return $model;
     }
 
+    public function testTheLiveProbeCatchesThrowableNotException()
+    {
+        /*
+         * GLM7 #14: the probe's discovery and generation steps caught
+         * Exception only, so a PHP Error (a TypeError/ValueError from a
+         * strict-types mismatch in the SDK/DTO layer against a live
+         * response shape) crashed the script with an uncaught fatal and
+         * a stack trace — breaking the safe-facts reporting rule for the
+         * exact failure path the probe exists to diagnose. The probe
+         * cannot run in the offline suite, so the mechanism is pinned at
+         * the source level (the GLM6 #14 precedent): every step handler
+         * catches Throwable, none catches Exception.
+         */
+        $source = (string) file_get_contents(__DIR__ . '/../../bin/zai-live-probe.php');
+
+        $this->assertSame(2, preg_match_all('/catch \( Throwable \$e \)/', $source), 'Both step handlers must catch Throwable.');
+        $this->assertSame(0, preg_match_all('/catch \( Exception/', $source), 'No step handler may catch Exception only.');
+    }
+
     /**
      * @return list<Message>
      */

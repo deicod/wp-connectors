@@ -227,8 +227,13 @@ try {
     if ( ! $discovered_live ) {
         $exit = 1;
     }
-} catch ( Exception $e ) {
-    zai_live_probe_report( 'models discovered', 'FAILED: ' . $e->getMessage() );
+} catch ( Throwable $e ) {
+    // GLM7 #14: Throwable, not Exception — a PHP Error (a TypeError from
+    // a strict-types mismatch in the SDK/DTO layer against a live
+    // response shape) must report this step FAILED like any other
+    // failure, not crash the probe with an uncaught fatal and a stack
+    // trace outside the safe-facts contract.
+    zai_live_probe_report( 'models discovered', 'FAILED: ' . get_class( $e ) . ' ' . $e->getMessage() );
     $exit = 1;
 }
 
@@ -268,7 +273,9 @@ try {
 
     zai_live_probe_report( 'usage total tokens', $result->getTokenUsage()->getTotalTokens() );
     zai_live_probe_report( 'generation ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
-} catch ( Exception $e ) {
+} catch ( Throwable $e ) {
+    // GLM7 #14: as the discovery step above — Errors report FAILED, never
+    // an uncaught fatal.
     zai_live_probe_report( 'generation', 'FAILED: ' . get_class( $e ) . ' ' . $e->getMessage() );
     $exit = 1;
 }
