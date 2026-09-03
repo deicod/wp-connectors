@@ -439,6 +439,54 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheDecodedStreamHandOffParsesExactlyLikeTheEncodedOne()
+    {
+        /*
+         * GLM6 #14: the consolidated payload now reaches the SDK parser
+         * DECODED (the pre-decoded Response shim) instead of through a
+         * wp_json_encode()/getData() round trip. The shapes are identical
+         * by construction (the payload is built from associative frame
+         * decodes); this parity test pins that end-to-end for the heavy
+         * shape classes — awkward tool-call stream indexes, text content,
+         * usage — against the same assertions the encoded path carried.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_b","type":"function","function":{"name":"tool_b","arguments":"{\"x\":"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"tool_a","arguments":"{}"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"1}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $parts = $result->toMessage()->getParts();
+
+        $this->assertSame('Hello', $result->toText());
+        $this->assertSame('chatcmpl-hd', $result->getId());
+        $this->assertSame(FinishReasonEnum::toolCalls(), $result->getCandidates()[0]->getFinishReason());
+
+        $calls = array();
+        foreach ($parts as $part) {
+            if (null !== $part->getFunctionCall()) {
+                $calls[] = $part->getFunctionCall();
+            }
+        }
+
+        $this->assertCount(2, $calls);
+        $this->assertSame('call_a', $calls[0]->getId(), 'Tool calls arrive reindexed by stream index.');
+        $this->assertInstanceOf('stdClass', $calls[0]->getArgs(), 'An empty-object arguments string stays an object (GLM5 #1).');
+        $this->assertSame(array(), get_object_vars($calls[0]->getArgs()));
+        $this->assertSame('call_b', $calls[1]->getId());
+        $this->assertSame(array('x' => 1), $calls[1]->getArgs());
+
+        $this->assertSame(11, $result->getTokenUsage()->getPromptTokens());
+        $this->assertSame(7, $result->getTokenUsage()->getCompletionTokens());
+        $this->assertSame(18, $result->getTokenUsage()->getTotalTokens());
+    }
+
     public function testNonStreamingStringUsageMemberIsRejectedTyped()
     {
         /*

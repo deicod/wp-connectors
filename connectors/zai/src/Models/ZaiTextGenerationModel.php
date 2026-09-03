@@ -44,6 +44,7 @@ use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
+use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
@@ -262,18 +263,18 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		/*
 		 * GLM6 #6: the WHOLE consolidated payload is encodability-checked
-		 * before it is re-encoded — the usage check above names one
-		 * member, but the aggregator stores finish_reason and delta.role
-		 * VERBATIM (only null/isset checks), so a "finish_reason":1e999
-		 * frame decodes to INF, wp_json_encode($aggregated) returns false,
-		 * and the string cast collapsed the body to '': the SDK parse
-		 * then failed as the generic 'The chat-completions payload was
-		 * malformed.', masking the real cause (the same masking class
-		 * GLM5 #3 fixed for usage). The RAW json_encode() oracle (the
-		 * GLM3 #4 primitive — JSON strings from the frame decodes are
-		 * always valid UTF-8, so INF is the realistic survivor) rejects
-		 * the payload typed instead, in this surface's fixed-message
-		 * channel.
+		 * before it is handed to the parser — the usage check above names
+		 * one member, but the aggregator stores finish_reason and
+		 * delta.role VERBATIM (only null/isset checks), so a
+		 * "finish_reason":1e999 frame decodes to INF and previously made
+		 * the re-encode's wp_json_encode() return false, collapsing the
+		 * body to '': the SDK parse then failed as the generic 'The
+		 * chat-completions payload was malformed.', masking the real
+		 * cause (the same masking class GLM5 #3 fixed for usage). The RAW
+		 * json_encode() oracle (the GLM3 #4 primitive — JSON strings from
+		 * the frame decodes are always valid UTF-8, so INF is the
+		 * realistic survivor) rejects the payload typed instead, in this
+		 * surface's fixed-message channel.
 		 */
 		if ( false === json_encode( $aggregated ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
 			throw ResponseException::fromInvalidData(
@@ -283,13 +284,19 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			);
 		}
 
-		$consolidated = new Response(
-			$response->getStatusCode(),
-			array( 'Content-Type' => array( 'application/json' ) ),
-			(string) wp_json_encode( $aggregated )
+		/*
+		 * GLM6 #14: the aggregator's payload is already decoded — handing
+		 * it to the parser through the pre-decoded Response removes the
+		 * wp_json_encode() into a synthetic body plus getData()'s full
+		 * re-decode (one extra whole-payload serialization pass each way
+		 * per streamed generation), the exact round trip this branch
+		 * deleted on the Anthropic twin (GLM2 #10). The shapes are
+		 * identical by construction: the payload is built from associative
+		 * frame decodes, which is what getData() would return.
+		 */
+		return $this->parseNonStreamBody(
+			new PreDecodedResponse( $response->getStatusCode(), $aggregated )
 		);
-
-		return $this->parseNonStreamBody( $consolidated );
 	}
 
 	/**
