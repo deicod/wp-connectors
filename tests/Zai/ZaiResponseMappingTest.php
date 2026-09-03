@@ -964,6 +964,13 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             // tab byte before the first field line must not stop the sniff.
             'leading NUL byte' => array("\0\n", 'leading NUL byte'),
             'leading vertical tab' => array("\x0B\n", 'leading vertical tab'),
+            // GLM8 #2: whitespace around a BOM rides the one canonical
+            // prefix rule (SseFrameBuffer::strip_stream_prefix) — the
+            // sniff accepted these shapes while the framing dropped their
+            // first frame silently, corrupting the aggregated content.
+            'whitespace then BOM' => array(" \xEF\xBB\xBF", 'whitespace then BOM'),
+            'BOM then whitespace' => array("\xEF\xBB\xBF ", 'BOM then whitespace'),
+            'newline then BOM' => array("\r\n\xEF\xBB\xBF", 'newline then BOM'),
         );
     }
 

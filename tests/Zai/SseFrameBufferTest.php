@@ -12,6 +12,7 @@
 
 declare( strict_types=1 );
 
+use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 
 final class SseFrameBufferTest extends WpConnectorsTestCase
@@ -302,5 +303,137 @@ final class SseFrameBufferTest extends WpConnectorsTestCase
 
         $this->assertSame('data: late', $buffer->pull());
         $this->assertNull($buffer->pull());
+    }
+
+    public function testStripStreamPrefixComposesTheCanonicalRule()
+    {
+        // GLM8 #2: ONE canonical prefix composition — [whitespace] BOM
+        // [whitespace], stripped only when a BOM is present.
+        $bom = "\xEF\xBB\xBF";
+
+        // Whitespace around a BOM is stripped with it, on either side.
+        $this->assertSame('data: a', SseFrameBuffer::strip_stream_prefix($bom . 'data: a'));
+        $this->assertSame('data: a', SseFrameBuffer::strip_stream_prefix(' ' . $bom . 'data: a'));
+        $this->assertSame('data: a', SseFrameBuffer::strip_stream_prefix($bom . ' ' . 'data: a'));
+        $this->assertSame('data: a', SseFrameBuffer::strip_stream_prefix(" \r\n\t\x0B\0" . $bom . "\n\r data: a"));
+
+        // No BOM: the body comes back UNCHANGED, leading whitespace and
+        // all (the plain-ws prefix is the spec-correct dropped frame).
+        $this->assertSame(' data: a', SseFrameBuffer::strip_stream_prefix(' data: a'));
+        $this->assertSame("\n\ndata: a", SseFrameBuffer::strip_stream_prefix("\n\ndata: a"));
+
+        // A BOM after the first field byte is content, not a prefix.
+        $this->assertSame('data: ' . $bom . 'x', SseFrameBuffer::strip_stream_prefix('data: ' . $bom . 'x'));
+
+        // Degenerate tails: a bare BOM prefixes nothing; a partial BOM
+        // at end-of-body is not a prefix decision and stays put.
+        $this->assertSame('', SseFrameBuffer::strip_stream_prefix(' ' . $bom));
+        $this->assertSame(" \xEFdata: a", SseFrameBuffer::strip_stream_prefix(" \xEFdata: a"));
+    }
+
+    public function testWhitespaceAroundALeadingBomIsStrippedLikeTheBomAlone()
+    {
+        /*
+         * GLM8 #2 (the finding's shapes): EventStreamSniff accepted
+         * whitespace-then-BOM (and BOM-then-whitespace) bodies while this
+         * buffer stripped the BOM at byte 0 only — the first frame then
+         * matched no field and was silently dropped, corrupting the
+         * aggregated content while the response reported success. The
+         * prefix window now strips the full [ws] BOM [ws] run, so the
+         * first frame comes out byte-identical to a BOM-less stream.
+         */
+        $bom = "\xEF\xBB\xBF";
+
+        foreach (array('ws+BOM' => ' ' . $bom, 'BOM+ws' => $bom . ' ') as $label => $prefix) {
+            $buffer = new SseFrameBuffer();
+            $buffer->feed($prefix . "event: a\ndata: 1\n\ndata: 2\n\n");
+            $buffer->finish();
+
+            $this->assertSame("event: a\ndata: 1", $buffer->pull(), "[{$label}] The first frame must survive the prefix intact.");
+            $this->assertSame('data: 2', $buffer->pull(), "[{$label}] Later frames are unaffected.");
+            $this->assertNull($buffer->pull());
+        }
+    }
+
+    public function testPlainLeadingWhitespaceStillDropsItsFirstFrame()
+    {
+        /*
+         * GLM8 #2 guard: whitespace WITHOUT a BOM strips nothing — the
+         * ws-prefixed first frame is the spec-correct DROPPED frame
+         * (unknown field name), byte-identical to master. Only the
+         * BOM-adjacent prefix changed.
+         */
+        $buffer = new SseFrameBuffer();
+        $buffer->feed(' data: first' . "\n\n" . 'data: second' . "\n\n");
+        $buffer->finish();
+
+        $this->assertSame(' data: first', $buffer->pull(), 'A plain-ws first frame stays a frame.');
+        $this->assertSame('data: second', $buffer->pull());
+        $this->assertNull($buffer->pull());
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed(' data: {"id":"c1","choices":[{"index":0,"delta":{"content":"gone"},"finish_reason":null}]}' . "\n\n");
+        $aggregator->feed('data: {"id":"c1","choices":[{"index":0,"delta":{"content":" kept"},"finish_reason":"stop"}]}' . "\n\n");
+        $aggregator->finish();
+
+        $this->assertSame(' kept', $aggregator->aggregated()['choices'][0]['message']['content'], 'The ws-prefixed first delta is still dropped, master-identical.');
+    }
+
+    /**
+     * @dataProvider providePrefixedBodiesAndChunkSplits
+     */
+    public function testFeedingTheRawBodyFramesExactlyLikeTheCanonicalPrefixStrip($body, array $chunks)
+    {
+        /*
+         * GLM8 #2 (the alignment pin): whatever the sniff accepts, the
+         * framing below must parse identically to the canonical
+         * strip_stream_prefix() composition — for EVERY chunk split,
+         * because the prefix window holds undecided whitespace and
+         * split BOMs across chunk boundaries.
+         */
+        $expected = new SseFrameBuffer();
+        $expected->feed(SseFrameBuffer::strip_stream_prefix($body));
+        $expected->finish();
+        $frames = array();
+        while (null !== ($frame = $expected->pull())) {
+            $frames[] = $frame;
+        }
+
+        $actual_buffer = new SseFrameBuffer();
+        foreach ($chunks as $chunk) {
+            $actual_buffer->feed($chunk);
+        }
+        $actual_buffer->finish();
+        $actual = array();
+        while (null !== ($frame = $actual_buffer->pull())) {
+            $actual[] = $frame;
+        }
+
+        $this->assertSame($frames, $actual, 'Feeding the raw body yields the canonical-prefix frames.');
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function providePrefixedBodiesAndChunkSplits()
+    {
+        $bom = "\xEF\xBB\xBF";
+        $bodies = array(
+            'ws then BOM' => ' ' . $bom . "data: a\n\ndata: b\n\n",
+            'BOM then ws' => $bom . " data: a\n\ndata: b\r\n\r\n",
+            'ws BOM ws (newlines both sides)' => "\r\n " . $bom . "\t\ndata: a\n\ndata: b\n\n",
+            'bare BOM' => $bom . "event: a\ndata: 1\n\n",
+            'plain body' => "data: a\n\ndata: b\n\n",
+            'plain ws only' => " \r\n\ndata: a\n\n",
+            'ws+BOM with unterminated tail' => ' ' . $bom . 'data: unterminated',
+        );
+
+        $cases = array();
+        foreach ($bodies as $body_label => $body) {
+            $cases["{$body_label} (single shot)"] = array($body, array($body));
+            $cases["{$body_label} (one byte at a time)"] = array($body, str_split($body));
+        }
+
+        return $cases;
     }
 }

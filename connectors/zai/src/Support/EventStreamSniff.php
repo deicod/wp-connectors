@@ -56,18 +56,25 @@ final class EventStreamSniff {
 		}
 
 		/*
-		 * GLM6 #11: PHP's DEFAULT ltrim charlist (space, tab, newline,
-		 * CR, NUL, vertical tab) — the narrowed " \t\r\n" list stopped
-		 * recognizing a stream whose first byte before the first field
-		 * line is NUL or vertical tab, misrouting it to the JSON parser
-		 * where master's bare ltrim() (and this surface's own history)
-		 * aggregated it. No parseable JSON body can start with those
-		 * bytes, so the wider set cannot misroute.
+		 * GLM8 #2: the BOM-aware prefix strip rides the ONE canonical
+		 * rule the framing below also applies —
+		 * SseFrameBuffer::strip_stream_prefix(). This sniff privately
+		 * ltrimmed and BOM-stripped, while the buffer stripped the BOM at
+		 * byte 0 only, so a whitespace-then-BOM body (or a
+		 * BOM-then-whitespace one) routed here to the SSE aggregator
+		 * whose first frame then matched no field: silently dropped,
+		 * corrupted content as success (a regression master failed
+		 * loudly). The layers cannot drift again — one composition.
+		 *
+		 * The ltrim below keeps the GLM6 #11 leading-whitespace tolerance
+		 * for bodies WITHOUT a BOM (PHP's default charlist: space, tab,
+		 * newline, CR, NUL, vertical tab — no parseable JSON body starts
+		 * with those bytes, so the wider set cannot misroute): such a
+		 * stream still routes to SSE and still drops its
+		 * whitespace-prefixed first frame, spec-correct and
+		 * master-identical.
 		 */
-		$sniff = ltrim( $body );
-		if ( 0 === strpos( $sniff, "\xEF\xBB\xBF" ) ) {
-			$sniff = ltrim( substr( $sniff, 3 ) );
-		}
+		$sniff = ltrim( SseFrameBuffer::strip_stream_prefix( $body ) );
 
 		return 0 === strpos( $sniff, 'event:' )
 			|| 0 === strpos( $sniff, 'data:' )

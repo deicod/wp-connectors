@@ -301,6 +301,43 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('msg_s_bom', $result->getId());
     }
 
+    public function testAWhitespaceThenBomPrefixedStreamWithoutTheContentTypeIsSniffedAndKeptIntact()
+    {
+        /*
+         * GLM8 #2: the sniff ltrimmed and BOM-stripped privately while
+         * the shared SseFrameBuffer stripped the BOM at byte 0 only, so
+         * this exact shape — whitespace, then a gateway-prepended BOM,
+         * no Content-Type — routed to the SSE aggregator whose first
+         * frame (message_start) matched no field and was silently
+         * dropped: the completed stream failed with a generic malformed
+         * message or, worse, aggregated corrupted content. One canonical
+         * prefix rule (SseFrameBuffer::strip_stream_prefix) serves both
+         * layers now, so the stream parses exactly like a clean one.
+         */
+        $body = " \xEF\xBB\xBF" . implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_s_wsbom","role":"assistant","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Prefix-proof."}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array(), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Prefix-proof.', $result->toText());
+        $this->assertSame('msg_s_wsbom', $result->getId(), 'The first frame must survive the prefix intact.');
+    }
+
     public function testAStreamOpeningWithACommentLineIsSniffedAsEventStream()
     {
         /*

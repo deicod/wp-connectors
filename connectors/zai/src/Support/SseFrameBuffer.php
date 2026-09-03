@@ -31,6 +31,56 @@ namespace Deicod\WpConnectors\Zai\Support;
 final class SseFrameBuffer {
 
 	/**
+	 * The bytes a gateway may place before the first field line: PHP's
+	 * DEFAULT ltrim() charlist (space, tab, newline, CR, NUL, vertical
+	 * tab — the GLM6 #11 set), the one set both this class's stream-start
+	 * handling and EventStreamSniff judge by (GLM8 #2).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const LEADING_WHITESPACE = " \t\n\r\0\x0B";
+
+	/**
+	 * The UTF-8 byte-order mark a gateway or CDN may prepend to a stream.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const UTF8_BOM = "\xEF\xBB\xBF";
+
+	/**
+	 * Stream-start state: no prefix decision possible yet (GLM8 #2).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	private const PREFIX_UNDECIDED = 0;
+
+	/**
+	 * Stream-start state: the BOM was consumed; the whitespace run after
+	 * it is still being stripped (GLM8 #2).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	private const PREFIX_AFTER_BOM = 1;
+
+	/**
+	 * Stream-start state: the prefix is settled; nothing more is stripped
+	 * (GLM8 #2).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	private const PREFIX_SETTLED = 2;
+
+	/**
 	 * Buffered bytes not yet forming a complete frame: line endings
 	 * normalized to LF, except possibly one trailing CR that may still
 	 * extend to CRLF when more data arrives.
@@ -67,17 +117,61 @@ final class SseFrameBuffer {
 	private $cursor = 0;
 
 	/**
-	 * Whether the stream's first byte has arrived yet (the BOM window).
+	 * The stream-start prefix state (GLM8 #2).
 	 *
-	 * A UTF-8 BOM is legal at stream start only, so the strip in feed()
-	 * runs exactly once, while this flag is true and no frame has been
-	 * consumed.
+	 * The prefix rule — strip one leading run of LEADING_WHITESPACE, then
+	 * a UTF-8 BOM, then the whitespace after it, ONLY when a BOM is
+	 * actually present — applies exactly once, at stream start. While the
+	 * state is undecided (a whitespace-only buffer may still extend into
+	 * a BOM, and a BOM may be split across chunks) NO frame splitting
+	 * runs either: the decision changes the first frame's bytes, so
+	 * splitting before it is settled would emit frames the strip would
+	 * have altered. PREFIX_AFTER_BOM keeps stripping the unbounded
+	 * whitespace run behind a confirmed BOM until the first field byte
+	 * settles it; from PREFIX_SETTLED on, nothing is stripped ever again
+	 * (a mid-stream BOM is frame CONTENT, as before).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @var bool
+	 * @var int
 	 */
-	private $awaiting_first_byte = true;
+	private $prefix_state = self::PREFIX_UNDECIDED;
+
+	/**
+	 * Strips the one stream-start prefix both layers recognize (GLM8 #2):
+	 * leading whitespace, a UTF-8 BOM, then the whitespace after it —
+	 * applied only when a BOM is actually present.
+	 *
+	 * ONE canonical composition serves BOTH layers: EventStreamSniff
+	 * routes bodies through this method, and feed() implements the
+	 * identical rule incrementally (holding a whitespace-only or
+	 * split-BOM prefix across chunk boundaries until the next byte
+	 * disambiguates it), so the sniff can never again accept a body the
+	 * framing below silently mis-parses — the whitespace-then-BOM shape
+	 * (and its BOM-then-whitespace mirror) whose first frame matched no
+	 * field, was silently dropped, and surfaced corrupted content as a
+	 * success.
+	 *
+	 * A body WITHOUT a BOM is returned UNCHANGED, leading whitespace and
+	 * all: the plain-ws prefix is deliberately not stripped here. Such a
+	 * stream still routes to the SSE aggregator (the sniff's own ltrim
+	 * tolerance) and still drops its whitespace-prefixed first frame —
+	 * the spec-correct, master-identical behavior.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $body The raw response body.
+	 * @return string The body with its BOM-adjacent prefix removed.
+	 */
+	public static function strip_stream_prefix( string $body ): string {
+		$rest = ltrim( $body, self::LEADING_WHITESPACE );
+
+		if ( 0 === strpos( $rest, self::UTF8_BOM ) ) {
+			return ltrim( substr( $rest, \strlen( self::UTF8_BOM ) ), self::LEADING_WHITESPACE );
+		}
+
+		return $body;
+	}
 
 	/**
 	 * Feeds a raw chunk of the event stream.
@@ -96,23 +190,62 @@ final class SseFrameBuffer {
 		 * 'data:'/'event:' prefix — the frame was silently dropped (not
 		 * even counted malformed), so a single-event stream aggregated to
 		 * null ('No usable ... event was received') and a multi-event
-		 * stream lost its first delta. The BOM is stripped at stream
-		 * start only; a chunk that delivers just a BOM PREFIX (a BOM
-		 * split across chunks) is held until the next byte disambiguates
-		 * it — SSE framing begins with ASCII field names, so a genuine
-		 * \xEF-led first byte cannot lose data by waiting.
+		 * stream lost its first delta.
+		 *
+		 * GLM8 #2: the strip window now recognizes the SAME
+		 * whitespace-BOM-whitespace prefix EventStreamSniff routes on
+		 * (see strip_stream_prefix()): the sniff ltrimmed before its BOM
+		 * test while this strip ran at byte 0 only, so a
+		 * whitespace-then-BOM body (and a BOM-then-whitespace one)
+		 * misrouted to the SSE aggregator whose first frame then matched
+		 * no field — silently dropped, corrupted content as success. The
+		 * prefix is held undecided across chunk boundaries (a
+		 * whitespace-only buffer may still extend into a BOM; a BOM may
+		 * be split across chunks — SSE framing begins with ASCII field
+		 * names, so a genuine \xEF-led first byte cannot lose data by
+		 * waiting), and no frame is split before the decision: the strip
+		 * changes the first frame's bytes.
 		 */
-		if ( $this->awaiting_first_byte && '' !== $this->buffer ) {
-			if ( "\xEF" === $this->buffer || "\xEF\xBB" === $this->buffer ) {
-				// Possibly a split BOM: wait for the next chunk.
-				return;
+		if ( self::PREFIX_SETTLED !== $this->prefix_state ) {
+			if ( self::PREFIX_UNDECIDED === $this->prefix_state ) {
+				$rest = ltrim( $this->buffer, self::LEADING_WHITESPACE );
+
+				if ( '' === $rest || "\xEF" === $rest || "\xEF\xBB" === $rest || self::UTF8_BOM === $rest ) {
+					// Nothing decidable yet (an empty chunk keeps the
+					// window open, as before): hold, including framing.
+					return;
+				}
+
+				if ( 0 === strpos( $rest, self::UTF8_BOM ) ) {
+					// BOM confirmed: strip through it and keep stripping
+					// the whitespace after it until a field byte arrives
+					// (one unbounded run — the strip_stream_prefix() rule).
+					$this->buffer = ltrim( substr( $rest, \strlen( self::UTF8_BOM ) ), self::LEADING_WHITESPACE );
+
+					if ( '' === $this->buffer ) {
+						$this->prefix_state = self::PREFIX_AFTER_BOM;
+
+						return;
+					}
+				} else {
+					/*
+					 * No BOM behind the leading whitespace: the buffer
+					 * stands as received — the whitespace-prefixed first
+					 * frame is the spec-correct DROPPED frame both
+					 * surfaces have always produced (master-identical).
+					 */
+					$this->prefix_state = self::PREFIX_SETTLED;
+				}
+			} else {
+				// PREFIX_AFTER_BOM: the whitespace run behind the BOM.
+				$this->buffer = ltrim( $this->buffer, self::LEADING_WHITESPACE );
+
+				if ( '' === $this->buffer ) {
+					return;
+				}
 			}
 
-			if ( 0 === strpos( $this->buffer, "\xEF\xBB\xBF" ) ) {
-				$this->buffer = substr( $this->buffer, 3 );
-			}
-
-			$this->awaiting_first_byte = false;
+			$this->prefix_state = self::PREFIX_SETTLED;
 		}
 
 		$held_back_cr = '';
