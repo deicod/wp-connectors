@@ -153,4 +153,29 @@ final class DebugSettings {
 			DebugLogger::clear();
 		}
 	}
+
+	/**
+	 * Initial debug-flag save: the add_option() path of an enabled change.
+	 *
+	 * Same fresh-install mechanism as the plan/region add companions
+	 * (GLM5 #14): while no option row exists, core's update_option()
+	 * delegates to add_option(), which fires add_option_{option} instead
+	 * of the update hook — without this companion the FIRST persisted
+	 * save of a disabled flag (the row deleted out-of-band while log
+	 * entries persist) skipped the log clear the later updates perform.
+	 * The effective previous value of a missing row is the registered
+	 * default ('0', disabled), so handle_enabled_change() decides
+	 * identically.
+	 *
+	 * Hooked on `add_option_zai_connector_zai_debug`.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $option Option name (hook contract; the handler knows its option).
+	 * @param mixed  $value  New value.
+	 * @return void
+	 */
+	public static function handle_enabled_add( $option, $value ): void {
+		self::handle_enabled_change( '0', $value );
+	}
 }

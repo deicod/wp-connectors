@@ -98,6 +98,11 @@ function boot(): void {
 	add_action( 'add_option_' . ZaiAnthropicPlanRegionSettings::OPTION_PLAN, array( ZaiAnthropicPlanRegionSettings::class, 'handle_plan_add' ), 10, 2 );
 	add_action( 'add_option_' . ZaiAnthropicPlanRegionSettings::OPTION_REGION, array( ZaiAnthropicPlanRegionSettings::class, 'handle_region_add' ), 10, 2 );
 	add_action( 'update_option_' . DebugLogger::OPTION_ENABLED, array( DebugSettings::class, 'handle_enabled_change' ), 10, 2 );
+	// Fresh-install companion for the debug flag too (GLM5 #14): while no
+	// option row exists, the first persisted save fires
+	// add_option_{option} instead of the update hook — without this
+	// registration the log clear the later updates perform was skipped.
+	add_action( 'add_option_' . DebugLogger::OPTION_ENABLED, array( DebugSettings::class, 'handle_enabled_add' ), 10, 2 );
 
 	// Plugin-row Settings link (Task 1.8).
 	add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), array( Plugin::class, 'action_links' ) );

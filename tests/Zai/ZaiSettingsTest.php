@@ -440,6 +440,32 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         );
     }
 
+    public function testFirstPersistedDebugFlagSaveClearsTheLogOnAFreshRow()
+    {
+        /*
+         * GLM5 #14: the add_option fresh-install companions covered
+         * plan/region only — with the debug option row missing (deleted
+         * out-of-band while log entries persist), the first persisted
+         * save of the unchecked flag fired add_option_{option} with no
+         * handler and the promised 'disable and save to clear' never
+         * ran.
+         */
+        $this->bootPlugin();
+
+        delete_option(\Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED);
+        update_option(\Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_LOG, array(array(
+            'method' => 'GET', 'url' => 'https://api.z.ai/x', 'status' => 200, 'duration_ms' => 1.0, 'at' => 1,
+        )), false);
+
+        add_option(\Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED, '0');
+
+        $this->assertSame(
+            array(),
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::entries(),
+            'The first persisted save of a disabled flag must clear the log.'
+        );
+    }
+
     public function testSavingTheDefaultRegionOnAFreshInstallIsNotASwitch()
     {
         $this->bootPlugin();
