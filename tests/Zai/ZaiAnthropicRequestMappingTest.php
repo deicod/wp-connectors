@@ -667,6 +667,52 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testPrecisionLossToolArgumentsAreRejectedBeforeTransport()
+    {
+        /*
+         * GLM6 #8: the outbound path applied only the ENCODABILITY
+         * oracle — an integral float beyond PHP_INT_MAX encodes fine
+         * ('{"count":9.3e+18}') so it shipped silently, while the zai
+         * surface's outbound mapper and this surface's own inbound
+         * parser reject the identical value typed. The shared replay
+         * guard closes the gap: the replay-poisoning contract holds on
+         * every path.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_pl', 'get_weather', array('count' => 9.3e18))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A precision-loss tool argument must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not replay tool arguments', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testOrdinaryFloatToolArgumentsStillShip()
+    {
+        // GLM6 #8 guard: only genuinely replay-breaking values reject —
+        // ordinary floats (integral below the platform int range
+        // included) keep shipping.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_fl', 'get_weather', array('temp_c' => 21.5, 'count' => 9007199254740992.0))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_fl', 'get_weather', array('ok' => true))))),
+        );
+
+        list(, $body) = $this->captureRequest($prompt, $this->model());
+
+        $input = $body['messages'][1]['content'][0]['input'];
+        $this->assertSame(21.5, $input['temp_c']);
+        // JSON carries no int/float distinction: the integral float ships
+        // numerically intact (it round-trips the body decode as an int).
+        $this->assertEquals(9007199254740992.0, $input['count']);
+    }
+
     /**
      * @return array<string, list<mixed>>
      */

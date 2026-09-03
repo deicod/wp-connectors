@@ -907,8 +907,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * parts. Same RAW-oracle rejection (GLM5 #16: the shared
 			 * JsonEncodeGuard), same first-bad-wins channel as the
 			 * neighboring tool validations.
+			 *
+			 * GLM6 #8: encodability says nothing about PRECISION — an
+			 * integral float beyond PHP_INT_MAX (9.3e18, from caller
+			 * int-overflow arithmetic) encodes fine but ships a silently
+			 * altered e-notation value on replay. The shared
+			 * ToolArgsReplayGuard now judges the outbound arguments too,
+			 * so this surface rejects exactly what its own inbound parser
+			 * (GLM4 #2) and the zai surface's outbound mapper (GLM5 #20)
+			 * already reject — the replay-poisoning contract holds on
+			 * every path.
 			 */
 			JsonEncodeGuard::must_encode( $input, 'tool arguments', 'zai_anthropic' );
+
+			if ( ! ToolArgsReplayGuard::is_replayable( $input ) ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider could not replay tool arguments (an unencodable or precision-loss value was given).'
+				);
+			}
 
 			return array(
 				'type'  => 'tool_use',
