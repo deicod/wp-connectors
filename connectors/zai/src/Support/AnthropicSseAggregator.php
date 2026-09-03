@@ -1111,6 +1111,28 @@ final class AnthropicSseAggregator {
 					}
 				}
 
+				/*
+				 * GLM7 #6: the final-metadata frame's delta member gets the
+				 * same shape validation content_block_delta applies to its
+				 * raw->delta (Codex R4 #4 class): a decodable
+				 * message_delta whose 'delta' is missing or not an object
+				 * previously latched message_delta_received with
+				 * stop_reason left null, and aggregated() soft-returned
+				 * null — surfacing the vague 'No usable message event'
+				 * instead of the malformed-event channel every other
+				 * wrongly-shaped declared event uses. The flag is NOT
+				 * latched on rejection (the frame contributed nothing).
+				 */
+				$raw_delta = \is_object( $raw ) && isset( $raw->delta ) && \is_object( $raw->delta )
+					? $raw->delta
+					: null;
+
+				if ( null === $raw_delta ) {
+					$this->malformed_event = true;
+
+					return;
+				}
+
 				$this->message_delta_received = true;
 
 				if ( isset( $data['delta'] ) && \is_array( $data['delta'] ) && isset( $data['delta']['stop_reason'] ) && \is_string( $data['delta']['stop_reason'] ) ) {

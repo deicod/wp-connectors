@@ -3791,6 +3791,59 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * @dataProvider provideShapelessMessageDeltaPayloads
+     */
+    public function testAMessageDeltaWithoutAnObjectDeltaMemberIsRejectedTyped($deltaFragment, $label)
+    {
+        /*
+         * GLM7 #6: a decodable message_delta whose 'delta' member is
+         * missing or not an object latched message_delta_received with
+         * stop_reason null — the vague 'No usable message event' verdict
+         * — where every other wrongly-shaped declared event uses the
+         * malformed-event channel (content_block_delta rejects its
+         * non-object raw->delta the same way).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_md","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta",' . $deltaFragment . '"usage":{"output_tokens":4}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_malformed_event(), "{$label}: the shapeless message_delta must flag the stream.");
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail("{$label}: a shapeless message_delta must be rejected typed.");
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideShapelessMessageDeltaPayloads()
+    {
+        return array(
+            'delta omitted' => array('', 'delta omitted'),
+            'delta a list' => array('"delta":[],', 'delta a list'),
+            'delta a scalar' => array('"delta":"end_turn",', 'delta a scalar'),
+        );
+    }
+
     public function testTruncatedToolJsonFailsAsAStreamParseErrorNotAFabricatedCall()
     {
         // Codex R1 finding 1: input_json_delta fragments that combine into
