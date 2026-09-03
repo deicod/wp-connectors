@@ -498,6 +498,7 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         try {
             putenv('ZAI_API_KEY=' . $envKey);
             $this->bootProvider();
+            $this->freezeTime(1700000000);
 
             // Connected on the OLD region before the switch.
             $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
@@ -527,12 +528,17 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
                 'The region-pending flag must stay while the probe is inconclusive.'
             );
 
-            // Still inconclusive: still disconnected.
-            $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+            // Still inconclusive: still disconnected — and GLM7 #3 bounds the
+            // doomed retries: within PROBE_MISS_TTL the binding-scoped miss
+            // marker answers the repeat consult with NO live request (the
+            // distrust no longer bypasses the negative cache).
             $this->assertFalse($env->isConfigured());
+            $this->assertCount(2, $this->sdkHttpAttempts(), 'A repeat distrust consult inside the miss TTL must not probe again.');
 
             // A definitive 2xx ends the distrust: connected, flag cleared,
-            // verdict persisted (answerable from state within the TTL).
+            // verdict persisted (answerable from state within the TTL). The
+            // marker expired, so this consult probes live again.
+            $this->advanceTime(ZaiProviderAvailability::PROBE_MISS_TTL + 1);
             $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
             $this->assertTrue(
                 $env->isConfigured(),
@@ -542,7 +548,7 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
             $this->assertSame('valid', get_option(ZaiProviderAvailability::STATE_OPTION)['valid']);
 
             $this->assertTrue($env->isConfigured());
-            $this->assertCount(4, $this->sdkHttpAttempts(), 'Within the TTL the persisted verdict answers without a new probe.');
+            $this->assertCount(3, $this->sdkHttpAttempts(), 'Within the TTL the persisted verdict answers without a new probe.');
         } finally {
             putenv('ZAI_API_KEY');
         }
@@ -571,6 +577,57 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
             $this->assertFalse(
                 get_option(ZaiProviderAvailability::REGION_PENDING_OPTION, false),
                 'A definitive rejection resolves the region-pending flag.'
+            );
+        } finally {
+            putenv('ZAI_API_KEY');
+        }
+    }
+
+    public function testRegionSwitchDistrustProbingIsBoundedByTheNegativeCache()
+    {
+        /*
+         * GLM7 #3: the distrust exemption defeated the 60s probe-miss
+         * negative cache entirely — while an env key stayed region-pending
+         * against a permanently inconclusive endpoint (the cn /models
+         * 404), EVERY availability consult paid a live blocking
+         * authenticated HTTPS probe and re-transmitted the old-region
+         * credential to it, with no cap. Distrust now consults the same
+         * marker: at most one doomed probe per PROBE_MISS_TTL window, one
+         * retry after expiry.
+         */
+        $envKey = FakeSecrets::apiKey();
+
+        try {
+            putenv('ZAI_API_KEY=' . $envKey);
+            $this->bootProvider();
+            $this->freezeTime(1700000000);
+
+            update_option(PlanRegionSettings::OPTION_REGION, 'cn');
+
+            $env = $this->envBackedAvailability($envKey);
+
+            // First consult: one live inconclusive probe; the marker is set
+            // and the distrust keeps the connector disconnected.
+            $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
+            $this->assertFalse($env->isConfigured());
+
+            // Repeat consults inside the window: the marker answers — no
+            // live request may leave (nothing is queued, so an attempt
+            // would surface as an unmocked HTTP leak).
+            $this->assertFalse($env->isConfigured());
+            $this->assertFalse($env->isConfigured());
+            $this->assertCount(1, $this->sdkHttpAttempts(), 'Distrust must not bypass the probe-miss negative cache.');
+
+            // After the marker expires exactly one retry happens, and the
+            // definitive rejection resolves the distrust.
+            $this->advanceTime(ZaiProviderAvailability::PROBE_MISS_TTL + 1);
+            $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad in this region'));
+            $this->assertFalse($env->isConfigured());
+            $this->assertCount(2, $this->sdkHttpAttempts(), 'Exactly one retry per miss-TTL window.');
+            $this->assertSame('invalid', get_option(ZaiProviderAvailability::STATE_OPTION)['valid']);
+            $this->assertFalse(
+                get_option(ZaiProviderAvailability::REGION_PENDING_OPTION, false),
+                'The definitive rejection resolves the distrust.'
             );
         } finally {
             putenv('ZAI_API_KEY');

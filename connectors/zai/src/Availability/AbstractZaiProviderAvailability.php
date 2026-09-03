@@ -233,7 +233,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			$fallback = self::VERDICT_VALID === ( $state['valid'] ?? null );
 		}
 
-		$verdict = $this->probe_with_negative_cache( $binding, $region_pending );
+		$verdict = $this->probe_with_negative_cache( $binding );
 
 		if ( null === $verdict ) {
 			// Inconclusive probe (transport error, 5xx, 429, 404 on the
@@ -663,23 +663,22 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * as always). Nothing about the returned semantics changes — only the
 	 * repeat transport cost collapses for PROBE_MISS_TTL seconds.
 	 *
-	 * Region-switch distrust (the R19 contract) is EXEMPT: while the
-	 * effective key is region-pending, every consult must keep probing so
-	 * the definitive validation happens as soon as the endpoint can answer
-	 * — suppressing it would hold the connector falsely disconnected for
-	 * up to a minute after a switch even when the endpoint is ready.
+	 * GLM7 #3: region-switch distrust (the R19 contract) is NO LONGER
+	 * exempt. The exemption made every consult re-issue a live blocking
+	 * authenticated HTTPS probe — re-transmitting the old-region credential
+	 * to the new endpoint each time — for as long as the endpoint answers
+	 * inconclusively (the permanently-404 cn /models shape), with no cap.
+	 * Distrust now consults the same 60s marker: at most one doomed probe
+	 * per PROBE_MISS_TTL window, the definitive validation still happening
+	 * as soon as the endpoint can answer within that granularity, and a
+	 * definitive result always clears the marker immediately.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param string $binding  Credential+endpoint binding.
-	 * @param bool   $distrusted Whether the region-pending distrust binds this key.
+	 * @param string $binding Credential+endpoint binding.
 	 * @return bool|null As probe(): true, false, or null (inconclusive).
 	 */
-	private function probe_with_negative_cache( string $binding, bool $distrusted ) {
-		if ( $distrusted ) {
-			return $this->probe();
-		}
-
+	private function probe_with_negative_cache( string $binding ) {
 		$miss_transient = self::probe_miss_transient_name( $binding );
 
 		if ( get_transient( $miss_transient ) ) {
