@@ -2252,10 +2252,10 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
          * this parser's inline block and the aggregator's
          * streamed_usage_is_valid() — hand-maintained in two layers
          * until Codex R15 #1 had to fix both in lockstep once. The
-         * shared AnthropicUsageValidator now decides for both paths;
+         * shared UsageValidator now decides for both paths;
          * this unit pin holds the contract the two transports share.
          */
-        $validator = 'Deicod\WpConnectors\Zai\Support\AnthropicUsageValidator';
+        $validator = 'Deicod\WpConnectors\Zai\Support\UsageValidator';
 
         // Valid shapes: absent members, empty object, cache variants.
         $this->assertNull($validator::failure_reason(array(), new stdClass()));
@@ -2276,6 +2276,20 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(PHP_INT_MAX, $validator::total(array('input_tokens' => PHP_INT_MAX, 'output_tokens' => 0)), 'The exact boundary total stays representable.');
         $this->assertNull($validator::total(array('input_tokens' => PHP_INT_MAX, 'output_tokens' => 1)), 'A past-boundary total is null.');
         $this->assertNull($validator::input_total(array('input_tokens' => PHP_INT_MAX, 'cache_read_input_tokens' => 1)), 'The input-side total detects overflow too.');
+
+        /*
+         * GLM5 #3: the validator is parameterized by member set — the
+         * zai (OpenAI) surface validates through the SAME source with
+         * its own member list, so a usage-rule change can never land on
+         * one surface only.
+         */
+        $this->assertNull($validator::failure_reason(array('prompt_tokens' => 7, 'completion_tokens' => 3, 'total_tokens' => 10), new stdClass(), $validator::OPENAI_MEMBERS), 'OpenAI members validate against their own list.');
+        $this->assertNull($validator::failure_reason(array(), new stdClass(), $validator::OPENAI_MEMBERS), 'Absent OpenAI members stay tolerated.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('prompt_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS), 'A string OpenAI count is a bad member.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('completion_tokens' => INF), new stdClass(), $validator::OPENAI_MEMBERS), 'An INF OpenAI count is a bad member.');
+        $this->assertNull($validator::failure_reason(array('input_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS), 'Foreign (Anthropic) members are not judged by the OpenAI list.');
+        $this->assertSame('The usage member must be a JSON object.', $validator::message_for_reason('not_object'), 'One fixed rejection message per reason.');
+        $this->assertSame('Token counts must be non-negative integers.', $validator::message_for_reason('bad_member'), 'One fixed rejection message per reason.');
     }
 
     public function testAStreamedInputSideUsageOverflowInvalidatesTheStream()

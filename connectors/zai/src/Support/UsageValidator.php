@@ -1,17 +1,19 @@
 <?php
 /**
- * Shared Messages usage validator (code-review GLM4 #11).
+ * Shared usage validator for both z.ai surfaces (code-review GLM4 #11,
+ * generalized to both member sets in GLM5 #3).
  *
- * The four-member usage validation (input_tokens /
- * cache_creation_input_tokens / cache_read_input_tokens / output_tokens
- * as non-negative integers, plus the object-ness oracle with the
- * sequential-key fallback) existed twice — the non-streaming parser's
- * inline block and the aggregator's streamed_usage_is_valid() — hand
- * maintained in two layers until Codex R15 #1 had to fix both in
- * lockstep once. One validator serves both paths now, so streaming and
- * non-streaming generations of the same provider can never validate
- * usage differently again; it also owns the overflow-checked totals
- * (GLM4 #5), for the same single-source reason.
+ * The usage validation (object-ness oracle with the sequential-key
+ * fallback, plus non-negative-integer members) existed twice on the
+ * zai_anthropic surface — the non-streaming parser's inline block and the
+ * aggregator's streamed_usage_is_valid() — hand maintained in two layers
+ * until Codex R15 #1 had to fix both in lockstep once. One validator
+ * served both of those paths since GLM4 #11; GLM5 #3 parameterized the
+ * member list and wired the zai (OpenAI chat.completions) surface's
+ * transports through the same source, so a usage-rule change can never
+ * land on one surface only. It also owns the overflow-checked totals
+ * (GLM4 #5) and the fixed rejection messages, for the same single-source
+ * reason.
  *
  * @since 0.2.0
  *
@@ -23,11 +25,11 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Support;
 
 /**
- * Validates and totals Anthropic Messages usage members.
+ * Validates and totals usage members for both wire protocols.
  *
  * @since 0.2.0
  */
-final class AnthropicUsageValidator {
+final class UsageValidator {
 
 	/**
 	 * Failure reason: the usage member is not a JSON object.
@@ -48,17 +50,31 @@ final class AnthropicUsageValidator {
 	public const REASON_BAD_MEMBER = 'bad_member';
 
 	/**
-	 * The token-count members the Messages usage object carries.
+	 * The token-count members the Anthropic Messages usage object carries.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @var list<string>
 	 */
-	const MEMBERS = array(
+	public const ANTHROPIC_MEMBERS = array(
 		'input_tokens',
 		'cache_creation_input_tokens',
 		'cache_read_input_tokens',
 		'output_tokens',
+	);
+
+	/**
+	 * The token-count members the OpenAI chat.completions usage object
+	 * carries.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	public const OPENAI_MEMBERS = array(
+		'prompt_tokens',
+		'completion_tokens',
+		'total_tokens',
 	);
 
 	/**
@@ -76,13 +92,15 @@ final class AnthropicUsageValidator {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param mixed $usage     The associatively decoded usage member.
-	 * @param mixed $raw_usage The same member from the non-associative
-	 *                         decode, or null when unavailable.
+	 * @param mixed    $usage     The associatively decoded usage member.
+	 * @param mixed    $raw_usage The same member from the non-associative
+	 *                            decode, or null when unavailable.
+	 * @param string[] $members   The protocol's known token members
+	 *                            (ANTHROPIC_MEMBERS or OPENAI_MEMBERS).
 	 * @return string|null Null when valid; REASON_NOT_OBJECT or
 	 *                     REASON_BAD_MEMBER when the caller must reject.
 	 */
-	public static function failure_reason( $usage, $raw_usage ): ?string {
+	public static function failure_reason( $usage, $raw_usage, array $members = self::ANTHROPIC_MEMBERS ): ?string {
 		if ( ! \is_array( $usage ) ) {
 			// Present but scalar or null — not a usage object.
 			return self::REASON_NOT_OBJECT;
@@ -100,7 +118,7 @@ final class AnthropicUsageValidator {
 			return self::REASON_NOT_OBJECT;
 		}
 
-		foreach ( self::MEMBERS as $member ) {
+		foreach ( $members as $member ) {
 			if ( \array_key_exists( $member, $usage ) && ( ! \is_int( $usage[ $member ] ) || $usage[ $member ] < 0 ) ) {
 				return self::REASON_BAD_MEMBER;
 			}
@@ -110,7 +128,25 @@ final class AnthropicUsageValidator {
 	}
 
 	/**
-	 * Sums all four usage members with exact overflow detection
+	 * The fixed rejection message for a failure reason (GLM5 #3).
+	 *
+	 * Both surfaces build these strings from the one source, so the
+	 * wording cannot drift between the transports the way the underlying
+	 * rules once did.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $reason A reason returned by failure_reason().
+	 * @return string The fixed, safe message.
+	 */
+	public static function message_for_reason( string $reason ): string {
+		return self::REASON_NOT_OBJECT === $reason
+			? 'The usage member must be a JSON object.'
+			: 'Token counts must be non-negative integers.';
+	}
+
+	/**
+	 * Sums all four Anthropic usage members with exact overflow detection
 	 * (GLM4 #5).
 	 *
 	 * Every member is a validated non-negative int, but their sum can
@@ -127,11 +163,12 @@ final class AnthropicUsageValidator {
 	 * @return int|null The four-member total, or null when it exceeds PHP_INT_MAX.
 	 */
 	public static function total( array $usage ): ?int {
-		return self::sum_members( $usage, self::MEMBERS );
+		return self::sum_members( $usage, self::ANTHROPIC_MEMBERS );
 	}
 
 	/**
-	 * Sums the three input-side members with exact overflow detection.
+	 * Sums the three Anthropic input-side members with exact overflow
+	 * detection.
 	 *
 	 * The aggregator's message_start usage carries only the prompt side;
 	 * the same overflow guarantee applies to its stored input total.
@@ -153,8 +190,8 @@ final class AnthropicUsageValidator {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param array<string, mixed> $usage    Validated usage member.
-	 * @param string[]             $members  Members to sum.
+	 * @param array<string, mixed> $usage   Validated usage member.
+	 * @param string[]             $members Members to sum.
 	 * @return int|null The sum, or null when it exceeds PHP_INT_MAX.
 	 */
 	private static function sum_members( array $usage, array $members ): ?int {

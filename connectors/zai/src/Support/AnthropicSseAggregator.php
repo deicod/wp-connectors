@@ -839,7 +839,7 @@ final class AnthropicSseAggregator {
 					 * all before parse_message_body()'s strict validator could
 					 * see the original types.
 					 *
-					 * GLM4 #11: the shared AnthropicUsageValidator is the one
+					 * GLM4 #11: the shared UsageValidator is the one
 					 * source (this copy and the non-streaming parser's inline
 					 * block had to be fixed in lockstep once already); its
 					 * overflow-checked input total (GLM4 #5) also keeps a
@@ -847,13 +847,13 @@ final class AnthropicSseAggregator {
 					 * float in the consolidated payload.
 					 */
 					$raw_message_usage = \is_object( $raw->message ) && \property_exists( $raw->message, 'usage' ) ? $raw->message->usage : null;
-					if ( null !== AnthropicUsageValidator::failure_reason( $message['usage'], $raw_message_usage ) ) {
+					if ( null !== UsageValidator::failure_reason( $message['usage'], $raw_message_usage ) ) {
 						$this->malformed_event = true;
 
 						return;
 					}
 
-					$input_total = AnthropicUsageValidator::input_total( $message['usage'] );
+					$input_total = UsageValidator::input_total( $message['usage'] );
 					if ( null === $input_total ) {
 						$this->malformed_event = true;
 
@@ -1086,7 +1086,7 @@ final class AnthropicSseAggregator {
 					// Codex R15 #1: same validation as message_start's input
 					// side — GLM4 #11: the one shared validator.
 					$raw_usage = \is_object( $raw ) && \property_exists( $raw, 'usage' ) ? $raw->usage : null;
-					if ( null !== AnthropicUsageValidator::failure_reason( $data['usage'], $raw_usage ) ) {
+					if ( null !== UsageValidator::failure_reason( $data['usage'], $raw_usage ) ) {
 						$this->malformed_event = true;
 
 						return;

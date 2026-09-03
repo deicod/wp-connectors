@@ -48,6 +48,7 @@ use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
+use Deicod\WpConnectors\Zai\Support\UsageValidator;
 
 /**
  * Text generation model for z.ai.
@@ -236,6 +237,17 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * the stream fine.
 		 */
 		if ( ! EventStreamSniff::matches( $body, $response->getHeaderAsString( 'Content-Type' ) ) ) {
+			/*
+			 * GLM5 #3: the usage member is validated BEFORE the SDK parse:
+			 * a string/INF member reached the SDK parent's int-typed
+			 * TokenUsage constructor unvalidated (the shared validator was
+			 * wired into the Anthropic transports only) and detonated as a
+			 * raw strict-types TypeError, surfaced by the mapper's
+			 * catch-all as the generic 500 instead of the typed
+			 * zai_invalid_response.
+			 */
+			$this->reject_malformed_usage( $response );
+
 			return $this->parseNonStreamBody( $response );
 		}
 
@@ -253,6 +265,20 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			);
 		}
 
+		if ( \array_key_exists( 'usage', $aggregated ) ) {
+			/*
+			 * GLM5 #3 (streamed half): validated BEFORE the re-encode
+			 * below — an INF member makes wp_json_encode() return false,
+			 * collapsing the consolidated body to '' so the failure
+			 * surfaced as 'The chat-completions payload was malformed.',
+			 * masking the real cause. The oracle-less call is exact here:
+			 * the aggregated usage came through the aggregator's
+			 * associative decode, so the validator's sequential-key
+			 * fallback decides object-ness.
+			 */
+			self::reject_bad_usage( $aggregated['usage'], null );
+		}
+
 		$consolidated = new Response(
 			$response->getStatusCode(),
 			array( 'Content-Type' => array( 'application/json' ) ),
@@ -260,6 +286,59 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		);
 
 		return $this->parseNonStreamBody( $consolidated );
+	}
+
+	/**
+	 * Rejects a malformed usage member on a non-streaming response before
+	 * the SDK parse (GLM5 #3).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response $response The chat.completion response.
+	 * @return void
+	 * @throws ResponseException When the usage member is malformed.
+	 */
+	private function reject_malformed_usage( Response $response ): void {
+		$data = $response->getData();
+
+		if ( ! \is_array( $data ) || ! \array_key_exists( 'usage', $data ) ) {
+			return;
+		}
+
+		$raw = json_decode( (string) $response->getBody() );
+
+		self::reject_bad_usage(
+			$data['usage'],
+			$raw instanceof \stdClass && \property_exists( $raw, 'usage' ) ? $raw->usage : null
+		);
+	}
+
+	/**
+	 * Rejects a malformed chat.completions usage member (GLM5 #3).
+	 *
+	 * One rejection channel for both transports of the surface, built on
+	 * the shared UsageValidator with the OpenAI member list — the same
+	 * source the Anthropic transports validate through, so a usage-rule
+	 * change can never land on one surface only.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $usage     The associatively decoded usage member.
+	 * @param mixed $raw_usage The same member from a non-associative
+	 *                         decode, or null when unavailable.
+	 * @return void
+	 * @throws ResponseException When the usage member is malformed.
+	 */
+	private static function reject_bad_usage( $usage, $raw_usage ): void {
+		$reason = UsageValidator::failure_reason( $usage, $raw_usage, UsageValidator::OPENAI_MEMBERS );
+
+		if ( null !== $reason ) {
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'usage',
+				UsageValidator::message_for_reason( $reason ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+			);
+		}
 	}
 
 	/**

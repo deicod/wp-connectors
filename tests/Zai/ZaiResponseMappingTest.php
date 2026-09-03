@@ -244,6 +244,84 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testNonStreamingStringUsageMemberIsRejectedTyped()
+    {
+        /*
+         * GLM5 #3: a string usage member reached the SDK parent's
+         * int-typed TokenUsage constructor unvalidated (the shared
+         * validator was wired into the Anthropic transports only) and
+         * detonated as a raw strict-types TypeError — surfaced by the
+         * mapper's catch-all as the generic 500 instead of the typed
+         * zai_invalid_response.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-u1","choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":"5","completion_tokens":3,"total_tokens":8}}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A string usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('Token counts must be non-negative integers.', $e->getMessage());
+        }
+    }
+
+    public function testNonStreamingListShapedUsageMemberIsRejectedTyped()
+    {
+        // GLM5 #3: a list-shaped usage member is not a JSON object.
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-u2","choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":[1,2]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A list-shaped usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage());
+        }
+    }
+
+    public function testStreamedInfUsageMemberIsRejectedTypedNotMasked()
+    {
+        /*
+         * GLM5 #3 (streamed half): an INF usage member made
+         * wp_json_encode($aggregated) return false, collapsing the
+         * consolidated body to '' so the failure surfaced as 'The
+         * chat-completions payload was malformed.', masking the real
+         * cause. The usage member is validated before the re-encode now.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-su","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-su","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1e999,"completion_tokens":1,"total_tokens":2}}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed INF usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('Token counts must be non-negative integers.', $e->getMessage());
+        }
+    }
+
+    public function testStreamedListShapedUsageMemberIsRejectedTyped()
+    {
+        // GLM5 #3: the aggregator's associative decode cannot tell a JSON
+        // list usage from an object; the validator's fallback can.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-su2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-su2","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":[1,2]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed list-shaped usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage());
+        }
+    }
+
     public function testLengthFinishReasonMapsToLength()
     {
         $this->queueSdkResponse(200, array(), wp_json_encode(array(

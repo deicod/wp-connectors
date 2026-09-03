@@ -55,7 +55,7 @@ use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
-use Deicod\WpConnectors\Zai\Support\AnthropicUsageValidator;
+use Deicod\WpConnectors\Zai\Support\UsageValidator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
@@ -1404,14 +1404,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * therefore rejected.
 		 *
 		 * GLM4 #11: the validation lives in the shared
-		 * AnthropicUsageValidator — the aggregator's streamed copy had to
+		 * UsageValidator — the aggregator's streamed copy had to
 		 * be fixed in lockstep once already (Codex R15 #1); one source
 		 * keeps the two transports of one generation identical.
 		 */
 		$usage_data = array();
 		if ( \array_key_exists( 'usage', $data ) ) {
 			$raw_usage = null !== $raw && \property_exists( $raw, 'usage' ) ? $raw->usage : null;
-			$reason    = AnthropicUsageValidator::failure_reason(
+			$reason    = UsageValidator::failure_reason(
 				\is_array( $data['usage'] ) ? $data['usage'] : null,
 				$raw_usage
 			);
@@ -1420,9 +1420,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				throw ResponseException::fromInvalidData(
 					'z.ai',
 					'usage',
-					AnthropicUsageValidator::REASON_NOT_OBJECT === $reason
-						? 'The usage member must be a JSON object.'
-						: 'Token counts must be non-negative integers.'
+					UsageValidator::message_for_reason( $reason ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				);
 			}
 
@@ -1440,7 +1438,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * check per member, so no intermediate ever promotes and the
 		 * boundary total PHP_INT_MAX itself stays representable.
 		 */
-		$total = AnthropicUsageValidator::total( $usage_data );
+		$total = UsageValidator::total( $usage_data );
 
 		if ( null === $total ) {
 			throw ResponseException::fromInvalidData(
