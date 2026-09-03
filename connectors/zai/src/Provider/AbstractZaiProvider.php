@@ -74,8 +74,15 @@ abstract class AbstractZaiProvider extends AbstractApiProvider {
 	abstract protected static function provider_display_name(): string;
 
 	/**
-	 * The provider's translated description text (untranslated fallback
-	 * when __() is unavailable).
+	 * The provider's translated description text.
+	 *
+	 * GLM6 #10: each child returns the __()-wrapped LITERAL — extraction
+	 * tools (wp i18n make-pot and friends) scan for literal arguments
+	 * inside translation calls, so the shared-base indirection this
+	 * class used (__( static::provider_description() )) was invisible to
+	 * them and POT regeneration silently dropped both provider-card
+	 * msgids. The untranslated fallback for SDK-context use without
+	 * WordPress loaded lives in the same child method.
 	 *
 	 * @since 0.2.0
 	 *
@@ -118,7 +125,7 @@ abstract class AbstractZaiProvider extends AbstractApiProvider {
 		);
 
 		if ( version_compare( $version, '1.2.0', '>=' ) ) {
-			$args[] = static::translated_description();
+			$args[] = static::provider_description();
 		}
 
 		if ( version_compare( $version, '1.3.0', '>=' ) ) {
@@ -143,22 +150,6 @@ abstract class AbstractZaiProvider extends AbstractApiProvider {
 		return 'cn' === static::selected_region()
 			? static::CN_CREDENTIALS_URL
 			: static::INTL_CREDENTIALS_URL;
-	}
-
-	/**
-	 * Returns the translated provider description.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return string Description text.
-	 */
-	protected static function translated_description(): string {
-		if ( \function_exists( '__' ) ) {
-			// phpcs:ignore WordPress.WP.I18n.NonSingularStringLiteralText -- the text is the child's fixed description literal.
-			return __( static::provider_description(), 'zai' );
-		}
-
-		return static::provider_description();
 	}
 
 	/**

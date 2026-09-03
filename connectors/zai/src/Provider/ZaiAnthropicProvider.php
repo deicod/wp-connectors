@@ -113,13 +113,24 @@ final class ZaiAnthropicProvider extends AbstractZaiProvider {
 	}
 
 	/**
-	 * The provider's description text (shared base translates it).
+	 * The provider's description text, translated.
+	 *
+	 * GLM6 #10: the literal sits INSIDE the __() call so i18n extraction
+	 * (wp i18n make-pot and friends) can find it — the shared-base
+	 * indirection (__( static::provider_description() )) was invisible
+	 * to literal-scanning extractors and POT regeneration dropped the
+	 * msgid. The untranslated fallback covers SDK-context use without
+	 * WordPress loaded.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @return string Description.
 	 */
 	protected static function provider_description(): string {
+		if ( \function_exists( '__' ) ) {
+			return __( 'GLM text generation via the z.ai Anthropic-compatible API.', 'zai' );
+		}
+
 		return 'GLM text generation via the z.ai Anthropic-compatible API.';
 	}
 

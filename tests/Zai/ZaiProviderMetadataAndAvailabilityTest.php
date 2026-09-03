@@ -95,6 +95,27 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertSame('GLM text generation via the z.ai OpenAI-compatible API.', $args[5]);
     }
 
+    public function testTheDescriptionLiteralSitsInsideATranslationCallForExtraction()
+    {
+        /*
+         * GLM6 #10: i18n extractors (wp i18n make-pot and friends) scan
+         * for LITERAL arguments inside translation calls — the shared-base
+         * indirection (__( static::provider_description() )) was invisible
+         * to them, so POT regeneration silently dropped the provider-card
+         * msgid. The runtime value is covered above; this pins the
+         * extractable SOURCE shape.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Provider/ZaiProvider.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match('/__\(\s*\'GLM text generation via the z\.ai OpenAI-compatible API\.\',\s*\'zai\'\s*\)/', $source),
+            'The description literal must appear inside a __() call for POT extraction.'
+        );
+    }
+
     public function testMetadataShapeOnSdk130AddsLogo()
     {
         $args = ZaiProvider::provider_metadata_args('1.3.0');

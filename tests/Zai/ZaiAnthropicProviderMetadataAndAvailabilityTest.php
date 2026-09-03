@@ -62,6 +62,21 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         $this->assertSame('GLM text generation via the z.ai Anthropic-compatible API.', $args[5]);
     }
 
+    public function testTheDescriptionLiteralSitsInsideATranslationCallForExtraction()
+    {
+        // GLM6 #10: the extractable SOURCE shape, pinned like the zai
+        // provider's (see the twin test for the rationale).
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Provider/ZaiAnthropicProvider.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match('/__\(\s*\'GLM text generation via the z\.ai Anthropic-compatible API\.\',\s*\'zai\'\s*\)/', $source),
+            'The description literal must appear inside a __() call for POT extraction.'
+        );
+    }
+
     public function testMetadataShapeOnSdk130AddsLogo()
     {
         $args = ZaiAnthropicProvider::provider_metadata_args('1.3.0');
