@@ -90,16 +90,33 @@ final class AdvertisedOptionGuard {
 	 * to buy. Both surfaces share the rule so a config rejected by one is
 	 * rejected by the other.
 	 *
+	 * GLM7 #15: the REJECTION is shared, the JUSTIFICATION is per
+	 * surface. $ships_forwarded_values states whether the caller's
+	 * request builder actually emits the forwarded keys: the zai surface
+	 * (the SDK parent's builder) does — its message keeps the truthful
+	 * 'would still be sent to the API' clause — while the zai_anthropic
+	 * builder never emits presence_penalty/frequency_penalty/logprobs/
+	 * top_logprobs, so its message justifies the rejection by the
+	 * cross-surface contract instead of a forwarding this surface does
+	 * not do (the hardcoded clause was factually false for half the
+	 * callers and would silently diverge further if either builder
+	 * changed).
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param array<string, mixed> $config_as_array The model config as an array.
-	 * @param string               $provider_label  Provider name for the message ('z.ai' or 'zai_anthropic').
+	 * @param array<string, mixed> $config_as_array       The model config as an array.
+	 * @param string               $provider_label        Provider name for the message ('z.ai' or 'zai_anthropic').
+	 * @param bool                 $ships_forwarded_values Whether the caller's request
+	 *                                                    builder emits the WIRE_FORWARDED
+	 *                                                    keys (the zai surface's SDK
+	 *                                                    parent does; the zai_anthropic
+	 *                                                    builder does not).
 	 * @return void
 	 * @throws InvalidArgumentException When a non-advertised option carries a
 	 *                                   truthy value, or a wire-forwarded
 	 *                                   option carries any explicitly-set value.
 	 */
-	public static function reject_unsupported( array $config_as_array, string $provider_label ): void {
+	public static function reject_unsupported( array $config_as_array, string $provider_label, bool $ships_forwarded_values = true ): void {
 		foreach ( self::UNSUPPORTED as $key => $label ) {
 			$value = $config_as_array[ $key ] ?? null;
 
@@ -110,7 +127,9 @@ final class AdvertisedOptionGuard {
 
 			if ( null !== $value && isset( self::WIRE_FORWARDED[ $key ] ) ) {
 				$message = sprintf(
-					'The %1$s provider does not support %2$s (an explicitly-set value — even a neutral one — would still be sent to the API; build the request without the option instead).',
+					$ships_forwarded_values
+						? 'The %1$s provider does not support %2$s (an explicitly-set value — even a neutral one — would still be sent to the API; build the request without the option instead).'
+						: 'The %1$s provider does not support %2$s (an explicitly-set value — even a wire-inert one on this surface — is rejected so both z.ai surfaces keep one option contract; build the request without the option instead).',
 					$provider_label,
 					$label
 				);

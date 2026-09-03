@@ -1752,8 +1752,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		/*
 		 * GLM1 #11: the unsupported-option rejection is shared with the
 		 * zai surface (was a verbatim twin, one label apart).
+		 *
+		 * GLM7 #15: this surface's prepareGenerateTextParams() never
+		 * emits presence_penalty/frequency_penalty/logprobs/top_logprobs,
+		 * so its WIRE_FORWARDED justification states that truthfully
+		 * (cross-surface contract) instead of the forwarding only the
+		 * zai surface's SDK-parent builder performs.
 		 */
-		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), 'zai_anthropic' );
+		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), 'zai_anthropic', false );
 
 		/*
 		 * GLM2 #9: the five usage rejections the two surfaces advertise

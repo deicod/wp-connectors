@@ -2515,13 +2515,18 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
          * 0.0, logprobs false, ...) now reject instead — they would
          * ship on the zai surface — plus a truthy control that still
          * rejects.
+         *
+         * GLM7 #15: the rejection RULE stays shared, but each surface's
+         * justification is truthful — the zai surface's builder forwards
+         * the keys ('would still be sent to the API'), this surface's
+         * never emits them ('one option contract').
          */
         \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array(
             'topK' => '0',
             'webSearch' => '',
             'outputFileType' => array(),
             'outputSpeechVoice' => null,
-        ), 'zai_anthropic');
+        ), 'zai_anthropic', false);
 
         foreach (array(
             'presencePenalty' => 0.0,
@@ -2530,19 +2535,52 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             'topLogprobs' => 0,
         ) as $key => $value) {
             try {
-                \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array($key => $value), 'zai_anthropic');
-                $this->fail("An explicitly-set falsy {$key} must be rejected (it would ship on the zai surface).");
+                \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array($key => $value), 'zai_anthropic', false);
+                $this->fail("An explicitly-set falsy {$key} must be rejected on this surface too (one option contract).");
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('one option contract', $e->getMessage());
+                $this->assertStringNotContainsString('would still be sent to the API', $e->getMessage(), 'This surface never emits the forwarded keys — the forwarding justification would be false.');
+            }
+
+            try {
+                \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array($key => $value), 'z.ai');
+                $this->fail("An explicitly-set falsy {$key} must be rejected on the zai surface (it would ship).");
             } catch (InvalidArgumentException $e) {
                 $this->assertStringContainsString('would still be sent to the API', $e->getMessage());
             }
         }
 
         try {
-            \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array('presencePenalty' => 0.5), 'zai_anthropic');
+            \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array('presencePenalty' => 0.5), 'zai_anthropic', false);
             $this->fail('A truthy unsupported value must still be rejected.');
         } catch (InvalidArgumentException $e) {
             $this->assertStringContainsString('presence penalty', $e->getMessage());
         }
+    }
+
+    public function testAFalsyForwardedOptionOnTheAnthropicSurfaceRejectsWithTheTruthfulMessage()
+    {
+        /*
+         * GLM7 #15 (model-level): a caller neutralizing a previously-set
+         * option on this surface gets the truthful justification — the
+         * rejection exists for the cross-surface contract, not a wire
+         * forwarding this surface's builder never performs.
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setPresencePenalty(0.0);
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An explicitly-set falsy forwarded option must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai_anthropic provider does not support presence penalty', $e->getMessage());
+            $this->assertStringContainsString('one option contract', $e->getMessage());
+            $this->assertStringNotContainsString('would still be sent to the API', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
     }
 
     /**
