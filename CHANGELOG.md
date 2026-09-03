@@ -6,6 +6,82 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM6 code review)
+
+- Guard-parity round two — every guard suite this branch built had gaps
+  where it was not APPLIED. On the zai (OpenAI-compatible) surface,
+  tool-call arguments that fail JSON decode are a typed rejection
+  instead of a fabricated no-argument call (a stream that loses one
+  arguments fragment, or a truncated body string, previously SUCCEEDED
+  with `getArgs() null` — a consumer could execute a possibly
+  side-effecting tool with arguments the model never produced; the
+  empty string keeps the parent's null-args semantics, since the
+  streamed aggregator structurally consolidates zero-argument calls to
+  `''`); the object-ness walk covers LIST-rooted arguments too, so
+  nested `{}`/numeric-keyed objects no longer re-encode as JSON lists
+  under a list root; and the GLM3 #4/GLM4 #1 wire-value encodability
+  oracle finally guards this surface's caller-authored values —
+  visible text parts, the system instruction, stop sequences, declared
+  tool names/descriptions/schemas, tool-call ids/names, tool-result
+  values (whose plain `json_encode()` failure shipped
+  `"content": false`, telling the model the tool returned nothing),
+  and the sampling floats/response-format schema — as typed
+  pre-transport 400s instead of the transport's untyped
+  `JsonException` surfaced as the generic 500. The shared
+  `JsonEncodeGuard` message names the consuming provider via a new
+  call-site label parameter (zai_anthropic messages unchanged).
+
+- The streamed chat.completions path judges what the payload carries:
+  the usage oracle is captured under the SAME condition the
+  consolidation merges by, so a trailing non-merging `"usage"` member
+  (a string, a null) can neither reject a valid generation nor flip
+  the verdict through the object-ness fallback; the WHOLE consolidated
+  payload passes the raw-`json_encode()` encodability oracle (an INF
+  `finish_reason` previously collapsed the re-encoded body to `''` and
+  the failure surfaced as the generic "payload was malformed", masking
+  the cause); and the consolidated payload reaches the SDK parser
+  already DECODED (a pre-decoded `Response` shim), deleting the
+  `wp_json_encode()`/re-decode round trip this branch removed from the
+  Anthropic twin in GLM2 #10 — pinned at the source level since the
+  hand-off is behavior-preserving by design.
+
+- The Anthropic aggregator keeps what it validates: `message_delta`'s
+  input-side usage counts (`input_tokens` plus the cache variants) are
+  stored, overflow-checked, superseding the `message_start` estimate
+  exactly like the one usage object of the identical non-streaming
+  body — a stream whose start carried no usage previously aggregated
+  `input_tokens: 0` (silent usage/billing undercounting). A trailing
+  `event: error` frame whose payload fails JSON decoding reaches the
+  error policy ("error event") instead of the "malformed event frame"
+  verdict the unified pipeline's undecodable branch mis-assigned. The
+  zai_anthropic OUTBOUND tool-argument path applies the shared
+  `ToolArgsReplayGuard` (encodability alone let a precision-loss
+  integral float beyond `PHP_INT_MAX` ship silently, where this
+  surface's own inbound parser and the zai mapper reject the identical
+  value), and the declared/replayed tool identity strings (declaration
+  name and description, `tool_use` id/name, `tool_result`
+  `tool_use_id`) route through the shared encodability guard like
+  every other wire string.
+
+- Structural repairs: the provider-card description literals sit
+  inside their `__()` calls again (the shared-base indirection was
+  invisible to literal-scanning POT extractors — regenerating a
+  catalog silently dropped both msgids); the shared `EventStreamSniff`
+  strips leading whitespace with PHP's DEFAULT `ltrim` set
+  (NUL/vertical-tab-first streams misrouted to the JSON parser under
+  the narrowed list, where master's bare `ltrim()` aggregated them);
+  the idempotent `LoggingHttpTransporter` wrap rule lives in one
+  `wrap()` helper instead of five copy-pasted `setHttpTransporter()`
+  blocks; and the provider identifier constants (option/env names,
+  section ids, labels, cache scopes, `PROVIDER_ID`) are declared by
+  the provider CHILDREN — the shared bases carried the zai provider's
+  values as runtime-dead defaults, so a future child forgetting one
+  override would silently read and write the zai provider's options; a
+  missing declaration now fails loudly, pinned by reflection tests
+  (with the bases' `static::` accesses count-pinned in
+  `phpstan.neon.dist`, since PHPStan cannot express abstract class
+  constants).
+
 ### Fixed (zai / M2 — GLM5 code review)
 
 - The zai (OpenAI-compatible) surface reached inbound-hardening parity
