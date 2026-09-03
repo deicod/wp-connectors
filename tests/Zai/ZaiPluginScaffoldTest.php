@@ -96,6 +96,40 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
      * Missing SDK: the guarded bootstrap must no-op without fatals.
      */
 
+    public function testAForeignVersionConstantDoesNotEmitARedefinitionNotice()
+    {
+        /*
+         * GLM5 #15: ZAI_VERSION was defined without a defined() guard, so
+         * any other plugin/theme defining the same generic constant first
+         * emitted an E_NOTICE on every request and this plugin silently
+         * reported the foreign version. Verified in a subprocess: the
+         * plugin file is already loaded in this process, and the guard's
+         * effect is only observable at load time.
+         */
+        $script = ''
+            . 'define("ABSPATH", "/tmp/");'
+            . 'define("ZAI_VERSION", "9.9-foreign");'
+            . 'function add_action(...$args) {}'
+            . 'function add_filter(...$args) {}'
+            . 'function plugin_basename($file) { return $file; }'
+            . 'require ' . var_export(self::PLUGIN_FILE, true) . ';'
+            . 'echo "ZAI_VERSION=" . ZAI_VERSION;'
+            . '';
+
+        $command = escapeshellarg(PHP_BINARY)
+            . ' -d error_reporting=-1 -d display_errors=1 -r '
+            . escapeshellarg($script)
+            . ' 2>&1';
+
+        exec($command, $output_lines, $exit_code);
+        $output = implode("\n", $output_lines);
+
+        $this->assertSame(0, $exit_code, "Loading with a foreign ZAI_VERSION must not fatal: {$output}");
+        $this->assertStringNotContainsString('already defined', $output, 'No constant-redefinition notice may be emitted.');
+        $this->assertStringNotContainsString('Notice', $output, 'No notice may be emitted at load time.');
+        $this->assertStringContainsString('ZAI_VERSION=9.9-foreign', $output, 'The foreign value stands (the guarded define is skipped): the guard exists to stop the per-request notice, not to fight the collision.');
+    }
+
     public function testMissingSdkBootstrapIsASafeNoOp()
     {
         // Runs the plugin bootstrap in a fresh PHP process WITHOUT the SDK

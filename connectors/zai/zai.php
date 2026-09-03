@@ -29,9 +29,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	return;
 }
 
-// The slug-derived version constant required by docs/CONVENTIONS.md
-// (ZAI_VERSION); the prefix sniff rejects the short "zai" prefix by design.
-define( 'ZAI_VERSION', '0.1.0' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals
+/*
+ * The slug-derived version constant required by docs/CONVENTIONS.md
+ * (ZAI_VERSION); the prefix sniff rejects the short "zai" prefix by design.
+ *
+ * GLM5 #15: the defined() guard keeps a foreign plugin (or theme) that
+ * defines the same generic constant FIRST from emitting a "Constant
+ * ZAI_VERSION already defined" notice on every request — and from this
+ * plugin silently reporting the foreign value as its own version.
+ */
+if ( ! defined( 'ZAI_VERSION' ) ) {
+	define( 'ZAI_VERSION', '0.1.0' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals
+}
 
 require_once __DIR__ . '/src/autoload.php';
 
