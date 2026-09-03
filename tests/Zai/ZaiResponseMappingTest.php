@@ -301,6 +301,41 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertNull($call->getArgs());
     }
 
+    public function testAnEmptyArgumentsStringKeepsTheParentSemantics()
+    {
+        /*
+         * GLM6 #1 (verifier round): the streamed aggregator initializes
+         * arguments to '' and only appends fragments, so a legitimate
+         * zero-argument streamed call consolidates to '' — and a
+         * non-streaming "arguments": "" is the same legal zero-arg shape.
+         * Both keep the SDK parent's null-args semantics; only genuinely
+         * undecodable strings reject.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-es","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_es","type":"function","function":{"name":"ping","arguments":""}}]},"finish_reason":"tool_calls"}]}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertNull($call->getArgs());
+    }
+
+    public function testAStreamedZeroArgumentToolCallConsolidatingToEmptyStillSucceeds()
+    {
+        // GLM6 #1 (verifier round, streamed half): no arguments fragment
+        // ever arrives, so the consolidated arguments string is ''.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-za","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_za","type":"function","function":{"name":"ping","arguments":""}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-za","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame('call_za', $call->getId());
+        $this->assertNull($call->getArgs(), "A streamed zero-argument call consolidating to '' keeps the null-args semantics.");
+    }
+
     public function testListRootedToolCallArgumentsPreserveNestedObjectNessThroughReplay()
     {
         /*

@@ -433,7 +433,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		if ( \is_string( $raw_arguments ) ) {
 			$raw = json_decode( $raw_arguments );
 
-			if ( null === $raw && \JSON_ERROR_NONE !== \json_last_error() ) {
+			if ( '' !== $raw_arguments && null === $raw && \JSON_ERROR_NONE !== \json_last_error() ) {
 				/*
 				 * GLM6 #1: a decode failure left the SDK parent's null-args
 				 * call standing — the replay guard passes null (it encodes
@@ -446,9 +446,16 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				 * arguments the model never produced. Substituting {} would
 				 * fabricate a no-argument call the same way (the corruption
 				 * class the zai_anthropic twin's Codex R1/R7 rejections
-				 * exist to stop), so the response fails typed instead. A
-				 * literal "null" string decodes cleanly and keeps the SDK
-				 * parent's semantics.
+				 * exist to stop), so the response fails typed instead.
+				 *
+				 * Verifier round: the EMPTY string keeps the parent's
+				 * null-args semantics (excluded above) — the streamed
+				 * aggregator initializes arguments to '' and only appends
+				 * fragments, so a legitimate zero-argument streamed call
+				 * structurally consolidates to '' (it cannot produce the
+				 * literal "null" string); a non-streaming "arguments": ""
+				 * is the same legal zero-arg shape. A literal "null" string
+				 * decodes cleanly and keeps the parent's semantics too.
 				 */
 				throw ResponseException::fromInvalidData(
 					'z.ai',
