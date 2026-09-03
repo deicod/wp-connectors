@@ -91,6 +91,26 @@ final class SseAggregator {
 	private $malformed = 0;
 
 	/**
+	 * Whether a chunk choice or tool-call delta carried an index this
+	 * merge could not identify soundly (GLM7 #1).
+	 *
+	 * The legacy merge used to SILENTLY SKIP choices whose 'index' member
+	 * was missing or null and int-COERCE malformed ones ((int) "1.9" is 1,
+	 * (int) null is 0) — a chunk of the answer (or a tool-call fragment)
+	 * vanished from a stream that still reported success, and a float or
+	 * null index merged its delta into the WRONG accumulator. The Anthropic
+	 * twin added in this branch rejects the identical corruption through
+	 * raw_block_index(); this flag is the legacy surface's parity channel:
+	 * aggregated() raises it, the model turns it into the typed
+	 * zai_invalid_response stream rejection.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $malformed_event = false;
+
+	/**
 	 * Constructor.
 	 *
 	 * @since 0.2.0
@@ -186,6 +206,25 @@ final class SseAggregator {
 	}
 
 	/**
+	 * Whether a chunk choice or tool-call delta carried an unusable index.
+	 *
+	 * True means the stream is corrupt: at least one decoded chunk
+	 * declared a choices entry (or a tool_calls delta) whose 'index'
+	 * member was absent, null, or not a non-negative integer, so the
+	 * merged payload would be missing that delta's content or carry it
+	 * merged into the wrong accumulator. The model must treat the whole
+	 * response as a parse error (GLM7 #1 — parity with the Anthropic
+	 * twin's raw_block_index() rejection).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return bool True when a declared index was malformed.
+	 */
+	public function has_malformed_event(): bool {
+		return $this->malformed_event;
+	}
+
+	/**
 	 * Aggregates the consumed chunks into one chat.completion payload.
 	 *
 	 * @since 0.1.0
@@ -215,11 +254,29 @@ final class SseAggregator {
 			}
 
 			foreach ( $event['choices'] as $choice ) {
-				if ( ! \is_array( $choice ) || ! isset( $choice['index'] ) ) {
+				/*
+				 * GLM7 #1: an unusable choice index is corruption, not a
+				 * skippable entry — the silent skip lost that delta's
+				 * content from a stream that still reported success, and
+				 * the (int) cast below merged float/string indexes into
+				 * the WRONG accumulator. The flag fails the response
+				 * typed; the entry itself stays unmerged (its content
+				 * cannot be attributed soundly). Parity with the
+				 * Anthropic twin's raw_block_index() rule: the index must
+				 * be a non-negative INTEGER (the associative decode
+				 * preserves JSON int-ness, so is_int() rejects "1", 1.9,
+				 * true, and null exactly like the twin's raw oracle).
+				 */
+				if ( ! \is_array( $choice )
+					|| ! isset( $choice['index'] )
+					|| ! \is_int( $choice['index'] )
+					|| $choice['index'] < 0 ) {
+					$this->malformed_event = true;
+
 					continue;
 				}
 
-				$index             = (int) $choice['index'];
+				$index             = $choice['index'];
 				$choices[ $index ] = $this->merge_choice( $choices[ $index ] ?? null, $choice );
 			}
 		}
@@ -267,7 +324,7 @@ final class SseAggregator {
 	 */
 	private function merge_choice( ?array $accumulated, array $delta ): array {
 		$choice = \is_array( $accumulated ) ? $accumulated : array(
-			'index'         => (int) $delta['index'],
+			'index'         => $delta['index'],
 			'message'       => array(),
 			'finish_reason' => null,
 		);
@@ -308,11 +365,24 @@ final class SseAggregator {
 	 */
 	private function merge_tool_calls( array $accumulated, array $deltas ): array {
 		foreach ( $deltas as $tool_delta ) {
-			if ( ! \is_array( $tool_delta ) || ! \array_key_exists( 'index', $tool_delta ) ) {
+			/*
+			 * GLM7 #1 (tool-call half): the same rejection the choice
+			 * loop applies — a missing/null index was skipped silently
+			 * (the fragment vanished) and a null index even passed
+			 * array_key_exists() to coerce to 0, merging the fragment
+			 * into tool accumulator 0 of the WRONG call. Non-negative
+			 * integer or the stream fails typed.
+			 */
+			if ( ! \is_array( $tool_delta )
+				|| ! isset( $tool_delta['index'] )
+				|| ! \is_int( $tool_delta['index'] )
+				|| $tool_delta['index'] < 0 ) {
+				$this->malformed_event = true;
+
 				continue;
 			}
 
-			$index = (int) $tool_delta['index'];
+			$index = $tool_delta['index'];
 
 			if ( ! isset( $accumulated[ $index ] ) ) {
 				$accumulated[ $index ] = array(

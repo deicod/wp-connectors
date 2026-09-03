@@ -889,6 +889,109 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * @dataProvider provideUnusableChoiceIndexes
+     */
+    public function testStreamedChoicesWithUnusableIndexesAreRejectedTyped($indexFragment, $label)
+    {
+        /*
+         * GLM7 #1: a chunk choice whose 'index' member is missing, null,
+         * or not a non-negative integer was silently SKIPPED (that
+         * delta's content vanished from a successful stream) or
+         * int-COERCED into the wrong accumulator — the Anthropic twin
+         * added in this branch rejects the identical corruption as a
+         * malformed event, and the legacy surface now fails typed
+         * through the same channel instead of returning wrong output.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-bi","choices":[{"index":0,"delta":{"role":"assistant","content":"Good"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-bi","choices":[{' . $indexFragment . '"delta":{"content":"MISSING"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-bi","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+        $aggregator->aggregated();
+
+        $this->assertTrue($aggregator->has_malformed_event(), "{$label}: the unusable choice index must flag the stream.");
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail("{$label}: an unusable choice index must be rejected typed.");
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('malformed chunk event', $e->getMessage());
+            $this->assertStringNotContainsString('MISSING', $e->getMessage(), 'Raw event payloads must not be echoed.');
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideUnusableChoiceIndexes()
+    {
+        return array(
+            'index omitted' => array('', 'index omitted'),
+            'index null' => array('"index":null,', 'index null'),
+            'index string' => array('"index":"0",', 'index string'),
+            'index float' => array('"index":1.9,', 'index float'),
+            'index negative' => array('"index":-1,', 'index negative'),
+        );
+    }
+
+    /**
+     * @dataProvider provideUnusableToolCallIndexes
+     */
+    public function testStreamedToolCallDeltasWithUnusableIndexesAreRejectedTyped($toolIndexFragment, $label)
+    {
+        /*
+         * GLM7 #1 (tool-call half): a tool_calls delta whose 'index' is
+         * null passed array_key_exists() and coerced to 0 — the fragment
+         * merged into the WRONG call's accumulator; a missing one was
+         * skipped, silently truncating the call's arguments.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-ti","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_ok","type":"function","function":{"name":"get_weather","arguments":"{}"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-ti","choices":[{"index":0,"delta":{"tool_calls":[{' . $toolIndexFragment . '"function":{"arguments":"{\\"city\\":\\"Paris\\"}"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-ti","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+        $aggregator->aggregated();
+
+        $this->assertTrue($aggregator->has_malformed_event(), "{$label}: the unusable tool-call index must flag the stream.");
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail("{$label}: an unusable tool-call index must be rejected typed.");
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('malformed chunk event', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideUnusableToolCallIndexes()
+    {
+        return array(
+            'tool index omitted' => array('', 'tool index omitted'),
+            'tool index null' => array('"index":null,', 'tool index null'),
+            'tool index string' => array('"index":"1",', 'tool index string'),
+            'tool index float' => array('"index":0.9,', 'tool index float'),
+        );
+    }
+
     public function testStreamParserToleratesSplitFramesCrlfCommentsAndMalformedEvents()
     {
         $body = ""

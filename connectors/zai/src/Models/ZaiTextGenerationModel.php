@@ -237,6 +237,23 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		$aggregated = $aggregator->aggregated();
 
+		/*
+		 * GLM7 #1: the merge raises this flag when a chunk choice or
+		 * tool-call delta carried an index it could not identify soundly
+		 * (missing, null, or non-integer) — the check runs AFTER
+		 * aggregated() because aggregation itself raises the flag, and
+		 * BEFORE the no-usable-event check so the corruption is named
+		 * rather than masked by the generic empty-stream message. Parity
+		 * with the Anthropic twin's malformed-event channel.
+		 */
+		if ( $aggregator->has_malformed_event() ) {
+			throw ResponseException::fromInvalidData(
+				'z.ai',
+				'stream',
+				'The chat-completions stream contained a malformed chunk event.'
+			);
+		}
+
 		if ( null === $aggregated ) {
 			throw ResponseException::fromInvalidData(
 				'z.ai',
