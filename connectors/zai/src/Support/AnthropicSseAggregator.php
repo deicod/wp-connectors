@@ -660,9 +660,23 @@ final class AnthropicSseAggregator {
 			 * stay ignorable (for trailing frames too: an event-less or
 			 * unknown-named one is noise, not corruption of the completed
 			 * generation).
+			 *
+			 * GLM6 #7: a TRAILING declaration is judged by the
+			 * GLM4 #6/GLM5 #18 post-termination policy
+			 * (handle_trailing_event()'s rules), which the undecodable
+			 * payload cannot be dispatched to — so they apply inline
+			 * here: an error declaration sets the error flag (the old
+			 * dedicated branch did; the shared check intercepted it first
+			 * and surfaced 'malformed event frame' instead of the
+			 * documented 'error event' message), while any other declared
+			 * name stays the corrupt-mutation rejection.
 			 */
 			if ( \is_string( $event_name ) && \in_array( $event_name, self::DECLARED_EVENTS, true ) ) {
-				$this->malformed_event = true;
+				if ( $this->terminated && 'error' === $event_name ) {
+					$this->error = true;
+				} else {
+					$this->malformed_event = true;
+				}
 			}
 
 			return;
