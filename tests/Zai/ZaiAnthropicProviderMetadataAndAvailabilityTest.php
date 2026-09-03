@@ -15,6 +15,7 @@ declare( strict_types=1 );
 use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
@@ -158,6 +159,42 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
 
         $attempts = $this->sdkHttpAttempts();
         $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $attempts[0]['url']);
+    }
+
+    public function testADatabaseOnlyKeyValidatesThroughAnUnwiredProbeWithProtocolHeaders()
+    {
+        /*
+         * GLM5 #10: a database-only key (no env/constant, so nothing wired
+         * by the registry) rode an unwired probe — inconclusive forever.
+         * The fallback probe must authenticate with this surface's
+         * PROTOCOL headers (Bearer + anthropic-version, never x-api-key),
+         * exactly like its wired requests.
+         */
+        putenv('ZAI_ANTHROPIC_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiAnthropicProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        // Deliberately NO request authentication wired: the registry's
+        // database-only shape.
+
+        $this->queueSdkResponse(403, array(), '{"type":"error","error":{"type":"forbidden"}}');
+
+        $this->assertFalse($instance->isConfigured(), 'A database-only rejected key must report not-connected.');
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts, 'The probe must actually validate the stored key.');
+        $this->assertSame(
+            array('Bearer ' . $key),
+            $attempts[0]['headers']['Authorization'] ?? null,
+            'The fallback probe must authenticate with the stored key.'
+        );
+        $this->assertSame(
+            array(ZaiAnthropicRequestAuthentication::ANTHROPIC_VERSION),
+            $attempts[0]['headers']['anthropic-version'] ?? null,
+            'The fallback probe must carry this surface\'s protocol headers.'
+        );
     }
 
     public function testAZaiValidatedStateCanNeverEstablishAnthropicStatus()

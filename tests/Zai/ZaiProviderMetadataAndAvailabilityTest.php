@@ -174,6 +174,60 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testADatabaseOnlyKeyValidatesThroughAnUnwiredProbe()
+    {
+        /*
+         * GLM5 #10: the SDK registry wires provider auth from env/constant
+         * ONLY, so a DATABASE-only key rode an UNWIRED probe — the
+         * binding RuntimeException counted as inconclusive and
+         * isConfigured() reported connected (configured-pending) FOREVER
+         * without a single validation request, defeating the class's own
+         * 'nonempty-but-invalid key must report not-connected' contract.
+         * The unwired probe now authenticates with the EFFECTIVE (stored)
+         * key through the surface's fallback authentication.
+         */
+        putenv('ZAI_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        // Deliberately NO request authentication wired: the registry's
+        // database-only shape.
+
+        $this->queueSdkResponse(401, array(), '{"error":{"message":"bad key"}}');
+
+        $this->assertFalse($instance->isConfigured(), 'A database-only invalid key must report not-connected.');
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts, 'The probe must actually validate the stored key.');
+        $this->assertSame(
+            array('Bearer ' . $key),
+            $attempts[0]['headers']['Authorization'] ?? null,
+            'The fallback probe must authenticate with the stored key.'
+        );
+
+        $state = get_option(ZaiProviderAvailability::STATE_OPTION);
+        $this->assertSame('invalid', $state['valid'], 'The definitive rejection persists.');
+    }
+
+    public function testADatabaseOnlyValidKeyConnectsThroughAnUnwiredProbe()
+    {
+        // GLM5 #10 (positive half): a valid database-only key must report
+        // connected on the strength of a REAL probe, not a silent default.
+        putenv('ZAI_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+
+        $this->assertTrue($instance->isConfigured());
+        $this->assertCount(1, $this->sdkHttpAttempts());
+    }
+
     public function testKeylessIsConfiguredDoesNotDeleteStateOnEveryCall()
     {
         /*

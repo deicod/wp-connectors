@@ -723,8 +723,37 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			$endpoint_class = static::endpoint_class();
 			$endpoint       = $endpoint_class::for_current_settings();
 			$request        = new Request( HttpMethodEnum::GET(), $endpoint->models_url() );
-			$request        = $this->getRequestAuthentication()->authenticateRequest( $request );
-			$response       = $this->getHttpTransporter()->send( $request );
+
+			/*
+			 * GLM5 #10: the SDK registry wires provider credentials from
+			 * env/constant ONLY, so a DATABASE-only key rode an UNWIRED
+			 * probe: getRequestAuthentication() threw the binding
+			 * RuntimeException, the catch below counted the probe
+			 * inconclusive, and isConfigured() reported connected
+			 * (configured-pending) FOREVER without a single validation
+			 * request — defeating this class's own 'nonempty-but-invalid
+			 * key must report not-connected' contract. When no auth is
+			 * wired, the probe authenticates with the EFFECTIVE key (the
+			 * same resolution effective_key() performs) through the
+			 * surface's fallback authentication, so the database-only key
+			 * actually validates against the endpoint.
+			 */
+			try {
+				$authentication = $this->getRequestAuthentication();
+			} catch ( Throwable $unwired ) {
+				$effective = $this->effective_key();
+
+				if ( '' === $effective['key'] ) {
+					// Nothing to authenticate with: as inconclusive as
+					// before the fallback existed.
+					return null;
+				}
+
+				$authentication = static::fallback_authentication( $effective['key'] );
+			}
+
+			$request  = $authentication->authenticateRequest( $request );
+			$response = $this->getHttpTransporter()->send( $request );
 		} catch ( Throwable $e ) {
 			// Transport failure: transient, never persisted.
 			return null;
@@ -743,6 +772,24 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 
 		// 3xx, 429, other 4xx, 5xx: inconclusive for the credential.
 		return null;
+	}
+
+	/**
+	 * Builds the authentication an UNWIRED probe authenticates with
+	 * (GLM5 #10).
+	 *
+	 * The base returns the plain SDK API-key authentication (the zai
+	 * surface's protocol); the zai_anthropic surface overrides to
+	 * protocol-wrap the key — its probe requests must carry the Anthropic
+	 * surface's headers, exactly like its wired requests do.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $key The effective credential.
+	 * @return RequestAuthenticationInterface
+	 */
+	protected static function fallback_authentication( string $key ): RequestAuthenticationInterface {
+		return new ApiKeyRequestAuthentication( $key );
 	}
 
 	/**

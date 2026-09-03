@@ -24,6 +24,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Availability;
 
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
@@ -114,5 +115,19 @@ final class ZaiAnthropicProviderAvailability extends AbstractZaiProviderAvailabi
 	 */
 	public function getRequestAuthentication(): RequestAuthenticationInterface { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
 		return ZaiAnthropicRequestAuthentication::wrap( parent::getRequestAuthentication() );
+	}
+
+	/**
+	 * The UNWIRED-probe fallback authentication, protocol-wrapped too
+	 * (GLM5 #10): a database-only key must validate against the endpoint
+	 * with this surface's headers, never the plain OpenAI-style auth.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $key The effective credential.
+	 * @return RequestAuthenticationInterface
+	 */
+	protected static function fallback_authentication( string $key ): RequestAuthenticationInterface {
+		return ZaiAnthropicRequestAuthentication::wrap( new ApiKeyRequestAuthentication( $key ) );
 	}
 }
