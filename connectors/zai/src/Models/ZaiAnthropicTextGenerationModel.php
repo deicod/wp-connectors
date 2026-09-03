@@ -1658,6 +1658,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * numeric-keyed JSON object ({"0":…}) is indistinguishable from a list
 	 * after an associative decode and is rejected with it.
 	 *
+	 * GLM7 #10: the probe uses the RAW json_encode() oracle (the GLM3 #4
+	 * primitive the shared JsonEncodeGuard single-sources, GLM5 #16) —
+	 * core's wp_json_encode() lossily rescues invalid UTF-8 in production
+	 * and never returns false for a string, so this branch decided
+	 * DIFFERENTLY under the deliberately stricter test stub than in
+	 * production for the same payload (the GLM4 #1 dead-oracle class).
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param mixed $value Decoded input member of a tool_use block.
@@ -1668,7 +1675,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			return false;
 		}
 
-		$encoded = wp_json_encode( $value );
+		$encoded = json_encode( $value ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM7 #10; the GLM3 #4 verifier-round class).
 
 		return \is_string( $encoded ) && '{' === substr( $encoded, 0, 1 );
 	}

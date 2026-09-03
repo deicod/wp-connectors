@@ -652,6 +652,43 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testTheObjectShapeProbeUsesTheRawJsonEncodeOracle()
+    {
+        /*
+         * GLM7 #10: the harness stub makes wp_json_encode() behave like
+         * bare json_encode(), so a behavioral test cannot discriminate
+         * the raw oracle from core's production wp_json_encode() (which
+         * lossily rescues invalid UTF-8 and never returns false) — the
+         * GLM6 #14 source-level precedent pins the mechanism instead:
+         * the probe must run on the RAW oracle so the defensive branch
+         * decides identically under test and in production.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match('/private static function is_object_shape\( \$value \): bool \{(.*?)\n\t\}/s', $source, $matches),
+            'The is_object_shape() body must be found.'
+        );
+        // Judge code, not the justification comments (which name
+        // wp_json_encode to explain why it is NOT used).
+        $body = (string) preg_replace('/^\s*\*.*$/m', '', $matches[1]);
+        $body = (string) preg_replace('/\s*\/\/.*$/m', '', $body);
+
+        $this->assertSame(
+            1,
+            preg_match('/json_encode\( \$value \);/', $body),
+            'is_object_shape() must probe through the RAW json_encode() oracle.'
+        );
+        $this->assertSame(
+            0,
+            preg_match('/wp_json_encode/', $body),
+            'is_object_shape() must not depend on core\'s lossy wp_json_encode().'
+        );
+    }
+
     public function testAListToolUseInputFailsAsATypedParseError()
     {
         // Codex R2 #1: the regular (non-streaming) response path must
