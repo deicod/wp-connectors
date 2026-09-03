@@ -1052,6 +1052,27 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		if ( $aggregator->has_malformed_event() ) {
 			/*
+			 * GLM8 #5: the sniff trusts a text/event-stream Content-Type
+			 * before inspecting the body (the documented precedence — the
+			 * body sniff is the fallback for mangled/omitted headers, not
+			 * a veto of the header), so a doubly-nonconforming gateway
+			 * that labels a VALID JSON Messages body with the stream
+			 * header died here as 'malformed event frame' — one JSON
+			 * object, no data: line, no message_start. A stream whose
+			 * aggregation failed is exactly the signal the label may have
+			 * lied: before surfacing the stream verdict, try the JSON the
+			 * label promised the body wasn't. A body that parses as a
+			 * Messages payload completes the generation; anything else
+			 * (not a JSON object, or not a Messages payload) keeps the
+			 * stream-typed error below — the header DID promise a stream.
+			 */
+			$fallback = $this->json_fallback_result( $body );
+
+			if ( null !== $fallback ) {
+				return $fallback;
+			}
+
+			/*
 			 * A declared event frame was undecodable or wrongly shaped
 			 * (Codex R4 #3), or aggregated() refused the stream — e.g. no
 			 * message_start was received (Codex R8 #3), which must never
@@ -1148,6 +1169,41 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$data = \is_array( $decoded ) ? $decoded : null;
 
 		return $this->parse_decoded_message( $data, $raw instanceof \stdClass ? $raw : null );
+	}
+
+	/**
+	 * The JSON fallback for a body the Content-Type mislabeled as a
+	 * stream (GLM8 #5), or null when the body is no Messages payload.
+	 *
+	 * Runs only AFTER SSE aggregation failed (the caller's
+	 * malformed-event channel), so a genuinely-decodable stream never
+	 * re-routes: only a body that decodes as a JSON OBJECT is even
+	 * attempted, and only a full Messages-payload parse succeeds. A
+	 * ResponseException from the parse (a JSON object, but not a valid
+	 * Messages body) returns null so the caller surfaces its
+	 * stream-typed error; the typed truncation outcome
+	 * (TokenLimitReachedException) is a successful parse of a valid body
+	 * and propagates.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $body The raw response body.
+	 * @return GenerativeAiResult|null The parsed result, or null when the
+	 *                                 body is not a Messages payload.
+	 * @throws TokenLimitReachedException When the JSON body is a valid
+	 *                                    Messages payload that stopped at
+	 *                                    the token limit.
+	 */
+	private function json_fallback_result( string $body ): ?GenerativeAiResult {
+		if ( ! \is_object( json_decode( SseFrameBuffer::strip_stream_prefix( $body ) ) ) ) {
+			return null;
+		}
+
+		try {
+			return $this->parse_body_string( $body );
+		} catch ( ResponseException $e ) {
+			return null;
+		}
 	}
 
 	/**

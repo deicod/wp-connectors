@@ -245,6 +245,100 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAJsonBodyMislabeledAsEventStreamParsesViaTheFallback()
+    {
+        /*
+         * GLM8 #5: EventStreamSniff trusts a text/event-stream
+         * Content-Type before inspecting the body, and there was no JSON
+         * fallback after SSE aggregation — a valid JSON Messages body
+         * from a doubly-nonconforming gateway (right payload, wrong
+         * label) reached the aggregator as one data-less frame and died
+         * as 'The message stream contained a malformed event frame.'
+         * Aggregation failing is now the signal to try the JSON the
+         * label promised it wasn't.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), (string) wp_json_encode(array(
+            'id' => 'msg_mislabeled',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'Right payload, wrong label.')),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 9, 'output_tokens' => 5),
+        )));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Right payload, wrong label.', $result->toText());
+        $this->assertSame('msg_mislabeled', $result->getId());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+        $this->assertSame(14, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    public function testAMislabeledJsonBodyHittingTheTokenLimitStillThrowsTheTypedLimit()
+    {
+        // GLM8 #5 guard: the fallback is a real parse — its typed
+        // truncation outcome (a valid body whose stop_reason is
+        // max_tokens) propagates, never swallowed into the stream error.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), (string) wp_json_encode(array(
+            'id' => 'msg_mislabeled_max',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'Truncated.')),
+            'stop_reason' => 'max_tokens',
+            'usage' => array('input_tokens' => 9, 'output_tokens' => 5),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A mislabeled max_tokens body must still throw the typed limit.');
+        } catch (TokenLimitReachedException $e) {
+            $this->assertStringContainsString('token limit', $e->getMessage());
+        }
+    }
+
+    public function testMislabeledNonJsonBodiesKeepTheStreamTypedError()
+    {
+        /*
+         * GLM8 #5 guards: the fallback rescues only a full Messages
+         * payload. Garbage, and a JSON object that is not a Messages
+         * body, keep the stream verdict the header earned.
+         */
+        $bodies = array(
+            'garbage' => 'definitely not a stream or a payload',
+            'wrong json object' => '{"error":{"type":"overloaded_error"}}',
+        );
+
+        foreach ($bodies as $label => $body) {
+            $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+            try {
+                $this->model()->generateTextResult($this->prompt());
+                $this->fail("[{$label}] A non-Messages body with the stream header must keep the stream error.");
+            } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                $this->assertStringContainsString('malformed event frame', $e->getMessage(), "[{$label}] The stream verdict keeps precedence.");
+            }
+        }
+    }
+
+    public function testAGenuinelyTruncatedStreamWithTheHeaderKeepsTheStreamTypedError()
+    {
+        // GLM8 #5 guard: a REAL event stream (message_start then a cut —
+        // the record-0007 wrapped-garbage shape) is not a mislabeled
+        // JSON body and must keep its malformed-stream verdict.
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_cut","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A truncated stream must keep its typed error.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testCacheTokenVariantsCountAsPromptTokens()
     {
         $this->queueSdkResponse(200, array(), (string) wp_json_encode(array(
