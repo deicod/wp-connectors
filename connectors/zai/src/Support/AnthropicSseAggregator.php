@@ -405,8 +405,9 @@ final class AnthropicSseAggregator {
 	 * a truncated body from a gateway, exactly the wrapped-garbage shape
 	 * the coding surface produces per record 0007) is NOT a completion:
 	 * fabricating end_turn would mask truncation as a clean stop, so null
-	 * is returned and the model surfaces its fixed parse-error message
-	 * (review finding).
+	 * is returned with the malformed-event flag raised (GLM7 #5 — the
+	 * same channel as the missing message_start/message_stop siblings)
+	 * and the model surfaces its fixed parse-error message.
 	 *
 	 * @since 0.2.0
 	 *
@@ -425,7 +426,22 @@ final class AnthropicSseAggregator {
 			return null;
 		}
 
+		/*
+		 * GLM7 #5: a stream that never delivered a stop reason — the
+		 * message_delta frame lost to a gateway (the wrapped-garbage
+		 * shape of record 0007), or one that arrived without a usable
+		 * delta.stop_reason member — is the SAME corruption class as the
+		 * missing message_start (Codex R8 #3) and missing message_stop
+		 * (Codex R16 #1) siblings: a truncation of the required
+		 * lifecycle, not an empty stream. The soft null let the model
+		 * surface the generic 'No usable message event was received.',
+		 * indistinguishable from a genuinely empty body; the flag names
+		 * the truncation in the malformed-event channel like every other
+		 * lost-frame shape.
+		 */
 		if ( null === $this->stop_reason ) {
+			$this->malformed_event = true;
+
 			return null;
 		}
 

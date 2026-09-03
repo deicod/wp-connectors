@@ -3727,11 +3727,17 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
-    public function testATruncatedStreamWithoutAStopReasonFailsSafely()
+    public function testATruncatedStreamWithoutAStopReasonFailsInTheMalformedChannel()
     {
-        // A stream cut before message_delta delivered no stop reason:
-        // fabricating end_turn would mask truncation as a clean stop
-        // (review finding), so the fixed parse-error message is thrown.
+        /*
+         * A stream cut before message_delta delivered no stop reason:
+         * fabricating end_turn would mask truncation as a clean stop
+         * (review finding). GLM7 #5: the truncation is flagged in the
+         * malformed-event channel — the same verdict the missing
+         * message_start/message_stop siblings produce — instead of the
+         * generic 'No usable message event' a genuinely empty body
+         * yields.
+         */
         $body = ''
             . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_t","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
@@ -3740,14 +3746,48 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Partial"}}' . "\n\n";
 
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+        $this->assertNull($aggregator->aggregated());
+        $this->assertTrue($aggregator->has_malformed_event(), 'A lost message_delta frame must flag the stream.');
+
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
         try {
             $this->model()->generateTextResult($this->prompt());
             $this->fail('A stream without a stop reason must throw.');
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
-            $this->assertStringContainsString('No usable message event', $e->getMessage());
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
             $this->assertStringNotContainsString('Partial', $e->getMessage(), 'Streamed content must not be echoed.');
+        }
+    }
+
+    public function testACompleteLifecycleLosingOnlyMessageDeltaFlagsTheMalformedChannel()
+    {
+        /*
+         * GLM7 #5 (the named shape): message_start + closed block +
+         * message_stop all delivered, ONLY the message_delta frame lost —
+         * previously the soft null made this truncation indistinguishable
+         * from an empty stream.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_t2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream losing its message_delta must fail typed.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
         }
     }
 
