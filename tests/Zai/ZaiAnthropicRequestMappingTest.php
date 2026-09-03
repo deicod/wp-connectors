@@ -449,6 +449,59 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString('"input_schema":[]', $raw, 'input_schema must never encode as [].');
     }
 
+    public function testEmptyObjectMapMembersInsideASchemaNormalizeToObjects()
+    {
+        /*
+         * GLM8 #6: the empty-object normalization fired only when the
+         * WHOLE parameters schema was null/[], so a non-empty schema
+         * carrying an empty-array member at an object-demanding keyword
+         * (['type'=>'object','properties'=>[],'required'=>[]]) shipped
+         * "properties":[] on the wire where the protocol's meta-schema
+         * wants an object. The object-map keywords (properties here;
+         * patternProperties/definitions/$defs below) normalize
+         * recursively at every depth; the list-valued 'required' keeps
+         * its schema-valid [].
+         */
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('get_weather', 'Get the weather', array(
+                    'type' => 'object',
+                    'properties' => array(),
+                    'required' => array(),
+                )))->toArray(),
+                (new FunctionDeclaration('nested', 'Nested maps', array(
+                    'type' => 'object',
+                    'properties' => array(
+                        'filter' => array(
+                            'type' => 'object',
+                            'properties' => array(),
+                            'patternProperties' => array(),
+                        ),
+                    ),
+                    'definitions' => array(),
+                    '$defs' => array(),
+                )))->toArray(),
+            ),
+        ));
+
+        $this->model($config)->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+
+        $raw = (string) $this->sdkHttpAttempts()[0]['body'];
+
+        // The empty object maps encode as {} — never [].
+        $this->assertStringContainsString('"properties":{}', $raw, 'An empty properties member must encode as an object.');
+        $this->assertStringContainsString('"required":[]', $raw, 'The list-valued required member keeps its schema-valid empty list.');
+        $this->assertStringContainsString('"patternProperties":{}', $raw, 'Nested object-map keywords normalize too.');
+        $this->assertStringContainsString('"definitions":{}', $raw, 'The definitions map normalizes.');
+        $this->assertStringContainsString('"$defs":{}', $raw, 'The $defs map normalizes.');
+        $this->assertStringNotContainsString('"properties":[]', $raw, 'No object-map member may encode as [].');
+        $this->assertStringNotContainsString('"required":{}', $raw, 'The list-valued required member must not become an object.');
+    }
+
     public function testSequentialArrayToolArgumentsAreRejectedBeforeTransport()
     {
         // Codex R4 #4: a FunctionCall from chat history carrying a

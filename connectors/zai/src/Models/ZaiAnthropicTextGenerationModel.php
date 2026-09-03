@@ -470,6 +470,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					'type'       => 'object',
 					'properties' => new \stdClass(),
 				);
+			} else {
+				/*
+				 * GLM8 #6: the empty-object normalization above fires only
+				 * when the WHOLE schema is empty, so a NON-empty schema
+				 * carrying an empty-array member at an object-demanding
+				 * keyword (['type'=>'object','properties'=>[],'required'=>[]])
+				 * shipped that member as JSON [] where the protocol's
+				 * meta-schema wants an object — risking an upstream 400 in
+				 * place of the adapter's own normalization. The object-map
+				 * keywords are normalized recursively; 'required' and every
+				 * other list-valued keyword keep their (schema-valid) [].
+				 */
+				$input_schema = self::normalize_empty_object_members( $input_schema );
 			}
 
 			$tools[] = array(
@@ -480,6 +493,56 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		return $tools;
+	}
+
+	/**
+	 * The JSON Schema keywords whose member must be a JSON OBJECT (a
+	 * name-to-subschema map), never a list — so an empty PHP array there
+	 * encodes as the empty object {} (GLM8 #6).
+	 *
+	 * 'required' and the other list-valued keywords are deliberately
+	 * absent: an empty list is schema-valid for them.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	private const SCHEMA_OBJECT_MAP_KEYS = array( 'properties', 'patternProperties', 'definitions', '$defs' );
+
+	/**
+	 * Recursively converts empty PHP arrays to empty objects at the JSON
+	 * Schema keywords that demand an object member (GLM8 #6).
+	 *
+	 * The walk covers the whole schema tree, so nested subschemas (a
+	 * property whose own schema has an empty properties map, a $defs
+	 * entry, ...) normalize identically. Everything else — non-empty
+	 * members, scalars, objects, empty arrays at list-valued keywords —
+	 * passes through untouched.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $value Schema member (any decoded JSON shape).
+	 * @return mixed The normalized member.
+	 */
+	private static function normalize_empty_object_members( $value ) {
+		if ( ! \is_array( $value ) ) {
+			return $value;
+		}
+
+		foreach ( $value as $key => $member ) {
+			if ( \is_string( $key ) && \in_array( $key, self::SCHEMA_OBJECT_MAP_KEYS, true ) ) {
+				if ( \is_array( $member ) && array() === $member ) {
+					$value[ $key ] = new \stdClass();
+					continue;
+				}
+			}
+
+			if ( \is_array( $member ) ) {
+				$value[ $key ] = self::normalize_empty_object_members( $member );
+			}
+		}
+
+		return $value;
 	}
 
 	/**
