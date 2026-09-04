@@ -893,37 +893,16 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				return;
 
 			case 'content_block_start':
-				/*
-				 * Codex R16 #2: content events REQUIRE message_start at
-				 * dispatch time — the aggregated() guard only fires when the
-				 * flag is still false at the END, so a late-but-valid
-				 * message_start legitimized content that arrived before it.
-				 * The malformed flag is sticky; the late start cannot launder
-				 * the early content.
-				 */
-				if ( ! $this->message_started ) {
-					$this->malformed_event = true;
-
-					return;
-				}
-
-				/*
-				 * Codex R13 #1: content events after the final message_delta
-				 * mutated the accumulators — the completion then succeeded with
-				 * text or tool args received after the final message metadata.
-				 * Rejected in the same channel as the duplicate-delta guard.
-				 */
-				if ( $this->message_delta_received ) {
-					$this->malformed_event = true;
-
-					return;
-				}
-
-				$index = self::raw_block_index( $raw );
+				// GLM9 #9: the three shared content guards — message_start
+				// required at dispatch time (Codex R16 #2: the aggregated()
+				// guard only fires at the END, so a late start cannot
+				// launder early content), no content after the final
+				// message_delta (Codex R13 #1), and a non-negative integer
+				// index (Codex R6 #4) — live in one helper now; the three
+				// content cases each carried them verbatim.
+				$index = $this->content_frame_index( $raw );
 
 				if ( null === $index ) {
-					$this->malformed_event = true;
-
 					return;
 				}
 
@@ -949,16 +928,11 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				return;
 
 			case 'content_block_delta':
-				// Codex R16 #2: as above — content before message_start.
-				if ( ! $this->message_started ) {
-					$this->malformed_event = true;
+				// GLM9 #9: the shared content guards (see
+				// content_block_start above) — R16 #2, R13 #1, R6 #4.
+				$index = $this->content_frame_index( $raw );
 
-					return;
-				}
-
-				if ( $this->message_delta_received ) {
-					$this->malformed_event = true;
-
+				if ( null === $index ) {
 					return;
 				}
 
@@ -1004,38 +978,17 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					return;
 				}
 
-				$index = self::raw_block_index( $raw );
-
-				if ( null === $index ) {
-					$this->malformed_event = true;
-
-					return;
-				}
-
 				$this->apply_delta( $index, $data );
 				return;
 
 			case 'content_block_stop':
-				// Codex R16 #2: as above — content before message_start.
-				if ( ! $this->message_started ) {
-					$this->malformed_event = true;
-
-					return;
-				}
-
-				if ( $this->message_delta_received ) {
-					$this->malformed_event = true;
-
-					return;
-				}
-
-				// The event still names an index, and a malformed one marks
-				// the stream corrupt (R6 #4 class).
-				$index = self::raw_block_index( $raw );
+				// GLM9 #9: the shared content guards (see
+				// content_block_start above) — R16 #2, R13 #1, R6 #4. The
+				// event still names an index, and a malformed one marks
+				// the stream corrupt.
+				$index = $this->content_frame_index( $raw );
 
 				if ( null === $index ) {
-					$this->malformed_event = true;
-
 					return;
 				}
 
@@ -1279,6 +1232,51 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 
 		// Pings and unknown (future/intermediary) event names: benign
 		// trailing noise — the completed generation stands.
+	}
+
+	/**
+	 * Validates the shared content-event lifecycle preconditions and
+	 * returns the block index (GLM9 #9).
+	 *
+	 * The three content cases — content_block_start, content_block_delta,
+	 * content_block_stop — each carried these guards verbatim, added
+	 * piecemeal across rounds (R16 #2: message_start required at dispatch
+	 * time; R13 #1: no content after the final message_delta; R6 #4: the
+	 * non-negative integer index): the next lifecycle rule would have been
+	 * pasted into three cases, and forgetting one leaves that event type
+	 * unguarded — the one-case drift pattern this class's own history
+	 * documents. One helper runs all three; every failure raises the same
+	 * malformed-event flag, so WHICH guard fired is unobservable — only
+	 * that one did.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $raw Non-associative decode of the event payload.
+	 * @return int|null The validated block index, or null (flag raised)
+	 *                  when any guard fails.
+	 */
+	private function content_frame_index( $raw ): ?int {
+		if ( ! $this->message_started ) {
+			$this->malformed_event = true;
+
+			return null;
+		}
+
+		if ( $this->message_delta_received ) {
+			$this->malformed_event = true;
+
+			return null;
+		}
+
+		$index = self::raw_block_index( $raw );
+
+		if ( null === $index ) {
+			$this->malformed_event = true;
+
+			return null;
+		}
+
+		return $index;
 	}
 
 	/**

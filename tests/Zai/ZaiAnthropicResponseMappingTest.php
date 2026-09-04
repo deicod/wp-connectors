@@ -4075,6 +4075,38 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAllThreeContentEventKindsPassTheSharedGuardsCleanly()
+    {
+        /*
+         * GLM9 #9: the three shared content guards (message_start at
+         * dispatch, nothing after the final message_delta, integer
+         * index) live in one helper now — this is the pass-path pin at
+         * the direct-aggregator level, the mirror of the failure loop
+         * above: a minimal valid lifecycle through all three event
+         * kinds aggregates with no malformed flag raised.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_helper","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $aggregator = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertFalse($aggregator->has_malformed_event(), 'A clean lifecycle through all three content kinds must not raise the shared guards.');
+        $this->assertSame('OK.', $aggregator->aggregated()['content'][0]['text']);
+    }
+
     public function testALateMessageStartDoesNotLaunderEarlyContent()
     {
         // Codex R16 #2 (iv): the finding's exact scenario — content first,
