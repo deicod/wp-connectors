@@ -6,6 +6,103 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM8 code review)
+
+- Silent wrong-success holes in the streamed-transport layers closed: a
+  bare `event: error` frame truncated right after its `event:` line (no
+  `data:` line at all) was invisible to the Anthropic aggregator — no
+  error flag, no malformed count — so a COMPLETE valid stream followed
+  by the bare declaration aggregated as a success; the declaration
+  itself is the error signal (the GLM7 #4 policy its undecodable- and
+  non-object-payload siblings follow), in both phases and in the
+  finish()-flushed cut-between-lines variant. And the body sniff and
+  the frame buffer now share ONE canonical stream-prefix rule
+  (`SseFrameBuffer::strip_stream_prefix()` — whitespace, a BOM, then
+  whitespace, stripped only when a BOM is present): the sniff privately
+  ltrimmed and BOM-stripped while the buffer stripped the BOM at byte 0
+  only, so a whitespace-then-BOM body (or its BOM-then-whitespace
+  mirror) misrouted to the SSE aggregator whose first frame then
+  matched no field — silently dropped, corrupted content as success,
+  where master failed loudly. Whitespace WITHOUT a BOM still strips
+  nothing (the spec-correct dropped first frame, byte-identical to
+  master), the buffer holds undecided whitespace and split BOMs across
+  chunk boundaries, and an alignment pin feeds every prefixed body at
+  every chunk boundary against the canonical composition.
+
+- Schema-tolerance gaps on the JSON path: a UTF-8 BOM prepended to an
+  otherwise-valid JSON Messages body died as 'Missing the "content"
+  key' (the vendor decode fails on the BOM — the same gateway threat
+  class this branch's own SSE-side hardening already tolerated, one
+  request short); an explicitly-present `"stop_reason": null` was
+  treated as MISSING although the Messages schema types it
+  string|null (accepted now, mapping to the neutral natural-stop
+  finish reason while the stop-reason/content consistency check still
+  rejects a null over tool blocks — the streamed twin's truncation
+  channel is untouched); a valid JSON body mislabeled
+  `text/event-stream` (the sniff trusts the header, and there was no
+  JSON fallback after aggregation) died as 'malformed event frame' —
+  aggregation failing is now the signal to try the JSON the label
+  promised, with garbage and genuinely truncated streams keeping the
+  stream-typed verdict and the typed truncation exception propagating;
+  and a non-empty tool schema carrying an empty-array member at an
+  object-demanding keyword (`"properties":[]`) shipped where the
+  protocol's meta-schema wants an object — the object-map keywords
+  (properties/patternProperties/definitions/$defs) normalize
+  recursively at every depth, list-valued keywords like `required`
+  keep their schema-valid `[]`, and (verifier round) the
+  data-bearing annotation keywords `default`/`examples`/`const` pass
+  through verbatim: the walk initially descended into them, silently
+  converting a caller's `[]`-valued default data to `{}` with no
+  upstream error to surface the change.
+
+- Tooling and invalidation plumbing: the live probe's getopt used
+  optional-value `'option::'` declarations, which in PHP capture only
+  the `--option=value` form — the conventional space-separated form
+  returned false, cast to `''`, and rejected a valid invocation as
+  '--surface must be openai or anthropic' for exactly that value;
+  required-value declarations accept both forms, a bare `--option`
+  (which getopt drops silently or swallows the next token for) is
+  detected against raw argv with a truthful 'requires a value'
+  diagnostic, and a repeated option normalizes to a rejection instead
+  of casting 'Array' (pinned by keyless subprocess runs). The
+  discovery cache-id formula (prefix + md5(scope|plan|region) plus the
+  miss suffix), hand-composed in five places with the suffix bypassed
+  literally at three, is owned once by the endpoint layer
+  (`discovery_cache_id()`/`discovery_transient_ids()`), consumed by
+  the settings invalidation, both directories, uninstall.php, and the
+  probe — the owner chain stays SDK-free loadable (pinned by a
+  subprocess test that composes without vendor/), the composition is
+  frozen to the historical formula the invalidation/uninstall tests
+  still seed by, and a source pin (now swept over the whole plugin and
+  probe surface) forbids any consumer from re-rolling it. (Verifier
+  round: the settings invalidation and uninstall now DEGRADE when the
+  owner chain cannot load — a quarantined src file on a partially
+  updated install used to fatal the WP Delete request with zero
+  cleanup calls, before any deletion, bricking uninstall on every
+  retry; the class-free option deletions run first and only the
+  class-derived transient sweep is skipped, never fataled.)
+
+- Structural cleanups, no behavior change beyond the pinned intents:
+  the aggregators' byte-identical frame-consumption protocol
+  (constructor/feed/finish/pull loop) rides one
+  `AbstractSseAggregator` base (extraction-pinned); the OpenAI-surface
+  directory memoizes its metadata map per transient content (the exact
+  GLM7 #13 memo the Anthropic twin already had — the rebuild ran twice
+  or more per AI request); the two endpoint classes' value-object
+  skeleton (matrix lookup, unknown-combination rejection,
+  current-settings resolution, accessors, api_url(), models_url(),
+  cache_key(), base-URL normalization) rides one `AbstractZaiEndpoint`
+  base with child-owned identifier constants (reflection-pinned,
+  phpstan static:: accesses pinned to their exact counts) — bringing
+  the double-append guard to the OpenAI surface, which ran a bare
+  rtrim; the providers' identical `createModel()` capability walk and
+  `createProviderMetadata()` ride the shared provider base with a
+  `model_class()` hook; and the sequential-key JSON-list predicate,
+  hand-rolled four times, is one `JsonShape::is_list()` — documenting
+  once the trap the four copies proved by existing (the empty array
+  needs its own clause: `range(0, -1)` is a descending two-element
+  sequence, not `[]`).
+
 ### Fixed (zai / M2 — GLM7 code review)
 
 - Stream-merge parity and error channels: the legacy zai merge rejects
