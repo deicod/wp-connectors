@@ -143,20 +143,19 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	/**
 	 * Content block accumulators keyed by stream block index.
 	 *
+	 * GLM10 #7: the map's INSERTION order IS the content_block_start
+	 * order — the R17 #2 contiguity guard in start_block() only accepts
+	 * indexes 0..N-1 in arrival order, so the keys are exactly that
+	 * sequence and a plain foreach iterates in stream order. The
+	 * separate $block_order tracking this class used to carry beside
+	 * the map re-stated the same ordering and had to be kept in sync by
+	 * hand.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @var array<int, array<string, mixed>>
 	 */
 	private $blocks = array();
-
-	/**
-	 * Block indexes in content_block_start order.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var list<int>
-	 */
-	private $block_order = array();
 
 	/**
 	 * Indexes whose content_block_stop was received (Codex R8 #1).
@@ -429,7 +428,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		}
 
 		$content = array();
-		foreach ( $this->ordered_blocks() as $block ) {
+		foreach ( $this->blocks as $block ) {
 			$mapped = $this->content_block_payload( $block );
 			if ( null !== $mapped ) {
 				$content[] = $mapped;
@@ -461,24 +460,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				'output_tokens' => $this->output_tokens ?? 0,
 			),
 		);
-	}
-
-	/**
-	 * Returns the block accumulators in stream order.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return list<array<string, mixed>> Blocks ordered by appearance.
-	 */
-	private function ordered_blocks(): array {
-		$ordered = array();
-		foreach ( $this->block_order as $index ) {
-			if ( isset( $this->blocks[ $index ] ) ) {
-				$ordered[] = $this->blocks[ $index ];
-			}
-		}
-
-		return $ordered;
 	}
 
 	/**
@@ -1491,15 +1472,18 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * Codex R17 #2: started indexes must form the contiguous
 		 * zero-based sequence {0..N-1} — a truncated stream that lost
 		 * block 0 but delivered a complete block at index 1 passed the
-		 * non-negative-integer check, and ordered_blocks() repacks by
-		 * arrival order, so the gap was invisible downstream and the
-		 * surviving block became content position 0 of a successful but
-		 * truncated completion. Duplicates are already rejected above,
-		 * so the map size IS the next expected index; any smaller
-		 * (reordering) or larger (gap) value fails here. Synthesized
-		 * seeds (unknown-delta compatibility path) enter through this
-		 * same method and obey the same rule — a seed occupies an index
-		 * the way a started block does.
+		 * non-negative-integer check, and the map iterates by arrival
+		 * order, so the gap was invisible downstream and the surviving
+		 * block became content position 0 of a successful but truncated
+		 * completion. Duplicates are already rejected above, so the map
+		 * size IS the next expected index; any smaller (reordering) or
+		 * larger (gap) value fails here. Synthesized seeds
+		 * (unknown-delta compatibility path) enter through this same
+		 * method and obey the same rule — a seed occupies an index the
+		 * way a started block does. The invariant doubles as the
+		 * GLM10 #7 iteration-order guarantee: accepted keys are exactly
+		 * 0..N-1 in start order, so the map's insertion order IS the
+		 * stream order aggregated() iterates.
 		 */
 		if ( \count( $this->blocks ) !== $index ) {
 			$this->malformed_event = true;
@@ -1517,8 +1501,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			'json'     => '',
 			'has_json' => false,
 		);
-
-		$this->block_order[] = $index;
 	}
 
 	/**

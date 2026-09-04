@@ -5937,4 +5937,59 @@ $body = ''
             '503' => array(503, 'prompt_upstream_server_error'),
         );
     }
+
+    public function testConsolidatedContentIteratesBlocksInStartOrder()
+    {
+        /*
+         * GLM10 #7: the separate $block_order tracking is gone — the
+         * R17 #2 contiguity guard accepts block indexes only as the
+         * contiguous 0..N-1 arrival sequence, so the $blocks map's
+         * INSERTION order is the stream order and aggregated()
+         * iterates the map directly. The pin: blocks appear in
+         * content_block_start order in the consolidated content even
+         * when their deltas interleave (a future edit that re-keyed or
+         * sorted the map would flip them with no invariant test
+         * failing).
+         */
+        $body = implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_ord","role":"assistant","content":[],"usage":{"input_tokens":5,"output_tokens":1}}}',
+            '',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+            '',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":""}}',
+            '',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Answer."}}',
+            '',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"Pondering."}}',
+            '',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            '',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":1}',
+            '',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
+            '',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertNotNull($aggregated);
+        $this->assertSame('text', $aggregated['content'][0]['type'], 'The first-started block is content position 0.');
+        $this->assertSame('Answer.', $aggregated['content'][0]['text']);
+        $this->assertSame('thinking', $aggregated['content'][1]['type'], 'The second-started block is content position 1 despite interleaved deltas.');
+        $this->assertSame('Pondering.', $aggregated['content'][1]['thinking']);
+    }
 }
