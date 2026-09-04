@@ -5,7 +5,7 @@ Purpose: single source of truth for review candidates that were **refuted or con
 ## Behavior decisions (test-pinned or vendor-documented)
 
 - **Post-`[DONE]` usage/finish frames are merged** (GLM6 #2, glm6-2): appending-gateway behavior documented in repo records; post-sentinel data completes the payload. Do not flag post-sentinel merging as data-loss.
-- **Legacy-zai usage semantics: absent/null members → 0** (GLM7 #8, glm7-8): master parity; the Anthropic-surface strictness is the newer design and does NOT apply to the legacy zai surface.
+- **Legacy-zai usage semantics: absent/null members → 0** (GLM7 #8, glm7-8): master parity; the Anthropic-surface strictness is the newer design and does NOT apply to the legacy zai surface. Partially superseded by GLM12 #6 (glm12-6): an absent/null `total_tokens` is now DERIVED prompt+completion (twin parity) instead of defaulting to 0 — the absent→0 tolerance otherwise stands; do not re-flag partial usage objects, only the total member's derivation.
 - **Explicit `stop_reason: null` is schema-legal** (GLM8 #4 + GLM10-era streamed twin): Anthropic types stop_reason string|null; accepted, mapped as successful stop. Not missing-data corruption.
 - **Strict `is_int` index rejection** (GLM7 #1, pinned): malformed choice/block indexes are typed rejections, not int-coerced. Deliberate hardening vs master.
 - **Plan-intersected discovery catalog** (pinned): /models advertising is filtered to the configured plan on both surfaces by design.

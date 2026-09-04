@@ -250,6 +250,8 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 */
 			$this->reject_malformed_usage( $data, $raw );
 
+			$data = self::derive_absent_total_tokens( $data );
+
 			return $this->parseNonStreamBody(
 				null !== $data
 					? new PreDecodedResponse( $response->getStatusCode(), $data )
@@ -327,6 +329,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 */
 			self::reject_bad_usage( $aggregated['usage'], $aggregator->raw_usage() );
 		}
+
+		/*
+		 * GLM12 #6 runs on the consolidated payload too: a streamed final
+		 * usage frame carrying only prompt+completion hits the same
+		 * absent-total defaulting below the stream as the non-streaming
+		 * body does.
+		 */
+		$aggregated = self::derive_absent_total_tokens( $aggregated );
 
 		/*
 		 * GLM6 #6: the WHOLE consolidated payload is encodability-checked
@@ -497,6 +507,8 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 			$this->reject_malformed_usage( $data, $raw );
 
+			$data = self::derive_absent_total_tokens( $data );
+
 			return $this->parseNonStreamBody(
 				null !== $data
 					? new PreDecodedResponse( $response->getStatusCode(), $data )
@@ -505,6 +517,60 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		} catch ( ResponseException $e ) {
 			return null;
 		}
+	}
+
+	/**
+	 * Derives an absent total_tokens member from prompt+completion
+	 * (GLM12 #6), before the SDK parent's per-member ?? 0 defaulting.
+	 *
+	 * The lenient validator (GLM7 #8) blesses partial usage objects —
+	 * master parity, and deliberately kept — but the SDK parent then
+	 * constructs TokenUsage(prompt, completion, total ?? 0), so a body
+	 * reporting {"prompt_tokens":500,"completion_tokens":120} answered
+	 * totalTokens() with 0 for 620 billed tokens, under-reporting every
+	 * total-metering consumer (the live probe's usage-total fact among
+	 * them) while the zai_anthropic twin derives its total by summation.
+	 * The derivation fills ONLY the absent member (missing, or the
+	 * lenient explicit null); a PRESENT total stands verbatim — even 0,
+	 * a data-bearing statement from a zero-normalizing gateway — and the
+	 * other members keep the absent→0 tolerance untouched. A sum that
+	 * would overflow PHP_INT_MAX stays absent (0, master parity) rather
+	 * than introducing a rejection this surface never had.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array|null $data The validated, associatively decoded payload.
+	 * @return array|null The payload with a derived total_tokens when one
+	 *                    was absent (null passes through unchanged).
+	 */
+	private static function derive_absent_total_tokens( $data ) {
+		if ( ! \is_array( $data ) || ! \array_key_exists( 'usage', $data ) || ! \is_array( $data['usage'] ) ) {
+			return $data;
+		}
+
+		$usage = $data['usage'];
+
+		if ( \array_key_exists( 'total_tokens', $usage ) && null !== $usage['total_tokens'] ) {
+			return $data;
+		}
+
+		/*
+		 * Post-validation (lenient), each known member is a non-negative
+		 * int or an explicit null (which counts as absent → 0). The sum
+		 * is overflow-checked the way the shared validator's totals are
+		 * (GLM4 #5's rule): no intermediate may promote to float.
+		 */
+		$prompt     = \is_int( $usage['prompt_tokens'] ?? null ) ? $usage['prompt_tokens'] : 0;
+		$completion = \is_int( $usage['completion_tokens'] ?? null ) ? $usage['completion_tokens'] : 0;
+
+		if ( $prompt > PHP_INT_MAX - $completion ) {
+			return $data;
+		}
+
+		$usage['total_tokens'] = $prompt + $completion;
+		$data['usage']         = $usage;
+
+		return $data;
 	}
 
 	/**

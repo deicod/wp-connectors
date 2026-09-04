@@ -875,6 +875,62 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(0, $result->getTokenUsage()->getTotalTokens());
     }
 
+    /**
+     * @dataProvider provideAbsentTotalUsageShapes
+     */
+    public function testAnAbsentTotalTokensMemberIsDerivedBySummation($usageFragment, $expectedTotal, $label)
+    {
+        /*
+         * GLM12 #6: the GLM7 #8 lenient tolerance stays — partial usage
+         * objects still succeed — but the ABSENT total is no longer
+         * defaulted to 0 by the SDK parent's per-member ?? 0: it is
+         * derived prompt+completion (the zai_anthropic twin's rule), on
+         * the non-streaming body and the consolidated stream alike, so a
+         * partial usage object no longer reports totalTokens() === 0 for
+         * hundreds of billed tokens. A PRESENT total stands verbatim —
+         * even an explicit 0 (a data-bearing zero from a zero-normalizing
+         * gateway is not the parser's call to override).
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-dt","choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],' . $usageFragment . '}');
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('hi', $result->toText(), "{$label}: the generation must succeed.");
+        $this->assertSame($expectedTotal, $result->getTokenUsage()->getTotalTokens(), "{$label}: the total verdict.");
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideAbsentTotalUsageShapes()
+    {
+        return array(
+            'absent total' => array('"usage":{"prompt_tokens":500,"completion_tokens":120}', 620, 'absent total'),
+            'explicit null total' => array('"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":null}', 5, 'explicit null total'),
+            'present total stands' => array('"usage":{"prompt_tokens":500,"completion_tokens":120,"total_tokens":99}', 99, 'present total stands'),
+            'present zero total stands' => array('"usage":{"prompt_tokens":500,"completion_tokens":120,"total_tokens":0}', 0, 'present zero total stands'),
+            'usage without any members' => array('"usage":{}', 0, 'usage without any members'),
+        );
+    }
+
+    public function testAStreamedPartialUsageFrameDerivesItsAbsentTotal()
+    {
+        // GLM12 #6 (streamed half): the consolidated payload gets the same
+        // derivation as the non-streaming body.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-dts","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-dts","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":4}}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(11, $result->getTokenUsage()->getTotalTokens(), 'The streamed absent total is derived prompt+completion.');
+    }
+
     public function testLengthFinishReasonMapsToLength()
     {
         $this->queueSdkResponse(200, array(), wp_json_encode(array(
