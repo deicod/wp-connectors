@@ -30,6 +30,8 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Metadata;
 
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Common\Exception\RuntimeException;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -361,6 +363,55 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		}
 
 		return array_keys( $discovered );
+	}
+
+	/**
+	 * Records the definitive invalid verdict a credential-rejecting
+	 * discovery response represents, then defers the throw to the SDK
+	 * parent (GLM9 #5).
+	 *
+	 * The zai_anthropic twin records a 401/403 on its models route
+	 * through the availability layer's persist path (GLM7 #12) — the
+	 * route ANSWERED and rejected the credential itself, the same
+	 * definitive evidence the probe persists an invalid verdict for.
+	 * This surface delegates its HTTP flow to the SDK parent's
+	 * sendListModelsRequest(), so the overridable post-response hook is
+	 * the one place the status is visible; without it the rejection
+	 * landed in the shared cache's catch (Throwable) as a plain failure
+	 * (the silent 60s '_miss' marker plus plan fallback), no verdict
+	 * was persisted, and a key revoked server-side kept passing
+	 * isConfigured() on zai — with raw 401s instead of the connector's
+	 * typed refusal — for up to the 300s STATE_TTL.
+	 *
+	 * The recording follows the twin's shape exactly: the credential
+	 * the rejecting request authenticated with (the wired instance;
+	 * null resolves the effective key), the probe's own persist path,
+	 * never fatal — the parent's throw still happens, and the shared
+	 * cache keeps discovery degrading to the plan fallback.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response $response The discovery response to check.
+	 * @return void
+	 * @throws ResponseException As the SDK parent does, for non-2xx responses.
+	 */
+	protected function throwIfNotSuccessful( Response $response ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated overridable hook name.
+		$status = $response->getStatusCode();
+
+		if ( 401 === $status || 403 === $status ) {
+			try {
+				$wired = $this->getRequestAuthentication();
+			} catch ( RuntimeException $unwired ) {
+				$wired = null;
+			}
+
+			( new ZaiProviderAvailability() )->record_definitive_verdict(
+				false,
+				$wired instanceof ApiKeyRequestAuthentication ? $wired : null
+			);
+		}
+
+		parent::throwIfNotSuccessful( $response );
 	}
 
 	/**

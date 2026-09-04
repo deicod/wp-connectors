@@ -481,6 +481,85 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame('https://api.z.ai/api/coding/paas/v4/models', $this->sdkHttpAttempts()[0]['url']);
     }
 
+    /**
+     * @dataProvider provideCredentialRejectionStatuses
+     */
+    public function testCredentialRejectingDiscoveryPersistsTheInvalidVerdict($status, $label)
+    {
+        /*
+         * GLM9 #5: the zai twin of the Anthropic directory's GLM7 #12
+         * contract. The models route ANSWERED and rejected the
+         * credential itself — the same definitive evidence the
+         * availability probe persists an invalid verdict for — but this
+         * surface delegates to the SDK parent's sendListModelsRequest()
+         * and never overrode its overridable throwIfNotSuccessful()
+         * hook, so the rejection landed in the shared cache's catch as
+         * a plain failure (silent 60s '_miss' marker plus plan
+         * fallback) with no persisted verdict: a key revoked server
+         * side kept passing isConfigured() on zai for up to the 300s
+         * STATE_TTL with raw 401s instead of the typed refusal. The
+         * verdict is recorded through the probe's own persist path now;
+         * a subsequent availability consult answers from state with NO
+         * new request.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
+        $this->queueSdkResponse($status, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
+
+        // Wired with the SAME key the option stores, so the recorded
+        // verdict's binding (source 'database') matches the one the
+        // later isConfigured() consult computes.
+        $directory = new ZaiModelMetadataDirectory();
+        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+        $models = $directory->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), "{$label}: the fallback still serves.");
+        $this->assertCount(1, $this->sdkHttpAttempts(), "{$label}: exactly one discovery attempt.");
+
+        $state = get_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state, "{$label}: the invalid verdict must be persisted.");
+        $this->assertSame('invalid', $state['valid']);
+
+        $availability = new Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability();
+        $this->assertFalse($availability->isConfigured(), "{$label}: a definitively rejected key reports not-connected.");
+        $this->assertCount(1, $this->sdkHttpAttempts(), "{$label}: the fresh state answers without another request.");
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideCredentialRejectionStatuses()
+    {
+        return array(
+            'unauthorized' => array(401, 'unauthorized'),
+            'forbidden' => array(403, 'forbidden'),
+        );
+    }
+
+    public function testNonAuthDiscoveryFailurePersistsNoVerdict()
+    {
+        // GLM9 #5 guard: only the definitive credential rejections
+        // persist — a 404 (the unprobed route shape) stays an
+        // inconclusive failure whose verdict store stays untouched.
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
+        $this->queueSdkResponse(404, array(), '{"error":{"message":"no route"}}');
+
+        $directory = new ZaiModelMetadataDirectory();
+        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+        $models = $directory->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models));
+        $this->assertFalse(
+            get_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_OPTION, false),
+            'A non-auth failure must not persist a verdict.'
+        );
+    }
+
     public function testGeneralPlanFallbackContainsTheFullCatalog()
     {
         $this->selectEndpoint('general', 'cn');
@@ -824,8 +903,15 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * The SAME instance must re-probe once past the plugin's 60s
          * negative marker (GLM1 #6): no SDK localCache entry exists for
          * the fallback, so a later valid key can still discover.
+         *
+         * GLM9 #5: the 401 additionally persists a definitive invalid
+         * verdict for the wired key, whose refusal gate blocks
+         * re-discovery with that SAME key until the verdict's own
+         * STATE_TTL expires (the verdict IS the feature — a rejected
+         * key must not re-authenticate every 60s); the re-probe below
+         * advances past both windows.
          */
-        $this->advanceTime(ZaiModelMetadataDirectory::NEGATIVE_TTL + 1);
+        $this->advanceTime(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.2')));
         $this->assertCount(1, $this->idList($directory->listModelMetadata()));
         $this->assertCount(2, $this->sdkHttpAttempts());
