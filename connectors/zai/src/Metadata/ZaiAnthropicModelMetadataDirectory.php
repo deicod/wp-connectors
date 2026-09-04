@@ -156,34 +156,6 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	}
 
 	/**
-	 * The memoized model map (GLM7 #13): the last built map, keyed by the
-	 * cache id plus a digest of the resolved IDs it was built from.
-	 *
-	 * The map (its metadata objects with their capability/option sets,
-	 * and the newest-first sort) is a PURE function of the resolved ID
-	 * list, but it was rebuilt on every listModelMetadata/
-	 * hasModelMetadata/getModelMetadata call — core resolution makes two
-	 * or more of those per AI request, so each paid a full rebuild plus
-	 * sort of constant data. The transient read stays per call (cache
-	 * invalidation and TTL expiry stay authoritative); only the rebuild
-	 * is skipped while the content is unchanged.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var array<string, ModelMetadata>|null
-	 */
-	private $models_map_memo = null;
-
-	/**
-	 * The memo key the memoized map was built for.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string|null
-	 */
-	private $models_map_memo_key = null;
-
-	/**
 	 * Returns the wired authentication, protocol-wrapped for this surface.
 	 *
 	 * @since 0.2.0
@@ -253,11 +225,16 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 * the zai surface's directory runs the identical flow through it, so
 	 * a caching-rule change can never land on one surface only.
 	 *
-	 * GLM7 #13: the map rebuild is memoized per transient CONTENT (the
-	 * cache id plus a digest of the resolved IDs) — see
-	 * $models_map_memo. The transient is still read on every call, so a
-	 * settings change, a cross-process cache write, or a TTL expiry swaps
-	 * the memo key and the next call rebuilds.
+	 * GLM7 #13 memoized the map rebuild per transient CONTENT (the cache
+	 * id plus a digest of the resolved IDs — the map is a pure function
+	 * of the ID list, but every list/has/get call re-ran the full
+	 * rebuild plus sort of constant data, twice or more per AI request).
+	 * GLM9 #10 moved that memo into the shared cache
+	 * (ZaiDiscoveryCache::memoized_map()), where the zai surface's
+	 * GLM8 #9 copy had lived beside it as a verbatim twin. The transient
+	 * is still read on every call, so a settings change, a
+	 * cross-process cache write, or a TTL expiry swaps the content
+	 * digest and the next call rebuilds.
 	 *
 	 * @since 0.2.0
 	 *
@@ -275,14 +252,13 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			}
 		);
 
-		$memo_key = $cache_id . '|' . md5( implode( "\n", $ids ) );
-
-		if ( null === $this->models_map_memo || $this->models_map_memo_key !== $memo_key ) {
-			$this->models_map_memo     = ZaiDiscoveryCache::map_from_ids( $ids );
-			$this->models_map_memo_key = $memo_key;
-		}
-
-		return $this->models_map_memo;
+		/*
+		 * GLM9 #10: the per-content map memo lives once in the shared
+		 * ZaiDiscoveryCache (memoized_map()) — this surface's GLM7 #13
+		 * fields and the zai surface's GLM8 #9 copy were verbatim twins,
+		 * the drift pattern the shared cache class exists to stop.
+		 */
+		return ZaiDiscoveryCache::memoized_map( $cache_id, $ids );
 	}
 
 	/**

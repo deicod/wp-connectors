@@ -470,6 +470,34 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertFalse($directory->hasModelMetadata('glm-5.3'), 'The rebuilt map reflects the new ID list.');
     }
 
+    public function testBothDirectoriesMemoizeThroughTheOneSharedOwner()
+    {
+        /*
+         * GLM9 #10: the two directories' per-content map memos were
+         * verbatim twins (GLM7 #13 and GLM8 #9 — the fields plus the
+         * cache-id-and-digest key block, copy-pasted), so a memo-rule
+         * change could land on one surface only. One
+         * ZaiDiscoveryCache::memoized_map() owns the state and the key
+         * formula now: the same resolved IDs through either surface's
+         * cache id produce the identical map, content changes rebuild
+         * through the digest rule, and distinct cache ids memoize
+         * independently.
+         */
+        $ids = array('glm-5.3', 'glm-5.2');
+
+        $zai_map = ZaiDiscoveryCache::memoized_map('test_cache_zai', $ids);
+        $this->assertSame(array('glm-5.3', 'glm-5.2'), array_keys($zai_map), 'The shared owner builds the chat-filtered newest-first map.');
+
+        // Same content through the other surface's cache id: the pure
+        // map, independently memoized.
+        $this->assertSame(array_keys($zai_map), array_keys(ZaiDiscoveryCache::memoized_map('test_cache_anthropic', $ids)));
+
+        // A content change rebuilds through the digest rule...
+        $this->assertSame(array('glm-5.2'), array_keys(ZaiDiscoveryCache::memoized_map('test_cache_zai', array('glm-5.2'))));
+        // ...and the original content still memoizes per cache id.
+        $this->assertSame(array('glm-5.3', 'glm-5.2'), array_keys(ZaiDiscoveryCache::memoized_map('test_cache_zai', $ids)));
+    }
+
     public function testUnauthorizedDiscoveryFallsBackToThePlanCatalog()
     {
         $this->selectEndpoint('coding', 'intl');

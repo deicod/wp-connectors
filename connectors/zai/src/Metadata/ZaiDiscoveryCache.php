@@ -79,6 +79,24 @@ final class ZaiDiscoveryCache {
 	public const NEGATIVE_CACHE_SUFFIX = '_miss';
 
 	/**
+	 * The per-cache-id memoized metadata maps (GLM9 #10).
+	 *
+	 * One entry per endpoint cache id — the LAST content seen there,
+	 * keyed by a digest of its resolved IDs — so the map (metadata
+	 * construction plus the newest-first sort, a pure function of the
+	 * ID list) is rebuilt only when the transient CONTENT changes. The
+	 * bound is the number of distinct cache ids (two surfaces × plans ×
+	 * regions); the per-instance single-entry memo this replaces had
+	 * the same per-endpoint semantics but thrashed whenever both
+	 * directories were consulted alternately.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, array{digest: string, map: array<string, ModelMetadata>}>
+	 */
+	private static $memoized_maps = array();
+
+	/**
 	 * Resolves the model IDs for one endpoint: cached discovery,
 	 * discovery, or the plan-specific static fallback.
 	 *
@@ -132,6 +150,46 @@ final class ZaiDiscoveryCache {
 		set_transient( $cache_id, $ids, self::DISCOVERY_TTL );
 
 		return $ids;
+	}
+
+	/**
+	 * Returns the metadata map for one endpoint's resolved IDs, memoized
+	 * per transient CONTENT (GLM9 #10).
+	 *
+	 * The map is a pure function of the ID list, but it was rebuilt (per-ID
+	 * metadata construction plus the newest-first sort) on every
+	 * listModelMetadata()/hasModelMetadata()/getModelMetadata() call —
+	 * core resolution makes two or more per AI request. The memo the two
+	 * directories each carried as private fields (GLM7 #13 on
+	 * zai_anthropic, GLM8 #9 on zai — copy-pasted, the exact twin
+	 * pattern this class exists to stop) lives here once now: a
+	 * memo-rule change can never land on one surface only. The transient
+	 * read stays per call at the directories (cache invalidation and TTL
+	 * expiry remain authoritative); only the rebuild is skipped while
+	 * the content is unchanged.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $cache_id Endpoint-scoped transient key.
+	 * @param array  $ids      The resolved model IDs (list of string:
+	 *                         fallback, cached, or discovered).
+	 * @return array<string, ModelMetadata> Map of model ID to metadata.
+	 */
+	public static function memoized_map( string $cache_id, array $ids ): array {
+		$digest = md5( implode( "\n", $ids ) );
+
+		$memo = self::$memoized_maps[ $cache_id ] ?? null;
+
+		if ( null === $memo || $memo['digest'] !== $digest ) {
+			$memo = array(
+				'digest' => $digest,
+				'map'    => self::map_from_ids( $ids ),
+			);
+
+			self::$memoized_maps[ $cache_id ] = $memo;
+		}
+
+		return $memo['map'];
 	}
 
 	/**
