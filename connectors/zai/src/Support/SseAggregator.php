@@ -31,20 +31,13 @@ namespace Deicod\WpConnectors\Zai\Support;
 /**
  * SSE aggregator producing a consolidated chat-completion payload.
  *
+ * GLM8 #8: the frame-consumption protocol (the shared SseFrameBuffer,
+ * feed()/finish(), the pull loop) rides the shared AbstractSseAggregator
+ * base — this class owns only the chat.completions event semantics.
+ *
  * @since 0.1.0
  */
-final class SseAggregator {
-
-	/**
-	 * The protocol-neutral frame splitter (shared with the Anthropic
-	 * aggregator): buffering, line-ending normalization, and frame
-	 * separation live there; event semantics here.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var SseFrameBuffer
-	 */
-	private $frame_buffer;
+final class SseAggregator extends AbstractSseAggregator {
 
 	/**
 	 * Decoded data events (chat.completion.chunk shapes), in order.
@@ -157,68 +150,6 @@ final class SseAggregator {
 	 * @var bool
 	 */
 	private $malformed_event = false;
-
-	/**
-	 * Constructor.
-	 *
-	 * @since 0.2.0
-	 */
-	public function __construct() {
-		$this->frame_buffer = new SseFrameBuffer();
-	}
-
-	/**
-	 * Feeds a raw chunk of the event stream.
-	 *
-	 * Frames are separated by a blank line; the shared SseFrameBuffer
-	 * normalizes mixed CR/LF/CRLF terminators and split chunks.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $chunk Raw bytes as received from the transport.
-	 * @return void
-	 */
-	public function feed( string $chunk ): void {
-		$this->frame_buffer->feed( $chunk );
-		$this->consume_ready_frames();
-	}
-
-	/**
-	 * Marks the stream complete, flushing any final unterminated frame.
-	 *
-	 * A response may end directly after the last `data:` line with no blank
-	 * line following it; since feed() receives the complete body before
-	 * finish(), whatever remains buffered is a real final frame, not a split
-	 * chunk. Discarding it would lose the final event — a single-event
-	 * stream would fail as zai_invalid_response, a multi-event stream its
-	 * last content.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return void
-	 */
-	public function finish(): void {
-		$this->frame_buffer->finish();
-		$this->consume_ready_frames();
-	}
-
-	/**
-	 * Consumes every frame the buffer has completed so far.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return void
-	 */
-	private function consume_ready_frames(): void {
-		while ( true ) {
-			$frame = $this->frame_buffer->pull();
-			if ( null === $frame ) {
-				break;
-			}
-
-			$this->consume_frame( $frame );
-		}
-	}
 
 	/**
 	 * Whether the [DONE] sentinel was received.
@@ -498,12 +429,14 @@ final class SseAggregator {
 	/**
 	 * Consumes one complete SSE frame.
 	 *
+	 * GLM8 #8: protected — the shared base's pull loop calls it.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param string $frame Frame contents (without the separating blank line).
 	 * @return void
 	 */
-	private function consume_frame( string $frame ): void {
+	protected function consume_frame( string $frame ): void {
 		/*
 		 * GLM5 #7 established `data: [DONE]` as TERMINAL; GLM7 #2 narrows
 		 * what that terminates: the CONTENT stream (no delta, role, or

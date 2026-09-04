@@ -436,4 +436,50 @@ final class SseFrameBufferTest extends WpConnectorsTestCase
 
         return $cases;
     }
+
+    public function testBothAggregatorsRideTheOneSharedFrameConsumptionBase()
+    {
+        /*
+         * GLM8 #8 (extraction pin, the GLM4 #10/GLM7 #18 pattern): the
+         * frame-consumption protocol — the SseFrameBuffer instance,
+         * feed()/finish() driving it, and the pull loop — existed
+         * byte-identical in BOTH aggregators with no shared owner.
+         * Neither may hand-roll the plumbing again; it lives once, on
+         * the shared AbstractSseAggregator base.
+         */
+        $base = (string) file_get_contents(__DIR__ . '/../../connectors/zai/src/Support/AbstractSseAggregator.php');
+        $this->assertSame(
+            1,
+            preg_match_all('/new SseFrameBuffer\(/', $base),
+            'The base owns the one frame-buffer construction.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/->pull\(\)/', $base),
+            'The base owns the one frame pull loop.'
+        );
+
+        foreach (array(
+            'legacy' => __DIR__ . '/../../connectors/zai/src/Support/SseAggregator.php',
+            'anthropic' => __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php',
+        ) as $label => $path) {
+            $source = (string) file_get_contents($path);
+
+            $this->assertSame(
+                0,
+                preg_match_all('/new SseFrameBuffer\(/', $source),
+                "[{$label}] The aggregator must not construct its own frame buffer."
+            );
+            $this->assertSame(
+                0,
+                preg_match_all('/->pull\(\)/', $source),
+                "[{$label}] The aggregator must not hand-roll the pull loop."
+            );
+            $this->assertSame(
+                0,
+                preg_match_all('/frame_buffer/', $source),
+                "[{$label}] The aggregator must not keep a private buffer handle."
+            );
+        }
+    }
 }

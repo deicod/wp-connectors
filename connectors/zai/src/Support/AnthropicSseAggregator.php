@@ -10,11 +10,12 @@
  * model's non-streaming parser consumes.
  *
  * Shares the transport framing (buffering, mixed CR/LF/CRLF terminators,
- * split chunks, final unterminated frame) with the OpenAI-style aggregator
- * via SseFrameBuffer; differs in the EVENT semantics: Anthropic frames carry
- * an `event:` field next to `data:`, there is no [DONE] sentinel
- * (message_stop ends the stream), and content is block-indexed rather than
- * choice-indexed.
+ * split chunks, final unterminated frame, the stream-start BOM prefix
+ * rule) with the OpenAI-style aggregator via the shared base class and
+ * SseFrameBuffer (GLM8 #8); differs in the EVENT semantics: Anthropic
+ * frames carry an `event:` field next to `data:`, there is no [DONE]
+ * sentinel (message_stop ends the stream), and content is block-indexed
+ * rather than choice-indexed.
  *
  * Malformed JSON events are counted and skipped, never fatal; unknown event
  * types and fields are ignored. Error EVENTS are recorded as a flag only —
@@ -37,19 +38,13 @@ namespace Deicod\WpConnectors\Zai\Support;
 /**
  * SSE aggregator producing a consolidated Messages payload.
  *
+ * GLM8 #8: the frame-consumption protocol (the shared SseFrameBuffer,
+ * feed()/finish(), the pull loop) rides the shared AbstractSseAggregator
+ * base — this class owns only the Anthropic Messages event semantics.
+ *
  * @since 0.2.0
  */
-final class AnthropicSseAggregator {
-
-	/**
-	 * The protocol-neutral frame splitter (shared with the OpenAI-style
-	 * aggregator).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var SseFrameBuffer
-	 */
-	private $frame_buffer;
+final class AnthropicSseAggregator extends AbstractSseAggregator {
 
 	/**
 	 * Message id from message_start.
@@ -261,61 +256,6 @@ final class AnthropicSseAggregator {
 	 * @var bool
 	 */
 	private $malformed_event = false;
-
-	/**
-	 * Constructor.
-	 *
-	 * @since 0.2.0
-	 */
-	public function __construct() {
-		$this->frame_buffer = new SseFrameBuffer();
-	}
-
-	/**
-	 * Feeds a raw chunk of the event stream.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param string $chunk Raw bytes as received from the transport.
-	 * @return void
-	 */
-	public function feed( string $chunk ): void {
-		$this->frame_buffer->feed( $chunk );
-		$this->consume_ready_frames();
-	}
-
-	/**
-	 * Marks the stream complete, flushing any final unterminated frame.
-	 *
-	 * A stream may end directly after the last event with no blank line
-	 * following it; the remainder is a real final frame, not a split chunk.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return void
-	 */
-	public function finish(): void {
-		$this->frame_buffer->finish();
-		$this->consume_ready_frames();
-	}
-
-	/**
-	 * Consumes every frame the buffer has completed so far.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return void
-	 */
-	private function consume_ready_frames(): void {
-		while ( true ) {
-			$frame = $this->frame_buffer->pull();
-			if ( null === $frame ) {
-				break;
-			}
-
-			$this->consume_frame( $frame );
-		}
-	}
 
 	/**
 	 * Whether an error event was received.
@@ -600,12 +540,14 @@ final class AnthropicSseAggregator {
 	/**
 	 * Consumes one complete SSE frame.
 	 *
+	 * GLM8 #8: protected — the shared base's pull loop calls it.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $frame Frame contents (without the separating blank line).
 	 * @return void
 	 */
-	private function consume_frame( string $frame ): void {
+	protected function consume_frame( string $frame ): void {
 		/*
 		 * GLM7 #18: the field parsing (the GLM5 #8 event-value whitespace
 		 * rules included) rides the one shared SseFieldParser both
