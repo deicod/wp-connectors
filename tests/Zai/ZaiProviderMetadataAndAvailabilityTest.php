@@ -316,6 +316,32 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertSame('invalid', $state['valid']);
     }
 
+    public function testARejectionEnvelopeUnderHttp200IsDefinitiveOnTheZaiSurfaceToo()
+    {
+        /*
+         * GLM12 #1: the body-aware verdict is ONE rule on both surfaces.
+         * The live zai (OpenAI-compat) /models route answers 401 for a
+         * garbage credential, but if a gateway ever frames the rejection
+         * in band ({"code":401,"msg":"...","success":false} under HTTP
+         * 200, the Anthropic route's live shape), the verdict must be the
+         * same definitive invalid — and a 200 whose body is neither an
+         * authenticated model list nor that envelope stays inconclusive.
+         */
+        $key = FakeSecrets::apiKey();
+
+        $rejected = $this->availability($key);
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::zaiStatusEnvelopeBody(401, 'token expired or incorrect'));
+        $this->assertFalse($rejected->isConfigured(), 'The in-band rejection envelope is definitive on this surface too.');
+        $this->assertSame('invalid', get_option(ZaiProviderAvailability::STATE_OPTION)['valid']);
+
+        delete_option(ZaiProviderAvailability::STATE_OPTION);
+
+        $unrecognized = $this->availability(FakeSecrets::apiKey());
+        $this->queueSdkResponse(200, array(), 'not json at all');
+        $this->assertTrue($unrecognized->isConfigured(), 'An unrecognized 2xx body keeps the configured-pending default.');
+        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'An unrecognized 2xx body must not persist a verdict.');
+    }
+
     public function testInvalidVerdictIsReprobedAfterTtl()
     {
         $this->freezeTime(1700000000);

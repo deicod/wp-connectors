@@ -178,4 +178,21 @@ final class HttpResponseFactory
 
         return (string) wp_json_encode($payload);
     }
+
+    /**
+     * z.ai status-envelope body — the failure framing the API carries
+     * INSIDE HTTP 200 responses on routes that answer 200 regardless of
+     * authentication (live capture 2026-09-04: the Anthropic /v1/models
+     * route returns {"code":401,"msg":"token expired or incorrect",
+     * "success":false} with HTTP 200 for any or no credential).
+     *
+     * @param int    $code Vendor status code (e.g. 401 for the credential
+     *                     rejection, 1113 for a balance/plan failure).
+     * @param string $msg  Fixture-only message text.
+     * @return string JSON body.
+     */
+    public static function zaiStatusEnvelopeBody($code, $msg)
+    {
+        return (string) wp_json_encode(array( 'code' => (int) $code, 'msg' => $msg, 'success' => false ));
+    }
 }

@@ -131,7 +131,15 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         $key = FakeSecrets::apiKey();
         $instance = $this->availability($key);
 
-        $this->queueSdkResponse(401, array(), '{"type":"error","error":{"type":"authentication_error","message":"token expired or incorrect"}}');
+        /*
+         * GLM12 #1: the live /v1/models route NEVER answers 401 — it
+         * answers HTTP 200 for any or no credential with the rejection in
+         * the body (live curl capture 2026-09-04, intl/cn/coding bases).
+         * The M2 exit criterion must pass against the REAL shape; the old
+         * 401 mock passed only against a response the live endpoint never
+         * produces.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::zaiStatusEnvelopeBody(401, 'token expired or incorrect'));
 
         $this->assertFalse($instance->isConfigured(), 'An invalid key must report not-connected for THIS provider (M2 exit criterion).');
 
@@ -139,6 +147,68 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         $this->assertIsArray($state);
         $this->assertSame('invalid', $state['valid']);
         $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'No zai state may be written by this provider.');
+    }
+
+    public function testA200BodyThatSaysNothingDefinitiveStaysInconclusive()
+    {
+        /*
+         * GLM12 #1 (the other edge of the body-aware verdict): a 2xx whose
+         * body is neither an authenticated model list nor the credential
+         * rejection envelope — a gateway HTML page, an empty body, a
+         * foreign JSON shape — must stay INCONCLUSIVE: it must not bless
+         * the credential as connected, and it must not persist an unproven
+         * invalid verdict (core clears keys on false).
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/html'), '<html>gateway sign-in</html>');
+        $this->assertTrue($instance->isConfigured(), 'An unrecognized 2xx body keeps the configured-pending default, never a definitive connected.');
+        $this->assertFalse(get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false), 'No verdict may persist from an unrecognized body.');
+    }
+
+    public function testANonCredentialFailureEnvelopeUnder200StaysInconclusive()
+    {
+        /*
+         * GLM12 #1: the in-band envelope rejects the CREDENTIAL only when
+         * its code is a definitive rejection (401/403). A success:false
+         * body about the account's STANDING — 1113 balance/plan, the 429
+         * twin of record 0006 — must not invalidate an otherwise valid
+         * key.
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::zaiStatusEnvelopeBody(1113, 'Insufficient balance or no resource package'));
+        $this->assertTrue($instance->isConfigured(), 'A balance failure says nothing about the credential.');
+        $this->assertFalse(get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false), 'A non-credential envelope must not persist a verdict.');
+    }
+
+    public function testARejectionEnvelopeUnder200ResolvesRegionDistrustAsNotConnected()
+    {
+        /*
+         * GLM12 #1 (the distrust half of the finding): the unauthenticated
+         * 200 used to clear the region-switch distrust flag while blessing
+         * the old-region key as VALID. The envelope verdict is definitive
+         * INVALID: the distrust resolves AND the riding credential reports
+         * not-connected.
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $region = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->region();
+        update_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => $region,
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::zaiStatusEnvelopeBody(401, 'token expired or incorrect'));
+        $this->assertFalse($instance->isConfigured(), 'The riding credential must report not-connected on the in-body rejection.');
+        $this->assertFalse(
+            get_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, false),
+            'A definitive in-body rejection resolves the region-switch distrust.'
+        );
+        $this->assertSame('invalid', get_option(ZaiAnthropicProviderAvailability::STATE_OPTION)['valid']);
     }
 
     public function testValidKeyProbesOnceAndPersistsStateWithoutTheKey()

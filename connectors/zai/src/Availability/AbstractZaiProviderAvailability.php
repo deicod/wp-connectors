@@ -7,7 +7,9 @@
  * model-list endpoint with the effective credential and persists the
  * verdict, bound to the COMPLETE key value, its source (env/constant/
  * database/runtime) and the endpoint identity (provider+plan+region). Only
- * a definitive credential rejection (401/403) reports not-connected;
+ * a definitive credential rejection (401/403, or a 2xx body whose failure
+ * envelope rejects the credential — GLM12 #1: the Anthropic /v1/models
+ * route answers 200 for any or no credential) reports not-connected;
  * INCONCLUSIVE probes (route unavailable, network error, 429, 5xx) report
  * configured-pending instead, so core's key-save validation never blocks a
  * key for an endpoint whose probe route is unavailable (expected for the
@@ -53,11 +55,13 @@ use WordPress\AiClient\Providers\Http\Contracts\WithHttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithRequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
+use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\Traits\WithHttpTransporterTrait;
 use WordPress\AiClient\Providers\Http\Traits\WithRequestAuthenticationTrait;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
+use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 
 /**
  * Provider availability with a persisted, credential-bound validated state.
@@ -126,7 +130,9 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	const STATE_CLOCK_UTC = 'utc';
 
 	/**
-	 * Verdict: the credential is valid (probe returned 2xx).
+	 * Verdict: the credential is valid (probe returned 2xx with an
+	 * authenticated model-list body — GLM12 #1: the status alone proves
+	 * nothing on z.ai's Anthropic /v1/models route).
 	 *
 	 * @since 0.2.0
 	 *
@@ -964,20 +970,28 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	/**
 	 * Probes the model-list endpoint with the effective credential.
 	 *
-	 * Only statuses that definitively reject the CREDENTIAL persist a verdict
-	 * (401 bad token; 403 no access for this key). Everything else stays
-	 * transient so it can never poison the connected state — z.ai returns
-	 * 429 both for real rate limits and for plan mismatches on an otherwise
-	 * VALID key (error 1113 "Insufficient balance", record 0006), and 404/5xx
-	 * indicate an unavailable probe endpoint (the cn /models path is unprobed),
-	 * not a bad key.
+	 * Only answers that definitively reject the CREDENTIAL persist a
+	 * verdict: a 401/403 status (bad token; no access for this key), or —
+	 * GLM12 #1 — a 2xx whose BODY is z.ai's failure envelope rejecting the
+	 * credential ({"success":false,"code":401,...}: the Anthropic-surface
+	 * /v1/models route answers HTTP 200 for any or no credential with the
+	 * rejection in the body, so the status alone proves nothing there; live
+	 * curl capture 2026-09-04). A 2xx counts as VALID only when the body is
+	 * an authenticated model list. Everything else stays transient so it
+	 * can never poison the connected state — z.ai returns 429 both for real
+	 * rate limits and for plan mismatches on an otherwise VALID key (error
+	 * 1113 "Insufficient balance", record 0006), and 404/5xx indicate an
+	 * unavailable probe endpoint (the cn /models path is unprobed), not a
+	 * bad key.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return bool|null True (valid), false (credential rejected: 401/403),
-	 *                   or null when the probe was inconclusive (transport
-	 *                   error, 3xx, 429, other 4xx, 5xx) — which says nothing
-	 *                   about the credential and must not block key saving.
+	 * @return bool|null True (valid), false (credential rejected: 401/403,
+	 *                   or a 2xx body that rejects the credential), or null
+	 *                   when the probe was inconclusive (transport error,
+	 *                   3xx, 429, other 4xx, 5xx, or a 2xx body that says
+	 *                   nothing definitive) — which says nothing about the
+	 *                   credential and must not block key saving.
 	 */
 	private function probe(): ?bool {
 		try {
@@ -1023,7 +1037,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		$status = $response->getStatusCode();
 
 		if ( $response->isSuccessful() ) {
-			return true;
+			return self::successful_response_verdict( $response );
 		}
 
 		if ( self::is_definitive_rejection( $status ) ) {
@@ -1033,6 +1047,107 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 
 		// 3xx, 429, other 4xx, 5xx: inconclusive for the credential.
 		return null;
+	}
+
+	/**
+	 * Decides the credential verdict from a 2xx probe response's BODY
+	 * (GLM12 #1).
+	 *
+	 * The status alone is not evidence: z.ai's Anthropic /v1/models route
+	 * (intl, cn, and coding bases) answers HTTP 200 for ANY or NO
+	 * credential, carrying the rejection in the body — the status-only
+	 * rule this replaces blessed garbage keys as VERDICT_VALID for the
+	 * 300s STATE_TTL and its unauthenticated 200 cleared region-switch
+	 * distrust, while every POST /v1/messages 401'd ("connected but
+	 * broken"). Only what the body says counts now:
+	 *
+	 * - a model list (the data[].id shape BOTH surfaces' discovery
+	 *   accepts) — the credential is VALID;
+	 * - z.ai's failure envelope with a definitive-rejection code — the
+	 *   credential is INVALID (the same evidence a 401/403 status is);
+	 * - anything else — INCONCLUSIVE: an unrecognized 2xx body says
+	 *   nothing about the credential, so it must neither report connected
+	 *   nor persist an unproven invalid verdict (core's key-save
+	 *   validation clears keys on false).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response $response The 2xx probe response.
+	 * @return bool|null As probe(): true, false, or null (inconclusive).
+	 */
+	private static function successful_response_verdict( Response $response ): ?bool {
+		// One BOM-safe object-view decode (the GLM10 #3 rule the discovery
+		// parser already rides): a gateway-prepended UTF-8 BOM must degrade
+		// nothing here either.
+		$raw = json_decode( SseFrameBuffer::strip_stream_prefix( (string) $response->getBody() ) );
+
+		if ( self::probe_body_is_models_list( $raw ) ) {
+			// The endpoint served the credential an authenticated model
+			// list: valid.
+			return true;
+		}
+
+		if ( self::probe_body_is_credential_rejection( $raw ) ) {
+			// The endpoint answered 2xx but the body rejects the credential
+			// itself — the same definitive evidence a 401/403 status is.
+			return false;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Reports whether a decoded 2xx body is a model list.
+	 *
+	 * This is deliberately the MINIMAL entry rule of the shared discovery
+	 * parser (ZaiModelListParser): a data member that is a JSON list whose
+	 * entries each carry a non-empty string id — and nothing more. The
+	 * chat filter, the has_more rejection, and the plan intersection are
+	 * CATALOG concerns, not credential ones: a valid key on a plan whose
+	 * intersection is empty, or a paginated list, still authenticated, so
+	 * the verdict must not import them.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $raw Decoded response body.
+	 * @return bool True when the body is an authenticated-looking model list.
+	 */
+	private static function probe_body_is_models_list( $raw ): bool {
+		if ( ! \is_object( $raw ) || ! isset( $raw->data ) || ! \is_array( $raw->data ) ) {
+			return false;
+		}
+
+		foreach ( $raw->data as $entry ) {
+			if ( ! \is_object( $entry ) || ! isset( $entry->id ) || ! \is_string( $entry->id ) || '' === $entry->id ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Reports whether a decoded 2xx body is z.ai's failure envelope
+	 * rejecting the CREDENTIAL itself.
+	 *
+	 * The live-captured shape — {"code":401,"msg":"token expired or
+	 * incorrect","success":false} riding HTTP 200 — is the failure framing
+	 * the z.ai API carries in band on routes that answer 200 regardless of
+	 * authentication. Only a body whose code is in the one definitive-
+	 * rejection set (GLM10 #8) rejects the CREDENTIAL: other failure codes
+	 * (1113 balance/plan standing, ...) reject the account's standing, not
+	 * the key, and stay inconclusive exactly like their 429 status twin.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $raw Decoded response body.
+	 * @return bool True when the body definitively rejects the credential.
+	 */
+	private static function probe_body_is_credential_rejection( $raw ): bool {
+		return \is_object( $raw )
+			&& false === ( $raw->success ?? null )
+			&& \is_int( $raw->code ?? null )
+			&& self::is_definitive_rejection( $raw->code );
 	}
 
 	/**
