@@ -15,7 +15,12 @@ use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
+use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use WordPress\AiClient\Providers\Http\DTO\Request;
+use WordPress\AiClient\Providers\Http\DTO\Response;
+use WordPress\AiClient\Providers\Http\DTO\RequestOptions;
+use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use Deicod\WpConnectors\Zai\Plugin;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Settings\DebugSettings;
@@ -166,6 +171,41 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         $entries = DebugLogger::entries();
         $entry = $entries[count($entries) - 1];
         $this->assertSame(DebugLogger::STATUS_TRANSPORT_ERROR, $entry['status']);
+    }
+
+    public function testEngineErrorsFromTheClientAreLoggedWithStatusZeroToo()
+    {
+        /*
+         * GLM9 #7: the decorator caught only \Exception, so an \Error
+         * (a TypeError escaping the wrapped PSR-18 client) propagated
+         * without the status-0 entry the docblock promises for EVERY
+         * transport failure — the admin's request log showed no trace
+         * of the failed round trip. The catch is \Throwable now; the
+         * error still propagates untouched and its message is never
+         * logged.
+         */
+        update_option(DebugLogger::OPTION_ENABLED, '1');
+
+        $inner = new class implements HttpTransporterInterface {
+            public function send(Request $request, ?RequestOptions $options = null): Response
+            {
+                throw new \TypeError('engine exploded');
+            }
+        };
+
+        $request = new Request(HttpMethodEnum::GET(), 'https://api.z.ai/api/paas/v4/models');
+
+        try {
+            (new LoggingHttpTransporter($inner))->send($request);
+            $this->fail('Expected the engine Error to propagate.');
+        } catch (\TypeError $e) {
+            $this->assertSame('engine exploded', $e->getMessage());
+        }
+
+        $entries = DebugLogger::entries();
+        $entry = $entries[count($entries) - 1];
+        $this->assertSame(DebugLogger::STATUS_TRANSPORT_ERROR, $entry['status']);
+        $this->assertStringNotContainsString('engine exploded', wp_json_encode($entry), 'Thrown messages are never logged.');
     }
 
     public function testRingBufferIsBounded()

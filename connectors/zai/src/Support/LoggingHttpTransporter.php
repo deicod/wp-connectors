@@ -77,7 +77,7 @@ final class LoggingHttpTransporter implements HttpTransporterInterface {
 	 * @param Request             $request The request to send.
 	 * @param RequestOptions|null $options Optional transport options.
 	 * @return Response The response received.
-	 * @throws \Exception Whatever the inner transporter throws on failure.
+	 * @throws \Throwable Whatever the inner transporter throws on failure.
 	 */
 	public function send( Request $request, ?RequestOptions $options = null ): Response {
 		$method = (string) $request->getMethod()->value;
@@ -86,7 +86,16 @@ final class LoggingHttpTransporter implements HttpTransporterInterface {
 
 		try {
 			$response = $this->inner->send( $request, $options );
-		} catch ( \Exception $e ) {
+		} catch ( \Throwable $e ) {
+			/*
+			 * GLM9 #7: \Throwable, not \Exception — an \Error (a
+			 * TypeError escaping the wrapped PSR-18 client, say)
+			 * propagated without the status-0 entry the class docblock
+			 * promises for EVERY transport failure, so the admin's
+			 * request log showed no trace of the failed round trip.
+			 * The throwable is re-thrown untouched either way (its
+			 * message is never logged).
+			 */
 			DebugLogger::log( $method, $url, DebugLogger::STATUS_TRANSPORT_ERROR, ( microtime( true ) - $start ) * 1000 );
 
 			throw $e;
