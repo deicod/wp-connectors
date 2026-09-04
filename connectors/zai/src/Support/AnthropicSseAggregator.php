@@ -703,10 +703,25 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * (the GLM5 #18 one-pipeline rule the string-agreement check
 		 * follows), and an explicit null is PRESENT here exactly as the
 		 * envelope's own type rule judges it (Codex R14 #1).
+		 *
+		 * Verifier round on GLM9 #2: an error DECLARATION keeps its own
+		 * channel through this corruption class too — GLM7 #4's rule
+		 * that the declaration itself is the error signal, and the
+		 * payload's condition cannot un-declare it, is exactly what the
+		 * undecodable- and non-object-payload siblings uphold; setting
+		 * only the malformed-event flag here regressed `event: error`
+		 * with a corrupt type member to 'malformed event frame'
+		 * (plus the GLM8 #5 JSON-fallback attempt) instead of the
+		 * documented 'error event' verdict.
 		 */
 		if ( \is_object( $raw ) && \property_exists( $raw, 'type' ) && ! \is_string( $raw->type ) ) {
 			++$this->malformed;
-			$this->malformed_event = true;
+
+			if ( 'error' === $event_name ) {
+				$this->error = true;
+			} else {
+				$this->malformed_event = true;
+			}
 
 			return;
 		}

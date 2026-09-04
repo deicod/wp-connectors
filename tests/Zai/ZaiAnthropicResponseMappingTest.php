@@ -1780,6 +1780,65 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    /**
+     * @dataProvider provideNonStringErrorTypeValues
+     */
+    public function testAnErrorDeclarationWithANonStringTypeKeepsTheErrorFlag($typeValue, $label)
+    {
+        /*
+         * Verifier round on GLM9 #2: the new corruption branch initially
+         * un-declared an `event: error` frame whose payload type member
+         * was corrupt — the generation then surfaced 'malformed event
+         * frame' (after the GLM8 #5 JSON-fallback attempt) instead of
+         * the error channel, breaking GLM7 #4's invariant that the
+         * declaration itself is the error signal and the payload's
+         * condition cannot un-declare it (the undecodable- and
+         * non-object-payload siblings uphold it). Pre- and
+         * post-termination alike, the error verdict stands.
+         */
+        $corruptError = 'event: error' . "\n"
+            . 'data: {"type":' . $typeValue . ',"error":{"type":"overloaded_error","message":"upstream busy"}}' . "\n\n";
+
+        $beforeTerminal = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_err_nonstr","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
+
+        $terminal = 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        foreach (array(
+            'pre-termination' => $beforeTerminal . $corruptError . $terminal,
+            'trailing' => $beforeTerminal . $terminal . $corruptError,
+        ) as $phase => $body) {
+            $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+            try {
+                $this->model()->generateTextResult($this->prompt());
+                $this->fail("[{$label} / {$phase}] The corrupt error declaration must fail the stream.");
+            } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                $this->assertStringContainsString('error event', $e->getMessage(), "[{$label} / {$phase}] The error declaration keeps its channel.");
+                $this->assertStringNotContainsString('malformed event frame', $e->getMessage(), "[{$label} / {$phase}] Never the malformed-event verdict for an error declaration.");
+            }
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideNonStringErrorTypeValues()
+    {
+        return array(
+            'boolean type' => array('false', 'boolean type'),
+            'explicit null type' => array('null', 'explicit null type'),
+        );
+    }
+
     public function testAPingWithoutATypeMemberStaysIgnorableMidStream()
     {
         // GLM9 #2 control: only the PRESENT-but-non-string shape rejects
