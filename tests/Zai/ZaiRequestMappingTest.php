@@ -1069,6 +1069,7 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $repo = dirname(__DIR__, 2);
         foreach (array(
             '/connectors/zai/src/Metadata/ZaiModelListParser.php',
+            '/connectors/zai/src/Metadata/ZaiModelMetadataDirectory.php',
             '/connectors/zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
             '/connectors/zai/src/Availability/AbstractZaiProviderAvailability.php',
         ) as $path) {
