@@ -6,6 +6,116 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM10 code review)
+
+- Availability verdicts bind what actually answered: a 401/403
+  discovery rejection was recorded bound to the endpoint the settings
+  re-resolved at RESPONSE time, so an admin saving the region while an
+  intl discovery was in flight got the intl rejection persisted under
+  the cn identity — `isConfigured()` on cn then reported not-connected
+  for a key never tested against cn (up to the 300s TTL) while the
+  endpoint that rejected kept no verdict at all; the recorder now binds
+  the endpoint captured at REQUEST time (both directories pass theirs),
+  and the region-switch distrust flag only clears when the recorded
+  verdict concerns the CURRENT endpoint (an other-endpoint verdict
+  settles nothing about the new region and must not re-open the R19
+  hole). And `state_is_fresh()` bounded the elapsed time below at zero:
+  a `checked_at` in the future (clock skew between web nodes, a state
+  restored from an ahead-clocked server) yielded a negative elapsed
+  that always passed the TTL test, trusting a verdict for as long as
+  the skew lasted — a future `checked_at` cannot be aged, so the state
+  is distrusted and re-probed (the probe rewrites it on this node's
+  clock, healing the skew).
+
+- Gateway BOM tolerance on the last uncovered route: the `/v1/models`
+  discovery parser read the vendor `getData()` (a bare `json_decode`)
+  and ran its own raw decode — both failing wholesale on the UTF-8 BOM
+  a gateway/CDN can prepend to JSON bodies, the documented threat class
+  GLM8-2/3 and GLM9-3 hardened on the SSE and Messages/completions
+  paths — so dynamic discovery silently degraded to the 60s `_miss`
+  marker plus static fallback on every request, retrying identically
+  forever. The parser owns ONE BOM-safe decode through the shared
+  `SseFrameBuffer::strip_stream_prefix()` rule now, object-tree reads
+  throughout, with the R14 #4 object-ness oracle and the R15 #3
+  has_more rejection preserved on the single decode.
+
+- Error-declaration coverage completed in the Anthropic stream
+  aggregator: the R7 #6 agreement branch was the only corruption
+  channel still omitting the error flag — `event: error` with a
+  contradicting STRING type member (`data: {"type":"ping"}`) was
+  classified malformed_event, surfacing 'malformed event frame' instead
+  of the documented 'error event' verdict, in contradiction of the
+  GLM7 #4 invariant every sibling branch upholds (glm9-16 extended it
+  one branch over; this closes the last one). The GLM4 #6 trailing pin
+  that encoded the old behavior is consciously SUPERSEDED: the same
+  frame now yields the error-event verdict in both phases, pinned
+  through both the aggregator flags and the model verdict. And the
+  trailing-[DONE] skip ran BEFORE any declaration judgment, so a
+  post-message_stop frame DECLARING a known content-bearing event with
+  a [DONE] payload bypassed the trailing corruption policy entirely —
+  even `event: error` + `data: [DONE]` set nothing, and whether a
+  declared trailing frame was flagged depended purely on payload-text
+  coincidence. The skip is gated on a null event name now (the bare
+  sentinel a gateway appends keeps its tolerated status) while declared
+  frames fall through to the one pipeline.
+
+- Tool schemas: empty-array SUBSCHEMAS at every schema-valued position
+  — a property value of `[]`, `items: []` — normalized to the empty
+  object {} the Messages input_schema meta-schema demands (previously
+  only the four object-MAP keywords converted, so such positions
+  shipped as JSON `[]` and a strict endpoint's 400 surfaced as the
+  generic misattributed upstream error; verifier round: an empty items
+  with a sibling additionalItems keeps its tuple [] verbatim —
+  converting it would silently drop the declared constraint). The zai
+  surface's streamed encodability oracle is the GLM9 #13 structural
+  walker now (the payload is 100% decode output, so INF at any depth
+  rejects identically with zero serialization per streamed generation;
+  the walker's beyond-PHP_INT_MAX strict superset is disclosed and
+  pinned). One shared `JsonBodyDecoder` owns the vendor
+  getData()-mirroring decode block both models hand-rolled with
+  already-diverged mechanics, and both model surfaces name themselves
+  one way in every rejection (per-surface PROVIDER_LABEL constants
+  ridden on the availability owner's REFUSAL_LABEL; verifier round: the
+  discovery paths — the shared list parser, the zai_anthropic
+  directory's throws, refuse_discovery() — ride the same labels, with
+  source-scan drift guards).
+
+- Streaming efficiency without retention: the OpenAI-surface aggregator
+  merges every decoded frame into the accumulators at FEED time (the
+  Anthropic twin's pattern) instead of retaining the full decode of
+  every frame until end-of-stream aggregation — peak memory no longer
+  holds all decoded frames of the stream simultaneously (decoded PHP
+  arrays run ~2-5x the JSON text) — and the raw-usage oracle is
+  captured as the winner's data STRING and decoded once, lazily and
+  memoized, where the last-wins merge already decided the winner
+  (gateways emitting `"usage":{}` on every chunk previously paid a
+  second full parse per token-delta frame for an oracle the next frame
+  discarded). The Anthropic aggregator's separate `$block_order`
+  tracking is gone — the R17 #2 contiguity guard guarantees the blocks
+  map's insertion order IS the stream order (pinned). One shared
+  availability owner decides what counts as a definitive credential
+  rejection (the 401/403 set, the predicate, and the recording the
+  probe and both directories consult — the hand-copied blocks the
+  lockstep had already failed once), the uninstall owner chain rides
+  one class=>file map through the same two-phase fatal-avoidance load,
+  and the live probe rides the owner constants through one per-surface
+  fact table instead of hand-composed option names and scattered
+  ternaries.
+
+- Tooling (verifier round on the uninstall map change): the
+  self-containment conventions checker learned the map+foreach include
+  idiom the owner chain needs — a foreach VALUE binding resolves as a
+  synthetic assignment, and an array() literal's element values must
+  each pass the anchored in-root proof — behind a strict write-forms
+  gate (element writes, list() targets, array-write helpers,
+  by-reference aliasing, and function-signature occurrences all refuse
+  the proof, since the analyzed values must be a superset of the
+  runtime ones). The verifier empirically demonstrated the first cut
+  laundering two escape shapes a direct include is flagged for (an
+  anchored map value with a runtime tail, and unmodeled element writes
+  after the literal); both are closed and pinned alongside the
+  sanctioned shape.
+
 ### Fixed (zai / M2 — GLM9 code review)
 
 - Streamed-transport schema parity and the error channel: a streamed
