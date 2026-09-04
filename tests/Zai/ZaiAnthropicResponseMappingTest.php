@@ -2064,6 +2064,85 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
+    public function testADeclaredEventWithADonePayloadAfterMessageStopIsJudgedNotSkipped()
+    {
+        /*
+         * GLM10 #5: the trailing-[DONE] skip ran BEFORE any declaration
+         * judgment, so a post-message_stop frame DECLARING a known
+         * content-bearing event with a [DONE] payload bypassed the
+         * trailing corruption policy — after a clean stream,
+         * `event: message_delta` + `data: [DONE]` aggregated successfully
+         * while the same declared event with ANY other payload was
+         * flagged corrupt. Gating the skip on a null event_name (the
+         * bare-sentinel gateway case, pinned above) makes declared
+         * frames fall through to the one pipeline; [DONE] is not any
+         * event's documented payload, so the undecodable-payload channel
+         * flags them exactly like their siblings.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pt4b","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: [DONE]' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_malformed_event(), 'A declared event with a [DONE] payload is judged, not skipped.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A trailing declared event with a [DONE] payload must invalidate the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testATrailingErrorDeclarationWithADonePayloadSetsTheErrorFlag()
+    {
+        /*
+         * GLM10 #5, error half: even `event: error` + `data: [DONE]`
+         * set nothing when the skip ran first — the skip must not
+         * intercept a DECLARED error; the undecodable-payload channel
+         * upholds the error declaration (GLM7 #4).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pt4c","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: error' . "\n"
+            . 'data: [DONE]' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_error(), 'A trailing error declaration with a [DONE] payload must set the error flag.');
+        $this->assertFalse($aggregator->has_malformed_event(), 'The verdict is an error event, not protocol corruption.');
+    }
+
     public function testAnErrorEventAfterMessageStopSurfacesTheTypedError()
     {
         /*

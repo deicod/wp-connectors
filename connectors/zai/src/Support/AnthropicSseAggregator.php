@@ -625,9 +625,20 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 */
 		$payload = $fields['data'];
 
-		// An OpenAI-style [DONE] sentinel a gateway may append after the
-		// Anthropic stream has already ended is exactly that: noise.
-		if ( $this->terminated && '[DONE]' === trim( $payload ) ) {
+		/*
+		 * An OpenAI-style [DONE] sentinel a gateway may append after the
+		 * Anthropic stream has already ended is exactly that: noise — but
+		 * only as a BARE data frame with no event declaration (null
+		 * event_name). GLM10 #5: this skip ran before ANY declaration
+		 * judgment, so a trailing frame DECLARING a known content-bearing
+		 * event with a [DONE] payload bypassed the trailing corruption
+		 * policy entirely — even `event: error` + `data: [DONE]` set
+		 * nothing, and corruption detection for a declared event depended
+		 * purely on payload-text coincidence ([DONE] versus any other
+		 * payload). Declared frames fall through to the one pipeline and
+		 * are judged exactly like their any-other-payload siblings.
+		 */
+		if ( $this->terminated && null === $event_name && '[DONE]' === trim( $payload ) ) {
 			return;
 		}
 
