@@ -738,10 +738,27 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * existing behavior. Trailing frames agree by the same rule
 		 * (GLM4 #6: the old trailing copy accepted a trailing
 		 * 'event: error' regardless of a contradicting payload type).
+		 *
+		 * GLM10 #4: an error DECLARATION keeps its flag through THIS
+		 * corruption class too — the event: field names 'error' while the
+		 * payload's string type member contradicts it (data: {"type":
+		 * "ping"}). This was the only corruption branch still omitting
+		 * the error flag, contradicting the GLM7 #4 invariant every
+		 * sibling upholds (undecodable payload, non-string type member,
+		 * decodable non-object payload — and glm9-16 extended the same
+		 * rule to the non-string-type sibling): the declaration itself is
+		 * the error signal; the payload's condition cannot un-declare it.
+		 * The event: field declaration wins, exactly as the $type
+		 * derivation below the sibling branches treats it.
 		 */
 		if ( \is_string( $event_name ) && '' !== $payload_type && $event_name !== $payload_type ) {
 			++$this->malformed;
-			$this->malformed_event = true;
+
+			if ( 'error' === $event_name ) {
+				$this->error = true;
+			} else {
+				$this->malformed_event = true;
+			}
 
 			return;
 		}

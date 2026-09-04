@@ -2169,7 +2169,19 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
          * GLM4 #6 (Codex R7 #6 agreement rule now shared by the trailing
          * path): the old trailing copy accepted 'event: error' regardless
          * of a contradicting payload type — the main path rejects exactly
-         * this contradiction. Corrupt verdict, not the error flag.
+         * this contradiction.
+         *
+         * GLM10 #4 SUPERSEDES this test's original pin: the frame still
+         * invalidates, but the verdict is the ERROR flag, not the
+         * malformed-event one. The agreement branch was the only
+         * corruption channel still omitting the error flag, contradicting
+         * the GLM7 #4 invariant every sibling upholds (undecodable
+         * payload, non-string type member, decodable non-object payload
+         * — glm9-16 extended the same rule one branch over): the
+         * declaration itself is the error signal; the payload's
+         * condition cannot un-declare it. The event: field names 'error'
+         * while the payload's string type member contradicts it, so the
+         * surfaced verdict is the documented 'error event'.
          */
         $body = ''
             . 'event: message_start' . "\n"
@@ -2193,7 +2205,8 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($this->prompt());
             $this->fail('An error-named frame with a contradicting payload must fail the stream.');
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
-            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringContainsString('error event', $e->getMessage());
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
         }
     }
 
@@ -2338,6 +2351,47 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         try {
             $this->model()->generateTextResult($this->prompt());
             $this->fail('A pre-termination error event with a non-object payload must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('error event', $e->getMessage());
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testAPreTerminationErrorEventWithAContradictingStringTypeMemberSetsTheErrorFlag()
+    {
+        /*
+         * GLM10 #4: the R7 #6 agreement branch was the only corruption
+         * channel still omitting the error flag — `event: error` whose
+         * payload carries a contradicting STRING type member (data:
+         * {"type":"ping"}) set malformed_event only, so the model
+         * surfaced 'malformed event frame' (after a doomed JSON-fallback
+         * parse) instead of the documented 'error event' verdict and any
+         * has_error()-keyed policy never fired. Every sibling branch —
+         * undecodable payload (GLM7 #4), non-string type member
+         * (glm9-16), decodable non-object payload — upholds that the
+         * declaration itself is the error signal; the payload's
+         * condition cannot un-declare it. The pre- and post-termination
+         * halves of this shape agree (the trailing half is the
+         * consciously superseded GLM4 #6 pin above).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pe3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: error' . "\n"
+            . 'data: {"type":"ping"}' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_error(), 'An error declaration with a contradicting string type member must set the error flag.');
+        $this->assertFalse($aggregator->has_malformed_event(), 'The verdict is an error event, not protocol corruption.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A pre-termination error event with a contradicting string type member must fail the stream.');
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
             $this->assertStringContainsString('error event', $e->getMessage());
             $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
