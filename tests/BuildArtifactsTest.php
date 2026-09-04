@@ -701,6 +701,61 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * The map + foreach include idiom the uninstall owner chain uses
+     * (GLM10 #14): the synthetic binding and the array-literal proof it
+     * unlocked must not LAUNDER shapes a direct include is flagged for.
+     * Verifier round on that change — three empirically-demonstrated
+     * escapes of the first cut, each old-flagged/new-passing at runtime:
+     * an anchored map VALUE mixing in a runtime segment, an element
+     * append the assignment collector cannot see, and a function
+     * parameter default the caller's argument overrides.
+     */
+
+    public function testMapAndForeachIncludeLaunderingIsRejected()
+    {
+        $tempPlugin = self::distDir() . '/.map-launder-test/map-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\MapDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+        file_put_contents($tempPlugin . '/src/support.php', "<?php\n// the sanctioned in-root map target\n");
+        // (a) Anchored map value with a runtime tail: the per-segment
+        // proof the direct form applies must judge the map VALUE too.
+        file_put_contents($tempPlugin . '/runtime-value.php', "<?php\n\$page = isset(\$_GET['page']) ? \$_GET['page'] : 'home';\n\$map = array( __DIR__ . '/' . \$page . '.php' );\nforeach ( \$map as \$file ) {\n    require \$file;\n}\n");
+        // (a2) Same-file-resolvable escaping tail through a map value.
+        file_put_contents($tempPlugin . '/trailing-value.php', "<?php\n\$sub = '../../outside';\n\$map = array( __DIR__ . '/' . \$sub . '.php' );\nforeach ( \$map as \$file ) {\n    require \$file;\n}\n");
+        // (b) Element append after the literal: an unmodeled write form.
+        file_put_contents($tempPlugin . '/append.php', "<?php\n\$map = array( __DIR__ . '/src/support.php' );\n\$map[] = '/tmp/abs-target-test.php';\nforeach ( \$map as \$file ) {\n    require \$file;\n}\n");
+        // (c) Function parameter default the caller overrides: the
+        // assignment regex sees the default, the runtime sees the caller.
+        file_put_contents($tempPlugin . '/param-default.php', "<?php\nfunction map_demo_load( \$map = array( __DIR__ . '/src/support.php' ) ) {\n    foreach ( \$map as \$file ) {\n        require \$file;\n    }\n}\nmap_demo_load( array( '/tmp/abs-target-test.php' ) );\n");
+        // (d) The sanctioned shape: literal-only map values, whole-array
+        // writes only — exactly the uninstall owner chain's idiom.
+        file_put_contents($tempPlugin . '/sanctioned.php', "<?php\n\$map = array( __DIR__ . '/src/support.php' );\nforeach ( \$map as \$class => \$file ) {\n    if ( ! class_exists( \$class, false ) ) {\n        require_once \$file;\n    }\n}\n");
+
+        $violations = wp_connectors_self_containment_violations($tempPlugin);
+
+        $byFile = array();
+        foreach ($violations as $violation) {
+            foreach (array( 'runtime-value.php', 'trailing-value.php', 'append.php', 'param-default.php', 'sanctioned.php', 'src/autoload.php' ) as $relative) {
+                if (strpos($violation, $relative) !== false) {
+                    $byFile[$relative] = ($byFile[$relative] ?? 0) + 1;
+                }
+            }
+        }
+        $this->assertSame(1, $byFile['runtime-value.php'] ?? 0, 'A map value mixing the anchor with an unresolvable runtime segment must be flagged: ' . implode("\n", $violations));
+        $this->assertSame(1, $byFile['trailing-value.php'] ?? 0, 'A map value escaping only through its resolved tail must be flagged.');
+        $this->assertSame(1, $byFile['append.php'] ?? 0, 'An element append after the literal must refuse the map proof.');
+        $this->assertSame(1, $byFile['param-default.php'] ?? 0, 'A parameter default the caller overrides must refuse the map proof.');
+        $this->assertSame(0, $byFile['sanctioned.php'] ?? 0, 'The sanctioned literal-only map shape must stay clean.');
+        $this->assertSame(0, $byFile['src/autoload.php'] ?? 0, 'The mandated PSR-4 autoloader include must stay clean.');
+
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
+    /*
      * All-plugin build mode (finding: a connector directory without a valid
      * main-file header was silently omitted from the no-argument build — a
      * damaged or new connector vanished from a release with exit 0).

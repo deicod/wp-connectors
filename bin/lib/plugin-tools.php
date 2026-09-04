@@ -356,6 +356,92 @@ function wp_connectors_include_runtime_segments($statement)
 }
 
 /**
+ * Whether every textual WRITE to a variable before an offset is a form
+ * the map-literal analysis models (GLM10 verifier round on #14).
+ *
+ * The synthetic foreach binding and the array-literal proof reason
+ * about the values a map variable's same-file assignments carry —
+ * which is only the set of runtime values when nothing else can write
+ * the map. Strict rule: every assignment-shaped write is a WHOLE-array
+ * array()/[] literal, and the variable never appears as an element
+ * access ($map[...] — read or write, element shapes are unmodeled), a
+ * list() target, an array-write helper argument, a by-reference
+ * binding, or inside a function signature (a parameter DEFAULT the
+ * assignment regex can mistake for the map's definition while the
+ * caller's argument wins at runtime). Any unrecognized shape refuses
+ * the proof, restoring the flagged default.
+ *
+ * @param string $code     Comment-stripped source of the file.
+ * @param string $variable Variable token, including the leading '$'.
+ * @param int    $offset   Byte offset the include starts at.
+ * @return bool True when only whole-array literal writes precede the offset.
+ */
+function wp_connectors_array_writes_recognized($code, $variable, $offset)
+{
+    $before = (string) substr($code, 0, $offset);
+    $quoted = preg_quote($variable, '/');
+
+    // Element access, append, or element write: $map[...].
+    if (preg_match('/' . $quoted . '\s*\[/', $before)) {
+        return false;
+    }
+
+    // list() destructuring mentioning the map.
+    if (preg_match('/\blist\s*\([^)]*' . $quoted . '/i', $before)) {
+        return false;
+    }
+
+    // Array-write helpers.
+    if (preg_match('/(?:array_push|array_unshift|array_splice|unset)\s*\(\s*' . $quoted . '\b/i', $before)) {
+        return false;
+    }
+
+    // By-reference aliasing (a write channel through &$map).
+    if (preg_match('/=\s*&\s*' . $quoted . '\b/', $before)) {
+        return false;
+    }
+
+    // An occurrence inside a function signature (a parameter default).
+    if (preg_match_all('/\bfunction\b/i', $before, $functions, PREG_OFFSET_CAPTURE)) {
+        foreach ($functions[0] as $function) {
+            $open = strpos($before, '(', $function[1]);
+            if (false === $open) {
+                continue;
+            }
+            $depth = 0;
+            $length = strlen($before);
+            $close = $length - 1;
+            for ($i = $open; $i < $length; ++$i) {
+                $char = $before[ $i ];
+                if ($char === '(') {
+                    ++$depth;
+                } elseif ($char === ')') {
+                    --$depth;
+                    if (0 === $depth) {
+                        $close = $i;
+                        break;
+                    }
+                }
+            }
+            if (false !== strpos((string) substr($before, $function[1], $close - $function[1] + 1), $variable)) {
+                return false;
+            }
+        }
+    }
+
+    // Every assignment-shaped write must be a whole-array literal.
+    if (preg_match_all('/' . $quoted . '\s*(?:\.\s*=|=(?![=>]))\s*([^;]+);/', $before, $writes, PREG_SET_ORDER)) {
+        foreach ($writes as $write) {
+            if (! preg_match('/^(?:array\s*\(|\[)/i', trim($write[1]))) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
  * Same-file assignments to a variable that execute before a byte offset.
  *
  * The ONE assignment collector shared by the literal-free and the mixed
@@ -406,7 +492,20 @@ function wp_connectors_same_file_assignments($code, $variable, $offset)
             if ($value_variable !== $variable) {
                 continue;
             }
-            $assignments[] = $variable . ' = ' . trim($parts[1]) . ';';
+            $source = trim($parts[1]);
+            if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $source)
+                && ! wp_connectors_array_writes_recognized($code, $source, $offset)) {
+                /*
+                 * Verifier round on GLM10 #14: the map can be written in
+                 * forms this analysis cannot model ($map[] appends,
+                 * element writes, a parameter default the caller's
+                 * argument overrides) — the analyzed value set would not
+                 * be a superset of the runtime values, so the binding is
+                 * refused and the include stays flagged.
+                 */
+                continue;
+            }
+            $assignments[] = $variable . ' = ' . $source . ';';
         }
     }
 
@@ -565,9 +664,15 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
              * by a foreach over one resolves through the map's own
              * same-file literal — every element VALUE must prove in-root
              * by the same literal analysis a direct include passes.
+             * Verifier round: only when the owned variable's writes are
+             * all whole-array literals (an element write or append the
+             * assignment collector cannot see would make the analyzed
+             * values a non-superset of the runtime ones); otherwise the
+             * literal falls through to the not-anchored rejection.
              */
-            if (preg_match('/^(?:array\s*\(|\[)/i', $expression)) {
-                foreach (wp_connectors_array_literal_value_reasons($file, $expression, $pluginDir) as $reason) {
+            if (preg_match('/^(?:array\s*\(|\[)/i', $expression)
+                && wp_connectors_array_writes_recognized($code, $argument, $offset)) {
+                foreach (wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir) as $reason) {
                     $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
                 }
                 continue;
@@ -581,8 +686,9 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
                 }
                 foreach ($inner_assignments as $inner_assignment) {
                     $inner_expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($inner_assignment)), ';');
-                    if (preg_match('/^(?:array\s*\(|\[)/i', $inner_expression)) {
-                        foreach (wp_connectors_array_literal_value_reasons($file, $inner_expression, $pluginDir) as $reason) {
+                    if (preg_match('/^(?:array\s*\(|\[)/i', $inner_expression)
+                        && wp_connectors_array_writes_recognized($code, $expression, $offset)) {
+                        foreach (wp_connectors_array_literal_value_reasons($file, $code, $inner_expression, $offset, $pluginDir) as $reason) {
                             $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
                         }
                         continue;
@@ -634,11 +740,13 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
  * structures never cut an element.
  *
  * @param string $file       Absolute path of the file containing the literal.
+ * @param string $code       Comment-stripped source of that file.
  * @param string $expression The array() / [] literal.
+ * @param int    $offset     Byte offset the include starts at.
  * @param string $pluginDir  Absolute plugin directory.
  * @return list<string> Violation reasons (empty when every value is provably in-root).
  */
-function wp_connectors_array_literal_value_reasons($file, $expression, $pluginDir)
+function wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir)
 {
     $inner = (string) preg_replace('/^(?:array\s*\(|\[)\s*/i', '', trim($expression));
     $inner = (string) preg_replace('/\s*\)?\]?\s*$/', '', $inner);
@@ -708,6 +816,19 @@ function wp_connectors_array_literal_value_reasons($file, $expression, $pluginDi
 
         ++$values;
         foreach (wp_connectors_include_expression_reasons($file, $value, $pluginDir) as $reason) {
+            $reasons[] = sprintf('includes a map value (%s) that %s', $value, $reason);
+        }
+
+        /*
+         * Verifier round on GLM10 #14: a value may itself mix the anchor
+         * with runtime segments (`__DIR__ . '/' . $page . '.php'`) — the
+         * literal analysis above passes it (anchored, carries a quoted
+         * literal), so the per-segment proof the direct-assignment branch
+         * applies must run here too, or routing an escaping expression
+         * through a map + foreach launders what a direct include is
+         * flagged for.
+         */
+        foreach (wp_connectors_runtime_segment_reasons($file, $code, $value, $offset, $pluginDir) as $reason) {
             $reasons[] = sprintf('includes a map value (%s) that %s', $value, $reason);
         }
     }
