@@ -607,7 +607,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					 * normalizes as the subschema it is; anything else
 					 * (and the empty array, which the meta-schema reads
 					 * as the empty schema) is ONE subschema.
+					 *
+					 * Verifier round on GLM10 #6: an EMPTY items with a
+					 * sibling 'additionalItems' member is the empty
+					 * TUPLE — the caller demonstrably used tuple-form
+					 * semantics ('every position is additional'), and
+					 * converting it to {} would silently make the
+					 * additionalItems constraint inert, weakening the
+					 * declared schema. It keeps its (schema-valid [])
+					 * verbatim, exactly as non-empty tuples already do;
+					 * only an additionalItems-less empty items is the
+					 * empty schema {}.
 					 */
+					if ( 'items' === $key
+						&& array() === $member
+						&& \array_key_exists( 'additionalItems', $value ) ) {
+						continue;
+					}
+
 					$value[ $key ] = array() !== $member && self::is_schema_list( $member )
 						? array_map( array( self::class, 'normalize_subschema' ), $member )
 						: self::normalize_subschema( $member );

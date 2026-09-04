@@ -591,6 +591,40 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString('"anything":[]', $raw, 'No subschema-valued member may encode as [].');
     }
 
+    public function testAnEmptyItemsWithAnAdditionalItemsSiblingKeepsItsTupleSemantics()
+    {
+        /*
+         * Verifier round on GLM10 #6: an empty items with a sibling
+         * additionalItems is the empty TUPLE ('every position is
+         * additional') — converting it to {} would silently make the
+         * additionalItems constraint inert, weakening the caller's
+         * declared schema. It keeps its [] verbatim (the same treatment
+         * non-empty tuples get); only an additionalItems-less empty
+         * items is the empty schema {} (pinned above).
+         */
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('tag_all', 'Tags every element', array(
+                    'type' => 'array',
+                    'items' => array(),
+                    'additionalItems' => array('type' => 'string'),
+                )))->toArray(),
+            ),
+        ));
+
+        $this->model($config)->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+
+        $raw = (string) $this->sdkHttpAttempts()[0]['body'];
+
+        $this->assertStringContainsString('"items":[]', $raw, 'The empty tuple keeps its list shape when additionalItems declares the tuple semantics.');
+        $this->assertStringContainsString('"additionalItems":{"type":"string"}', $raw, 'The additionalItems constraint ships verbatim.');
+        $this->assertStringNotContainsString('"items":{}', $raw, 'The empty-tuple-to-{} conversion must not silently drop the additionalItems constraint.');
+    }
+
     public function testSequentialArrayToolArgumentsAreRejectedBeforeTransport()
     {
         // Codex R4 #4: a FunctionCall from chat history carrying a
