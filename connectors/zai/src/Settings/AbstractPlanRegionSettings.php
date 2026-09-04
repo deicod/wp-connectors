@@ -482,24 +482,32 @@ abstract class AbstractPlanRegionSettings {
 		 * is skipped, never fatal: the option write already happened,
 		 * and the state-option deletion above already forces fresh
 		 * probes and discovery (the transients are endpoint-scoped and
-		 * defensive). Only load-family Errors are caught; a logic bug in
-		 * the owner still surfaces loudly.
+		 * defensive).
+		 *
+		 * GLM9 #6: the skip is gated on the owner class EXISTING (the
+		 * class_exists() pre-check uninstall.php's owner chain uses),
+		 * not on a catch (\Error) — PHP expresses no load-only catch
+		 * type, so the catch swallowed every Error family (a TypeError
+		 * from the owner's own logic included), contradicting the
+		 * "only load-family Errors" promise one sentence up. A missing
+		 * owner degrades exactly as before; a logic bug in the owner
+		 * now surfaces loudly, precisely as documented.
 		 */
 		delete_option( static::STATE_OPTION );
 
 		$endpoint_class = static::ENDPOINT_CLASS;
 
-		try {
-			foreach ( self::PLANS as $plan ) {
-				foreach ( self::REGIONS as $region ) {
-					foreach ( $endpoint_class::discovery_transient_ids( $plan, $region ) as $cache_id ) {
-						delete_transient( $cache_id );
-					}
-				}
-			}
-		} catch ( \Error $e ) {
+		if ( ! \class_exists( $endpoint_class ) ) {
 			// See the GLM8 #15 note above: degrade to skip, never fatal.
 			return;
+		}
+
+		foreach ( self::PLANS as $plan ) {
+			foreach ( self::REGIONS as $region ) {
+				foreach ( $endpoint_class::discovery_transient_ids( $plan, $region ) as $cache_id ) {
+					delete_transient( $cache_id );
+				}
+			}
 		}
 	}
 

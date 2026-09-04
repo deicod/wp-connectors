@@ -324,6 +324,46 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertSame(array('binding' => 'keep'), get_option(PlanRegionSettings::STATE_OPTION), 'Identical payloads must skip the invalidation.');
     }
 
+    public function testAMissingEndpointOwnerSkipsTheSweepWithoutFatal()
+    {
+        /*
+         * GLM9 #6: the quarantine case GLM8 #15 degraded for — a
+         * quarantined or missing src file, where the autoloader finds
+         * nothing — is detected by the class_exists() pre-check (the
+         * uninstall.php owner-chain pattern), not by catching Errors.
+         * The option write already happened and the state-option
+         * deletion above it already forces fresh probes, so skipping
+         * the transient sweep is the documented, bounded degradation.
+         */
+        $settings = ZaiSettingsTestMissingOwnerSettings::class;
+
+        update_option($settings::STATE_OPTION, array('binding' => 'stale'), false);
+        $cache = $settings::CACHE_PREFIX . md5($settings::CACHE_SCOPE . '|coding|intl');
+        set_transient($cache, array('glm-5.3'), 3600);
+
+        $settings::handle_settings_change('coding', 'general');
+
+        $this->assertNull(get_option($settings::STATE_OPTION, null), 'The state option is deletable in any owner state.');
+        $this->assertSame(array('glm-5.3'), get_transient($cache), 'A missing owner skips only the transient sweep.');
+    }
+
+    public function testAnOwningClassLogicErrorSurfacesLoudly()
+    {
+        /*
+         * GLM9 #6 guard: the old catch (\Error) was broader than its
+         * docblock — PHP has no load-only catch type, so a TypeError (or
+         * any Error) raised by the owner's own logic was silently
+         * swallowed and the sweep skipped with no error anywhere. The
+         * class_exists() gate scopes the degradation to the load case
+         * only; an Error from a LOADABLE owner now propagates, exactly
+         * as the comment promises. (A settings child pointing at a
+         * loadable class without the method stands in for the future
+         * edit that breaks the owner's contract.)
+         */
+        $this->expectException(\Error::class);
+        ZaiSettingsTestBrokenOwnerSettings::handle_settings_change('coding', 'general');
+    }
+
     public function testAuthorizedUserWithoutValidNonceIsLeftToCoreEnforcement()
     {
         $this->bootPlugin();
@@ -699,4 +739,64 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
             $this->assertSame(array(), array_values(array_diff($identifiers, $declared)), "{$settings} must declare every identifier constant.");
         }
     }
+}
+
+/**
+ * A settings child whose endpoint owner cannot load (GLM9 #6): the
+ * quarantined-or-missing-src-file case the class_exists() gate degrades
+ * for. Its identifiers are this fixture's own, never a real provider's.
+ */
+final class ZaiSettingsTestMissingOwnerSettings extends AbstractPlanRegionSettings
+{
+    public const OPTION_PLAN = 'zai_settings_test_plan';
+
+    public const OPTION_REGION = 'zai_settings_test_region';
+
+    public const SECTION_ID = 'zai_settings_test';
+
+    public const PROVIDER_LABEL = 'settings test';
+
+    public const STATE_OPTION = 'zai_settings_test_key_state';
+
+    public const REGION_PENDING_OPTION = 'zai_settings_test_region_pending';
+
+    public const KEY_OPTION = 'zai_settings_test_api_key';
+
+    public const KEY_ENV_NAME = 'ZAI_SETTINGS_TEST_API_KEY';
+
+    public const CACHE_PREFIX = 'zai_settings_test_models_';
+
+    public const CACHE_SCOPE = 'zai_settings_test';
+
+    public const ENDPOINT_CLASS = 'Deicod\WpConnectors\Zai\Endpoints\ZaiSettingsTestNoSuchEndpoint';
+}
+
+/**
+ * A settings child whose endpoint owner LOADS but does not satisfy the
+ * owner contract (no discovery_transient_ids()): the Error its sweep
+ * raises must surface loudly, never be swallowed (GLM9 #6 guard).
+ */
+final class ZaiSettingsTestBrokenOwnerSettings extends AbstractPlanRegionSettings
+{
+    public const OPTION_PLAN = 'zai_settings_test_plan';
+
+    public const OPTION_REGION = 'zai_settings_test_region';
+
+    public const SECTION_ID = 'zai_settings_test';
+
+    public const PROVIDER_LABEL = 'settings test';
+
+    public const STATE_OPTION = 'zai_settings_test_key_state';
+
+    public const REGION_PENDING_OPTION = 'zai_settings_test_region_pending';
+
+    public const KEY_OPTION = 'zai_settings_test_api_key';
+
+    public const KEY_ENV_NAME = 'ZAI_SETTINGS_TEST_API_KEY';
+
+    public const CACHE_PREFIX = 'zai_settings_test_models_';
+
+    public const CACHE_SCOPE = 'zai_settings_test';
+
+    public const ENDPOINT_CLASS = PlanRegionSettings::class;
 }
