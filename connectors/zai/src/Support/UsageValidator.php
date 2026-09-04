@@ -144,9 +144,11 @@ final class UsageValidator {
 		}
 
 		if ( null === $raw_usage ) {
-			// Oracle unavailable: the sequential-key list test.
-			$is_object = array() === $usage
-				|| \array_keys( $usage ) !== \range( 0, \count( $usage ) - 1 );
+			// Oracle unavailable: the shared sequential-key predicate
+			// (GLM8 #13), with the empty array kept on the OBJECT side —
+			// an empty usage member is a (data-less) object here, the
+			// deliberate divergence from is_list()'s empty-is-a-list rule.
+			$is_object = array() === $usage || ! JsonShape::is_list( $usage );
 		} else {
 			$is_object = \is_object( $raw_usage );
 		}

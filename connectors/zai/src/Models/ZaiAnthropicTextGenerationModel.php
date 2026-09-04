@@ -58,6 +58,7 @@ use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
+use Deicod\WpConnectors\Zai\Support\JsonShape;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
@@ -441,8 +442,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 */
 			$input_schema = $declaration->getParameters();
 
-			if ( \is_array( $input_schema ) && array() !== $input_schema
-				&& \array_keys( $input_schema ) === \range( 0, \count( $input_schema ) - 1 ) ) {
+			if ( \is_array( $input_schema ) && array() !== $input_schema && JsonShape::is_list( $input_schema ) ) {
 				throw new InvalidArgumentException(
 					'The zai_anthropic provider requires tool parameter schemas to be a JSON object (a non-empty list was given).'
 				);
@@ -955,8 +955,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 */
 			$input = $function_call->getArgs();
 
-			if ( \is_array( $input ) && array() !== $input
-				&& \array_keys( $input ) === \range( 0, \count( $input ) - 1 ) ) {
+			if ( \is_array( $input ) && array() !== $input && JsonShape::is_list( $input ) ) {
 				throw new InvalidArgumentException(
 					'The zai_anthropic provider requires tool arguments to be a JSON object (a non-empty list was given).'
 				);

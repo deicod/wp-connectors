@@ -54,9 +54,10 @@ final class ToolArgsObjectNess {
 			}
 
 			// An empty object, or one whose keys would re-encode the array
-			// as a JSON list, stays a stdClass (with converted members).
-			if ( array() === $converted
-				|| \array_keys( $converted ) === \range( 0, \count( $converted ) - 1 ) ) {
+			// as a JSON list, stays a stdClass (with converted members) —
+			// the shared JsonShape::is_list() predicate (GLM8 #13; both
+			// empty and sequential key shapes land on the list side).
+			if ( JsonShape::is_list( $converted ) ) {
 				$object = new \stdClass();
 				foreach ( $converted as $key => $member ) {
 					$object->{$key} = $member;
