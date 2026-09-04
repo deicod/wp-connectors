@@ -736,6 +736,49 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testTheSharedIdentityGuardsServeBothSurfaces()
+    {
+        /*
+         * GLM9 #12: the stop-sequence and tool-identity rules ride the
+         * one shared JsonEncodeGuard, parameterized by provider label —
+         * the loops this extraction replaced had already drifted once
+         * (GLM3 #3 landed on zai_anthropic only; GLM7 #7 re-landed on
+         * zai). The same malformed input now rejects with the identical
+         * message modulo the label on both surfaces, by construction.
+         */
+        foreach (array('zai', 'zai_anthropic') as $label) {
+            try {
+                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_stop_sequences(array(0), $label);
+                $this->fail("[{$label}] A non-string stop-sequence entry must reject.");
+            } catch (InvalidArgumentException $e) {
+                $this->assertSame("The {$label} provider requires every stop sequence to be a non-empty string.", $e->getMessage());
+            }
+
+            try {
+                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_call_identity(new FunctionCall(null, 'tool', array('v' => 1)), $label);
+                $this->fail("[{$label}] A null-id tool call must reject.");
+            } catch (InvalidArgumentException $e) {
+                $this->assertSame("The {$label} provider requires every function-call part to carry a non-empty id and name.", $e->getMessage());
+            }
+
+            try {
+                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_result_identity(new FunctionResponse(null, 'tool', array('ok' => true)), 'tool call id', 'a tool result id', $label);
+                $this->fail("[{$label}] A null-id tool result must reject.");
+            } catch (InvalidArgumentException $e) {
+                $this->assertSame("The {$label} provider requires every function-response part to carry the non-empty tool call id it answers.", $e->getMessage());
+            }
+        }
+
+        // The valid shapes pass untouched through both labels.
+        foreach (array('zai', 'zai_anthropic') as $label) {
+            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_stop_sequences(array('END'), $label);
+            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_call_identity(new FunctionCall('call_1', 'tool', array('v' => 1)), $label);
+            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_result_identity(new FunctionResponse('call_1', 'tool', array('ok' => true)), 'tool call id', 'a tool result id', $label);
+        }
+
+        $this->addToAssertionCount(1);
+    }
+
     public function testUnencodableToolCallIdentitiesAreRejectedBeforeTransport()
     {
         // The id and name ride the tool_calls member verbatim; both are

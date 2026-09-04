@@ -239,20 +239,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * reached the wire verbatim and failed upstream with the
 			 * generic misattributed client-error message instead of the
 			 * typed pre-transport rejection every neighboring malformed
-			 * input (empty tool names, NAN temperature, list-shaped tool
-			 * args) already receives. Per-element validation, first
-			 * bad entry wins.
+			 * input already receives. GLM9 #12: the per-entry rule rides
+			 * the shared JsonEncodeGuard (the same invalid-UTF-8 oracle
+			 * as text parts, GLM3 #4) — the twin loops this extraction
+			 * replaced had already drifted once.
 			 */
-			foreach ( $stop_sequences as $sequence ) {
-				if ( ! \is_string( $sequence ) || '' === $sequence ) {
-					throw new InvalidArgumentException(
-						'The zai_anthropic provider requires every stop sequence to be a non-empty string.'
-					);
-				}
-
-				// GLM3 #4: same invalid-UTF-8 oracle as text parts.
-				JsonEncodeGuard::must_encode( $sequence, 'a stop sequence', 'zai_anthropic' );
-			}
+			JsonEncodeGuard::must_encode_stop_sequences( $stop_sequences, 'zai_anthropic' );
 
 			$params['stop_sequences'] = $stop_sequences;
 		}
@@ -898,20 +890,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * Codex R9 #3: the Messages protocol requires NON-EMPTY tool
 			 * ids and names — an empty string passes the null-only guard
 			 * and emitted a tool_use block with an empty identity (upstream
-			 * 400).
+			 * 400). GLM6 #9: replayed identities are wire strings like
+			 * every other — encodability-guarded, not just
+			 * emptiness-checked. GLM9 #12: the identity rule rides the
+			 * shared JsonEncodeGuard, the same one the zai surface's
+			 * GLM7 #7 contract lives in.
 			 */
-			if ( null === $function_call
-				|| null === $function_call->getId() || '' === $function_call->getId()
-				|| null === $function_call->getName() || '' === $function_call->getName() ) {
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires every function-call part to carry a non-empty id and name.'
-				);
-			}
-
-			// GLM6 #9: replayed identities are wire strings like every
-			// other — encodability-guarded, not just emptiness-checked.
-			JsonEncodeGuard::must_encode( $function_call->getId(), 'a tool call id', 'zai_anthropic' );
-			JsonEncodeGuard::must_encode( $function_call->getName(), 'a tool call name', 'zai_anthropic' );
+			JsonEncodeGuard::must_encode_tool_call_identity( $function_call, 'zai_anthropic' );
 
 			/*
 			 * The Messages protocol requires an OBJECT for tool_use input.
@@ -994,14 +979,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		if ( $part->getType()->isFunctionResponse() ) {
 			$function_response = $part->getFunctionResponse();
-			if ( null === $function_response || null === $function_response->getId() || '' === $function_response->getId() ) {
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires every function-response part to carry the non-empty tool_use id it answers.'
-				);
-			}
 
-			// GLM6 #9: the tool_use_id is a wire string like the rest.
-			JsonEncodeGuard::must_encode( $function_response->getId(), 'a tool result tool_use id', 'zai_anthropic' );
+			/*
+			 * The tool_use id answers the call and is a wire string like
+			 * the rest (GLM6 #9: encodability-guarded, not just
+			 * emptiness-checked). GLM9 #12: the identity rule rides the
+			 * shared JsonEncodeGuard — the same one the zai surface's
+			 * GLM9 #4 guard lives in, one protocol-name apart.
+			 */
+			JsonEncodeGuard::must_encode_tool_result_identity( $function_response, 'tool_use id', 'a tool result tool_use id', 'zai_anthropic' );
 
 			/*
 			 * R18 (inline 3906485711): an unencodable tool-result value — NAN,

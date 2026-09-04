@@ -669,23 +669,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		$stop_sequences = $config->getStopSequences();
 		if ( \is_array( $stop_sequences ) ) {
 			/*
-			 * GLM7 #7: encodability alone passed non-string and empty
-			 * entries verbatim ([''] and [0] encode fine, and the SDK
-			 * setter checks only list-ness), shipping "stop":[""] /
-			 * "stop":[0] upstream to a 400 with the generic misattributed
-			 * client-error message. Per-entry validation first, then the
-			 * encodability oracle — the zai_anthropic twin's GLM3 #3
-			 * contract.
+			 * GLM9 #12: the per-entry rule (GLM7 #7 — encodability alone
+			 * passed non-string and empty entries verbatim, shipping
+			 * "stop":[""] / "stop":[0] upstream to the misattributed 400)
+			 * rides the shared JsonEncodeGuard now, the same guard the
+			 * zai_anthropic twin's GLM3 #3 contract lives in — the twin
+			 * loops this extraction replaced had already drifted once.
 			 */
-			foreach ( $stop_sequences as $sequence ) {
-				if ( ! \is_string( $sequence ) || '' === $sequence ) {
-					throw new InvalidArgumentException(
-						'The zai provider requires every stop sequence to be a non-empty string.'
-					);
-				}
-
-				JsonEncodeGuard::must_encode( $sequence, 'a stop sequence', 'zai' );
-			}
+			JsonEncodeGuard::must_encode_stop_sequences( $stop_sequences, 'zai' );
 		}
 
 		$function_declarations = $config->getFunctionDeclarations();
@@ -711,24 +702,19 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				}
 
 				if ( $part->getType()->isFunctionResponse() && null !== $part->getFunctionResponse() ) {
-					$function_response = $part->getFunctionResponse();
-
 					/*
 					 * GLM9 #4: the id ships as "tool_call_id" verbatim
 					 * (the SDK parent's message mapping copies it
 					 * unvalidated), so a null or empty id rode the wire
 					 * to an upstream 400 surfaced as the generic
 					 * 'rejected the request' message — where the
-					 * zai_anthropic twin (its tool-result identity
-					 * guard) and this same walk's FunctionCall ids
-					 * (GLM7 #7) give the precise typed pre-transport
-					 * rejection for the identical shape.
+					 * zai_anthropic twin and this same walk's
+					 * FunctionCall ids give the precise typed
+					 * pre-transport rejection for the identical shape.
+					 * GLM9 #12: the identity rule rides the shared
+					 * JsonEncodeGuard.
 					 */
-					if ( null === $function_response->getId() || '' === $function_response->getId() ) {
-						throw new InvalidArgumentException(
-							'The zai provider requires every function-response part to carry the non-empty tool call id it answers.'
-						);
-					}
+					JsonEncodeGuard::must_encode_tool_result_identity( $part->getFunctionResponse(), 'tool call id', 'a tool result id', 'zai' );
 
 					/*
 					 * The parent's message mapping json_encodes the tool
@@ -738,8 +724,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * zai_anthropic surface fixed, with the identical
 					 * guard).
 					 */
-					JsonEncodeGuard::must_encode( $function_response->getId(), 'a tool result id', 'zai' );
-					JsonEncodeGuard::must_encode( $function_response->getResponse(), 'a tool result', 'zai' );
+					JsonEncodeGuard::must_encode( $part->getFunctionResponse()->getResponse(), 'a tool result', 'zai' );
 					continue;
 				}
 
@@ -748,25 +733,13 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * The id and name ride the wire verbatim inside the
 					 * tool_calls member; the ARGUMENTS are guarded by the
 					 * replay guard in getMessagePartToolCallData().
-					 *
-					 * GLM7 #7: the (string) casts let a NULL id or name
-					 * pass the encodability guard while null itself rode
-					 * the wire (the SDK parent copies it unvalidated) —
-					 * now the typed non-empty rejection the zai_anthropic
-					 * twin's Codex R9 #3 gives the identical shape, then
-					 * the encodability oracle on the real string.
+					 * GLM9 #12: the GLM7 #7 identity rule (the (string)
+					 * casts let a NULL id or name ride the wire
+					 * unvalidated) rides the shared JsonEncodeGuard —
+					 * the same one the zai_anthropic twin's Codex R9 #3
+					 * contract lives in.
 					 */
-					$function_call = $part->getFunctionCall();
-
-					if ( null === $function_call->getId() || '' === $function_call->getId()
-						|| null === $function_call->getName() || '' === $function_call->getName() ) {
-						throw new InvalidArgumentException(
-							'The zai provider requires every function-call part to carry a non-empty id and name.'
-						);
-					}
-
-					JsonEncodeGuard::must_encode( $function_call->getId(), 'a tool call id', 'zai' );
-					JsonEncodeGuard::must_encode( $function_call->getName(), 'a tool call name', 'zai' );
+					JsonEncodeGuard::must_encode_tool_call_identity( $part->getFunctionCall(), 'zai' );
 				}
 			}
 		}
