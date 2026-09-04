@@ -1728,6 +1728,85 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
     }
 
     /**
+     * @dataProvider provideNonStringEventTypeValues
+     */
+    public function testANonStringPresentTypeMemberInvalidatesTheStream($typeValue)
+    {
+        /*
+         * GLM9 #2: a present-but-non-string type member collapsed onto
+         * the '' sentinel of the ABSENT member, so the R7 #6 agreement
+         * rule was skipped and the frame dispatched on the event:
+         * field alone — an `event: ping` frame carrying a text_delta
+         * payload under {"type":false} silently dropped its content
+         * chunk while the aggregation reported success. The corrupt
+         * declaration is a typed rejection now, the same channel every
+         * sibling corruption class (undecodable payload, non-object
+         * payload, contradicting STRING type) already rejects through.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_nonstr","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: ping' . "\n"
+            . 'data: {"type":' . $typeValue . ',"index":0,"delta":{"type":"text_delta","text":"Lost chunk."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-string present type member must fail the stream, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('Lost chunk.', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideNonStringEventTypeValues()
+    {
+        return array(
+            'boolean type' => array('false'),
+            'numeric type' => array('5'),
+            'explicit null type' => array('null'),
+        );
+    }
+
+    public function testAPingWithoutATypeMemberStaysIgnorableMidStream()
+    {
+        // GLM9 #2 control: only the PRESENT-but-non-string shape rejects
+        // — an ABSENT type member keeps the documented tolerance (the
+        // frame stays judged by its event: field alone).
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_notype","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: ping' . "\n"
+            . 'data: {"ts":123}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('OK.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
+    /**
      * @dataProvider provideAbsentOrNullStartInputs
      */
     public function testAbsentOrNullStreamedStartInputsAreRejected($startBlockJson)

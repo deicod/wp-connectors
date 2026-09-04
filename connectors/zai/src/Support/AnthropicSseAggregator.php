@@ -667,7 +667,32 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			return;
 		}
 
-		$payload_type = isset( $decoded['type'] ) && \is_string( $decoded['type'] ) ? $decoded['type'] : '';
+		/*
+		 * GLM9 #2: a PRESENT-but-non-string type member (false, 5, null,
+		 * a list) is a corrupt DECLARATION, not the '' sentinel of the
+		 * ABSENT member. isset() collapsed both onto '', so the R7 #6
+		 * agreement rule below was skipped and the frame dispatched on
+		 * the event: field alone: an `event: ping` frame carrying
+		 * {"type":false,"index":0,"delta":{"type":"text_delta","text":...}}
+		 * silently dropped its content chunk while the aggregation
+		 * reported success. Every sibling corruption class — an
+		 * undecodable payload, a decodable non-object payload, a
+		 * contradicting STRING type one line below — rejects in this
+		 * channel; the non-string declaration now does too: it names no
+		 * event, so the frame's content is unknowable and dropping it is
+		 * the same silent-loss shape. Pre- and post-termination alike
+		 * (the GLM5 #18 one-pipeline rule the string-agreement check
+		 * follows), and an explicit null is PRESENT here exactly as the
+		 * envelope's own type rule judges it (Codex R14 #1).
+		 */
+		if ( \array_key_exists( 'type', $decoded ) && ! \is_string( $decoded['type'] ) ) {
+			++$this->malformed;
+			$this->malformed_event = true;
+
+			return;
+		}
+
+		$payload_type = isset( $decoded['type'] ) ? $decoded['type'] : '';
 		$type         = \is_string( $event_name ) ? $event_name : $payload_type;
 
 		/*
