@@ -692,6 +692,34 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testAnEmptyDeclaredToolNameIsRejectedBeforeTransport()
+    {
+        /*
+         * GLM12 #5 (parity with the zai_anthropic twin's Codex R18 #2):
+         * the declaration loop only encodability-checked the name, and
+         * json_encode('') succeeds — so an empty tool-function name
+         * (the DTO constructor validates nothing) shipped to the wire
+         * and failed upstream as the generic misattributed 'rejected
+         * the request' 400, where the twin rejects the identical shape
+         * typed pre-transport.
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('', 'Get the weather for a city', array('type' => 'object')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An empty declared tool name must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires declared tool functions to carry a non-empty name.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testAnInvalidUtf8ToolDeclarationIsRejectedBeforeTransport()
     {
         /*

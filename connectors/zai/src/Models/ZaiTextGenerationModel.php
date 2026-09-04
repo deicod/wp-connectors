@@ -795,7 +795,30 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		$function_declarations = $config->getFunctionDeclarations();
 		if ( \is_array( $function_declarations ) ) {
 			foreach ( $function_declarations as $declaration ) {
-				JsonEncodeGuard::must_encode( $declaration->getName(), 'a declared tool function name', self::PROVIDER_LABEL );
+				/*
+				 * GLM12 #5 (parity with the zai_anthropic twin's Codex
+				 * R18 #2 rule): a declared tool with an EMPTY name is a
+				 * malformed identity — the encodability check below
+				 * passes it (json_encode('') succeeds), the SDK parent
+				 * ships it verbatim inside tools[].function, and the
+				 * spec-faithful endpoint rejects it (name must be 1-64
+				 * chars) as the generic misattributed 'rejected the
+				 * request' 400 — the exact misattributed-error class
+				 * GLM9 #4 fixed for tool-result ids. The DTO constructor
+				 * coerces the name to a string, so '' is the only
+				 * constructible empty identity; identity errors surface
+				 * BEFORE the encodability checks, matching the twin's
+				 * ordering.
+				 */
+				$name = $declaration->getName();
+
+				if ( '' === $name ) {
+					throw new InvalidArgumentException(
+						'The zai provider requires declared tool functions to carry a non-empty name.'
+					);
+				}
+
+				JsonEncodeGuard::must_encode( $name, 'a declared tool function name', self::PROVIDER_LABEL );
 				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
 
 				$input_schema = $declaration->getParameters();
