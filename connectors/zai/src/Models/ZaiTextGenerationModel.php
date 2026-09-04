@@ -107,8 +107,9 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
-	 * Prepares the request parameters after refusing refused credentials and
-	 * rejecting unsupported input.
+	 * Prepares the request parameters after refusing refused credentials,
+	 * rejecting unsupported input, and omitting explicitly-cleared list
+	 * options (GLM12 #4).
 	 *
 	 * The SDK's generateTextResult() is FINAL, so this params hook is the
 	 * earliest pre-transport boundary this surface owns — the credential
@@ -128,7 +129,30 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		$this->validate_request( $prompt );
 
-		return parent::prepareGenerateTextParams( $prompt );
+		$params = parent::prepareGenerateTextParams( $prompt );
+
+		/*
+		 * GLM12 #4 (parity with the zai_anthropic twin's GLM1 #4): an
+		 * explicitly-cleared list option ([] — the SDK setters are
+		 * non-nullable, so [] is the only clear value, and
+		 * PromptBuilder::usingFunctionDeclarations() with zero arguments
+		 * reaches it too) means "not set", not an empty wire member. The
+		 * SDK parent guards only tool_calls against empty arrays and
+		 * ships "stop":[] / "tools":[] verbatim, where the spec-faithful
+		 * reading (OpenAI documents both lists with min length 1)
+		 * rejects the request with the generic misattributed 400 — the
+		 * same request succeeded on the twin, which omits both when
+		 * empty. Only the two list members the caller can clear to []
+		 * are treated; every other member keeps the parent's mapping
+		 * verbatim.
+		 */
+		foreach ( array( 'stop', 'tools' ) as $list_member ) {
+			if ( \array_key_exists( $list_member, $params ) && \is_array( $params[ $list_member ] ) && array() === $params[ $list_member ] ) {
+				unset( $params[ $list_member ] );
+			}
+		}
+
+		return $params;
 	}
 
 	/**

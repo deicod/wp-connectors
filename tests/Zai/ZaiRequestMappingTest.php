@@ -109,6 +109,44 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
      * Snapshots.
      */
 
+    public function testExplicitlyClearedListOptionsAreOmittedFromTheWire()
+    {
+        /*
+         * GLM12 #4 (parity with the zai_anthropic twin's GLM1 #4): the
+         * SDK setters are non-nullable, so [] is the only way to clear a
+         * list option (a tool loop neutralizing tools between turns, or
+         * PromptBuilder::usingFunctionDeclarations() with zero
+         * arguments) — and the SDK parent shipped the empty lists
+         * verbatim ("stop":[], "tools":[]), where the spec-faithful
+         * reading (min length 1) 400s with the generic misattributed
+         * message. Both members are omitted when empty, exactly like
+         * the twin.
+         */
+        $config = new ModelConfig();
+        $config->setStopSequences(array());
+        $config->setFunctionDeclarations(array());
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))),
+            $this->model($config)
+        );
+
+        $this->assertArrayNotHasKey('stop', $body, 'An explicitly-cleared stop list must not ship as "stop":[].');
+        $this->assertArrayNotHasKey('tools', $body, 'An explicitly-cleared tool list must not ship as "tools":[].');
+
+        // Non-empty lists keep the parent's mapping verbatim.
+        WpHarness::$sdk_http_attempts = array();
+        $kept = new ModelConfig();
+        $kept->setStopSequences(array('END'));
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))),
+            $this->model($kept)
+        );
+
+        $this->assertSame(array('END'), $body['stop'], 'A non-empty stop list still ships.');
+    }
+
     public function testMinimalRequestSnapshot()
     {
         list($url, $body, $headers) = $this->captureRequest(
