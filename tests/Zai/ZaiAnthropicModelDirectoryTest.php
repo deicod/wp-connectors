@@ -353,6 +353,28 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         );
     }
 
+    public function testDiscoveryToleratesAGatewayBomPrefix()
+    {
+        /*
+         * GLM10 #3, zai_anthropic twin: a gateway/CDN prepending a UTF-8
+         * BOM to the /v1/models JSON body made both decodes fail, so
+         * discovery silently degraded to the 60s '_miss' marker plus
+         * static fallback on every request. The parser owns one BOM-safe
+         * decode now.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(
+            200,
+            array(),
+            "\xEF\xBB\xBF" . HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.2', 'glm-4.5'))
+        );
+
+        $ids = $this->idList($this->directory()->listModelMetadata());
+
+        $this->assertSame(array('glm-5.3', 'glm-5.2'), $ids, 'A BOM-prefixed body still discovers (coding-plan intersection as always).');
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'One discovery attempt, no retry storm.');
+    }
+
     public function testCredentialRejectingDiscoveryRecordsAgainstTheRequestTimeEndpoint()
     {
         /*

@@ -567,6 +567,34 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         );
     }
 
+    public function testDiscoveryToleratesAGatewayBomPrefix()
+    {
+        /*
+         * GLM10 #3: a gateway/CDN prepending a UTF-8 BOM to the JSON body
+         * made BOTH decodes fail (the SDK getData() and the parser's raw
+         * oracle), so discovery silently degraded to the 60s '_miss'
+         * marker plus static fallback on every request — the same threat
+         * class GLM8-2/3 and GLM9-3 hardened on the SSE and
+         * Messages/completions paths, missed on this route. The parser
+         * owns one BOM-safe decode now.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $this->queueSdkResponse(
+            200,
+            array(),
+            "\xEF\xBB\xBF" . HttpResponseFactory::openAiModelsBody(self::OBSERVED_MODELS)
+        );
+
+        $ids = $this->idList($this->directory()->listModelMetadata());
+
+        $this->assertSame(
+            array('glm-5.3', 'glm-5.3-flash', 'glm-5.2', 'glm-5.1', 'glm-5', 'glm-5-turbo'),
+            $ids,
+            'A BOM-prefixed body still discovers (the coding-plan intersection applies as always).'
+        );
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'One discovery attempt, no retry storm.');
+    }
+
     public function testCredentialRejectingDiscoveryRecordsAgainstTheRequestTimeEndpoint()
     {
         /*

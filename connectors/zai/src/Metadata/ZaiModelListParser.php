@@ -21,6 +21,7 @@ namespace Deicod\WpConnectors\Zai\Metadata;
 
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Exception\ResponseException;
+use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 
 /**
  * Parses a /models discovery response into chat-capable, in-plan IDs.
@@ -38,10 +39,11 @@ final class ZaiModelListParser {
 	 * incomplete page, or a list with no usable chat ID throws — the caller
 	 * turns that into the plan fallback.
 	 *
-	 * Checks, in order:
-	 * - the data member exists and is a JSON LIST (the associative decode
-	 *   collapses an object-shaped catalog into a passing PHP array — the
-	 *   raw object-ness oracle rejects it; Codex R14 #4),
+	 * Checks, in order (one BOM-safe object-view decode of the raw body,
+	 * GLM10 #3 — a gateway-prepended UTF-8 BOM must degrade nothing):
+	 * - the data member exists and is a JSON LIST (an object-shaped
+	 *   catalog decodes to stdClass, not a PHP list — the object-ness
+	 *   oracle rejects it; Codex R14 #4),
 	 * - has_more is absent or exactly false (a present non-false value —
 	 *   string "true", 1, null — is not the documented shape and fails the
 	 *   same way; Codex R15 #3, now on BOTH surfaces via GLM1 #11),
@@ -64,22 +66,33 @@ final class ZaiModelListParser {
 	 *                           ID remains.
 	 */
 	public static function parse_chat_ids( Response $response, string $plan ): array {
-		$data = $response->getData();
+		/*
+		 * GLM10 #3: the parser owns ONE BOM-SAFE decode of the raw body.
+		 * The SDK getData()'s bare json_decode() (and the previous second
+		 * raw decode here) failed wholesale on the UTF-8 BOM a gateway or
+		 * CDN can prepend to JSON bodies — the documented threat class the
+		 * SSE and Messages/completions paths already harden against
+		 * (GLM8-2/3, GLM9-3) — so dynamic discovery silently degraded to
+		 * the 60s '_miss' marker plus static plan fallback on every
+		 * request. The prefix rides the shared SseFrameBuffer rule, and
+		 * the single object-view decode serves both the shape checks and
+		 * the reads (the GLM9 #15 object-tree idiom).
+		 */
+		$body = SseFrameBuffer::strip_stream_prefix( (string) $response->getBody() );
+		$raw  = json_decode( $body );
 
-		if ( ! \is_array( $data ) || ! isset( $data['data'] ) || ! \is_array( $data['data'] ) ) {
+		if ( ! \is_object( $raw ) || ! isset( $raw->data ) ) {
 			throw ResponseException::fromMissingData( 'z.ai', 'data' );
 		}
 
 		/*
-		 * Object-ness oracle (Codex R14 #4): the associative decode
-		 * collapses an object-shaped {"data":{"only":{"id":...}}} into a
-		 * PHP array that passes is_array(), and the foreach then iterates
-		 * the object's VALUES as entries — a malformed catalog was treated
-		 * as successful live discovery and cached. Only a JSON array
-		 * decodes to a PHP list; an object decodes to stdClass.
+		 * Object-ness oracle (Codex R14 #4): only a JSON array decodes
+		 * to a PHP list; an object-shaped {"data":{"only":{"id":...}}}
+		 * decodes to stdClass here, and iterating the object's VALUES as
+		 * entries would treat a malformed catalog as successful live
+		 * discovery and cache it.
 		 */
-		$raw_body = json_decode( (string) $response->getBody() );
-		if ( ! \is_object( $raw_body ) || ! isset( $raw_body->data ) || ! \is_array( $raw_body->data ) ) {
+		if ( ! \is_array( $raw->data ) ) {
 			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list must be a JSON list.' );
 		}
 
@@ -96,17 +109,17 @@ final class ZaiModelListParser {
 		 * false (string "true", 1, null) is not the documented shape and
 		 * fails the same way. Shared by BOTH surfaces since GLM1 #11.
 		 */
-		if ( \array_key_exists( 'has_more', $data ) && false !== $data['has_more'] ) {
+		if ( \property_exists( $raw, 'has_more' ) && false !== $raw->has_more ) {
 			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list reported additional pages.' );
 		}
 
 		$ids = array();
-		foreach ( $data['data'] as $entry ) {
-			if ( ! \is_array( $entry ) || ! isset( $entry['id'] ) || ! \is_string( $entry['id'] ) || '' === $entry['id'] ) {
+		foreach ( $raw->data as $entry ) {
+			if ( ! \is_object( $entry ) || ! isset( $entry->id ) || ! \is_string( $entry->id ) || '' === $entry->id ) {
 				throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Every entry must carry a non-empty string "id".' );
 			}
 
-			$ids[] = $entry['id'];
+			$ids[] = $entry->id;
 		}
 
 		$chat_ids = array();
