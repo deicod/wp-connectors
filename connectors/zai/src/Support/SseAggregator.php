@@ -306,11 +306,21 @@ final class SseAggregator extends AbstractSseAggregator {
 		 * no token counts, so completing it overwrites nothing; every
 		 * DATA-BEARING member (even a partial one) still stands.
 		 *
+		 * GLM12 #9 extends "no data" to the zero-valued shape: a gateway
+		 * that zero-normalizes ("usage":{"prompt_tokens":0} on every
+		 * chunk) writes non-empty but INFORMATIONALLY EMPTY members —
+		 * zero is exactly what the lenient validator's absent-member
+		 * default reads, so the member says nothing the missing member
+		 * would not, and blocking the gap-fill on it reproduced the same
+		 * silent zeroing. Corrupt members (strings, floats, INF) are NOT
+		 * information: they stay standing so the downstream validator
+		 * rejects them typed, never rescued by the gap-fill.
+		 *
 		 * GLM10 #12: the trailing oracle SOURCE replaces the pre-sentinel
 		 * one and the memoized decode resets — raw_usage() decodes the
 		 * (single) winner once, on demand.
 		 */
-		if ( ( null === $this->usage || array() === $this->usage ) && null !== $this->trailing_usage ) {
+		if ( self::usage_carries_no_token_data( $this->usage ) && null !== $this->trailing_usage ) {
 			$this->usage            = $this->trailing_usage;
 			$this->raw_usage_source = $this->trailing_raw_usage_source;
 			$this->raw_usage        = null;
@@ -342,6 +352,39 @@ final class SseAggregator extends AbstractSseAggregator {
 		}
 
 		return $payload;
+	}
+
+	/**
+	 * Whether a merged pre-sentinel usage member carries any token DATA
+	 * (GLM12 #9).
+	 *
+	 * Null, the empty array, and a member whose every value is an
+	 * explicit zero or null are all informationally empty: zero is the
+	 * lenient validator's absent-member default, so such a member states
+	 * nothing a missing member would not, and the post-[DONE] gap-fill
+	 * may complete it over nothing. Any other value — a non-zero count,
+	 * or a corrupt shape (string, float, INF) — is data-bearing (or the
+	 * validator's business, not the gap-fill's) and stands.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<string, mixed>|null $usage The merged pre-sentinel usage member.
+	 * @return bool True when the member carries no token data.
+	 */
+	private static function usage_carries_no_token_data( ?array $usage ): bool {
+		if ( null === $usage || array() === $usage ) {
+			return true;
+		}
+
+		foreach ( $usage as $count ) {
+			if ( null === $count || ( \is_int( $count ) && 0 === $count ) ) {
+				continue;
+			}
+
+			return false;
+		}
+
+		return true;
 	}
 
 	/**

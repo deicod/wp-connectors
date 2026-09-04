@@ -1148,6 +1148,80 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(15, $result->getTokenUsage()->getTotalTokens(), 'Zero-token silent undercounting versus master is the exact regression GLM7 #2 fixes.');
     }
 
+    public function testAZeroValuedPreSentinelUsageMemberDoesNotBlockTheTrailingGapFill()
+    {
+        /*
+         * GLM12 #9: a gateway that zero-normalizes usage
+         * ("usage":{"prompt_tokens":0} on every chunk) writes a
+         * non-empty but INFORMATIONALLY EMPTY member — zero is exactly
+         * the lenient validator's absent-member default — and the
+         * GLM7-2 emptiness guard (empty {} only) let it block the
+         * post-[DONE] gap-fill, silently zeroing the appending
+         * gateway's real final counts. Zero-valued members gap-fill
+         * like empty ones.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-zu","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}],"usage":{"prompt_tokens":0}}',
+            'data: {"id":"chatcmpl-zu","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-zu","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":9,"total_tokens":18}}',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame(18, $aggregated['usage']['total_tokens'], 'The trailing usage must complete a zero-normalized pre-sentinel member.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(18, $result->getTokenUsage()->getTotalTokens(), 'The real final counts must not be silently zeroed.');
+    }
+
+    public function testADataBearingPreSentinelUsageMemberStillBlocksTheGapFill()
+    {
+        /*
+         * GLM12 #9 (the standing edge): ONE non-zero count makes the
+         * member data-bearing — the gap-fill must not overwrite it, and
+         * a corrupt member (a string count) stays standing for the
+         * validator's typed rejection rather than being rescued.
+         */
+        $dataBearing = implode("\n\n", array(
+            'data: {"id":"chatcmpl-db","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":0,"total_tokens":3}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-db","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":9,"total_tokens":18}}',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($dataBearing);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame(3, $aggregated['usage']['total_tokens'], 'A data-bearing member stands; the trailing one must not overwrite it.');
+
+        $corrupt = implode("\n\n", array(
+            'data: {"id":"chatcmpl-cu","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":"x"}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-cu","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":9,"total_tokens":18}}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $corrupt);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A corrupt pre-sentinel usage member must reach the validator, not be rescued by the gap-fill.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('Token counts must be non-negative integers.', $e->getMessage());
+        }
+    }
+
     public function testTheLazyUsageOracleDescribesTheMergedWinner()
     {
         /*
