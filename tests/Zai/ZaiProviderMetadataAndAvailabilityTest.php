@@ -990,6 +990,38 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertFalse($stored->isConfigured(), 'The stored verdict must hold across the transition.');
         $this->assertCount(1, $this->sdkHttpAttempts(), 'No fresh probe may ride the stored verdict.');
     }
+
+    public function testTheGateAndTheRecorderResolveTheWiredCredentialAlike()
+    {
+        /*
+         * GLM9 #14: generation_refusal_reason() and
+         * record_definitive_verdict() decided through copy-pasted
+         * optional-authentication ternaries — divergent copies would make
+         * the refusal gate and the verdict recorder disagree about WHICH
+         * credential a verdict binds (the GLM5 #11 divergence class: one
+         * label split a credential into two bindings and let a
+         * definitively rejected key through). One
+         * effective_for_authentication() resolves both now; the pin: a
+         * verdict recorded through a wired credential (the probe path)
+         * is refused through the SAME wired credential, from state, with
+         * no fresh request.
+         */
+        $this->freezeTime(1700000000);
+        putenv('ZAI_API_KEY');
+        $key = FakeSecrets::apiKey();
+
+        $wired = $this->availability($key);
+        $this->queueSdkResponse(403, array(), '{"error":{"message":"forbidden"}}');
+        $this->assertFalse($wired->isConfigured(), 'The wired credential is definitively rejected.');
+
+        $attempts = count($this->sdkHttpAttempts());
+        $this->assertSame(
+            'invalid_verdict',
+            $wired->generation_refusal_reason(new ApiKeyRequestAuthentication($key)),
+            'The recorded verdict must refuse the same wired credential.'
+        );
+        $this->assertSame($attempts, count($this->sdkHttpAttempts()), 'The refusal answers from state, no fresh probe.');
+    }
     public function testIdentifierConstantsAreChildOwnedNotInheritedDefaults()
     {
         /*

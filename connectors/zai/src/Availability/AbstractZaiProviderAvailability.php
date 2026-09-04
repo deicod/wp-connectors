@@ -394,6 +394,41 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	}
 
 	/**
+	 * The credential an optional wired authentication represents, falling
+	 * back to the effective key (GLM9 #14).
+	 *
+	 * The optional-authentication ternary — the wired ApiKey's key plus
+	 * its derived source when it carries a non-empty key, else
+	 * effective_key() — was copy-pasted verbatim between
+	 * generation_refusal_reason() and record_definitive_verdict(): the
+	 * copy-paste pattern GLM3 #9 fixed at the four gate consumers but
+	 * left duplicated here, where the refusal gate and the verdict
+	 * recorder deciding through divergent copies means they can disagree
+	 * about WHICH credential a verdict binds (the GLM5 #11 divergence
+	 * class: one label split a credential into two bindings and let a
+	 * definitively rejected key through the gate).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param ApiKeyRequestAuthentication|null $authentication The wired
+	 *                                                        credential, or
+	 *                                                        null to resolve
+	 *                                                        the effective
+	 *                                                        key.
+	 * @return array{key: string, source: string} The credential and its source.
+	 */
+	private function effective_for_authentication( ?ApiKeyRequestAuthentication $authentication ): array {
+		if ( null === $authentication || '' === $authentication->getApiKey() ) {
+			return $this->effective_key();
+		}
+
+		return array(
+			'key'    => $authentication->getApiKey(),
+			'source' => $this->key_source( $authentication->getApiKey() ),
+		);
+	}
+
+	/**
 	 * Reports whether the effective key is the credential a region switch
 	 * marked pending DEFINITIVE validation for the CURRENT region.
 	 *
@@ -482,12 +517,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *                     generation must be refused, null when allowed.
 	 */
 	public function generation_refusal_reason( ?ApiKeyRequestAuthentication $authentication = null ): ?string {
-		$effective = null !== $authentication && '' !== $authentication->getApiKey()
-			? array(
-				'key'    => $authentication->getApiKey(),
-				'source' => $this->key_source( $authentication->getApiKey() ),
-			)
-			: $this->effective_key();
+		$effective = $this->effective_for_authentication( $authentication );
 
 		if ( '' === $effective['key'] ) {
 			// Not this gate's concern: the request surfaces its own auth error.
@@ -758,12 +788,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return void
 	 */
 	public function record_definitive_verdict( bool $valid, ?ApiKeyRequestAuthentication $authentication = null ): void {
-		$effective = null !== $authentication && '' !== $authentication->getApiKey()
-			? array(
-				'key'    => $authentication->getApiKey(),
-				'source' => $this->key_source( $authentication->getApiKey() ),
-			)
-			: $this->effective_key();
+		$effective = $this->effective_for_authentication( $authentication );
 
 		if ( '' === $effective['key'] ) {
 			return;
