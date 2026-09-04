@@ -30,7 +30,10 @@ parameters:
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Settings/AbstractPlanRegionSettings.php
-			count: 26
+			# GLM12 #10: +2 (the load-broken-install sweep fallback composes
+			# the discovery ids from static::CACHE_PREFIX/CACHE_SCOPE, the
+			# same constants the endpoint children alias).
+			count: 28
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Availability/AbstractZaiProviderAvailability.php

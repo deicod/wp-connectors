@@ -479,36 +479,84 @@ abstract class AbstractPlanRegionSettings {
 		 * cannot LOAD — a quarantined or missing src file on an
 		 * otherwise-active install, where the autoloader finds nothing
 		 * and the static call raises a class-not-found Error — the sweep
-		 * is skipped, never fatal: the option write already happened,
+		 * must degrade, never fatal: the option write already happened,
 		 * and the state-option deletion above already forces fresh
-		 * probes and discovery (the transients are endpoint-scoped and
-		 * defensive).
+		 * probes and discovery.
 		 *
-		 * GLM9 #6: the skip is gated on the owner class EXISTING (the
-		 * class_exists() pre-check uninstall.php's owner chain uses),
-		 * not on a catch (\Error) — PHP expresses no load-only catch
-		 * type, so the catch swallowed every Error family (a TypeError
-		 * from the owner's own logic included), contradicting the
-		 * "only load-family Errors" promise one sentence up. A missing
-		 * owner degrades exactly as before; a logic bug in the owner
-		 * now surfaces loudly, precisely as documented.
+		 * GLM9 #6: the degradation is gated on the owner class EXISTING
+		 * (the class_exists() pre-check uninstall.php's owner chain
+		 * uses), not on a catch (\Error) — PHP expresses no load-only
+		 * catch type, so a catch swallowed every Error family (a
+		 * TypeError from the owner's own logic included), contradicting
+		 * the "only load-family Errors" promise. A missing owner
+		 * degrades to the fallback below; a logic bug in a loadable
+		 * owner surfaces loudly, precisely as documented.
+		 *
+		 * GLM12 #10: the degradation no longer SKIPS the sweep. Master
+		 * cleared these transients unconditionally after the write, and
+		 * a plan switch on a partially-broken install (the quarantine
+		 * case above) must not leave the old combination's 12h discovery
+		 * transient alive where master cleared it. The ids come from the
+		 * endpoint owner when it loads (GLM8 #11's one formula) and,
+		 * when it cannot, from THIS layer's own identifier constants —
+		 * the same values the endpoint children alias, pinned equal by
+		 * consistency tests (see discovery_transient_ids_for()).
 		 */
 		delete_option( static::STATE_OPTION );
 
-		$endpoint_class = static::ENDPOINT_CLASS;
-
-		if ( ! \class_exists( $endpoint_class ) ) {
-			// See the GLM8 #15 note above: degrade to skip, never fatal.
-			return;
-		}
-
 		foreach ( self::PLANS as $plan ) {
 			foreach ( self::REGIONS as $region ) {
-				foreach ( $endpoint_class::discovery_transient_ids( $plan, $region ) as $cache_id ) {
+				foreach ( self::discovery_transient_ids_for( $plan, $region ) as $cache_id ) {
 					delete_transient( $cache_id );
 				}
 			}
 		}
+	}
+
+	/**
+	 * The discovery transient ids for one plan × region combination: the
+	 * endpoint owner's formula when the owner can load, else this layer's
+	 * own fallback composition (GLM12 #10).
+	 *
+	 * The endpoint layer stays the ONE owner of the composition (GLM8
+	 * #11); the fallback exists only for the load-broken install, where
+	 * the sweep must still run, and mirrors the owner's formula from this
+	 * layer's own identifier constants (CACHE_PREFIX/CACHE_SCOPE — the
+	 * very constants the endpoint children alias, so the two can name
+	 * different values only if a child deliberately diverges, and the
+	 * consistency tests pin the formula equality for both real
+	 * surfaces). The '_miss' suffix still rides
+	 * ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX — never a literal (GLM8
+	 * #11) — and when even that SDK-free owner link is gone the fallback
+	 * yields nothing: with both links missing there is no composably
+	 * safe name left, and the sweep degrades to the state-option
+	 * deletion above, exactly the pre-GLM12-10 bounded behavior.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $plan   One of the surface's plans.
+	 * @param string $region One of the surface's regions.
+	 * @return list<string> The positive and negative-marker transient ids.
+	 */
+	private static function discovery_transient_ids_for( string $plan, string $region ): array {
+		$endpoint_class = static::ENDPOINT_CLASS;
+
+		if ( \class_exists( $endpoint_class ) ) {
+			return $endpoint_class::discovery_transient_ids( $plan, $region );
+		}
+
+		$discovery_cache = \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::class;
+
+		if ( ! \class_exists( $discovery_cache ) ) {
+			return array();
+		}
+
+		$cache_id = static::CACHE_PREFIX . md5( static::CACHE_SCOPE . '|' . $plan . '|' . $region );
+
+		return array(
+			$cache_id,
+			$cache_id . $discovery_cache::NEGATIVE_CACHE_SUFFIX,
+		);
 	}
 
 	/**

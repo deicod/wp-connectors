@@ -324,27 +324,69 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertSame(array('binding' => 'keep'), get_option(PlanRegionSettings::STATE_OPTION), 'Identical payloads must skip the invalidation.');
     }
 
-    public function testAMissingEndpointOwnerSkipsTheSweepWithoutFatal()
+    public function testAMissingEndpointOwnerStillSweepsThroughItsOwnIdentifiers()
     {
         /*
-         * GLM9 #6: the quarantine case GLM8 #15 degraded for — a
-         * quarantined or missing src file, where the autoloader finds
-         * nothing — is detected by the class_exists() pre-check (the
-         * uninstall.php owner-chain pattern), not by catching Errors.
-         * The option write already happened and the state-option
-         * deletion above it already forces fresh probes, so skipping
-         * the transient sweep is the documented, bounded degradation.
+         * GLM12 #10: the quarantine case (GLM8 #15/GLM9 #6 — a
+         * quarantined or missing src file, detected by the
+         * class_exists() pre-check, never a caught Error) no longer
+         * SKIPS the transient sweep: master cleared these transients
+         * unconditionally after the write, and a plan switch on a
+         * partially-broken install must not leave the old combination's
+         * 12h discovery transient alive. The ids fall back to this
+         * layer's own identifier constants (the same values the
+         * endpoint children alias); the miss marker rides the shared
+         * suffix constant. Only when even ZaiDiscoveryCache is gone does
+         * the sweep degrade to the state-option deletion alone.
          */
         $settings = ZaiSettingsTestMissingOwnerSettings::class;
 
         update_option($settings::STATE_OPTION, array('binding' => 'stale'), false);
         $cache = $settings::CACHE_PREFIX . md5($settings::CACHE_SCOPE . '|coding|intl');
         set_transient($cache, array('glm-5.3'), 3600);
+        $miss = $cache . \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX;
+        set_transient($miss, true, 60);
 
         $settings::handle_settings_change('coding', 'general');
 
         $this->assertNull(get_option($settings::STATE_OPTION, null), 'The state option is deletable in any owner state.');
-        $this->assertSame(array('glm-5.3'), get_transient($cache), 'A missing owner skips only the transient sweep.');
+        $this->assertFalse(get_transient($cache), 'A missing endpoint owner still sweeps the positive discovery transient.');
+        $this->assertFalse(get_transient($miss), 'A missing endpoint owner still sweeps the negative marker.');
+    }
+
+    public function testTheFallbackSweepCompositionMatchesTheEndpointOwner()
+    {
+        /*
+         * GLM12 #10: the load-broken fallback composes the discovery
+         * ids from the settings layer's own constants — a MIRROR of the
+         * endpoint owner's formula, pinned equal for every real
+         * surface's plan × region so a formula change on either side
+         * fails here instead of silently stranding transients on broken
+         * installs only (the GLM8 #11 drift class, confined to the
+         * fallback path).
+         */
+        $pairs = array(
+            PlanRegionSettings::class => \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class,
+            ZaiAnthropicPlanRegionSettings::class => \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class,
+        );
+
+        foreach ($pairs as $settings => $endpoint) {
+            foreach (array('coding', 'general') as $plan) {
+                foreach (array('intl', 'cn') as $region) {
+                    $positive = $settings::CACHE_PREFIX . md5($settings::CACHE_SCOPE . '|' . $plan . '|' . $region);
+                    $expected = array(
+                        $positive,
+                        $positive . \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX,
+                    );
+
+                    $this->assertSame(
+                        $expected,
+                        $endpoint::discovery_transient_ids($plan, $region),
+                        "{$settings}: the fallback composition must equal the endpoint owner's ids."
+                    );
+                }
+            }
+        }
     }
 
     public function testAnOwningClassLogicErrorSurfacesLoudly()
