@@ -39,3 +39,13 @@ parameters:
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Provider/AbstractZaiProvider.php
 			count: 1
+		# GLM8 #10: the shared endpoint base reads the CHILD-owned
+		# identifier constants (matrix, suffixes, cache scope, settings
+		# class, rejection label) through static:: by the same GLM6 #12
+		# design — a child that forgets a declaration fails LOUDLY, and
+		# the children's declarations are pinned by reflection tests
+		# (see ZaiEndpointResolverTest).
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Endpoints/AbstractZaiEndpoint.php
+			count: 7

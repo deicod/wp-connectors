@@ -182,7 +182,7 @@ zai_live_probe_report( 'region', $region );
 $endpoint = 'anthropic' === $surface ? ZaiAnthropicEndpoint::for_current_settings() : ZaiEndpoint::for_current_settings();
 zai_live_probe_report( 'endpoint base', $endpoint->base_url() );
 zai_live_probe_report( 'models route', $endpoint->models_url() );
-zai_live_probe_report( 'messages route', 'anthropic' === $surface ? $endpoint->messages_url() : $endpoint->api_url( 'chat/completions' ) );
+zai_live_probe_report( 'messages route', $endpoint instanceof ZaiAnthropicEndpoint ? $endpoint->messages_url() : $endpoint->api_url( 'chat/completions' ) );
 
 // A REAL transporter (curl, no redirects) — this script intentionally
 // performs live network requests.

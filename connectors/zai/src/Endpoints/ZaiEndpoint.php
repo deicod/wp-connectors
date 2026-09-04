@@ -8,6 +8,15 @@
  * call time, so changing the settings retargets the very next request without
  * rebuilding the provider registry.
  *
+ * GLM8 #10: the plan × region skeleton (matrix lookup, unknown-
+ * combination rejection, current-settings resolution, accessors,
+ * api_url(), cache_key(), and the base-URL normalization with its
+ * double-append guard) lives on the shared AbstractZaiEndpoint base —
+ * this class declares its matrix and identifiers only. The guard is NEW
+ * here (the child previously ran a bare rtrim): a base URL that already
+ * carries one of this surface's suffixes loses it exactly once, like
+ * the Anthropic surface always has.
+ *
  * @since 0.1.0
  *
  * @package wp-connectors
@@ -17,7 +26,6 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Endpoints;
 
-use InvalidArgumentException;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
 /**
@@ -25,7 +33,7 @@ use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
  *
  * @since 0.1.0
  */
-final class ZaiEndpoint {
+final class ZaiEndpoint extends AbstractZaiEndpoint {
 
 	/**
 	 * The full plan × region matrix (SPEC §3.1, OpenAI-compatible rows).
@@ -58,153 +66,49 @@ final class ZaiEndpoint {
 	const CANONICAL_BASE_URL = 'https://api.z.ai/api/paas/v4';
 
 	/**
-	 * The API plan of this endpoint.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
-	 */
-	private $plan;
-
-	/**
-	 * The account region of this endpoint.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
-	 */
-	private $region;
-
-	/**
-	 * The base URL of this endpoint (no trailing slash).
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
-	 */
-	private $base_url;
-
-	/**
-	 * Constructor. Use for() or for_current_settings() instead.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $plan     API plan.
-	 * @param string $region   Account region.
-	 * @param string $base_url Base URL.
-	 */
-	private function __construct( string $plan, string $region, string $base_url ) {
-		$this->plan     = $plan;
-		$this->region   = $region;
-		$this->base_url = rtrim( $base_url, '/' );
-	}
-
-	/**
-	 * Returns the endpoint for an explicit plan × region combination.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $plan   One of PlanRegionSettings::PLANS.
-	 * @param string $region One of PlanRegionSettings::REGIONS.
-	 * @return self
-	 * @throws InvalidArgumentException When the combination is not part of the matrix.
-	 */
-	public static function for( string $plan, string $region ): self {
-		if ( ! \is_string( self::MATRIX[ $plan ][ $region ] ?? null ) ) {
-			throw new InvalidArgumentException(
-				'Unknown z.ai endpoint for plan ' . wp_json_encode( $plan ) . ' and region ' . wp_json_encode( $region )
-			);
-		}
-
-		return new self( $plan, $region, self::MATRIX[ $plan ][ $region ] );
-	}
-
-	/**
-	 * Returns the endpoint for the currently stored settings.
-	 *
-	 * Reads the plan/region options at call time (with the documented
-	 * defaults and corrupt-value fallback), so the result always matches the
-	 * settings as of this request.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return self
-	 */
-	public static function for_current_settings(): self {
-		return self::for( PlanRegionSettings::get_plan(), PlanRegionSettings::get_region() );
-	}
-
-	/**
-	 * The API plan.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return string 'coding' or 'general'.
-	 */
-	public function plan(): string {
-		return $this->plan;
-	}
-
-	/**
-	 * The account region.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return string 'intl' or 'cn'.
-	 */
-	public function region(): string {
-		return $this->region;
-	}
-
-	/**
-	 * The base URL of this endpoint.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return string Base URL without trailing slash.
-	 */
-	public function base_url(): string {
-		return $this->base_url;
-	}
-
-	/**
-	 * The model-list URL of this endpoint.
-	 *
-	 * Shared surface with ZaiAnthropicEndpoint so the provider-agnostic
-	 * availability base can probe either surface uniformly.
+	 * The model-list route this surface serves at the base URL.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return string Full URL of the /models route.
+	 * @var string
 	 */
-	public function models_url(): string {
-		return $this->api_url( 'models' );
-	}
+	const MODELS_ROUTE = 'models';
 
 	/**
-	 * Builds a request URL by appending a path with a single slash.
+	 * Path suffixes this surface appends to the base URL.
 	 *
-	 * @since 0.1.0
+	 * @since 0.2.0
 	 *
-	 * @param string $path Path relative to the base URL (leading slash tolerated).
-	 * @return string Full URL.
+	 * @var list<string>
 	 */
-	public function api_url( string $path = '' ): string {
-		if ( '' === $path ) {
-			return $this->base_url;
-		}
-
-		return $this->base_url . '/' . ltrim( $path, '/' );
-	}
+	const ENDPOINT_SUFFIXES = array( '/chat/completions', '/models' );
 
 	/**
-	 * Cache-key-safe identity of this endpoint (provider, plan, region).
+	 * Cache-key-safe scope of this surface: the settings layer's own
+	 * scope string, aliased so the two can never drift (GLM8 #10).
 	 *
-	 * @since 0.1.0
+	 * @since 0.2.0
 	 *
-	 * @return string e.g. 'zai|coding|intl'.
+	 * @var string
 	 */
-	public function cache_key(): string {
-		return 'zai|' . $this->plan . '|' . $this->region;
-	}
+	const CACHE_SCOPE = PlanRegionSettings::CACHE_SCOPE;
+
+	/**
+	 * The settings class whose plan/region getters resolve the current
+	 * endpoint.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var class-string
+	 */
+	const SETTINGS_CLASS = PlanRegionSettings::class;
+
+	/**
+	 * The surface label for the unknown-combination rejection.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const UNKNOWN_ENDPOINT_LABEL = 'z.ai';
 }

@@ -10,6 +10,8 @@
 
 declare( strict_types=1 );
 
+use Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint;
+use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
@@ -140,5 +142,87 @@ final class ZaiEndpointResolverTest extends WpConnectorsTestCase
     {
         $this->expectException(InvalidArgumentException::class);
         ZaiEndpoint::for('coding', 'eu');
+    }
+
+    public function testABaseUrlAlreadyCarryingAnEndpointSuffixLosesItExactlyOnce()
+    {
+        /*
+         * GLM8 #10: the double-append guard exists on BOTH surfaces now —
+         * it lived only in the Anthropic copy while this surface ran a
+         * bare rtrim, the live drift the shared AbstractZaiEndpoint base
+         * exists to stop. A base URL that already carries one of this
+         * surface's suffixes (a matrix edit, a hand-built value) loses it
+         * exactly once, so api_url() can never produce
+         * {base}/models/models or {base}/chat/completions/chat/completions.
+         */
+        $this->assertSame(
+            'https://api.z.ai/api/paas/v4',
+            ZaiEndpoint::normalize_base_url('https://api.z.ai/api/paas/v4/models'),
+            'A /models suffix strips.'
+        );
+        $this->assertSame(
+            'https://api.z.ai/api/paas/v4',
+            ZaiEndpoint::normalize_base_url('https://api.z.ai/api/paas/v4/chat/completions'),
+            'A /chat/completions suffix strips.'
+        );
+        $this->assertSame(
+            'https://api.z.ai/api/paas/v4',
+            ZaiEndpoint::normalize_base_url('https://api.z.ai/api/paas/v4/'),
+            'A trailing slash strips (the historical bare-rtrim behavior).'
+        );
+        $this->assertSame(
+            'https://api.z.ai/api/paas/v4',
+            ZaiEndpoint::normalize_base_url('https://api.z.ai/api/paas/v4'),
+            'A clean base URL is untouched.'
+        );
+
+        $models = ZaiEndpoint::for('general', 'intl')->models_url();
+        $this->assertSame('https://api.z.ai/api/paas/v4/models', $models);
+        $this->assertSame($models, ZaiEndpoint::normalize_base_url($models) . '/models', 'The models URL never accumulates suffixes.');
+    }
+
+    public function testBothEndpointSurfacesDeclareTheSharedBaseIdentifiers()
+    {
+        /*
+         * GLM8 #10 (reflection pin, the GLM6 #12 pattern): the shared
+         * AbstractZaiEndpoint reads the child-owned identifier constants
+         * through static:: — a child that forgets one fails loudly at
+         * its first use, and this pin names the contract. The base
+         * itself must carry no surface's defaults.
+         */
+        $identifiers = array(
+            'MATRIX',
+            'MODELS_ROUTE',
+            'ENDPOINT_SUFFIXES',
+            'CACHE_SCOPE',
+            'SETTINGS_CLASS',
+            'UNKNOWN_ENDPOINT_LABEL',
+        );
+
+        $base = array();
+        foreach ((new \ReflectionClass(AbstractZaiEndpoint::class))->getReflectionConstants() as $constant) {
+            if ($constant->getDeclaringClass()->getName() === AbstractZaiEndpoint::class) {
+                $base[] = $constant->getName();
+            }
+        }
+
+        $this->assertSame(array(), array_values(array_intersect($identifiers, $base)), 'The endpoint base must not carry surface identifiers.');
+
+        foreach (array(ZaiEndpoint::class, ZaiAnthropicEndpoint::class) as $endpoint_class) {
+            $declared = array();
+            foreach ((new \ReflectionClass($endpoint_class))->getReflectionConstants() as $constant) {
+                if ($constant->getDeclaringClass()->getName() === $endpoint_class) {
+                    $declared[] = $constant->getName();
+                }
+            }
+
+            $this->assertSame(array(), array_values(array_diff($identifiers, $declared)), "{$endpoint_class} must declare every identifier constant.");
+            $this->assertTrue(is_subclass_of($endpoint_class, AbstractZaiEndpoint::class), "{$endpoint_class} rides the shared base.");
+
+            // The cache scope each endpoint builds keys from is the
+            // settings layer's own string — aliased, never re-declared.
+            $settings = constant($endpoint_class . '::SETTINGS_CLASS');
+            $this->assertSame(constant($settings . '::CACHE_SCOPE'), constant($endpoint_class . '::CACHE_SCOPE'), "{$endpoint_class} aliases its settings layer's cache scope.");
+        }
     }
 }
