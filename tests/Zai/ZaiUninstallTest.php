@@ -372,4 +372,93 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
 			'The derivable discovery-cache deletions must survive the sweep failure.'
         );
     }
+
+    public function testUninstallCleansTheClassFreeStateEvenWhenTheOwnerChainCannotLoad()
+    {
+        /*
+         * GLM8 #15 (verifier round on glm8-11, subprocess — the harness
+         * loads the real classes, so a broken install can only be
+         * proven out-of-process): the discovery-owner require chain used
+         * to run BEFORE any cleanup, so a quarantined or missing src
+         * file fataled with ZERO delete calls and every Delete retry
+         * aborted identically. The option deletions are class-free and
+         * always run now; only the class-derived discovery sweep is
+         * skipped when the chain cannot load.
+         */
+        $repo = dirname(__DIR__, 2);
+        $plugin = sys_get_temp_dir() . '/zai-uninstall-broken-' . getmypid();
+        $log = $plugin . '-calls.log';
+
+        foreach (array('', '/src', '/src/Settings', '/src/Endpoints', '/src/Metadata') as $dir) {
+            @mkdir($plugin . $dir, 0777, true);
+        }
+        copy($repo . '/connectors/zai/uninstall.php', $plugin . '/uninstall.php');
+        // The full owner chain EXCEPT one quarantined endpoint file.
+        foreach (array(
+            '/src/Settings/AbstractPlanRegionSettings.php',
+            '/src/Settings/PlanRegionSettings.php',
+            '/src/Settings/ZaiAnthropicPlanRegionSettings.php',
+            '/src/Endpoints/AbstractZaiEndpoint.php',
+            '/src/Endpoints/ZaiEndpoint.php',
+            '/src/Metadata/ZaiDiscoveryCache.php',
+        ) as $file) {
+            copy($repo . '/connectors/zai' . $file, $plugin . $file);
+        }
+        // ZaiAnthropicEndpoint.php deliberately absent (quarantined).
+
+        $script = <<<'PHP'
+<?php
+define('WP_UNINSTALL_PLUGIN', 'zai/zai.php');
+$GLOBALS['__log'] = fopen(__DIR__ . '-calls.log', 'w');
+function __zai_log($name) { fwrite($GLOBALS['__log'], $name . "\n"); }
+function delete_option($option) { __zai_log('delete_option:' . $option); return true; }
+function delete_transient($transient) { __zai_log('delete_transient:' . $transient); return true; }
+function get_option($option, $default = false) { return $default; }
+function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags); }
+function is_multisite() { return false; }
+class wpdb_stub {
+    public $options = 'wp_options';
+    public function prepare($query, ...$args) { return $query; }
+    public function esc_like($text) { return $text; }
+    public function get_col($query) { return array(); }
+}
+$GLOBALS['wpdb'] = new wpdb_stub();
+require __DIR__ . '/uninstall.php';
+echo "UNINSTALL_COMPLETED\n";
+PHP;
+        file_put_contents($plugin . '/runner.php', $script);
+        @unlink($log);
+
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($plugin . '/runner.php') . ' 2>&1', $outputLines, $exitCode);
+        $output = implode("\n", $outputLines);
+        $calls = is_file($log) ? (string) file_get_contents($log) : '';
+
+        // Cleanup runs to completion even with the chain broken.
+        $this->assertSame(0, $exitCode, "The uninstall must not fatal on a partially-present install: {$output}");
+        $this->assertStringContainsString('UNINSTALL_COMPLETED', $output);
+        $this->assertStringContainsString('delete_option:zai_connector_zai_plan', $calls, 'The class-free option deletions always run.');
+        $this->assertStringContainsString('delete_option:zai_connector_zai_anthropic_region_pending', $calls, "Both surfaces' options are deleted.");
+        // The class-derived discovery sweep is skipped, not fataled.
+        $this->assertStringNotContainsString('delete_transient:zai_connector_zai_models_', $calls, 'The owner-based discovery sweep is skipped when the chain cannot load.');
+
+        // And with the full chain present, the sweep runs (the in-process
+        // tests above already pin its deletions; this asserts the guard
+        // does not over-suppress when files exist).
+        copy($repo . '/connectors/zai/src/Endpoints/ZaiAnthropicEndpoint.php', $plugin . '/src/Endpoints/ZaiAnthropicEndpoint.php');
+        @unlink($log);
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($plugin . '/runner.php') . ' 2>&1', $outputLines2, $exitCode2);
+        $calls2 = is_file($log) ? (string) file_get_contents($log) : '';
+
+        $this->assertSame(0, $exitCode2, 'The uninstall must complete with the full chain present: ' . implode("\n", $outputLines2));
+        $this->assertStringContainsString('delete_transient:zai_connector_zai_models_', $calls2, 'The discovery sweep runs when the owner chain loads.');
+
+        // Housekeeping for repeated runs.
+        foreach (array('/src/Settings', '/src/Endpoints', '/src/Metadata', '/src') as $dir) {
+            @array_map('unlink', glob($plugin . $dir . '/*.php') ?: array());
+            @rmdir($plugin . $dir);
+        }
+        @array_map('unlink', glob($plugin . '/*.php') ?: array());
+        @rmdir($plugin);
+        @unlink($log);
+    }
 }

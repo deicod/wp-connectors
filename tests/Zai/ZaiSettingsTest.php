@@ -278,10 +278,12 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
     public function testSettingsInvalidationClearsTheNegativeDiscoveryMarkers()
     {
         /*
-         * GLM1 #6 verifier nit: the directories' NEGATIVE_CACHE_SUFFIX
-         * ('_miss') is mirrored LITERALLY by this SDK-free invalidation —
-         * this pin keeps the mirror honest (deleting the sweep would fail
-         * the suite).
+         * GLM1 #6 verifier nit: the invalidation must clear the
+         * directories' negative marker. GLM8 #11: the invalidation
+         * composes through the endpoint owner now — this pin freezes
+         * the HISTORICAL formula the owner must keep producing (there
+         * is no literal mirror left to keep honest; deleting the sweep
+         * would fail the suite all the same).
          */
         $miss = PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl') . '_miss';
         set_transient($miss, true, 60);

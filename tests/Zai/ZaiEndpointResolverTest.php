@@ -303,6 +303,36 @@ PHP;
                 "[{$label}] The consumer must call the endpoint layer's owner."
             );
         }
+
+        /*
+         * Verifier round on GLM8 #11: the no-literal rule is swept over
+         * the WHOLE plugin and probe surface (not just the five
+         * historical mirrors), so a new consumer file cannot reintroduce
+         * a private '_miss' composition — ZaiDiscoveryCache (the
+         * constant's own definition) is the only exempt file.
+         */
+        $sweep = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(dirname(__DIR__, 2) . '/connectors/zai/src'));
+        $swept = array();
+        foreach ($sweep as $file_info) {
+            if ($file_info->isFile() && 'php' === $file_info->getExtension()) {
+                $swept[] = $file_info->getPathname();
+            }
+        }
+        $swept[] = dirname(__DIR__, 2) . '/bin/zai-live-probe.php';
+        $swept[] = dirname(__DIR__, 2) . '/connectors/zai/uninstall.php';
+
+        foreach ($swept as $path) {
+            if (substr($path, -strlen('ZaiDiscoveryCache.php')) === 'ZaiDiscoveryCache.php') {
+                continue;
+            }
+
+            $source = (string) file_get_contents($path);
+            $this->assertSame(
+                0,
+                preg_match("/\.\s*'_miss'|'_miss'\s*\./", $source),
+                "{$path} must not compose the negative-cache suffix literally."
+            );
+        }
     }
 
     public function testBothEndpointSurfacesDeclareTheSharedBaseIdentifiers()

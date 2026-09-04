@@ -83,9 +83,12 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	/**
 	 * Suffix marking the negative (miss) cache entry for an endpoint key.
 	 *
-	 * Mirrored literally by the SDK-free settings invalidation and
-	 * uninstall.php (neither can autoload this class); tests pin the
-	 * mirror.
+	 * GLM8 #11: aliased from ZaiDiscoveryCache, the one source — every
+	 * consumer that needs the marker name (the settings invalidation,
+	 * uninstall.php, the live probe) composes through the endpoint
+	 * layer's discovery_transient_ids(), which reads that constant; a
+	 * source pin forbids any consumer from composing the suffix
+	 * literally.
 	 *
 	 * @since 0.1.0
 	 *

@@ -472,19 +472,34 @@ abstract class AbstractPlanRegionSettings {
 		 * SDK-free loadable (no SDK parent, lazy imports only), so
 		 * consulting ENDPOINT_CLASS keeps the SDK-absent guarantee while
 		 * removing the mirror whose silent drift stranded stale
-		 * transients. The '_miss' suffix rides the owner too
+		 * transients. The miss suffix rides the owner too
 		 * (ZaiDiscoveryCache's exported constant), never a literal.
+		 *
+		 * GLM8 #15 (verifier round on that change): if the owner chain
+		 * cannot LOAD — a quarantined or missing src file on an
+		 * otherwise-active install, where the autoloader finds nothing
+		 * and the static call raises a class-not-found Error — the sweep
+		 * is skipped, never fatal: the option write already happened,
+		 * and the state-option deletion above already forces fresh
+		 * probes and discovery (the transients are endpoint-scoped and
+		 * defensive). Only load-family Errors are caught; a logic bug in
+		 * the owner still surfaces loudly.
 		 */
 		delete_option( static::STATE_OPTION );
 
 		$endpoint_class = static::ENDPOINT_CLASS;
 
-		foreach ( self::PLANS as $plan ) {
-			foreach ( self::REGIONS as $region ) {
-				foreach ( $endpoint_class::discovery_transient_ids( $plan, $region ) as $cache_id ) {
-					delete_transient( $cache_id );
+		try {
+			foreach ( self::PLANS as $plan ) {
+				foreach ( self::REGIONS as $region ) {
+					foreach ( $endpoint_class::discovery_transient_ids( $plan, $region ) as $cache_id ) {
+						delete_transient( $cache_id );
+					}
 				}
 			}
+		} catch ( \Error $e ) {
+			// See the GLM8 #15 note above: degrade to skip, never fatal.
+			return;
 		}
 	}
 

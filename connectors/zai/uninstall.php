@@ -35,24 +35,15 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
  */
 function zai_connector_zai_uninstall_site() {
 	/*
-	 * GLM8 #11: the discovery transient ids come from the endpoint
-	 * layer's one owner (discovery_transient_ids()) — this file used to
-	 * mirror the whole formula literally (prefix + md5(scope|plan|
-	 * region) plus the miss suffix), the copy that silently strands
-	 * stale transients whenever the composition changes. Every required
-	 * file is SDK-free loadable (no SDK parent, lazy imports only), so
-	 * requiring them here keeps the uninstall context free of the SDK
-	 * plugin; the settings classes come first because the endpoint
-	 * children's aliased constants link against them.
+	 * The class-free deletions run FIRST, before any plugin class is
+	 * loaded: GLM8 #11's verifier round reproduced this file fataling
+	 * with ZERO cleanup calls when the owner chain below could not load
+	 * (a quarantined or missing src file on a partially-updated install,
+	 * or a same-namespace class already declared by other loaded code) —
+	 * every Delete retry aborted identically and the plugin-owned
+	 * options survived. The options are deletable in ANY file state, so
+	 * nothing may run before them.
 	 */
-	require_once __DIR__ . '/src/Settings/AbstractPlanRegionSettings.php';
-	require_once __DIR__ . '/src/Settings/PlanRegionSettings.php';
-	require_once __DIR__ . '/src/Settings/ZaiAnthropicPlanRegionSettings.php';
-	require_once __DIR__ . '/src/Endpoints/AbstractZaiEndpoint.php';
-	require_once __DIR__ . '/src/Endpoints/ZaiEndpoint.php';
-	require_once __DIR__ . '/src/Endpoints/ZaiAnthropicEndpoint.php';
-	require_once __DIR__ . '/src/Metadata/ZaiDiscoveryCache.php';
-
 	delete_option( 'zai_connector_zai_plan' );
 	delete_option( 'zai_connector_zai_region' );
 	delete_option( 'zai_connector_zai_debug' );
@@ -65,22 +56,109 @@ function zai_connector_zai_uninstall_site() {
 	delete_option( 'zai_connector_zai_anthropic_key_state' );
 	delete_option( 'zai_connector_zai_anthropic_region_pending' );
 
+	/*
+	 * GLM8 #11: the discovery transient ids come from the endpoint
+	 * layer's one owner (discovery_transient_ids()) — this file used to
+	 * mirror the whole formula literally (prefix + md5(scope|plan|
+	 * region) plus the miss suffix), the copy that silently strands
+	 * stale transients whenever the composition changes. Every required
+	 * file is SDK-free loadable (no SDK parent, lazy imports only), so
+	 * requiring them here keeps the uninstall context free of the SDK
+	 * plugin; the settings classes come first because the endpoint
+	 * children's aliased constants link against them.
+	 *
+	 * GLM8 #15 (verifier round on that change): the chain loads only
+	 * when every file is present and no same-namespace class is already
+	 * declared — a require onto a missing file or a declared name is a
+	 * fatal. When it cannot load, only the class-derived discovery
+	 * sweep below is skipped (those entries are 12h transients); the
+	 * probe-miss sweeps further down never need a plugin class.
+	 */
+	$zai_connector_owner_files = array(
+		__DIR__ . '/src/Settings/AbstractPlanRegionSettings.php',
+		__DIR__ . '/src/Settings/PlanRegionSettings.php',
+		__DIR__ . '/src/Settings/ZaiAnthropicPlanRegionSettings.php',
+		__DIR__ . '/src/Endpoints/AbstractZaiEndpoint.php',
+		__DIR__ . '/src/Endpoints/ZaiEndpoint.php',
+		__DIR__ . '/src/Endpoints/ZaiAnthropicEndpoint.php',
+		__DIR__ . '/src/Metadata/ZaiDiscoveryCache.php',
+	);
+
+	$zai_connector_owner_classes = array(
+		'Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings',
+		'Deicod\WpConnectors\Zai\Settings\PlanRegionSettings',
+		'Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings',
+		'Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint',
+		'Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint',
+		'Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint',
+		'Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache',
+	);
+
+	$zai_connector_owner_ready = true;
+	foreach ( $zai_connector_owner_files as $zai_connector_owner_file ) {
+		if ( ! is_file( $zai_connector_owner_file ) ) {
+			$zai_connector_owner_ready = false;
+			break;
+		}
+	}
+
+	if ( $zai_connector_owner_ready ) {
+		/*
+		 * Only files whose class is not already declared are required —
+		 * a require onto an already-declared name is a redeclare fatal —
+		 * and the sweep below runs only when every class of the chain
+		 * exists afterwards. The require targets stay literal so the
+		 * plugin's self-containment contract keeps holding provably.
+		 */
+		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings', false ) ) {
+			require_once __DIR__ . '/src/Settings/AbstractPlanRegionSettings.php';
+		}
+		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Settings\PlanRegionSettings', false ) ) {
+			require_once __DIR__ . '/src/Settings/PlanRegionSettings.php';
+		}
+		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings', false ) ) {
+			require_once __DIR__ . '/src/Settings/ZaiAnthropicPlanRegionSettings.php';
+		}
+		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint', false ) ) {
+			require_once __DIR__ . '/src/Endpoints/AbstractZaiEndpoint.php';
+		}
+		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint', false ) ) {
+			require_once __DIR__ . '/src/Endpoints/ZaiEndpoint.php';
+		}
+		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint', false ) ) {
+			require_once __DIR__ . '/src/Endpoints/ZaiAnthropicEndpoint.php';
+		}
+		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache', false ) ) {
+			require_once __DIR__ . '/src/Metadata/ZaiDiscoveryCache.php';
+		}
+
+		foreach ( $zai_connector_owner_classes as $zai_connector_owner_class ) {
+			if ( ! class_exists( $zai_connector_owner_class, false ) ) {
+				$zai_connector_owner_ready = false;
+				break;
+			}
+		}
+	}
+
 	// Discovery cache transients for every endpoint combination of both
 	// surfaces, including the '_miss' negative-cache markers (GLM1 #6).
 	// This file is global-namespace (uninstall context), so the endpoint
-	// classes are addressed by their fully-qualified names.
-	$zai_connector_endpoint_class           = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class;
-	$zai_connector_anthropic_endpoint_class = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class;
+	// classes are addressed by their fully-qualified names; skipped
+	// entirely when the owner chain above could not load.
+	if ( $zai_connector_owner_ready ) {
+		$zai_connector_endpoint_class           = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class;
+		$zai_connector_anthropic_endpoint_class = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class;
 
-	foreach ( array( 'coding', 'general' ) as $zai_connector_plan ) {
-		foreach ( array( 'intl', 'cn' ) as $zai_connector_region ) {
-			$zai_connector_cache_id_pairs = array(
-				$zai_connector_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),
-				$zai_connector_anthropic_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),
-			);
-			foreach ( $zai_connector_cache_id_pairs as $zai_connector_cache_id_pair ) {
-				foreach ( $zai_connector_cache_id_pair as $zai_connector_cache_id ) {
-					delete_transient( $zai_connector_cache_id );
+		foreach ( array( 'coding', 'general' ) as $zai_connector_plan ) {
+			foreach ( array( 'intl', 'cn' ) as $zai_connector_region ) {
+				$zai_connector_cache_id_pairs = array(
+					$zai_connector_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),
+					$zai_connector_anthropic_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),
+				);
+				foreach ( $zai_connector_cache_id_pairs as $zai_connector_cache_id_pair ) {
+					foreach ( $zai_connector_cache_id_pair as $zai_connector_cache_id ) {
+						delete_transient( $zai_connector_cache_id );
+					}
 				}
 			}
 		}
