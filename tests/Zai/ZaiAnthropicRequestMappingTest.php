@@ -625,6 +625,35 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString('"items":{}', $raw, 'The empty-tuple-to-{} conversion must not silently drop the additionalItems constraint.');
     }
 
+    public function testTheSchemaWalkersListTestRidesTheSharedPredicate()
+    {
+        /*
+         * GLM12 #13: the schema walker's list decision rode a PRIVATE
+         * is_schema_list() copy beside the shared JsonShape::is_list()
+         * this same file already calls — two list-ness predicates in one
+         * file (fuzz-verified identical, including the empty array), so
+         * a future rule change would land on the shared predicate while
+         * the walker kept the stale copy. The merge is behavior-
+         * preserving by construction (the tuple tests above are the
+         * behavioral pins); this pin holds the mechanism: one predicate,
+         * and the walker calls it.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php'
+        );
+
+        $this->assertSame(
+            0,
+            preg_match('/function is_schema_list/', $source),
+            'No private list predicate may coexist with the shared JsonShape::is_list().'
+        );
+        $this->assertStringContainsString(
+            'JsonShape::is_list( $member )',
+            $source,
+            'The schema walker rides the shared predicate.'
+        );
+    }
+
     public function testSequentialArrayToolArgumentsAreRejectedBeforeTransport()
     {
         // Codex R4 #4: a FunctionCall from chat history carrying a

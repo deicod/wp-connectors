@@ -626,7 +626,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						continue;
 					}
 
-					$value[ $key ] = array() !== $member && self::is_schema_list( $member )
+					/*
+					 * GLM12 #13: the list test rides the shared
+					 * JsonShape::is_list() predicate (already the source
+					 * for this file's other list decisions) — the private
+					 * is_schema_list() copy it replaces was
+					 * behavior-identical by fuzz, and a future rule
+					 * change would have landed on the shared predicate
+					 * while the schema walker kept the stale copy.
+					 */
+					$value[ $key ] = array() !== $member && JsonShape::is_list( $member )
 						? array_map( array( self::class, 'normalize_subschema' ), $member )
 						: self::normalize_subschema( $member );
 				}
@@ -640,27 +649,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		return $value;
-	}
-
-	/**
-	 * Reports whether the array is a plain LIST (integer keys 0..N-1 in
-	 * order), the shape a tuple-form 'items' carries (GLM10 #6).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param array<mixed> $value The member to test.
-	 * @return bool True when every key is an integer in sequence.
-	 */
-	private static function is_schema_list( array $value ): bool {
-		$expected = 0;
-
-		foreach ( $value as $key => $_ ) {
-			if ( $key !== $expected++ ) {
-				return false;
-			}
-		}
-
-		return true;
 	}
 
 	/**
