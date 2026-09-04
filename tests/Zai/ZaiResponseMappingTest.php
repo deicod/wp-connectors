@@ -953,6 +953,57 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(15, $result->getTokenUsage()->getTotalTokens(), 'Zero-token silent undercounting versus master is the exact regression GLM7 #2 fixes.');
     }
 
+    public function testTheLazyUsageOracleDescribesTheMergedWinner()
+    {
+        /*
+         * GLM10 #12: gateways that emit "usage":{} on EVERY chunk (the
+         * GLM7-2 comment's documented shape) used to pay a second full
+         * non-associative decode PER TOKEN-DELTA frame for an oracle the
+         * last-wins merge discarded on the next frame. The raw data
+         * string is captured now and raw_usage() decodes the single
+         * winner once, lazily and memoized — the pin: the oracle still
+         * describes exactly the frame the consolidated payload carries,
+         * across the every-chunk shape, the trailing gap-fill, and
+         * repeated reads.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-lz","choices":[{"index":0,"delta":{"role":"assistant","content":"H"}}],"usage":{}}',
+            'data: {"id":"chatcmpl-lz","choices":[{"index":0,"delta":{"content":"i"}}],"usage":{}}',
+            'data: {"id":"chatcmpl-lz","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":2,"total_tokens":9}}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame(9, $aggregated['usage']['total_tokens'], 'The last usage-bearing frame wins the merge.');
+
+        $oracle = $aggregator->raw_usage();
+        $this->assertInstanceOf(\stdClass::class, $oracle, 'The oracle keeps the winner\'s object-ness.');
+        $this->assertSame(9, $oracle->total_tokens, 'The oracle describes the FINAL frame, not the discarded empty members.');
+        $this->assertSame($oracle, $aggregator->raw_usage(), 'The memoized read is stable across repeated calls.');
+        $this->assertSame($aggregated, $aggregator->aggregated(), 'Repeated assembly is idempotent (GLM10 #13).');
+
+        // The trailing gap-fill re-points the oracle at the trailing frame.
+        $trailing = implode("\n\n", array(
+            'data: {"id":"chatcmpl-lz2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}],"usage":{}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-lz2","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}',
+            '',
+        ));
+
+        $gap = new SseAggregator();
+        $gap->feed($trailing);
+        $gap->finish();
+
+        $gap_payload = $gap->aggregated();
+        $this->assertSame(14, $gap_payload['usage']['total_tokens']);
+        $this->assertSame(14, $gap->raw_usage()->total_tokens, 'After the gap-fill the oracle describes the TRAILING frame.');
+    }
+
     public function testPostSentinelFramesOpenNoNewTurnsAndCountMalformed()
     {
         /*

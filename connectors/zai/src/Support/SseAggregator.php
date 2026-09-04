@@ -40,13 +40,49 @@ namespace Deicod\WpConnectors\Zai\Support;
 final class SseAggregator extends AbstractSseAggregator {
 
 	/**
-	 * Decoded data events (chat.completion.chunk shapes), in order.
+	 * Well-formed pre-sentinel data events consumed (GLM10 #13).
 	 *
-	 * @since 0.1.0
+	 * A plain counter, not the decoded-frame list this class used to
+	 * retain: every frame merges into the accumulators below at FEED
+	 * time (the Anthropic twin's pattern), so peak memory no longer
+	 * holds every decoded frame of the stream simultaneously — decoded
+	 * PHP arrays run ~2-5x the JSON text, plausibly tens of MB on long
+	 * multi-thousand-chunk answers. Trailing frames never count: they
+	 * carry no content into the completed generation.
 	 *
-	 * @var list<array<string, mixed>>
+	 * @since 0.2.0
+	 *
+	 * @var int
 	 */
-	private $events = array();
+	private $event_count = 0;
+
+	/**
+	 * The first string id any well-formed event declared, or null.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string|null
+	 */
+	private $id = null;
+
+	/**
+	 * Choice accumulators keyed by stream choice index (GLM10 #13).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<int, array<string, mixed>>
+	 */
+	private $choices = array();
+
+	/**
+	 * The last usage member a well-formed event carried (present AND an
+	 * array — the merge rule), or null when none merged.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, mixed>|null
+	 */
+	private $usage = null;
 
 	/**
 	 * Whether the [DONE] sentinel was seen.
@@ -58,20 +94,34 @@ final class SseAggregator extends AbstractSseAggregator {
 	private $done = false;
 
 	/**
-	 * The usage member from a NON-associative decode of the last frame
-	 * whose usage the merge actually takes, or null when none was seen
+	 * The RAW DATA STRING of the last frame whose usage the merge takes
 	 * (verifier round on GLM5 #3; GLM6 #3 aligned the capture with the
-	 * merge rule).
+	 * merge rule; GLM10 #12 made the decode lazy).
 	 *
 	 * The associative merge cannot recover the usage member's JSON
 	 * object-ness ({} vs []), so the raw value travels along for the
 	 * model's shared UsageValidator — the same oracle the non-streaming
 	 * path derives from its body, keeping both transports of one
 	 * provider on identical usage rules. Captured under the SAME
-	 * condition aggregated() merges by (present AND an array), so the
-	 * oracle always describes the frame the consolidated payload
-	 * carries — never a later non-merging usage member the payload
-	 * discards.
+	 * condition the merge applies (present AND an array), so the oracle
+	 * always describes the frame the consolidated payload carries —
+	 * never a later non-merging usage member the payload discards.
+	 *
+	 * GLM10 #12: gateways that emit "usage":{} on EVERY chunk made the
+	 * eager capture pay one full non-associative decode PER TOKEN-DELTA
+	 * frame for an oracle the last-wins merge discards on the next
+	 * frame; the string is held instead and raw_usage() decodes it ONCE,
+	 * where the winner is known.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string|null
+	 */
+	private $raw_usage_source = null;
+
+	/**
+	 * The memoized raw usage oracle — decoded once from
+	 * $raw_usage_source by raw_usage() (GLM10 #12), null before.
 	 *
 	 * @since 0.2.0
 	 *
@@ -105,16 +155,17 @@ final class SseAggregator extends AbstractSseAggregator {
 	private $trailing_usage = null;
 
 	/**
-	 * The raw (non-associative) usage value of the trailing frame whose
-	 * usage the gap-fill takes, or null — the oracle that travels with
-	 * $trailing_usage exactly the way $raw_usage travels with the
-	 * pre-sentinel merge (GLM6 #3's same-frame rule, GLM7 #2).
+	 * The RAW DATA STRING of the trailing frame whose usage the gap-fill
+	 * takes, or null — the oracle source that travels with
+	 * $trailing_usage exactly the way $raw_usage_source travels with the
+	 * pre-sentinel merge (GLM6 #3's same-frame rule, GLM7 #2; GLM10 #12
+	 * made the decode lazy, decoded once at gap-fill time).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @var mixed
+	 * @var string|null
 	 */
-	private $trailing_raw_usage = null;
+	private $trailing_raw_usage_source = null;
 
 	/**
 	 * Finish reasons declared by POST-sentinel frames, keyed by choice
@@ -165,12 +216,15 @@ final class SseAggregator extends AbstractSseAggregator {
 	/**
 	 * Number of well-formed data events consumed.
 	 *
+	 * GLM10 #13: a counter, not a count of retained frames — the
+	 * decoded events merge into the accumulators at feed time now.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return int
 	 */
 	public function event_count(): int {
-		return \count( $this->events );
+		return $this->event_count;
 	}
 
 	/**
@@ -204,63 +258,21 @@ final class SseAggregator extends AbstractSseAggregator {
 	}
 
 	/**
-	 * Aggregates the consumed chunks into one chat.completion payload.
+	 * Assembles the consolidated chat.completion payload.
+	 *
+	 * GLM10 #13: the per-event merge happens at FEED time now
+	 * (merge_event() — the Anthropic twin's immediate-accumulator
+	 * pattern), so this method owns only what needs the WHOLE stream:
+	 * the post-sentinel gap-fill, the one-time reindexing, and the
+	 * payload assembly. Every step is idempotent, so repeated calls
+	 * return the same payload.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, mixed>|null Null when no usable event was consumed.
 	 */
 	public function aggregated(): ?array {
-		if ( array() === $this->events ) {
-			return null;
-		}
-
-		$id      = null;
-		$choices = array();
-		$usage   = null;
-
-		foreach ( $this->events as $event ) {
-			if ( null === $id && isset( $event['id'] ) && \is_string( $event['id'] ) ) {
-				$id = $event['id'];
-			}
-
-			if ( isset( $event['usage'] ) && \is_array( $event['usage'] ) ) {
-				$usage = $event['usage'];
-			}
-
-			if ( ! isset( $event['choices'] ) || ! \is_array( $event['choices'] ) ) {
-				continue;
-			}
-
-			foreach ( $event['choices'] as $choice ) {
-				/*
-				 * GLM7 #1: an unusable choice index is corruption, not a
-				 * skippable entry — the silent skip lost that delta's
-				 * content from a stream that still reported success, and
-				 * the (int) cast below merged float/string indexes into
-				 * the WRONG accumulator. The flag fails the response
-				 * typed; the entry itself stays unmerged (its content
-				 * cannot be attributed soundly). Parity with the
-				 * Anthropic twin's raw_block_index() rule: the index must
-				 * be a non-negative INTEGER (the associative decode
-				 * preserves JSON int-ness, so is_int() rejects "1", 1.9,
-				 * true, and null exactly like the twin's raw oracle).
-				 */
-				if ( ! \is_array( $choice )
-					|| ! isset( $choice['index'] )
-					|| ! \is_int( $choice['index'] )
-					|| $choice['index'] < 0 ) {
-					$this->malformed_event = true;
-
-					continue;
-				}
-
-				$index             = $choice['index'];
-				$choices[ $index ] = $this->merge_choice( $choices[ $index ] ?? null, $choice );
-			}
-		}
-
-		if ( array() === $choices ) {
+		if ( 0 === $this->event_count || array() === $this->choices ) {
 			return null;
 		}
 
@@ -276,14 +288,14 @@ final class SseAggregator extends AbstractSseAggregator {
 		 * stop. Indexes without an accumulated choice open no new turn.
 		 */
 		foreach ( $this->trailing_finish_reasons as $index => $reason ) {
-			if ( isset( $choices[ $index ] ) && null === $choices[ $index ]['finish_reason'] ) {
-				$choices[ $index ]['finish_reason'] = $reason;
+			if ( isset( $this->choices[ $index ] ) && null === $this->choices[ $index ]['finish_reason'] ) {
+				$this->choices[ $index ]['finish_reason'] = $reason;
 			}
 		}
 
 		/*
 		 * Verifier round on GLM7 #2: "no usage merged" means no usage
-		 * DATA merged. An EMPTY pre-sentinel member ("usage":{} — or [],
+		 * DATA merged. An EMPTY pre-sentinel member ("usage":{} — or[],
 		 * both collapsing to the same empty array; several
 		 * OpenAI-compatible gateways emit it as a null-usage
 		 * normalization) passed the isset-merge above, so the strict
@@ -293,10 +305,15 @@ final class SseAggregator extends AbstractSseAggregator {
 		 * silent zeroing GLM7 #2 exists to fix. An empty member carries
 		 * no token counts, so completing it overwrites nothing; every
 		 * DATA-BEARING member (even a partial one) still stands.
+		 *
+		 * GLM10 #12: the trailing oracle SOURCE replaces the pre-sentinel
+		 * one and the memoized decode resets — raw_usage() decodes the
+		 * (single) winner once, on demand.
 		 */
-		if ( ( null === $usage || array() === $usage ) && null !== $this->trailing_usage ) {
-			$usage           = $this->trailing_usage;
-			$this->raw_usage = $this->trailing_raw_usage;
+		if ( ( null === $this->usage || array() === $this->usage ) && null !== $this->trailing_usage ) {
+			$this->usage            = $this->trailing_usage;
+			$this->raw_usage_source = $this->trailing_raw_usage_source;
+			$this->raw_usage        = null;
 		}
 
 		// Reindex the merged tool calls ONCE, here: while merging, the
@@ -305,7 +322,7 @@ final class SseAggregator extends AbstractSseAggregator {
 		// sparse (0 and 2) indexes would otherwise leave insertion-order or
 		// gapped integer keys — and json_encode would emit message.tool_calls
 		// as an OBJECT, failing a valid multi-tool stream as malformed.
-		foreach ( $choices as &$choice ) {
+		foreach ( $this->choices as &$choice ) {
 			if ( isset( $choice['message']['tool_calls'] ) && \is_array( $choice['message']['tool_calls'] ) ) {
 				\ksort( $choice['message']['tool_calls'], SORT_NUMERIC );
 				$choice['message']['tool_calls'] = \array_values( $choice['message']['tool_calls'] );
@@ -313,15 +330,15 @@ final class SseAggregator extends AbstractSseAggregator {
 		}
 		unset( $choice );
 
-		ksort( $choices, SORT_NUMERIC );
+		\ksort( $this->choices, SORT_NUMERIC );
 
 		$payload = array(
-			'id'      => \is_string( $id ) ? $id : '',
-			'choices' => array_values( $choices ),
+			'id'      => \is_string( $this->id ) ? $this->id : '',
+			'choices' => \array_values( $this->choices ),
 		);
 
-		if ( null !== $usage ) {
-			$payload['usage'] = $usage;
+		if ( null !== $this->usage ) {
+			$payload['usage'] = $this->usage;
 		}
 
 		return $payload;
@@ -483,31 +500,92 @@ final class SseAggregator extends AbstractSseAggregator {
 		}
 
 		/*
-		 * Verifier round on GLM5 #3: capture the usage member's RAW
-		 * (non-associative) shape for the model's validator — the
-		 * associative merge collapses {} and [] to the same empty array,
-		 * which the validator's sequential-key fallback must then
+		 * GLM10 #13: the decoded event merges into the accumulators
+		 * immediately — nothing retains it — and the counter replaces
+		 * the decoded-frame list (event_count()'s contract is
+		 * unchanged).
+		 */
+		++$this->event_count;
+		$this->merge_event( $decoded, $data );
+	}
+
+	/**
+	 * Merges one well-formed pre-sentinel event into the accumulators
+	 * (GLM10 #13 — the merge loop aggregated() used to run over the
+	 * retained frame list at stream end, holding every decoded frame in
+	 * memory for the stream's lifetime).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<string, mixed> $event The decoded event payload.
+	 * @param string               $data  The raw data string of the frame.
+	 * @return void
+	 */
+	private function merge_event( array $event, string $data ): void {
+		if ( null === $this->id && isset( $event['id'] ) && \is_string( $event['id'] ) ) {
+			$this->id = $event['id'];
+		}
+
+		/*
+		 * Verifier round on GLM5 #3: the usage member's RAW
+		 * (non-associative) shape travels for the model's validator —
+		 * the associative merge collapses {} and [] to the same empty
+		 * array, which the validator's sequential-key fallback must then
 		 * tolerate, diverging from the non-streaming transport (it
-		 * rejects the empty list through its body oracle). The extra
-		 * decode runs only for frames that carry a usage member (~one
-		 * per stream).
+		 * rejects the empty list through its body oracle).
 		 *
-		 * GLM6 #3: the capture condition is the SAME rule aggregated()
-		 * merges by (present AND an array) — previously every
+		 * GLM6 #3: the capture condition is the SAME rule the merge
+		 * applies (present AND an array) — previously every
 		 * usage-BEARING frame replaced the oracle, so a later
 		 * non-merging member ("usage":"corrupt", "usage":null) either
 		 * handed the validator a frame the consolidated payload does not
 		 * carry (rejecting a valid generation) or dropped the oracle
 		 * entirely (flipping the verdict through the sequential-key
-		 * fallback). The oracle and the merged member now always
-		 * describe the same frame.
+		 * fallback). The oracle and the merged member always describe
+		 * the same frame.
+		 *
+		 * GLM10 #12: the RAW DATA STRING is the captured state — decoded
+		 * once, lazily, by raw_usage() where the last-wins winner is
+		 * already this frame. The eager per-frame decode paid a second
+		 * FULL parse of every usage-bearing token-delta frame on
+		 * gateways that emit "usage":{} on every chunk, for an oracle
+		 * the next frame's merge discarded.
 		 */
-		if ( isset( $decoded['usage'] ) && \is_array( $decoded['usage'] ) ) {
-			$raw_event       = json_decode( $data );
-			$this->raw_usage = \is_object( $raw_event ) ? ( $raw_event->usage ?? null ) : null;
+		if ( isset( $event['usage'] ) && \is_array( $event['usage'] ) ) {
+			$this->usage            = $event['usage'];
+			$this->raw_usage_source = $data;
 		}
 
-		$this->events[] = $decoded;
+		if ( ! isset( $event['choices'] ) || ! \is_array( $event['choices'] ) ) {
+			return;
+		}
+
+		foreach ( $event['choices'] as $choice ) {
+			/*
+			 * GLM7 #1: an unusable choice index is corruption, not a
+			 * skippable entry — the silent skip lost that delta's
+			 * content from a stream that still reported success, and
+			 * the (int) cast below merged float/string indexes into
+			 * the WRONG accumulator. The flag fails the response
+			 * typed; the entry itself stays unmerged (its content
+			 * cannot be attributed soundly). Parity with the
+			 * Anthropic twin's raw_block_index() rule: the index must
+			 * be a non-negative INTEGER (the associative decode
+			 * preserves JSON int-ness, so is_int() rejects "1", 1.9,
+			 * true, and null exactly like the twin's raw oracle).
+			 */
+			if ( ! \is_array( $choice )
+				|| ! isset( $choice['index'] )
+				|| ! \is_int( $choice['index'] )
+				|| $choice['index'] < 0 ) {
+				$this->malformed_event = true;
+
+				continue;
+			}
+
+			$index                   = $choice['index'];
+			$this->choices[ $index ] = $this->merge_choice( $this->choices[ $index ] ?? null, $choice );
+		}
 	}
 
 	/**
@@ -515,12 +593,13 @@ final class SseAggregator extends AbstractSseAggregator {
 	 *
 	 * The frame already passed the same decode pipeline a pre-sentinel
 	 * frame passes; all that may be taken from it is what completes the
-	 * payload: the usage member (captured raw alongside, GLM6 #3's
-	 * same-frame rule) and finish reasons for already-accumulated choice
-	 * indexes. Content-bearing members (delta, role, tool_calls) are
-	 * deliberately ignored — the completed generation's text cannot be
-	 * mutated — and choices with unusable indexes raise the GLM7 #1 flag
-	 * like their pre-sentinel twins.
+	 * payload: the usage member (its raw data string captured alongside,
+	 * GLM6 #3's same-frame rule — decoded once, lazily, GLM10 #12) and
+	 * finish reasons for already-accumulated choice indexes.
+	 * Content-bearing members (delta, role, tool_calls) are deliberately
+	 * ignored — the completed generation's text cannot be mutated — and
+	 * choices with unusable indexes raise the GLM7 #1 flag like their
+	 * pre-sentinel twins.
 	 *
 	 * @since 0.2.0
 	 *
@@ -530,9 +609,8 @@ final class SseAggregator extends AbstractSseAggregator {
 	 */
 	private function consume_trailing_frame( array $decoded, string $data ): void {
 		if ( isset( $decoded['usage'] ) && \is_array( $decoded['usage'] ) ) {
-			$raw_event                = json_decode( $data );
-			$this->trailing_usage     = $decoded['usage'];
-			$this->trailing_raw_usage = \is_object( $raw_event ) ? ( $raw_event->usage ?? null ) : null;
+			$this->trailing_usage            = $decoded['usage'];
+			$this->trailing_raw_usage_source = $data;
 		}
 
 		if ( ! isset( $decoded['choices'] ) || ! \is_array( $decoded['choices'] ) ) {
@@ -565,11 +643,21 @@ final class SseAggregator extends AbstractSseAggregator {
 	 * aggregated() re-points this oracle at that trailing frame — the
 	 * value always describes the member the consolidated payload carries.
 	 *
+	 * GLM10 #12: the decode is LAZY and memoized — the winner is known
+	 * by the time this runs (after aggregated()), so ONE non-associative
+	 * decode of the captured data string answers every caller, instead
+	 * of one full decode per usage-bearing frame during the stream.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @return mixed The raw usage value (object-ness oracle for the validator).
 	 */
 	public function raw_usage() {
+		if ( null === $this->raw_usage && null !== $this->raw_usage_source ) {
+			$raw_event       = json_decode( $this->raw_usage_source );
+			$this->raw_usage = \is_object( $raw_event ) ? ( $raw_event->usage ?? null ) : null;
+		}
+
 		return $this->raw_usage;
 	}
 }
