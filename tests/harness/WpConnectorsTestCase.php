@@ -15,7 +15,12 @@ declare(strict_types=1);
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Messages\DTO\Message;
+use WordPress\AiClient\Messages\DTO\MessagePart;
+use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Providers\Http\HttpTransporter;
+use WordPress\AiClient\Providers\Models\DTO\ModelConfig;
 
 abstract class WpConnectorsTestCase extends TestCase
 {
@@ -378,5 +383,146 @@ abstract class WpConnectorsTestCase extends TestCase
     public static function assertNotWPError($actual)
     {
         self::assertNotInstanceOf(WP_Error::class, $actual);
+    }
+
+    /*
+     * ---------------------------------------------------------------
+     * Request capture, snapshots, and pre-transport rejections
+     * (GLM12 #14 — hoisted from the byte-identical twin copies the two
+     * mapping suites carried, whose captureRequest had already forked
+     * once on the try/catch).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Directory holding this suite's committed request snapshots.
+     *
+     * The default is the shared snapshots directory; a suite with its
+     * own snapshot family overrides (the surface mapping suites use
+     * fixtures/snapshots/zai and fixtures/snapshots/zai-anthropic).
+     *
+     * @return string Absolute path, no trailing slash.
+     */
+    protected function snapshotDirectory(): string
+    {
+        return __DIR__ . '/../fixtures/snapshots';
+    }
+
+    /**
+     * Queues the one successful response captureRequest() drives its
+     * generation with. A suite whose surface parses a specific protocol
+     * overrides with that protocol's success body.
+     *
+     * @return void
+     */
+    protected function queueCaptureResponse()
+    {
+        $this->queueSdkResponse(200, array(), '');
+    }
+
+    /**
+     * The wired model the pre-transport rejection helper drives. A suite
+     * using assertRejectedBeforeTransport() overrides with its own
+     * provider's model (discovery transient primed, harness transporter,
+     * fixture key); the loud default catches a missing override instead
+     * of silently testing nothing.
+     *
+     * @param ModelConfig|null $config Optional model configuration.
+     * @return object The wired model.
+     */
+    protected function snapshotTestModel(?ModelConfig $config = null)
+    {
+        throw new RuntimeException(get_class($this) . ' must provide the rejection-helper model.');
+    }
+
+    /**
+     * Runs one generation and returns [url, decodedBody, headers] of the
+     * single recorded request.
+     *
+     * GLM12 #14: the twin copies are reconciled on the explicit
+     * pre-transport-failure branch — an InvalidArgumentException from
+     * the guarded mapping surfaces as a named failure, not an uncaught
+     * error.
+     *
+     * @param list<Message> $prompt Prompt to send.
+     * @param object        $model  A wired text-generation model.
+     * @return array{0: string, 1: array, 2: array}
+     */
+    protected function captureRequest(array $prompt, $model): array
+    {
+        $this->queueCaptureResponse();
+
+        try {
+            $model->generateTextResult($prompt);
+        } catch (InvalidArgumentException $e) {
+            // The captured body is still available; surface it for debugging.
+            $this->fail('Request failed pre-transport or in parsing: ' . $e->getMessage());
+        }
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts);
+
+        return array(
+            $attempts[0]['url'],
+            (array) json_decode((string) $attempts[0]['body'], true),
+            $attempts[0]['headers'],
+        );
+    }
+
+    /**
+     * Asserts the captured request equals the committed snapshot.
+     *
+     * Snapshots are created on first run (the test skips that run and
+     * must be re-run to verify); headers are excluded by construction
+     * and the credential invariants are asserted regardless.
+     *
+     * @param string $name  Snapshot name.
+     * @param string $url   Request URL.
+     * @param array  $body  Decoded request body.
+     * @return void
+     */
+    protected function assertMatchesSnapshot(string $name, string $url, array $body)
+    {
+        $path = $this->snapshotDirectory() . '/' . $name . '.json';
+        $snapshot = array('url' => $url, 'body' => $body);
+
+        if (!is_file($path)) {
+            @mkdir(dirname($path), 0755, true);
+            file_put_contents($path, json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+            $this->markTestSkipped("Snapshot {$name} created; re-run to verify.");
+        }
+
+        $this->assertSame(
+            $snapshot,
+            (array) json_decode((string) file_get_contents($path), true),
+            "Captured request drifted from snapshot {$name}."
+        );
+
+        // Snapshots never contain credentials (headers are excluded by
+        // construction; assert the invariant anyway).
+        $this->assertStringNotContainsString('Bearer', (string) file_get_contents($path));
+        $this->assertStringNotContainsString('Authorization', (string) file_get_contents($path));
+    }
+
+    /**
+     * Asserts the configuration is rejected before any transport work,
+     * with the given needle in its message.
+     *
+     * @param ModelConfig $config The configuration under test.
+     * @param string      $needle Expected message fragment.
+     * @return void
+     */
+    protected function assertRejectedBeforeTransport(ModelConfig $config, string $needle)
+    {
+        try {
+            $this->snapshotTestModel($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail("Config containing '{$needle}' must be rejected.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString($needle, $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
     }
 }

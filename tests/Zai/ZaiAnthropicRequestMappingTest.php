@@ -72,64 +72,36 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         return $model;
     }
 
-    /**
-     * Runs one generation and returns [url, decodedBody, headers] of the
-     * single recorded request.
-     *
-     * @param list<Message>             $prompt
-     * @param ZaiAnthropicTextGenerationModel $model
-     * @return array{0: string, 1: array, 2: array}
+    /*
+     * GLM12 #14: the capture/snapshot/reject helpers live once in
+     * WpConnectorsTestCase; this suite provides its surface's three
+     * facts (snapshot directory, capture success body, rejection
+     * model).
      */
-    private function captureRequest(array $prompt, $model): array
+
+    /**
+     * @return string
+     */
+    protected function snapshotDirectory(): string
     {
-        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('ok'));
-
-        try {
-            $model->generateTextResult($prompt);
-        } catch (InvalidArgumentException $e) {
-            // The captured body is still available; surface it for debugging.
-            $this->fail('Request failed pre-transport or in parsing: ' . $e->getMessage());
-        }
-
-        $attempts = $this->sdkHttpAttempts();
-        $this->assertCount(1, $attempts);
-
-        return array(
-            $attempts[0]['url'],
-            (array) json_decode((string) $attempts[0]['body'], true),
-            $attempts[0]['headers'],
-        );
+        return __DIR__ . '/../fixtures/snapshots/zai-anthropic';
     }
 
     /**
-     * Asserts the captured request equals the committed snapshot.
-     *
-     * @param string $name  Snapshot name.
-     * @param string $url   Request URL.
-     * @param array  $body  Decoded request body.
      * @return void
      */
-    private function assertMatchesSnapshot(string $name, string $url, array $body)
+    protected function queueCaptureResponse()
     {
-        $path = __DIR__ . '/../fixtures/snapshots/zai-anthropic/' . $name . '.json';
-        $snapshot = array('url' => $url, 'body' => $body);
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('ok'));
+    }
 
-        if (!is_file($path)) {
-            @mkdir(dirname($path), 0755, true);
-            file_put_contents($path, json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
-            $this->markTestSkipped("Snapshot {$name} created; re-run to verify.");
-        }
-
-        $this->assertSame(
-            $snapshot,
-            (array) json_decode((string) file_get_contents($path), true),
-            "Captured request drifted from snapshot {$name}."
-        );
-
-        // Snapshots never contain credentials (headers are excluded by
-        // construction; assert the invariant anyway).
-        $this->assertStringNotContainsString('Bearer', (string) file_get_contents($path));
-        $this->assertStringNotContainsString('Authorization', (string) file_get_contents($path));
+    /**
+     * @param ModelConfig|null $config
+     * @return ZaiAnthropicTextGenerationModel
+     */
+    protected function snapshotTestModel(?ModelConfig $config = null)
+    {
+        return $this->model($config);
     }
 
     /*
@@ -2783,27 +2755,6 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->assertStringContainsString('The zai_anthropic provider does not support presence penalty', $e->getMessage());
             $this->assertStringContainsString('one option contract', $e->getMessage());
             $this->assertStringNotContainsString('would still be sent to the API', $e->getMessage());
-        }
-
-        $this->assertNoHttpRequests();
-    }
-
-    /**
-     * Asserts the config is rejected before any HTTP attempt.
-     *
-     * @param ModelConfig $config
-     * @param string      $needle Expected message fragment.
-     * @return void
-     */
-    private function assertRejectedBeforeTransport(ModelConfig $config, string $needle)
-    {
-        try {
-            $this->model($config)->generateTextResult(array(
-                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
-            ));
-            $this->fail("Config containing '{$needle}' must be rejected.");
-        } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString($needle, $e->getMessage());
         }
 
         $this->assertNoHttpRequests();
