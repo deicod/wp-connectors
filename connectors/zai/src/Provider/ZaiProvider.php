@@ -11,12 +11,8 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Provider;
 
-use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\Contracts\ModelMetadataDirectoryInterface;
 use WordPress\AiClient\Providers\Contracts\ProviderAvailabilityInterface;
-use WordPress\AiClient\Providers\DTO\ProviderMetadata;
-use WordPress\AiClient\Providers\Models\Contracts\ModelInterface;
-use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
@@ -59,33 +55,15 @@ final class ZaiProvider extends AbstractZaiProvider {
 	}
 
 	/**
-	 * Creates the text generation model.
+	 * The model class this provider instantiates for supported metadata
+	 * (GLM8 #12: the shared capability walk lives on the base).
 	 *
-	 * @since 0.1.0
+	 * @since 0.2.0
 	 *
-	 * @param ModelMetadata    $model_metadata    Model metadata.
-	 * @param ProviderMetadata $provider_metadata Provider metadata.
-	 * @return ModelInterface The model instance.
-	 * @throws RuntimeException When the model capabilities are unsupported.
+	 * @return class-string The concrete model class.
 	 */
-	protected static function createModel(
-		ModelMetadata $model_metadata,
-		ProviderMetadata $provider_metadata
-	): ModelInterface {
-		foreach ( $model_metadata->getSupportedCapabilities() as $capability ) {
-			if ( $capability->isTextGeneration() ) {
-				return new ZaiTextGenerationModel( $model_metadata, $provider_metadata );
-			}
-		}
-
-		$capability_names = array();
-		foreach ( $model_metadata->getSupportedCapabilities() as $capability ) {
-			$capability_names[] = (string) $capability;
-		}
-
-		throw new RuntimeException(
-			'Unsupported model capabilities: ' . wp_json_encode( $capability_names )
-		);
+	protected static function model_class(): string {
+		return ZaiTextGenerationModel::class;
 	}
 
 	/**
@@ -130,17 +108,6 @@ final class ZaiProvider extends AbstractZaiProvider {
 	 */
 	protected static function selected_region(): string {
 		return PlanRegionSettings::get_region();
-	}
-
-	/**
-	 * Creates the provider metadata.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return ProviderMetadata Provider metadata.
-	 */
-	protected static function createProviderMetadata(): ProviderMetadata {
-		return new ProviderMetadata( ...self::provider_metadata_args() );
 	}
 
 	/**

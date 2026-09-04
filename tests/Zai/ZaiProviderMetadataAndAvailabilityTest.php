@@ -1058,4 +1058,42 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
     {
         return array_values(array_intersect($names, self::declared_constants($class)));
     }
+
+    public function testBothProvidersRideTheSharedModelScaffold()
+    {
+        /*
+         * GLM8 #12 (extraction pin, the GLM4 #10 pattern): the capability
+         * walk and the unsupported-capabilities rejection, and the
+         * ProviderMetadata construction, were line-for-line identical in
+         * both providers except the instantiated class — hoisted to the
+         * shared AbstractZaiProvider. Neither provider may re-roll the
+         * scaffolding; each declares only its model_class() hook.
+         */
+        $base = (string) file_get_contents(__DIR__ . '/../../connectors/zai/src/Provider/AbstractZaiProvider.php');
+        $this->assertStringContainsString('Unsupported model capabilities', $base, 'The base owns the capability-walk rejection.');
+        $this->assertStringContainsString('new ProviderMetadata( ...static::provider_metadata_args()', $base, 'The base owns the metadata construction.');
+
+        foreach (array(
+            'zai' => __DIR__ . '/../../connectors/zai/src/Provider/ZaiProvider.php',
+            'zai_anthropic' => __DIR__ . '/../../connectors/zai/src/Provider/ZaiAnthropicProvider.php',
+        ) as $label => $path) {
+            $source = (string) file_get_contents($path);
+
+            $this->assertSame(
+                0,
+                preg_match('/Unsupported model capabilities/', $source),
+                "[{$label}] The provider must not re-roll the capability-walk rejection."
+            );
+            $this->assertSame(
+                0,
+                preg_match('/new ProviderMetadata\(/', $source),
+                "[{$label}] The provider must not construct ProviderMetadata itself."
+            );
+            $this->assertSame(
+                1,
+                preg_match('/function model_class\(\): string/', $source),
+                "[{$label}] The provider declares the model_class() hook."
+            );
+        }
+    }
 }

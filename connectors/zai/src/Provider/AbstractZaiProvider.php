@@ -17,10 +17,13 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Provider;
 
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\ApiBasedImplementation\AbstractApiProvider;
 use WordPress\AiClient\Providers\DTO\ProviderMetadata;
 use WordPress\AiClient\Providers\Enums\ProviderTypeEnum;
 use WordPress\AiClient\Providers\Http\Enums\RequestAuthenticationMethod;
+use WordPress\AiClient\Providers\Models\Contracts\ModelInterface;
+use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 
 /**
  * Base provider: region-following credentials URL and versioned metadata.
@@ -92,6 +95,70 @@ abstract class AbstractZaiProvider extends AbstractApiProvider {
 	 * @return string 'intl' or 'cn'.
 	 */
 	abstract protected static function selected_region(): string;
+
+	/**
+	 * The model class this provider instantiates for supported metadata.
+	 *
+	 * GLM8 #12: the capability walk and the unsupported-capabilities
+	 * rejection were line-for-line identical between the two providers
+	 * except the instantiated class — the exact scaffolding this base
+	 * exists to hold (the provider_metadata_args() pattern below).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return class-string The concrete model class.
+	 */
+	abstract protected static function model_class(): string;
+
+	/**
+	 * Creates the text generation model (GLM8 #12: the shared capability
+	 * walk — hoisted verbatim from the two identical provider copies).
+	 *
+	 * The first text-generation capability wins; metadata advertising no
+	 * text-generation capability at all is a typed RuntimeException
+	 * (never a silently-wrong model instance).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param ModelMetadata    $model_metadata    Model metadata.
+	 * @param ProviderMetadata $provider_metadata Provider metadata.
+	 * @return ModelInterface The model instance.
+	 * @throws RuntimeException When the model capabilities are unsupported.
+	 */
+	protected static function createModel(
+		ModelMetadata $model_metadata,
+		ProviderMetadata $provider_metadata
+	): ModelInterface {
+		foreach ( $model_metadata->getSupportedCapabilities() as $capability ) {
+			if ( $capability->isTextGeneration() ) {
+				$model_class = static::model_class();
+
+				return new $model_class( $model_metadata, $provider_metadata );
+			}
+		}
+
+		$capability_names = array();
+		foreach ( $model_metadata->getSupportedCapabilities() as $capability ) {
+			$capability_names[] = (string) $capability;
+		}
+
+		throw new RuntimeException(
+			'Unsupported model capabilities: ' . wp_json_encode( $capability_names )
+		);
+	}
+
+	/**
+	 * Creates the provider metadata (GLM8 #12: hoisted byte-identical
+	 * from the two providers — the constructor args ride the shared
+	 * versioned provider_metadata_args() ladder).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return ProviderMetadata Provider metadata.
+	 */
+	protected static function createProviderMetadata(): ProviderMetadata {
+		return new ProviderMetadata( ...static::provider_metadata_args() );
+	}
 
 	/**
 	 * Builds the provider metadata constructor arguments for an SDK version.
