@@ -631,9 +631,24 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			return;
 		}
 
-		$decoded = json_decode( $payload, true );
+		/*
+		 * GLM9 #15: ONE decode per frame — the NON-associative one, the
+		 * object-ness oracle (Codex R3 #1/#2). The associative decode
+		 * this replaces collapsed JSON {} and [] onto the same empty
+		 * array, which is exactly why the raw decode existed as a SECOND
+		 * full parse of every payload (line-for-line for
+		 * content_block_delta, i.e. once per output token — double the
+		 * OpenAI aggregator's parse CPU on the dominant frame type). The
+		 * object tree supplies everything now: dispatch_event() reads
+		 * properties, and the not-object-and-not-array check below
+		 * catches precisely the decode-failure/scalar shapes the
+		 * associative !is_array() branch did (a JSON list stays
+		 * excluded from it, as it was then — the object-ness check
+		 * further down judges declared ones).
+		 */
+		$raw = json_decode( $payload );
 
-		if ( ! \is_array( $decoded ) ) {
+		if ( ! \is_object( $raw ) && ! \is_array( $raw ) ) {
 			++$this->malformed;
 
 			/*
@@ -689,14 +704,14 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * follows), and an explicit null is PRESENT here exactly as the
 		 * envelope's own type rule judges it (Codex R14 #1).
 		 */
-		if ( \array_key_exists( 'type', $decoded ) && ! \is_string( $decoded['type'] ) ) {
+		if ( \is_object( $raw ) && \property_exists( $raw, 'type' ) && ! \is_string( $raw->type ) ) {
 			++$this->malformed;
 			$this->malformed_event = true;
 
 			return;
 		}
 
-		$payload_type = isset( $decoded['type'] ) ? $decoded['type'] : '';
+		$payload_type = \is_object( $raw ) && isset( $raw->type ) ? $raw->type : '';
 		$type         = \is_string( $event_name ) ? $event_name : $payload_type;
 
 		/*
@@ -717,21 +732,12 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		}
 
 		/*
-		 * Object-ness oracle (Codex R3 #1/#2): the associative decode above
-		 * collapses JSON {} and [] to the same empty PHP array, so the raw
-		 * non-associative decode of the same payload travels along for the
-		 * tool-input shape decisions.
-		 */
-		$raw = json_decode( $payload );
-
-		/*
 		 * Verifier sweep on Codex R4: a DECLARED event (by event: field or
 		 * — for data-only frames — by the payload's own type member) whose
 		 * payload is valid JSON but NOT an object (a list, e.g. a dropped
 		 * chunk inside ["lost"]) is the same corruption class as an
-		 * undecodable payload: is_array() cannot tell a JSON list from a
-		 * JSON object, the raw decode can. Flag it; unknown names stay
-		 * ignorable.
+		 * undecodable payload: the one decode keeps the JSON object/list
+		 * distinction. Flag it; unknown names stay ignorable.
 		 *
 		 * Verifier round on GLM5 #18: PRE-termination only. A trailing
 		 * frame carries no content into the completed generation, so the
@@ -764,7 +770,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			++$this->events;
 		}
 
-		$this->dispatch_event( $type, $decoded, $raw );
+		$this->dispatch_event( $type, $raw );
 	}
 
 	/**
@@ -774,14 +780,18 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 * judged — see consume_frame()) frame lands here for the one
 	 * post-termination policy instead of the content dispatch.
 	 *
+	 * GLM9 #15: the payload arrives as the ONE (non-associative) decode
+	 * — the object-ness oracle's tree — and every case reads it with
+	 * property accesses; every declared event reaching a content case
+	 * was verified to be a JSON object by consume_frame()'s checks.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param string               $type Event type (event: field or data.type).
-	 * @param array<string, mixed> $data The decoded event payload.
-	 * @param mixed                $raw  Non-associative decode of the same payload.
+	 * @param string $type Event type (event: field or data.type).
+	 * @param mixed  $raw  Non-associative decode of the event payload.
 	 * @return void
 	 */
-	private function dispatch_event( string $type, array $data, $raw ): void {
+	private function dispatch_event( string $type, $raw ): void {
 		if ( $this->terminated ) {
 			$this->handle_trailing_event( $type );
 
@@ -854,15 +864,15 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					return;
 				}
 
-				$message = isset( $data['message'] ) && \is_array( $data['message'] ) ? $data['message'] : array();
-				if ( isset( $message['id'] ) && \is_string( $message['id'] ) ) {
-					$this->message_id = $message['id'];
+				$message = $raw->message;
+				if ( isset( $message->id ) && \is_string( $message->id ) ) {
+					$this->message_id = $message->id;
 				}
 				// GLM1 #9: envelope parity with the non-streaming body.
-				if ( isset( $message['model'] ) && \is_string( $message['model'] ) ) {
-					$this->model = $message['model'];
+				if ( isset( $message->model ) && \is_string( $message->model ) ) {
+					$this->model = $message->model;
 				}
-				if ( \array_key_exists( 'usage', $message ) ) {
+				if ( \property_exists( $message, 'usage' ) ) {
 					/*
 					 * Codex R15 #1: streamed usage is validated BEFORE the casts
 					 * store it — the casts previously normalized "5", 3.7, true,
@@ -877,15 +887,25 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					 * overflow-checked input total (GLM4 #5) also keeps a
 					 * past-PHP_INT_MAX prompt side from silently promoting to
 					 * float in the consolidated payload.
+					 *
+					 * GLM9 #15: the one object-tree decode hands the
+					 * validator the same two views it always judged by —
+					 * the (array) cast of the usage value is the
+					 * associative view, the property itself the raw
+					 * oracle — without the second full-payload decode. A
+					 * JSON null keeps its null-ness (the associative
+					 * decode's own shape), because (array) null is the
+					 * EMPTY array, not null.
 					 */
-					$raw_message_usage = \is_object( $raw->message ) && \property_exists( $raw->message, 'usage' ) ? $raw->message->usage : null;
-					if ( null !== UsageValidator::failure_reason( $message['usage'], $raw_message_usage ) ) {
+					$usage       = $message->usage;
+					$usage_array = null === $usage ? null : (array) $usage;
+					if ( null !== UsageValidator::failure_reason( $usage_array, $usage ) ) {
 						$this->malformed_event = true;
 
 						return;
 					}
 
-					$input_total = UsageValidator::input_total( $message['usage'] );
+					$input_total = UsageValidator::input_total( $usage_array );
 					if ( null === $input_total ) {
 						$this->malformed_event = true;
 
@@ -910,9 +930,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					return;
 				}
 
-				$block = isset( $data['content_block'] ) && \is_array( $data['content_block'] ) ? $data['content_block'] : array();
-
-				$raw_block = \is_object( $raw ) && isset( $raw->content_block ) && \is_object( $raw->content_block )
+				$raw_block = isset( $raw->content_block ) && \is_object( $raw->content_block )
 					? $raw->content_block
 					: null;
 
@@ -924,11 +942,11 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 * swallow the block's deltas (the tool call vanishes while
 				 * the stream reports success). Flag it.
 				 */
-				if ( \is_object( $raw ) && ( ! \property_exists( $raw, 'content_block' ) || ! \is_object( $raw->content_block ) ) ) {
+				if ( ! \property_exists( $raw, 'content_block' ) || ! \is_object( $raw->content_block ) ) {
 					$this->malformed_event = true;
 				}
 
-				$this->start_block( $index, $block, $raw_block );
+				$this->start_block( $index, $raw_block );
 				return;
 
 			case 'content_block_delta':
@@ -982,7 +1000,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					return;
 				}
 
-				$this->apply_delta( $index, $data );
+				$this->apply_delta( $index, $raw_delta );
 				return;
 
 			case 'content_block_stop':
@@ -1098,21 +1116,24 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 * the non-streaming typed rejection for non-string stop
 				 * reasons (GLM2 #5).
 				 */
-				if ( isset( $data['delta'] ) && \is_array( $data['delta'] )
-					&& \array_key_exists( 'stop_reason', $data['delta'] )
-					&& ( \is_string( $data['delta']['stop_reason'] ) || null === $data['delta']['stop_reason'] ) ) {
-					$this->stop_reason          = $data['delta']['stop_reason'];
+				if ( \property_exists( $raw->delta, 'stop_reason' )
+					&& ( \is_string( $raw->delta->stop_reason ) || null === $raw->delta->stop_reason ) ) {
+					$this->stop_reason          = $raw->delta->stop_reason;
 					$this->stop_reason_received = true;
 				}
 				// GLM1 #9: envelope parity with the non-streaming body.
-				if ( isset( $data['delta']['stop_sequence'] ) && \is_string( $data['delta']['stop_sequence'] ) ) {
-					$this->stop_sequence = $data['delta']['stop_sequence'];
+				if ( isset( $raw->delta->stop_sequence ) && \is_string( $raw->delta->stop_sequence ) ) {
+					$this->stop_sequence = $raw->delta->stop_sequence;
 				}
-				if ( \array_key_exists( 'usage', $data ) ) {
+				if ( \property_exists( $raw, 'usage' ) ) {
 					// Codex R15 #1: same validation as message_start's input
-					// side — GLM4 #11: the one shared validator.
-					$raw_usage = \is_object( $raw ) && \property_exists( $raw, 'usage' ) ? $raw->usage : null;
-					if ( null !== UsageValidator::failure_reason( $data['usage'], $raw_usage ) ) {
+					// side — GLM4 #11: the one shared validator; GLM9 #15:
+					// the associative view is the (array) cast, the raw
+					// oracle the property itself, null-ness preserved
+					// (see message_start).
+					$usage       = $raw->usage;
+					$usage_array = null === $usage ? null : (array) $usage;
+					if ( null !== UsageValidator::failure_reason( $usage_array, $usage ) ) {
 						$this->malformed_event = true;
 
 						return;
@@ -1131,8 +1152,8 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					 * carrying only the output side (the legacy shape)
 					 * leaves the start-side input standing.
 					 */
-					if ( \is_array( $data['usage'] ) && UsageValidator::has_input_side( $data['usage'] ) ) {
-						$delta_input = UsageValidator::input_total( $data['usage'] );
+					if ( \is_array( $usage_array ) && UsageValidator::has_input_side( $usage_array ) ) {
+						$delta_input = UsageValidator::input_total( $usage_array );
 
 						if ( null === $delta_input ) {
 							$this->malformed_event = true;
@@ -1143,7 +1164,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 						$this->delta_input_tokens = $delta_input;
 					}
 
-					$this->output_tokens = (int) ( $data['usage']['output_tokens'] ?? 0 );
+					$this->output_tokens = (int) ( $usage_array['output_tokens'] ?? 0 );
 				}
 				return;
 
@@ -1310,31 +1331,38 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	/**
 	 * Starts (or resets) the content block accumulator at a stream index.
 	 *
-	 * A tool_use block's ORIGINAL input shape is validated here against the
-	 * raw (non-associative) decode (Codex R3 #2): an object becomes the
-	 * initial input value, a MISSING or explicitly-NULL input member marks
-	 * the block malformed (Codex R7 #1 sibling — the protocol requires the
+	 * A tool_use block's ORIGINAL input shape is validated here against
+	 * the object-tree decode (Codex R3 #2): an object becomes the initial
+	 * input value, a MISSING or explicitly-NULL input member marks the
+	 * block malformed (Codex R7 #1 sibling — the protocol requires the
 	 * member, an empty call is {} alone; normalizing it to a placeholder
 	 * fabricated a valid no-argument tool call the model never produced),
 	 * and anything else (scalar, boolean, JSON list — including []) also
 	 * marks the block malformed. {} is NEVER silently substituted for a
 	 * malformed value.
 	 *
+	 * GLM9 #15: the block arrives as the one non-associative decode —
+	 * property reads replace the former associative mirror (whose only
+	 * distinguishable behavior, {} vs [], the object tree carries
+	 * natively).
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param int                  $index     Stream block index.
-	 * @param array<string, mixed> $block     The content_block payload (associative).
-	 * @param \stdClass|null       $raw_block The same payload, non-associatively decoded.
+	 * @param int            $index     Stream block index.
+	 * @param \stdClass|null $raw_block The content_block payload (the
+	 *                                  object-tree decode), or null when
+	 *                                  the member was absent/non-object
+	 *                                  (already flagged by the caller).
 	 * @return void
 	 */
-	private function start_block( int $index, array $block, $raw_block ): void {
+	private function start_block( int $index, ?\stdClass $raw_block ): void {
 		/*
 		 * Codex R8 #4: the block type is REQUIRED and must be a string —
 		 * a missing or non-string type silently became a text block, and a
 		 * following text_delta then succeeded on the fabricated block. No
 		 * default: flag the stream malformed.
 		 */
-		$type = isset( $block['type'] ) && \is_string( $block['type'] ) ? $block['type'] : null;
+		$type = null !== $raw_block && isset( $raw_block->type ) && \is_string( $raw_block->type ) ? $raw_block->type : null;
 
 		if ( null === $type ) {
 			$this->malformed_event = true;
@@ -1349,13 +1377,13 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * successful response whose start payload was malformed (unlike
 		 * the equivalent malformed deltas and non-streaming blocks).
 		 */
-		if ( 'text' === $type && ( ! array_key_exists( 'text', $block ) || ! \is_string( $block['text'] ) ) ) {
+		if ( 'text' === $type && ( null === $raw_block || ! \property_exists( $raw_block, 'text' ) || ! \is_string( $raw_block->text ) ) ) {
 			$this->malformed_event = true;
 
 			return;
 		}
 
-		if ( 'thinking' === $type && ( ! array_key_exists( 'thinking', $block ) || ! \is_string( $block['thinking'] ) ) ) {
+		if ( 'thinking' === $type && ( null === $raw_block || ! \property_exists( $raw_block, 'thinking' ) || ! \is_string( $raw_block->thinking ) ) ) {
 			$this->malformed_event = true;
 
 			return;
@@ -1438,10 +1466,10 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 
 		$this->blocks[ $index ] = array(
 			'type'     => $type,
-			'text'     => isset( $block['text'] ) && \is_string( $block['text'] ) ? $block['text'] : '',
-			'thinking' => isset( $block['thinking'] ) && \is_string( $block['thinking'] ) ? $block['thinking'] : '',
-			'id'       => isset( $block['id'] ) && \is_string( $block['id'] ) ? $block['id'] : null,
-			'name'     => isset( $block['name'] ) && \is_string( $block['name'] ) ? $block['name'] : null,
+			'text'     => null !== $raw_block && isset( $raw_block->text ) && \is_string( $raw_block->text ) ? $raw_block->text : '',
+			'thinking' => null !== $raw_block && isset( $raw_block->thinking ) && \is_string( $raw_block->thinking ) ? $raw_block->thinking : '',
+			'id'       => null !== $raw_block && isset( $raw_block->id ) && \is_string( $raw_block->id ) ? $raw_block->id : null,
+			'name'     => null !== $raw_block && isset( $raw_block->name ) && \is_string( $raw_block->name ) ? $raw_block->name : null,
 			'input'    => $input,
 			'json'     => '',
 			'has_json' => false,
@@ -1456,15 +1484,17 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 * A delta for an index without content_block_start (defensive) starts a
 	 * default text block first.
 	 *
+	 * GLM9 #15: the delta arrives as the one non-associative decode's
+	 * delta member — an object verified by dispatch_event()'s shape
+	 * checks — read through property accesses.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param int                  $index Stream block index.
-	 * @param array<string, mixed> $data  The event payload.
+	 * @param int       $index Stream block index.
+	 * @param \stdClass $delta The delta member (object-tree decode).
 	 * @return void
 	 */
-	private function apply_delta( int $index, array $data ): void {
-		$delta = isset( $data['delta'] ) && \is_array( $data['delta'] ) ? $data['delta'] : array();
-
+	private function apply_delta( int $index, \stdClass $delta ): void {
 		/*
 		 * Codex R8 #1: a delta for an index whose content_block_stop was
 		 * already received appends to a closed block — the completion then
@@ -1489,14 +1519,14 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 * unknown (future) delta types keep the seed below — they carry
 			 * no content this aggregator maps, so seeding loses nothing.
 			 */
-			if ( isset( $delta['type'] ) && \is_string( $delta['type'] ) ) {
-				if ( 'input_json_delta' === $delta['type'] ) {
+			if ( isset( $delta->type ) && \is_string( $delta->type ) ) {
+				if ( 'input_json_delta' === $delta->type ) {
 					$this->malformed_tool_input = true;
 
 					return;
 				}
 
-				if ( 'text_delta' === $delta['type'] || 'thinking_delta' === $delta['type'] ) {
+				if ( 'text_delta' === $delta->type || 'thinking_delta' === $delta->type ) {
 					$this->malformed_event = true;
 
 					return;
@@ -1511,11 +1541,10 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 */
 			$this->start_block(
 				$index,
-				array(
+				(object) array(
 					'type' => 'text',
 					'text' => '',
-				),
-				null
+				)
 			);
 		}
 
@@ -1532,8 +1561,8 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * forward-compatible tolerance (no block-type claim to violate).
 		 */
 		$expected_type = null;
-		if ( isset( $delta['type'] ) && \is_string( $delta['type'] ) ) {
-			switch ( $delta['type'] ) {
+		if ( isset( $delta->type ) && \is_string( $delta->type ) ) {
+			switch ( $delta->type ) {
 				case 'text_delta':
 					$expected_type = 'text';
 					break;
@@ -1557,17 +1586,17 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			return;
 		}
 
-		if ( isset( $delta['type'] ) && \is_string( $delta['type'] ) ) {
-			switch ( $delta['type'] ) {
+		if ( isset( $delta->type ) && \is_string( $delta->type ) ) {
+			switch ( $delta->type ) {
 				case 'text_delta':
-					if ( isset( $delta['text'] ) && \is_string( $delta['text'] ) ) {
-						$this->blocks[ $index ]['text'] .= $delta['text'];
+					if ( isset( $delta->text ) && \is_string( $delta->text ) ) {
+						$this->blocks[ $index ]['text'] .= $delta->text;
 					}
 					return;
 
 				case 'thinking_delta':
-					if ( isset( $delta['thinking'] ) && \is_string( $delta['thinking'] ) ) {
-						$this->blocks[ $index ]['thinking'] .= $delta['thinking'];
+					if ( isset( $delta->thinking ) && \is_string( $delta->thinking ) ) {
+						$this->blocks[ $index ]['thinking'] .= $delta->thinking;
 					}
 					return;
 
@@ -1581,14 +1610,14 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					 * surface a no-argument call built from a broken stream
 					 * — flag it like every other malformed tool input.
 					 */
-					if ( ! \array_key_exists( 'partial_json', $delta ) || ! \is_string( $delta['partial_json'] ) ) {
+					if ( ! \property_exists( $delta, 'partial_json' ) || ! \is_string( $delta->partial_json ) ) {
 						$this->malformed_tool_input = true;
 
 						return;
 					}
 
-					$this->blocks[ $index ]['json'] .= $delta['partial_json'];
-					if ( '' !== $delta['partial_json'] ) {
+					$this->blocks[ $index ]['json'] .= $delta->partial_json;
+					if ( '' !== $delta->partial_json ) {
 						$this->blocks[ $index ]['has_json'] = true;
 					}
 					return;

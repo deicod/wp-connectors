@@ -4107,6 +4107,71 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('OK.', $aggregator->aggregated()['content'][0]['text']);
     }
 
+    public function testObjectNessDistinctionsSurviveTheSingleDecode()
+    {
+        /*
+         * GLM9 #15: the frame pipeline decodes each payload ONCE — the
+         * non-associative, object-ness-preserving decode whose tree
+         * every case now reads directly (the associative decode it
+         * replaced is what collapsed {} and [] onto the same empty PHP
+         * array in the first place, and its separate existence doubled
+         * the parse CPU on every output-token frame). The oracle's
+         * observable edges, pinned together: an empty-OBJECT tool input
+         * is the legal no-arguments call; an empty-LIST tool input is
+         * corrupt streamed arguments; an empty-OBJECT usage validates
+         * (zero counts); an empty-LIST usage invalidates the stream.
+         */
+        $startWithInput = static function ( string $input_json ): string {
+            return ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_on1","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"ping","input":' . $input_json . '}}' . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: {"type":"message_stop"}' . "\n\n";
+        };
+
+        $object = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $object->feed($startWithInput('{}'));
+        $object->finish();
+        $this->assertFalse($object->has_malformed_tool_input(), 'The empty OBJECT is the legal no-arguments call shape.');
+        $this->assertInstanceOf(\stdClass::class, $object->aggregated()['content'][0]['input'], 'Object-ness survives into the consolidated payload.');
+
+        $list = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $list->feed($startWithInput('[]'));
+        $list->finish();
+        $this->assertTrue($list->has_malformed_tool_input(), 'The empty LIST is corrupt streamed tool arguments.');
+
+        $startWithUsage = static function ( string $usage_json ): string {
+            return ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_on2","content":[],"usage":' . $usage_json . '}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"X"}}' . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: {"type":"message_stop"}' . "\n\n";
+        };
+
+        $objectUsage = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $objectUsage->feed($startWithUsage('{}'));
+        $objectUsage->finish();
+        $this->assertFalse($objectUsage->has_malformed_event(), 'The empty-OBJECT usage validates as zero counts.');
+        $this->assertSame(0, $objectUsage->aggregated()['usage']['input_tokens'], 'The start-side zero total stands (the delta carries no input side).');
+
+        $listUsage = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $listUsage->feed($startWithUsage('[]'));
+        $listUsage->finish();
+        $this->assertTrue($listUsage->has_malformed_event(), 'The empty-LIST usage invalidates the stream.');
+    }
+
     public function testALateMessageStartDoesNotLaunderEarlyContent()
     {
         // Codex R16 #2 (iv): the finding's exact scenario — content first,
