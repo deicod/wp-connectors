@@ -29,6 +29,7 @@ namespace Deicod\WpConnectors\Zai\Models;
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
+use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -36,15 +37,15 @@ use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleTextGenerationModel;
 use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
+use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
-use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
-use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
+use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
@@ -59,6 +60,7 @@ use Deicod\WpConnectors\Zai\Support\UsageValidator;
  */
 final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGenerationModel {
 	use ThrowsSafeHttpErrors;
+	use SafeGenerationBoundary;
 
 	/**
 	 * Builds the request against the CURRENT plan/region endpoint.
@@ -83,46 +85,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			$data,
 			$this->getRequestOptions()
 		);
-	}
-
-	/**
-	 * Wraps the transporter with the (option-gated) debug logger.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface $http_transporter Transporter to install.
-	 * @return void
-	 */
-	public function setHttpTransporter( \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface $http_transporter ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
-		parent::setHttpTransporter( LoggingHttpTransporter::wrap( $http_transporter ) );
-	}
-
-	/**
-	 * WP-facing generation boundary for DIRECT model use: typed WP_Error.
-	 *
-	 * NOT part of the core prompt flow: wp_ai_client_prompt() dispatches to
-	 * the final generateTextResult() and converts exceptions itself (fixed
-	 * core codes, messages verbatim — no filter), so this wrapper is never
-	 * called there. It exists for code that holds the model directly —
-	 * obtained via ProviderRegistry::getProviderModel(), the only factory
-	 * that binds the HTTP transporter and request auth (a bare
-	 * ZaiProvider::model() yields an unbound model whose generation fails
-	 * before any request) — and wants the plugin's typed, redacted zai_*
-	 * codes (SPEC §6.2) instead of SDK exceptions: through the core builder
-	 * callers get core codes with the same safe messages and correct HTTP
-	 * statuses either way.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param array $prompt Prompt messages (list of Message).
-	 * @return GenerativeAiResult|\WP_Error Result on success; typed, redacted WP_Error on any failure.
-	 */
-	public function generate_text( array $prompt ) { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- WP-flavored direct-use generation boundary; see class docblock.
-		try {
-			return $this->generateTextResult( $prompt );
-		} catch ( \Throwable $e ) {
-			return ErrorMapper::to_wp_error( $e );
-		}
 	}
 
 	/**
@@ -151,37 +113,29 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
-	 * Refuses generation for credentials the availability layer distrusts.
+	 * The availability instance whose credential gate generation consults
+	 * (GLM9 #11 wiring hook — see the SafeGenerationBoundary trait).
 	 *
-	 * Code review GLM1 #1: the R19/R20 credential-refusal gate was consulted
-	 * only by the zai_anthropic surface, so this (OpenAI) surface still
-	 * authenticated a region-pending or definitively-rejected env/constant
-	 * key after a region switch — sending the old region's credential to the
-	 * newly selected endpoint (cross-region disclosure) while the connector
-	 * reported disconnected.
+	 * @since 0.2.0
 	 *
-	 * GLM4 #9 moved the gate PREDICATE and the refusal messages to the
-	 * availability layer; GLM5 #17 absorbed the remaining wrapper
-	 * sequence (the unwired-model skip, the predicate call, the message
-	 * build, the throw) into the one refuse_generation() helper every
-	 * credential consumer consults. This surface's only contribution is
-	 * its WIRING: the model's own SDK getter for the authentication it
-	 * would authenticate with (an unwired model skips the gate, keeping
-	 * the pre-gate exception order — the GLM1 #1 verifier nit).
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return void
-	 * @throws InvalidArgumentException When the credential is region-pending
-	 *                                  or carries a fresh invalid verdict
-	 *                                  for the selected endpoint.
+	 * @return AbstractZaiProviderAvailability
 	 */
-	private function refuse_refused_credentials(): void {
-		( new ZaiProviderAvailability() )->refuse_generation(
-			function () {
-				return $this->getRequestAuthentication();
-			}
-		);
+	protected function credential_gate_availability(): AbstractZaiProviderAvailability {
+		return new ZaiProviderAvailability();
+	}
+
+	/**
+	 * The authentication the credential gate judges: this model's own SDK
+	 * getter for the authentication it would authenticate with (an
+	 * unwired model skips the gate, keeping the pre-gate exception
+	 * order — the GLM1 #1 verifier nit; GLM9 #11 wiring hook).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return RequestAuthenticationInterface
+	 */
+	protected function gate_authentication(): RequestAuthenticationInterface {
+		return $this->getRequestAuthentication();
 	}
 
 	/**

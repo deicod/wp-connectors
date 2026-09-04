@@ -374,4 +374,52 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
 
         $this->assertSame($wrapped, LoggingHttpTransporter::wrap($wrapped), 'The decorator itself is never double-wrapped.');
     }
+
+    public function testBothModelSurfacesShareTheOneGenerationBoundaryTrait()
+    {
+        /*
+         * GLM9 #11: generate_text() and setHttpTransporter()'s logging
+         * wrap were byte-identical between the two model classes
+         * (different SDK parents, so no common base is possible), and
+         * the credential-gate sequence differed only in its wiring —
+         * they live in the one SafeGenerationBoundary trait now, a
+         * sibling of ThrowsSafeHttpErrors, with each surface owning
+         * only its two wiring hooks. This pin holds the structure: both
+         * classes use the trait, and each surface's
+         * credential_gate_availability() hook routes to ITS OWN
+         * availability class (one provider's gate must never consult
+         * the other's verdict state).
+         */
+        $zai_model = $this->model();
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $anthropic_model = \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3');
+
+        foreach (array(
+            'zai' => array($zai_model, 'Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability'),
+            'zai_anthropic' => array($anthropic_model, 'Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability'),
+        ) as $label => $surface) {
+            $model = $surface[0];
+            $availability_class = $surface[1];
+
+            $this->assertContains(
+                'Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary',
+                class_uses($model) ?: array(),
+                "[{$label}] The model surface must take the shared generation boundary."
+            );
+
+            $gate = \Closure::bind(
+                static function () use ($model) {
+                    return $model->credential_gate_availability();
+                },
+                null,
+                get_class($model)
+            );
+
+            $this->assertInstanceOf(
+                $availability_class,
+                $gate(),
+                "[{$label}] The credential-gate hook routes to this surface's own availability class."
+            );
+        }
+    }
 }

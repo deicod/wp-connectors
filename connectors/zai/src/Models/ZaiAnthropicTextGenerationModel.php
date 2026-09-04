@@ -50,16 +50,16 @@ use WordPress\AiClient\Results\Enums\FinishReasonEnum;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
 use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
+use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
-use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\JsonShape;
-use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
+use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
 use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
@@ -72,6 +72,7 @@ use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
  */
 final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implements TextGenerationModelInterface {
 	use ThrowsSafeHttpErrors;
+	use SafeGenerationBoundary;
 
 	/**
 	 * Default maximum number of tokens for one generation.
@@ -87,18 +88,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	public const DEFAULT_MAX_TOKENS = 4096;
 
 	/**
-	 * Wraps the transporter with the (option-gated) debug logger.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface $http_transporter Transporter to install.
-	 * @return void
-	 */
-	public function setHttpTransporter( \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface $http_transporter ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
-		parent::setHttpTransporter( LoggingHttpTransporter::wrap( $http_transporter ) );
-	}
-
-	/**
 	 * Returns the wired authentication, protocol-wrapped for this surface.
 	 *
 	 * @since 0.2.0
@@ -110,27 +99,33 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
-	 * WP-facing generation boundary for DIRECT model use: typed WP_Error.
-	 *
-	 * NOT part of the core prompt flow: wp_ai_client_prompt() dispatches to
-	 * generateTextResult() and converts exceptions itself (fixed core codes,
-	 * messages verbatim — no filter), so this wrapper is never called there.
-	 * It exists for code that holds the model directly — obtained via
-	 * ProviderRegistry::getProviderModel(), the only factory that binds the
-	 * HTTP transporter and request auth — and wants the plugin's typed,
-	 * redacted zai_* codes (SPEC §6.2) instead of SDK exceptions.
+	 * The availability instance whose credential gate generation consults
+	 * (GLM9 #11 wiring hook — see the SafeGenerationBoundary trait).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param array $prompt Prompt messages (list of Message).
-	 * @return GenerativeAiResult|\WP_Error Result on success; typed, redacted WP_Error on any failure.
+	 * @return AbstractZaiProviderAvailability
 	 */
-	public function generate_text( array $prompt ) { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- WP-flavored direct-use generation boundary; see class docblock.
-		try {
-			return $this->generateTextResult( $prompt );
-		} catch ( \Throwable $e ) {
-			return ErrorMapper::to_wp_error( $e );
-		}
+	protected function credential_gate_availability(): AbstractZaiProviderAvailability {
+		return new ZaiAnthropicProviderAvailability();
+	}
+
+	/**
+	 * The authentication the credential gate judges: the RAW parent getter,
+	 * not this model's protocol-wrapping getRequestAuthentication() override
+	 * — the override's wrap() threw a foreign-wiring failure through the
+	 * gate's RuntimeException-only skip as a 400 BEFORE validate_request()
+	 * (GLM3 #9); the availability gate keys on the API key alone, which the
+	 * raw instance carries, and wrap() refuses foreign wiring with the same
+	 * binding-failure RuntimeException, so wherever the failure eventually
+	 * surfaces it maps to 500 zai_error, never 400. GLM9 #11 wiring hook.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return RequestAuthenticationInterface
+	 */
+	protected function gate_authentication(): RequestAuthenticationInterface {
+		return parent::getRequestAuthentication();
 	}
 
 	/**
@@ -172,48 +167,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$this->throwIfNotSuccessful( $response );
 
 		return $this->parseResponseToGenerativeAiResult( $response );
-	}
-
-	/**
-	 * Refuses generation for credentials the availability layer distrusts.
-	 *
-	 * Codex R19 #3: an env/constant credential cannot be deleted by a
-	 * region switch, so the settings layer marks that exact key
-	 * region-pending and the availability layer persists definitive
-	 * invalid verdicts — yet this public direct-generation path
-	 * authenticated unconditionally, sending the old region's credential
-	 * to the newly selected regional endpoint even while the connector
-	 * reported disconnected.
-	 *
-	 * GLM4 #9 moved the gate PREDICATE and the refusal messages to the
-	 * availability layer; GLM5 #17 absorbed the remaining wrapper
-	 * sequence (the unwired-model skip, the predicate call, the message
-	 * build, the throw) into the one refuse_generation() helper every
-	 * credential consumer consults — an unbound model skips the gate,
-	 * preserving the pre-gate exception order (GLM2 #3). This surface's
-	 * only contribution is its WIRING: the RAW parent getter, not this
-	 * model's protocol-wrapping getRequestAuthentication() override —
-	 * the override's wrap() call threw a foreign-wiring failure through
-	 * the gate's RuntimeException-only skip as a 400 BEFORE
-	 * validate_request() (GLM3 #9); the availability gate keys on the
-	 * API key alone, which the raw instance carries, and wrap() refuses
-	 * foreign wiring with the same binding-failure RuntimeException, so
-	 * wherever the failure eventually surfaces it maps to 500 zai_error,
-	 * never 400.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return void
-	 * @throws InvalidArgumentException When the credential is region-pending
-	 *                                  or carries a fresh invalid verdict
-	 *                                  for the selected endpoint.
-	 */
-	private function refuse_refused_credentials(): void {
-		( new ZaiAnthropicProviderAvailability() )->refuse_generation(
-			function () {
-				return parent::getRequestAuthentication();
-			}
-		);
 	}
 
 	/**
