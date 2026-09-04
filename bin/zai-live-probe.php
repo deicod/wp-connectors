@@ -156,7 +156,13 @@ if ( ! in_array( $surface, array( 'openai', 'anthropic' ), true ) ) {
  * risk the plan/region whitelists exist for. Every fact now rides its
  * owner: the settings layer's OPTION_PLAN/OPTION_REGION, the
  * availability layer's KEY_OPTION/STATE_OPTION, the endpoint layer's
- * discovery_transient_ids().
+ * discovery_transient_ids() — and (GLM11 #5) the provider layer's
+ * PROVIDER_ID and the settings layer's DEFAULT_PLAN, the last two
+ * hand-composed identity literals: a PROVIDER_ID rename would have
+ * left Plugin::register() under the new id while the probe wired
+ * setProviderRequestAuthentication()/getProviderModel() to the stale
+ * one, failing with a diagnostic that never points at the stale
+ * literal.
  */
 $zai_probe_surfaces = array(
     'openai' => array(
@@ -164,16 +170,16 @@ $zai_probe_surfaces = array(
         'endpoint'     => ZaiEndpoint::class,
         'provider'     => ZaiProvider::class,
         'availability' => ZaiProviderAvailability::class,
-        'provider_id'  => 'zai',
-        'default_plan' => 'coding',
+        'provider_id'  => ZaiProvider::PROVIDER_ID,
+        'default_plan' => PlanRegionSettings::DEFAULT_PLAN,
     ),
     'anthropic' => array(
         'settings'     => ZaiAnthropicPlanRegionSettings::class,
         'endpoint'     => ZaiAnthropicEndpoint::class,
         'provider'     => ZaiAnthropicProvider::class,
         'availability' => ZaiAnthropicProviderAvailability::class,
-        'provider_id'  => 'zai_anthropic',
-        'default_plan' => 'general',
+        'provider_id'  => ZaiAnthropicProvider::PROVIDER_ID,
+        'default_plan' => ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN,
     ),
 );
 

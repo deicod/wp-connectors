@@ -122,5 +122,28 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         foreach (array('settings', 'endpoint', 'provider', 'availability', 'provider_id', 'default_plan') as $fact) {
             $this->assertStringContainsString("['{$fact}']", $source, "The {$fact} fact rides the per-surface table.");
         }
+
+        /*
+         * GLM11 #5: two IDENTITY facts stayed hand-composed after the
+         * GLM10 #15 fold — provider_id and default_plan were quoted
+         * literals, so a PROVIDER_ID or DEFAULT_PLAN rename would have
+         * registered Plugin::register() under a new id while the probe
+         * still wired its authentication to the stale one (and
+         * defaulted to the stale plan, printing it as evidence). The
+         * table rows ride the owner constants now; the pins forbid
+         * the quoted-literal shape outright, so the next hand-composed
+         * identity fact fails the source scan, not a live run.
+         */
+        foreach (array(
+            'ZaiProvider::PROVIDER_ID',
+            'ZaiAnthropicProvider::PROVIDER_ID',
+            'PlanRegionSettings::DEFAULT_PLAN',
+            'ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN',
+        ) as $owner_constant) {
+            $this->assertStringContainsString($owner_constant, $source, "The identity fact rides its owner constant ({$owner_constant}).");
+        }
+        foreach (array('provider_id', 'default_plan') as $fact) {
+            $this->assertSame(0, preg_match("/['\"]{$fact}['\"]\s*=>\s*['\"]/", $source), "The {$fact} fact must ride a constant, not a quoted literal.");
+        }
     }
 }
