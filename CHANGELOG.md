@@ -6,6 +6,93 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM12 code review)
+
+- Availability verdicts read the models BODY, not the bare 2xx: z.ai's
+  Anthropic `/v1/models` route answers HTTP 200 for any or no
+  credential with the rejection in the body
+  (`{"code":401,"msg":"token expired or incorrect","success":false}`;
+  live curl capture 2026-09-04), so the status-only rule could never
+  detect an invalid key on that surface and its unauthenticated 200
+  cleared region-switch distrust. A 2xx now decides by body — an
+  authenticated model list (the parser's minimal `data[].id` entry
+  rule) is valid, the failure envelope with a definitive-rejection code
+  is invalid, anything else stays inconclusive — and the M2
+  exit-criterion test is re-mocked against the real shape (the old 401
+  mock passed only against a response the live endpoint never
+  produces). The probe's models response also seeds the discovery
+  transient through the shared parser, collapsing the cold-window
+  double round trip to the same URL into one fetch (catalog-unusable
+  bodies seed nothing; the live probe still clears its caches before
+  each acceptance step).
+
+- The zai (OpenAI-compat) surface gains the twin-parity mechanics it
+  was missing: the glm8-5 stream-label JSON fallback (a complete
+  chat.completion body mislabeled `text/event-stream` now completes the
+  generation instead of dying as no-usable-chunk), empty-list omission
+  (an explicitly-cleared `[]` on the non-nullable setters means "not
+  set", never `"stop":[]`/`"tools":[]` on the wire), a typed
+  pre-transport rejection for empty declared-tool names (the
+  encodability check passed `""` straight to the misattributed 400),
+  and absent-`total_tokens` derivation by prompt+completion summation
+  (the lenient GLM7 #8 tolerance stays for the other members; a present
+  total — even an explicit 0 — stands verbatim).
+
+- Tool-argument replay verdicts are stamped at acceptance instead of
+  re-derived per request: the parsers construct a
+  `ReplayValidatedFunctionCall` (sound because the SDK DTO is
+  immutable) and both surfaces' outbound guards skip their serializing
+  oracle for stamped calls — first-seen caller-built values keep the
+  full oracle. The stamp also restores parse/replay agreement for the
+  exact big-integer literals the guard now accepts: a beyond-int
+  literal replays when the platform decode keeps it EXACT (1e20, 2^63 —
+  re-read through the platform's own `%.0f` formatter against the raw
+  wire token, with JSON strings stripped and exponent giants rejected
+  through the encode oracle), while genuinely lossy literals
+  (…809 collapsing to …808) still reject; decoded-only paths keep the
+  conservative walker because post-decode the two are
+  indistinguishable. The old blanket rejection failed valid
+  generations on a factually false justification (every double ≥ 2^63
+  is integral).
+
+- The generic encodability net lives once at the `createRequest()`
+  chokepoint over the fully assembled request params: any unassemblable
+  value in ANY member — known, forgotten, or added by a future SDK
+  release — rejects as the typed pre-transport 400 instead of the
+  transport's untyped JsonException, closing the per-family lockstep
+  that already broke once (GLM6 #5's verifier round) and is live
+  today for members neither guard layer knows.
+
+- A zero-normalized pre-sentinel usage member (`"prompt_tokens":0` on
+  every chunk) no longer blocks the post-`[DONE]` gap-fill: zero is
+  exactly the lenient validator's absent-member default, so such a
+  member carries no token data and the appending gateway's real final
+  counts complete the payload instead of silently zeroing it; one
+  non-zero count keeps the member standing, and corrupt members are
+  deliberately not rescued.
+
+- The settings-change discovery-transient sweep runs regardless of the
+  endpoint owner's load state: a plan switch on a partially-broken
+  install no longer leaves the old combination's 12h transient alive.
+  The ids come from the endpoint owner's one formula when it loads and
+  from the settings layer's own identifier constants when it cannot
+  (pinned equal by a consistency test), with the `_miss` suffix still
+  riding the shared constant.
+
+- The live probe's discovery-source evidence names the URL the
+  selected surface actually requested (`models_url()`, the MODELS_ROUTE
+  owner) instead of hardcoding the Anthropic route for both surfaces.
+
+- Internal drift closures: the Anthropic model's private
+  `is_schema_list()` merged into the shared `JsonShape::is_list()`
+  predicate the same file already calls; the four hand-copied
+  corrupt-declared-event classifications in the Anthropic SSE
+  aggregator ride one `flag_corrupt_event()` helper (the copies drifted
+  twice before — GLM9 #2, GLM10 #4); and the byte-identical
+  capture/snapshot/reject test helpers across the twin mapping suites
+  live once in `WpConnectorsTestCase`, parameterized by per-suite facts,
+  with the already-forked `captureRequest()` try/catch reconciled.
+
 ### Fixed (zai / M2 — GLM11 code review)
 
 - The GLM10 #9 label drift guard grew teeth and one mechanic: the

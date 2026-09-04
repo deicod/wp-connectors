@@ -21,6 +21,9 @@ Purpose: single source of truth for review candidates that were **refuted or con
 - **Version bump on sub-PR releases** (GLM3-ref): consciously deferred to M7 release tooling, not a review finding.
 - **Unknown content-block types dropped → stop-reason consistency documented** (GLM1 #15, commit 2cf214c): vendor-quirk dependent, not triggerable via own requests; documented in code, not fixed.
 - **zai-surface `has_more` forever-degradation** (GLM3 #14-tenant, R15 design): conscious design (R15); degradation path documented. Do not re-flag as a bug; propose as an improvement only with new impact evidence.
+- **Big-integer replay split rule** (glm12-8): raw-wire paths (zai arguments string, Anthropic accumulated input_json) accept beyond-int literals the platform decode keeps EXACT (`%.0f`-verified) and reject only true precision loss; decoded-only paths (Anthropic non-streaming input, pre-decoded zai members, the consolidated-payload oracle) keep the CONSERVATIVE walker rejection because post-decode exact and lossy big floats are the same double. Do not flag the conservative rejection as a false positive, and do not flag the precise acceptance as missing validation.
+- **Replay-stamp skip** (glm12-12): outbound replay guards skip the serializing oracle for `ReplayValidatedFunctionCall` instances — the args were validated at inbound acceptance and the SDK DTO is immutable (no setters), so the stamp can never outlive its arguments. Caller-built plain SDK instances keep the full oracle. Do not flag the skip as missed outbound validation.
+- **Unrecognized 2xx probe bodies stay inconclusive** (glm12-1): only the models-list shape is VALID and only the `success:false`+definitive-code envelope is INVALID; any other 2xx body must neither report connected nor persist an unproven invalid verdict (core clears keys on false). Non-credential envelope codes (1113 balance) stay inconclusive like their 429 twin.
 
 ## Verification-protocol decisions
 
