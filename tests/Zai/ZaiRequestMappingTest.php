@@ -779,6 +779,53 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->addToAssertionCount(1);
     }
 
+    public function testTheDecodedFastPathAgreesWithTheFullOracle()
+    {
+        /*
+         * GLM9 #13: the inbound acceptance points call the replay guard
+         * on json_decode() products — the parse, both SSE acceptance
+         * points, and the arguments of every replayed historical tool
+         * call — so the guard ran its encode→decode→re-encode round
+         * trip on already-validated immutable values, O(K·S)
+         * serialization per request growing with the conversation. The
+         * structural fast path decides decode-origin values without
+         * building any string. Equivalence pin: across a matrix of
+         * decode-origin values (the hazards included), the fast path
+         * returns exactly what the full oracle returns.
+         */
+        $json_values = array(
+            'plain object' => '{"city":"Oslo","temp":21}',
+            'nested empty shapes' => '{"a":{},"b":{"c":[]}}',
+            'numeric-keyed object' => '{"0":"x","1":"y"}',
+            'ordinary float' => '{"v":1.5}',
+            'negative zero' => '{"v":-0.0}',
+            'unicode string' => '{"note":"héllo ✨"}',
+            'php-int-max integer' => '{"v":9223372036854775807}',
+            'INF (1e999)' => '{"v":1e999}',
+            'out-of-range integral float' => '{"v":9.3e18}',
+            'empty object' => '{}',
+            'null member' => '{"v":null}',
+        );
+
+        foreach ($json_values as $label => $json) {
+            $decoded = json_decode($json);
+            $this->assertNotNull($decoded, "[{$label}] the fixture must decode.");
+
+            $this->assertSame(
+                Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard::is_replayable($decoded),
+                Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard::is_replayable_decoded($decoded),
+                "[{$label}] the decoded fast path must agree with the full oracle."
+            );
+        }
+
+        // The decode-origin hazards reject through the fast path alone,
+        // and the ordinary shapes pass.
+        $guard = 'Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard';
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":1e999}')), 'INF (the 1e999 decode) must reject.');
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":9.3e18}')), 'An out-of-range integral float must reject.');
+        $this->assertTrue($guard::is_replayable_decoded(json_decode('{"v":1.5}')), 'An ordinary float replays.');
+    }
+
     public function testUnencodableToolCallIdentitiesAreRejectedBeforeTransport()
     {
         // The id and name ride the tool_calls member verbatim; both are

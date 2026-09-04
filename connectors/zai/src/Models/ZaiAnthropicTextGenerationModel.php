@@ -1701,8 +1701,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * consumer arguments that detonate on replay. The shared
 				 * guard is the same one the SSE acceptance points use, so
 				 * the two transports of one generation never diverge.
+				 * GLM9 #13: the decoded fast path — $args is a
+				 * json_decode() product on every branch above.
 				 */
-				if ( null !== $args && ! ToolArgsReplayGuard::is_replayable( $args ) ) {
+				if ( null !== $args && ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
 					throw ResponseException::fromInvalidData(
 						'z.ai',
 						'content',

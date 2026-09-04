@@ -538,8 +538,12 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					 * model a FunctionCall whose arguments detonate at the
 					 * transport on the turn's very first replay — the same
 					 * reason non-object decodes fail above.
+					 *
+					 * GLM9 #13: the decoded fast path — this value is
+					 * json_decode() output (the structural walker alone
+					 * decides, no serialization round trip).
 					 */
-					if ( ! ToolArgsReplayGuard::is_replayable( $decoded ) ) {
+					if ( ! ToolArgsReplayGuard::is_replayable_decoded( $decoded ) ) {
 						$this->malformed_tool_input = true;
 
 						return null;
@@ -1383,9 +1387,10 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 * GLM4 #2: the initial input must equally decode to a
 				 * REPLAYABLE value (INF/precision-loss floats are the
 				 * conversation-poison class; see the accumulated-JSON
-				 * path's guard).
+				 * path's guard). GLM9 #13: the decoded fast path — this
+				 * value is json_decode() output.
 				 */
-				if ( ! ToolArgsReplayGuard::is_replayable( $raw_input ) ) {
+				if ( ! ToolArgsReplayGuard::is_replayable_decoded( $raw_input ) ) {
 					$this->malformed_tool_input = true;
 				} else {
 					$input = $raw_input;

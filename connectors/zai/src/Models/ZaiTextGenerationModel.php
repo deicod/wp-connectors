@@ -505,10 +505,16 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			}
 		}
 
-		// GLM5 #2: a value the outbound replay cannot losslessly re-encode
-		// must not become a generation — it would poison every later
-		// request of the conversation (see the docblock).
-		if ( ! ToolArgsReplayGuard::is_replayable( $args ) ) {
+		/*
+		 * GLM5 #2: a value the outbound replay cannot losslessly re-encode
+		 * must not become a generation — it would poison every later
+		 * request of the conversation (see the docblock). GLM9 #13: the
+		 * decoded fast path — every construction of $args above is a
+		 * json_decode() product (the SDK parent's associative decode or
+		 * ToolArgsObjectNess::from_raw()), so the structural walker
+		 * alone decides, no serialization round trip.
+		 */
+		if ( ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
 			throw ResponseException::fromInvalidData(
 				'z.ai',
 				'tool_calls',

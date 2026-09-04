@@ -94,6 +94,49 @@ final class ToolArgsReplayGuard {
 	}
 
 	/**
+	 * Whether a json_decode()-PRODUCED value can re-enter a request as-is
+	 * (GLM9 #13: the structural fast path).
+	 *
+	 * The full oracle builds up to three strings (encode, decode,
+	 * re-encode) per call — and the inbound acceptance points invoked it
+	 * on already-validated immutable values at every layer: the parse,
+	 * both SSE acceptance points, and per replayed historical tool call
+	 * on every outbound request, O(K·S) serialization work that grows
+	 * with the conversation even though the arguments never change after
+	 * decode. For a value json_decode() PRODUCED, every hazard the
+	 * string round trip detects is impossible by construction:
+	 *
+	 * - strings: json_decode() rejects invalid UTF-8 and malformed
+	 *   surrogate escapes, so every string in the tree encodes;
+	 * - NAN: JSON has no NAN literal, so no decode produces one (INF,
+	 *   the 1e999 decode, is another matter — see below);
+	 * - resources and recursive structures cannot survive a decode;
+	 * - precision: PHP's json_encode uses the shortest-roundtrip float
+	 *   representation, so every finite float re-decodes to itself and
+	 *   the stability check provably passes.
+	 *
+	 * The two REAL hazards a decode can produce are exactly the ones the
+	 * structural walker detects without building any string: INF
+	 * (integral and beyond the int range — the walker's own branch) and
+	 * an integral float beyond PHP_INT_MAX. The fast path is therefore
+	 * the walker alone; it is semantically identical to the full oracle
+	 * on every decode-origin value (whose encode/stability phases
+	 * provably pass) at O(tree) with zero serialization. Callers handing
+	 * the guard CALLER-built values (the outbound replay sites) must
+	 * keep is_replayable() — those trees can carry NAN, invalid UTF-8,
+	 * resources, and recursion the walker alone would miss.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $value A tree produced by json_decode() (arrays,
+	 *                     stdClass, scalars).
+	 * @return bool True when the value replays losslessly.
+	 */
+	public static function is_replayable_decoded( $value ): bool {
+		return ! self::has_out_of_range_integer_float( $value );
+	}
+
+	/**
 	 * Whether the tree carries an integral float beyond the platform int.
 	 *
 	 * @since 0.2.0
