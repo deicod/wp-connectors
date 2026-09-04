@@ -47,6 +47,7 @@ use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
 use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
+use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
@@ -256,6 +257,30 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		}
 
 		if ( null === $aggregated ) {
+			/*
+			 * GLM12 #3 (the glm8-5 mechanism, ported from the
+			 * zai_anthropic twin): the sniff trusts a
+			 * text/event-stream Content-Type before inspecting the body
+			 * (the documented precedence — the body sniff is the fallback
+			 * for mangled/omitted headers, not a veto of the header), so
+			 * a doubly-nonconforming gateway that labels a VALID JSON
+			 * chat.completion body with the stream header routed the body
+			 * here — one JSON object, no data: field line, nothing to
+			 * aggregate — and a byte-identical response succeeded on the
+			 * twin. A stream whose aggregation produced nothing usable is
+			 * exactly the signal the label may have lied: before
+			 * surfacing the stream verdict, try the JSON the label
+			 * promised the body wasn't. A body that parses as a complete
+			 * chat.completion completes the generation; anything else
+			 * keeps the stream-typed error below — the header DID
+			 * promise a stream.
+			 */
+			$fallback = $this->json_fallback_result( $response );
+
+			if ( null !== $fallback ) {
+				return $fallback;
+			}
+
 			throw ResponseException::fromInvalidData(
 				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
@@ -413,6 +438,48 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				'response',
 				'The chat-completions payload was malformed.'
 			);
+		}
+	}
+
+	/**
+	 * The JSON fallback for a body the Content-Type mislabeled as a stream
+	 * (GLM12 #3 — the glm8-5 mechanism ported from the zai_anthropic
+	 * twin), or null when the body is no chat.completion payload.
+	 *
+	 * Runs only AFTER SSE aggregation produced nothing usable (the
+	 * caller's no-usable-event channel), so a genuinely-decodable stream
+	 * never re-routes: only a body that decodes as a JSON OBJECT is even
+	 * attempted, and only a full non-streaming parse — the same decode,
+	 * usage validation, and SDK parse the unlabeled JSON path runs —
+	 * succeeds. A ResponseException from that parse (a JSON object, but
+	 * not a valid chat.completion body) returns null so the caller
+	 * surfaces its stream-typed error; the header DID promise a stream.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response $response The stream-labeled response.
+	 * @return GenerativeAiResult|null The parsed result, or null when the
+	 *                                 body is not a chat.completion payload.
+	 */
+	private function json_fallback_result( Response $response ): ?GenerativeAiResult {
+		$body = (string) $response->getBody();
+
+		if ( ! \is_object( json_decode( SseFrameBuffer::strip_stream_prefix( $body ) ) ) ) {
+			return null;
+		}
+
+		try {
+			list( $data, $raw ) = JsonBodyDecoder::decode( $body );
+
+			$this->reject_malformed_usage( $data, $raw );
+
+			return $this->parseNonStreamBody(
+				null !== $data
+					? new PreDecodedResponse( $response->getStatusCode(), $data )
+					: $response
+			);
+		} catch ( ResponseException $e ) {
+			return null;
 		}
 	}
 

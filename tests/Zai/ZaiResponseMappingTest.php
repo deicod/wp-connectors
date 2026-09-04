@@ -638,6 +638,63 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testAJsonBodyMislabeledAsAStreamFallsBackToTheNonStreamingParse()
+    {
+        /*
+         * GLM12 #3 (the glm8-5 mechanism ported from the zai_anthropic
+         * twin): a doubly-nonconforming gateway that labels a complete
+         * chat.completion JSON body with Content-Type: text/event-stream
+         * routed the body to the SSE aggregator, which found no data:
+         * field line and killed a valid generation — while the
+         * byte-identical response succeeded on the twin. The no-usable-
+         * event verdict defers to the JSON the label promised the body
+         * wasn't: a full non-streaming parse (usage validation included)
+         * completes the generation.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), HttpResponseFactory::openAiChatCompletionBody('wp-connectors json fallback ok'));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('wp-connectors json fallback ok', $result->toText());
+        $this->assertSame(15, $result->getTokenUsage()->getTotalTokens(), 'The fallback runs the full non-streaming parse, usage included.');
+    }
+
+    public function testAPrettyPrintedJsonBodyMislabeledAsAStreamFallsBackToo()
+    {
+        /*
+         * GLM12 #3 (framing edge): a pretty-printed JSON body contains
+         * blank lines, so the frame buffer splits it into several
+         * frames — none carrying a data: field. Aggregation still
+         * produces nothing usable, and the fallback still recovers the
+         * body.
+         */
+        $pretty = wp_json_encode(json_decode(HttpResponseFactory::openAiChatCompletionBody('pretty fallback ok')), JSON_PRETTY_PRINT);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), (string) $pretty);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('pretty fallback ok', $result->toText());
+    }
+
+    public function testAStreamLabeledBodyThatIsNoCompletionKeepsTheStreamTypedError()
+    {
+        /*
+         * GLM12 #3 (the negative edge): the fallback is a RECOVERY, not a
+         * reroute — a body that is no chat.completion payload (an empty
+         * JSON object, a plain string) keeps the stream-typed error; the
+         * header DID promise a stream.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), '{}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream-labeled empty object must keep the stream-typed rejection.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('No usable chat.completion.chunk event was received.', $e->getMessage());
+        }
+    }
+
     public function testTheNonStreamingPathDecodesTheBodyOnceAndHandsOffPreDecoded()
     {
         /*
@@ -654,9 +711,9 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         );
 
         $this->assertSame(
-            2,
+            3,
             preg_match_all('/new PreDecodedResponse\(/', $source),
-            'Both the streamed and non-streamed paths must hand the parser the pre-decoded payload.'
+            'The streamed, non-streamed, and JSON-fallback paths must hand the parser the pre-decoded payload (GLM12 #3 added the third hand-off).'
         );
         $this->assertSame(
             0,
