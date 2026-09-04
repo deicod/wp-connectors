@@ -1070,6 +1070,16 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
          * only its own label, which is why the domain literal in the
          * anthropic model's __() calls never tripped the comma
          * anchor's blind spots.
+         *
+         * Scope (GLM11 #4, rescoping the GLM10 #9 verifier round's
+         * plugin-wide wording): the invariant pins the MODEL and
+         * DISCOVERY rejections — the guarded files above. The
+         * endpoint layer's unknown-combination message deliberately
+         * keeps the z.ai brand (the child-owned
+         * UNKNOWN_ENDPOINT_LABEL, 'z.ai' / 'z.ai Anthropic' — GLM8
+         * #10): that is display-facing branding, not a credential or
+         * parsing rejection, so the endpoint files are not guarded
+         * here.
          */
         $banned_labels = array('z.ai', ZaiProviderAvailability::REFUSAL_LABEL, ZaiAnthropicProviderAvailability::REFUSAL_LABEL);
         foreach (array(
