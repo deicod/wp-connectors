@@ -54,7 +54,7 @@ final class AdvertisedUsageGuard {
 	 *
 	 * @param ModelConfig $config         The model configuration.
 	 * @param array       $prompt         Prompt messages (list of Message).
-	 * @param string      $provider_label Provider name for the messages ('z.ai' or 'zai_anthropic').
+	 * @param string      $provider_label Provider name for the messages ('zai' or 'zai_anthropic' — the surfaces' PROVIDER_LABEL, GLM10 #9).
 	 * @return void
 	 * @throws InvalidArgumentException When the request uses an unadvertised capability.
 	 */

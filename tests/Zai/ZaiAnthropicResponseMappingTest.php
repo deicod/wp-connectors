@@ -5644,7 +5644,8 @@ $body = ''
             $this->model()->generateTextResult($this->prompt());
             $this->fail('An all-malformed stream must throw.');
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
-            $this->assertStringContainsString('z.ai', $e->getMessage());
+            // GLM10 #9: the surface's one unified provider label.
+            $this->assertStringContainsString('Unexpected zai_anthropic API response', $e->getMessage());
             $this->assertStringNotContainsString('broken', $e->getMessage(), 'Raw event payloads must not be echoed.');
         }
     }

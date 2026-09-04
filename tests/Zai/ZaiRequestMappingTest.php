@@ -24,6 +24,10 @@ use WordPress\AiClient\Tools\DTO\FunctionCall;
 use WordPress\AiClient\Tools\DTO\FunctionDeclaration;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
+use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
+use Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel;
+use Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel;
 
 final class ZaiRequestMappingTest extends WpConnectorsTestCase
 {
@@ -1013,5 +1017,44 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         }
 
         $this->assertNoHttpRequests();
+    }
+
+    public function testEachSurfaceNamesItselfOneWayInRejectionMessages()
+    {
+        /*
+         * GLM10 #9: each surface's guards and rejections interpolate ONE
+         * provider label — ridden on the availability owner's
+         * REFUSAL_LABEL — and the model sources carry no bare label
+         * literals. The zai surface previously mixed 'z.ai' (advertised
+         * guards, ResponseException labels) and 'zai' (JsonEncodeGuard
+         * sites) across ~25 sites; the anthropic surface mixed 'z.ai'
+         * and 'zai_anthropic' across ~40 — one surface's user-facing
+         * rejections named the provider two different ways.
+         */
+        $this->assertSame(
+            ZaiProviderAvailability::REFUSAL_LABEL,
+            (new \ReflectionClass(ZaiTextGenerationModel::class))->getConstant('PROVIDER_LABEL'),
+            'The zai model rides the availability owner\'s label.'
+        );
+        $this->assertSame(
+            ZaiAnthropicProviderAvailability::REFUSAL_LABEL,
+            (new \ReflectionClass(ZaiAnthropicTextGenerationModel::class))->getConstant('PROVIDER_LABEL'),
+            'The zai_anthropic model rides the availability owner\'s label.'
+        );
+
+        // The drift guard: no bare label literals remain in either model.
+        foreach (array(
+            ZaiTextGenerationModel::class => array("z.ai", 'zai'),
+            ZaiAnthropicTextGenerationModel::class => array("z.ai", 'zai_anthropic'),
+        ) as $model => $labels) {
+            $source = (string) file_get_contents((new \ReflectionClass($model))->getFileName());
+            foreach ($labels as $label) {
+                $this->assertSame(
+                    0,
+                    preg_match('/[\'"]' . preg_quote($label, '/') . '[\'"],/', $source),
+                    "{$model} must interpolate the label constant, not the bare literal '{$label}'."
+                );
+            }
+        }
     }
 }

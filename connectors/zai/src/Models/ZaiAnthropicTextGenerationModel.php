@@ -88,6 +88,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	public const DEFAULT_MAX_TOKENS = 4096;
 
 	/**
+	 * The per-surface provider label interpolated into every guard and
+	 * rejection message (GLM10 #9).
+	 *
+	 * The label was a bare string literal at ~40 call sites that mixed
+	 * 'z.ai' (the ResponseException labels) and 'zai_anthropic' (the
+	 * guard sites) within this one surface. One constant — ridden on
+	 * the availability owner's REFUSAL_LABEL, the same identity the
+	 * credential-refusal messages carry — makes every message name the
+	 * provider exactly one way.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	private const PROVIDER_LABEL = ZaiAnthropicProviderAvailability::REFUSAL_LABEL;
+
+	/**
 	 * Returns the wired authentication, protocol-wrapped for this surface.
 	 *
 	 * @since 0.2.0
@@ -209,7 +226,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * JsonEncodeGuard's raw-oracle rationale), not the
 			 * transport's raw JsonException surfaced as the generic 500.
 			 */
-			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', 'zai_anthropic' );
+			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', self::PROVIDER_LABEL );
 
 			$params['system'] = $system_instruction;
 		}
@@ -244,7 +261,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * as text parts, GLM3 #4) — the twin loops this extraction
 			 * replaced had already drifted once.
 			 */
-			JsonEncodeGuard::must_encode_stop_sequences( $stop_sequences, 'zai_anthropic' );
+			JsonEncodeGuard::must_encode_stop_sequences( $stop_sequences, self::PROVIDER_LABEL );
 
 			$params['stop_sequences'] = $stop_sequences;
 		}
@@ -301,7 +318,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * returns false for a string in production, so a guard on it
 			 * was dead code outside the test stub.
 			 */
-			$encoded_schema = JsonEncodeGuard::encode( $output_schema, 'the configured output schema', 'zai_anthropic' );
+			$encoded_schema = JsonEncodeGuard::encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
 
 			$guidance .= "\n" . sprintf(
 				/* translators: %s: a JSON Schema document (compact JSON). */
@@ -353,8 +370,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * generic 500 instead of the typed pre-transport 400 every
 			 * neighboring wire string receives.
 			 */
-			JsonEncodeGuard::must_encode( $name, 'a declared tool function name', 'zai_anthropic' );
-			JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', 'zai_anthropic' );
+			JsonEncodeGuard::must_encode( $name, 'a declared tool function name', self::PROVIDER_LABEL );
+			JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
 
 			/*
 			 * R18 (inline 3906485728): a returned tool_use identifies the
@@ -407,7 +424,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * object normalization below.
 			 */
 			if ( \is_array( $input_schema ) && array() !== $input_schema ) {
-				JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', 'zai_anthropic' );
+				JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
 			}
 
 			if ( null === $input_schema || array() === $input_schema ) {
@@ -986,7 +1003,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * single-sourced it; see there for why wp_json_encode() and
 			 * mb_check_encoding() are not options).
 			 */
-			JsonEncodeGuard::must_encode( $text, 'a message text part', 'zai_anthropic' );
+			JsonEncodeGuard::must_encode( $text, 'a message text part', self::PROVIDER_LABEL );
 
 			return array(
 				'type' => 'text',
@@ -1007,7 +1024,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * shared JsonEncodeGuard, the same one the zai surface's
 			 * GLM7 #7 contract lives in.
 			 */
-			JsonEncodeGuard::must_encode_tool_call_identity( $function_call, 'zai_anthropic' );
+			JsonEncodeGuard::must_encode_tool_call_identity( $function_call, self::PROVIDER_LABEL );
 
 			/*
 			 * The Messages protocol requires an OBJECT for tool_use input.
@@ -1098,7 +1115,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * shared JsonEncodeGuard — the same one the zai surface's
 			 * GLM9 #4 guard lives in, one protocol-name apart.
 			 */
-			JsonEncodeGuard::must_encode_tool_result_identity( $function_response, 'tool_use id', 'a tool result tool_use id', 'zai_anthropic' );
+			JsonEncodeGuard::must_encode_tool_result_identity( $function_response, 'tool_use id', 'a tool result tool_use id', self::PROVIDER_LABEL );
 
 			/*
 			 * R18 (inline 3906485711): an unencodable tool-result value — NAN,
@@ -1115,7 +1132,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * an invalid-UTF-8 tool result was lossily re-encoded and
 			 * shipped, telling the model altered tool output.
 			 */
-			$encoded = JsonEncodeGuard::encode( $function_response->getResponse(), 'a tool result', 'zai_anthropic' );
+			$encoded = JsonEncodeGuard::encode( $function_response->getResponse(), 'a tool result', self::PROVIDER_LABEL );
 
 			return array(
 				'type'        => 'tool_result',
@@ -1180,7 +1197,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		if ( $aggregator->has_error() ) {
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
 				'The message stream contained an error event.'
 			);
@@ -1218,7 +1235,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * aggregation itself raises the flag.
 			 */
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
 				'The message stream contained a malformed event frame.'
 			);
@@ -1230,7 +1247,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			// produced (Codex R1 finding 1), so the response fails as a
 			// parse error with a fixed message instead.
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
 				'A tool_use block in the message stream carried malformed input JSON.'
 			);
@@ -1238,7 +1255,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		if ( null === $aggregated ) {
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
 				'No usable message event was received.'
 			);
@@ -1363,7 +1380,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 */
 	private function parse_decoded_message( $data, ?\stdClass $raw_body ): GenerativeAiResult {
 		if ( ! \is_array( $data ) || ! isset( $data['content'] ) || ! \is_array( $data['content'] ) ) {
-			throw ResponseException::fromMissingData( 'z.ai', 'content' );
+			throw ResponseException::fromMissingData( self::PROVIDER_LABEL, 'content' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		/*
@@ -1377,7 +1394,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * content is constructed as a PHP list by the aggregator.
 		 */
 		if ( null !== $raw_body && ! \is_array( $raw_body->content ?? null ) && \property_exists( $raw_body, 'content' ) ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'content', 'The message content must be a JSON array.' );
+			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'The message content must be a JSON array.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		/*
@@ -1402,7 +1419,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * weight). The strict !== also covers non-string values.
 		 */
 		if ( \array_key_exists( 'type', $data ) && 'message' !== $data['type'] ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'type', 'The response envelope did not identify itself as a message.' );
+			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'type', 'The response envelope did not identify itself as a message.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		/*
@@ -1413,7 +1430,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * into downstream history.
 		 */
 		if ( ! isset( $data['role'] ) || ! \is_string( $data['role'] ) || 'assistant' !== $data['role'] ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'role', 'The message did not identify itself as an assistant response.' );
+			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'role', 'The message did not identify itself as an assistant response.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		$role = MessageRoleEnum::model();
@@ -1423,7 +1440,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$dropped_unmapped = false;
 		foreach ( $data['content'] as $index => $part_data ) {
 			if ( ! \is_array( $part_data ) ) {
-				throw ResponseException::fromInvalidData( 'z.ai', 'content', 'Every content entry must be an object.' );
+				throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'Every content entry must be an object.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 			}
 
 			$raw_part = $raw_content_ok && isset( $raw->content[ $index ] ) && \is_object( $raw->content[ $index ] )
@@ -1444,7 +1461,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			if ( null !== $part && 'tool_use' === ( $part_data['type'] ?? null )
 				&& isset( $part_data['id'] ) && \is_string( $part_data['id'] ) && '' !== $part_data['id'] ) {
 				if ( isset( $seen_tool_ids[ $part_data['id'] ] ) ) {
-					throw ResponseException::fromInvalidData( 'z.ai', 'content', 'Two tool_use blocks carried the same id.' );
+					throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'Two tool_use blocks carried the same id.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				}
 
 				$seen_tool_ids[ $part_data['id'] ] = true;
@@ -1472,7 +1489,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * genuinely ABSENT member.
 		 */
 		if ( ! \array_key_exists( 'stop_reason', $data ) ) {
-			throw ResponseException::fromMissingData( 'z.ai', 'stop_reason' );
+			throw ResponseException::fromMissingData( self::PROVIDER_LABEL, 'stop_reason' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		/*
@@ -1487,7 +1504,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * schema's own nullable case above.
 		 */
 		if ( null !== $data['stop_reason'] && ! \is_string( $data['stop_reason'] ) ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'stop_reason', 'The message did not carry a string stop reason.' );
+			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'stop_reason', 'The message did not carry a string stop reason.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		$finish_reason = $this->finish_reason_for( $data['stop_reason'] );
@@ -1509,7 +1526,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 */
 		if ( array() !== $parts && ! self::message_has_translatable_part( $parts ) ) {
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'content',
 				'The message carried no translatable (text, tool call, or tool result) part, so it cannot be replayed into the conversation history.'
 			);
@@ -1542,7 +1559,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 */
 		if ( array() === $parts ) {
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'content',
 				$dropped_unmapped
 					? 'The message contained no usable content (all blocks were of unmapped types).'
@@ -1576,7 +1593,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * indistinguishable from a corrupt stop_reason.
 			 */
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stop_reason',
 				$dropped_unmapped
 					? 'The stop reason did not match the response content (unmapped block types were dropped).'
@@ -1601,7 +1618,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * identity checks).
 		 */
 		if ( ! isset( $data['id'] ) || ! \is_string( $data['id'] ) || '' === $data['id'] ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'id', 'The response did not carry a non-empty message id.' );
+			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'id', 'The response did not carry a non-empty message id.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		$id = $data['id'];
@@ -1634,7 +1651,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			if ( null !== $reason ) {
 				throw ResponseException::fromInvalidData(
-					'z.ai',
+					self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					'usage',
 					UsageValidator::message_for_reason( $reason ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				);
@@ -1658,7 +1675,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		if ( null === $total ) {
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'usage',
 				'The reported token counts exceed the platform integer range.'
 			);
@@ -1710,20 +1727,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * now decides every non-string shape the same way.
 		 */
 		if ( ! \is_string( $type ) ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'content', 'The message contained a block of an unsupported type.' );
+			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'The message contained a block of an unsupported type.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		switch ( $type ) {
 			case 'text':
 				if ( ! isset( $part_data['text'] ) || ! \is_string( $part_data['text'] ) ) {
-					throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A text block is missing its text member.' );
+					throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A text block is missing its text member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				}
 
 				return new MessagePart( $part_data['text'] );
 
 			case 'thinking':
 				if ( ! isset( $part_data['thinking'] ) || ! \is_string( $part_data['thinking'] ) ) {
-					throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A thinking block is missing its thinking member.' );
+					throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A thinking block is missing its thinking member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				}
 
 				return new MessagePart( $part_data['thinking'], MessagePartChannelEnum::thought() );
@@ -1733,7 +1750,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				// merely present — an empty id/name is a corrupt block.
 				foreach ( array( 'id', 'name' ) as $member ) {
 					if ( ! isset( $part_data[ $member ] ) || ! \is_string( $part_data[ $member ] ) || '' === $part_data[ $member ] ) {
-						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its identity members.' );
+						throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A tool_use block is missing its identity members.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					}
 				}
 
@@ -1778,14 +1795,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						 * GLM5 #19 removed the dead elseif that never ran
 						 * behind this rejecting branch).
 						 */
-						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its input member.' );
+						throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A tool_use block is missing its input member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					}
 				} else {
 					$raw_input = \property_exists( $raw_part, 'input' ) ? $raw_part->input : null;
 
 					if ( null === $raw_input ) {
 						// Missing input member or explicit null (R7 #1).
-						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block is missing its input member.' );
+						throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A tool_use block is missing its input member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					} elseif ( \is_object( $raw_input ) ) {
 						if ( array() === get_object_vars( $raw_input ) ) {
 							// The empty object {} means "no arguments"
@@ -1797,7 +1814,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					} else {
 						// A scalar, boolean, or JSON list value (an empty
 						// list included).
-						throw ResponseException::fromInvalidData( 'z.ai', 'content', 'A tool_use block carried a non-object input value.' );
+						throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A tool_use block carried a non-object input value.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					}
 				}
 
@@ -1817,7 +1834,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 */
 				if ( null !== $args && ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
 					throw ResponseException::fromInvalidData(
-						'z.ai',
+						self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 						'content',
 						'A tool_use block carried arguments that cannot be replayed (an unencodable or precision-loss value was decoded).'
 					);
@@ -1851,7 +1868,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				return null;
 		}
 
-		throw ResponseException::fromInvalidData( 'z.ai', 'content', 'The message contained a block of an unsupported type.' );
+		throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'The message contained a block of an unsupported type.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 	}
 
 	/**
@@ -1981,7 +1998,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				);
 		}
 
-		throw ResponseException::fromInvalidData( 'z.ai', 'stop_reason', 'The message carried an unknown stop reason.' );
+		throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'stop_reason', 'The message carried an unknown stop reason.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 	}
 
 	/**
@@ -2007,7 +2024,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * (cross-surface contract) instead of the forwarding only the
 		 * zai surface's SDK-parent builder performs.
 		 */
-		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), 'zai_anthropic', false );
+		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), self::PROVIDER_LABEL, false );
 
 		/*
 		 * GLM2 #9: the five usage rejections the two surfaces advertise
@@ -2016,7 +2033,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * — they were verbatim twins directly under this call, the exact
 		 * duplication pattern the guard above was extracted to stop.
 		 */
-		AdvertisedUsageGuard::reject_unsupported( $config, $prompt, 'zai_anthropic' );
+		AdvertisedUsageGuard::reject_unsupported( $config, $prompt, self::PROVIDER_LABEL );
 
 		// max_tokens is required and must be positive; a zero/negative value
 		// would be a protocol error upstream.

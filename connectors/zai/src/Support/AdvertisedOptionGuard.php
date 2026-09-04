@@ -105,7 +105,7 @@ final class AdvertisedOptionGuard {
 	 * @since 0.2.0
 	 *
 	 * @param array<string, mixed> $config_as_array       The model config as an array.
-	 * @param string               $provider_label        Provider name for the message ('z.ai' or 'zai_anthropic').
+	 * @param string               $provider_label        Provider name for the message ('zai' or 'zai_anthropic' — the surfaces' PROVIDER_LABEL, GLM10 #9).
 	 * @param bool                 $ships_forwarded_values Whether the caller's request
 	 *                                                    builder emits the WIRE_FORWARDED
 	 *                                                    keys (the zai surface's SDK

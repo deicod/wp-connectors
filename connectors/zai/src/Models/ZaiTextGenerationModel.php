@@ -63,6 +63,24 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	use SafeGenerationBoundary;
 
 	/**
+	 * The per-surface provider label interpolated into every guard and
+	 * rejection message (GLM10 #9).
+	 *
+	 * The label was a bare string literal at ~25 call sites that mixed
+	 * 'z.ai' (the advertised guards, the ResponseException labels) and
+	 * 'zai' (the JsonEncodeGuard sites) within this one surface, so the
+	 * surface's user-facing rejections named the provider two different
+	 * ways. One constant — ridden on the availability owner's
+	 * REFUSAL_LABEL, the same identity the credential-refusal messages
+	 * carry — makes every message name it exactly one way.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	private const PROVIDER_LABEL = ZaiProviderAvailability::REFUSAL_LABEL;
+
+	/**
 	 * Builds the request against the CURRENT plan/region endpoint.
 	 *
 	 * The option read happens here, at request-build time — never at
@@ -246,7 +264,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 */
 		if ( $aggregator->has_malformed_event() ) {
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
 				'The chat-completions stream contained a malformed chunk event.'
 			);
@@ -254,7 +272,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		if ( null === $aggregated ) {
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
 				'No usable chat.completion.chunk event was received.'
 			);
@@ -293,7 +311,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 */
 		if ( false === json_encode( $aggregated ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
 				'The consolidated stream payload carried a value that cannot be JSON-encoded.'
 			);
@@ -370,7 +388,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		if ( null !== $reason ) {
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'usage',
 				UsageValidator::message_for_reason( $reason ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 			);
@@ -393,7 +411,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			// The SDK message may embed upstream body content (e.g. a
 			// non-standard finish_reason); replace it with a fixed string.
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'response',
 				'The chat-completions payload was malformed.'
 			);
@@ -483,7 +501,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				 * decodes cleanly and keeps the parent's semantics too.
 				 */
 				throw ResponseException::fromInvalidData(
-					'z.ai',
+					self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					'tool_calls',
 					'A tool call carried an arguments string that is not valid JSON.'
 				);
@@ -516,7 +534,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 */
 		if ( ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'tool_calls',
 				'A tool call carried arguments that cannot be replayed (an unencodable or precision-loss value was decoded).'
 			);
@@ -588,7 +606,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * GLM1 #11: the unsupported-option rejection is shared with the
 		 * zai_anthropic surface (was a verbatim twin, one label apart).
 		 */
-		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), 'z.ai' );
+		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), self::PROVIDER_LABEL );
 
 		/*
 		 * GLM2 #9: the five usage rejections the two surfaces advertise
@@ -597,7 +615,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * — they were verbatim twins directly under this call, the exact
 		 * duplication pattern the guard above was extracted to stop.
 		 */
-		AdvertisedUsageGuard::reject_unsupported( $config, $prompt, 'z.ai' );
+		AdvertisedUsageGuard::reject_unsupported( $config, $prompt, self::PROVIDER_LABEL );
 
 		/*
 		 * GLM6 #5: every caller-authored WIRE value the SDK parent's
@@ -645,7 +663,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		$system_instruction = $config->getSystemInstruction();
 		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
-			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', 'zai' );
+			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', self::PROVIDER_LABEL );
 		}
 
 		/*
@@ -659,17 +677,17 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 */
 		$temperature = $config->getTemperature();
 		if ( null !== $temperature ) {
-			JsonEncodeGuard::must_encode( $temperature, 'the temperature option', 'zai' );
+			JsonEncodeGuard::must_encode( $temperature, 'the temperature option', self::PROVIDER_LABEL );
 		}
 
 		$top_p = $config->getTopP();
 		if ( null !== $top_p ) {
-			JsonEncodeGuard::must_encode( $top_p, 'the top_p option', 'zai' );
+			JsonEncodeGuard::must_encode( $top_p, 'the top_p option', self::PROVIDER_LABEL );
 		}
 
 		$output_schema = $config->getOutputSchema();
 		if ( \is_array( $output_schema ) ) {
-			JsonEncodeGuard::must_encode( $output_schema, 'the configured output schema', 'zai' );
+			JsonEncodeGuard::must_encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
 		}
 
 		$stop_sequences = $config->getStopSequences();
@@ -682,18 +700,18 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 * zai_anthropic twin's GLM3 #3 contract lives in — the twin
 			 * loops this extraction replaced had already drifted once.
 			 */
-			JsonEncodeGuard::must_encode_stop_sequences( $stop_sequences, 'zai' );
+			JsonEncodeGuard::must_encode_stop_sequences( $stop_sequences, self::PROVIDER_LABEL );
 		}
 
 		$function_declarations = $config->getFunctionDeclarations();
 		if ( \is_array( $function_declarations ) ) {
 			foreach ( $function_declarations as $declaration ) {
-				JsonEncodeGuard::must_encode( $declaration->getName(), 'a declared tool function name', 'zai' );
-				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', 'zai' );
+				JsonEncodeGuard::must_encode( $declaration->getName(), 'a declared tool function name', self::PROVIDER_LABEL );
+				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
 
 				$input_schema = $declaration->getParameters();
 				if ( \is_array( $input_schema ) ) {
-					JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', 'zai' );
+					JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
 				}
 			}
 		}
@@ -703,7 +721,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				if ( $part->getType()->isText() && ! $part->getChannel()->isThought() ) {
 					// Only visible text ships (the parent drops thought
 					// parts, so guarding them would over-reject).
-					JsonEncodeGuard::must_encode( (string) $part->getText(), 'a message text part', 'zai' );
+					JsonEncodeGuard::must_encode( (string) $part->getText(), 'a message text part', self::PROVIDER_LABEL );
 					continue;
 				}
 
@@ -720,7 +738,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * GLM9 #12: the identity rule rides the shared
 					 * JsonEncodeGuard.
 					 */
-					JsonEncodeGuard::must_encode_tool_result_identity( $part->getFunctionResponse(), 'tool call id', 'a tool result id', 'zai' );
+					JsonEncodeGuard::must_encode_tool_result_identity( $part->getFunctionResponse(), 'tool call id', 'a tool result id', self::PROVIDER_LABEL );
 
 					/*
 					 * The parent's message mapping json_encodes the tool
@@ -730,7 +748,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * zai_anthropic surface fixed, with the identical
 					 * guard).
 					 */
-					JsonEncodeGuard::must_encode( $part->getFunctionResponse()->getResponse(), 'a tool result', 'zai' );
+					JsonEncodeGuard::must_encode( $part->getFunctionResponse()->getResponse(), 'a tool result', self::PROVIDER_LABEL );
 					continue;
 				}
 
@@ -745,7 +763,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * the same one the zai_anthropic twin's Codex R9 #3
 					 * contract lives in.
 					 */
-					JsonEncodeGuard::must_encode_tool_call_identity( $part->getFunctionCall(), 'zai' );
+					JsonEncodeGuard::must_encode_tool_call_identity( $part->getFunctionCall(), self::PROVIDER_LABEL );
 				}
 			}
 		}
