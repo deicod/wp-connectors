@@ -60,6 +60,9 @@ use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\Traits\WithHttpTransporterTrait;
 use WordPress\AiClient\Providers\Http\Traits\WithRequestAuthenticationTrait;
+use Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint;
+use Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache;
+use Deicod\WpConnectors\Zai\Metadata\ZaiModelListParser;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 
@@ -1037,7 +1040,24 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		$status = $response->getStatusCode();
 
 		if ( $response->isSuccessful() ) {
-			return self::successful_response_verdict( $response );
+			$verdict = self::successful_response_verdict( $response );
+
+			/*
+			 * GLM12 #2: a verdict-bearing models body is also a DISCOVERY
+			 * answer — the probe and the metadata directories each issued
+			 * their own authenticated GET to the identical models_url, so a
+			 * cold window (no verdict state, no discovery transient) paid
+			 * two sequential blocking HTTPS round trips before the first
+			 * generation. The probe's own response now seeds the discovery
+			 * transient; the verdict is unaffected by whether the seed
+			 * lands (the seed runs the full catalog parser, whose
+			 * rejections are catalog concerns, not credential ones).
+			 */
+			if ( true === $verdict ) {
+				$this->seed_discovery_from_probe( $response, $endpoint );
+			}
+
+			return $verdict;
 		}
 
 		if ( self::is_definitive_rejection( $status ) ) {
@@ -1047,6 +1067,48 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 
 		// 3xx, 429, other 4xx, 5xx: inconclusive for the credential.
 		return null;
+	}
+
+	/**
+	 * Seeds the discovery transient from the probe's own models response
+	 * (GLM12 #2).
+	 *
+	 * The body the probe already fetched IS the models list the surface's
+	 * discovery would fetch over its own second authenticated GET to the
+	 * same URL: the shared parser (ZaiModelListParser) runs the full
+	 * discovery validation — the has_more rejection, the chat filter, the
+	 * plan intersection — and the resulting ID list is stored under the
+	 * SAME endpoint-scoped transient id and TTL the directories' own
+	 * discovery flow writes, so every consumer (cache reads, settings
+	 * invalidation, uninstall sweeps) sees one coherent cache.
+	 *
+	 * Seeding is strictly opportunistic: a catalog-reason parser failure
+	 * (an incomplete page, no in-plan chat ID) leaves discovery to its own
+	 * flow — live attempt, 60s negative marker, plan fallback — and the
+	 * VALID verdict above stands, because the body authenticated the
+	 * credential regardless of its catalog usability. The endpoint is the
+	 * one captured at REQUEST time, so a settings change mid-flight cannot
+	 * cache one endpoint's catalog under another's id (the GLM3 #10
+	 * discipline).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response            $response The probe's 2xx models response.
+	 * @param AbstractZaiEndpoint $endpoint The endpoint the probe requested.
+	 * @return void
+	 */
+	private function seed_discovery_from_probe( Response $response, AbstractZaiEndpoint $endpoint ): void {
+		try {
+			$ids = ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan(), static::REFUSAL_LABEL );
+		} catch ( Throwable $e ) {
+			return;
+		}
+
+		set_transient(
+			static::endpoint_class()::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
+			$ids,
+			ZaiDiscoveryCache::DISCOVERY_TTL
+		);
 	}
 
 	/**

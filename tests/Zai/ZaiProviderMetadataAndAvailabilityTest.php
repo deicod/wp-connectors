@@ -18,6 +18,7 @@ use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Provider\AbstractZaiProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
@@ -340,6 +341,69 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->queueSdkResponse(200, array(), 'not json at all');
         $this->assertTrue($unrecognized->isConfigured(), 'An unrecognized 2xx body keeps the configured-pending default.');
         $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'An unrecognized 2xx body must not persist a verdict.');
+    }
+
+    public function testAValidProbeSeedsTheDiscoveryTransient()
+    {
+        /*
+         * GLM12 #2: the availability probe and the metadata directory's
+         * discovery each issued their own authenticated GET to the
+         * IDENTICAL models_url — a cold window (no verdict state, no
+         * discovery transient) paid two sequential blocking round trips
+         * before the first generation. The probe's own response body now
+         * seeds the discovery transient (the shared parser, the shared
+         * endpoint-scoped id and TTL), and the directory's next lookup
+         * consumes the seed without a second request.
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.3-flash')));
+        $this->assertTrue($instance->isConfigured());
+
+        $endpoint = ZaiEndpoint::for_current_settings();
+        $this->assertSame(
+            array('glm-5.3', 'glm-5.3-flash'),
+            get_transient(ZaiEndpoint::discovery_cache_id($endpoint->plan(), $endpoint->region())),
+            'The probe response must seed the discovery transient with the plan-intersected chat IDs.'
+        );
+
+        $directory = new ZaiModelMetadataDirectory();
+        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        $models = $directory->listModelMetadata();
+        $this->assertSame(
+            array('glm-5.3', 'glm-5.3-flash'),
+            array_map(static function ($m) {
+                return $m->getId();
+            }, $models),
+            'Discovery serves the seeded catalog.'
+        );
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'Discovery must consume the seeded transient, not re-fetch the same URL.');
+    }
+
+    public function testAValidProbeDoesNotSeedDiscoveryFromACatalogUnusableBody()
+    {
+        /*
+         * GLM12 #2 (the seed's edge): a body that authenticates the
+         * credential but fails the CATALOG read — an incomplete page
+         * (has_more) — still yields the VALID verdict, but nothing is
+         * seeded: discovery keeps its own flow (live attempt, negative
+         * marker, plan fallback) with its own failure caching.
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}],"has_more":true}');
+        $this->assertTrue($instance->isConfigured(), 'An authenticated-but-paginated body still validates the credential.');
+        $this->assertSame('valid', get_option(ZaiProviderAvailability::STATE_OPTION)['valid'], 'The verdict stands regardless of the seed.');
+
+        $endpoint = ZaiEndpoint::for_current_settings();
+        $this->assertFalse(
+            get_transient(ZaiEndpoint::discovery_cache_id($endpoint->plan(), $endpoint->region())),
+            'A catalog-unusable body must not seed the discovery transient.'
+        );
     }
 
     public function testInvalidVerdictIsReprobedAfterTtl()

@@ -36,7 +36,9 @@ parameters:
 			path: connectors/zai/src/Availability/AbstractZaiProviderAvailability.php
 			# GLM10 #9 verifier round: +1 (refuse_discovery()'s label rides
 			# static::REFUSAL_LABEL like refuse_generation()'s already did).
-			count: 12
+			# GLM12 #2: +1 (the discovery seed names the parser rejection
+			# through static::REFUSAL_LABEL too).
+			count: 13
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Provider/AbstractZaiProvider.php

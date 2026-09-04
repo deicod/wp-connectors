@@ -350,13 +350,32 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         $directory = new Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory();
         $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $directory->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+
+        /*
+         * GLM12 #2: the probe's models response seeds the discovery
+         * transient, so the directory lookup right after it makes NO
+         * second request to the same URL — one logged GET, where this
+         * test previously pinned the double fetch.
+         */
+        $directory->listModelMetadata();
+
+        $statuses = array_map(static function (array $entry) {
+            return $entry['method'] . ' ' . $entry['status'];
+        }, DebugLogger::entries());
+        $this->assertSame(array('GET 200'), $statuses, 'A seeded discovery makes no second request.');
+
+        // The directory's OWN discovery request is logged the same way
+        // once the transient is cold again.
+        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings();
+        delete_transient(\Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::discovery_cache_id($endpoint->plan(), $endpoint->region()));
+
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
         $directory->listModelMetadata();
 
         $statuses = array_map(static function (array $entry) {
             return $entry['method'] . ' ' . $entry['status'];
         }, DebugLogger::entries());
-        $this->assertSame(array('GET 200', 'GET 200'), $statuses);
+        $this->assertSame(array('GET 200', 'GET 200'), $statuses, 'The directory-issued discovery request is logged too.');
     }
     public function testTheWrapHelperIsIdempotent()
     {

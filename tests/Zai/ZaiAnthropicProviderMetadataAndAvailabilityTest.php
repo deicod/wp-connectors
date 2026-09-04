@@ -246,6 +246,36 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $attempts[0]['url']);
     }
 
+    public function testAValidProbeSeedsTheAnthropicDiscoveryTransient()
+    {
+        /*
+         * GLM12 #2 on this surface: the probe's models body seeds the
+         * ANTHROPIC directory's discovery transient (its own endpoint-
+         * scoped id), and the directory's next lookup consumes the seed
+         * without its own authenticated GET.
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.3-flash')));
+        $this->assertTrue($instance->isConfigured());
+
+        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings();
+        $this->assertSame(
+            array('glm-5.3', 'glm-5.3-flash'),
+            get_transient(\Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::discovery_cache_id($endpoint->plan(), $endpoint->region())),
+            'The probe response must seed this surface\'s discovery transient.'
+        );
+
+        $directory = new \Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory();
+        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        $models = $directory->listModelMetadata();
+        $this->assertCount(2, $models, 'Discovery serves the seeded catalog.');
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'Discovery must consume the seeded transient, not re-fetch the same URL.');
+    }
+
     public function testADatabaseOnlyKeyValidatesThroughAnUnwiredProbeWithProtocolHeaders()
     {
         /*
