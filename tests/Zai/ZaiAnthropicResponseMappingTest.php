@@ -957,6 +957,35 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheCorruptEventClassificationLivesOnce()
+    {
+        /*
+         * GLM12 #15: the error-vs-malformed classification for corrupt
+         * DECLARED frames was hand-copied into four consume_frame()
+         * branches and drifted twice inside this PR's own review
+         * history (GLM9 #2 and GLM10 #4 each fixed a sibling that still
+         * omitted the error flag, misclassifying `event: error` frames
+         * as 'malformed event frame' with has_error() false). One
+         * flag_corrupt_event() helper owns the rule now; the pins hold
+         * the mechanism — every corruption branch rides the helper, and
+         * the hand-copied flag pair may not come back.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
+        );
+
+        $this->assertSame(
+            4,
+            preg_match_all('/->flag_corrupt_event\(/', $source),
+            'Every corruption branch rides the one classification helper.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all("/if \( 'error' === \\\$event_name \) \{\s*\\\$this->error = true;\s*\} else \{\s*\\\$this->malformed_event = true;\s*\}/", $source),
+            'The error/malformed flag pair exists exactly once — inside the helper itself, never re-inlined at a corruption site.'
+        );
+    }
+
     public function testAcceptedStreamedToolArgumentsReplayWithTheStamp()
     {
         /*

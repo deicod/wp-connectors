@@ -674,13 +674,13 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 * and any policy keyed on has_error() never fired. The
 			 * declaration itself is the error signal; the payload's
 			 * condition cannot un-declare it.
+			 *
+			 * GLM12 #15: the error/malformed classification lives in
+			 * flag_corrupt_event() — this and the three sibling
+			 * corruption branches below share the one rule.
 			 */
 			if ( \is_string( $event_name ) && \in_array( $event_name, self::DECLARED_EVENTS, true ) ) {
-				if ( 'error' === $event_name ) {
-					$this->error = true;
-				} else {
-					$this->malformed_event = true;
-				}
+				$this->flag_corrupt_event( $event_name );
 			}
 
 			return;
@@ -717,11 +717,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		if ( \is_object( $raw ) && \property_exists( $raw, 'type' ) && ! \is_string( $raw->type ) ) {
 			++$this->malformed;
 
-			if ( 'error' === $event_name ) {
-				$this->error = true;
-			} else {
-				$this->malformed_event = true;
-			}
+			$this->flag_corrupt_event( \is_string( $event_name ) ? $event_name : null );
 
 			return;
 		}
@@ -754,11 +750,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		if ( \is_string( $event_name ) && '' !== $payload_type && $event_name !== $payload_type ) {
 			++$this->malformed;
 
-			if ( 'error' === $event_name ) {
-				$this->error = true;
-			} else {
-				$this->malformed_event = true;
-			}
+			$this->flag_corrupt_event( $event_name );
 
 			return;
 		}
@@ -787,11 +779,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		if ( ! $this->terminated && \in_array( $type, self::DECLARED_EVENTS, true ) && ! \is_object( $raw ) ) {
 			++$this->malformed;
 
-			if ( 'error' === $type ) {
-				$this->error = true;
-			} else {
-				$this->malformed_event = true;
-			}
+			$this->flag_corrupt_event( $type );
 
 			return;
 		}
@@ -803,6 +791,36 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		}
 
 		$this->dispatch_event( $type, $raw );
+	}
+
+	/**
+	 * Classifies one corrupt DECLARED frame by its event name (GLM12 #15).
+	 *
+	 * The GLM7 #4 invariant — the DECLARATION itself is the error signal;
+	 * the payload's condition cannot un-declare it — was hand-copied as an
+	 * error/malformed flag pair into four consume_frame() branches (the
+	 * undecodable payload, the non-string type member, the declaration
+	 * disagreement, and the decodable non-object payload), and the copies
+	 * drifted twice inside this PR's own review history (GLM9 #2 and GLM10
+	 * #4 each fixed a sibling that still omitted the error flag, so an
+	 * `event: error` frame with that corruption shape surfaced 'malformed
+	 * event frame' with has_error() false and error-keyed policy never
+	 * fired). One classification lives here now: 'error' sets the ERROR
+	 * channel, every other declared name (and a frame declaring nothing —
+	 * null) sets the MALFORMED-EVENT channel.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string|null $event_name The frame's declared event name, or
+	 *                                null when it declared none.
+	 * @return void
+	 */
+	private function flag_corrupt_event( ?string $event_name ): void {
+		if ( 'error' === $event_name ) {
+			$this->error = true;
+		} else {
+			$this->malformed_event = true;
+		}
 	}
 
 	/**
