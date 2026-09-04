@@ -102,4 +102,25 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         $this->assertSame(2, $exitCode);
         $this->assertStringContainsString('--surface must be openai or anthropic', $output);
     }
+
+    public function testThePerSurfaceFactsRideTheOwnerConstants()
+    {
+        /*
+         * GLM10 #15: the probe hand-composed the plan/region option
+         * names and selected ~8 per-surface facts through scattered
+         * inline ternaries — an option rename would strand it writing
+         * options nothing reads while still printing the chosen
+         * plan/region as acceptance evidence, misleading evidence for
+         * the exact billing-surface risk the plan/region whitelists
+         * exist for. One fact table chosen after validation rides the
+         * owner constants now; the source pin forbids hand-composed
+         * plugin option names in the probe.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/zai-live-probe.php');
+
+        $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $source), 'No hand-composed plugin option names: every option rides an owner constant.');
+        foreach (array('settings', 'endpoint', 'provider', 'availability', 'provider_id', 'default_plan') as $fact) {
+            $this->assertStringContainsString("['{$fact}']", $source, "The {$fact} fact rides the per-surface table.");
+        }
+    }
 }

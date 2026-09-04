@@ -34,6 +34,23 @@ require_once $repo . '/tests/harness/SdkHttpClient.php';
 require_once $repo . '/tests/harness/CurlPsr18Client.php';
 require_once $repo . '/connectors/zai/src/autoload.php';
 
+use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
+use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
+use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Plugin;
+use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
+use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
+use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
+use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Messages\DTO\Message;
+use WordPress\AiClient\Messages\DTO\MessagePart;
+use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use WordPress\AiClient\Providers\Http\HttpTransporter;
+
 /**
  * Resolves the live key from the documented runtime sources only.
  *
@@ -126,7 +143,43 @@ if ( ! in_array( $surface, array( 'openai', 'anthropic' ), true ) ) {
     fwrite( STDERR, "live-probe: --surface must be openai or anthropic\n" );
     exit( 2 );
 }
-$plan = zai_live_probe_option( $args, 'plan', 'anthropic' === $surface ? 'general' : 'coding' );
+
+/*
+ * GLM10 #15: ONE per-surface fact table, chosen after the surface
+ * validates. The script previously hand-composed the plan/region option
+ * names and selected ~8 per-surface facts through scattered inline
+ * ternaries (the plan default, provider id/class, key/state options,
+ * endpoint class) although it already rode owner constants elsewhere —
+ * an option rename would have stranded the probe writing options
+ * nothing reads while it still printed the chosen plan/region as
+ * acceptance evidence, misleading evidence for the exact billing-surface
+ * risk the plan/region whitelists exist for. Every fact now rides its
+ * owner: the settings layer's OPTION_PLAN/OPTION_REGION, the
+ * availability layer's KEY_OPTION/STATE_OPTION, the endpoint layer's
+ * discovery_transient_ids().
+ */
+$zai_probe_surfaces = array(
+    'openai' => array(
+        'settings'     => PlanRegionSettings::class,
+        'endpoint'     => ZaiEndpoint::class,
+        'provider'     => ZaiProvider::class,
+        'availability' => ZaiProviderAvailability::class,
+        'provider_id'  => 'zai',
+        'default_plan' => 'coding',
+    ),
+    'anthropic' => array(
+        'settings'     => ZaiAnthropicPlanRegionSettings::class,
+        'endpoint'     => ZaiAnthropicEndpoint::class,
+        'provider'     => ZaiAnthropicProvider::class,
+        'availability' => ZaiAnthropicProviderAvailability::class,
+        'provider_id'  => 'zai_anthropic',
+        'default_plan' => 'general',
+    ),
+);
+
+$surface_facts = $zai_probe_surfaces[ $surface ];
+
+$plan = zai_live_probe_option( $args, 'plan', $surface_facts['default_plan'] );
 $region = zai_live_probe_option( $args, 'region', 'intl' );
 
 /*
@@ -152,34 +205,19 @@ if ( '' === $key ) {
     exit( 2 );
 }
 
-update_option( 'zai_connector_zai_' . ( 'anthropic' === $surface ? 'anthropic_' : '' ) . 'plan', $plan );
-update_option( 'zai_connector_zai_' . ( 'anthropic' === $surface ? 'anthropic_' : '' ) . 'region', $region );
+update_option( $surface_facts['settings']::OPTION_PLAN, $plan );
+update_option( $surface_facts['settings']::OPTION_REGION, $region );
 
-use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
-use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
-use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
-use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
-use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
-use Deicod\WpConnectors\Zai\Plugin;
-use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
-use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
-use WordPress\AiClient\AiClient;
-use WordPress\AiClient\Messages\DTO\Message;
-use WordPress\AiClient\Messages\DTO\MessagePart;
-use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
-use WordPress\AiClient\Providers\Http\HttpTransporter;
-
-$provider_id = 'anthropic' === $surface ? 'zai_anthropic' : 'zai';
-$provider_class = 'anthropic' === $surface ? ZaiAnthropicProvider::class : ZaiProvider::class;
-$key_option = 'anthropic' === $surface ? ZaiAnthropicProviderAvailability::KEY_OPTION : ZaiProviderAvailability::KEY_OPTION;
+$provider_id = $surface_facts['provider_id'];
+$provider_class = $surface_facts['provider'];
+$key_option = $surface_facts['availability']::KEY_OPTION;
 
 zai_live_probe_report( 'date (UTC)', gmdate( 'Y-m-d H:i:s' ) );
 zai_live_probe_report( 'surface', $surface );
 zai_live_probe_report( 'plan', $plan );
 zai_live_probe_report( 'region', $region );
 
-$endpoint = 'anthropic' === $surface ? ZaiAnthropicEndpoint::for_current_settings() : ZaiEndpoint::for_current_settings();
+$endpoint = $surface_facts['endpoint']::for_current_settings();
 zai_live_probe_report( 'endpoint base', $endpoint->base_url() );
 zai_live_probe_report( 'models route', $endpoint->models_url() );
 zai_live_probe_report( 'messages route', $endpoint instanceof ZaiAnthropicEndpoint ? $endpoint->messages_url() : $endpoint->api_url( 'chat/completions' ) );
@@ -212,7 +250,7 @@ $exit = 0;
  * (and fail) with zero live requests for up to a minute after one
  * transient failure.
  */
-$state_option = 'anthropic' === $surface ? ZaiAnthropicProviderAvailability::STATE_OPTION : ZaiProviderAvailability::STATE_OPTION;
+$state_option = $surface_facts['availability']::STATE_OPTION;
 delete_option( $state_option );
 
 $availability = $provider_class::availability();
