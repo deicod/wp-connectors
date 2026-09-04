@@ -358,7 +358,8 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 *
 	 * The recording follows the twin's shape exactly: the credential
 	 * the rejecting request authenticated with (the wired instance;
-	 * null resolves the effective key), the probe's own persist path,
+	 * null resolves the effective key), the endpoint captured at
+	 * REQUEST time (GLM10 #1), the probe's own persist path,
 	 * never fatal — the parent's throw still happens, and the shared
 	 * cache keeps discovery degrading to the plan fallback.
 	 *
@@ -378,9 +379,22 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 				$wired = null;
 			}
 
+			/*
+			 * GLM10 #1: this hook runs INSIDE the GLM3 #10 capture
+			 * window ($this->discovery_endpoint, set by
+			 * discover_model_ids_via_sdk() before the SDK parent's
+			 * request/parse cycle), so the rejection is recorded against
+			 * the endpoint the rejecting request actually hit — not the
+			 * endpoint the settings resolve to by response time. The
+			 * current-settings fallback covers any defensive direct call
+			 * outside the discovery flow.
+			 */
+			$endpoint = $this->discovery_endpoint ?? ZaiEndpoint::for_current_settings();
+
 			( new ZaiProviderAvailability() )->record_definitive_verdict(
 				false,
-				$wired instanceof ApiKeyRequestAuthentication ? $wired : null
+				$wired instanceof ApiKeyRequestAuthentication ? $wired : null,
+				$endpoint->cache_key()
 			);
 		}
 

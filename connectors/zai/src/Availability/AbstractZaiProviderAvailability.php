@@ -359,14 +359,21 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param string $source Key source label.
-	 * @param string $key    Complete key value.
+	 * @param string      $source            Key source label.
+	 * @param string      $key               Complete key value.
+	 * @param string|null $endpoint_cache_key The endpoint identity the verdict
+	 *                                        is about — cache_key() CAPTURED at
+	 *                                        REQUEST time (GLM10 #1) — or null to
+	 *                                        re-resolve the current settings.
 	 * @return string SHA-256 binding.
 	 */
-	private function binding( string $source, string $key ): string {
-		$endpoint_class = static::endpoint_class();
+	private function binding( string $source, string $key, ?string $endpoint_cache_key = null ): string {
 		$settings_class = static::settings_class();
-		$endpoint       = $endpoint_class::for_current_settings();
+
+		if ( null === $endpoint_cache_key ) {
+			$endpoint_class     = static::endpoint_class();
+			$endpoint_cache_key = $endpoint_class::for_current_settings()->cache_key();
+		}
 
 		/*
 		 * GLM5 #11: 'runtime' (core's save-time candidate label) and
@@ -390,7 +397,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			$source = 'database';
 		}
 
-		return $settings_class::credential_binding( $source, $endpoint->cache_key(), $key );
+		return $settings_class::credential_binding( $source, $endpoint_cache_key, $key );
 	}
 
 	/**
@@ -778,29 +785,63 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param bool                             $valid          The definitive verdict.
-	 * @param ApiKeyRequestAuthentication|null $authentication The credential the
-	 *                                                          rejecting request
-	 *                                                          authenticated with
-	 *                                                          (the wired instance),
-	 *                                                          or null to resolve
-	 *                                                          the effective key.
+	 * @param bool                             $valid             The definitive verdict.
+	 * @param ApiKeyRequestAuthentication|null $authentication    The credential the
+	 *                                                             rejecting request
+	 *                                                             authenticated with
+	 *                                                             (the wired instance),
+	 *                                                             or null to resolve
+	 *                                                             the effective key.
+	 * @param string|null                      $endpoint_cache_key The cache_key() of
+	 *                                                             the endpoint the
+	 *                                                             rejecting request
+	 *                                                             actually hit,
+	 *                                                             captured at REQUEST
+	 *                                                             time (GLM10 #1), or
+	 *                                                             null when the caller
+	 *                                                             asserts the verdict
+	 *                                                             concerns the current
+	 *                                                             settings.
 	 * @return void
 	 */
-	public function record_definitive_verdict( bool $valid, ?ApiKeyRequestAuthentication $authentication = null ): void {
+	public function record_definitive_verdict( bool $valid, ?ApiKeyRequestAuthentication $authentication = null, ?string $endpoint_cache_key = null ): void {
 		$effective = $this->effective_for_authentication( $authentication );
 
 		if ( '' === $effective['key'] ) {
 			return;
 		}
 
-		$binding = $this->binding( $effective['source'], $effective['key'] );
+		/*
+		 * GLM10 #1: the verdict is about the endpoint the rejecting
+		 * request HIT, not the endpoint the settings resolve to by the
+		 * time the response lands. Recording under the re-resolved
+		 * binding persisted an intl rejection under the cn identity when
+		 * an admin saved the region mid-flight — isConfigured() on cn
+		 * then answered not-connected for a key never tested against cn
+		 * (up to STATE_TTL), while the intl endpoint that rejected got
+		 * no verdict at all. Callers pass the endpoint they captured at
+		 * request time; the marker dropped is the same (recorded)
+		 * binding's.
+		 */
+		$binding = $this->binding( $effective['source'], $effective['key'], $endpoint_cache_key );
 
 		$this->persist_state( $binding, $valid );
 		delete_transient( self::probe_miss_transient_name( $binding ) );
 
-		if ( $this->region_switch_pending( $effective['key'] ) ) {
-			delete_option( static::REGION_PENDING_OPTION );
+		/*
+		 * GLM10 #1: the region-switch distrust targets the CURRENT
+		 * endpoint. A verdict recorded for a DIFFERENT endpoint (the
+		 * mid-flight race above) settles nothing about the new region:
+		 * clearing the flag on it would re-open the R19 hole — the riding
+		 * credential reported configured-pending (connected) on the new
+		 * endpoint without any definitive answer about THAT endpoint.
+		 */
+		$endpoint_class = static::endpoint_class();
+
+		if ( null === $endpoint_cache_key || $endpoint_cache_key === $endpoint_class::for_current_settings()->cache_key() ) {
+			if ( $this->region_switch_pending( $effective['key'] ) ) {
+				delete_option( static::REGION_PENDING_OPTION );
+			}
 		}
 	}
 

@@ -16,6 +16,7 @@ declare( strict_types=1 );
 use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use WordPress\AiClient\Providers\Http\HttpTransporter;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog;
@@ -350,6 +351,61 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
             'unauthorized' => array(401, 'unauthorized'),
             'forbidden' => array(403, 'forbidden'),
         );
+    }
+
+    public function testCredentialRejectingDiscoveryRecordsAgainstTheRequestTimeEndpoint()
+    {
+        /*
+         * GLM10 #1: the recorder previously re-resolved the endpoint from
+         * the settings at RESPONSE time, so an admin saving the region
+         * while an intl discovery was in flight got the intl rejection
+         * persisted under the CN binding — isConfigured() on cn then
+         * answered not-connected from state for a key never tested
+         * against cn, while intl kept no verdict at all. The verdict must
+         * bind the endpoint the rejecting request actually HIT (the
+         * $endpoint captured at request time).
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        // Flip the region mid-flight: the request is already built against
+        // intl; the flip lands between send and response processing — the
+        // exact race the request-time capture exists for.
+        AiClient::defaultRegistry()->setHttpTransporter(new HttpTransporter(new MidFlightOptionFlipClient(
+            new SdkHttpClient(),
+            ZaiAnthropicPlanRegionSettings::OPTION_REGION,
+            'cn'
+        )));
+
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('token expired or incorrect', 'authentication_error'));
+
+        $models = $this->directory($key)->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The fallback still serves.');
+        $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/models', $this->sdkHttpAttempts()[0]['url'], 'The discovery request itself hit intl.');
+
+        $state = get_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state, 'The invalid verdict must be persisted.');
+        $this->assertSame(
+            ZaiAnthropicPlanRegionSettings::credential_binding(
+                'database',
+                Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for('coding', 'intl')->cache_key(),
+                $key
+            ),
+            $state['binding'],
+            'The verdict binds the request-time (intl) endpoint, not the response-time cn one.'
+        );
+
+        // The cn consult must NOT inherit the intl rejection: it probes cn
+        // on its own (a 200 answers valid — connected). The flip client's
+        // one-shot arming is spent, so the wired transporter just delegates.
+        $this->queueSdkResponse(200, array(), '{"data":[]}');
+        $availability = new Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability();
+        $availability->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $this->assertTrue($availability->isConfigured(), 'The cn consult answers its own probe, not the intl rejection.');
+        $this->assertCount(2, $this->sdkHttpAttempts(), 'The cn consult probed rather than answering from the intl-bound state.');
+        $this->assertSame('https://open.bigmodel.cn/api/coding/anthropic/v1/models', $this->sdkHttpAttempts()[1]['url'], 'The follow-up probe hit the (now current) cn endpoint.');
     }
 
     public function testNonAuthDiscoveryFailurePersistsNoVerdict()

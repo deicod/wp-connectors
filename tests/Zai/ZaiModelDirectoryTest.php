@@ -14,6 +14,7 @@ declare( strict_types=1 );
 use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Messages\Enums\ModalityEnum;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use WordPress\AiClient\Providers\Http\HttpTransporter;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use WordPress\AiClient\Providers\Models\Enums\OptionEnum;
 use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
@@ -564,6 +565,60 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             'unauthorized' => array(401, 'unauthorized'),
             'forbidden' => array(403, 'forbidden'),
         );
+    }
+
+    public function testCredentialRejectingDiscoveryRecordsAgainstTheRequestTimeEndpoint()
+    {
+        /*
+         * GLM10 #1, zai surface twin: throwIfNotSuccessful() runs inside
+         * the GLM3 #10 capture window, so the 401/403 verdict must be
+         * recorded against $this->discovery_endpoint — the endpoint the
+         * rejecting request hit — not the endpoint the settings resolve
+         * to by response time. An admin saving the region mid-flight
+         * previously got the intl rejection persisted under the cn
+         * binding.
+         */
+        $this->selectEndpoint('coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
+
+        AiClient::defaultRegistry()->setHttpTransporter(new HttpTransporter(new MidFlightOptionFlipClient(
+            new SdkHttpClient(),
+            PlanRegionSettings::OPTION_REGION,
+            'cn'
+        )));
+
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
+
+        $directory = new ZaiModelMetadataDirectory();
+        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+        $models = $directory->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The fallback still serves.');
+        $this->assertSame('https://api.z.ai/api/coding/paas/v4/models', $this->sdkHttpAttempts()[0]['url'], 'The discovery request itself hit intl.');
+
+        $state = get_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state, 'The invalid verdict must be persisted.');
+        $this->assertSame(
+            PlanRegionSettings::credential_binding(
+                'database',
+                Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for('coding', 'intl')->cache_key(),
+                $key
+            ),
+            $state['binding'],
+            'The verdict binds the request-time (intl) endpoint, not the response-time cn one.'
+        );
+
+        // The cn consult must NOT inherit the intl rejection: it probes cn
+        // on its own (a 200 answers valid — connected). The flip client's
+        // one-shot arming is spent, so the wired transporter just delegates.
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(self::OBSERVED_MODELS));
+        $availability = new Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability();
+        $availability->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $this->assertTrue($availability->isConfigured(), 'The cn consult answers its own probe, not the intl rejection.');
+        $this->assertCount(2, $this->sdkHttpAttempts(), 'The cn consult probed rather than answering from the intl-bound state.');
+        $this->assertSame('https://open.bigmodel.cn/api/coding/paas/v4/models', $this->sdkHttpAttempts()[1]['url'], 'The follow-up probe hit the (now current) cn endpoint.');
     }
 
     public function testNonAuthDiscoveryFailurePersistsNoVerdict()

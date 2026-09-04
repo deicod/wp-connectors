@@ -330,7 +330,8 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 
 			( new ZaiAnthropicProviderAvailability() )->record_definitive_verdict(
 				false,
-				$wired instanceof ApiKeyRequestAuthentication ? $wired : null
+				$wired instanceof ApiKeyRequestAuthentication ? $wired : null,
+				$endpoint->cache_key()
 			);
 
 			throw ResponseException::fromInvalidData(
