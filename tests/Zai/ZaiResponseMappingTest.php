@@ -261,22 +261,104 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
-    public function testToolCallArgumentsBeyondIntRangeAreRejectedTyped()
+    public function testExactlyRepresentableBigIntegersReplay()
     {
         /*
-         * GLM5 #2: an integer beyond PHP_INT_MAX decodes to a lossy float;
-         * replay would silently ship an altered e-notation value. The value
-         * sits clearly outside the ~2048-wide window above PHP_INT_MAX whose
-         * integers are indistinguishable after the decode (the guard's
-         * documented accepted residual).
+         * GLM12 #8: 100000000000000000000 IS 1e20 exactly (10^20 = 2^20 ·
+         * 5^20 and 5^20 < 2^53), and 9223372036854775808 IS 2^63 — both
+         * survive the platform decode EXACTLY and re-encode stably, so
+         * rejecting them (the old blanket out-of-range walker rule) failed
+         * valid generations. The raw wire string is in hand at this
+         * surface's acceptance hook, so the PRECISE literal rule decides:
+         * exact replays, lossy rejects (next test).
          */
-        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-big","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_big","type":"function","function":{"name":"f","arguments":"{\"n\":99999999999999999999}"}}]},"finish_reason":"tool_calls"}]}');
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-big","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_big","type":"function","function":{"name":"f","arguments":"{\"n\":100000000000000000000}"}}]},"finish_reason":"tool_calls"}]}');
 
-        try {
-            $this->model()->generateTextResult($this->prompt());
-            $this->fail('Beyond-int-range tool arguments must be rejected.');
-        } catch (ResponseException $e) {
-            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+        $this->assertSame(1.0E20, $call->getArgs()['n'], 'The exact 1e20 literal replays as the same double.');
+
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-big2","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_big2","type":"function","function":{"name":"f","arguments":"{\"boundary\":9223372036854775808}"}}]},"finish_reason":"tool_calls"}]}');
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+        $this->assertSame(9.223372036854775808E18, $call->getArgs()['boundary'], '2^63 is exactly representable and replays.');
+    }
+
+    public function testLossyBigIntegersStillRejectTyped()
+    {
+        /*
+         * GLM12 #8 (the other edge of the precise rule): a literal whose
+         * nearest double is a DIFFERENT integer — the ~2048-wide boundary
+         * window above PHP_INT_MAX, 20 nines collapsing to 1e20, every
+         * coarser magnitude — is a true precision loss at decode time and
+         * still rejects.
+         */
+        $lossyBodies = array(
+            'boundary window' => '{"id":"chatcmpl-lossy1","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_l1","type":"function","function":{"name":"f","arguments":"{\"n\":9223372036854775809}"}}]},"finish_reason":"tool_calls"}]}',
+            'twenty nines collapse to 1e20' => '{"id":"chatcmpl-lossy2","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_l2","type":"function","function":{"name":"f","arguments":"{\"n\":99999999999999999999}"}}]},"finish_reason":"tool_calls"}]}',
+            'coarser magnitude' => '{"id":"chatcmpl-lossy3","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_l3","type":"function","function":{"name":"f","arguments":"{\"n\":12345678901234567890}"}}]},"finish_reason":"tool_calls"}]}',
+        );
+
+        foreach ($lossyBodies as $label => $body) {
+            $this->queueSdkResponse(200, array(), $body);
+
+            try {
+                $this->model()->generateTextResult($this->prompt());
+                $this->fail("[{$label}] A lossy beyond-int literal must be rejected.");
+            } catch (ResponseException $e) {
+                $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+            }
+        }
+    }
+
+    public function testDigitsInsideArgumentStringsAreDataNotLiterals()
+    {
+        /*
+         * GLM12 #8: the literal scan runs on the raw token with JSON
+         * string literals stripped — a lossy-looking digit run inside a
+         * STRING value replays verbatim and must not reject the call.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-note","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_note","type":"function","function":{"name":"f","arguments":"{\"note\":\"ref 999999999999999999999999999999 times\"}"}}]},"finish_reason":"tool_calls"}]}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame('ref 999999999999999999999999999999 times', $call->getArgs()['note']);
+    }
+
+    public function testThePreciseWireLiteralRuleDecidesExactVersusLossy()
+    {
+        /*
+         * GLM12 #8 unit pin: wire_arguments_are_replayable() — the exact
+         * formatter (sprintf('%.0f') of the decoded double) must reproduce
+         * every beyond-int integer literal, exponent giants reject through
+         * the encode oracle, and in-range shapes never consult the rule.
+         */
+        $guard = 'Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard';
+
+        $exact = array(
+            '1e20 digit form' => '{"n":100000000000000000000}',
+            '2^63' => '{"n":9223372036854775808}',
+            'negative exact' => '{"n":-100000000000000000000}',
+            'nested exact' => '{"rows":[{"id":1000000000000000000000}]}',
+            'in-range int' => '{"v":9223372036854775807}',
+            'float, never integral-beyond' => '{"v":1.5}',
+            'exponent float (stable double)' => '{"v":1e20}',
+            'digits in a string' => '{"note":"99999999999999999999999"}',
+            'digits in a key' => '{"99999999999999999999":"x"}',
+            'empty string' => '',
+        );
+        foreach ($exact as $label => $json) {
+            $this->assertTrue($guard::wire_arguments_are_replayable($json), "[{$label}] must replay.");
+        }
+
+        $lossy = array(
+            'boundary window (…809)' => '{"n":9223372036854775809}',
+            'negative boundary' => '{"n":-9223372036854775809}',
+            'coarser magnitude' => '{"n":12345678901234567890}',
+            'nested lossy' => '{"rows":[{"id":12345678901234567890}]}',
+            'INF exponent giant' => '{"v":1e999}',
+            'INF digit giant' => '{"v":' . str_repeat('9', 400) . '}',
+        );
+        foreach ($lossy as $label => $json) {
+            $this->assertFalse($guard::wire_arguments_are_replayable($json), "[{$label}] must reject.");
         }
     }
 

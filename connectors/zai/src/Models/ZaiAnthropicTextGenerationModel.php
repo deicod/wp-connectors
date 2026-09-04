@@ -1845,8 +1845,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * the two transports of one generation never diverge.
 				 * GLM9 #13: the decoded fast path — $args is a
 				 * json_decode() product on every branch above.
+				 *
+				 * GLM12 #8: the check scopes to the NON-STREAMING branch
+				 * ($raw_part set — the only tool-args acceptance point a
+				 * body decode reaches). The consolidated-stream branch's
+				 * input was ALREADY replayability-validated by the
+				 * aggregator — its accumulated-JSON channel precisely (the
+				 * raw fragment string is in hand there:
+				 * wire_arguments_are_replayable()), its initial-input
+				 * channel conservatively — and has_malformed_tool_input()
+				 * fails the response before this parse ever runs; re-
+				 * checking here through the conservative walker would
+				 * undo the precise rule for exact big literals.
 				 */
-				if ( null !== $args && ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
+				if ( null !== $raw_part && null !== $args && ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
 					throw ResponseException::fromInvalidData(
 						self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 						'content',

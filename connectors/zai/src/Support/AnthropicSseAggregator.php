@@ -514,17 +514,25 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					 * shape (and keeps {} an object, Codex R3 #1).
 					 *
 					 * GLM4 #2: the accumulated JSON must also decode to a
-					 * value that can REPLAY (1e999 → INF, a beyond-int
-					 * integer → lossy float); accepting it would hand the
-					 * model a FunctionCall whose arguments detonate at the
-					 * transport on the turn's very first replay — the same
-					 * reason non-object decodes fail above.
+					 * value that can REPLAY (1e999 → INF, a lossy beyond-int
+					 * integer literal); accepting it would hand the model a
+					 * FunctionCall whose arguments detonate at the transport
+					 * on the turn's very first replay — the same reason
+					 * non-object decodes fail above.
 					 *
 					 * GLM9 #13: the decoded fast path — this value is
 					 * json_decode() output (the structural walker alone
 					 * decides, no serialization round trip).
+					 *
+					 * GLM12 #8: the accumulated fragment STRING is in hand
+					 * here, so the PRECISE integer-literal rule replaces
+					 * the walker's conservative blanket rejection — an
+					 * exact big literal (1e20, 2^63) replays losslessly and
+					 * must complete the call, while a genuinely lossy one
+					 * still flags the block (see
+					 * ToolArgsReplayGuard::wire_arguments_are_replayable()).
 					 */
-					if ( ! ToolArgsReplayGuard::is_replayable_decoded( $decoded ) ) {
+					if ( ! ToolArgsReplayGuard::wire_arguments_are_replayable( $block['json'] ) ) {
 						$this->malformed_tool_input = true;
 
 						return null;

@@ -686,8 +686,27 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * json_decode() product (the SDK parent's associative decode or
 		 * ToolArgsObjectNess::from_raw()), so the structural walker
 		 * alone decides, no serialization round trip.
+		 *
+		 * GLM12 #8 splits the out-of-range-integer half of that rule by
+		 * what this hook can see: BOTH zai transports deliver the
+		 * arguments as a STRING here, so the PRECISE rule applies — an
+		 * integer literal beyond PHP_INT_MAX replays when the platform
+		 * decode keeps it EXACT (1e20, 2^63; the old blanket walker
+		 * rejection failed these valid generations), while a genuinely
+		 * lossy literal (…809 collapsing to the …808 boundary double)
+		 * still rejects. The pre-decoded (non-string) member keeps the
+		 * conservative walker: post-decode, an exact big float and a
+		 * lossy one are indistinguishable, so undecidable rejects.
 		 */
-		if ( ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
+		if ( \is_string( $raw_arguments ) ) {
+			if ( ! ToolArgsReplayGuard::wire_arguments_are_replayable( $raw_arguments ) ) {
+				throw ResponseException::fromInvalidData(
+					self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+					'tool_calls',
+					'A tool call carried arguments that cannot be replayed (an unencodable or precision-loss value was given).'
+				);
+			}
+		} elseif ( ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
 			throw ResponseException::fromInvalidData(
 				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'tool_calls',

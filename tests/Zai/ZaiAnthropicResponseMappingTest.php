@@ -916,6 +916,47 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testStreamedExactBigToolInputLiteralsReplayAndLossyOnesReject()
+    {
+        /*
+         * GLM12 #8, streamed: the accumulated input_json_delta STRING is
+         * in hand at the aggregator's acceptance point, so the PRECISE
+         * literal rule applies — an exact beyond-int literal (1e20 as
+         * digits) completes the call; a genuinely lossy one still flags
+         * the block like truncated JSON.
+         */
+        $exact = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ex","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_ex","name":"convert","input":{}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"scale\":100000000000000000000}"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $exact);
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame(1.0E20, $call->getArgs()['scale'], 'The exact 1e20 literal replays.');
+
+        $lossy = str_replace('100000000000000000000', '9223372036854775809', str_replace('msg_ex', 'msg_lx', $exact));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $lossy);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A lossy streamed literal must fail like truncated JSON.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
     public function testStreamedNonReplayableInitialToolInputFailsAsAStreamParseError()
     {
         // GLM4 #2: the content_block_start's OWN input object is an

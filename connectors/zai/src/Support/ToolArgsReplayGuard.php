@@ -20,6 +20,20 @@
  * SSE acceptance points (malformed_tool_input flag) so the two transports
  * of one generation can never diverge on what replays.
  *
+ * GLM12 #8 splits the out-of-range rule by what the call site can see: a
+ * path holding the RAW wire string decides PRECISELY
+ * (wire_arguments_are_replayable(): an integer literal beyond
+ * PHP_INT_MAX survives only when the platform decode keeps it EXACT —
+ * 1e20, 2^63 — and a genuinely lossy literal …789 collapsing to …808
+ * rejects); a path holding only the DECODED value cannot tell an exact
+ * big float from a lossy one (both re-encode stably), so its walker
+ * stays CONSERVATIVE and rejects every finite integral float beyond the
+ * int range. The old blanket justification — "a legitimate non-integral
+ * float of that magnitude is equally unrepresentable" — was false: every
+ * double >= 2^63 is integral (the spacing there is >= 2048), so the
+ * rejection is undecidability-driven conservatism, never
+ * representability.
+ *
  * @since 0.2.0
  *
  * @package wp-connectors
@@ -45,15 +59,19 @@ final class ToolArgsReplayGuard {
 	 * SEMANTICALLY equal value that re-encodes stably (the "encode →
 	 * decode must reproduce a semantically equal value" contract; the
 	 * one benign encoding instability, negative zero, is accepted — see
-	 * the check below). Additionally, a
-	 * FINITE INTEGRAL float beyond the platform int range is rejected: it
-	 * can only be a wire integer json_decode() could not keep exact, so
-	 * replay would ship a silently altered value in e-notation.
+	 * the check below). Additionally, a FINITE INTEGRAL float beyond the
+	 * platform int range is rejected — GLM12 #8: not because such a
+	 * float loses anything on replay (a decode-origin finite double
+	 * always re-encodes stably; every double >= 2^63 is integral), but
+	 * because the DECODED value cannot prove it came from an exact
+	 * literal. A call site holding the raw wire string decides precisely
+	 * through wire_arguments_are_replayable() instead.
 	 *
 	 * Accepted residual, documented: the integers in the ~2048-wide window
 	 * immediately above PHP_INT_MAX all decode to the SAME boundary float
-	 * and are indistinguishable after the decode; every distinguishably
-	 * out-of-range value is rejected.
+	 * and are indistinguishable after the decode; on decoded-only paths
+	 * every out-of-range integral float rejects (undecidable → reject),
+	 * on raw-string paths exactly-representable literals accept.
 	 *
 	 * @since 0.2.0
 	 *
@@ -137,7 +155,98 @@ final class ToolArgsReplayGuard {
 	}
 
 	/**
+	 * Whether a RAW wire arguments string replays losslessly — the
+	 * PRECISE rule, available only where the original token is in hand
+	 * (GLM12 #8).
+	 *
+	 * The decoded-only walker rejects every finite integral float beyond
+	 * PHP_INT_MAX because post-decode it cannot distinguish an EXACT big
+	 * literal (1e20, 2^63 — the double holds the literal's exact value
+	 * and re-encodes stably) from a LOSSY one (…809 collapsing to the …808
+	 * boundary double, every coarser magnitude losing digits). With the
+	 * raw string the two ARE distinguishable: every integer literal
+	 * beyond the platform int range is re-read through the platform's own
+	 * exact decimal formatter (sprintf('%.0f') of the decoded float —
+	 * %.0f emits no decimal separator, so the locale decimal-point rule
+	 * cannot interfere), and a literal that does not come back identical
+	 * is a true precision loss at decode time. An exponent-form giant
+	 * ("1e999") decodes to INF and rejects through the encode oracle on
+	 * the decoded tree; digit strings beyond ~1e309 decode to INF the
+	 * same way.
+	 *
+	 * JSON string literals (values AND keys — "call 999…9 times" as a
+	 * note, an id-shaped key) are stripped before the scan: their digits
+	 * are data, not numeric literals, and a lossy-looking run inside a
+	 * string replays verbatim. The caller must have established the
+	 * string DECODES (the string-path acceptance sites already reject
+	 * undecodable fragments before this rule runs).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $raw_arguments The raw arguments JSON string from the wire.
+	 * @return bool True when every integer literal survives the decode exactly.
+	 */
+	public static function wire_arguments_are_replayable( string $raw_arguments ): bool {
+		$decoded = json_decode( $raw_arguments ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle below is required: INF/NAN from exponent-form giants must fail, not be lossily rescued.
+
+		if ( false === json_encode( $decoded ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle: INF (the 1e999 exponent decode) and NAN cannot encode, so the arguments cannot replay at all.
+			return false;
+		}
+
+		// Strip JSON string literals (values and keys): digits inside a
+		// string are data and replay verbatim, never a numeric literal.
+		$without_strings = preg_replace( '/"(?:[^"\\\\]|\\\\.)*"/', '""', $raw_arguments );
+
+		if ( ! \is_string( $without_strings )
+			|| ! preg_match_all( '/(?<![\d.eE-])-?\d+(?![\d.eE-])/', $without_strings, $literals ) ) {
+			return true;
+		}
+
+		foreach ( $literals[0] as $literal ) {
+			$negative = '-' === $literal[0];
+			$digits   = $negative ? \substr( $literal, 1 ) : $literal;
+
+			/*
+			 * Within the platform int range the decode is exact (int), so
+			 * only literals BEYOND PHP_INT_MAX need the exactness test.
+			 * The bound compare is lexical on equal-length digit strings
+			 * (numeric for same-length decimal digits).
+			 */
+			$bound = $negative ? '9223372036854775808' : '9223372036854775807';
+
+			if ( \strlen( $digits ) < 19 || ( 19 === \strlen( $digits ) && $digits <= $bound ) ) {
+				continue;
+			}
+
+			$value = (float) $literal;
+
+			if ( \is_infinite( $value ) ) {
+				// A digit string beyond ~1e309: the decode produces INF,
+				// which cannot encode at all.
+				return false;
+			}
+
+			if ( sprintf( '%.0f', $value ) !== $literal ) {
+				// The nearest double is not this literal: true precision
+				// loss at decode time (the ~2048-wide boundary window and
+				// every coarser magnitude).
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * Whether the tree carries an integral float beyond the platform int.
+	 *
+	 * GLM12 #8: this is the CONSERVATIVE half of the split rule — every
+	 * double >= 2^63 is integral (the spacing there is >= 2048), so this
+	 * branch's finite floats are exactly-representable values that
+	 * re-encode stably; rejecting them is undecidability-driven (post-
+	 * decode, an exact big literal and a lossy one are the same double),
+	 * not representability. Raw-string call sites use the precise
+	 * wire_arguments_are_replayable() rule instead.
 	 *
 	 * @since 0.2.0
 	 *
@@ -148,11 +257,9 @@ final class ToolArgsReplayGuard {
 		if ( \is_float( $value ) ) {
 			/*
 			 * INF/NAN already failed the encode above, so this branch sees
-			 * only finite floats. An integral float beyond PHP_INT_MAX is a
-			 * decoded wire integer the platform int could not hold (a
-			 * legitimate non-integral float of that magnitude is
-			 * astronomically pathological for tool arguments and equally
-			 * unrepresentable on replay).
+			 * only finite floats — all integral above 2^63, all
+			 * stable-replaying doubles, rejected conservatively (see the
+			 * docblock).
 			 */
 			return \floor( $value ) === $value && \abs( $value ) > PHP_INT_MAX;
 		}
