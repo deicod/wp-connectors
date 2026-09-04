@@ -114,11 +114,31 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	/**
 	 * Stop reason reported with message_delta.
 	 *
+	 * GLM9 #1: an explicitly-RECEIVED null is the schema's own nullable
+	 * case (the Messages schema types stop_reason string|null), distinct
+	 * from the never-delivered member — see $stop_reason_received, which
+	 * alone decides that distinction in aggregated().
+	 *
 	 * @since 0.2.0
 	 *
 	 * @var string|null
 	 */
 	private $stop_reason;
+
+	/**
+	 * Whether the message_delta's delta carried a stop_reason member the
+	 * schema permits (a string, or the explicit null of GLM9 #1).
+	 *
+	 * The value alone cannot distinguish "message_delta carried
+	 * stop_reason:null" from "message_delta never arrived" — the same
+	 * array-key-existence semantics the non-streaming parser judges by
+	 * (GLM8 #4), latched here when the member was received.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $stop_reason_received = false;
 
 	/**
 	 * Content block accumulators keyed by stream block index.
@@ -378,8 +398,16 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * indistinguishable from a genuinely empty body; the flag names
 		 * the truncation in the malformed-event channel like every other
 		 * lost-frame shape.
+		 *
+		 * GLM9 #1: the check reads RECEPTION, not the value — a
+		 * message_delta carrying the schema-legal {"stop_reason":null}
+		 * is a delivered stop reason just like any string, and the
+		 * consolidated payload then carries the same explicitly-null
+		 * member the byte-identical non-streaming body would (accepted
+		 * there since GLM8 #4; the two transports of one generation must
+		 * not diverge on one schema).
 		 */
-		if ( null === $this->stop_reason ) {
+		if ( ! $this->stop_reason_received ) {
 			$this->malformed_event = true;
 
 			return null;
@@ -1072,8 +1100,27 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 
 				$this->message_delta_received = true;
 
-				if ( isset( $data['delta'] ) && \is_array( $data['delta'] ) && isset( $data['delta']['stop_reason'] ) && \is_string( $data['delta']['stop_reason'] ) ) {
-					$this->stop_reason = $data['delta']['stop_reason'];
+				/*
+				 * GLM9 #1: presence is judged with array-key-existence
+				 * semantics matching the non-streaming parser (GLM8 #4)
+				 * — the Messages schema types stop_reason string|null, so
+				 * an EXPLICIT null in the final message_delta is
+				 * schema-legal. isset() collapsed it onto the absent
+				 * member, the stop reason stayed unreceived, and
+				 * aggregated() flagged the complete stream as a
+				 * malformed event while the byte-identical
+				 * non-streaming body parsed successfully. A PRESENT
+				 * member latches reception when it is a string or the
+				 * schema's own null; any other value keeps it
+				 * un-received (the malformed-event channel), matching
+				 * the non-streaming typed rejection for non-string stop
+				 * reasons (GLM2 #5).
+				 */
+				if ( isset( $data['delta'] ) && \is_array( $data['delta'] )
+					&& \array_key_exists( 'stop_reason', $data['delta'] )
+					&& ( \is_string( $data['delta']['stop_reason'] ) || null === $data['delta']['stop_reason'] ) ) {
+					$this->stop_reason          = $data['delta']['stop_reason'];
+					$this->stop_reason_received = true;
 				}
 				// GLM1 #9: envelope parity with the non-streaming body.
 				if ( isset( $data['delta']['stop_sequence'] ) && \is_string( $data['delta']['stop_sequence'] ) ) {

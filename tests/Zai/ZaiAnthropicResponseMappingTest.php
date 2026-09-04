@@ -245,6 +245,97 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAStreamedExplicitNullStopReasonAggregatesAsANaturalStop()
+    {
+        /*
+         * GLM9 #1: the streamed twin of testAnExplicitNullStopReasonParsesAsANaturalStop
+         * (GLM8 #4). isset() collapsed the schema-legal
+         * {"delta":{"stop_reason":null}} onto the absent member, so the
+         * complete stream was flagged malformed and the model threw
+         * 'malformed event frame' — while the byte-identical
+         * non-streaming body parsed. Reception, not the value, now
+         * decides; the null aggregates onto the consolidated payload
+         * and maps to the neutral natural-stop finish reason.
+         */
+        $stream = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_null_stop_stream","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Nul"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":null},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Nul', $result->toText());
+        $this->assertSame('msg_null_stop_stream', $result->getId());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+        $this->assertSame(3, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    public function testAStreamedExplicitNullStopReasonWithToolUseBlocksStillRejects()
+    {
+        // GLM9 #1 guard (streamed twin of the GLM8 #4 consistency
+        // check): the received null is judged like any non-tool_use
+        // reason, so tool blocks under it stay a typed contradiction —
+        // never laundered into a toolCalls() finish.
+        $stream = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_null_stop_tools_s","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":null},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Tool blocks under a streamed explicit null stop reason must stay rejected.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('stop reason did not match', $e->getMessage());
+        }
+    }
+
+    public function testAStreamedNonStringStopReasonStillFailsTyped()
+    {
+        // GLM9 #1 guard: only the string-or-null shapes latch reception
+        // — a non-string member (5, false, []) keeps the stop reason
+        // un-received and the stream fails through the malformed-event
+        // channel, matching the non-streaming typed rejection for the
+        // same shape (GLM2 #5).
+        $stream = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_bad_stop_s","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"X"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":5},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-string streamed stop reason must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testAJsonBodyMislabeledAsEventStreamParsesViaTheFallback()
     {
         /*
