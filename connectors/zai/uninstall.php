@@ -73,29 +73,32 @@ function zai_connector_zai_uninstall_site() {
 	 * fatal. When it cannot load, only the class-derived discovery
 	 * sweep below is skipped (those entries are 12h transients); the
 	 * probe-miss sweeps further down never need a plugin class.
+	 *
+	 * GLM10 #14: the seven owner class=>file pairs, previously stated
+	 * THREE times over (the file-existence list, the seven literal
+	 * class_exists+require_once ifs, the class re-check list), ride ONE
+	 * map now — adding or renaming an owner edits one line, not three
+	 * lockstep listings (the exact silent-strand drift the file's own
+	 * GLM8 #11/GLM9 #8 comments document for drifted name formulas).
+	 * The two phases preserve the fatal-avoidance ordering exactly:
+	 * every file is verified BEFORE anything is required, then only
+	 * not-yet-declared classes are required (a require onto a declared
+	 * name is a redeclare fatal) and every class is re-checked after
+	 * its load attempt. The require targets stay literal so the
+	 * plugin's self-containment contract keeps holding provably.
 	 */
-	$zai_connector_owner_files = array(
-		__DIR__ . '/src/Settings/AbstractPlanRegionSettings.php',
-		__DIR__ . '/src/Settings/PlanRegionSettings.php',
-		__DIR__ . '/src/Settings/ZaiAnthropicPlanRegionSettings.php',
-		__DIR__ . '/src/Endpoints/AbstractZaiEndpoint.php',
-		__DIR__ . '/src/Endpoints/ZaiEndpoint.php',
-		__DIR__ . '/src/Endpoints/ZaiAnthropicEndpoint.php',
-		__DIR__ . '/src/Metadata/ZaiDiscoveryCache.php',
-	);
-
-	$zai_connector_owner_classes = array(
-		'Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings',
-		'Deicod\WpConnectors\Zai\Settings\PlanRegionSettings',
-		'Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings',
-		'Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint',
-		'Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint',
-		'Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint',
-		'Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache',
+	$zai_connector_owner_chain = array(
+		'Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings' => __DIR__ . '/src/Settings/AbstractPlanRegionSettings.php',
+		'Deicod\WpConnectors\Zai\Settings\PlanRegionSettings' => __DIR__ . '/src/Settings/PlanRegionSettings.php',
+		'Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings' => __DIR__ . '/src/Settings/ZaiAnthropicPlanRegionSettings.php',
+		'Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint' => __DIR__ . '/src/Endpoints/AbstractZaiEndpoint.php',
+		'Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint' => __DIR__ . '/src/Endpoints/ZaiEndpoint.php',
+		'Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint' => __DIR__ . '/src/Endpoints/ZaiAnthropicEndpoint.php',
+		'Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache' => __DIR__ . '/src/Metadata/ZaiDiscoveryCache.php',
 	);
 
 	$zai_connector_owner_ready = true;
-	foreach ( $zai_connector_owner_files as $zai_connector_owner_file ) {
+	foreach ( $zai_connector_owner_chain as $zai_connector_owner_file ) {
 		if ( ! is_file( $zai_connector_owner_file ) ) {
 			$zai_connector_owner_ready = false;
 			break;
@@ -103,36 +106,11 @@ function zai_connector_zai_uninstall_site() {
 	}
 
 	if ( $zai_connector_owner_ready ) {
-		/*
-		 * Only files whose class is not already declared are required —
-		 * a require onto an already-declared name is a redeclare fatal —
-		 * and the sweep below runs only when every class of the chain
-		 * exists afterwards. The require targets stay literal so the
-		 * plugin's self-containment contract keeps holding provably.
-		 */
-		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings', false ) ) {
-			require_once __DIR__ . '/src/Settings/AbstractPlanRegionSettings.php';
-		}
-		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Settings\PlanRegionSettings', false ) ) {
-			require_once __DIR__ . '/src/Settings/PlanRegionSettings.php';
-		}
-		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings', false ) ) {
-			require_once __DIR__ . '/src/Settings/ZaiAnthropicPlanRegionSettings.php';
-		}
-		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint', false ) ) {
-			require_once __DIR__ . '/src/Endpoints/AbstractZaiEndpoint.php';
-		}
-		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint', false ) ) {
-			require_once __DIR__ . '/src/Endpoints/ZaiEndpoint.php';
-		}
-		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint', false ) ) {
-			require_once __DIR__ . '/src/Endpoints/ZaiAnthropicEndpoint.php';
-		}
-		if ( ! class_exists( 'Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache', false ) ) {
-			require_once __DIR__ . '/src/Metadata/ZaiDiscoveryCache.php';
-		}
+		foreach ( $zai_connector_owner_chain as $zai_connector_owner_class => $zai_connector_owner_file ) {
+			if ( ! class_exists( $zai_connector_owner_class, false ) ) {
+				require_once $zai_connector_owner_file;
+			}
 
-		foreach ( $zai_connector_owner_classes as $zai_connector_owner_class ) {
 			if ( ! class_exists( $zai_connector_owner_class, false ) ) {
 				$zai_connector_owner_ready = false;
 				break;

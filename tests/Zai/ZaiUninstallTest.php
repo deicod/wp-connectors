@@ -514,4 +514,29 @@ PHP;
         @rmdir($plugin);
         @unlink($log);
     }
+
+    public function testTheOwnerChainIsStatedAsOneMap()
+    {
+        /*
+         * GLM10 #14: the seven owner class=>file pairs were stated
+         * three times in one function (the file-existence list, seven
+         * literal class_exists+require_once ifs, the class re-check
+         * list), so adding or renaming an owner needed 3+ lockstep
+         * edits — miss one and that owner's part of the uninstall
+         * sweep silently vanishes. One map drives the two phases now;
+         * the source pin forbids the literal-ladder shape from coming
+         * back.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/uninstall.php');
+
+        $this->assertSame(1, substr_count($source, 'require_once $'), 'Exactly one variable require: the map loop\'s.');
+        $this->assertSame(1, substr_count($source, 'is_file('), 'Exactly one existence probe: the map loop\'s.');
+        $this->assertCount(
+            7,
+            array_filter(explode("\n", $source), static function ($line) {
+                return false !== strpos($line, "'Deicod\\WpConnectors\\Zai\\") && false !== strpos($line, "=> __DIR__ . '/src/");
+            }),
+            'The seven owner pairs ride the one map.'
+        );
+    }
 }

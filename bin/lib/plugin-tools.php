@@ -363,6 +363,14 @@ function wp_connectors_include_runtime_segments($statement)
  * start precedes $offset (an assignment after the include cannot be read
  * by it).
  *
+ * GLM10 #14: a foreach VALUE binding is an assignment-shaped read —
+ * `foreach ($map as $k => $v)` hands $v every VALUE of $map — so it is
+ * also collected, as the synthetic assignment `$v = $map;` that the
+ * plain-variable analyses then resolve through $map's own same-file
+ * assignment (e.g. the uninstall owner chain's map of literal __DIR__
+ * paths). Bindings the foreach regex cannot parse are simply not
+ * collected: a variable include through them stays flagged.
+ *
  * @param string $code     Comment-stripped source of the file.
  * @param string $variable Variable token, including the leading '$'.
  * @param int    $offset   Byte offset the include starts at.
@@ -378,6 +386,27 @@ function wp_connectors_same_file_assignments($code, $variable, $offset)
                 continue;
             }
             $assignments[] = $assignment[0];
+        }
+    }
+
+    if (preg_match_all('/foreach\s*\((.+?)\)\s*\{/', $code, $foreaches, PREG_OFFSET_CAPTURE)) {
+        foreach ($foreaches[1] as $foreach) {
+            if ($foreach[1] >= $offset) {
+                // The loop body (and its includes) runs after the binding.
+                continue;
+            }
+            if (! preg_match('/^(.+?)\s+as\s+(.+)$/s', $foreach[0], $parts)) {
+                continue;
+            }
+            $value_variable = trim($parts[2]);
+            $arrow = strpos($value_variable, '=>');
+            if (false !== $arrow) {
+                $value_variable = trim((string) substr($value_variable, $arrow + 2));
+            }
+            if ($value_variable !== $variable) {
+                continue;
+            }
+            $assignments[] = $variable . ' = ' . trim($parts[1]) . ';';
         }
     }
 
@@ -529,6 +558,49 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
         $reasons = array();
         foreach ($assignments as $assignment) {
             $expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
+
+            /*
+             * GLM10 #14: an assignment whose value is an array() literal
+             * (the uninstall owner chain's map) or a plain VARIABLE bound
+             * by a foreach over one resolves through the map's own
+             * same-file literal — every element VALUE must prove in-root
+             * by the same literal analysis a direct include passes.
+             */
+            if (preg_match('/^(?:array\s*\(|\[)/i', $expression)) {
+                foreach (wp_connectors_array_literal_value_reasons($file, $expression, $pluginDir) as $reason) {
+                    $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
+                }
+                continue;
+            }
+
+            if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $expression)) {
+                $inner_assignments = wp_connectors_same_file_assignments($code, $expression, $offset);
+                if ($inner_assignments === array()) {
+                    $reasons[] = sprintf('variable %s depends on %s with no resolvable same-file assignment', $argument, $expression);
+                    continue;
+                }
+                foreach ($inner_assignments as $inner_assignment) {
+                    $inner_expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($inner_assignment)), ';');
+                    if (preg_match('/^(?:array\s*\(|\[)/i', $inner_expression)) {
+                        foreach (wp_connectors_array_literal_value_reasons($file, $inner_expression, $pluginDir) as $reason) {
+                            $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
+                        }
+                        continue;
+                    }
+                    foreach (wp_connectors_include_expression_reasons($file, $inner_expression, $pluginDir) as $reason) {
+                        $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
+                    }
+                    // An inner assignment may itself mix the anchor with
+                    // runtime segments — the same per-segment proof the
+                    // direct case applies, or a trailing `$x` would ride
+                    // an anchored literal unnoticed.
+                    foreach (wp_connectors_runtime_segment_reasons($file, $code, $inner_expression, $offset, $pluginDir) as $reason) {
+                        $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
+                    }
+                }
+                continue;
+            }
+
             foreach (wp_connectors_include_expression_reasons($file, $expression, $pluginDir) as $reason) {
                 $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
             }
@@ -546,6 +618,105 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
     $reasons = wp_connectors_include_expression_reasons($file, $argument, $pluginDir);
 
     return $reasons === array() ? array() : array( sprintf('expression %s', $reasons[0]) );
+}
+
+/**
+ * Reasons an array() literal's element VALUES cannot be proven in-root
+ * (GLM10 #14).
+ *
+ * The map shape the uninstall owner chain uses — one `$map = array( ... )`
+ * literal whose values are the include targets a foreach binds — is
+ * statically decidable exactly the way a direct include is: every element
+ * VALUE expression (the right side of a top-level `=>`, or a bare list
+ * element) must pass wp_connectors_include_expression_reasons(). The
+ * elements are split on depth-zero commas of a length-preserving
+ * string-blanked copy, so commas and arrows inside quoted keys or nested
+ * structures never cut an element.
+ *
+ * @param string $file       Absolute path of the file containing the literal.
+ * @param string $expression The array() / [] literal.
+ * @param string $pluginDir  Absolute plugin directory.
+ * @return list<string> Violation reasons (empty when every value is provably in-root).
+ */
+function wp_connectors_array_literal_value_reasons($file, $expression, $pluginDir)
+{
+    $inner = (string) preg_replace('/^(?:array\s*\(|\[)\s*/i', '', trim($expression));
+    $inner = (string) preg_replace('/\s*\)?\]?\s*$/', '', $inner);
+
+    // Blank string contents WITHOUT changing the byte length, so comma
+    // cut positions computed on the blanked copy slice the ORIGINAL.
+    $blanked = (string) preg_replace_callback(
+        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/s',
+        static function ($match) {
+            return '\'' . str_repeat('x', max(0, strlen($match[0]) - 2)) . '\'';
+        },
+        $inner
+    );
+
+    $elements = array();
+    $cut = -1;
+    $depth = 0;
+    $length = strlen($blanked);
+    for ($i = 0; $i < $length; ++$i) {
+        $char = $blanked[ $i ];
+        if ($char === '(' || $char === '[') {
+            ++$depth;
+        } elseif ($char === ')' || $char === ']') {
+            --$depth;
+        }
+        if ($char === ',' && $depth === 0) {
+            $elements[] = trim((string) substr($inner, $cut + 1, $i - $cut - 1));
+            $cut = $i;
+        }
+    }
+    $tail = trim((string) substr($inner, $cut + 1));
+    if ('' !== $tail) {
+        $elements[] = $tail;
+    }
+
+    $reasons = array();
+    $values = 0;
+    foreach ($elements as $element) {
+        if ('' === $element) {
+            continue;
+        }
+
+        // The VALUE side of a top-level `=>` (the arrow inside a nested
+        // structure sits below depth zero and never splits this element).
+        $element_blank = (string) preg_replace_callback(
+            '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/s',
+            static function ($match) {
+                return '\'' . str_repeat('x', max(0, strlen($match[0]) - 2)) . '\'';
+            },
+            $element
+        );
+        $depth = 0;
+        $value = $element;
+        $length = strlen($element_blank);
+        for ($i = 0; $i < $length - 1; ++$i) {
+            $char = $element_blank[ $i ];
+            if ($char === '(' || $char === '[') {
+                ++$depth;
+            } elseif ($char === ')' || $char === ']') {
+                --$depth;
+            }
+            if (0 === $depth && '=' === $char && '>' === $element_blank[ $i + 1 ]) {
+                $value = trim((string) substr($element, $i + 2));
+                break;
+            }
+        }
+
+        ++$values;
+        foreach (wp_connectors_include_expression_reasons($file, $value, $pluginDir) as $reason) {
+            $reasons[] = sprintf('includes a map value (%s) that %s', $value, $reason);
+        }
+    }
+
+    if (0 === $values) {
+        return array( 'includes no element values' );
+    }
+
+    return $reasons;
 }
 
 /**
