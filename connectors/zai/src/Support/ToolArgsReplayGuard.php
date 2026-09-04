@@ -193,12 +193,37 @@ final class ToolArgsReplayGuard {
 			return false;
 		}
 
-		// Strip JSON string literals (values and keys): digits inside a
-		// string are data and replay verbatim, never a numeric literal.
-		$without_strings = preg_replace( '/"(?:[^"\\\\]|\\\\.)*"/', '""', $raw_arguments );
+		/*
+		 * Strip JSON string literals (values and keys): digits inside a
+		 * string are data and replay verbatim, never a numeric literal.
+		 *
+		 * GLM12 verifier round: the star was originally a plain
+		 * alternation group ('(?:[^"\\]|\\.)*'), which spends one engine
+		 * frame per iteration — an escape-dense value (~20k escapes, or
+		 * ~45k plain characters, both realistic for arguments embedding
+		 * quoted JSON or code) exhausted the PCRE recursion limit,
+		 * preg_replace() returned null, and the scan FAILED OPEN,
+		 * silently accepting a lossy beyond-int literal in the same
+		 * arguments. The unrolled-loop POSSESSIVE form below matches in
+		 * linear time without per-character frames, and every engine
+		 * failure now fails CLOSED through the conservative walker
+		 * (reject undecidable) instead of returning true.
+		 */
+		$without_strings = preg_replace( '/"[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"/', '""', $raw_arguments );
 
-		if ( ! \is_string( $without_strings )
-			|| ! preg_match_all( '/(?<![\d.eE-])-?\d+(?![\d.eE-])/', $without_strings, $literals ) ) {
+		if ( null === $without_strings ) {
+			return self::is_replayable_decoded( $decoded );
+		}
+
+		$matches = preg_match_all( '/(?<![\d.eE-])-?\d+(?![\d.eE-])/', $without_strings, $literals );
+
+		if ( false === $matches ) {
+			// Engine failure on the scan itself: fail closed, exactly
+			// like the stripper above.
+			return self::is_replayable_decoded( $decoded );
+		}
+
+		if ( 0 === $matches ) {
 			return true;
 		}
 

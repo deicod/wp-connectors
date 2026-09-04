@@ -356,10 +356,20 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             'nested lossy' => '{"rows":[{"id":12345678901234567890}]}',
             'INF exponent giant' => '{"v":1e999}',
             'INF digit giant' => '{"v":' . str_repeat('9', 400) . '}',
+            /*
+             * GLM12 verifier round: an escape-dense string value (~20k
+             * escapes) used to exhaust the PCRE recursion limit in the
+             * string stripper, and the engine failure FAILED OPEN —
+             * silently accepting a lossy literal in the same arguments.
+             */
+            'escape-dense + lossy literal' => '{"doc":"' . str_repeat('x\"y', 20000) . '","tracking_id":99999999999999999999}',
         );
         foreach ($lossy as $label => $json) {
             $this->assertFalse($guard::wire_arguments_are_replayable($json), "[{$label}] must reject.");
         }
+
+        $exact['escape-dense + exact literal'] = '{"doc":"' . str_repeat('x\"y', 20000) . '","tracking_id":100000000000000000000}';
+        $this->assertTrue($guard::wire_arguments_are_replayable($exact['escape-dense + exact literal']), 'The precise rule must keep working at scale (no engine failure on the possessive stripper).');
     }
 
     public function testPreDecodedToolCallArgumentsWithInfAreRejectedTyped()
@@ -1069,6 +1079,27 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
 
         $this->assertNoHttpRequests();
+    }
+
+    public function testAnEscapeDenseToolCallStillRejectsLossyLiterals()
+    {
+        /*
+         * GLM12 verifier round (end-to-end): the PCRE recursion limit
+         * failure the stripper used to hit on escape-dense arguments
+         * failed OPEN — the lossy 20-nines literal rode through
+         * accepted AND stamped (the outbound oracle skipped forever
+         * after). The precise rule must reject the lossy literal even
+         * beside a 60KB escape-dense string value.
+         */
+        $arguments = '{"doc":"' . str_repeat('x\"y', 20000) . '","tracking_id":99999999999999999999}';
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-dense","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_dense","type":"function","function":{"name":"f","arguments":' . wp_json_encode($arguments) . '}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A lossy literal beside an escape-dense string must be rejected.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+        }
     }
 
     public function testLengthFinishReasonMapsToLength()

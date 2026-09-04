@@ -1032,6 +1032,40 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(1.0E20, $replay['messages'][1]['content'][0]['input']['scale'], 'The exact big literal rides the replay verbatim.');
     }
 
+    public function testStreamedEscapeDenseToolInputStillRejectsLossyLiterals()
+    {
+        /*
+         * GLM12 verifier round, streamed: the same fail-open the zai
+         * surface had — an escape-dense accumulated input_json plus a
+         * lossy literal used to slip through the exhausted stripper and
+         * complete a STAMPED call with silently altered arguments.
+         */
+        $inputJson = '{"doc":"' . str_repeat('x\"y', 20000) . '","tracking_id":99999999999999999999}';
+
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_dn","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_dn","name":"convert","input":{}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":' . wp_json_encode($inputJson) . '}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A lossy literal in escape-dense streamed input must fail like truncated JSON.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
     public function testStreamedNonReplayableInitialToolInputFailsAsAStreamParseError()
     {
         // GLM4 #2: the content_block_start's OWN input object is an
