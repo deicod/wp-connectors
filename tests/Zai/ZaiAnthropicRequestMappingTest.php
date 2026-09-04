@@ -544,6 +544,53 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringContainsString('"properties":{"settings":', $raw, 'The enclosing schema positions are unaffected.');
     }
 
+    public function testEmptyArraySubschemasAtSchemaValuedPositionsNormalizeToObjects()
+    {
+        /*
+         * GLM10 #6: GLM8 #6 normalized the four object-MAP keywords only,
+         * so an empty-array SUBSCHEMA at every other schema-valued
+         * position — a property value of [], items: [], an allOf element
+         * — shipped on the wire as JSON [] where the Messages
+         * input_schema meta-schema demands an object, surfacing a strict
+         * endpoint's 400 as the generic misattributed upstream client
+         * error. Every schema-valued position normalizes now; the
+         * list-valued keywords keep their (schema-valid) empty lists and
+         * the data-valued annotation keywords stay verbatim (pinned
+         * above).
+         */
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('search', 'Search', array(
+                    'type' => 'object',
+                    'properties' => array(
+                        'filters' => array('type' => 'array', 'items' => array()),
+                        'anything' => array(),
+                        'meta' => array('type' => 'object', 'additionalProperties' => array()),
+                    ),
+                    'allOf' => array(array()),
+                    'anyOf' => array(),
+                    'items' => array(array('type' => 'object'), array()),
+                )))->toArray(),
+            ),
+        ));
+
+        $this->model($config)->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+
+        $raw = (string) $this->sdkHttpAttempts()[0]['body'];
+
+        $this->assertStringContainsString('"items":{}', $raw, 'An empty items subschema encodes as the empty-object schema.');
+        $this->assertStringContainsString('"anything":{}', $raw, 'An empty property value is an empty subschema, not an empty list.');
+        $this->assertStringContainsString('"additionalProperties":{}', $raw, 'An empty additionalProperties subschema encodes as {}.');
+        $this->assertStringContainsString('"allOf":[{}]', $raw, 'A subschema-list element encodes as {}.');
+        $this->assertStringContainsString('"anyOf":[]', $raw, 'The list-valued anyOf keeps its empty list — the list itself is not a subschema.');
+        $this->assertStringContainsString('"items":[{"type":"object"},{}]', $raw, 'The legacy tuple form of items normalizes every element as a subschema.');
+        $this->assertStringNotContainsString('"anything":[]', $raw, 'No subschema-valued member may encode as [].');
+    }
+
     public function testSequentialArrayToolArgumentsAreRejectedBeforeTransport()
     {
         // Codex R4 #4: a FunctionCall from chat history carrying a

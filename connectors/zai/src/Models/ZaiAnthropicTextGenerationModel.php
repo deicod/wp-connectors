@@ -426,6 +426,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * place of the adapter's own normalization. The object-map
 				 * keywords are normalized recursively; 'required' and every
 				 * other list-valued keyword keep their (schema-valid) [].
+				 *
+				 * GLM10 #6: the recursion now knows EVERY schema-valued
+				 * position — a property value of [], items: [], an allOf
+				 * element — not just the four map keywords, so an
+				 * empty-array SUBSCHEMA at any of them encodes as {} too
+				 * (see normalize_empty_object_members()).
 				 */
 				$input_schema = self::normalize_empty_object_members( $input_schema );
 			}
@@ -455,6 +461,35 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private const SCHEMA_OBJECT_MAP_KEYS = array( 'properties', 'patternProperties', 'definitions', '$defs' );
 
 	/**
+	 * The JSON Schema keywords whose value is ONE subschema (an object,
+	 * or a boolean in the draft-06+ sense) — so an empty PHP array there
+	 * is an empty SCHEMA, encoded as {} (GLM10 #6).
+	 *
+	 * GLM8 #6 normalized the four object-MAP keywords only, so an
+	 * empty-array subschema at every other schema-valued position — a
+	 * property value of [], items: [] — shipped on the wire as JSON []
+	 * where the Messages input_schema meta-schema demands an object,
+	 * surfacing a strict endpoint's 400 as the generic misattributed
+	 * upstream client error instead of the adapter's own normalization.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	private const SCHEMA_SUBSCHEMA_KEYS = array( 'items', 'additionalProperties', 'additionalItems', 'not', 'contains', 'propertyNames', 'if', 'then', 'else', 'unevaluatedProperties', 'unevaluatedItems' );
+
+	/**
+	 * The JSON Schema keywords whose value is a LIST of subschemas: the
+	 * list itself is list-valued (kept even when empty), but every
+	 * ELEMENT is a subschema (GLM10 #6).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	private const SCHEMA_SUBSCHEMA_LIST_KEYS = array( 'allOf', 'anyOf', 'oneOf', 'prefixItems' );
+
+	/**
 	 * The JSON Schema keywords whose value is caller DATA, not a
 	 * subschema: the walk must not descend into them (GLM8 #6 verifier
 	 * round).
@@ -474,15 +509,41 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private const SCHEMA_DATA_VALUE_KEYS = array( 'default', 'examples', 'const' );
 
 	/**
-	 * Recursively converts empty PHP arrays to empty objects at the JSON
-	 * Schema keywords that demand an object member (GLM8 #6).
+	 * Normalizes one value occupying a SUBSCHEMA position (GLM10 #6).
 	 *
-	 * The walk covers the whole schema tree, so nested subschemas (a
-	 * property whose own schema has an empty properties map, a $defs
-	 * entry, ...) normalize identically. Everything else — non-empty
-	 * members, scalars, objects, empty arrays at list-valued keywords,
-	 * and the DATA-valued annotation keywords (default/examples/const,
-	 * verbatim) — passes through untouched.
+	 * An empty PHP array is ambiguous in exactly this position: as a
+	 * subschema it means the empty schema — an OBJECT on the wire ({})
+	 * — because the input_schema meta-schema accepts only an object (or
+	 * a boolean) where a schema is demanded, never a list.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $schema The subschema candidate (any decoded JSON shape).
+	 * @return mixed The normalized subschema.
+	 */
+	private static function normalize_subschema( $schema ) {
+		if ( \is_array( $schema ) && array() === $schema ) {
+			return new \stdClass();
+		}
+
+		return self::normalize_empty_object_members( $schema );
+	}
+
+	/**
+	 * Recursively converts empty PHP arrays to empty objects at the JSON
+	 * Schema positions that demand an object or a subschema (GLM8 #6,
+	 * GLM10 #6).
+	 *
+	 * The walk covers the whole schema tree through its KNOWN
+	 * schema-valued positions — the object-map keywords (every entry is
+	 * a subschema), the single-subschema keywords, and the
+	 * subschema-list keywords (every element is a subschema) — so nested
+	 * subschemas at ANY of them normalize identically, one level down
+	 * from the GLM8 #6 map keywords and beyond. Everything else —
+	 * non-empty members, scalars, objects, empty arrays at list- or
+	 * data-valued keywords (required, enum, unknown keywords), and the
+	 * DATA-valued annotation keywords (default/examples/const, verbatim)
+	 * — passes through untouched.
 	 *
 	 * @since 0.2.0
 	 *
@@ -502,10 +563,39 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			}
 
 			if ( \is_string( $key ) && \in_array( $key, self::SCHEMA_OBJECT_MAP_KEYS, true ) ) {
-				if ( \is_array( $member ) && array() === $member ) {
-					$value[ $key ] = new \stdClass();
-					continue;
+				if ( \is_array( $member ) ) {
+					$value[ $key ] = array() === $member
+						? new \stdClass()
+						: array_map( array( self::class, 'normalize_subschema' ), $member );
 				}
+
+				continue;
+			}
+
+			if ( \is_string( $key ) && \in_array( $key, self::SCHEMA_SUBSCHEMA_LIST_KEYS, true ) ) {
+				if ( \is_array( $member ) ) {
+					$value[ $key ] = array_map( array( self::class, 'normalize_subschema' ), $member );
+				}
+
+				continue;
+			}
+
+			if ( \is_string( $key ) && \in_array( $key, self::SCHEMA_SUBSCHEMA_KEYS, true ) ) {
+				if ( \is_array( $member ) ) {
+					/*
+					 * 'items' has a legacy tuple form: a LIST of
+					 * subschemas (draft-04) instead of one. An
+					 * all-integer-key member is one — every element
+					 * normalizes as the subschema it is; anything else
+					 * (and the empty array, which the meta-schema reads
+					 * as the empty schema) is ONE subschema.
+					 */
+					$value[ $key ] = array() !== $member && self::is_schema_list( $member )
+						? array_map( array( self::class, 'normalize_subschema' ), $member )
+						: self::normalize_subschema( $member );
+				}
+
+				continue;
 			}
 
 			if ( \is_array( $member ) ) {
@@ -514,6 +604,27 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		return $value;
+	}
+
+	/**
+	 * Reports whether the array is a plain LIST (integer keys 0..N-1 in
+	 * order), the shape a tuple-form 'items' carries (GLM10 #6).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<mixed> $value The member to test.
+	 * @return bool True when every key is an integer in sequence.
+	 */
+	private static function is_schema_list( array $value ): bool {
+		$expected = 0;
+
+		foreach ( $value as $key => $_ ) {
+			if ( $key !== $expected++ ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
