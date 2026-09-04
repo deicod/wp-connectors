@@ -702,7 +702,14 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		}
 
 		if ( null !== $this->generation_refusal_for_wired_authentication( $authentication ) ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Discovery skipped: the credential is pending revalidation or was rejected for this endpoint.' );
+			/*
+			 * GLM10 #9 (verifier round): the label rides the surface's
+			 * own REFUSAL_LABEL — the availability base previously named
+			 * BOTH surfaces' discovery skip after the z.ai brand, one
+			 * surface's discovery-path rejections contradicting the
+			 * one-way naming the models' guards had already unified on.
+			 */
+			throw ResponseException::fromInvalidData( static::REFUSAL_LABEL, 'data', 'Discovery skipped: the credential is pending revalidation or was rejected for this endpoint.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the class-owned constant (GLM10 #9).
 		}
 	}
 

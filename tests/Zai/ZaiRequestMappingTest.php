@@ -1056,5 +1056,28 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
                 );
             }
         }
+
+        /*
+         * Verifier round on GLM10 #9: the discovery-path rejections the
+         * first cut left behind — the shared list parser (both
+         * surfaces' rejections), the zai_anthropic directory's own
+         * throws, and the availability base's refuse_discovery() — also
+         * name their surface now (each rides its availability owner's
+         * REFUSAL_LABEL), so no rejection path in the plugin names the
+         * zai_anthropic surface 'z.ai' or vice versa.
+         */
+        $repo = dirname(__DIR__, 2);
+        foreach (array(
+            '/connectors/zai/src/Metadata/ZaiModelListParser.php',
+            '/connectors/zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
+            '/connectors/zai/src/Availability/AbstractZaiProviderAvailability.php',
+        ) as $path) {
+            $source = (string) file_get_contents($repo . $path);
+            $this->assertSame(
+                0,
+                preg_match('/[\'"]z\.ai[\'"],/', $source),
+                "{$path} must interpolate the consuming surface's label, not the bare 'z.ai' literal."
+            );
+        }
     }
 }

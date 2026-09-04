@@ -60,12 +60,17 @@ final class ZaiModelListParser {
 	 *
 	 * @param Response $response The /models or /v1/models response.
 	 * @param string   $plan     The active plan ('coding' or 'general').
+	 * @param string   $provider_label The consuming surface's provider label
+	 *                           (its availability owner's REFUSAL_LABEL —
+	 *                           GLM10 #9 verifier round: the parser is
+	 *                           shared by both surfaces, so each names
+	 *                           itself in the rejection messages it gets).
 	 * @return list<string> Chat-capable, in-plan model IDs.
 	 * @throws ResponseException When the response shape is malformed,
 	 *                           reports additional pages, or no usable chat
 	 *                           ID remains.
 	 */
-	public static function parse_chat_ids( Response $response, string $plan ): array {
+	public static function parse_chat_ids( Response $response, string $plan, string $provider_label ): array {
 		/*
 		 * GLM10 #3: the parser owns ONE BOM-SAFE decode of the raw body.
 		 * The SDK getData()'s bare json_decode() (and the previous second
@@ -82,7 +87,7 @@ final class ZaiModelListParser {
 		$raw  = json_decode( $body );
 
 		if ( ! \is_object( $raw ) || ! isset( $raw->data ) ) {
-			throw ResponseException::fromMissingData( 'z.ai', 'data' );
+			throw ResponseException::fromMissingData( $provider_label, 'data' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
 		}
 
 		/*
@@ -93,7 +98,7 @@ final class ZaiModelListParser {
 		 * discovery and cache it.
 		 */
 		if ( ! \is_array( $raw->data ) ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list must be a JSON list.' );
+			throw ResponseException::fromInvalidData( $provider_label, 'data', 'The discovered model list must be a JSON list.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
 		}
 
 		/*
@@ -110,13 +115,13 @@ final class ZaiModelListParser {
 		 * fails the same way. Shared by BOTH surfaces since GLM1 #11.
 		 */
 		if ( \property_exists( $raw, 'has_more' ) && false !== $raw->has_more ) {
-			throw ResponseException::fromInvalidData( 'z.ai', 'data', 'The discovered model list reported additional pages.' );
+			throw ResponseException::fromInvalidData( $provider_label, 'data', 'The discovered model list reported additional pages.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
 		}
 
 		$ids = array();
 		foreach ( $raw->data as $entry ) {
 			if ( ! \is_object( $entry ) || ! isset( $entry->id ) || ! \is_string( $entry->id ) || '' === $entry->id ) {
-				throw ResponseException::fromInvalidData( 'z.ai', 'data', 'Every entry must carry a non-empty string "id".' );
+				throw ResponseException::fromInvalidData( $provider_label, 'data', 'Every entry must carry a non-empty string "id".' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
 			}
 
 			$ids[] = $entry->id;
@@ -141,7 +146,7 @@ final class ZaiModelListParser {
 		$chat_ids = array_values( array_intersect( $chat_ids, ZaiModelCatalog::ids_for_plan( $plan ) ) );
 
 		if ( array() === $chat_ids ) {
-			throw ResponseException::fromMissingData( 'z.ai', 'data' );
+			throw ResponseException::fromMissingData( $provider_label, 'data' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
 		}
 
 		return $chat_ids;

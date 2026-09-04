@@ -334,14 +334,14 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			);
 
 			throw ResponseException::fromInvalidData(
-				'z.ai',
+				ZaiAnthropicProviderAvailability::REFUSAL_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the class-owned constant (GLM10 #9).
 				'data',
 				'Discovery failed: the credential was rejected for this endpoint.'
 			);
 		}
 
 		if ( ! $response->isSuccessful() ) {
-			throw ResponseException::fromMissingData( 'z.ai', 'data' );
+			throw ResponseException::fromMissingData( ZaiAnthropicProviderAvailability::REFUSAL_LABEL, 'data' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the class-owned constant (GLM10 #9).
 		}
 
 		/*
@@ -349,8 +349,9 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		 * chat filter, plan intersection) is SHARED with the zai surface's
 		 * directory via ZaiModelListParser — the two copies had already
 		 * drifted twice (the has_more rejection and the plan intersection
-		 * existed only here).
+		 * existed only here). GLM10 #9 (verifier round): this surface
+		 * names itself in the parser's rejections.
 		 */
-		return ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan() );
+		return ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan(), ZaiAnthropicProviderAvailability::REFUSAL_LABEL );
 	}
 }

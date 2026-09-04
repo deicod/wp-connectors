@@ -431,7 +431,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		 */
 		$endpoint = $this->discovery_endpoint ?? ZaiEndpoint::for_current_settings();
 
-		$ids = ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan() );
+		$ids = ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan(), ZaiProviderAvailability::REFUSAL_LABEL );
 
 		$models = array();
 		foreach ( $ids as $id ) {
