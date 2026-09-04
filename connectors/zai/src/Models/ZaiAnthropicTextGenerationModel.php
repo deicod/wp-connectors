@@ -57,6 +57,7 @@ use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
+use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\JsonShape;
@@ -1108,8 +1109,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * own first branch ('false === $encoded') already proves
 			 * unencodability. Its rejection message folds into the
 			 * replay message below, which names both failure modes.
+			 *
+			 * GLM12 #12 (stamp-at-acceptance skip): an inbound-accepted
+			 * call carries the ReplayValidatedFunctionCall stamp — its
+			 * arguments passed this surface's replay validation at parse
+			 * time, the DTO is immutable, and the stamp carries the
+			 * precise aggregator verdict, so the serializing oracle
+			 * skips it instead of re-running on every request of the
+			 * conversation. First-seen CALLER-built calls (plain SDK
+			 * instances) keep the full oracle.
 			 */
-			if ( ! ToolArgsReplayGuard::is_replayable( $input ) ) {
+			if ( ! $function_call instanceof ReplayValidatedFunctionCall
+				&& ! ToolArgsReplayGuard::is_replayable( $input ) ) {
 				throw new InvalidArgumentException(
 					'The zai_anthropic provider could not replay tool arguments (an unencodable or precision-loss value was given).'
 				);
@@ -1866,7 +1877,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					);
 				}
 
-				return new MessagePart( new FunctionCall( $part_data['id'], $part_data['name'], $args ) );
+				/*
+				 * GLM12 #12: the args above passed this surface's replay
+				 * validation (the model-level check here, or the
+				 * aggregator's precise/conservative rule for the
+				 * consolidated-stream branch) — the part returns as a
+				 * STAMPED twin so the outbound replay guard skips its
+				 * serializing oracle for it on every later request of the
+				 * conversation (see ReplayValidatedFunctionCall).
+				 */
+				return new MessagePart( new ReplayValidatedFunctionCall( $part_data['id'], $part_data['name'], $args ) );
 
 			case 'redacted_thinking':
 			case 'server_tool_use':

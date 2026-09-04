@@ -1013,6 +1013,64 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(11, $result->getTokenUsage()->getTotalTokens(), 'The streamed absent total is derived prompt+completion.');
     }
 
+    public function testAcceptedToolArgumentsReplayWithoutReRunningTheOracle()
+    {
+        /*
+         * GLM12 #12 (stamp-at-acceptance): the args an inbound
+         * acceptance validated are immutable, so the parsed call returns
+         * as a ReplayValidatedFunctionCall and the outbound replay
+         * guard SKIPS its serializing oracle for it — the pin is
+         * load-bearing twice: the O(K·S) re-serialization per request
+         * is gone, and the stamp carries the PRECISE GLM12 #8 verdict
+         * (the exact 1e20 literal the full oracle's conservative walker
+         * would reject), keeping the parse and replay verdicts in
+         * agreement for the same value.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-rp","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_rp","type":"function","function":{"name":"f","arguments":"{\"n\":100000000000000000000}"}}]},"finish_reason":"tool_calls"}]}');
+
+        $assistantPart = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0];
+        $call = $assistantPart->getFunctionCall();
+
+        $this->assertInstanceOf(\Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall::class, $call, 'Inbound-accepted calls carry the replay stamp.');
+
+        $prompt = array(
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::model(), array($assistantPart)),
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(new MessagePart('and then?'))),
+        );
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('replayed', 'glm-5.3'));
+
+        $this->assertSame('replayed', $this->model()->generateTextResult($prompt)->toText(), 'The stamped turn replays without re-running the oracle.');
+
+        $replay = (array) json_decode((string) $this->sdkHttpAttempts()[1]['body'], true);
+        $replayedArgs = json_decode($replay['messages'][1]['tool_calls'][0]['function']['arguments'], true);
+        $this->assertSame(1.0E20, $replayedArgs['n'], 'The exact big literal rides the replay verbatim.');
+    }
+
+    public function testCallerBuiltCallsStillRunTheFullOutboundOracle()
+    {
+        /*
+         * GLM12 #12 (the skip's scope): only INBOUND-accepted calls
+         * carry the stamp. A caller-built plain SDK FunctionCall (a tool
+         * loop feeding back a computed value) keeps the full oracle —
+         * its args were never validated anywhere.
+         */
+        $prompt = array(
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::model(), array(new MessagePart(new WordPress\AiClient\Tools\DTO\FunctionCall('call_c', 'f', array('v' => INF))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An unstamped caller-built call must run the outbound oracle.');
+        } catch (WordPress\AiClient\Common\Exception\InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not replay tool call arguments', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testLengthFinishReasonMapsToLength()
     {
         $this->queueSdkResponse(200, array(), wp_json_encode(array(

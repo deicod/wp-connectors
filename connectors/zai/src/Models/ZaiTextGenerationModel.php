@@ -46,6 +46,7 @@ use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
+use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
 use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
 use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
@@ -765,13 +766,20 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			);
 		}
 
-		if ( $args === $function_call->getArgs() ) {
-			// No object-ness substitution happened: the parent's part stands.
-			return $part;
-		}
-
+		/*
+		 * GLM12 #12: every validation above passed, so the part returns
+		 * as a STAMPED twin — ReplayValidatedFunctionCall marks the
+		 * arguments as replay-validated right here (the wire rule or the
+		 * walker ran against exactly this $args), and the outbound
+		 * replay guard skips its serializing oracle for stamped calls
+		 * instead of re-running two encodes plus a decode per historical
+		 * call on every request of the conversation. Functionally the
+		 * part is identical (same id, name, and args; the DTO is
+		 * immutable), whether or not the object-ness substitution above
+		 * replaced the parent's args.
+		 */
 		return new MessagePart(
-			new FunctionCall( $function_call->getId(), $function_call->getName(), $args )
+			new ReplayValidatedFunctionCall( $function_call->getId(), $function_call->getName(), $args )
 		);
 	}
 
@@ -803,7 +811,21 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			return $data;
 		}
 
-		if ( ! ToolArgsReplayGuard::is_replayable( $part->getFunctionCall()->getArgs() ) ) {
+		$function_call = $part->getFunctionCall();
+
+		/*
+		 * GLM12 #12 (stamp-at-acceptance skip): an inbound-accepted call
+		 * carries the ReplayValidatedFunctionCall stamp — its arguments
+		 * passed the replay rule at parse time, the DTO is immutable,
+		 * and the stamp carries the PRECISE GLM12 #8 verdict (an exact
+		 * big integer literal the full oracle's conservative walker
+		 * below would reject), keeping the parse and replay verdicts in
+		 * agreement instead of re-serializing the tree on every request
+		 * of the conversation. First-seen CALLER-built calls (plain SDK
+		 * instances) keep the full oracle.
+		 */
+		if ( ! $function_call instanceof ReplayValidatedFunctionCall
+			&& ! ToolArgsReplayGuard::is_replayable( $function_call->getArgs() ) ) {
 			throw new InvalidArgumentException(
 				'The zai provider could not replay tool call arguments (an unencodable or precision-loss value was given).'
 			);
