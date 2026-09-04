@@ -502,6 +502,48 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString('"required":{}', $raw, 'The list-valued required member must not become an object.');
     }
 
+    public function testDataValuedSchemaKeywordsPassThroughTheObjectMapWalkUntouched()
+    {
+        /*
+         * GLM8 #6 verifier round: the walk descended into the
+         * data-bearing annotation keywords too, silently converting an
+         * empty list literally named 'properties' inside a DEFAULT value
+         * (or examples/const) to {} — the caller's default/example data
+         * shipped altered with no upstream error to surface the change.
+         * Schema positions still normalize; data keywords pass verbatim.
+         */
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('manage_settings', 'Manages settings', array(
+                    'type' => 'object',
+                    'properties' => array(
+                        'settings' => array(
+                            'type' => 'object',
+                            'default' => array('properties' => array(), 'tags' => array()),
+                            'examples' => array(array('definitions' => array())),
+                            'const' => array('$defs' => array()),
+                        ),
+                    ),
+                )))->toArray(),
+            ),
+        ));
+
+        $this->model($config)->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+
+        $raw = (string) $this->sdkHttpAttempts()[0]['body'];
+
+        // The DATA values keep their empty lists verbatim...
+        $this->assertStringContainsString('"default":{"properties":[],"tags":[]}', $raw, 'A default value passes through untouched.');
+        $this->assertStringContainsString('"examples":[{"definitions":[]}]', $raw, 'An examples value passes through untouched.');
+        $this->assertStringContainsString('"const":{"$defs":[]}', $raw, 'A const value passes through untouched.');
+        // ...while the enclosing SCHEMA position still normalizes.
+        $this->assertStringContainsString('"properties":{"settings":', $raw, 'The enclosing schema positions are unaffected.');
+    }
+
     public function testSequentialArrayToolArgumentsAreRejectedBeforeTransport()
     {
         // Codex R4 #4: a FunctionCall from chat history carrying a

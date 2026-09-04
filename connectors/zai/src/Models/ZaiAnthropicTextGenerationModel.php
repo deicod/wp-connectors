@@ -510,14 +510,34 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private const SCHEMA_OBJECT_MAP_KEYS = array( 'properties', 'patternProperties', 'definitions', '$defs' );
 
 	/**
+	 * The JSON Schema keywords whose value is caller DATA, not a
+	 * subschema: the walk must not descend into them (GLM8 #6 verifier
+	 * round).
+	 *
+	 * A `default`/`examples`/`const` value may legitimately contain an
+	 * empty list at a key named 'properties' (say, a property-management
+	 * tool's default object) — descending into these keywords silently
+	 * converted such data to {} on the wire, altering the caller's
+	 * default/example values with no upstream error to surface the
+	 * change. Annotation keywords carry arbitrary JSON values, so they
+	 * pass through verbatim.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	private const SCHEMA_DATA_VALUE_KEYS = array( 'default', 'examples', 'const' );
+
+	/**
 	 * Recursively converts empty PHP arrays to empty objects at the JSON
 	 * Schema keywords that demand an object member (GLM8 #6).
 	 *
 	 * The walk covers the whole schema tree, so nested subschemas (a
 	 * property whose own schema has an empty properties map, a $defs
 	 * entry, ...) normalize identically. Everything else — non-empty
-	 * members, scalars, objects, empty arrays at list-valued keywords —
-	 * passes through untouched.
+	 * members, scalars, objects, empty arrays at list-valued keywords,
+	 * and the DATA-valued annotation keywords (default/examples/const,
+	 * verbatim) — passes through untouched.
 	 *
 	 * @since 0.2.0
 	 *
@@ -530,6 +550,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		foreach ( $value as $key => $member ) {
+			// Data-bearing keywords are caller values, not schema
+			// positions: never converted, never descended into.
+			if ( \is_string( $key ) && \in_array( $key, self::SCHEMA_DATA_VALUE_KEYS, true ) ) {
+				continue;
+			}
+
 			if ( \is_string( $key ) && \in_array( $key, self::SCHEMA_OBJECT_MAP_KEYS, true ) ) {
 				if ( \is_array( $member ) && array() === $member ) {
 					$value[ $key ] = new \stdClass();
