@@ -185,55 +185,48 @@ function zai_connector_zai_uninstall_site() {
 	 * surfaces; 'runtime' covers rows written before GLM5 #11 normalized
 	 * that label into 'database'. Historical keys' markers remain
 	 * enumerable only by the option-name sweep.
+	 *
+	 * GLM9 #8: the composition comes from the ONE owner — the settings
+	 * layer's probe_miss_transient_ids(), the same formula the
+	 * availability writer's binding() delegates to. This file used to
+	 * hand-mirror the whole thing (the sha256 over source|cache-key|key,
+	 * the four-label source set, the state-option constants), and a
+	 * composition change without the lockstep edit left the hashed
+	 * markers surviving uninstall on object-cache installs — GLM5 #11's
+	 * label split already forced one such edit here. Gated on the owner
+	 * chain like the discovery sweep above: when it cannot load, only the
+	 * class-free prefix enumeration below runs, and the markers are 60s
+	 * transients, so the residual window is bounded.
 	 */
-	$zai_connector_key_specs = array(
-		'zai'           => array(
-			'state_option' => 'zai_connector_zai_key_state',
-			'scope'        => 'zai',
-			'key_option'   => 'connectors_ai_zai_api_key',
-			'key_env_name' => 'ZAI_API_KEY',
-		),
-		'zai_anthropic' => array(
-			'state_option' => 'zai_connector_zai_anthropic_key_state',
-			'scope'        => 'zai_anthropic',
-			'key_option'   => 'connectors_ai_zai_anthropic_api_key',
-			'key_env_name' => 'ZAI_ANTHROPIC_API_KEY',
-		),
-	);
+	if ( $zai_connector_owner_ready ) {
+		$zai_connector_settings_classes = array(
+			\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::class,
+			\Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::class,
+		);
 
-	foreach ( $zai_connector_key_specs as $zai_connector_key_spec ) {
-		$zai_connector_current_keys = array();
+		foreach ( $zai_connector_settings_classes as $zai_connector_settings_class ) {
+			$zai_connector_current_keys = array();
 
-		$zai_connector_env_value = getenv( $zai_connector_key_spec['key_env_name'] );
-		if ( \is_string( $zai_connector_env_value ) && '' !== $zai_connector_env_value ) {
-			$zai_connector_current_keys[] = $zai_connector_env_value;
-		}
-
-		if ( \defined( $zai_connector_key_spec['key_env_name'] ) ) {
-			$zai_connector_constant_value = \constant( $zai_connector_key_spec['key_env_name'] );
-			if ( \is_string( $zai_connector_constant_value ) && '' !== $zai_connector_constant_value ) {
-				$zai_connector_current_keys[] = $zai_connector_constant_value;
+			$zai_connector_env_value = getenv( $zai_connector_settings_class::KEY_ENV_NAME );
+			if ( \is_string( $zai_connector_env_value ) && '' !== $zai_connector_env_value ) {
+				$zai_connector_current_keys[] = $zai_connector_env_value;
 			}
-		}
 
-		$zai_connector_stored_value = get_option( $zai_connector_key_spec['key_option'], '' );
-		if ( \is_string( $zai_connector_stored_value ) && '' !== $zai_connector_stored_value ) {
-			$zai_connector_current_keys[] = $zai_connector_stored_value;
-		}
+			if ( \defined( $zai_connector_settings_class::KEY_ENV_NAME ) ) {
+				$zai_connector_constant_value = \constant( $zai_connector_settings_class::KEY_ENV_NAME );
+				if ( \is_string( $zai_connector_constant_value ) && '' !== $zai_connector_constant_value ) {
+					$zai_connector_current_keys[] = $zai_connector_constant_value;
+				}
+			}
 
-		if ( array() === $zai_connector_current_keys ) {
-			continue;
-		}
+			$zai_connector_stored_value = get_option( $zai_connector_settings_class::KEY_OPTION, '' );
+			if ( \is_string( $zai_connector_stored_value ) && '' !== $zai_connector_stored_value ) {
+				$zai_connector_current_keys[] = $zai_connector_stored_value;
+			}
 
-		foreach ( \array_unique( $zai_connector_current_keys ) as $zai_connector_current_key ) {
-			foreach ( array( 'coding', 'general' ) as $zai_connector_probe_plan ) {
-				foreach ( array( 'intl', 'cn' ) as $zai_connector_probe_region ) {
-					$zai_connector_probe_cache_key = $zai_connector_key_spec['scope'] . '|' . $zai_connector_probe_plan . '|' . $zai_connector_probe_region;
-
-					foreach ( array( 'env', 'constant', 'database', 'runtime' ) as $zai_connector_probe_source ) {
-						$zai_connector_probe_binding = hash( 'sha256', $zai_connector_probe_source . '|' . $zai_connector_probe_cache_key . '|' . $zai_connector_current_key );
-						delete_transient( $zai_connector_key_spec['state_option'] . '_probe_' . md5( $zai_connector_probe_binding ) );
-					}
+			foreach ( \array_unique( $zai_connector_current_keys ) as $zai_connector_current_key ) {
+				foreach ( $zai_connector_settings_class::probe_miss_transient_ids( $zai_connector_current_key ) as $zai_connector_probe_name ) {
+					delete_transient( $zai_connector_probe_name );
 				}
 			}
 		}

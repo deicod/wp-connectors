@@ -304,6 +304,59 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         }
     }
 
+    public function testDerivableProbeMissMarkersTrackTheSingleOwnerComposition()
+    {
+        /*
+         * GLM9 #8: the deterministic sweep composes through the settings
+         * owner (probe_miss_transient_ids()) — the SAME formula the
+         * availability writer's binding() delegates to. Markers planted
+         * by the REAL availability flows of BOTH surfaces, plus a
+         * pre-GLM5 #11 'runtime'-labeled row composed by the literal
+         * historical formula, must all go; if the writer and the sweeper
+         * ever disagree about the composition again, this pin fails
+         * where the old hand-rolled mirror would have drifted silently.
+         */
+        WpHarness::$external_object_cache = true;
+
+        // zai surface: a db-source marker via the real availability flow.
+        $db_key = FakeSecrets::apiKey();
+        update_option( 'connectors_ai_zai_api_key', $db_key );
+
+        $availability = new \Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability();
+        $availability->setHttpTransporter( \WordPress\AiClient\AiClient::defaultRegistry()->getHttpTransporter() );
+
+        $this->queueSdkResponse( 503, array(), 'boom' );
+        $this->assertTrue( $availability->isConfigured(), 'The inconclusive probe reports configured-pending (zai).' );
+
+        // zai_anthropic surface: its own marker via its real flow.
+        $anthropic_db_key = FakeSecrets::apiKey();
+        update_option( 'connectors_ai_zai_anthropic_api_key', $anthropic_db_key );
+
+        $anthropic = new \Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability();
+        $anthropic->setHttpTransporter( \WordPress\AiClient\AiClient::defaultRegistry()->getHttpTransporter() );
+
+        $this->queueSdkResponse( 503, array(), 'boom' );
+        $this->assertTrue( $anthropic->isConfigured(), 'The inconclusive probe reports configured-pending (zai_anthropic).' );
+
+        // A pre-GLM5 #11 'runtime'-labeled row: composed by the literal
+        // historical formula, which the sweep's label set must keep
+        // covering (the writer normalizes the label now; the historical
+        // rows were written without the normalization).
+        $runtime_marker = 'zai_connector_zai_key_state_probe_' . md5( hash( 'sha256', 'runtime|zai|general|cn|' . $db_key ) );
+        set_transient( $runtime_marker, true, 60 );
+
+        zai_connector_zai_uninstall_site();
+
+        $remaining = array();
+        foreach ( array_keys( WpHarness::$transients ) as $transient ) {
+            if ( false !== strpos( $transient, '_key_state_probe_' ) ) {
+                $remaining[] = $transient;
+            }
+        }
+
+        $this->assertSame( array(), $remaining, 'Every derivable probe-miss marker of both surfaces must be deleted through the single owner: ' . wp_json_encode( $remaining ) );
+    }
+
     public function testADatabaseErrorDuringTheProbeSweepDoesNotWarnOrSkipTheOtherCleanups()
     {
         /*

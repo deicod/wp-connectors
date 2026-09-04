@@ -365,6 +365,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 */
 	private function binding( string $source, string $key ): string {
 		$endpoint_class = static::endpoint_class();
+		$settings_class = static::settings_class();
 		$endpoint       = $endpoint_class::for_current_settings();
 
 		/*
@@ -376,12 +377,20 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		 * the identical credential once it is read back from the stored
 		 * option (the refusal gate previously computed a DIFFERENT binding
 		 * per label and let a definitively-rejected key through).
+		 *
+		 * GLM9 #8: the hash itself rides the SDK-free settings owner's
+		 * credential_binding() — uninstall.php's deterministic probe-miss
+		 * sweep composes through the same owner, and a private copy here
+		 * was the mirror a composition change silently stranded (the
+		 * GLM5 #11 label split already forced one lockstep edit there).
+		 * The normalization stays with THIS writer: the sweep iterates the
+		 * literal label set so the pre-normalization rows stay derivable.
 		 */
 		if ( 'runtime' === $source ) {
 			$source = 'database';
 		}
 
-		return hash( 'sha256', $source . '|' . $endpoint->cache_key() . '|' . $key );
+		return $settings_class::credential_binding( $source, $endpoint->cache_key(), $key );
 	}
 
 	/**
@@ -773,8 +782,12 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	/**
 	 * Builds the binding-scoped probe-miss transient name.
 	 *
-	 * One construction site shared by the writer (probe_with_negative_cache)
-	 * and the live-probe clearer, so the two can never drift apart.
+	 * GLM9 #8: the composition rides the SDK-free settings owner's
+	 * probe_miss_transient_name() — one formula shared with uninstall's
+	 * deterministic sweep (which derives names through
+	 * probe_miss_transient_ids()), so the writer and the sweeper can
+	 * never disagree about which transient a binding's marker lives in.
+	 * Kept as a thin delegator for the call sites above.
 	 *
 	 * @since 0.2.0
 	 *
@@ -782,7 +795,9 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return string Transient name holding the miss marker.
 	 */
 	private static function probe_miss_transient_name( string $binding ): string {
-		return static::STATE_OPTION . '_probe_' . md5( $binding );
+		$settings_class = static::settings_class();
+
+		return $settings_class::probe_miss_transient_name( $binding );
 	}
 
 	/**

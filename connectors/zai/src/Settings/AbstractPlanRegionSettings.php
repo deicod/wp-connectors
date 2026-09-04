@@ -738,6 +738,105 @@ abstract class AbstractPlanRegionSettings {
 	}
 
 	/**
+	 * The source labels a probe-miss marker's binding hash may embed
+	 * (GLM9 #8).
+	 *
+	 * The three current labels plus 'runtime': pre-GLM5 #11 rows were
+	 * written with the literal 'runtime' label core sets during REST
+	 * validation, before the writer normalized it into 'database' — the
+	 * deterministic sweep composes the LITERAL label set so those
+	 * historical markers are derivable too, exactly as the hand-rolled
+	 * sweep it replaces did.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	const PROBE_BINDING_SOURCES = array( 'env', 'constant', 'database', 'runtime' );
+
+	/**
+	 * The credential+endpoint binding hash a validated-state row (and its
+	 * probe-miss marker) is keyed by (GLM9 #8: the ONE owner of the
+	 * composition).
+	 *
+	 * The formula — sha256 over source | endpoint cache key | the COMPLETE
+	 * key value — was hand-mirrored in uninstall.php's deterministic
+	 * probe-miss sweep while the availability layer's writer composed its
+	 * own copy, so a composition change silently stranded markers no sweep
+	 * found (the GLM5 #11 label split already forced one lockstep edit on
+	 * the mirror). The composition lives here now — SDK-free loadable,
+	 * beside the other invalidation identifiers — and BOTH sides compose
+	 * through it: the availability writer (which applies its own
+	 * runtime→database normalization BEFORE calling, GLM5 #11) and the
+	 * uninstall sweep (which iterates the LITERAL label set, historical
+	 * 'runtime' included).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $source   Key source label ('env', 'constant',
+	 *                         'database', or the pre-normalization
+	 *                         'runtime').
+	 * @param string $cache_key Endpoint cache-key identity ('{scope}|{plan}|{region}',
+	 *                         from the endpoint class's cache_key()).
+	 * @param string $key      Complete key value.
+	 * @return string SHA-256 binding hash.
+	 */
+	public static function credential_binding( string $source, string $cache_key, string $key ): string {
+		return hash( 'sha256', $source . '|' . $cache_key . '|' . $key );
+	}
+
+	/**
+	 * The probe-miss transient name for one binding (GLM9 #8).
+	 *
+	 * The name composition — the state option, '_probe_', md5 of the
+	 * binding — rides the same single owner as the binding formula, so
+	 * the writer and the uninstall sweep can never disagree about which
+	 * transient a binding's marker lives in.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $binding Credential+endpoint binding hash.
+	 * @return string Transient name holding the miss marker.
+	 */
+	public static function probe_miss_transient_name( string $binding ): string {
+		return static::STATE_OPTION . '_probe_' . md5( $binding );
+	}
+
+	/**
+	 * Every probe-miss transient name DERIVABLE for one credential
+	 * (GLM9 #8): all four plan × region endpoint identities of this
+	 * surface, under every source label that can have planted a marker.
+	 *
+	 * The deterministic half of uninstall's probe-miss cleanup: names
+	 * derivable from the still-readable current credentials delete
+	 * directly through the transients API, so they go even under a
+	 * persistent object cache where the wp_options enumeration sees
+	 * nothing (GLM5 #12). Historical keys' markers remain covered by
+	 * the option-name-prefix sweep.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $key Complete key value.
+	 * @return list<string> The derivable probe-miss transient names.
+	 */
+	public static function probe_miss_transient_ids( string $key ): array {
+		$endpoint_class = static::ENDPOINT_CLASS;
+
+		$names = array();
+		foreach ( self::PLANS as $plan ) {
+			foreach ( self::REGIONS as $region ) {
+				$cache_key = $endpoint_class::for( $plan, $region )->cache_key();
+
+				foreach ( self::PROBE_BINDING_SOURCES as $source ) {
+					$names[] = self::probe_miss_transient_name( self::credential_binding( $source, $cache_key, $key ) );
+				}
+			}
+		}
+
+		return $names;
+	}
+
+	/**
 	 * Returns this provider's effective plan (corrupt values fall back to the default).
 	 *
 	 * @since 0.2.0

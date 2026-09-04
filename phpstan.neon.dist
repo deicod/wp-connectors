@@ -30,11 +30,11 @@ parameters:
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Settings/AbstractPlanRegionSettings.php
-			count: 24
+			count: 26
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Availability/AbstractZaiProviderAvailability.php
-			count: 12
+			count: 11
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Provider/AbstractZaiProvider.php
