@@ -6,6 +6,39 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM11 code review)
+
+- The GLM10 #9 label drift guard grew teeth and one mechanic: the
+  source scan now covers the zai surface's own directory (one of
+  `parse_chat_ids()`'s two call sites, previously unscanned so its
+  rejection path could regress unguarded), enforces BOTH directions
+  — every guarded file (both models, the shared list parser, both
+  directories, the availability base) must carry no bare label
+  literal of either surface in ANY argument position (the i18n
+  text-domain calls, the one sanctioned home of a domain literal
+  that shares the zai label's value, are stripped first; the old
+  comma anchor missed last-argument positions entirely), and a
+  surface-owned file must not name the other surface's availability
+  class — the only thing a swapped REFUSAL_LABEL constant betrays,
+  since it interpolates no literal at all. The guard's two copies
+  (the models' ReflectionClass loop and the scan's hand-escaped
+  regex plus repo-root path arithmetic, which would drift apart the
+  next time one was tightened) folded into one class=>owner loop,
+  and its comment scopes the invariant to what it enforces: the
+  model and discovery rejections — the endpoint layer's
+  unknown-combination message deliberately keeps the z.ai brand
+  (GLM8 #10's display-facing branding) and stays out of the guard.
+
+- The live probe's last two hand-composed identity facts ride their
+  owners: `provider_id` and `default_plan` in the per-surface fact
+  table are `ZaiProvider`/`ZaiAnthropicProvider::PROVIDER_ID` and
+  `PlanRegionSettings`/`ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN`
+  constants, and the pinning test forbids the quoted-literal shape
+  outright — a PROVIDER_ID or DEFAULT_PLAN rename can no longer
+  leave the probe wiring `Plugin::register()`'s authentication to a
+  stale id while it prints the stale plan as acceptance evidence,
+  failing with a diagnostic that never points at the stale literal.
+
 ### Fixed (zai / M2 — GLM10 code review)
 
 - Availability verdicts bind what actually answered: a 401/403
