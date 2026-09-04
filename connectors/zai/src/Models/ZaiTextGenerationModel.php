@@ -43,12 +43,12 @@ use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
+use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
 use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
-use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
@@ -203,22 +203,18 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 * BOTH decodes (the raw oracle travels to
 			 * reject_malformed_usage()), and it is deliberately a no-op
 			 * on BOM-less bodies.
+			 *
+			 * GLM10 #11: the decode block itself — the strip, the
+			 * associative view, the raw object-ness view, the vendor
+			 * null normalization — rides the one shared JsonBodyDecoder
+			 * with the zai_anthropic twin's parse_body_string(); the
+			 * GLM7 #9 one-decode-per-flavor contract is unchanged, and a
+			 * body with no decodable payload keeps the ORIGINAL Response
+			 * so the parent's own missing-data rejection fires unchanged.
 			 */
-			$body = SseFrameBuffer::strip_stream_prefix( $body );
+			list( $data, $raw ) = JsonBodyDecoder::decode( $body );
 
 			/*
-			 * GLM7 #9: ONE decode per flavor. reject_malformed_usage()'s
-			 * getData(), its raw-body oracle, and the SDK parent parser's
-			 * own uncached getData() (vendor Response::getData()
-			 * re-decodes per call) each paid a full-body json_decode —
-			 * three where master paid one. The associative decode here
-			 * replicates getData() exactly (empty/invalid bodies and
-			 * non-array JSON yield null) and travels to the parent through
-			 * the pre-decoded Response the streamed path already uses
-			 * (GLM6 #14); a body with no decodable payload keeps the
-			 * ORIGINAL Response so the parent's own missing-data
-			 * rejection fires unchanged.
-			 *
 			 * GLM5 #3 stands: the usage member is validated BEFORE the SDK
 			 * parse — a string/INF member reached the SDK parent's
 			 * int-typed TokenUsage constructor unvalidated (the shared
@@ -227,17 +223,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 * mapper's catch-all as the generic 500 instead of the typed
 			 * zai_invalid_response.
 			 */
-			$data = null;
-			if ( '' !== $body ) {
-				$decoded = json_decode( $body, true );
-
-				if ( \JSON_ERROR_NONE === \json_last_error() && \is_array( $decoded ) ) {
-					$data = $decoded;
-				}
-			}
-
-			$raw = json_decode( $body );
-
 			$this->reject_malformed_usage( $data, $raw );
 
 			return $this->parseNonStreamBody(

@@ -55,6 +55,7 @@ use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
+use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
@@ -1304,6 +1305,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * runs before BOTH decodes here, so the associative parse and the
 	 * raw object-ness oracle always read the same cleaned body.
 	 *
+	 * GLM10 #11: the decode block itself — the strip, the associative
+	 * view, the raw object-ness view, the vendor null normalization —
+	 * rides the one shared JsonBodyDecoder with the zai model's
+	 * non-streaming decode; the (array|null, stdClass|null) contract is
+	 * the helper's.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $body The raw response body.
@@ -1311,19 +1318,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @throws ResponseException When the payload is malformed.
 	 */
 	private function parse_body_string( string $body ): GenerativeAiResult {
-		$body = SseFrameBuffer::strip_stream_prefix( $body );
+		list( $data, $raw ) = JsonBodyDecoder::decode( $body );
 
-		$decoded = json_decode( $body, true );
-		$raw     = json_decode( $body );
-
-		/*
-		 * The vendor getData() contract: null for an empty body, a decode
-		 * failure, or a non-array (scalar/null) value — mirrored here so
-		 * the parser sees exactly what it saw before the strip.
-		 */
-		$data = \is_array( $decoded ) ? $decoded : null;
-
-		return $this->parse_decoded_message( $data, $raw instanceof \stdClass ? $raw : null );
+		return $this->parse_decoded_message( $data, $raw );
 	}
 
 	/**
