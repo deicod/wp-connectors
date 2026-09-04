@@ -47,6 +47,7 @@ use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
+use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
@@ -217,6 +218,22 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * the stream fine.
 		 */
 		if ( ! EventStreamSniff::matches( $body, $response->getHeaderAsString( 'Content-Type' ) ) ) {
+			/*
+			 * GLM9 #3: the stream-start prefix strip the zai_anthropic
+			 * twin applies to its non-streaming decodes (GLM8 #3): a
+			 * UTF-8 BOM a gateway/CDN prepends to an application/json
+			 * chat.completion body makes json_decode() fail (PHP does not
+			 * skip a leading BOM), the associative decode below yields
+			 * null, the PreDecodedResponse hand-off never happens, and a
+			 * valid generation surfaced as 'The chat-completions payload
+			 * was malformed.' — one surface tolerating the exact prefix
+			 * shape its own twin already strips. The strip runs before
+			 * BOTH decodes (the raw oracle travels to
+			 * reject_malformed_usage()), and it is deliberately a no-op
+			 * on BOM-less bodies.
+			 */
+			$body = SseFrameBuffer::strip_stream_prefix( $body );
+
 			/*
 			 * GLM7 #9: ONE decode per flavor. reject_malformed_usage()'s
 			 * getData(), its raw-body oracle, and the SDK parent parser's

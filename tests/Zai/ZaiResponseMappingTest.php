@@ -81,6 +81,59 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(10, $result->getTokenUsage()->getTotalTokens());
     }
 
+    public function testABomPrefixedJsonBodyStillParses()
+    {
+        /*
+         * GLM9 #3: the zai_anthropic twin's GLM8 #3 fix, landed there
+         * only — a UTF-8 BOM prepended to an application/json
+         * chat.completion body made json_decode() fail, the SDK
+         * fallback re-decode failed on the same BOM'd body, and a
+         * valid generation surfaced as 'The chat-completions payload
+         * was malformed.' The shared strip_stream_prefix() now runs
+         * before both decodes here too (whitespace around the BOM
+         * included), so both surfaces of one provider tolerate the
+         * identical gateway/CDN prefix shape.
+         */
+        $payload = (string) wp_json_encode(array(
+            'id' => 'chatcmpl-bom-json',
+            'choices' => array(array(
+                'index' => 0,
+                'message' => array('role' => 'assistant', 'content' => 'Bom-tolerant.'),
+                'finish_reason' => 'stop',
+            )),
+            'usage' => array('prompt_tokens' => 7, 'completion_tokens' => 3, 'total_tokens' => 10),
+        ));
+
+        foreach (array(
+            'bare BOM' => "\xEF\xBB\xBF" . $payload,
+            'whitespace then BOM' => " \xEF\xBB\xBF" . $payload,
+            'BOM then whitespace' => "\xEF\xBB\xBF " . $payload,
+        ) as $label => $body) {
+            $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), $body);
+
+            $result = $this->model()->generateTextResult($this->prompt());
+
+            $this->assertSame('Bom-tolerant.', $result->toText(), "[{$label}] The BOM must not fail the JSON parse.");
+            $this->assertSame('chatcmpl-bom-json', $result->getId(), "[{$label}] The id parses.");
+            $this->assertSame(10, $result->getTokenUsage()->getTotalTokens(), "[{$label}] The usage parses.");
+        }
+    }
+
+    public function testABomPrefixedNonJsonBodyStillFailsTyped()
+    {
+        // GLM9 #3 guard: the strip is a prefix tolerance, not a rescue —
+        // a BOM before garbage keeps the typed malformed-payload
+        // rejection exactly like the BOM-less body.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), "\xEF\xBB\xBFnot json at all");
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A BOM before a non-JSON body must still fail.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('chat-completions payload was malformed', $e->getMessage());
+        }
+    }
+
     public function testParsesReasoningContentAsThoughtPart()
     {
         $this->queueSdkResponse(200, array(), wp_json_encode(array(
