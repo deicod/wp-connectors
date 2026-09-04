@@ -262,7 +262,7 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 */
 	private function models_map(): array {
 		$endpoint = ZaiAnthropicEndpoint::for_current_settings();
-		$cache_id = self::CACHE_PREFIX . md5( $endpoint->cache_key() );
+		$cache_id = ZaiAnthropicEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() );
 
 		$ids = ZaiDiscoveryCache::cached_ids(
 			$cache_id,

@@ -127,12 +127,29 @@ final class ZaiAnthropicPlanRegionSettings extends AbstractPlanRegionSettings {
 	public const CACHE_PREFIX = 'zai_connector_zai_anthropic_models_';
 
 	/**
-	 * Endpoint identity scope (SDK-free invalidation identifier): matches
-	 * ZaiAnthropicEndpoint::cache_key()'s prefix.
+	 * Endpoint identity scope (SDK-free invalidation identifier):
+	 * ZaiAnthropicEndpoint aliases THIS constant for its cache_key() and
+	 * discovery ids (GLM8 #11 — the invalidation composes through the
+	 * endpoint layer, never a mirrored formula).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @var string
 	 */
 	public const CACHE_SCOPE = 'zai_anthropic';
+
+	/**
+	 * The endpoint class that owns this surface's discovery cache-id
+	 * composition (GLM8 #11): the invalidation below clears the
+	 * transients the endpoint layer names, never a private re-composition.
+	 *
+	 * The endpoint classes are SDK-free loadable (no SDK parent, lazy
+	 * imports only), so consulting them keeps the SDK-absent guarantee
+	 * (see STATE_OPTION) while removing the mirrored formula.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var class-string
+	 */
+	public const ENDPOINT_CLASS = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class;
 }

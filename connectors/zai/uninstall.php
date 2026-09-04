@@ -34,6 +34,25 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
  * @return void
  */
 function zai_connector_zai_uninstall_site() {
+	/*
+	 * GLM8 #11: the discovery transient ids come from the endpoint
+	 * layer's one owner (discovery_transient_ids()) — this file used to
+	 * mirror the whole formula literally (prefix + md5(scope|plan|
+	 * region) plus the miss suffix), the copy that silently strands
+	 * stale transients whenever the composition changes. Every required
+	 * file is SDK-free loadable (no SDK parent, lazy imports only), so
+	 * requiring them here keeps the uninstall context free of the SDK
+	 * plugin; the settings classes come first because the endpoint
+	 * children's aliased constants link against them.
+	 */
+	require_once __DIR__ . '/src/Settings/AbstractPlanRegionSettings.php';
+	require_once __DIR__ . '/src/Settings/PlanRegionSettings.php';
+	require_once __DIR__ . '/src/Settings/ZaiAnthropicPlanRegionSettings.php';
+	require_once __DIR__ . '/src/Endpoints/AbstractZaiEndpoint.php';
+	require_once __DIR__ . '/src/Endpoints/ZaiEndpoint.php';
+	require_once __DIR__ . '/src/Endpoints/ZaiAnthropicEndpoint.php';
+	require_once __DIR__ . '/src/Metadata/ZaiDiscoveryCache.php';
+
 	delete_option( 'zai_connector_zai_plan' );
 	delete_option( 'zai_connector_zai_region' );
 	delete_option( 'zai_connector_zai_debug' );
@@ -48,15 +67,21 @@ function zai_connector_zai_uninstall_site() {
 
 	// Discovery cache transients for every endpoint combination of both
 	// surfaces, including the '_miss' negative-cache markers (GLM1 #6).
+	// This file is global-namespace (uninstall context), so the endpoint
+	// classes are addressed by their fully-qualified names.
+	$zai_connector_endpoint_class           = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class;
+	$zai_connector_anthropic_endpoint_class = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class;
+
 	foreach ( array( 'coding', 'general' ) as $zai_connector_plan ) {
 		foreach ( array( 'intl', 'cn' ) as $zai_connector_region ) {
-			$zai_connector_cache_ids = array(
-				'zai_connector_zai_models_' . md5( 'zai|' . $zai_connector_plan . '|' . $zai_connector_region ),
-				'zai_connector_zai_anthropic_models_' . md5( 'zai_anthropic|' . $zai_connector_plan . '|' . $zai_connector_region ),
+			$zai_connector_cache_id_pairs = array(
+				$zai_connector_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),
+				$zai_connector_anthropic_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),
 			);
-			foreach ( $zai_connector_cache_ids as $zai_connector_cache_id ) {
-				delete_transient( $zai_connector_cache_id );
-				delete_transient( $zai_connector_cache_id . '_miss' );
+			foreach ( $zai_connector_cache_id_pairs as $zai_connector_cache_id_pair ) {
+				foreach ( $zai_connector_cache_id_pair as $zai_connector_cache_id ) {
+					delete_transient( $zai_connector_cache_id );
+				}
 			}
 		}
 	}

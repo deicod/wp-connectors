@@ -277,7 +277,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 */
 	protected function sendListModelsRequest(): array {
 		$endpoint = ZaiEndpoint::for_current_settings();
-		$cache_id = self::CACHE_PREFIX . md5( $endpoint->cache_key() );
+		$cache_id = ZaiEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() );
 
 		$ids = ZaiDiscoveryCache::cached_ids(
 			$cache_id,

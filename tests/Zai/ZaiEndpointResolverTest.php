@@ -181,6 +181,130 @@ final class ZaiEndpointResolverTest extends WpConnectorsTestCase
         $this->assertSame($models, ZaiEndpoint::normalize_base_url($models) . '/models', 'The models URL never accumulates suffixes.');
     }
 
+    public function testDiscoveryCacheIdsComposeTheHistoricalFormulaForEveryCombination()
+    {
+        /*
+         * GLM8 #11: the endpoint layer owns the ONE discovery cache-id
+         * composition. This pin freezes it to the historical formula the
+         * pre-extraction mirrors produced (and the settings/uninstall
+         * tests still seed their transients by), so any recipe change —
+         * scope order, prefix, md5 — is a conscious, loudly-pinned edit.
+         */
+        foreach (array(
+            array(ZaiEndpoint::class, 'zai_connector_zai_models_', 'zai'),
+            array(ZaiAnthropicEndpoint::class, 'zai_connector_zai_anthropic_models_', 'zai_anthropic'),
+        ) as list($endpoint_class, $prefix, $scope)) {
+            foreach (array('coding', 'general') as $plan) {
+                foreach (array('intl', 'cn') as $region) {
+                    $expected = $prefix . md5("{$scope}|{$plan}|{$region}");
+
+                    $this->assertSame($expected, $endpoint_class::discovery_cache_id($plan, $region), "{$endpoint_class} [{$plan}+{$region}] keeps the historical composition.");
+                    $this->assertSame(
+                        array($expected, $expected . '_miss'),
+                        $endpoint_class::discovery_transient_ids($plan, $region),
+                        "{$endpoint_class} [{$plan}+{$region}] pairs the id with the miss marker."
+                    );
+
+                    // The composition matches what an endpoint INSTANCE
+                    // of the same combination would key by.
+                    $this->assertSame(
+                        $expected,
+                        $endpoint_class::CACHE_PREFIX . md5($endpoint_class::for($plan, $region)->cache_key()),
+                        "{$endpoint_class} [{$plan}+{$region}] equals the instance-composed id the directories used to build."
+                    );
+                }
+            }
+        }
+    }
+
+    public function testTheCacheIdOwnerLoadsAndComposesWithoutTheSdk()
+    {
+        /*
+         * GLM8 #11: the settings invalidation and uninstall.php consult
+         * the endpoint layer WITHOUT the SDK plugin available — the
+         * owner (base + children + ZaiDiscoveryCache) must load and
+         * compose in a subprocess that never includes vendor/ (the
+         * test bootstrap always loads it, so this can only be proven
+         * out-of-process, the missing-SDK scaffold-test pattern).
+         */
+        $script = <<<'PHP'
+define('HOUR_IN_SECONDS', 3600);
+require %s;
+require %s;
+require %s;
+require %s;
+require %s;
+require %s;
+require %s;
+$ids = Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::discovery_transient_ids('coding', 'intl');
+if ($ids !== array('zai_connector_zai_models_' . md5('zai|coding|intl'), 'zai_connector_zai_models_' . md5('zai|coding|intl') . '_miss')) {
+    fwrite(STDERR, "unexpected ids: " . implode(',', $ids) . "\n");
+    exit(1);
+}
+if (class_exists('WordPress\AiClient\AiClient')) {
+    fwrite(STDERR, "SDK unexpectedly present\n");
+    exit(1);
+}
+echo "SDK_FREE_OWNER_OK\n";
+PHP;
+        $src = dirname(__DIR__, 2) . '/connectors/zai/src';
+        $script = sprintf(
+            $script,
+            var_export($src . '/Settings/AbstractPlanRegionSettings.php', true),
+            var_export($src . '/Settings/PlanRegionSettings.php', true),
+            var_export($src . '/Settings/ZaiAnthropicPlanRegionSettings.php', true),
+            var_export($src . '/Endpoints/AbstractZaiEndpoint.php', true),
+            var_export($src . '/Endpoints/ZaiEndpoint.php', true),
+            var_export($src . '/Endpoints/ZaiAnthropicEndpoint.php', true),
+            var_export($src . '/Metadata/ZaiDiscoveryCache.php', true)
+        );
+
+        $command = escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1';
+        exec($command, $outputLines, $exitCode);
+        $output = implode("\n", $outputLines);
+
+        $this->assertSame(0, $exitCode, "The owner must compose without the SDK: {$output}");
+        $this->assertStringContainsString('SDK_FREE_OWNER_OK', $output);
+    }
+
+    public function testEveryConsumerComposesThroughTheEndpointLayerOwner()
+    {
+        /*
+         * GLM8 #11 (source pin): the five former mirrors must carry no
+         * private composition — no hand-rolled md5 over the cache key,
+         * no literal '_miss' suffix, and (where an endpoint class is
+         * available) an actual call into discovery_transient_ids() /
+         * discovery_cache_id().
+         */
+        $consumers = array(
+            'settings invalidation' => __DIR__ . '/../../connectors/zai/src/Settings/AbstractPlanRegionSettings.php',
+            'openai directory' => __DIR__ . '/../../connectors/zai/src/Metadata/ZaiModelMetadataDirectory.php',
+            'anthropic directory' => __DIR__ . '/../../connectors/zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
+            'uninstall' => __DIR__ . '/../../connectors/zai/uninstall.php',
+            'live probe' => __DIR__ . '/../../bin/zai-live-probe.php',
+        );
+
+        foreach ($consumers as $label => $path) {
+            $source = (string) file_get_contents($path);
+
+            $this->assertSame(
+                0,
+                preg_match("/\.\s*'_miss'|'_miss'\s*\./", $source),
+                "[{$label}] The negative-cache suffix must never be concatenated in code."
+            );
+            $this->assertSame(
+                0,
+                preg_match('/md5\(\s*\$endpoint->cache_key\(\)\s*\)/', $source),
+                "[{$label}] No private md5-over-cache-key composition."
+            );
+            $this->assertSame(
+                1,
+                preg_match('/discovery_transient_ids\(|discovery_cache_id\(/', $source),
+                "[{$label}] The consumer must call the endpoint layer's owner."
+            );
+        }
+    }
+
     public function testBothEndpointSurfacesDeclareTheSharedBaseIdentifiers()
     {
         /*

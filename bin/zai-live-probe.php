@@ -263,10 +263,13 @@ if ( ! $configured ) {
  * are, so the transient is the fallback-used signal: it is deleted first
  * (a cache — safe to clear from a probe) and checked after the call.
  */
-$discovery_cache_id = ( 'anthropic' === $surface ? 'zai_connector_zai_anthropic_models_' : 'zai_connector_zai_models_' )
-    . md5( $endpoint->cache_key() );
-delete_transient( $discovery_cache_id );
-delete_transient( $discovery_cache_id . '_miss' );
+// GLM8 #11: the discovery transient ids come from the endpoint layer's
+// one owner — no private prefix/md5/'_miss' composition here anymore.
+$discovery_transient_ids = $endpoint::discovery_transient_ids( $plan, $region );
+foreach ( $discovery_transient_ids as $discovery_transient_id ) {
+    delete_transient( $discovery_transient_id );
+}
+$discovery_cache_id = $discovery_transient_ids[0];
 
 $start = microtime( true );
 try {

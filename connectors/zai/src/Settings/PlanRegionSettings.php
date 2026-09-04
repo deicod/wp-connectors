@@ -127,14 +127,30 @@ final class PlanRegionSettings extends AbstractPlanRegionSettings {
 	/**
 	 * Invalidation identifiers: the endpoint identity scope the discovery
 	 * cache keys embed ('{scope}|{plan}|{region}' — see ZaiEndpoint /
-	 * ZaiAnthropicEndpoint cache_key()). Composing the key inline keeps the
-	 * invalidation free of the endpoint classes' autoload (see
-	 * STATE_OPTION for the SDK-absent rationale); a consistency test pins
-	 * the composition to the endpoint classes' own format.
+	 * ZaiAnthropicEndpoint cache_key()). GLM8 #11: the invalidation
+	 * composes through the endpoint layer (ENDPOINT_CLASS) instead of
+	 * mirroring the formula inline; ZaiEndpoint aliases THIS constant for
+	 * its cache_key()/discovery ids, so the one declaration here remains
+	 * the single source (see STATE_OPTION for the SDK-absent rationale).
 	 *
 	 * @since 0.1.0
 	 *
 	 * @var string
 	 */
 	const CACHE_SCOPE = 'zai';
+
+	/**
+	 * The endpoint class that owns this surface's discovery cache-id
+	 * composition (GLM8 #11): the invalidation below clears the
+	 * transients the endpoint layer names, never a private re-composition.
+	 *
+	 * The endpoint classes are SDK-free loadable (no SDK parent, lazy
+	 * imports only), so consulting them keeps the SDK-absent guarantee
+	 * (see STATE_OPTION) while removing the mirrored formula.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var class-string
+	 */
+	const ENDPOINT_CLASS = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class;
 }

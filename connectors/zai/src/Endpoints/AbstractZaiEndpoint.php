@@ -26,6 +26,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Endpoints;
 
+use Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache;
 use InvalidArgumentException;
 
 /**
@@ -40,6 +41,8 @@ use InvalidArgumentException;
  *   (normalize_base_url()'s double-append guard);
  * - CACHE_SCOPE: the cache-key scope string, aliased from the surface's
  *   settings class ('zai' / 'zai_anthropic');
+ * - CACHE_PREFIX: the discovery transient prefix, aliased from the
+ *   surface's settings class;
  * - SETTINGS_CLASS: the surface's settings class (the plan/region
  *   getters for_current_settings() reads);
  * - UNKNOWN_ENDPOINT_LABEL: the surface label in the unknown-
@@ -232,5 +235,59 @@ abstract class AbstractZaiEndpoint {
 	 */
 	final public function cache_key(): string {
 		return static::CACHE_SCOPE . '|' . $this->plan . '|' . $this->region;
+	}
+
+	/**
+	 * The discovery transient id for one plan × region combination of
+	 * this surface (GLM8 #11: the ONE owner of the composition).
+	 *
+	 * The formula — the surface's transient prefix, then the md5 of the
+	 * endpoint identity — was hand-composed in five places (the settings
+	 * invalidation, both metadata directories, uninstall.php's fully
+	 * literal copy, and the live probe), three of them appending the
+	 * negative-cache '_miss' suffix literally instead of through
+	 * ZaiDiscoveryCache's exported constant: any change to the endpoint
+	 * identity composition silently stranded stale 12h transients on
+	 * every mirror that missed the lockstep edit — invalidation and
+	 * uninstall then cleared keys nobody writes. The endpoint layer owns
+	 * the identity, so it owns the id; every consumer composes through
+	 * this method (or discovery_transient_ids()) now.
+	 *
+	 * SDK-free loadable by construction (the settings invalidation and
+	 * uninstall.php call this without the SDK plugin): this base, the
+	 * children, and ZaiDiscoveryCache declare no SDK types.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $plan   One of the surface's plans.
+	 * @param string $region One of the surface's regions.
+	 * @return string The positive discovery transient id.
+	 */
+	final public static function discovery_cache_id( string $plan, string $region ): string {
+		return static::CACHE_PREFIX . md5( static::CACHE_SCOPE . '|' . $plan . '|' . $region );
+	}
+
+	/**
+	 * The discovery transient ids (positive cache plus negative marker)
+	 * for one plan × region combination of this surface (GLM8 #11).
+	 *
+	 * The '_miss' suffix rides ZaiDiscoveryCache's exported constant —
+	 * the marker this surface's own negative caching writes — so the
+	 * invalidation paths can never clear (or miss) a name the cache
+	 * layer stopped writing.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $plan   One of the surface's plans.
+	 * @param string $region One of the surface's regions.
+	 * @return list<string> The positive and the negative-marker transient ids.
+	 */
+	final public static function discovery_transient_ids( string $plan, string $region ): array {
+		$cache_id = static::discovery_cache_id( $plan, $region );
+
+		return array(
+			$cache_id,
+			$cache_id . ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX,
+		);
 	}
 }

@@ -674,6 +674,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
             'KEY_ENV_NAME',
             'CACHE_PREFIX',
             'CACHE_SCOPE',
+            'ENDPOINT_CLASS',
         );
 
         $base = array();

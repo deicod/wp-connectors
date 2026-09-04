@@ -121,6 +121,16 @@ final class ZaiAnthropicEndpoint extends AbstractZaiEndpoint {
 	const CACHE_SCOPE = ZaiAnthropicPlanRegionSettings::CACHE_SCOPE;
 
 	/**
+	 * Discovery transient prefix of this surface: the settings layer's
+	 * own prefix, aliased so the two can never drift (GLM8 #11).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const CACHE_PREFIX = ZaiAnthropicPlanRegionSettings::CACHE_PREFIX;
+
+	/**
 	 * The settings class whose plan/region getters resolve the current
 	 * endpoint (the zai provider's settings are never consulted).
 	 *

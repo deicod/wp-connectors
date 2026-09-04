@@ -65,9 +65,12 @@ final class ZaiDiscoveryCache {
 	/**
 	 * Suffix marking the negative (miss) cache entry for an endpoint key.
 	 *
-	 * Mirrored literally by the SDK-free settings invalidation and
-	 * uninstall.php (neither can autoload this class); tests pin the
-	 * mirror.
+	 * GLM8 #11: every consumer that needs the marker name — the
+	 * settings invalidation, uninstall.php, and the live probe, via the
+	 * endpoint layer's discovery_transient_ids() — reads THIS constant;
+	 * no mirror composes '_miss' literally anymore. The class stays
+	 * SDK-free loadable (no SDK parent, lazy imports only) so those
+	 * callers can use it without the SDK plugin.
 	 *
 	 * @since 0.2.0
 	 *

@@ -461,25 +461,29 @@ abstract class AbstractPlanRegionSettings {
 
 		/*
 		 * Codex R2 #3: every identifier below comes from THIS layer's
-		 * constants and the cache key is composed inline — no availability,
-		 * directory, or endpoint class is autoloaded. On WP 6.9 without the
-		 * optional PHP AI Client plugin those classes cannot load at all
-		 * (they implement missing SDK types) and a settings save here would
-		 * otherwise fatal after the option write.
+		 * constants — no availability or directory class is autoloaded. On
+		 * WP 6.9 without the optional PHP AI Client plugin those classes
+		 * cannot load at all (they implement missing SDK types) and a
+		 * settings save here would otherwise fatal after the option write.
+		 *
+		 * GLM8 #11: the discovery-cache ids are no longer composed inline
+		 * — the endpoint layer owns the formula
+		 * (discovery_transient_ids()), and the endpoint classes are
+		 * SDK-free loadable (no SDK parent, lazy imports only), so
+		 * consulting ENDPOINT_CLASS keeps the SDK-absent guarantee while
+		 * removing the mirror whose silent drift stranded stale
+		 * transients. The '_miss' suffix rides the owner too
+		 * (ZaiDiscoveryCache's exported constant), never a literal.
 		 */
 		delete_option( static::STATE_OPTION );
 
-		// The discovery caches are endpoint-scoped by key (so is the cache
-		// identity itself), but clear the transients anyway so no stale entry
-		// survives an unexpected cache-key collision. The '_miss' suffix is
-		// the directories' negative-cache marker (GLM1 #6), mirrored here
-		// literally like the key composition itself (see STATE_OPTION for
-		// the SDK-free rationale).
+		$endpoint_class = static::ENDPOINT_CLASS;
+
 		foreach ( self::PLANS as $plan ) {
 			foreach ( self::REGIONS as $region ) {
-				$cache_id = static::CACHE_PREFIX . md5( static::CACHE_SCOPE . '|' . $plan . '|' . $region );
-				delete_transient( $cache_id );
-				delete_transient( $cache_id . '_miss' );
+				foreach ( $endpoint_class::discovery_transient_ids( $plan, $region ) as $cache_id ) {
+					delete_transient( $cache_id );
+				}
 			}
 		}
 	}
