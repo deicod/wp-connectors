@@ -47,13 +47,11 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Metadata;
 
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
-use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\Contracts\ModelMetadataDirectoryInterface;
 use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithHttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\WithRequestAuthenticationInterface;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -307,7 +305,7 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 
 		$status = $response->getStatusCode();
 
-		if ( 401 === $status || 403 === $status ) {
+		if ( ZaiAnthropicProviderAvailability::is_definitive_rejection( $status ) ) {
 			/*
 			 * GLM7 #12: the models route ANSWERED and rejected the
 			 * credential itself — the same definitive evidence the
@@ -321,16 +319,17 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			 * error names the auth rejection — distinguishable from a
 			 * malformed body in the live probe's discovery report — and
 			 * the shared cache's catch still keeps discovery never-fatal.
+			 *
+			 * GLM10 #8: the status set and the recording ride the
+			 * availability base's one helper — the block this directory
+			 * and the zai twin hand-copied (and once landed one side
+			 * only, GLM7 #12/glm9-5) is gone.
 			 */
-			try {
-				$wired = $this->getRequestAuthentication();
-			} catch ( RuntimeException $unwired ) {
-				$wired = null;
-			}
-
-			( new ZaiAnthropicProviderAvailability() )->record_definitive_verdict(
-				false,
-				$wired instanceof ApiKeyRequestAuthentication ? $wired : null,
+			( new ZaiAnthropicProviderAvailability() )->record_rejection_for_status(
+				$status,
+				function () {
+					return $this->getRequestAuthentication();
+				},
 				$endpoint->cache_key()
 			);
 

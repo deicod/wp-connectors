@@ -144,6 +144,25 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	const VERDICT_INVALID = 'invalid';
 
 	/**
+	 * The HTTP statuses whose answer definitively rejects the CREDENTIAL
+	 * itself (401 bad token; 403 no access for this key).
+	 *
+	 * GLM10 #8: the ONE source for what counts as a definitive credential
+	 * rejection — the probe's verdict branch and both directories'
+	 * discovery-response recording consult it. The set was encoded a
+	 * third time at each site and kept in lockstep by convention that
+	 * already failed once (GLM7 #12 landed one directory only; glm9-5
+	 * re-landed the twin): a missed side leaves a server-side-revoked
+	 * key passing isConfigured() on one surface for up to the 300s
+	 * STATE_TTL.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<int>
+	 */
+	const DEFINITIVE_REJECTION_STATUSES = array( 401, 403 );
+
+	/**
 	 * The provider's endpoint resolver class.
 	 *
 	 * @since 0.2.0
@@ -859,6 +878,62 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	}
 
 	/**
+	 * Reports whether an HTTP status is a DEFINITIVE credential
+	 * rejection — the one predicate every status-judging site consults
+	 * (GLM10 #8; see DEFINITIVE_REJECTION_STATUSES).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param int $status HTTP status code.
+	 * @return bool True for the statuses that reject the credential itself.
+	 */
+	public static function is_definitive_rejection( int $status ): bool {
+		return \in_array( $status, self::DEFINITIVE_REJECTION_STATUSES, true );
+	}
+
+	/**
+	 * Records the definitive invalid verdict a credential-rejecting
+	 * status represents, when it is one (GLM10 #8).
+	 *
+	 * The recording block both metadata directories hand-copied — the
+	 * status test, the RuntimeException-guarded wired-auth read, the
+	 * instanceof narrowing, the record_definitive_verdict() call —
+	 * lives here once, in the same reader-closure shape refuse_discovery()
+	 * established. Non-definitive statuses record nothing (the GLM7 #12
+	 * guard: an inconclusive failure must not poison the verdict store).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param int         $status            The HTTP status the endpoint answered with.
+	 * @param callable    $authentication_reader Returns the wired
+	 *                                        authentication the rejecting request
+	 *                                        authenticated with (throws
+	 *                                        RuntimeException when unwired, which
+	 *                                        resolves the effective key instead).
+	 * @param string|null $endpoint_cache_key The request-time endpoint identity
+	 *                                        (GLM10 #1), or null for the current
+	 *                                        settings.
+	 * @return void
+	 */
+	public function record_rejection_for_status( int $status, callable $authentication_reader, ?string $endpoint_cache_key = null ): void {
+		if ( ! self::is_definitive_rejection( $status ) ) {
+			return;
+		}
+
+		try {
+			$wired = $authentication_reader();
+		} catch ( RuntimeException $unwired ) {
+			$wired = null;
+		}
+
+		$this->record_definitive_verdict(
+			false,
+			$wired instanceof ApiKeyRequestAuthentication ? $wired : null,
+			$endpoint_cache_key
+		);
+	}
+
+	/**
 	 * Builds the binding-scoped probe-miss transient name.
 	 *
 	 * GLM9 #8: the composition rides the SDK-free settings owner's
@@ -944,7 +1019,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			return true;
 		}
 
-		if ( 401 === $status || 403 === $status ) {
+		if ( self::is_definitive_rejection( $status ) ) {
 			// The endpoint answered and rejected the credential itself.
 			return false;
 		}

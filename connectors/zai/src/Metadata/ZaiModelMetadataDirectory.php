@@ -30,8 +30,6 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Metadata;
 
 use WordPress\AiClient\AiClient;
-use WordPress\AiClient\Common\Exception\RuntimeException;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -372,31 +370,30 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	protected function throwIfNotSuccessful( Response $response ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated overridable hook name.
 		$status = $response->getStatusCode();
 
-		if ( 401 === $status || 403 === $status ) {
-			try {
-				$wired = $this->getRequestAuthentication();
-			} catch ( RuntimeException $unwired ) {
-				$wired = null;
-			}
+		/*
+		 * GLM10 #1: this hook runs INSIDE the GLM3 #10 capture
+		 * window ($this->discovery_endpoint, set by
+		 * discover_model_ids_via_sdk() before the SDK parent's
+		 * request/parse cycle), so the rejection is recorded against
+		 * the endpoint the rejecting request actually hit — not the
+		 * endpoint the settings resolve to by response time. The
+		 * current-settings fallback covers any defensive direct call
+		 * outside the discovery flow.
+		 *
+		 * GLM10 #8: the status set and the recording ride the
+		 * availability base's one helper (non-definitive statuses record
+		 * nothing, the GLM7 #12 guard) — the hand-copied block this
+		 * surface and the anthropic twin each carried is gone.
+		 */
+		$endpoint = $this->discovery_endpoint ?? ZaiEndpoint::for_current_settings();
 
-			/*
-			 * GLM10 #1: this hook runs INSIDE the GLM3 #10 capture
-			 * window ($this->discovery_endpoint, set by
-			 * discover_model_ids_via_sdk() before the SDK parent's
-			 * request/parse cycle), so the rejection is recorded against
-			 * the endpoint the rejecting request actually hit — not the
-			 * endpoint the settings resolve to by response time. The
-			 * current-settings fallback covers any defensive direct call
-			 * outside the discovery flow.
-			 */
-			$endpoint = $this->discovery_endpoint ?? ZaiEndpoint::for_current_settings();
-
-			( new ZaiProviderAvailability() )->record_definitive_verdict(
-				false,
-				$wired instanceof ApiKeyRequestAuthentication ? $wired : null,
-				$endpoint->cache_key()
-			);
-		}
+		( new ZaiProviderAvailability() )->record_rejection_for_status(
+			$status,
+			function () {
+				return $this->getRequestAuthentication();
+			},
+			$endpoint->cache_key()
+		);
 
 		parent::throwIfNotSuccessful( $response );
 	}

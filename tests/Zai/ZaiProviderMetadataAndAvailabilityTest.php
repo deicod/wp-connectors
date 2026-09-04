@@ -17,6 +17,7 @@ use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Provider\AbstractZaiProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
@@ -924,6 +925,56 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
 
         // The rewrite restores the marker.
         $this->assertSame(ZaiProviderAvailability::STATE_CLOCK_UTC, get_option(ZaiProviderAvailability::STATE_OPTION)['clock']);
+    }
+
+    public function testRejectionRecordingHasOneSharedStatusSource()
+    {
+        /*
+         * GLM10 #8: what counts as a definitive credential rejection is
+         * stated ONCE (the availability base) and consumed by the probe
+         * and both directories' discovery recording — the set was
+         * hand-copied per site and the lockstep already failed once
+         * (GLM7 #12 landed one side only; glm9-5 re-landed the twin).
+         * The pin fixes the documented set and the shared helper's
+         * both-edges behavior: definitive statuses record the invalid
+         * verdict (bound to the request-time endpoint when given),
+         * everything else records nothing.
+         */
+        $this->assertSame(array(401, 403), AbstractZaiProviderAvailability::DEFINITIVE_REJECTION_STATUSES, 'The documented definitive-rejection set.');
+        $this->assertTrue(ZaiProviderAvailability::is_definitive_rejection(401));
+        $this->assertTrue(ZaiProviderAvailability::is_definitive_rejection(403));
+        $this->assertFalse(ZaiProviderAvailability::is_definitive_rejection(404));
+        $this->assertFalse(ZaiProviderAvailability::is_definitive_rejection(429));
+
+        $this->freezeTime(1700000000);
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiProviderAvailability::KEY_OPTION, $key);
+
+        $availability = new ZaiProviderAvailability();
+        $availability->record_rejection_for_status(
+            404,
+            function () {
+                throw new WordPress\AiClient\Common\Exception\RuntimeException('unwired');
+            }
+        );
+        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'A non-definitive status records nothing.');
+
+        $availability->record_rejection_for_status(
+            403,
+            function () use ($key) {
+                return new ApiKeyRequestAuthentication($key);
+            },
+            ZaiEndpoint::for('coding', 'intl')->cache_key()
+        );
+
+        $state = get_option(ZaiProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state, 'The definitive status records the invalid verdict.');
+        $this->assertSame('invalid', $state['valid']);
+        $this->assertSame(
+            PlanRegionSettings::credential_binding('database', ZaiEndpoint::for('coding', 'intl')->cache_key(), $key),
+            $state['binding'],
+            'The helper records with the wired credential and the given request-time endpoint.'
+        );
     }
 
     public function testAFutureCheckedAtIsNotFreshAndIsReprobed()
