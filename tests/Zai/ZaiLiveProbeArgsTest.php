@@ -145,5 +145,18 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         foreach (array('provider_id', 'default_plan') as $fact) {
             $this->assertSame(0, preg_match("/['\"]{$fact}['\"]\s*=>\s*['\"]/", $source), "The {$fact} fact must ride a constant, not a quoted literal.");
         }
+
+        /*
+         * GLM12 #11: the discovery-source evidence line hardcoded
+         * 'live /v1/models' for BOTH surfaces, but the openai surface's
+         * models route is {base}/models (MODELS_ROUTE 'models') — the
+         * acceptance evidence named a URL that surface never requested,
+         * misdirecting anyone reconciling the probe output against
+         * transport logs or the endpoint matrix. The line interpolates
+         * the endpoint's models_url() (the MODELS_ROUTE owner) now; the
+         * pins forbid the hardcoded route in the evidence channel.
+         */
+        $this->assertStringContainsString("'live ' . \$endpoint->models_url()", $source, 'The discovery evidence names the surface\'s own models URL.');
+        $this->assertSame(0, preg_match('/live \/v1\/models/', $source), 'No hardcoded models route may ride the evidence line.');
     }
 }

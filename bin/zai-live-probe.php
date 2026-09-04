@@ -325,7 +325,15 @@ try {
     zai_live_probe_report( 'discovery ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
 
     $discovered_live = false !== get_transient( $discovery_cache_id );
-    zai_live_probe_report( 'discovery source', $discovered_live ? 'live /v1/models' : 'DISCOVERY FALLBACK (static catalog — live discovery failed or was malformed)' );
+    /*
+     * GLM12 #11: the evidence names the URL this surface's discovery
+     * actually requested — $endpoint->models_url() rides the surface's
+     * MODELS_ROUTE ('v1/models' on anthropic, 'models' on openai), where
+     * the previously hardcoded Anthropic route misreported the openai
+     * surface's {base}/models request to anyone reconciling the probe
+     * output against transport logs or the endpoint matrix.
+     */
+    zai_live_probe_report( 'discovery source', $discovered_live ? 'live ' . $endpoint->models_url() : 'DISCOVERY FALLBACK (static catalog — live discovery failed or was malformed)' );
     if ( ! $discovered_live ) {
         $exit = 1;
     }
