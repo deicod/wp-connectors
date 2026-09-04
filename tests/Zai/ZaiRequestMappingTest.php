@@ -1051,7 +1051,7 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
             foreach ($labels as $label) {
                 $this->assertSame(
                     0,
-                    preg_match('/[\'"]' . preg_quote($label, '/') . '[\'"],/', $source),
+                    preg_match('/[\'"]' . preg_quote($label, '/') . '[\'"]\s*[,)]/', $source),
                     "{$model} must interpolate the label constant, not the bare literal '{$label}'."
                 );
             }
@@ -1066,19 +1066,44 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
          * REFUSAL_LABEL), so no rejection path in the plugin names the
          * zai_anthropic surface 'z.ai' or vice versa.
          */
+        /*
+         * GLM11 #2: the scan enforced ONE direction — the banned 'z.ai'
+         * brand literal. A swapped owner constant (the zai directory
+         * passing ZaiAnthropicProviderAvailability::REFUSAL_LABEL, or
+         * the anthropic directory passing ZaiProviderAvailability's)
+         * interpolates no literal at all, so the 'vice versa' half of
+         * the invariant above passed every test in the repo. Each
+         * scanned file now bans BOTH surfaces' bare label literals —
+         * the shared parser and the availability base serve both
+         * surfaces, so neither may hardcode either label — and a
+         * surface-owned file additionally bans the OTHER surface's
+         * availability class: a swapped constant references the wrong
+         * class by name, which the source betrays even though no
+         * literal appears.
+         */
         $repo = dirname(__DIR__, 2);
+        $banned_labels = array('z.ai', ZaiProviderAvailability::REFUSAL_LABEL, ZaiAnthropicProviderAvailability::REFUSAL_LABEL);
         foreach (array(
-            '/connectors/zai/src/Metadata/ZaiModelListParser.php',
-            '/connectors/zai/src/Metadata/ZaiModelMetadataDirectory.php',
-            '/connectors/zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
-            '/connectors/zai/src/Availability/AbstractZaiProviderAvailability.php',
-        ) as $path) {
+            '/connectors/zai/src/Metadata/ZaiModelListParser.php' => array( ZaiProviderAvailability::class, ZaiAnthropicProviderAvailability::class ),
+            '/connectors/zai/src/Metadata/ZaiModelMetadataDirectory.php' => array( ZaiAnthropicProviderAvailability::class ),
+            '/connectors/zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php' => array( ZaiProviderAvailability::class ),
+            '/connectors/zai/src/Availability/AbstractZaiProviderAvailability.php' => array( ZaiProviderAvailability::class, ZaiAnthropicProviderAvailability::class ),
+        ) as $path => $banned_owners) {
             $source = (string) file_get_contents($repo . $path);
-            $this->assertSame(
-                0,
-                preg_match('/[\'"]z\.ai[\'"],/', $source),
-                "{$path} must interpolate the consuming surface's label, not the bare 'z.ai' literal."
-            );
+            foreach ($banned_labels as $label) {
+                $this->assertSame(
+                    0,
+                    preg_match('/[\'"]' . preg_quote($label, '/') . '[\'"]\s*[,)]/', $source),
+                    "{$path} must interpolate the consuming surface's label, not the bare '{$label}' literal."
+                );
+            }
+            foreach ($banned_owners as $banned_owner) {
+                $this->assertSame(
+                    0,
+                    preg_match('/\b' . preg_quote((new \ReflectionClass($banned_owner))->getShortName(), '/') . '\b/', $source),
+                    "{$path} must not name the other surface's availability owner — a swapped REFUSAL_LABEL constant interpolates no literal, only the wrong class reference betrays it."
+                );
+            }
         }
     }
 }

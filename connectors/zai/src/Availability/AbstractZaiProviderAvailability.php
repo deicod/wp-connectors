@@ -625,7 +625,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param string $provider_label Provider name for the message ('zai' or 'zai_anthropic').
+	 * @param string $provider_label Provider name for the message (the consuming surface's REFUSAL_LABEL).
 	 * @param string $reason         Refusal reason from the gate.
 	 * @return string The fixed, safe message.
 	 */
