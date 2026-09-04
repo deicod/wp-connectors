@@ -757,6 +757,25 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				}
 
 				if ( $part->getType()->isFunctionResponse() && null !== $part->getFunctionResponse() ) {
+					$function_response = $part->getFunctionResponse();
+
+					/*
+					 * GLM9 #4: the id ships as "tool_call_id" verbatim
+					 * (the SDK parent's message mapping copies it
+					 * unvalidated), so a null or empty id rode the wire
+					 * to an upstream 400 surfaced as the generic
+					 * 'rejected the request' message — where the
+					 * zai_anthropic twin (its tool-result identity
+					 * guard) and this same walk's FunctionCall ids
+					 * (GLM7 #7) give the precise typed pre-transport
+					 * rejection for the identical shape.
+					 */
+					if ( null === $function_response->getId() || '' === $function_response->getId() ) {
+						throw new InvalidArgumentException(
+							'The zai provider requires every function-response part to carry the non-empty tool call id it answers.'
+						);
+					}
+
 					/*
 					 * The parent's message mapping json_encodes the tool
 					 * response with plain json_encode() and string-casts
@@ -765,7 +784,8 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * zai_anthropic surface fixed, with the identical
 					 * guard).
 					 */
-					JsonEncodeGuard::must_encode( $part->getFunctionResponse()->getResponse(), 'a tool result', 'zai' );
+					JsonEncodeGuard::must_encode( $function_response->getId(), 'a tool result id', 'zai' );
+					JsonEncodeGuard::must_encode( $function_response->getResponse(), 'a tool result', 'zai' );
 					continue;
 				}
 

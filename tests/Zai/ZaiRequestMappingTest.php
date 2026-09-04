@@ -695,6 +695,47 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    /**
+     * @dataProvider provideIdentitylessToolResults
+     */
+    public function testIdentitylessReplayedToolResultsAreRejectedBeforeTransport($response, $label)
+    {
+        /*
+         * GLM9 #4: guard_wire_values() validated the tool-result VALUE
+         * but never its id — a null (or empty) id shipped to the wire as
+         * "tool_call_id": null (the SDK parent copies it unvalidated)
+         * and failed upstream as the generic 400 'rejected the request'
+         * message, where the zai_anthropic twin and this walk's own
+         * FunctionCall ids (GLM7 #7) reject the identical shape typed
+         * before transport.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_q', 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart($response))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail("A {$label} must be rejected before transport.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires every function-response part to carry the non-empty tool call id it answers.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideIdentitylessToolResults()
+    {
+        return array(
+            'null id' => array(new FunctionResponse(null, 'get_weather', array('temp' => 21)), 'null-id tool result'),
+            'empty id' => array(new FunctionResponse('', 'get_weather', array('temp' => 21)), 'empty-id tool result'),
+        );
+    }
+
     public function testUnencodableToolCallIdentitiesAreRejectedBeforeTransport()
     {
         // The id and name ride the tool_calls member verbatim; both are
