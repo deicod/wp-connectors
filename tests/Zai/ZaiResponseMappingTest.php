@@ -26,6 +26,7 @@ use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
+use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 
 final class ZaiResponseMappingTest extends WpConnectorsTestCase
 {
@@ -524,6 +525,42 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             $this->assertStringContainsString('cannot be JSON-encoded', $e->getMessage());
             $this->assertStringNotContainsString('malformed', $e->getMessage(), 'The generic masked message must not fire.');
         }
+    }
+
+    public function testTheStreamedEncodabilityOracleMatchesTheStructuralWalker()
+    {
+        /*
+         * GLM10 #10: the whole-payload json_encode() INF oracle swapped
+         * for the GLM9 #13 structural walker (O(tree) with zero
+         * serialization per streamed generation). The pin: on every
+         * REACHABLE aggregated shape the two decide alike — INF at any
+         * depth fails the encode and the walker alike; clean payloads
+         * pass both. The one disclosed strict superset (a finite
+         * integral float beyond PHP_INT_MAX, which json_encode()
+         * accepts) is pinned as the walker's decision, matching the
+         * SDK's downstream is_string gates.
+         */
+        $clean = array(
+            'id' => 'chatcmpl-x',
+            'choices' => array(array('index' => 0, 'delta' => array('role' => 'assistant', 'content' => 'Hi'), 'finish_reason' => 'stop')),
+            'usage' => array('prompt_tokens' => 1, 'completion_tokens' => 2, 'total_tokens' => 3),
+        );
+        $this->assertNotFalse(json_encode($clean));
+        $this->assertTrue(ToolArgsReplayGuard::is_replayable_decoded($clean), 'A clean payload passes the walker.');
+
+        $infShapes = array(
+            'finish_reason INF' => array('choices' => array(array('finish_reason' => INF))),
+            'deeply nested INF' => array('choices' => array(array('delta' => array('content' => 'x'), 'meta' => array('deep' => array(INF))))),
+            'INF under a list' => array('choices' => array(array('tool_calls' => array(array('function' => array('arguments' => INF)))))),
+        );
+        foreach ($infShapes as $label => $payload) {
+            $this->assertFalse(json_encode($payload), "{$label}: the encode oracle rejects it.");
+            $this->assertFalse(ToolArgsReplayGuard::is_replayable_decoded($payload), "{$label}: the walker rejects it identically.");
+        }
+
+        $beyondInt = array('choices' => array(array('finish_reason' => 1e300)));
+        $this->assertNotFalse(json_encode($beyondInt), 'Sanity: the encode oracle ACCEPTS a beyond-PHP_INT_MAX float (the disclosed superset).');
+        $this->assertFalse(ToolArgsReplayGuard::is_replayable_decoded($beyondInt), 'The walker rejects it — as the downstream is_string gates would.');
     }
 
     public function testTheDecodedStreamHandOffParsesExactlyLikeTheEncodedOne()

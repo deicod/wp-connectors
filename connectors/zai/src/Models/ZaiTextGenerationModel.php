@@ -308,8 +308,21 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * the frame decodes are always valid UTF-8, so INF is the
 		 * realistic survivor) rejects the payload typed instead, in this
 		 * surface's fixed-message channel.
+		 *
+		 * GLM10 #10: the oracle is the GLM9 #13 structural fast path
+		 * (ToolArgsReplayGuard::is_replayable_decoded) — the payload is
+		 * 100% json_decode output and guarded constants, so the walker
+		 * decides identically at O(tree) with zero serialization: INF at
+		 * any depth (the pinned 1e999 finish_reason case) rejects exactly
+		 * like a failed encode, with no whole-payload string allocation
+		 * per streamed generation. Strict-superset residual, disclosed:
+		 * the walker ALSO flags finite integral floats beyond
+		 * PHP_INT_MAX (a wire integer the platform int could not hold),
+		 * which json_encode() accepts — such values only reach
+		 * finish_reason/delta.role here (usage is validated above) and
+		 * the SDK's is_string gates reject both downstream either way.
 		 */
-		if ( false === json_encode( $aggregated ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
+		if ( ! ToolArgsReplayGuard::is_replayable_decoded( $aggregated ) ) {
 			throw ResponseException::fromInvalidData(
 				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
