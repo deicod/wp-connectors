@@ -926,6 +926,46 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertSame(ZaiProviderAvailability::STATE_CLOCK_UTC, get_option(ZaiProviderAvailability::STATE_OPTION)['clock']);
     }
 
+    public function testAFutureCheckedAtIsNotFreshAndIsReprobed()
+    {
+        /*
+         * GLM10 #2: elapsed = now - checked_at had no lower bound, so a
+         * checked_at in the FUTURE (clock skew between web nodes, a
+         * state restored from an ahead-clocked server) yielded a
+         * negative elapsed that always passed the < STATE_TTL test —
+         * the verdict read fresh for as long as the skew lasted, and a
+         * server-side-revoked key kept reporting connected far past the
+         * advertised TTL. A future checked_at must distrust the state
+         * and re-probe; the probe rewrites checked_at on this node's
+         * clock, healing the skew.
+         */
+        $this->freezeTime(1700000000);
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
+        $this->assertFalse($instance->isConfigured(), 'The definitive rejection persists.');
+        $this->assertSame(
+            'invalid_verdict',
+            $instance->generation_refusal_reason(),
+            'Sanity pin: the FRESH invalid verdict refuses generation.'
+        );
+
+        // checked_at 1h in the future — an ahead-clocked writer.
+        $state = get_option(ZaiProviderAvailability::STATE_OPTION);
+        $state['checked_at'] = 1700000000 + HOUR_IN_SECONDS;
+        update_option(ZaiProviderAvailability::STATE_OPTION, $state, false);
+
+        $this->assertNull($instance->generation_refusal_reason(), 'An unageable (future checked_at) invalid verdict must refuse nothing.');
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+        $this->assertTrue($instance->isConfigured(), 'The unageable state must be re-probed, not answered from state.');
+        $this->assertCount(2, $this->sdkHttpAttempts(), 'The future checked_at must trigger a fresh probe.');
+
+        // The rewrite heals the skew: checked_at is back on this clock.
+        $this->assertSame(1700000000, get_option(ZaiProviderAvailability::STATE_OPTION)['checked_at']);
+    }
+
     public function testEffectiveKeyResolutionMirrorsCoreOrder()
     {
         putenv('ZAI_API_KEY');

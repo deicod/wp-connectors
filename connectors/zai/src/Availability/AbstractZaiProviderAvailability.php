@@ -212,8 +212,8 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		if ( \is_array( $state ) && ( $state['binding'] ?? '' ) === $binding ) {
 			// UTC on BOTH sides (current_time() with $gmt, not time(), so the
 			// deterministic test clock still drives TTL expiry): a site
-			// timezone change alters no input to this subtraction, so the
-			// elapsed-time math can never go negative ("fresh" for hours).
+			// timezone change alters no input to this subtraction, and
+			// state_is_fresh() bounds the elapsed below at zero (GLM10 #2).
 			// Marker-less states predate the UTC switch — see STATE_CLOCK_UTC.
 			$fresh = self::state_is_fresh( $state );
 
@@ -479,9 +479,18 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *
 	 * UTC on BOTH sides (current_time() with $gmt, not time(), so the
 	 * deterministic test clock still drives TTL expiry): a site timezone
-	 * change alters no input to this subtraction, so the elapsed-time
-	 * math can never go negative ("fresh" for hours). Marker-less states
+	 * change alters no input to this subtraction. Marker-less states
 	 * predate the UTC switch — see STATE_CLOCK_UTC.
+	 *
+	 * GLM10 #2: the elapsed time is additionally bounded BELOW at zero.
+	 * A checked_at in the future — clock skew between web nodes, a state
+	 * restored from an ahead-clocked server — made the subtraction
+	 * negative and the < STATE_TTL test trivially true, so the verdict
+	 * read fresh for as long as the skew lasted (a server-side-revoked
+	 * key reporting connected far past the advertised TTL). A future
+	 * checked_at cannot be aged: the state is distrusted and the consult
+	 * re-probes, and the probe rewrites checked_at on THIS node's clock —
+	 * healing the skew.
 	 *
 	 * @since 0.2.0
 	 *
@@ -489,9 +498,13 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return bool True while the verdict is within STATE_TTL seconds.
 	 */
 	private static function state_is_fresh( array $state ): bool {
-		return ( $state['clock'] ?? '' ) === self::STATE_CLOCK_UTC
-			&& isset( $state['checked_at'] )
-			&& ( current_time( 'timestamp', true ) - (int) $state['checked_at'] ) < self::STATE_TTL; // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.RequestedUTC -- time() would bypass the deterministic (injectable) clock the TTL tests rely on.
+		if ( ( $state['clock'] ?? '' ) !== self::STATE_CLOCK_UTC || ! isset( $state['checked_at'] ) ) {
+			return false;
+		}
+
+		$elapsed = current_time( 'timestamp', true ) - (int) $state['checked_at']; // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.RequestedUTC -- time() would bypass the deterministic (injectable) clock the TTL tests rely on.
+
+		return $elapsed >= 0 && $elapsed < self::STATE_TTL;
 	}
 
 	/**
