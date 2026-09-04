@@ -88,6 +88,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * construction time — so a settings change retargets the very next
 	 * request without rebuilding the registry (Task 1.3).
 	 *
+	 * GLM12 #7: this is the CHOKEPOINT every outbound request passes with
+	 * its FULLY ASSEMBLED $data params, so the encodability net lives
+	 * here once — see guard_assembled_params(). The typed per-family
+	 * walk (guard_wire_values()) still runs first at the params hook and
+	 * keeps the precise per-member messages; this net auto-covers every
+	 * member the parent forwards that the typed walk has not been told
+	 * about yet.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param HttpMethodEnum                     $method  HTTP method.
@@ -97,6 +105,10 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @return Request
 	 */
 	protected function createRequest( HttpMethodEnum $method, string $path, array $headers = array(), $data = null ): Request {
+		if ( \is_array( $data ) ) {
+			$this->guard_assembled_params( $data );
+		}
+
 		return new Request(
 			$method,
 			ZaiEndpoint::for_current_settings()->api_url( $path ),
@@ -104,6 +116,45 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			$data,
 			$this->getRequestOptions()
 		);
+	}
+
+	/**
+	 * Rejects an unassemblable request payload at the chokepoint
+	 * (GLM12 #7).
+	 *
+	 * The typed walk (guard_wire_values()) hand-enumerates the
+	 * SDK-forwarded member families so its rejections can name the
+	 * member — a mirror of SDK mapping knowledge that must be
+	 * re-extended in lockstep with every SDK release, and the lockstep
+	 * already broke once inside this PR (the GLM6 #5 verifier round had
+	 * to add temperature/top_p/outputSchema after the initial landing).
+	 * The advertised-option layer covers the members it knows too, but
+	 * BOTH layers must learn each new forwarded member by name. This one
+	 * oracle over the assembled $data closes the class wholesale: any
+	 * value in ANY
+	 * member — known, forgotten, or added by a future SDK release — that
+	 * the transport's whole-request encode would fail on (NAN, INF,
+	 * invalid UTF-8, recursion) rejects HERE as the typed pre-transport
+	 * 400 instead of the untyped JsonException surfaced by the mapper's
+	 * catch-all as the generic 500. The typed walk's per-member messages
+	 * degrade to this one generic description only for members the typed
+	 * walk does not know — every covered family still rejects upstream,
+	 * first-bad-wins, with its precise message.
+	 *
+	 * The oracle is the shared JsonEncodeGuard's RAW json_encode (the
+	 * GLM3 #4 primitive): the assembled $data is CALLER-built (not a
+	 * json_decode product), so the zero-serialization decoded walker is
+	 * not sound here — NAN, invalid UTF-8, and recursion are exactly the
+	 * caller-value hazards the walker cannot see.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<string, mixed> $data The assembled request params.
+	 * @return void
+	 * @throws InvalidArgumentException When any member cannot encode.
+	 */
+	private function guard_assembled_params( array $data ): void {
+		JsonEncodeGuard::must_encode( $data, 'a request payload member', self::PROVIDER_LABEL );
 	}
 
 	/**
@@ -825,6 +876,12 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * value through the shared JsonEncodeGuard oracle (the same one the
 	 * zai_anthropic twin applies at its mapping sites), first-bad-wins,
 	 * before any request build or transport work.
+	 *
+	 * GLM12 #7: this enumeration names the members it knows; the
+	 * createRequest() chokepoint's generic oracle
+	 * (guard_assembled_params()) is the lockstep-free net that
+	 * auto-covers everything else the parent forwards — including
+	 * members added by future SDK releases.
 	 *
 	 * @since 0.2.0
 	 *

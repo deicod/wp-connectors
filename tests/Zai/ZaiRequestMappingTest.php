@@ -692,6 +692,48 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testAnUncoveredForwardedMemberIsRejectedAtTheChokepoint()
+    {
+        /*
+         * GLM12 #7: guard_wire_values() and the advertised-option layer
+         * cover every member they have been told about BY NAME — a
+         * lockstep the GLM6 #5 verifier round already had to repair
+         * once. The createRequest() chokepoint's generic oracle is the
+         * lockstep-free net: an unassemblable value in ANY member —
+         * including one a future SDK release forwards before either
+         * guard learns its name — rejects as the typed pre-transport
+         * 400 instead of the transport's untyped JsonException (generic
+         * 500). Today every known member is covered by name, so the pin
+         * drives the chokepoint directly with a member no guard knows.
+         */
+        $model = $this->model();
+
+        $create = new \ReflectionMethod($model, 'createRequest');
+
+        try {
+            $create->invoke(
+                $model,
+                WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum::POST(),
+                'chat/completions',
+                array(),
+                array('future_member' => NAN)
+            );
+            $this->fail('A NAN in any assembled member must be rejected at the chokepoint.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a request payload member', $e->getMessage());
+        }
+
+        // The net rides the chokepoint itself: every assembled request
+        // passes it, not just ones some test invokes by hand (the
+        // GLM6 #14 source-pin precedent).
+        $source = (string) file_get_contents(__DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php');
+        $this->assertSame(
+            1,
+            preg_match('/function createRequest\([^)]*\)[^{]*\{\s*if \( \\\\is_array\( \$data \) \) \{\s*\$this->guard_assembled_params\( \$data \);/', $source),
+            'The chokepoint must guard every assembled request payload before the Request is built.'
+        );
+    }
+
     public function testAnEmptyDeclaredToolNameIsRejectedBeforeTransport()
     {
         /*
