@@ -6,6 +6,115 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM9 code review)
+
+- Streamed-transport schema parity and the error channel: a streamed
+  `message_delta` carrying the schema-legal `{"stop_reason":null}`
+  failed the `isset()` presence probe, so a complete valid stream died
+  as 'malformed event frame' while the byte-identical non-streaming
+  body parsed (GLM8 #4 accepted it there) — reception now latches on a
+  PRESENT string-or-null member (other values keep the truncation
+  channel, and a received null still contradicts tool blocks); and a
+  present-but-non-string payload `type` member collapsed onto the `''`
+  sentinel of the ABSENT member, so the declared-event agreement rule
+  was skipped and an `event: ping` frame carrying a text delta under
+  `{"type":false}` silently dropped its chunk while the aggregation
+  reported success — the corrupt declaration is a typed rejection now,
+  the same channel every sibling corruption class uses, with the
+  absent member keeping its documented tolerance. (Verifier round on
+  that change: an `event: error` DECLARATION keeps the error channel
+  through the new corruption class too — only the malformed-event flag
+  was set initially, regressing the frame to 'malformed event frame'
+  plus the JSON-fallback attempt instead of GLM7 #4's documented
+  'error event' verdict, the invariant the undecodable- and
+  non-object-payload siblings uphold.)
+
+- Wire-guard and verdict parity on the zai surface: a BOM-prefixed
+  `application/json` chat.completion body failed both decodes as 'The
+  chat-completions payload was malformed.' where the zai_anthropic
+  twin tolerated the identical prefix — the shared
+  `SseFrameBuffer::strip_stream_prefix()` now runs before both decodes,
+  a BOM before garbage still failing typed; a FunctionResponse part's
+  null/empty id shipped as `"tool_call_id": null` to an upstream 400
+  surfaced as the generic rejected-request message, where the
+  zai_anthropic twin and the same walk's FunctionCall ids give the
+  precise typed pre-transport rejection; and a 401/403 on the zai
+  `/models` discovery route records the definitive invalid verdict
+  through the availability layer's own persist path (via the SDK
+  parent's overridable `throwIfNotSuccessful()` hook, the one place
+  the status is visible on this surface's delegated HTTP flow), so a
+  key revoked server-side stops passing `isConfigured()` after at most
+  the 300s verdict TTL instead of persisting no verdict at all — same
+  upstream evidence, the same outcome the zai_anthropic twin's GLM7
+  #12 gave.
+
+- Scope and logging honesty: the settings layer's discovery-transient
+  sweep skips through a `class_exists()` pre-check (the uninstall.php
+  owner-chain pattern) instead of a `catch (\Error)` that swallowed
+  every Error family while its own comment promised only load-family
+  ones — a quarantined src file still degrades exactly as documented,
+  but a logic bug in the owner now surfaces loudly; and the logging
+  transporter records its status-0 entry for engine `\Error`s too (an
+  `\Error` escaping the wrapped PSR-18 client previously propagated
+  with no trace of the failed round trip in the admin's request log).
+
+- The uninstall probe-miss composition lives once: the sha256 binding
+  formula, the marker-name build, and the derivable-name sweep moved
+  into the SDK-free settings layer beside the invalidation identifiers
+  (`credential_binding()` — the pure hash; the availability writer
+  keeps its GLM5 #11 runtime→database normalization on its own side so
+  the sweep still derives the literal-runtime historical names —
+  `probe_miss_transient_name()`, and `probe_miss_transient_ids()`
+  covering every plan × region × source label). The writer delegates
+  to the same owner and uninstall.php iterates the two settings
+  classes instead of hand-mirroring the formula, the source-label set,
+  and the option constants — under a persistent object cache a
+  composition change can no longer strand hashed markers no sweep
+  finds (GLM5 #11's label split already forced one such lockstep edit
+  on the mirror), and a drift between writer and sweeper now fails a
+  test that plants markers through the real availability flows of both
+  surfaces.
+
+- Structural cleanups, no behavior change beyond the pinned intents:
+  the three content-event cases' verbatim guard blocks are one
+  `content_frame_index()` helper; the per-content map memo the two
+  directories carried as verbatim twins (GLM7 #13 / GLM8 #9) is one
+  `ZaiDiscoveryCache::memoized_map()`, bounded per endpoint cache id —
+  strictly dominating the per-instance single entries, which thrashed
+  whenever both providers were consulted alternately; the two model
+  classes' byte-identical `generate_text()`/transporter-wrap/
+  credential-gate sequence rides one `SafeGenerationBoundary` trait (a
+  sibling of `ThrowsSafeHttpErrors` — no common base is possible
+  across their different SDK parents) with per-surface wiring hooks,
+  each routing to its own availability class; the stop-sequence and
+  tool-identity guards ride the shared `JsonEncodeGuard` parameterized
+  by provider label (the duplication had already forced one re-land:
+  GLM3 #3 → GLM7 #7), messages byte-identical; the availability
+  layer's two copy-pasted optional-authentication ternaries are one
+  `effective_for_authentication()`; and the replay guard gained a
+  structural fast path for `json_decode()`-produced values — the
+  inbound acceptance points re-serialized already-validated immutable
+  arguments on every request (O(K·S) JSON work growing with the
+  conversation), and decode-origin trees provably cannot carry the
+  hazards the string round trip detects, so the walker alone decides
+  them while the outbound sites keep the full oracle for caller-built
+  values.
+
+- Parse-CPU halving on the dominant stream frame: the Anthropic
+  aggregator decodes each frame's payload ONCE — the
+  non-associative, object-ness-preserving decode whose tree every
+  case now reads directly. The associative decode it dropped is what
+  collapsed `{}` and `[]` (the reason the second decode existed as the
+  object-ness oracle), and it ran for every `content_block_delta`,
+  i.e. once per output token — double the OpenAI aggregator's parse
+  CPU on the dominant frame type of the dominant transport. The usage
+  members hand the shared validator the same two views it always
+  judged by (the `(array)` cast as the associative view, the property
+  itself as the raw oracle, a JSON null keeping its null-ness), a
+  47-class differential harness verified byte-identical outcomes
+  against the previous implementation, and the `{}`/`[]` distinction
+  is pinned in one place for tool inputs and usage members alike.
+
 ### Fixed (zai / M2 — GLM8 code review)
 
 - Silent wrong-success holes in the streamed-transport layers closed: a
