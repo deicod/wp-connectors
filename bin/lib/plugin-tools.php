@@ -21,8 +21,20 @@ declare(strict_types=1);
  * the file: statements and offsets sliced from the stripped source line
  * up with the original exactly.
  *
+ * glm17-14: a comment token's trailing line terminator is PRESERVED,
+ * not blanked. On PHP < 8.0 the tokenizer includes the newline in
+ * T_COMMENT (8.0+ emits it as separate whitespace), so blanking the
+ * whole token joined the next line onto the comment's line in this
+ * view — un-anchoring every ^-anchored line scan on those runtimes
+ * (the unused-import scanner's /^use/m silently missed real dead
+ * imports on the composer-pinned 7.4 floor; empirically confirmed in
+ * the glm17 verifier round). Keeping the terminator byte verbatim
+ * preserves length, so the offset invariant above is untouched, and
+ * on PHP 8.0+ this branch is a no-op (the token carries no newline).
+ *
  * @param string $source PHP source.
- * @return string Source with comments replaced by spaces (same length).
+ * @return string Source with comments replaced by spaces (same length;
+ *                 any line terminator inside the comment token stays).
  */
 function wp_connectors_strip_comments($source)
 {
@@ -32,7 +44,8 @@ function wp_connectors_strip_comments($source)
         $text = is_array($token) ? $token[1] : $token;
 
         if (T_COMMENT === $id || T_DOC_COMMENT === $id) {
-            $stripped .= str_repeat(' ', strlen($text));
+            $terminator = preg_match('/(?:\r\n|\n|\r)\z/', $text, $tail) ? $tail[0] : '';
+            $stripped .= str_repeat(' ', strlen($text) - strlen($terminator)) . $terminator;
             continue;
         }
 

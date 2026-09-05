@@ -175,6 +175,15 @@ FIXTURE
                 ,
                 0,
             ),
+            'dead import after a line comment flags (glm17-14 anchor)' => array(
+                <<<'FIXTURE'
+<?php
+// TODO remove after M5
+use Vendor\Package\LegacyClient;
+FIXTURE
+                ,
+                1,
+            ),
             'closure use is not an import' => array(
                 <<<'FIXTURE'
 <?php
@@ -205,5 +214,29 @@ FIXTURE
         file_put_contents($this->root . '/real.php', "<?php\nuse Vendor\\Package\\Used;\n\$x = new Used();\n");
 
         $this->assertSame(0, wp_connectors_unused_import_violations($this->root));
+    }
+
+    public function testStrippedCommentsKeepTheirLineTerminator(): void
+    {
+        /*
+         * glm17-14: on PHP < 8.0 the tokenizer includes the trailing
+         * newline inside T_COMMENT; blanking the whole token joined the
+         * next line onto the comment's line in the stripped view,
+         * un-anchoring every ^-anchored scan (the scanner's /^use/m
+         * silently missed real dead imports on the composer-pinned 7.4
+         * floor — glm17 verifier round, empirically confirmed in
+         * docker php:7.4-cli). The contract below holds identically on
+         * 7.4 (terminator preserved out of the comment token) and 8.0+
+         * (the newline is separate whitespace copied verbatim), and
+         * fails on 7.4 against the old all-spaces strip.
+         */
+        $source   = "<?php\n// drop\nuse Vendor\\Package\\StillAnchored;\n";
+        $stripped = wp_connectors_strip_comments($source);
+
+        $this->assertSame(strlen($source), strlen($stripped), 'The stripped view stays length-preserving.');
+        $this->assertNotFalse(
+            strpos($stripped, "\nuse Vendor\\Package\\StillAnchored;"),
+            'The comment line keeps its terminator, so the following use statement keeps its ^ anchor on every supported PHP version.'
+        );
     }
 }
