@@ -28,18 +28,6 @@ use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 final class Plugin {
 
 	/**
-	 * The provider ID of the OpenAI-compatible surface.
-	 *
-	 * Core derives the connector card and the API-key option name
-	 * (connectors_ai_zai_api_key) from it (architecture record 0001).
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
-	 */
-	const PROVIDER_ID = 'zai';
-
-	/**
 	 * The provider classes this plugin registers, in registration order.
 	 *
 	 * Each registration is individually guarded (see register()): the
