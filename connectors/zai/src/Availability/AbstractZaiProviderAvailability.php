@@ -64,7 +64,6 @@ use Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint;
 use Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelListParser;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
-use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 
 /**
  * Provider availability with a persisted, credential-bound validated state.
@@ -1079,7 +1078,18 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		$status = $response->getStatusCode();
 
 		if ( $response->isSuccessful() ) {
-			$verdict = self::successful_response_verdict( $response );
+			/*
+			 * glm13-3: ONE BOM-safe decode of the body serves BOTH the
+			 * verdict and (below) the discovery seed — the verdict branch
+			 * decoded it and the seed re-read and re-decoded the identical
+			 * body (plus a second stream-prefix strip) on every cold-window
+			 * probe with a valid body, on the blocking pre-generation path.
+			 * The shared decode lives with the parser (its
+			 * decode_models_body entry) so the verdict and the seed can
+			 * never see two different decodes either.
+			 */
+			$raw     = ZaiModelListParser::decode_models_body( $response );
+			$verdict = self::successful_response_verdict( $raw );
 
 			/*
 			 * GLM12 #2: a verdict-bearing models body is also a DISCOVERY
@@ -1093,7 +1103,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			 * rejections are catalog concerns, not credential ones).
 			 */
 			if ( true === $verdict ) {
-				$this->seed_discovery_from_probe( $response, $endpoint );
+				$this->seed_discovery_from_probe( $raw, $endpoint );
 			}
 
 			return $verdict;
@@ -1132,13 +1142,15 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param Response            $response The probe's 2xx models response.
+	 * @param mixed               $raw      The probe body's decoded tree (the
+	 *                                       ONE decode the probe performed,
+	 *                                       glm13-3).
 	 * @param AbstractZaiEndpoint $endpoint The endpoint the probe requested.
 	 * @return void
 	 */
-	private function seed_discovery_from_probe( Response $response, AbstractZaiEndpoint $endpoint ): void {
+	private function seed_discovery_from_probe( $raw, AbstractZaiEndpoint $endpoint ): void {
 		try {
-			$ids = ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan(), static::REFUSAL_LABEL );
+			$ids = ZaiModelListParser::parse_decoded_chat_ids( $raw, $endpoint->plan(), static::REFUSAL_LABEL );
 		} catch ( Throwable $e ) {
 			return;
 		}
@@ -1173,15 +1185,11 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param Response $response The 2xx probe response.
+	 * @param mixed $raw The 2xx probe body's decoded tree (glm13-3: the
+	 *                   probe's ONE decode, shared with the seed).
 	 * @return bool|null As probe(): true, false, or null (inconclusive).
 	 */
-	private static function successful_response_verdict( Response $response ): ?bool {
-		// One BOM-safe object-view decode (the GLM10 #3 rule the discovery
-		// parser already rides): a gateway-prepended UTF-8 BOM must degrade
-		// nothing here either.
-		$raw = json_decode( SseFrameBuffer::strip_stream_prefix( (string) $response->getBody() ) );
-
+	private static function successful_response_verdict( $raw ): ?bool {
 		if ( self::probe_body_is_models_list( $raw ) ) {
 			// The endpoint served the credential an authenticated model
 			// list: valid.

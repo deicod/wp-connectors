@@ -475,9 +475,38 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         );
     }
 
-    public function testAnEmptyModelsListUnderHttp200IsNotAValidVerdict()
+    public function testTheProbeDecodesTheResponseBodyOnce()
     {
         /*
+         * glm13-3: the verdict and the discovery seed share ONE decode of
+         * the probe body (the shared ZaiModelListParser decode) — pin the
+         * source shape so a second decode or a re-read of the response
+         * body cannot silently return on the blocking pre-generation path
+         * (the same source-pinning idiom the mapping suites use).
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Availability/AbstractZaiProviderAvailability.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match_all('/ZaiModelListParser::decode_models_body\(/', $source),
+            'Exactly one decode of the probe body must exist.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/ZaiModelListParser::parse_decoded_chat_ids\(/', $source),
+            'The discovery seed must ride the pre-decoded tree.'
+        );
+        $this->assertSame(
+            0,
+            preg_match_all('/parse_chat_ids\(/', $source),
+            'The probe must not re-enter the parser through the response-decoding entry.'
+        );
+    }
+
+    public function testAnEmptyModelsListUnderHttp200IsNotAValidVerdict()
+    {        /*
          * glm13-2: {"data":[]} passed the verdict predicate's private
          * shape-copy vacuously (a foreach over zero entries) and
          * persisted VERDICT_VALID for the 300s STATE_TTL — while the
