@@ -108,18 +108,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private const PROVIDER_LABEL = ZaiAnthropicProviderAvailability::REFUSAL_LABEL;
 
 	/**
-	 * The cache_key() of the endpoint the CURRENT in-flight request was
-	 * built against — captured at request-build time in
-	 * generateTextResult() (glm13-6), read by
-	 * record_generation_route_rejection().
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string|null
-	 */
-	private $generation_endpoint_cache_key = null;
-
-	/**
 	 * Returns the wired authentication, protocol-wrapped for this surface.
 	 *
 	 * @since 0.2.0
@@ -158,32 +146,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 */
 	protected function gate_authentication(): RequestAuthenticationInterface {
 		return parent::getRequestAuthentication();
-	}
-
-	/**
-	 * Records the definitive invalid verdict a credential-rejecting
-	 * GENERATION response represents (glm13-6 — see
-	 * ThrowsSafeHttpErrors::throwIfNotSuccessful()).
-	 *
-	 * The credential the rejecting request authenticated with (the RAW
-	 * parent getter, this surface's gate wiring — GLM3 #9) and the
-	 * endpoint captured at REQUEST time (generateTextResult()'s stash) —
-	 * the same binding discipline the directories' discovery recording
-	 * follows.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param int $status The definitive-rejection status the route answered.
-	 * @return void
-	 */
-	protected function record_generation_route_rejection( int $status ): void {
-		( new ZaiAnthropicProviderAvailability() )->record_rejection_for_status(
-			$status,
-			function () {
-				return parent::getRequestAuthentication();
-			},
-			$this->generation_endpoint_cache_key
-		);
 	}
 
 	/**
@@ -227,13 +189,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$endpoint = ZaiAnthropicEndpoint::for_current_settings();
 
 		/*
-		 * glm13-6: the request-time endpoint capture (the directories'
-		 * GLM10 #1 discipline) — a credential-rejecting answer this
-		 * request earns is recorded against the endpoint the request
-		 * actually hit, never the one the settings resolve to by the time
-		 * the response lands.
+		 * glm13-6: the request-time endpoint capture — see
+		 * SafeGenerationBoundary::capture_generation_endpoint().
 		 */
-		$this->generation_endpoint_cache_key = $endpoint->cache_key();
+		$this->capture_generation_endpoint( $endpoint->cache_key() );
 
 		$request = new Request(
 			HttpMethodEnum::POST(),

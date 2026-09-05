@@ -37,6 +37,18 @@ use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 trait SafeGenerationBoundary {
 
 	/**
+	 * The cache_key() of the endpoint the CURRENT in-flight request was
+	 * built against — captured at request-build time through
+	 * capture_generation_endpoint() (glm13-6), read by
+	 * record_generation_route_rejection().
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string|null
+	 */
+	protected $generation_endpoint_cache_key = null;
+
+	/**
 	 * The availability instance whose credential gate generation consults.
 	 *
 	 * Each surface returns its own availability class — the gate state is
@@ -65,6 +77,56 @@ trait SafeGenerationBoundary {
 	 * @return RequestAuthenticationInterface
 	 */
 	abstract protected function gate_authentication(): RequestAuthenticationInterface;
+
+	/**
+	 * Records the definitive invalid verdict a credential-rejecting
+	 * GENERATION response represents (glm13-6 — see
+	 * ThrowsSafeHttpErrors::throwIfNotSuccessful(), whose abstract hook
+	 * this satisfies).
+	 *
+	 * GLM14-6: one mechanic on the shared boundary, riding the two hooks
+	 * above — the credential the gate itself judges is the credential
+	 * whose rejection records, and the availability instance whose gate
+	 * generation consults is the one that persists the verdict. The
+	 * surfaces' copies were verbatim duplicates that had already begun
+	 * drifting textually (the zai_anthropic recorder inlined
+	 * parent::getRequestAuthentication() where its gate_authentication()
+	 * hook returns exactly that); a future change to which getter a
+	 * surface's gate judges must not leave the gate and the recorder
+	 * disagreeing about which credential flew.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param int $status The definitive-rejection status the route answered.
+	 * @return void
+	 */
+	protected function record_generation_route_rejection( int $status ): void {
+		$this->credential_gate_availability()->record_rejection_for_status(
+			$status,
+			function () {
+				return $this->gate_authentication();
+			},
+			$this->generation_endpoint_cache_key
+		);
+	}
+
+	/**
+	 * Captures the endpoint identity of the CURRENT in-flight request
+	 * (glm13-6, the directories' GLM10 #1 discipline) — the cache_key()
+	 * a credential-rejecting answer's verdict is recorded against, so
+	 * the binding always names the endpoint the request actually hit,
+	 * never the one the settings resolve to by the time the response
+	 * lands. Each surface's request-build site re-captures before every
+	 * send that can follow it.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $cache_key The request-time endpoint's cache_key().
+	 * @return void
+	 */
+	protected function capture_generation_endpoint( string $cache_key ): void {
+		$this->generation_endpoint_cache_key = $cache_key;
+	}
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.

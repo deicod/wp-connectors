@@ -85,17 +85,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	private const PROVIDER_LABEL = ZaiProviderAvailability::REFUSAL_LABEL;
 
 	/**
-	 * The cache_key() of the endpoint the CURRENT in-flight request was
-	 * built against — captured at request-build time in createRequest()
-	 * (glm13-6), read by record_generation_route_rejection().
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string|null
-	 */
-	private $generation_endpoint_cache_key = null;
-
-	/**
 	 * The prompt the CURRENT in-flight request was prepared from —
 	 * captured in prepareGenerateTextParams() (glm13-11) so the
 	 * encodability attribution walk can name the first bad member when
@@ -138,15 +127,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		$endpoint = ZaiEndpoint::for_current_settings();
 
 		/*
-		 * glm13-6: the request-time endpoint capture (the directories'
-		 * GLM10 #1 discipline) — a credential-rejecting answer this
-		 * request earns is recorded against the endpoint the request
-		 * actually hit, never the one the settings resolve to by the time
-		 * the response lands. Every createRequest() re-stashes before the
-		 * send that follows it, so the capture always names the in-flight
-		 * request's endpoint.
+		 * glm13-6: the request-time endpoint capture — see
+		 * SafeGenerationBoundary::capture_generation_endpoint(). Every
+		 * createRequest() re-captures before the send that follows it.
 		 */
-		$this->generation_endpoint_cache_key = $endpoint->cache_key();
+		$this->capture_generation_endpoint( $endpoint->cache_key() );
 
 		return new Request(
 			$method,
@@ -355,32 +340,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 */
 	protected function gate_authentication(): RequestAuthenticationInterface {
 		return $this->getRequestAuthentication();
-	}
-
-	/**
-	 * Records the definitive invalid verdict a credential-rejecting
-	 * GENERATION response represents (glm13-6 — see
-	 * ThrowsSafeHttpErrors::throwIfNotSuccessful()).
-	 *
-	 * The credential the rejecting request authenticated with (this
-	 * model's own getter; unwired resolves the effective key through the
-	 * recorder's reader contract) and the endpoint captured at REQUEST
-	 * time (createRequest()'s stash) — the same binding discipline the
-	 * directories' discovery recording follows.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param int $status The definitive-rejection status the route answered.
-	 * @return void
-	 */
-	protected function record_generation_route_rejection( int $status ): void {
-		( new ZaiProviderAvailability() )->record_rejection_for_status(
-			$status,
-			function () {
-				return $this->gate_authentication();
-			},
-			$this->generation_endpoint_cache_key
-		);
 	}
 
 	/**
