@@ -39,7 +39,9 @@ final class UnusedImportScannerTest extends TestCase
     protected function tearDown(): void
     {
         foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_dir($entry)) {
+            if (is_link($entry)) {
+                @unlink($entry);
+            } elseif (is_dir($entry)) {
                 @rmdir($entry);
             } else {
                 @unlink($entry);
@@ -206,14 +208,39 @@ FIXTURE
     public function testADirectoryNamedPhpIsSkipped(): void
     {
         /*
-         * glm17-10: the recursive iterator yields directories too, so a
-         * directory NAMED *.php passes the extension gate; it must be
-         * skipped as a directory, not read as a file.
+         * glm17-10 / glm17-16: the ONLY directory shape the recursive
+         * iterator yields as a leaf is a SYMLINK to a directory (plain
+         * directories are descended, never emitted — the glm17-12 form
+         * of this test was vacuous, verifier-confirmed) — and one named
+         * *.php passes the extension gate, so the isDir() skip is what
+         * keeps it out of the file read on every PHP version.
          */
-        mkdir($this->root . '/looks-like-a-file.php');
+        mkdir($this->root . '/target');
+        $linked = symlink($this->root . '/target', $this->root . '/looks-like-a-file.php');
+        if (false === $linked) {
+            $this->markTestSkipped('This host cannot create symlinks.');
+        }
         file_put_contents($this->root . '/real.php', "<?php\nuse Vendor\\Package\\Used;\n\$x = new Used();\n");
 
         $this->assertSame(0, wp_connectors_unused_import_violations($this->root));
+    }
+
+    public function testADanglingSymlinkNamedPhpFailsLoudly(): void
+    {
+        /*
+         * glm17-16: glm17-10's loud unreadable-file branch pinned by the
+         * one unreadable shape that fails on EVERY host (chmod-000 stays
+         * readable under root): reading a dangling symlink returns
+         * false, so the branch must count exactly one violation — the
+         * cast-revert mutation (back to silent '' compliance) turns
+         * this red.
+         */
+        $linked = symlink($this->root . '/no-such-target', $this->root . '/dangling.php');
+        if (false === $linked) {
+            $this->markTestSkipped('This host cannot create symlinks.');
+        }
+
+        $this->assertSame(1, wp_connectors_unused_import_violations($this->root));
     }
 
     public function testStrippedCommentsKeepTheirLineTerminator(): void

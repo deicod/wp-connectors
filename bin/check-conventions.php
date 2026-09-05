@@ -14,12 +14,19 @@
 
 declare(strict_types=1);
 
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
-
 require_once __DIR__ . '/lib/plugin-tools.php';
 
 if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
+    /*
+     * Diagnostics for the CLI run ONLY (glm17-16): at file top these
+     * two calls executed in every process that REQUIRED the file too —
+     * the test suite loads it for the scanner fixtures, and a host
+     * running php-cli with display_errors off would have had it
+     * flipped on process-wide just by loading a test.
+     */
+    error_reporting(E_ALL);
+    ini_set('display_errors', '1');
+
     $repoRoot = dirname(__DIR__);
     $pluginRoots = array();
     foreach (glob($repoRoot . '/connectors/*', GLOB_ONLYDIR) ?: array() as $dir) {
@@ -107,7 +114,13 @@ function wp_connectors_unused_import_violations(string $root): int
             continue;
         }
 
-        $source = file_get_contents($file->getPathname());
+        /*
+         * The warning is suppressed because the false return is OWNED
+         * below (glm17-10): the FAIL line is the loud channel in the
+         * CLI run, and the raw warning would only double it there —
+         * and surface as a test error in suites that load this file.
+         */
+        $source = @file_get_contents($file->getPathname());
         if (false === $source) {
             /*
              * Loud, never silently compliant: the (string) cast used
