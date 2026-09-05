@@ -24,9 +24,9 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   Api-key flies with the surface's headers. Opaque wiring is
   inconclusive on BOTH surfaces now: nothing flies, nothing persists.
 
-- A duplicate trailing `message_stop` is inert (glm16-2, corrected by
-  glm16-15): a proxy or replaying intermediary duplicating the final
-  terminal frame discarded a fully valid completed generation
+- A WELL-FORMED duplicate trailing terminal is inert (glm16-2,
+  corrected by glm16-15): a proxy or replaying intermediary duplicating
+  the final terminal frame discarded a fully valid completed generation
   ('malformed event frame'), while the OpenAI twin treats the identical
   appending-gateway shape as harmless (duplicate `[DONE]` is a no-op;
   pinned). A WELL-FORMED duplicate (object payload) no-ops — the
