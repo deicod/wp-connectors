@@ -15,6 +15,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Support;
 
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Providers\Models\DTO\ModelConfig;
 
 /**
  * Rejects config keys outside the advertised option set.
@@ -82,13 +83,13 @@ final class AdvertisedOptionGuard {
 	 * setLogprobs(false) passed.
 	 *
 	 * GLM4 #4 supersedes that tolerance for the WIRE_FORWARDED options
-	 * only: ModelConfig::toArray() is sparse (non-null values only), so
-	 * null still means "not set" — but an explicitly-set falsy value of a
-	 * forwarded option would reach the wire verbatim ("logprobs": false,
-	 * "top_logprobs": 0, "presence_penalty": 0), and is rejected with the
-	 * precise local message instead of the generic upstream one it used
-	 * to buy. Both surfaces share the rule so a config rejected by one is
-	 * rejected by the other.
+	 * only: an unset member is the getter's own null — but an
+	 * explicitly-set falsy value of a forwarded option would reach the
+	 * wire verbatim ("logprobs": false, "top_logprobs": 0,
+	 * "presence_penalty": 0), and is rejected with the precise local
+	 * message instead of the generic upstream one it used to buy. Both
+	 * surfaces share the rule so a config rejected by one is rejected by
+	 * the other.
 	 *
 	 * GLM7 #15: the REJECTION is shared, the JUSTIFICATION is per
 	 * surface. $ships_forwarded_values states whether the caller's
@@ -102,23 +103,33 @@ final class AdvertisedOptionGuard {
 	 * callers and would silently diverge further if either builder
 	 * changed).
 	 *
+	 * glm20-7: the member is probed on the ModelConfig OBJECT through
+	 * its nullable getter, never a materialized toArray() — the array is
+	 * sparse (a member is emitted exactly when non-null), so the
+	 * getter's null IS the array's absent key, and ten scalar probes no
+	 * longer pay the whole-config serialization (a deep nested schema
+	 * rebuild for tool-heavy conversations) the array form demanded on
+	 * every request. The getters follow the camelCase convention, so
+	 * the probe derives the name — no parallel key→getter map that
+	 * could drift from UNSUPPORTED.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param array<string, mixed> $config_as_array       The model config as an array.
-	 * @param string               $provider_label        Provider name for the message ('zai' or 'zai_anthropic' — the surfaces' PROVIDER_LABEL, GLM10 #9).
-	 * @param bool                 $ships_forwarded_values Whether the caller's request
-	 *                                                    builder emits the WIRE_FORWARDED
-	 *                                                    keys (the zai surface's SDK
-	 *                                                    parent does; the zai_anthropic
-	 *                                                    builder does not).
+	 * @param ModelConfig $config                The model configuration.
+	 * @param string      $provider_label        Provider name for the message ('zai' or 'zai_anthropic' — the surfaces' PROVIDER_LABEL, GLM10 #9).
+	 * @param bool        $ships_forwarded_values Whether the caller's request
+	 *                                            builder emits the WIRE_FORWARDED
+	 *                                            keys (the zai surface's SDK
+	 *                                            parent does; the zai_anthropic
+	 *                                            builder does not).
 	 * @return void
 	 * @throws InvalidArgumentException When a non-advertised option carries a
 	 *                                   truthy value, or a wire-forwarded
 	 *                                   option carries any explicitly-set value.
 	 */
-	public static function reject_unsupported( array $config_as_array, string $provider_label, bool $ships_forwarded_values = true ): void {
+	public static function reject_unsupported( ModelConfig $config, string $provider_label, bool $ships_forwarded_values = true ): void {
 		foreach ( self::UNSUPPORTED as $key => $label ) {
-			$value = $config_as_array[ $key ] ?? null;
+			$value = $config->{ 'get' . ucfirst( $key ) }();
 
 			if ( ! empty( $value ) ) {
 				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.

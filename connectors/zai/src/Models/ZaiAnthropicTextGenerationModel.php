@@ -2537,7 +2537,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * (cross-surface contract) instead of the forwarding only the
 		 * zai surface's SDK-parent builder performs.
 		 */
-		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), self::PROVIDER_LABEL, false );
+		AdvertisedOptionGuard::reject_unsupported( $config, self::PROVIDER_LABEL, false );
 
 		/*
 		 * GLM2 #9: the five usage rejections the two surfaces advertise

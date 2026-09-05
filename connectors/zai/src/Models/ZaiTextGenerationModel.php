@@ -1068,7 +1068,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * GLM1 #11: the unsupported-option rejection is shared with the
 		 * zai_anthropic surface (was a verbatim twin, one label apart).
 		 */
-		AdvertisedOptionGuard::reject_unsupported( $config->toArray(), self::PROVIDER_LABEL );
+		AdvertisedOptionGuard::reject_unsupported( $config, self::PROVIDER_LABEL );
 
 		/*
 		 * GLM2 #9: the five usage rejections the two surfaces advertise

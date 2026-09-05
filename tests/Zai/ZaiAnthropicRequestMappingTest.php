@@ -3133,34 +3133,48 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
     public function testTheSharedGuardTreatsWireInertFalsyFlavorsAsNotSet()
     {
         /*
-         * Direct unit coverage of the flavors the typed setters cannot
-         * express ('0', '') for the WIRE-INERT options — the request
-         * builder never forwards these, so a set falsy value is a no-op.
-         * GLM4 #4: the wire-FORWARDED falsy flavors (presence penalty
-         * 0.0, logprobs false, ...) now reject instead — they would
-         * ship on the zai surface — plus a truthy control that still
-         * rejects.
+         * Direct unit coverage of the falsy flavors the typed setters
+         * CAN express (GLM4 #4: the wire-FORWARDED falsy flavors —
+         * presence penalty 0.0, logprobs false, ... — now reject
+         * instead; they would ship on the zai surface), plus a truthy
+         * control that still rejects. glm20-7: the guard probes the
+         * ModelConfig OBJECT's nullable getters, so the formerly
+         * array-only flavors ('0' for topK, array() for outputFileType)
+         * are gone WITH their input class — the DTO's typed setters
+         * cannot hold them, the same unreachable-by-construction
+         * reasoning as the GLM9-ref SDK-enum boundary; the flavors that
+         * DO type-check (topK 0, outputSpeechVoice '', the unset null)
+         * stay pinned as tolerated.
          *
          * GLM7 #15: the rejection RULE stays shared, but each surface's
          * justification is truthful — the zai surface's builder forwards
          * the keys ('would still be sent to the API'), this surface's
          * never emits them ('one option contract').
          */
-        \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array(
-            'topK' => '0',
-            'webSearch' => '',
-            'outputFileType' => array(),
-            'outputSpeechVoice' => null,
-        ), 'zai_anthropic', false);
+        $wire_inert = ModelConfig::fromArray(array());
+        $wire_inert->setTopK(0);
+        $wire_inert->setOutputSpeechVoice('');
+        \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported($wire_inert, 'zai_anthropic', false);
 
         foreach (array(
-            'presencePenalty' => 0.0,
-            'frequencyPenalty' => 0,
-            'logprobs' => false,
-            'topLogprobs' => 0,
-        ) as $key => $value) {
+            'presencePenalty' => static function (ModelConfig $config): void {
+                $config->setPresencePenalty(0.0);
+            },
+            'frequencyPenalty' => static function (ModelConfig $config): void {
+                $config->setFrequencyPenalty(0.0);
+            },
+            'logprobs' => static function (ModelConfig $config): void {
+                $config->setLogprobs(false);
+            },
+            'topLogprobs' => static function (ModelConfig $config): void {
+                $config->setTopLogprobs(0);
+            },
+        ) as $key => $set_member) {
+            $config = ModelConfig::fromArray(array());
+            $set_member($config);
+
             try {
-                \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array($key => $value), 'zai_anthropic', false);
+                \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported($config, 'zai_anthropic', false);
                 $this->fail("An explicitly-set falsy {$key} must be rejected on this surface too (one option contract).");
             } catch (InvalidArgumentException $e) {
                 $this->assertStringContainsString('one option contract', $e->getMessage());
@@ -3168,15 +3182,18 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             }
 
             try {
-                \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array($key => $value), 'z.ai');
+                \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported($config, 'z.ai');
                 $this->fail("An explicitly-set falsy {$key} must be rejected on the zai surface (it would ship).");
             } catch (InvalidArgumentException $e) {
                 $this->assertStringContainsString('would still be sent to the API', $e->getMessage());
             }
         }
 
+        $truthy = ModelConfig::fromArray(array());
+        $truthy->setPresencePenalty(0.5);
+
         try {
-            \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported(array('presencePenalty' => 0.5), 'zai_anthropic', false);
+            \Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard::reject_unsupported($truthy, 'zai_anthropic', false);
             $this->fail('A truthy unsupported value must still be rejected.');
         } catch (InvalidArgumentException $e) {
             $this->assertStringContainsString('presence penalty', $e->getMessage());
