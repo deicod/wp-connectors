@@ -1522,6 +1522,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * The JSON fallback for a body the Content-Type mislabeled as a
 	 * stream (GLM8 #5), or null when the body is no Messages payload.
 	 *
+	 * GLM15-7: ONE strip and ONE pair of decodes serve both the
+	 * object-root gate and the parse — the hand-rolled
+	 * is_object(json_decode(strip_stream_prefix(...))) pre-flight used
+	 * to strip and decode the same body two more times inside
+	 * parse_body_string()'s JsonBodyDecoder (three json_decodes and two
+	 * prefix strips of one potentially large body). The decoder's raw
+	 * view IS the object-root oracle (stdClass only), so the gate rides
+	 * it and the parse consumes the already-decoded pair.
+	 *
 	 * Runs only AFTER SSE aggregation failed (the caller's
 	 * malformed-event channel), so a genuinely-decodable stream never
 	 * re-routes: only a body that decodes as a JSON OBJECT is even
@@ -1548,12 +1557,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *                                       uncaught as well.
 	 */
 	private function json_fallback_result( string $body ): ?GenerativeAiResult {
-		if ( ! \is_object( json_decode( SseFrameBuffer::strip_stream_prefix( $body ) ) ) ) {
+		list( $data, $raw ) = JsonBodyDecoder::decode( $body );
+
+		if ( ! \is_object( $raw ) ) {
 			return null;
 		}
 
 		try {
-			return $this->parse_body_string( $body );
+			return $this->parse_decoded_message( $data, $raw );
 		} catch ( FixedMessageResponseException $e ) {
 			/*
 			 * glm14-2: this surface's precise tool-arguments diagnostics

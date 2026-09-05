@@ -866,6 +866,35 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheFallbackGateRidesTheSharedDecodeOnBothSurfaces()
+    {
+        /*
+         * glm15-7 (source pin, both surfaces): the mislabeled-JSON
+         * fallback used to hand-roll its object-root oracle —
+         * is_object(json_decode(strip_stream_prefix($body))) — and then
+         * route through JsonBodyDecoder::decode, which strips and
+         * decodes the same body twice more: three json_decodes and two
+         * prefix strips of one potentially large body. The decoder's
+         * raw view IS the object-root oracle, so the fallback decodes
+         * once and gates on that. The pins forbid the hand-rolled
+         * oracle shape in BOTH model files (the behavioral fallback
+         * suites above pin the outcomes).
+         */
+        foreach (array(
+            'zai' => __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php',
+            'zai_anthropic' => __DIR__ . '/../../connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php',
+        ) as $surface => $file) {
+            $source = (string) file_get_contents($file);
+
+            $this->assertSame(
+                0,
+                preg_match_all('/is_object\(\s*json_decode\(\s*SseFrameBuffer::strip_stream_prefix/', $source),
+                "The {$surface} fallback must gate on the shared decode's raw view, not a hand-rolled oracle."
+            );
+            $this->assertStringContainsString('JsonBodyDecoder::decode( $body )', $source, "The {$surface} fallback decodes the body once.");
+        }
+    }
+
     public function testTheNonStreamingPathDecodesTheBodyOnceAndHandsOffPreDecoded()
     {
         /*

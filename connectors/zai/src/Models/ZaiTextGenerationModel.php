@@ -670,6 +670,16 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * they propagate, so a precise tool-arguments diagnostic surfaces
 	 * even when the gateway also mislabeled the body.
 	 *
+	 * glm15-7: ONE strip and ONE pair of decodes serve both the
+	 * object-root gate and the parse — the hand-rolled
+	 * is_object(json_decode(strip_stream_prefix(...))) pre-flight used
+	 * to strip and decode the same body two more times inside the
+	 * JsonBodyDecoder call below (three json_decodes and two prefix
+	 * strips of one potentially large body, the identical twin the
+	 * zai_anthropic surface carried). The decoder's raw view IS the
+	 * object-root oracle (stdClass only), so the gate rides it and the
+	 * parse consumes the already-decoded pair.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param Response $response The stream-labeled response.
@@ -683,13 +693,13 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	private function json_fallback_result( Response $response ): ?GenerativeAiResult {
 		$body = (string) $response->getBody();
 
-		if ( ! \is_object( json_decode( SseFrameBuffer::strip_stream_prefix( $body ) ) ) ) {
+		list( $data, $raw ) = JsonBodyDecoder::decode( $body );
+
+		if ( ! \is_object( $raw ) ) {
 			return null;
 		}
 
 		try {
-			list( $data, $raw ) = JsonBodyDecoder::decode( $body );
-
 			$this->reject_malformed_usage( $data, $raw );
 
 			$data = self::derive_absent_total_tokens( $data );
