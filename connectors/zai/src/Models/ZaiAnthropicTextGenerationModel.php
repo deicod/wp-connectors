@@ -143,13 +143,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	/**
 	 * The config whose declarations the memo holds (glm16-6).
 	 *
-	 * One of the memo's two reset triggers: a config identity change —
-	 * the vendor base's final setConfig() can replace a live instance's
-	 * config. The declarations snapshot below is the other (glm16-16:
-	 * the vendor ModelConfig is MUTABLE — a public
+	 * One of the memo's two compare-based reset triggers: a config
+	 * identity change — the vendor base's final setConfig() can replace
+	 * a live instance's config. The declarations snapshot below is the
+	 * other (glm16-16: the vendor ModelConfig is MUTABLE — a public
 	 * setFunctionDeclarations() — so one config object mutated in a
 	 * batch loop never changes identity while its declaration set
-	 * does).
+	 * does). A cleared or absent list releases the whole memo instead —
+	 * glm17-1: the compare-based resets live behind the non-empty gate
+	 * at the params build, so the empty branch cannot reach them.
 	 *
 	 * @since 0.2.0
 	 *
@@ -163,13 +165,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * The exact list of FunctionDeclaration objects the current memo
 	 * holds entries for, compared by strict array identity (object
 	 * identity per element, order included) on every request build.
-	 * Either reconfiguration idiom — setConfig() replacement OR in-place
-	 * setFunctionDeclarations() mutation — changes the list and resets
-	 * the memo, so the memo pins at most the CURRENT declaration set:
-	 * the very declarations the config itself already pins, zero extra
-	 * retention under either idiom. The O(n) identity compare is
-	 * trivial beside the per-declaration encode-plus-walk the memo
-	 * exists to skip.
+	 * Either non-empty reconfiguration idiom — setConfig() replacement
+	 * OR in-place setFunctionDeclarations() mutation — changes the list
+	 * and resets the memo, and a cleared/absent list releases it
+	 * entirely at the params-build gate (glm17-1), so the memo pins at
+	 * most the CURRENT declaration set: the very declarations the
+	 * config itself already pins, zero extra retention under any
+	 * idiom. The O(n) identity compare is trivial beside the
+	 * per-declaration encode-plus-walk the memo exists to skip.
 	 *
 	 * @since 0.2.0
 	 *
@@ -490,6 +493,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$function_declarations = $config->getFunctionDeclarations();
 		if ( \is_array( $function_declarations ) && array() !== $function_declarations ) {
 			$params['tools'] = $this->prepare_tools_param( $function_declarations );
+		} else {
+			/*
+			 * glm17-1: a cleared or absent list is a reconfiguration
+			 * idiom too. prepare_tools_param() — the memo's other reset
+			 * site — only runs for a NON-empty list, so this branch used
+			 * to skip every reset: the previous set's declarations stayed
+			 * strongly keyed in the memo storage for the model's
+			 * lifetime while the config itself held none. The no-tools
+			 * build releases the memo, keeping the documented bound (at
+			 * most the CURRENT declaration set) true at every build.
+			 */
+			$this->release_tool_schema_memo();
 		}
 
 		return $params;
@@ -552,6 +567,28 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
+	 * Releases the tool-schema memo entirely (glm17-1).
+	 *
+	 * The clear-to-empty reconfiguration idiom: prepare_tools_param()
+	 * (the compare-based reset) only runs for a NON-empty declaration
+	 * list, so a params build with a cleared or absent list must release
+	 * the memo here — otherwise the previous set's entries stay strongly
+	 * keyed in the storage while the config itself holds no
+	 * declarations. Null (not a fresh storage) is the honest state: the
+	 * next declaration-bearing build re-initializes through the
+	 * compare's null arm.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 */
+	private function release_tool_schema_memo(): void {
+		$this->tool_schema_memo              = null;
+		$this->tool_schema_memo_config       = null;
+		$this->tool_schema_memo_declarations = null;
+	}
+
+	/**
 	 * Prepares the tools parameter for the API request.
 	 *
 	 * @since 0.2.0
@@ -566,13 +603,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		/*
 		 * glm16-6: memo lifecycle. The memo lives for the CURRENT
-		 * declaration set's lifetime, reset by EITHER reconfiguration
-		 * idiom (glm16-16): config identity change — the vendor base's
-		 * final setConfig() — or an in-place declaration-list change
-		 * through the vendor ModelConfig's public setters, detected by
-		 * the strict-list compare below. Entries themselves are
-		 * identity-keyed and pure: an entry computed for one
-		 * declaration object can never be wrong for it later.
+		 * declaration set's lifetime, reset by EVERY reconfiguration
+		 * idiom: a config identity change — the vendor base's final
+		 * setConfig() — or an in-place declaration-list change through
+		 * the vendor ModelConfig's public setters, detected by the
+		 * strict-list compare below (glm16-16), or a cleared/absent
+		 * list, which releases the memo at the params-build gate before
+		 * this method is skipped (glm17-1 — the compare below can never
+		 * fire for a list this method is never called with). Entries
+		 * themselves are identity-keyed and pure: an entry computed for
+		 * one declaration object can never be wrong for it later.
 		 */
 		$config = $this->getConfig();
 		if ( null === $this->tool_schema_memo

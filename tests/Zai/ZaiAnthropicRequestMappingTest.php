@@ -1244,6 +1244,69 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertCount(1, $storage, 'The memo holds exactly the CURRENT declaration set — superseded declarations are released, not pinned.');
     }
 
+    public function testTheToolSchemaMemoReleasesWhenDeclarationsAreClearedToEmpty()
+    {
+        /*
+         * glm17-1: every memo reset site lived behind the NON-empty
+         * gate at the params build, so the clear-to-empty
+         * reconfiguration idiom reset nothing — the no-tools build left
+         * the previous set's entries strongly keyed in the
+         * SplObjectStorage while the config itself held no declarations
+         * (the exact pinning glm16-16 documented as eliminated). The
+         * empty build RELEASES the memo now, and a fresh set after the
+         * clear must never hit a stale entry: the wire ships the fresh
+         * schema and the rebuilt memo holds exactly the fresh set.
+         */
+        $config = ModelConfig::fromArray(array());
+        $decl_a = new FunctionDeclaration('pick', 'Picks', array('type' => 'object', 'properties' => array('a' => array())));
+        $config->setFunctionDeclarations(array($decl_a));
+        $model  = $this->model($config);
+        $prompt = array(new Message(MessageRoleEnum::user(), array(new MessagePart('go'))));
+
+        $memo = new \ReflectionProperty(ZaiAnthropicTextGenerationModel::class, 'tool_schema_memo');
+        if (PHP_VERSION_ID < 80100) {
+            // Required on PHP <= 8.0; a deprecated no-op since 8.1.
+            $memo->setAccessible(true);
+        }
+
+        // First build fills the memo for A.
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+        $this->assertCount(1, $memo->getValue($model), 'Sanity: the first build memoizes the declaration.');
+
+        // Clear to empty and build again: the no-tools build must
+        // RELEASE the memo, not skip every reset behind the gate.
+        $config->setFunctionDeclarations(array());
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $clearedAttempts = $this->sdkHttpAttempts();
+        $clearedBody = json_decode((string) end($clearedAttempts)['body'], true);
+        $this->assertArrayNotHasKey('tools', $clearedBody, 'Sanity: the cleared build omits the tools member.');
+        $this->assertNull(
+            $memo->getValue($model),
+            'A build with a cleared declaration list releases the memo — the superseded set is not pinned while the config holds no declarations.'
+        );
+
+        // A FRESH set after the clear ships its own schema and gets a
+        // memo holding exactly that fresh set (no stale A entry).
+        $decl_b = new FunctionDeclaration('pick', 'Picks', array('type' => 'object', 'properties' => array('b' => array('type' => 'string'))));
+        $config->setFunctionDeclarations(array($decl_b));
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $freshAttempts = $this->sdkHttpAttempts();
+        $schema = json_decode((string) end($freshAttempts)['body'], true)['tools'][0]['input_schema'];
+        $this->assertArrayHasKey('b', $schema['properties'], 'The fresh declaration after the clear ships its own schema.');
+        $this->assertArrayNotHasKey('a', $schema['properties'], 'No stale schema may survive the cleared window.');
+
+        $storage = $memo->getValue($model);
+        $this->assertInstanceOf(\SplObjectStorage::class, $storage);
+        $this->assertCount(1, $storage, 'The rebuilt memo holds exactly the fresh declaration set.');
+        $this->assertTrue($storage->offsetExists($decl_b), 'The fresh declaration is memoized.');
+        $this->assertFalse($storage->offsetExists($decl_a), 'The superseded declaration is not retained after the clear-and-rebuild.');
+    }
+
     public function testParsedToolInputRoundTripsNestedObjectsOnReplay()
     {
         /*

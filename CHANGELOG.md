@@ -121,9 +121,14 @@ ledger or by reachability):
   verifier round: the vendor ModelConfig is mutable — an in-place
   `setFunctionDeclarations()` loop never changes identity, and the
   strong-keyed storage pinned every superseded declaration; the strict
-  list compare restores the documented bound — the memo pins at most
-  the CURRENT declaration set — under both reconfiguration idioms).
-  Rejections never memoize.
+  list compare restores the documented bound for the two NON-EMPTY
+  reconfiguration idioms — glm17-1 completed the third: every reset
+  site sat behind the params build's non-empty gate, so clearing the
+  list to empty reset nothing and the cleared window kept the
+  superseded set pinned while the config held none; a build with a
+  cleared/absent list releases the memo entirely, and the memo pins at
+  most the CURRENT declaration set at every request build under every
+  idiom). Rejections never memoize.
 - One shared mislabeled-body JSON fallback (glm16-8): the ~25-line
   fallback scaffold (one decode, object-root gate, glm14-2 marker
   propagation) lived twice. `Support\JsonFallbackResult` owns it,
