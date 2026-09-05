@@ -5998,6 +5998,50 @@ $body = ''
      * Typed WP_Error boundary.
      */
 
+    public function testACredentialRejectingGenerationStatusRecordsTheInvalidVerdict()
+    {
+        /*
+         * glm13-6 twin: the /v1/messages generation route records the
+         * definitive rejection through the availability base, exactly as
+         * the zai surface's chat/completions route and both discovery
+         * routes do — a server-side-revoked key must stop reporting
+         * connected within the request that learned the revocation, not
+         * 300s later.
+         */
+        $key = FakeSecrets::apiKey();
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $model = ZaiAnthropicProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('invalid x-api-key'));
+
+        try {
+            $model->generateTextResult($this->prompt());
+            $this->fail('The 401 must throw.');
+        } catch ( ClientException $e ) {
+            $this->assertSame(401, $e->getCode());
+        }
+
+        $state = get_option(\Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::STATE_OPTION);
+        $this->assertSame('invalid', $state['valid'], 'The generation-route rejection must persist its verdict.');
+
+        // The recorded verdict is the refusal gate's input: the next
+        // generation REFUSES instead of re-transmitting the dead key.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{}');
+
+        try {
+            $model->generateTextResult($this->prompt());
+            $this->fail('A definitively rejected credential must be refused.');
+        } catch ( \WordPress\AiClient\Common\Exception\InvalidArgumentException $e ) {
+            $this->assertStringContainsString('refuses generation', $e->getMessage());
+        }
+
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'The refused generation must not re-transmit the credential.');
+    }
+
     public function testGenerateTextReturnsTheResultOnSuccess()
     {
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('Hi.'));

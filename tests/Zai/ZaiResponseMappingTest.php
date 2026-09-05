@@ -1853,6 +1853,11 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
 
         foreach ($cases as $status => $needle) {
             WpHarness::$sdk_http_attempts = array();
+            // glm13-6: a 401/403 iteration now records the invalid
+            // verdict, and the credential gate would refuse the NEXT
+            // iteration's generation before it reaches its own status —
+            // each iteration starts from a clean verdict store.
+            delete_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_OPTION);
             $this->queueSdkResponse($status, array(), HttpResponseFactory::openAiErrorBody('ignored upstream text'));
 
             try {
@@ -1863,6 +1868,50 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
                 $this->assertStringNotContainsString('ignored upstream text', $e->getMessage());
             }
         }
+    }
+
+    public function testACredentialRejectingGenerationStatusRecordsTheInvalidVerdict()
+    {
+        /*
+         * glm13-6: a 401 on the GENERATION route is the endpoint
+         * rejecting the credential itself — the same definitive evidence
+         * the probe and the discovery routes persist. Without the
+         * recording, a key revoked server-side kept the connector
+         * reporting connected (re-transmitting the dead credential) for
+         * the whole 300s STATE_TTL.
+         */
+        $key = FakeSecrets::apiKey();
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
+
+        $this->primeZaiDiscoveryTransient();
+        $model = ZaiProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
+
+        try {
+            $model->generateTextResult($this->prompt());
+            $this->fail('The 401 must throw.');
+        } catch ( ClientException $e ) {
+            $this->assertSame(401, $e->getCode());
+        }
+
+        $state = get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_OPTION);
+        $this->assertSame('invalid', $state['valid'], 'The generation-route rejection must persist its verdict.');
+
+        // The recorded verdict is the refusal gate's input: the next
+        // generation REFUSES instead of re-transmitting the dead key.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{}');
+
+        try {
+            $model->generateTextResult($this->prompt());
+            $this->fail('A definitively rejected credential must be refused.');
+        } catch ( \WordPress\AiClient\Common\Exception\InvalidArgumentException $e ) {
+            $this->assertStringContainsString('refuses generation', $e->getMessage());
+        }
+
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'The refused generation must not re-transmit the credential.');
     }
 
     public function testNoRetriesAreAttemptedOn429()
