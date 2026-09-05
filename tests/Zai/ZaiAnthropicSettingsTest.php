@@ -187,7 +187,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'intl');
         update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array('binding' => 'stale'));
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'intl-key');
-        set_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl'), array('glm-5.3'), 3600);
+        set_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|coding|intl'), array('glm-5.3'), 3600);
 
         do_action('update_option_' . ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'intl', 'cn');
 
@@ -196,7 +196,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
             get_option(ZaiAnthropicProviderAvailability::KEY_OPTION, false),
             'The anthropic stored key belongs to the OLD region\'s account and must be cleared.'
         );
-        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The anthropic discovery cache must be cleared.');
+        $this->assertFalse(get_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The anthropic discovery cache must be cleared.');
     }
 
     public function testRegionSwitchOnTheAnthropicProviderNeverTouchesZaiData()
@@ -268,14 +268,14 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
         $this->assertFalse(get_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, false), 'Fresh install must start without a plan row.');
         update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array('binding' => 'stale'));
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'plan-shared-key');
-        set_transient(Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|general|intl'), array('glm-5.3'), 3600);
+        set_transient(Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|general|intl'), array('glm-5.3'), 3600);
 
         add_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, 'coding');
 
         $this->assertSame('coding', ZaiAnthropicPlanRegionSettings::get_plan());
         $this->assertFalse(get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false), 'The first persisted plan change must clear the validated state.');
         $this->assertFalse(
-            get_transient(Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|general|intl')),
+            get_transient(Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|general|intl')),
             'The first persisted plan change must clear the old endpoint\'s discovery cache.'
         );
         $this->assertSame(
@@ -501,7 +501,14 @@ PHP;
             $this->assertSame($settings::REGION_PENDING_OPTION, $availability::REGION_PENDING_OPTION);
             $this->assertSame($settings::KEY_OPTION, $availability::KEY_OPTION);
             $this->assertSame($settings::KEY_ENV_NAME, $availability::KEY_ENV_NAME);
-            $this->assertSame($settings::CACHE_PREFIX, $directory::CACHE_PREFIX);
+            /*
+             * glm19-10: the directories' CACHE_PREFIX aliases were
+             * production-dead mirrors (every composition goes through
+             * the settings and endpoint owners) and are deleted; the
+             * settings↔endpoint identity pin below is the relationship
+             * that still exists.
+             */
+            $this->assertFalse(\defined("{$directory}::CACHE_PREFIX"), 'The directory cache-prefix alias is deleted (glm19-10); the settings class owns the prefix.');
 
             // The inline cache-key composition must equal the endpoint
             // resolver's own identity for every plan x region.

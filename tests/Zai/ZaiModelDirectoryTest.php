@@ -235,7 +235,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"object":"list","data":[{"id":"glm-5.3"}],"has_more":true,"first_id":"glm-5.3","last_id":"glm-5.3"}');
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()), 'A paginated page must fall back to the plan catalog.');
-        $this->assertFalse(get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl')), 'A paginated page must not be positively cached.');
+        $this->assertFalse(get_transient(PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl')), 'A paginated page must not be positively cached.');
     }
 
     public function testCodingPlanDiscoveryIsIntersectedWithThePlanCatalog()
@@ -253,7 +253,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $ids = $this->idList($this->directory()->listModelMetadata());
 
         $this->assertSame(array('glm-5.3'), $ids, 'General-only GLM 4.x entries must not be advertised on the coding plan.');
-        $this->assertSame(array('glm-5.3'), array_values((array) get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl'))), 'The cache must hold the intersected list.');
+        $this->assertSame(array('glm-5.3'), array_values((array) get_transient(PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl'))), 'The cache must hold the intersected list.');
     }
 
     public function testAConcurrentPlanSaveDuringTheRoundTripDoesNotReTargetTheParse()
@@ -298,7 +298,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame(array('glm-5.3'), $ids, 'The coding endpoint must keep its plan intersection despite the mid-flight plan save.');
         $this->assertSame(
             array('glm-5.3'),
-            array_values((array) get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl'))),
+            array_values((array) get_transient(PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl'))),
             'The coding endpoint cache must hold the coding-intersected list.'
         );
     }
@@ -318,7 +318,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $directory->listModelMetadata();
         $this->assertCount(1, $this->sdkHttpAttempts());
 
-        $this->advanceTime(ZaiModelMetadataDirectory::DISCOVERY_TTL + 1);
+        $this->advanceTime(ZaiDiscoveryCache::DISCOVERY_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
         $models = $directory->listModelMetadata();
         $this->assertCount(2, $models);
@@ -335,7 +335,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertCount(1, $this->idList($directory->listModelMetadata()));
 
         // A settings change / uninstall deletes the plugin transient...
-        delete_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl'));
+        delete_transient(PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl'));
 
         // ...the very next listing on the SAME instance must re-discover,
         // never serve a warmed SDK/local/PSR-16 entry.
@@ -378,7 +378,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
             // Expiry still governs: past the transient TTL the same instance
             // re-discovers even though a PSR-16 cache is configured.
-            $this->advanceTime(ZaiModelMetadataDirectory::DISCOVERY_TTL + 1);
+            $this->advanceTime(ZaiDiscoveryCache::DISCOVERY_TTL + 1);
             $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
             $models = $directory->listModelMetadata();
 
@@ -781,10 +781,10 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertCount(1, $this->sdkHttpAttempts(), 'The short negative cache must suppress the doomed repeat request.');
 
         // The positive cache stays unset: only the miss marker exists.
-        $this->assertFalse(get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl')));
+        $this->assertFalse(get_transient(PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl')));
 
         // After the TTL, discovery is retryable and a valid key wins.
-        $this->advanceTime(ZaiModelMetadataDirectory::NEGATIVE_TTL + 1);
+        $this->advanceTime(ZaiDiscoveryCache::NEGATIVE_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
         $this->assertCount(2, $this->idList($this->directory()->listModelMetadata()));
         $this->assertCount(2, $this->sdkHttpAttempts());
@@ -799,14 +799,14 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()));
 
         // No transient may exist after a failure...
-        $this->assertFalse(get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl')));
+        $this->assertFalse(get_transient(PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl')));
 
         /*
          * ...so the next request attempts discovery again and succeeds
          * (GLM1 #6: the short negative cache only spans NEGATIVE_TTL
          * seconds — a later request past the TTL rediscovers).
          */
-        $this->advanceTime(ZaiModelMetadataDirectory::NEGATIVE_TTL + 1);
+        $this->advanceTime(ZaiDiscoveryCache::NEGATIVE_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
         $this->assertCount(2, $this->idList($this->directory()->listModelMetadata()));
         $this->assertCount(2, $this->sdkHttpAttempts());
@@ -962,7 +962,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
         // The persisted transient must already be the filtered list, so a
         // non-chat ID can never resurface from the cache either.
-        $cached = get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|general|intl'));
+        $cached = get_transient(PlanRegionSettings::CACHE_PREFIX . md5('zai|general|intl'));
         $this->assertSame(array('glm-5.3'), array_values($cached));
 
         // hasModelMetadata() must reject the dropped IDs.
@@ -978,7 +978,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $models = $this->directory()->listModelMetadata();
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'Nothing usable discovered: the plan fallback applies.');
-        $this->assertFalse(get_transient(ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl')), 'The fallback must not be cached.');
+        $this->assertFalse(get_transient(PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl')), 'The fallback must not be cached.');
     }
 
     /*
@@ -1084,19 +1084,26 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         /*
          * GLM4 #10: the discovery orchestration was duplicated
          * line-for-line between the two directories, so every caching
-         * change had to land twice. Both now alias the shared
-         * ZaiDiscoveryCache's constants and run its cached_ids() flow;
-         * this pin fails the moment one surface's values drift from the
-         * single source (the SDK-free settings invalidation and
-         * uninstall.php mirror the literal suffix value — those mirrors
-         * are pinned separately).
+         * change had to land twice. Both run the shared ZaiDiscoveryCache's
+         * cached_ids() flow, so its constants are the single source.
+         *
+         * glm19-10 supersedes the old alias-agreement pins: the
+         * directories' own alias constants (DISCOVERY_TTL, NEGATIVE_TTL,
+         * NEGATIVE_CACHE_SUFFIX, CACHE_PREFIX) were production-dead —
+         * every composition goes through ZaiDiscoveryCache and the
+         * endpoint classes — and the docblocked mirrors suggested the
+         * directories owned TTL/prefix behavior they do not have. The
+         * aliases are deleted; this pin now fails if one comes back.
+         * (The SDK-free settings invalidation and uninstall.php mirror
+         * the literal suffix value — those mirrors are pinned
+         * separately.)
          */
-        $this->assertSame(ZaiDiscoveryCache::DISCOVERY_TTL, ZaiModelMetadataDirectory::DISCOVERY_TTL);
-        $this->assertSame(ZaiDiscoveryCache::NEGATIVE_TTL, ZaiModelMetadataDirectory::NEGATIVE_TTL);
-        $this->assertSame(ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX, ZaiModelMetadataDirectory::NEGATIVE_CACHE_SUFFIX);
-        $this->assertSame(ZaiDiscoveryCache::DISCOVERY_TTL, ZaiAnthropicModelMetadataDirectory::DISCOVERY_TTL);
-        $this->assertSame(ZaiDiscoveryCache::NEGATIVE_TTL, ZaiAnthropicModelMetadataDirectory::NEGATIVE_TTL);
-        $this->assertSame(ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX, ZaiAnthropicModelMetadataDirectory::NEGATIVE_CACHE_SUFFIX);
+        foreach (array(ZaiModelMetadataDirectory::class, ZaiAnthropicModelMetadataDirectory::class) as $directory) {
+            $constants = (new \ReflectionClass($directory))->getConstants();
+            foreach (array('DISCOVERY_TTL', 'NEGATIVE_TTL', 'NEGATIVE_CACHE_SUFFIX', 'CACHE_PREFIX') as $alias) {
+                $this->assertArrayNotHasKey($alias, $constants, "{$directory}::{$alias} is a deleted dead alias (glm19-10); the real owners are ZaiDiscoveryCache and the settings/endpoint classes.");
+            }
+        }
 
         // The external mirrors keep pinning the literal suffix value.
         $this->assertSame('_miss', ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX);

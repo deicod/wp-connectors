@@ -61,7 +61,6 @@ use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
-use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 
 /**
@@ -92,64 +91,16 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		SpeaksAnthropicMessagesProtocol::getRequestAuthentication insteadof WithRequestAuthenticationTrait; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
 	}
 
-	/**
-	 * Transient prefix for discovery results; completed with md5(cache_key()).
-	 *
-	 * Distinct from the zai provider's prefix, so the two providers' caches
-	 * can never collide.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
+	/*
+	 * glm19-10: this class carried four cache alias constants
+	 * (CACHE_PREFIX, DISCOVERY_TTL, NEGATIVE_TTL, NEGATIVE_CACHE_SUFFIX)
+	 * that no production code read — all cache composition goes through
+	 * ZaiDiscoveryCache and the endpoint classes (discovery_transient_
+	 * ids()), and only tests referenced the directory aliases. Deleted
+	 * rather than kept as drift surface. The real owners:
+	 * ZaiDiscoveryCache (TTLs, suffix), ZaiAnthropicPlanRegionSettings
+	 * (prefix).
 	 */
-	public const CACHE_PREFIX = ZaiAnthropicPlanRegionSettings::CACHE_PREFIX;
-
-	/**
-	 * Seconds a successful discovery response stays cached per endpoint.
-	 *
-	 * GLM4 #10: single-sourced from the shared ZaiDiscoveryCache (both
-	 * directories alias the same values, so their TTLs can never drift).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var int
-	 */
-	public const DISCOVERY_TTL = ZaiDiscoveryCache::DISCOVERY_TTL;
-
-	/**
-	 * Seconds a FAILED discovery suppresses repeat remote attempts
-	 * (code-review GLM1 #6).
-	 *
-	 * Failure is still never fatal — the plan fallback serves meanwhile —
-	 * and still retryable: after this short TTL the endpoint is probed
-	 * again, so a later valid key (or a recovered route) rediscovers
-	 * within a minute. Without it, every metadata lookup re-issued a
-	 * blocking doomed remote GET (the cn-region 404 shape on every
-	 * request). The marker lives at the endpoint-scoped key with the
-	 * NEGATIVE_CACHE_SUFFIX appended and is cleared by the same
-	 * invalidation paths as the positive cache.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var int
-	 */
-	public const NEGATIVE_TTL = ZaiDiscoveryCache::NEGATIVE_TTL;
-
-	/**
-	 * Suffix marking the negative (miss) cache entry for an endpoint key.
-	 *
-	 * GLM8 #11: aliased from ZaiDiscoveryCache, the one source — every
-	 * consumer that needs the marker name (the settings invalidation,
-	 * uninstall.php, the live probe) composes through the endpoint
-	 * layer's discovery_transient_ids(), which reads that constant; a
-	 * source pin forbids any consumer from composing the suffix
-	 * literally.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	public const NEGATIVE_CACHE_SUFFIX = ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX;
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.

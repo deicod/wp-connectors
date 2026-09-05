@@ -8,17 +8,17 @@
  * path. The cn region is unprobed — the tested static fallback stays
  * authoritative there and on every discovery failure (401/404/malformed/
  * transport), which never poisons the POSITIVE cache: failures are
- * negatively cached for NEGATIVE_TTL (60) seconds only (GLM1 #6), so a
- * later valid key can still discover.
+ * negatively cached for ZaiDiscoveryCache::NEGATIVE_TTL (60) seconds only
+ * (GLM1 #6), so a later valid key can still discover.
  *
  * The discovery cache is a WordPress transient scoped to the endpoint
  * identity (provider + plan + region, via ZaiEndpoint::cache_key()), so a
  * warm cache can never serve another endpoint's catalog after a settings
  * change. The SDK's own cache layer (in-memory plus any PSR-16 cache, 24h
  * TTL) is BYPASSED entirely — see hasCache()/setCache() — so the transient
- * is the single source of caching: discovery expires after DISCOVERY_TTL and
- * invalidates together with the plugin cache on settings/uninstall
- * transient deletion, in every layer.
+ * is the single source of caching: discovery expires after
+ * ZaiDiscoveryCache::DISCOVERY_TTL and invalidates together with the plugin
+ * cache on settings/uninstall transient deletion, in every layer.
  *
  * @since 0.1.0
  *
@@ -39,71 +39,26 @@ use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
-use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 
 /**
  * Model metadata directory for z.ai.
  *
+ * Deleted in glm19-10: this class once carried four cache alias constants
+ * (DISCOVERY_TTL, NEGATIVE_TTL, NEGATIVE_CACHE_SUFFIX, CACHE_PREFIX)
+ * that no production code read — all cache composition goes through
+ * ZaiDiscoveryCache and the endpoint classes (discovery_transient_
+ * ids()), and only tests referenced the directory aliases. The
+ * docblocked mirrors suggested the directory owned TTL/prefix
+ * behavior it does not have; deleted rather than kept as drift
+ * surface. The real owners: ZaiDiscoveryCache (TTLs, suffix),
+ * PlanRegionSettings (prefix).
+ *
  * @since 0.1.0
+ *
+ * @package wp-connectors
  */
 final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetadataDirectory {
-
-	/**
-	 * Seconds a successful discovery response stays cached per endpoint.
-	 *
-	 * GLM4 #10: single-sourced from the shared ZaiDiscoveryCache (both
-	 * directories alias the same values, so their TTLs can never drift).
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var int
-	 */
-	public const DISCOVERY_TTL = ZaiDiscoveryCache::DISCOVERY_TTL;
-
-	/**
-	 * Seconds a FAILED discovery suppresses repeat remote attempts
-	 * (code-review GLM1 #6).
-	 *
-	 * Failure is still never fatal — the plan fallback serves meanwhile —
-	 * and still retryable: after this short TTL the endpoint is probed
-	 * again, so a later valid key (or a recovered route) rediscovers
-	 * within a minute. Without it, every metadata lookup re-issued a
-	 * blocking doomed remote GET (the cn-region 404 shape on every
-	 * request). The marker lives at the endpoint-scoped key with the
-	 * NEGATIVE_CACHE_SUFFIX appended and is cleared by the same
-	 * invalidation paths as the positive cache.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var int
-	 */
-	public const NEGATIVE_TTL = ZaiDiscoveryCache::NEGATIVE_TTL;
-
-	/**
-	 * Suffix marking the negative (miss) cache entry for an endpoint key.
-	 *
-	 * GLM8 #11: aliased from ZaiDiscoveryCache, the one source — every
-	 * consumer that needs the marker name (the settings invalidation,
-	 * uninstall.php, the live probe) composes through the endpoint
-	 * layer's discovery_transient_ids(), which reads that constant; a
-	 * source pin forbids any consumer from composing the suffix
-	 * literally.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
-	 */
-	public const NEGATIVE_CACHE_SUFFIX = ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX;
-
-	/**
-	 * Transient prefix for discovery results; completed with md5(cache_key()).
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
-	 */
-	public const CACHE_PREFIX = PlanRegionSettings::CACHE_PREFIX;
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.

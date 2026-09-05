@@ -257,7 +257,7 @@ abstract class WpConnectorsTestCase extends TestCase
         set_transient(
             \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
             $ids,
-            \Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::DISCOVERY_TTL
+            \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::DISCOVERY_TTL
         );
     }
 
@@ -279,7 +279,7 @@ abstract class WpConnectorsTestCase extends TestCase
         set_transient(
             \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
             $ids,
-            \Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::DISCOVERY_TTL
+            \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::DISCOVERY_TTL
         );
     }
 

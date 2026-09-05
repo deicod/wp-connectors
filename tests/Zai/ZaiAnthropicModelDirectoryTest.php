@@ -22,6 +22,7 @@ use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
+use Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache;
 
 final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 {
@@ -127,7 +128,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame(array('glm-5.3', 'glm-5.3-flash'), $this->idList($models), 'Only in-plan discovered models may be advertised.');
 
         // The cached transient must already be the intersected list.
-        $cached = get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl'));
+        $cached = get_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|coding|intl'));
         $this->assertSame(array('glm-5.3', 'glm-5.3-flash'), array_values($cached), 'The cached discovery must be plan-intersected.');
 
         // hasModelMetadata must reject the dropped general-only IDs.
@@ -146,7 +147,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
         $this->assertSame(array('glm-5.3', 'glm-4.7', 'glm-4.5'), $this->idList($models), 'The general plan keeps the full discovered list.');
 
-        $cached = get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|general|intl'));
+        $cached = get_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|general|intl'));
         $this->assertSame(array('glm-5.3', 'glm-4.7', 'glm-4.5'), array_values($cached));
     }
 
@@ -160,7 +161,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $models = $this->directory()->listModelMetadata();
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The plan fallback applies.');
-        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The fallback must not be cached.');
+        $this->assertFalse(get_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The fallback must not be cached.');
     }
 
     public function testDiscoveryAcceptsTheOpenAiListShapeToo()
@@ -183,7 +184,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertCount(1, $this->idList($directory->listModelMetadata()));
         $this->assertCount(1, $this->sdkHttpAttempts());
 
-        $this->advanceTime(ZaiAnthropicModelMetadataDirectory::DISCOVERY_TTL + 1);
+        $this->advanceTime(ZaiDiscoveryCache::DISCOVERY_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.2')));
         $models = $directory->listModelMetadata();
 
@@ -236,7 +237,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         // selection; the anthropic directory must still fetch its own.
         $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         set_transient(
-            Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl'),
+            Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl'),
             array('glm-4.5'),
             3600
         );
@@ -564,7 +565,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $models = $this->directory()->listModelMetadata();
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'An incomplete page falls back to the static plan catalog.');
-        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The partial page must not be cached.');
+        $this->assertFalse(get_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The partial page must not be cached.');
     }
 
     /**
@@ -631,7 +632,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $models = $directory->listModelMetadata();
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The static plan catalog serves while the credential is region-pending.');
-        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The fallback is not cached.');
+        $this->assertFalse(get_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The fallback is not cached.');
         $this->assertSame(array(), WpHarness::$sdk_http_attempts, 'No authenticated discovery request may leave.');
     }
 
@@ -718,10 +719,10 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertCount(1, $this->sdkHttpAttempts(), 'The short negative cache must suppress the doomed repeat request.');
 
         // The positive cache stays unset: only the miss marker exists.
-        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')));
+        $this->assertFalse(get_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|coding|intl')));
 
         // After the TTL, discovery is retryable and a valid endpoint wins.
-        $this->advanceTime(ZaiAnthropicModelMetadataDirectory::NEGATIVE_TTL + 1);
+        $this->advanceTime(ZaiDiscoveryCache::NEGATIVE_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.2')));
         $this->assertCount(2, $this->idList($this->directory()->listModelMetadata()));
         $this->assertCount(2, $this->sdkHttpAttempts());
@@ -735,7 +736,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('bad key'));
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()));
 
-        $cacheId = ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl');
+        $cacheId = ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|coding|intl');
         $this->assertFalse(get_transient($cacheId), 'No transient may exist after a failure.');
 
         /*
@@ -743,7 +744,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * (GLM1 #6: the short negative cache only spans NEGATIVE_TTL
          * seconds — a later request past the TTL rediscovers).
          */
-        $this->advanceTime(ZaiAnthropicModelMetadataDirectory::NEGATIVE_TTL + 1);
+        $this->advanceTime(ZaiDiscoveryCache::NEGATIVE_TTL + 1);
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.2')));
         $this->assertCount(2, $this->idList($this->directory()->listModelMetadata()));
         $this->assertCount(2, $this->sdkHttpAttempts());
@@ -776,7 +777,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame(array('glm-5.3'), $this->idList($models), 'Only IDs with known chat support may be advertised.');
 
         // The persisted transient must already be the filtered list.
-        $cached = get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|general|intl'));
+        $cached = get_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|general|intl'));
         $this->assertSame(array('glm-5.3'), array_values($cached));
 
         $this->assertFalse($this->directory()->hasModelMetadata('glm-6-image'));
@@ -790,7 +791,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $models = $this->directory()->listModelMetadata();
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'Nothing usable discovered: the plan fallback applies.');
-        $this->assertFalse(get_transient(ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The fallback must not be cached.');
+        $this->assertFalse(get_transient(ZaiAnthropicPlanRegionSettings::CACHE_PREFIX . md5('zai_anthropic|coding|intl')), 'The fallback must not be cached.');
     }
 
     /*
