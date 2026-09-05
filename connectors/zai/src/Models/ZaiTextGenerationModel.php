@@ -46,6 +46,7 @@ use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\EncodabilityNet;
 use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
+use Deicod\WpConnectors\Zai\Support\JsonFallbackResult;
 use Deicod\WpConnectors\Zai\Support\JsonShape;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
@@ -716,34 +717,19 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 *                                       rejections (glm14-2).
 	 */
 	private function json_fallback_result( Response $response ): ?GenerativeAiResult {
-		$body = (string) $response->getBody();
-
-		list( $data, $raw ) = JsonBodyDecoder::decode( $body );
-
-		if ( ! \is_object( $raw ) ) {
-			return null;
-		}
-
-		try {
-			return $this->parse_decoded_chat_body( $response, $data, $raw );
-		} catch ( FixedMessageResponseException $e ) {
-			/*
-			 * glm14-2: the precise tool-arguments diagnostics the parse
-			 * below throws (glm13-7's marker subclass) surface even on
-			 * the fallback path — swallowing them here degraded the
-			 * byte-identical corruption to the generic no-usable-event
-			 * message whenever the gateway also mislabeled the body,
-			 * exactly the degradation parseNonStreamBody's pass-through
-			 * exists to prevent. The marker is this plugin's OWN fixed
-			 * message; every other ResponseException (the body is a JSON
-			 * object but no valid chat.completion payload) still returns
-			 * null so the caller surfaces its stream-typed error — the
-			 * GLM12 #3 contract.
-			 */
-			throw $e;
-		} catch ( ResponseException $e ) {
-			return null;
-		}
+		/*
+		 * glm16-8: the scaffold (one decode, the object-root gate, the
+		 * glm14-2 marker contract) rides the shared JsonFallbackResult
+		 * owner; this surface's parse keeps its Response argument (it
+		 * reads response-level facts) and consumes the already-decoded
+		 * pair (glm15-7's one-decode contract).
+		 */
+		return JsonFallbackResult::parse(
+			(string) $response->getBody(),
+			function ( $data, $raw ) use ( $response ) {
+				return $this->parse_decoded_chat_body( $response, $data, $raw );
+			}
+		);
 	}
 
 	/**

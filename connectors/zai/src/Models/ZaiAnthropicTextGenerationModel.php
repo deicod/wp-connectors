@@ -57,6 +57,7 @@ use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\EncodabilityNet;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
+use Deicod\WpConnectors\Zai\Support\JsonFallbackResult;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
@@ -1644,30 +1645,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *                                       uncaught as well.
 	 */
 	private function json_fallback_result( string $body ): ?GenerativeAiResult {
-		list( $data, $raw ) = JsonBodyDecoder::decode( $body );
-
-		if ( ! \is_object( $raw ) ) {
-			return null;
-		}
-
-		try {
-			return $this->parse_decoded_message( $data, $raw );
-		} catch ( FixedMessageResponseException $e ) {
-			/*
-			 * glm14-2: this surface's precise tool-arguments diagnostics
-			 * (the tool_use input rejections below, thrown as the marker
-			 * subclass since this round) propagate even on the fallback
-			 * path — swallowing them here degraded the byte-identical
-			 * corruption to the generic malformed-event message whenever
-			 * the gateway also mislabeled the body. Every other
-			 * ResponseException (the body is a JSON object but no valid
-			 * Messages payload) still returns null so the caller surfaces
-			 * its stream-typed error — the GLM8 #5 contract.
-			 */
-			throw $e;
-		} catch ( ResponseException $e ) {
-			return null;
-		}
+		/*
+		 * glm16-8: the scaffold (one decode, the object-root gate, the
+		 * glm14-2 marker contract) rides the shared JsonFallbackResult
+		 * owner; this surface's parse consumes the already-decoded pair
+		 * (glm15-7's one-decode contract).
+		 */
+		return JsonFallbackResult::parse(
+			$body,
+			function ( $data, $raw ) {
+				return $this->parse_decoded_message( $data, $raw );
+			}
+		);
 	}
 
 	/**
