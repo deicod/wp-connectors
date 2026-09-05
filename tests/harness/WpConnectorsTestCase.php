@@ -315,6 +315,39 @@ abstract class WpConnectorsTestCase extends TestCase
 
     /*
      * ---------------------------------------------------------------
+     * WP core source loading (the core-path mapping suites).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Loads the real core prompt builder class file.
+     *
+     * glm15-18: this loader was a byte-identical copy in both surface
+     * mapping suites; a fix to the core-source lookup path or skip
+     * condition landing on one suite only made the zai and zai_anthropic
+     * core-builder tests silently skip or run against different core
+     * checkouts, diverging coverage of the same ErrorMapper/core-code
+     * path.
+     *
+     * @return class-string<WP_AI_Client_Prompt_Builder>
+     */
+    protected function corePromptBuilderClass(): string
+    {
+        $home = (string) getenv('HOME');
+        $wpRoot = (string) (getenv('WP_CONNECTORS_TEST_WP_ROOT') ?: ($home !== '' ? $home . '/wp-ai-research/wordpress' : ''));
+        $file = $wpRoot . '/wp-includes/ai-client/class-wp-ai-client-prompt-builder.php';
+
+        if ('' === $wpRoot || ! is_file($file)) {
+            $this->markTestSkipped('WP core source not found (set WP_CONNECTORS_TEST_WP_ROOT to the WordPress checkout).');
+        }
+
+        require_once $file;
+
+        return 'WP_AI_Client_Prompt_Builder';
+    }
+
+    /*
+     * ---------------------------------------------------------------
      * Secret-handling assertions.
      * ---------------------------------------------------------------
      */

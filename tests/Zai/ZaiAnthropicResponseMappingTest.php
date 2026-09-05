@@ -6215,28 +6215,9 @@ $body = ''
      *
      * Requires the WordPress core source; set WP_CONNECTORS_TEST_WP_ROOT
      * (defaults to ~/wp-ai-research/wordpress when present). Skipped
-     * otherwise — never fails a checkout without core.
+     * otherwise — never fails a checkout without core. The loader itself
+     * (glm15-18) rides the shared harness: corePromptBuilderClass().
      */
-
-    /**
-     * Loads the real core prompt builder class file.
-     *
-     * @return class-string<WP_AI_Client_Prompt_Builder>
-     */
-    private function corePromptBuilderClass(): string
-    {
-        $home = (string) getenv('HOME');
-        $wpRoot = (string) (getenv('WP_CONNECTORS_TEST_WP_ROOT') ?: ($home !== '' ? $home . '/wp-ai-research/wordpress' : ''));
-        $file = $wpRoot . '/wp-includes/ai-client/class-wp-ai-client-prompt-builder.php';
-
-        if ('' === $wpRoot || ! is_file($file)) {
-            $this->markTestSkipped('WP core source not found (set WP_CONNECTORS_TEST_WP_ROOT to the WordPress checkout).');
-        }
-
-        require_once $file;
-
-        return 'WP_AI_Client_Prompt_Builder';
-    }
 
     /**
      * Boots the provider into the registry and settles the availability
