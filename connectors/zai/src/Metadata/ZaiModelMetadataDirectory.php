@@ -290,26 +290,6 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * the identical metadata for the same IDs — two full builds per
 	 * cold-window discovery, at build sites that had already diverged
 	 * (the cache's rebuild re-applies the chat filter, the parse-side
-	 * build did not). The parse stashes its built list; this converts a
-	 * matching stash into the id-keyed, chat-filtered map the memo
-	 * wants, and a non-matching stash (defensive: the list belongs to
-	 * another request or response) is ignored in favor of the rebuild.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var list<ModelMetadata>|null
-	 */
-	/**
-	 * The metadata list the vendor parent's discovery parse built, or
-	 * null — the cold-discovery hand-off to the map memo (glm15-22).
-	 *
-	 * The parent's sendListModelsRequest() REQUIRES a full
-	 * parseResponseToModelMetadataList() build (metadata construction
-	 * plus sort per discovered ID) whose result this directory reduced
-	 * to array_keys(); ZaiDiscoveryCache::map_from_ids() then rebuilt
-	 * the identical metadata for the same IDs — two full builds per
-	 * cold-window discovery, at build sites that had already diverged
-	 * (the cache's rebuild re-applies the chat filter, the parse-side
 	 * build did not). The parse stashes its built list;
 	 * take_discovery_built_map() converts a matching stash into the
 	 * id-keyed, chat-filtered map the memo wants, and a non-matching

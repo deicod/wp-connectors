@@ -6,6 +6,136 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM15 code review)
+
+- The uninstall constant-rung test runs ISOLATED in a subprocess
+  (glm15-1): the in-process `define( 'ZAI_API_KEY', … )` was
+  irreversible and isolated only by a file-ordering accident
+  ("deliberately runs LAST") — under `--order-by=random` the leaked
+  constant flipped every later test's credential ladder (12 failures +
+  2 errors at seed 1, reproduced), and any future test file sorting
+  after `ZaiUninstallTest.php` broke the default order too. The
+  constant is defined in a child process only (the sibling GLM8 #15
+  runner pattern), the parent pins that it never defined it, and the
+  check pipeline's test step runs `--order-by=random` so an order
+  dependency fails every check instead of a lucky default order. The
+  same randomized run exposed a second order dependency — the
+  auth-header generation tests relied on the vendor parent's statically
+  cached directory instance being UNWIRED; a test that wired
+  authentication onto it earlier in the process made discovery consume
+  the test's single queued response — fixed by priming the discovery
+  transient (the suite's standing convention) so model resolution
+  makes no discovery HTTP regardless of process-wide SDK state.
+
+- The self-containment analyzer is TOKEN-based (glm15-2): comment
+  stripping and the include/assignment/signature scans were regexes
+  over comment-stripped source, so string and heredoc CONTENTS were
+  judged as PHP code — comment-looking lines inside strings were
+  deleted, a 'function' token inside a string literal counted as a
+  signature, and '$var = …;' text inside a string body was collected
+  as a real assignment. A phantom in-string assignment could satisfy a
+  variable include the runtime never resolves that way (a build
+  artifact falsely accepted as self-contained — demonstrated), and
+  phantom includes and writes refused legitimate files (5 phantom
+  violations on the new fixtures). Comments become spaces through
+  `token_get_all`, a same-length string-masked view carries the
+  code-shape scans, and the real statement text is sliced from the
+  code view, so literals inside include statements stay visible while
+  string bodies can never masquerade as code.
+
+- The live probe skips the key-file fallback when HOME is unset
+  (glm15-3): under cron/systemd `getenv( 'HOME' )` returns false, and
+  the bare concatenation probed the filesystem ROOT
+  ('/.config/z.ai/api_key'), silently using whatever unrelated
+  readable file lives there as the live API key.
+
+- The probe's generation-route evidence rides the endpoint owner
+  (glm15-4): the route line picked its URL through an instanceof
+  ternary plus an inline chat-completion route literal that existed
+  nowhere else in src — a vendor or plan route change (Anthropic
+  already varies /messages vs /v1/messages by plan) would print
+  acceptance evidence for a URL the plugin never requests, with
+  nothing failing. `generation_url()` on the endpoint layer is the one
+  owner (the OpenAI surface declares GENERATION_ROUTE; the Anthropic
+  surface derives its plan-dependent Messages route), pinned to the
+  CAPTURED wire URL by both mapping suites.
+
+- Uninstall's marker enumeration and plan/region loops ride their
+  owners (glm15-9/10): the wp_options LIKE sweep hand-mirrored the
+  settings owner's marker-name prefix as two literals (the mirror
+  class that stranded hashed markers twice before), and the discovery
+  sweep hard-coded the plan/region pairs beside the declared owner —
+  plus a third hand-copy in the probe's `--plan/--region` whitelists.
+  The prefixes compose through `probe_miss_transient_name()`'s new
+  one-owner export (`probe_miss_transient_prefix()`) when the owner
+  chain loads (the broken-install literals remain the bounded
+  fallback), and every plan/region list rides
+  `AbstractPlanRegionSettings::PLANS/REGIONS`, with source pins
+  forbidding the hand-copied shapes.
+
+### Changed / hardened (zai / M2 — GLM15 code review)
+
+- The zai_anthropic surface rides the one-encode net at request build
+  (glm15-5): the surface's own mapping eagerly json_encoded every wire
+  member per request (every text part of the conversation history,
+  the system instruction, every tool declaration name/description)
+  and the transport re-encoded the identical assembled payload — the
+  exact per-member-walk pattern the zai surface replaced (glm13-11)
+  plus its glm14-4 ride. ONE raw encode now proves encodability (the
+  typed pre-transport rejection, with a per-member attribution walk
+  naming the first bad member in the mapping order) and rides as the
+  request's body string. The mapping sites keep every non-encodability
+  rule (identity, shape, transforms whose strings ride the wire) —
+  and the tool SCHEMA's encodability guard stays eager because the
+  recursive normalize transform below it would fatal on a
+  self-referential structure no net can reject (a memory-exhaustion
+  fatal the suite demonstrated before the guard was restored).
+- The pure derivations of a credential consult memoize (glm15-6):
+  `for()` shares the immutable endpoint value instance per surface and
+  plan × region, and the binding hash memoizes keyed by the COMPLETE
+  input tuple (class, source, endpoint, key) — everything reading
+  mutable state stays per-consult, so the retarget-the-next-request
+  contract keeps its pin and no invalidation hook class exists.
+- The mislabeled-JSON fallback decodes the body once on both surfaces
+  (glm15-7) and the zai fallback rides the shared non-streaming
+  pipeline helper (glm15-11): three json_decodes and two prefix strips
+  of one body become one strip and one decode pair (the decoder's raw
+  view IS the object-root oracle the hand-rolled pre-flight
+  re-derived), and the usage-validation/derived-total/pre-decoded
+  pipeline that lived twice in one class is one
+  `parse_decoded_chat_body()` (the GLM7 #9 hand-off pin consciously
+  superseded, documented at the pin).
+- One trait owns the Anthropic protocol authentication wrap (glm15-8):
+  `SpeaksAnthropicMessagesProtocol` carries the
+  `getRequestAuthentication()` override (one raw-authentication hook
+  per class) and the unwired-probe fallback's wrap, so a fourth class
+  speaking the surface cannot silently send plain ApiKey auth — an
+  omission that fails open (z.ai ignores the version header) and
+  undetected.
+- The remaining lockstep copies consolidated: boot() wires every
+  surface through one SDK-free surface list (glm15-13 — the
+  copy-pasted hook block whose missed line was the stranded-invalidation
+  bug class the file's own comments document); the enum settings
+  fields ride one parameterized render/sanitize pair (glm15-16); the
+  harness primes discovery transients through the endpoint owner and
+  hoists the directory-suite helpers (glm15-12/19); the auth-header
+  suite posts the canonical Messages fixture (glm15-20); the choice
+  index rule lives in one SseAggregator predicate (glm15-14);
+  apply_delta() maps and applies the delta type in one switch
+  (glm15-15); the content-member rule lives in one map (glm15-21);
+  cold-window discovery hands its parse-built metadata to the map
+  memo through the SAME chat-filter rule instead of rebuilding it at a
+  second, already-diverged site (glm15-22); and each surface identity
+  slug ('zai'/'zai_anthropic') has one owner — the SDK-free settings
+  layer's CACHE_SCOPE — with the registration and refusal constants
+  aliasing it (glm15-23).
+- SseFrameBuffer's incremental-feed bound is documented, not fixed
+  (glm15-24): each feed() re-normalizes and rescans the unconsumed
+  buffer, so chunk-by-chunk feeding of one large frame is quadratic in
+  the TAIL — latent (both model parsers feed the complete body in one
+  call). The honest statement rides feed()'s docblock and the ledger;
+  the cursor fix is deferred with its re-open condition.
+
 ### Fixed (zai / M2 — GLM14 code review)
 
 - An unencodable configured output schema is rejected typed under EVERY
