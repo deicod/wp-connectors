@@ -569,4 +569,49 @@ PHP;
             'The seven owner pairs ride the one map.'
         );
     }
+
+    public function testTheConstantRungsMarkersAreDeletedByTheSweepItself()
+    {
+        /*
+         * glm14-9: the source pin above (testTheCredentialCollection-
+         * RidesTheSettingsOwnerLadder) holds the sweep's COMPOSITION but
+         * never EXECUTED the constant rung it protects — the env rung was
+         * covered functionally, the constant-derived marker path only by
+         * source text. This executes it: the constant is defined, its
+         * derivable markers are planted through the settings owner's OWN
+         * probe_miss_transient_ids() (the same derivation the sweep uses,
+         * never a hand-rolled mirror), and the sweep must delete every
+         * one under an object cache — the GLM5 #11/GLM9 #8
+         * stranded-marker regression class, behaviorally. define()
+         * cannot be undone, so this test deliberately runs LAST in this
+         * file (and the suite) to keep the constant out of every other
+         * test's ladder.
+         */
+        WpHarness::$external_object_cache = true;
+
+        $constant_key = FakeSecrets::apiKey();
+        define('ZAI_API_KEY', $constant_key);
+
+        $markers = \Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::probe_miss_transient_ids($constant_key);
+        $this->assertNotEmpty($markers, 'The owner must derive markers for the constant-sourced credential.');
+
+        foreach ($markers as $marker) {
+            set_transient($marker, true, 60);
+        }
+
+        zai_connector_zai_uninstall_site();
+
+        $remaining = array();
+        foreach (array_keys(WpHarness::$transients) as $transient) {
+            if (false !== strpos($transient, '_key_state_probe_')) {
+                $remaining[] = $transient;
+            }
+        }
+
+        $this->assertSame(
+            array(),
+            $remaining,
+            'Every constant-derived probe-miss marker must be deleted by the sweep: ' . wp_json_encode($remaining)
+        );
+    }
 }
