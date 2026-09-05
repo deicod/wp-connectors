@@ -33,7 +33,10 @@ parameters:
 			# GLM12 #10: +2 (the load-broken-install sweep fallback composes
 			# the discovery ids from static::CACHE_PREFIX/CACHE_SCOPE, the
 			# same constants the endpoint children alias).
-			count: 28
+			# glm15-16: -2 (each enum field wrapper passes its option
+			# constant once into the shared renderer where two inline
+			# attribute reads used to spell it).
+			count: 26
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Availability/AbstractZaiProviderAvailability.php

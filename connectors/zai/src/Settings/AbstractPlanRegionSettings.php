@@ -278,17 +278,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return void
 	 */
 	public static function render_plan_field(): void {
-		$current = static::get_plan();
-		echo '<select name="' . esc_attr( static::OPTION_PLAN ) . '" id="' . esc_attr( static::OPTION_PLAN ) . '">';
-		foreach ( self::PLANS as $plan ) {
-			printf(
-				'<option value="%1$s"%2$s>%3$s</option>',
-				esc_attr( $plan ),
-				selected( $plan, $current, false ),
-				esc_html( self::plan_label( $plan ) )
-			);
-		}
-		echo '</select>';
+		self::render_enum_field( static::OPTION_PLAN, self::PLANS, static::get_plan(), 'plan_label' );
 	}
 
 	/**
@@ -299,14 +289,38 @@ abstract class AbstractPlanRegionSettings {
 	 * @return void
 	 */
 	public static function render_region_field(): void {
-		$current = static::get_region();
-		echo '<select name="' . esc_attr( static::OPTION_REGION ) . '" id="' . esc_attr( static::OPTION_REGION ) . '">';
-		foreach ( self::REGIONS as $region ) {
+		self::render_enum_field( static::OPTION_REGION, self::REGIONS, static::get_region(), 'region_label' );
+	}
+
+	/**
+	 * Renders one enum dropdown — the shared markup loop both fields ride (glm15-16).
+	 *
+	 * Both render_plan_field() and render_region_field() were byte-identical
+	 * loops differing only in option constant, enum list, current-value
+	 * getter, and label function, so a markup or escaping fix had to be
+	 * landed twice inside the base both settings children inherit — a
+	 * missed edit made the plan and region fields render differently on
+	 * one surface. The wrappers resolve the CURRENT selection through
+	 * their own getters (the child-owned defaults included: the
+	 * zai_anthropic plan default is 'general', not the enum's first
+	 * entry) and hand it in.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $option       The option the field saves (OPTION_PLAN/OPTION_REGION).
+	 * @param array  $values       The enum values (PLANS/REGIONS).
+	 * @param string $current      The effective stored value (get_plan()/get_region()).
+	 * @param string $label_method The translating label method ('plan_label'/'region_label').
+	 * @return void
+	 */
+	private static function render_enum_field( string $option, array $values, string $current, string $label_method ): void {
+		echo '<select name="' . esc_attr( $option ) . '" id="' . esc_attr( $option ) . '">';
+		foreach ( $values as $value ) {
 			printf(
 				'<option value="%1$s"%2$s>%3$s</option>',
-				esc_attr( $region ),
-				selected( $region, $current, false ),
-				esc_html( self::region_label( $region ) )
+				esc_attr( $value ),
+				selected( $value, $current, false ),
+				esc_html( self::{$label_method}( $value ) )
 			);
 		}
 		echo '</select>';
@@ -978,11 +992,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return string Sanitized plan.
 	 */
 	public static function sanitize_plan( $value ): string {
-		if ( \is_string( $value ) && \in_array( $value, self::PLANS, true ) ) {
-			return $value;
-		}
-
-		return static::get_plan();
+		return self::sanitize_enum( $value, self::PLANS, static::get_plan() );
 	}
 
 	/**
@@ -994,11 +1004,30 @@ abstract class AbstractPlanRegionSettings {
 	 * @return string Sanitized region.
 	 */
 	public static function sanitize_region( $value ): string {
-		if ( \is_string( $value ) && \in_array( $value, self::REGIONS, true ) ) {
+		return self::sanitize_enum( $value, self::REGIONS, static::get_region() );
+	}
+
+	/**
+	 * Sanitizes one enum submission — the shared two-branch check both fields ride (glm15-16).
+	 *
+	 * Both sanitize_plan() and sanitize_region() were the same check differing
+	 * only in enum list and fallback getter; the wrappers resolve the
+	 * fallback (the currently stored value or the child-owned default,
+	 * per their getters) and hand it in.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed  $value          Submitted value.
+	 * @param array  $allowed_values The enum values (PLANS/REGIONS).
+	 * @param string $fallback       The effective stored value when the submission is not in the enum.
+	 * @return string One of the allowed values.
+	 */
+	private static function sanitize_enum( $value, array $allowed_values, string $fallback ): string {
+		if ( \is_string( $value ) && \in_array( $value, $allowed_values, true ) ) {
 			return $value;
 		}
 
-		return static::get_region();
+		return $fallback;
 	}
 
 	/**
