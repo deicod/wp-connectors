@@ -86,7 +86,9 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	use WithHttpTransporterTrait {
 		setHttpTransporter as trait_set_transporter; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- trait method alias.
 	}
-	use WithRequestAuthenticationTrait;
+	use WithRequestAuthenticationTrait {
+		getRequestAuthentication as trait_get_request_authentication; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- trait method alias (glm16-1: the RAW getter stays callable below a surface's protocol-wrapping override).
+	}
 
 	/**
 	 * Seconds a validated verdict stays authoritative before re-probing.
@@ -189,6 +191,37 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return class-string
 	 */
 	abstract protected static function settings_class(): string;
+
+	/**
+	 * The RAW wired authentication — exactly as the SDK stores it, before
+	 * any surface protocol wrap (glm16-1).
+	 *
+	 * The base's own getRequestAuthentication() IS the raw SDK getter
+	 * (no protocol wrap on the zai surface); the zai_anthropic surface
+	 * overrides getRequestAuthentication() through
+	 * SpeaksAnthropicMessagesProtocol to funnel every wired instance
+	 * through the protocol wrap, and inherits this hook so the wrap
+	 * stays the surface's ONE funnel while the wiring rules below still
+	 * see the instance the registry actually stored. Reading through a
+	 * wrapping getter would launder a foreign (non-Api-key) wiring into
+	 * the wrap()'s RuntimeException, which the probe's unwired catch
+	 * would misread as NO wiring — flying the fallback credential a
+	 * caller never wired and persisting the verdict it earned under
+	 * that key's binding (the glm14-5 opaque guard, made unreachable).
+	 * Same hook name and meaning as SpeaksAnthropicMessagesProtocol's
+	 * abstract raw_request_authentication(), so a composing surface
+	 * satisfies both with the one inherited implementation.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return RequestAuthenticationInterface
+	 * @throws RuntimeException When nothing is wired (the SDK getter's
+	 *                          own unwired failure — the ONLY throw this
+	 *                          accessor can produce).
+	 */
+	protected function raw_request_authentication(): RequestAuthenticationInterface {
+		return $this->trait_get_request_authentication();
+	}
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.
@@ -1063,7 +1096,20 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			$authentication = null;
 
 			try {
-				$wired = $this->getRequestAuthentication();
+				/*
+				 * glm16-1: the wiring rules judge the RAW wired instance
+				 * (raw_request_authentication()). Reading through
+				 * $this->getRequestAuthentication() instead — as this
+				 * probe did — launders a foreign wiring on the
+				 * zai_anthropic surface into the protocol wrap's
+				 * RuntimeException, which the unwired catch below
+				 * misread as NO wiring: the fallback flew the effective
+				 * key a caller never wired and its rejection persisted
+				 * under that key's binding. Through the RAW accessor the
+				 * catch's throw means exactly one thing — nothing is
+				 * wired.
+				 */
+				$wired = $this->raw_request_authentication();
 
 				if ( $wired instanceof ApiKeyRequestAuthentication && '' === $wired->getApiKey() ) {
 					/*
@@ -1092,7 +1138,16 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 					 */
 					return null;
 				} else {
-					$authentication = $wired;
+					/*
+					 * glm16-1: the FLIGHT credential goes back through
+					 * the surface's own getRequestAuthentication() — the
+					 * one protocol-wrap funnel (glm15-8) — so the wired
+					 * Api-key flies with this surface's headers exactly
+					 * as its generation requests do. The funnel cannot
+					 * throw here: the raw instance just passed the
+					 * Api-key shape check the wrap() itself applies.
+					 */
+					$authentication = $this->getRequestAuthentication();
 				}
 			} catch ( Throwable $unwired ) {
 				$authentication = null;

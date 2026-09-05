@@ -351,6 +351,65 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         $this->assertSame('invalid', $state['valid'], 'The rejection the flown credential earned persists.');
     }
 
+    public function testAnOpaqueWiredCredentialFliesNothingAndBindsNothingOnTheAnthropicSurfaceToo()
+    {
+        /*
+         * glm16-1: the glm14-5 opaque rule was UNREACHABLE on this
+         * surface — its protocol-wrapping getRequestAuthentication()
+         * converts a foreign wiring into wrap()'s RuntimeException,
+         * which the probe's unwired catch misread as NO wiring: the
+         * fallback flew the database key a caller never wired and its
+         * rejection persisted as that key's invalid verdict
+         * (empirically reproduced: one Bearer <db-key> attempt, state
+         * {'valid'=>'invalid'}). Judging the RAW wired instance keeps
+         * opaque wiring inconclusive — nothing flies, nothing persists,
+         * configured-pending — exactly like the zai surface's pinned
+         * twin.
+         */
+        putenv('ZAI_ANTHROPIC_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiAnthropicProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $instance->setRequestAuthentication($this->opaqueAuthentication());
+
+        // A doomed rejection would be served to whatever flew; none may.
+        $this->queueSdkResponse(403, array(), '{"type":"error","error":{"type":"forbidden"}}');
+
+        $this->assertTrue(
+            $instance->isConfigured(),
+            'Opaque wiring reports configured-pending, never a verdict for a credential that never flew.'
+        );
+
+        $this->assertNoHttpRequests();
+        $this->assertFalse(
+            get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false),
+            'No verdict may be recorded for a credential the binding cannot name.'
+        );
+    }
+
+    /**
+     * A foreign (non-Api-key) request authentication — the opaque wiring
+     * only third-party setRequestAuthentication() callers can produce.
+     *
+     * @return \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface
+     */
+    private function opaqueAuthentication()
+    {
+        return new class implements \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface {
+            public function authenticateRequest(WordPress\AiClient\Providers\Http\DTO\Request $request): WordPress\AiClient\Providers\Http\DTO\Request
+            {
+                return $request;
+            }
+
+            public static function getJsonSchema(): array
+            {
+                return array();
+            }
+        };
+    }
+
     public function testAZaiValidatedStateCanNeverEstablishAnthropicStatus()
     {
         $key = FakeSecrets::apiKey();

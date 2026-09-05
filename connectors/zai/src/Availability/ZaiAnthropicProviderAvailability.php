@@ -23,7 +23,6 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Availability;
 
-use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
@@ -110,17 +109,12 @@ final class ZaiAnthropicProviderAvailability extends AbstractZaiProviderAvailabi
 		return ZaiAnthropicPlanRegionSettings::class;
 	}
 
-	/**
-	 * The RAW wired authentication — the SDK parent's getter, unwrapped
-	 * (glm15-8: the protocol wrap — and the UNWIRED-probe fallback's
-	 * wrap, GLM5 #10 — lives once on the SpeaksAnthropicMessagesProtocol
-	 * trait).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return RequestAuthenticationInterface
+	/*
+	 * glm16-1: the SpeaksAnthropicMessagesProtocol trait's
+	 * raw_request_authentication() hook is the INHERITED availability-base
+	 * implementation (the aliased SDK trait getter) — the former local
+	 * override (parent::getRequestAuthentication()) returned the identical
+	 * instance, so the base hook satisfies the trait abstract once for
+	 * every availability surface.
 	 */
-	protected function raw_request_authentication(): RequestAuthenticationInterface {
-		return parent::getRequestAuthentication();
-	}
 }
