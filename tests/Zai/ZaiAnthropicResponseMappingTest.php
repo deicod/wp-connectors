@@ -3054,7 +3054,7 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
 
         $this->assertTrue($aggregator->has_error(), 'A bare error declaration with no data line must set the error flag.');
         $this->assertFalse($aggregator->has_malformed_event(), 'The verdict is an error event, not protocol corruption.');
-        $this->assertSame(1, $aggregator->malformed_count(), 'The truncated error frame counts as one malformed event.');
+        $this->assertFalse($aggregator->has_malformed_tool_input(), 'The truncated error frame is not a tool-input problem.');
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -3178,7 +3178,7 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
 
         $this->assertFalse($aggregator->has_error(), 'A bare non-error declaration never sets the error flag.');
         $this->assertTrue($aggregator->has_malformed_event(), 'A lost lifecycle declaration fails through the absence guards.');
-        $this->assertSame(0, $aggregator->malformed_count(), 'A data-less non-error frame counts as no malformed event.');
+        $this->assertFalse($aggregator->has_malformed_tool_input(), 'A data-less lifecycle declaration is not a tool-input problem.');
     }
 
     public function testATrailingUndecodableDeclaredContentEventStillInvalidates()
@@ -4701,16 +4701,14 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
         $aggregator->finish();
 
-        $this->assertTrue($aggregator->is_done());
+        $this->assertTrue($this->aggregator_state($aggregator, 'terminated'));
         // Seven well-formed events (start, block start, two deltas, block
-        // stop, message_delta, message_stop); the one bad-JSON frame counts
-        // as malformed instead.
-        $this->assertSame(7, $aggregator->event_count());
-        $this->assertSame(1, $aggregator->malformed_count());
-
+        // stop, message_delta, message_stop) produced ONE text block; the
+        // one bad-JSON frame contributed nothing instead.
         $aggregated = $aggregator->aggregated();
+        $this->assertCount(1, $aggregated['content'], 'The malformed frame opens no second content block.');
         $this->assertSame('AB', $aggregated['content'][0]['text']);
-        $this->assertSame('end_turn', $aggregated['stop_reason']);
+        $this->assertSame('end_turn', $aggregated['stop_reason'], 'The malformed frame does not eat the stop reason.');
     }
 
     public function testStreamWithoutTrailingBlankLineKeepsTheFinalEvent()
@@ -4780,14 +4778,14 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $aggregator->feed($body);
         $aggregator->finish();
 
-        $this->assertFalse($aggregator->is_done(), 'message_stop never arrived.');
+        $this->assertFalse($this->aggregator_state($aggregator, 'terminated'), 'message_stop never arrived.');
         $this->assertNull($aggregator->aggregated(), 'No payload may be built without the terminal event.');
         $this->assertTrue($aggregator->has_malformed_event(), 'A stream missing message_stop is malformed, not merely incomplete.');
 
         // The terminal message completes the same stream cleanly.
         $aggregator->feed("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
         $aggregator->finish();
-        $this->assertTrue($aggregator->is_done());
+        $this->assertTrue($this->aggregator_state($aggregator, 'terminated'));
         $this->assertNotNull($aggregator->aggregated(), 'A completed stream aggregates normally.');
     }
 

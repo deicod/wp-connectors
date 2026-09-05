@@ -284,6 +284,31 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
+     * Reads a private SSE aggregator state field (glm19-11).
+     *
+     * The aggregators' observability getters (is_done()/event_count()/
+     * malformed_count()) were a public API only tests called and are
+     * deleted; the DONE/EVENT-COUNT/TERMINATED state stays internal
+     * (the aggregation gates read it), so the pins that assert
+     * termination or event accounting read the field through
+     * reflection — no production surface widened.
+     *
+     * @param object $aggregator The aggregator instance.
+     * @param string $field      The private field name ('done', 'event_count', 'terminated').
+     * @return mixed The field value.
+     */
+    protected function aggregator_state($aggregator, string $field)
+    {
+        $property = new \ReflectionProperty($aggregator, $field);
+        if (PHP_VERSION_ID < 80100) {
+            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
+            $property->setAccessible(true);
+        }
+
+        return $property->getValue($aggregator);
+    }
+
+    /**
      * Recorded wp_remote_* attempts.
      *
      * @return list<array{method: string, url: string, args: array}>

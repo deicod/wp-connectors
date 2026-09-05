@@ -1483,7 +1483,7 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $aggregated = $aggregator->aggregated();
         $this->assertSame('stop', $aggregated['choices'][0]['finish_reason'], 'A trailing finish reason must complete a choice that lacks one.');
         $this->assertSame(16, $aggregated['usage']['total_tokens'], 'A trailing usage member must fill the payload when none merged pre-sentinel.');
-        $this->assertSame(1, $aggregator->event_count(), 'Trailing frames must not count as content events.');
+        $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'), 'Trailing frames must not count as content events.');
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
 
@@ -1678,7 +1678,7 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Only', $aggregated['choices'][0]['message']['content'], 'Post-sentinel content must not merge.');
         $this->assertArrayNotHasKey(1, $aggregated['choices'], 'A trailing unknown index must not open a new choice turn.');
         $this->assertSame('stop', $aggregated['choices'][0]['finish_reason'], 'A trailing finish reason must not replace a present one.');
-        $this->assertSame(1, $aggregator->malformed_count(), 'A malformed post-sentinel frame must still count.');
+        $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'), 'Neither the malformed post-sentinel frame nor the unknown-index trailing frame counts as a content event.');
         $this->assertFalse($aggregator->has_malformed_event(), 'Well-formed trailing frames are not corruption.');
     }
 
@@ -1966,9 +1966,9 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
         $aggregator->finish();
 
-        $this->assertTrue($aggregator->is_done());
-        $this->assertSame(3, $aggregator->event_count());
-        $this->assertSame(1, $aggregator->malformed_count());
+        $this->assertTrue($this->aggregator_state($aggregator, 'done'));
+        $this->assertSame(3, $this->aggregator_state($aggregator, 'event_count'));
+        $this->assertCount(1, $aggregator->aggregated()['choices'], 'The malformed frame opens no second choice turn.');
 
         $aggregated = $aggregator->aggregated();
         $this->assertSame('ABC', $aggregated['choices'][0]['message']['content']);
@@ -2075,7 +2075,7 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $aggregator->feed('data: {"id":"chatcmpl-f2","choices":[{"index":0,"delta":{"role":"assistant","content":"CR tail."},"finish_reason":"stop"}]}' . "\r");
         $aggregator->finish();
 
-        $this->assertSame(1, $aggregator->event_count());
+        $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'));
         $this->assertSame('CR tail.', $aggregator->aggregated()['choices'][0]['message']['content']);
     }
 

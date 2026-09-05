@@ -130,15 +130,6 @@ final class SseAggregator extends AbstractSseAggregator {
 	private $raw_usage = null;
 
 	/**
-	 * Number of data events that failed JSON decoding.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var int
-	 */
-	private $malformed = 0;
-
-	/**
 	 * The usage member of a POST-sentinel frame, or null when no trailing
 	 * frame carried one (GLM7 #2).
 	 *
@@ -202,41 +193,14 @@ final class SseAggregator extends AbstractSseAggregator {
 	 */
 	private $malformed_event = false;
 
-	/**
-	 * Whether the [DONE] sentinel was received.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return bool
+	/*
+	 * glm19-11: the observability getters (is_done(), event_count(),
+	 * malformed_count()) were a public API only tests called — deleted
+	 * with the $malformed dead-store counter they existed to expose.
+	 * The $done and $event_count fields stay (the aggregated() gates
+	 * read them); tests that need to pin termination or event
+	 * accounting read the field through the harness reflection helper.
 	 */
-	public function is_done(): bool {
-		return $this->done;
-	}
-
-	/**
-	 * Number of well-formed data events consumed.
-	 *
-	 * GLM10 #13: a counter, not a count of retained frames — the
-	 * decoded events merge into the accumulators at feed time now.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return int
-	 */
-	public function event_count(): int {
-		return $this->event_count;
-	}
-
-	/**
-	 * Number of malformed data events (bad JSON) skipped.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return int
-	 */
-	public function malformed_count(): int {
-		return $this->malformed;
-	}
 
 	/**
 	 * Whether a chunk choice or tool-call delta carried an unusable index.
@@ -558,8 +522,8 @@ final class SseAggregator extends AbstractSseAggregator {
 		$decoded = json_decode( $data, true );
 
 		if ( ! \is_array( $decoded ) ) {
-			++$this->malformed;
-
+			// A malformed frame is skipped (glm19-11 deleted the dead
+			// $malformed counter that used to tally it).
 			return;
 		}
 

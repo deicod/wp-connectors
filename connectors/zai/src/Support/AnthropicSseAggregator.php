@@ -223,32 +223,14 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 * historical pair): a second flag, always set in the same statement
 	 * as this one, existed only because the public is_done() getter
 	 * predated the internal trailing-frame policy reads — every consumer
-	 * (is_done(), the trailing-frame gates in consume_frame()/
-	 * dispatch_event()) now reads this one flag.
+	 * (the trailing-frame gates in consume_frame()/dispatch_event())
+	 * now reads this one flag; the getter itself is gone (glm19-11).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @var bool
 	 */
 	private $terminated = false;
-
-	/**
-	 * Number of well-formed data events consumed.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var int
-	 */
-	private $events = 0;
-
-	/**
-	 * Number of malformed data events (bad JSON) skipped.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var int
-	 */
-	private $malformed = 0;
 
 	/**
 	 * Whether a tool_use block's accumulated input JSON failed to decode
@@ -287,40 +269,14 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		return $this->error;
 	}
 
-	/**
-	 * Whether the message_stop event was received.
-	 *
-	 * Reads the single authoritative termination flag (GLM7 #16).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return bool True when the stream was terminated by message_stop.
+	/*
+	 * glm19-11: the observability getters (is_done(), event_count(),
+	 * malformed_count()) were a public API only tests called — deleted
+	 * with the $events and $malformed dead-store counters they existed
+	 * to expose. The $terminated flag stays (the frame gates read it);
+	 * tests that need to pin termination read the field through the
+	 * harness reflection helper.
 	 */
-	public function is_done(): bool {
-		return $this->terminated;
-	}
-
-	/**
-	 * Number of well-formed data events consumed.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return int
-	 */
-	public function event_count(): int {
-		return $this->events;
-	}
-
-	/**
-	 * Number of malformed data events (bad JSON) skipped.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return int
-	 */
-	public function malformed_count(): int {
-		return $this->malformed;
-	}
 
 	/**
 	 * Whether a tool_use block's streamed input JSON was unusable.
@@ -596,7 +552,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 * unknown names are forward-compatible noise.
 			 */
 			if ( 'error' === $event_name ) {
-				++$this->malformed;
 				$this->error = true;
 			}
 
@@ -649,8 +604,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		$raw = json_decode( $payload );
 
 		if ( ! \is_object( $raw ) && ! \is_array( $raw ) ) {
-			++$this->malformed;
-
 			/*
 			 * Codex R4 #3: a frame DECLARING a known event name with an
 			 * undecodable payload is a corrupt stream event, not noise —
@@ -715,7 +668,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * documented 'error event' verdict.
 		 */
 		if ( \is_object( $raw ) && \property_exists( $raw, 'type' ) && ! \is_string( $raw->type ) ) {
-			++$this->malformed;
 
 			$this->flag_corrupt_event( \is_string( $event_name ) ? $event_name : null );
 
@@ -748,7 +700,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * derivation below the sibling branches treats it.
 		 */
 		if ( \is_string( $event_name ) && '' !== $payload_type && $event_name !== $payload_type ) {
-			++$this->malformed;
 
 			$this->flag_corrupt_event( $event_name );
 
@@ -784,17 +735,10 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * misclassification the undecodable branch above fixed.
 		 */
 		if ( ( ! $this->terminated || 'message_stop' === $type ) && \in_array( $type, self::DECLARED_EVENTS, true ) && ! \is_object( $raw ) ) {
-			++$this->malformed;
 
 			$this->flag_corrupt_event( $type );
 
 			return;
-		}
-
-		// Trailing frames do not count as consumed events: they can never
-		// contribute content to the completed generation.
-		if ( ! $this->terminated ) {
-			++$this->events;
 		}
 
 		$this->dispatch_event( $type, $raw );
@@ -1335,7 +1279,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			// A declared content-bearing event (message_start,
 			// content_block_*, message_delta) after the terminal
 			// message_stop would mutate a completed generation.
-			++$this->malformed;
 			$this->malformed_event = true;
 
 			return;
