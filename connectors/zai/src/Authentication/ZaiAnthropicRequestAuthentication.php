@@ -62,10 +62,53 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 	 * @return Request The authenticated request.
 	 */
 	public function authenticateRequest( Request $request ): Request {
+		$key = $this->getApiKey();
+		self::reject_uncarriable_credential( $key );
+
 		$request = self::without_x_api_key( $request );
 		$request = $request->withHeader( 'anthropic-version', self::ANTHROPIC_VERSION );
 
-		return $request->withHeader( 'Authorization', 'Bearer ' . $this->getApiKey() );
+		return $request->withHeader( 'Authorization', 'Bearer ' . $key );
+	}
+
+	/**
+	 * Rejects credential material the Authorization header cannot carry
+	 * (glm16-13).
+	 *
+	 * The header value is built by raw concatenation of the key, and
+	 * nothing between here and the PSR-7 conversion rejects CR/LF —
+	 * while the vendor HeadersCollection it lands in SPLITS
+	 * comma-joined string values (explode(',')), silently turning one
+	 * credential into several header values. A key containing control
+	 * characters (the CRLF header-injection class, tabs included) or a
+	 * comma is therefore typed pre-transport rejected — the same
+	 * wire-value-guard discipline the request members get — instead of
+	 * failing auth at the fixed z.ai HTTPS endpoint with no hint the
+	 * credential material is the cause. The rejection rides the
+	 * RuntimeException binding-failure family (GLM3 #9: ErrorMapper
+	 * maps it to 500 zai_error, never 400), and the fixed message
+	 * never interpolates the key (the redaction contract).
+	 *
+	 * An EMPTY key stays tolerated: glm13-1's empty-wire rules own that
+	 * shape (the probe treats it exactly like unwired; a generation
+	 * request flies 'Bearer ' as before).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $key The credential material about to ride the header.
+	 * @return void
+	 * @throws RuntimeException When the key cannot ride an Authorization value.
+	 */
+	private static function reject_uncarriable_credential( string $key ): void {
+		if ( '' === $key ) {
+			return;
+		}
+
+		if ( 1 === preg_match( '/[\x00-\x1F\x7F]/', $key ) || false !== strpos( $key, ',' ) ) {
+			throw new RuntimeException(
+				'The zai_anthropic provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.'
+			);
+		}
 	}
 
 	/**

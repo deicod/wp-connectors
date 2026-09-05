@@ -126,6 +126,72 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         $this->assertSame($wrapped, ZaiAnthropicRequestAuthentication::wrap($wrapped), 'Already-wrapped instances pass through.');
     }
 
+    public function testCredentialMaterialTheHeaderCannotCarryIsRefusedPreTransport()
+    {
+        /*
+         * glm16-13: the Authorization value is raw concatenation of the
+         * key, the vendor HeadersCollection SPLITS comma-joined values
+         * (explode(',')), and nothing before PSR-7 rejects CR/LF — a
+         * key with a comma silently became several header values and a
+         * control character rode toward header injection, both failing
+         * auth at the endpoint with no hint the credential material is
+         * the cause. Typed rejection now, in the RuntimeException
+         * binding-failure family, message fixed and key-free.
+         */
+        foreach (array("good-key,bad-half", "good-key\r\nX-Injected: 1", "with\ttab", "with\x00nul", "with\x7Fdel") as $uncarriable) {
+            try {
+                (new ZaiAnthropicRequestAuthentication($uncarriable))->authenticateRequest(
+                    new SdkRequest(HttpMethodEnum::POST(), 'https://api.z.ai/api/anthropic/v1/messages')
+                );
+                $this->fail('Uncarriable credential material must be refused before the header is built.');
+            } catch (RuntimeException $e) {
+                $this->assertSame(
+                    'The zai_anthropic provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.',
+                    $e->getMessage()
+                );
+                $this->assertStringNotContainsString($uncarriable, $e->getMessage(), 'The key never appears in the rejection.');
+            }
+        }
+
+        // glm13-1 tolerance: an EMPTY key authenticates nothing and its
+        // own rules own that shape — the header build proceeds exactly
+        // as before (the vendor collection trims the trailing space,
+        // which is itself an instance of the silent-mutation class the
+        // rejection above exists to surface).
+        $request = (new ZaiAnthropicRequestAuthentication(''))->authenticateRequest(
+            new SdkRequest(HttpMethodEnum::POST(), 'https://api.z.ai/api/anthropic/v1/messages')
+        );
+        $this->assertSame(array('Bearer'), $request->getHeader('Authorization'), 'The empty-key shape keeps its flying semantics.');
+
+        // The generation path: a comma key wired on the model rejects
+        // before any transport attempt, in the binding-failure family.
+        try {
+            $this->model('key-part-one,key-part-two')->generateTextResult($this->prompt());
+            $this->fail('Generation with uncarriable credential material must fail pre-transport.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('cannot carry it', $e->getMessage());
+        }
+        $this->assertNoHttpRequests();
+
+        // The probe's fallback path validates the same way: a comma DB
+        // key is inconclusive — nothing flown, nothing persisted.
+        putenv('ZAI_ANTHROPIC_API_KEY');
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'db-part-one,db-part-two');
+
+        $instance = new ZaiAnthropicProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+
+        $this->assertTrue(
+            $instance->isConfigured(),
+            'Uncarriable credential material stays configured-pending — never a verdict, never flown.'
+        );
+        $this->assertNoHttpRequests();
+        $this->assertFalse(
+            get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false),
+            'No verdict may persist for a credential that never flew.'
+        );
+    }
+
     public function testAPreExistingXApiKeyHeaderIsRemoved()
     {
         // Codex R4 #5: a reused/decorated request already carrying an
