@@ -753,23 +753,6 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		}
 	}
 
-	/**
-	 * Marks the region-immutable credential as pending definitive validation.
-	 *
-	 * The implementation lives in the SDK-free settings layer (Codex R2 #3):
-	 * the region switch fires on sites without the SDK plugin too, where
-	 * this class cannot be autoloaded at all. Kept as a delegating public
-	 * method for SDK-present callers holding the availability class.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param string $region The newly selected region.
-	 * @return void
-	 */
-	public static function mark_region_switch_pending( string $region ): void {
-		$settings_class = static::settings_class();
-		$settings_class::mark_region_switch_pending( $region );
-	}
 
 	/**
 	 * Probes with a SHORT binding-scoped negative cache (GLM1 #6).
