@@ -1003,7 +1003,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * a text Message adjacent-before a FunctionResponse Message, and a
 	 * single SDK message whose blocks array already has text first. A user
 	 * turn with no tool_result blocks is not an answering turn and is not
-	 * judged here.
+	 * judged here — glm15-17: that fact needs no pre-scan, because the
+	 * rejection rule ('tool_result' seen after text) is unsatisfiable in
+	 * a turn with no tool_result blocks on EVERY input; the single pass
+	 * below simply never fires. A tool_result turn scans its blocks once,
+	 * not twice.
 	 *
 	 * @since 0.2.0
 	 *
@@ -1012,18 +1016,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @throws InvalidArgumentException When a text block precedes a tool_result block.
 	 */
 	private function reject_text_before_tool_results( array $blocks ): void {
-		$has_tool_result = false;
-		foreach ( $blocks as $block ) {
-			if ( 'tool_result' === $block['type'] ) {
-				$has_tool_result = true;
-				break;
-			}
-		}
-
-		if ( ! $has_tool_result ) {
-			return;
-		}
-
 		$seen_text = false;
 		foreach ( $blocks as $block ) {
 			if ( 'text' === $block['type'] ) {
