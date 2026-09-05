@@ -532,7 +532,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					 * still flags the block (see
 					 * ToolArgsReplayGuard::wire_arguments_are_replayable()).
 					 */
-					if ( ! ToolArgsReplayGuard::wire_arguments_are_replayable( $block['json'] ) ) {
+					if ( ! ToolArgsReplayGuard::wire_arguments_are_replayable( $block['json'], $decoded ) ) {
 						$this->malformed_tool_input = true;
 
 						return null;

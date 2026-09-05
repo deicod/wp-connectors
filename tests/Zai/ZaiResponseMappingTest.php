@@ -372,6 +372,32 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
 
         $exact['escape-dense + exact literal'] = '{"doc":"' . str_repeat('x\"y', 20000) . '","tracking_id":100000000000000000000}';
         $this->assertTrue($guard::wire_arguments_are_replayable($exact['escape-dense + exact literal']), 'The precise rule must keep working at scale (no engine failure on the possessive stripper).');
+
+        /*
+         * glm13-10 (behavioral no-op, source-pinned): both production
+         * call sites hand the guard the tree they decoded immediately
+         * beforehand — the zai parse hook its GLM6 #1 decode, the
+         * Anthropic streamed tool block its object check — so the guard
+         * runs one decode per arguments string instead of two (plus the
+         * redundant encode oracle pass over the same value).
+         */
+        $model_source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
+        );
+        $this->assertSame(
+            1,
+            preg_match('/wire_arguments_are_replayable\(\s*\$raw_arguments,\s*\$raw\s*\)/', $model_source),
+            'The zai parse hook must pass its pre-decoded tree to the guard.'
+        );
+
+        $aggregator_source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
+        );
+        $this->assertSame(
+            1,
+            preg_match('/wire_arguments_are_replayable\(\s*\$block\[\'json\'\],\s*\$decoded\s*\)/', $aggregator_source),
+            'The Anthropic streamed tool block must pass its pre-decoded tree to the guard.'
+        );
     }
 
     public function testPreDecodedToolCallArgumentsWithInfAreRejectedTyped()

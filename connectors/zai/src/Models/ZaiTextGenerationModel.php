@@ -823,7 +823,13 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * lossy one are indistinguishable, so undecidable rejects.
 		 */
 		if ( \is_string( $raw_arguments ) ) {
-			if ( ! ToolArgsReplayGuard::wire_arguments_are_replayable( $raw_arguments ) ) {
+			/*
+			 * glm13-10: $raw is the SAME string's decode from the GLM6 #1
+			 * branch above — the guard takes it instead of re-decoding
+			 * (and re-encoding) a value already in hand and verified
+			 * decodable.
+			 */
+			if ( ! ToolArgsReplayGuard::wire_arguments_are_replayable( $raw_arguments, $raw ) ) {
 				throw FixedMessageResponseException::fixed(
 					self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					'tool_calls',

@@ -184,10 +184,21 @@ final class ToolArgsReplayGuard {
 	 * @since 0.2.0
 	 *
 	 * @param string $raw_arguments The raw arguments JSON string from the wire.
+	 * @param mixed  $decoded       The SAME string's json_decode() product
+	 *                              when the caller already holds it (glm13-10:
+	 *                              both call sites decode the string
+	 *                              immediately before this rule — the zai
+	 *                              parse hook and the Anthropic streamed
+	 *                              tool block — so the guard re-decoded and
+	 *                              re-encoded a value in hand; passing it
+	 *                              keeps one decode per string). Null (the
+	 *                              default) decodes here as before.
 	 * @return bool True when every integer literal survives the decode exactly.
 	 */
-	public static function wire_arguments_are_replayable( string $raw_arguments ): bool {
-		$decoded = json_decode( $raw_arguments ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle below is required: INF/NAN from exponent-form giants must fail, not be lossily rescued.
+	public static function wire_arguments_are_replayable( string $raw_arguments, $decoded = null ): bool {
+		if ( null === $decoded ) {
+			$decoded = json_decode( $raw_arguments ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle below is required: INF/NAN from exponent-form giants must fail, not be lossily rescued.
+		}
 
 		if ( false === json_encode( $decoded ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle: INF (the 1e999 exponent decode) and NAN cannot encode, so the arguments cannot replay at all.
 			return false;
