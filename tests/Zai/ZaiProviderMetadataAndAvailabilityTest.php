@@ -302,6 +302,87 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testAnOpaqueWiredCredentialFliesNothingAndBindsNothing()
+    {
+        /*
+         * glm14-5 probe half: a foreign (non-Api-key) wiring would fly
+         * every real request, but the verdict binding (effective_key())
+         * can only ever name the ladder/database credential — flying the
+         * opaque credential would persist its 401 under a key that never
+         * flew. The pre-fix probe flew the foreign credential and its
+         * 401 cleared the working database key for STATE_TTL; the fixed
+         * probe stays inconclusive: nothing flies, nothing persists, the
+         * connector reports configured-pending instead of a poisoned
+         * not-connected.
+         */
+        putenv('ZAI_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $instance->setRequestAuthentication($this->opaqueAuthentication());
+
+        // A doomed 401 would be served to whatever flew; none may.
+        $this->queueSdkResponse(401, array(), '{"error":{"message":"bad key"}}');
+
+        $this->assertTrue($instance->isConfigured(), 'Opaque wiring reports configured-pending, never a poisoned verdict.');
+
+        $this->assertNoHttpRequests();
+        $this->assertFalse(
+            get_option(ZaiProviderAvailability::STATE_OPTION, false),
+            'No verdict may be recorded for a credential the binding cannot name.'
+        );
+    }
+
+    public function testAGeneration401UnderOpaqueWiringRecordsNothing()
+    {
+        /*
+         * glm14-5 recorder half: the reader returns the opaque credential
+         * the rejecting request flew — record_rejection_for_status()
+         * must not fall back to the effective binding (the unwired
+         * treatment) and poison the database key that never flew.
+         */
+        putenv('ZAI_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiProviderAvailability::KEY_OPTION, $key);
+
+        (new ZaiProviderAvailability())->record_rejection_for_status(
+            401,
+            function () {
+                return $this->opaqueAuthentication();
+            },
+            null
+        );
+
+        $this->assertFalse(
+            get_option(ZaiProviderAvailability::STATE_OPTION, false),
+            'No verdict may be recorded under a binding for a credential that never flew.'
+        );
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * A foreign (non-Api-key) request authentication — the opaque wiring
+     * only third-party setRequestAuthentication() callers can produce.
+     *
+     * @return \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface
+     */
+    private function opaqueAuthentication()
+    {
+        return new class implements \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface {
+            public function authenticateRequest(WordPress\AiClient\Providers\Http\DTO\Request $request): WordPress\AiClient\Providers\Http\DTO\Request
+            {
+                return $request;
+            }
+
+            public static function getJsonSchema(): array
+            {
+                return array();
+            }
+        };
+    }
+
     public function testADatabaseOnlyValidKeyConnectsThroughAnUnwiredProbe()
     {
         // GLM5 #10 (positive half): a valid database-only key must report

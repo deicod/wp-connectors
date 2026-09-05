@@ -939,7 +939,10 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *                                        authentication the rejecting request
 	 *                                        authenticated with (throws
 	 *                                        RuntimeException when unwired, which
-	 *                                        resolves the effective key instead).
+	 *                                        resolves the effective key instead;
+	 *                                        an opaque non-Api-key instance flew
+	 *                                        the request and records NOTHING —
+	 *                                        glm14-5).
 	 * @param string|null $endpoint_cache_key The request-time endpoint identity
 	 *                                        (GLM10 #1), or null for the current
 	 *                                        settings.
@@ -954,6 +957,19 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			$wired = $authentication_reader();
 		} catch ( RuntimeException $unwired ) {
 			$wired = null;
+		}
+
+		/*
+		 * glm14-5: an OPAQUE wired credential (a non-Api-key
+		 * RequestAuthentication) flew the rejecting request. Nulling it —
+		 * the unwired treatment — would bind the definitive verdict to
+		 * the ladder/database credential effective_for_authentication()
+		 * resolves, a key that never flew: the exact cross-credential
+		 * poisoning glm13-1's empty-wire rule refuses. One credential
+		 * flies AND binds, or no verdict persists.
+		 */
+		if ( null !== $wired && ! $wired instanceof ApiKeyRequestAuthentication ) {
+			return;
 		}
 
 		$this->record_definitive_verdict(
@@ -1049,7 +1065,33 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			try {
 				$wired = $this->getRequestAuthentication();
 
-				if ( ! ( $wired instanceof ApiKeyRequestAuthentication && '' === $wired->getApiKey() ) ) {
+				if ( $wired instanceof ApiKeyRequestAuthentication && '' === $wired->getApiKey() ) {
+					/*
+					 * glm13-1: an empty wired key authenticates nothing —
+					 * treated exactly like none (the comment above).
+					 */
+					$authentication = null;
+				} elseif ( ! $wired instanceof ApiKeyRequestAuthentication ) {
+					/*
+					 * glm14-5: an OPAQUE wired credential (a non-Api-key
+					 * RequestAuthentication) cannot be named by the
+					 * verdict binding this class builds — the binding
+					 * rides effective_key(), which ignores non-Api-key
+					 * wiring and resolves the ladder/database credential.
+					 * Flying the opaque credential would let its answer
+					 * validate or reject one credential while
+					 * isConfigured() persists the verdict under a
+					 * DIFFERENT key's binding — the same cross-credential
+					 * poisoning class glm13-1's empty-wire rule refuses.
+					 * The SDK registry type-gates its wirings to
+					 * ApiKeyRequestAuthentication, so only third-party
+					 * code calling setRequestAuthentication() directly
+					 * can produce this shape. One credential flies AND
+					 * binds, or no verdict persists: inconclusive,
+					 * nothing flown.
+					 */
+					return null;
+				} else {
 					$authentication = $wired;
 				}
 			} catch ( Throwable $unwired ) {
