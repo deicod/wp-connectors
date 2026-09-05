@@ -113,6 +113,45 @@ final class SelfContainmentLoopWritesTest extends TestCase
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
     }
 
+    public function testAWriteAfterTheIncludeInsideAReEnteredFunctionFlags(): void
+    {
+        /*
+         * glm18-19 (verifier round): recursion is a backward edge the
+         * loop spans did not model — a write after the include inside a
+         * function that recurses executes before the include's NEXT
+         * activation (empirically confirmed laundering: the second
+         * activation required an out-of-root marker while the scanner
+         * reported zero violations). Function-declaration spans join
+         * the visibility set: every write in the enclosing function of
+         * an include is visible to it.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\n\$f = __DIR__ . '/a.php';\nfunction run_it(\$f, \$r) {\n    require \$f;\n    \$f = '/outside/pwned.php';\n    if (++\$r < 2) {\n        run_it(\$f, \$r);\n    }\n}\nrun_it(\$f, 0);\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'A re-entered function\'s later writes must be visible to the include.');
+        $this->assertStringContainsString('require $f', implode("\n", $violations));
+    }
+
+    public function testAFunctionSpanWithOnlyLiteralWritesStaysClean(): void
+    {
+        /*
+         * glm18-19 control: the widened region only ever refuses proofs
+         * on NON-literal writes — a function whose every write to the
+         * include variable resolves in-root stays clean, and the
+         * straight-line pins above (no function) are unaffected.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nfunction load_it() {\n    \$f = __DIR__ . '/inc.php';\n    require \$f;\n    \$f = __DIR__ . '/inc2.php';\n    require \$f;\n}\nload_it();\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
+    }
+
     public function testAForEachOverAWholeArrayLiteralMapStaysClean(): void
     {
         /*

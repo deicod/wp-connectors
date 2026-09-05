@@ -542,6 +542,11 @@ function wp_connectors_matching_paren_end($masked, $open)
  * confirmed); a BRACELESS do (`do require ...; while (cond);`) is
  * matched as well and over-approximates to end-of-file.
  *
+ * glm18-19 (verifier round): FUNCTION-declaration spans join the set —
+ * recursion and repeated callback invocation re-enter a body, so every
+ * write in the enclosing function of an include is visible to it,
+ * before or after the include's own position.
+ *
  * Every span is OVER-approximated: a braced body closes at its matching
  * brace on the string-masked view (string/heredoc contents are blank,
  * so the depth count only sees code braces), and any shape we do not
@@ -559,13 +564,50 @@ function wp_connectors_write_visibility_spans($masked, $offset)
     $spans = array(array(0, max(0, $offset - 1)));
     $length = strlen($masked);
 
-    if (! preg_match_all('/\b(?:while|for|foreach)\s*\(|\bdo\s*\{|\bdo\b(?!\s*\{)/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
+    if (! preg_match_all('/\b(?:while|for|foreach)\s*\(|\bdo\s*\{|\bdo\b(?!\s*\{)|\bfunction\b/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
         return $spans;
     }
 
     foreach ($loops[0] as $loop) {
         $construct = $loop[0];
-        $last = $loop[1] + strlen($construct) - 1; // Position of '(' or '{', or the do keyword's 'o'.
+        $last = $loop[1] + strlen($construct) - 1; // Position of '(' or '{', or the keyword's last letter.
+
+        if ('n' === $construct[ strlen($construct) - 1 ]) {
+            /*
+             * A function/method/closure declaration (glm18-19, verifier
+             * round): recursion and repeated callback invocation are
+             * backward edges the loop spans do not model — a write
+             * placed after the include inside a function that re-enters
+             * executes before the include's NEXT activation (round 18:
+             * the recursion fixture laundered a foreign path,
+             * empirically confirmed). Every write in the enclosing
+             * function's body is therefore visible to an include
+             * inside it. A bodyless declaration (interface/abstract —
+             * a ';' before any '{') bounds nothing; a body brace we
+             * cannot close falls to the shared EOF approximation.
+             */
+            $j = $loop[1] + strlen($construct);
+            $body_open = false;
+            while ($j < $length) {
+                if (';' === $masked[ $j ]) {
+                    break; // Bodyless declaration: no body to span.
+                }
+                if ('{' === $masked[ $j ]) {
+                    $body_open = $j;
+                    break;
+                }
+                ++$j;
+            }
+            if (false === $body_open) {
+                continue;
+            }
+            $body_close = wp_connectors_matching_brace_end($masked, $body_open);
+
+            if ($offset >= $loop[1] && $offset <= $body_close) {
+                $spans[] = array($loop[1], $body_close);
+            }
+            continue;
+        }
 
         if ('o' === $construct[ strlen($construct) - 1 ]) {
             // A braceless `do statement; while (...);`: the single-statement
