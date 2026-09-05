@@ -127,8 +127,17 @@ function zai_connector_zai_uninstall_site() {
 		$zai_connector_endpoint_class           = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class;
 		$zai_connector_anthropic_endpoint_class = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class;
 
-		foreach ( array( 'coding', 'general' ) as $zai_connector_plan ) {
-			foreach ( array( 'intl', 'cn' ) as $zai_connector_region ) {
+		/*
+		 * glm15-10: the plan/region loops ride the declared owner
+		 * (AbstractPlanRegionSettings::PLANS/REGIONS, loaded right
+		 * above) — the previous hard-coded pairs were one of three
+		 * lockstep listings (this file, the settings layer, and the
+		 * live probe's --plan/--region whitelists), so a new plan or
+		 * region survived uninstall here while the settings layer
+		 * served it.
+		 */
+		foreach ( \Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings::PLANS as $zai_connector_plan ) {
+			foreach ( \Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings::REGIONS as $zai_connector_region ) {
 				$zai_connector_cache_id_pairs = array(
 					$zai_connector_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),
 					$zai_connector_anthropic_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),

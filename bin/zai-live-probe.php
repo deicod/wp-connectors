@@ -42,6 +42,7 @@ use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Plugin;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
+use Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 use WordPress\AiClient\AiClient;
@@ -195,7 +196,7 @@ $zai_probe_surfaces = array(
 $surface_facts = $zai_probe_surfaces[ $surface ];
 
 $plan = zai_live_probe_option( $args, 'plan', $surface_facts['default_plan'] );
-$region = zai_live_probe_option( $args, 'region', 'intl' );
+$region = zai_live_probe_option( $args, 'region', AbstractPlanRegionSettings::DEFAULT_REGION );
 
 /*
  * Codex R7 #2: a typo in --plan/--region was stored and REPORTED while
@@ -204,13 +205,20 @@ $region = zai_live_probe_option( $args, 'region', 'intl' );
  * intl, making evidence misleading and potentially exercising the wrong
  * billing surface. Validate exactly like --surface: reject before any
  * key lookup or network call.
+ *
+ * glm15-10: the whitelists ride the declared owner
+ * (AbstractPlanRegionSettings::PLANS/REGIONS) — the third hand-copy of
+ * the lists after the settings layer and uninstall.php, so a valid new
+ * value was rejected here with a misleading diagnostic while the
+ * plugin itself served it. The diagnostics compose from the same
+ * constants.
  */
-if ( ! in_array( $plan, array( 'coding', 'general' ), true ) ) {
-    fwrite( STDERR, "live-probe: --plan must be coding or general\n" );
+if ( ! in_array( $plan, AbstractPlanRegionSettings::PLANS, true ) ) {
+    fwrite( STDERR, 'live-probe: --plan must be ' . implode( ' or ', AbstractPlanRegionSettings::PLANS ) . "\n" );
     exit( 2 );
 }
-if ( ! in_array( $region, array( 'intl', 'cn' ), true ) ) {
-    fwrite( STDERR, "live-probe: --region must be intl or cn\n" );
+if ( ! in_array( $region, AbstractPlanRegionSettings::REGIONS, true ) ) {
+    fwrite( STDERR, 'live-probe: --region must be ' . implode( ' or ', AbstractPlanRegionSettings::REGIONS ) . "\n" );
     exit( 2 );
 }
 

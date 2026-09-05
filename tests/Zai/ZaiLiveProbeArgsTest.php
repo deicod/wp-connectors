@@ -103,6 +103,24 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('--surface must be openai or anthropic', $output);
     }
 
+    public function testInvalidPlanAndRegionValuesKeepTheirWhitelistDiagnostics()
+    {
+        /*
+         * glm15-10: the whitelists compose from the owner constants
+         * now — the DIAGNOSTICS compose from the same lists, so an
+         * invalid value keeps the value-naming diagnostic shape.
+         */
+        list($exitCode, $output) = $this->runProbe(array('--plan', 'bogus'));
+
+        $this->assertSame(2, $exitCode);
+        $this->assertStringContainsString('--plan must be coding or general', $output);
+
+        list($exitCode, $output) = $this->runProbe(array('--region', 'bogus'));
+
+        $this->assertSame(2, $exitCode);
+        $this->assertStringContainsString('--region must be intl or cn', $output);
+    }
+
     public function testAHomelessEnvironmentSkipsTheFileFallbackCleanly()
     {
         /*
@@ -198,5 +216,24 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         $this->assertStringContainsString("->generation_url()", $source, 'The generation-route evidence rides the endpoint owner.');
         $this->assertSame(0, preg_match('/chat\/completions/', $source), 'No inline generation-route literal may ride the probe.');
         $this->assertSame(0, preg_match('/instanceof ZaiAnthropicEndpoint \?/', $source), 'No instanceof route picking: the endpoint owns the route.');
+
+        /*
+         * glm15-10: the --plan/--region whitelists ride the declared
+         * owner (AbstractPlanRegionSettings::PLANS/REGIONS) — this was
+         * the third hand-copy of the lists (settings layer,
+         * uninstall.php, here), so a valid new value was rejected with
+         * a misleading diagnostic while the plugin served it. The pins
+         * forbid the literal-list shape in the probe and uninstall.
+         */
+        $this->assertStringContainsString('AbstractPlanRegionSettings::PLANS', $source, 'The plan whitelist rides the owner constant.');
+        $this->assertStringContainsString('AbstractPlanRegionSettings::REGIONS', $source, 'The region whitelist rides the owner constant.');
+        $this->assertSame(0, preg_match("/array\(\s*'coding',\s*'general'\s*\)/", $source), 'No hand-copied plan list may ride the probe.');
+        $this->assertSame(0, preg_match("/array\(\s*'intl',\s*'cn'\s*\)/", $source), 'No hand-copied region list may ride the probe.');
+
+        $uninstall = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/uninstall.php');
+        $this->assertStringContainsString('AbstractPlanRegionSettings::PLANS', $uninstall, 'The uninstall discovery sweep rides the owner plan list.');
+        $this->assertStringContainsString('AbstractPlanRegionSettings::REGIONS', $uninstall, 'The uninstall discovery sweep rides the owner region list.');
+        $this->assertSame(0, preg_match("/array\(\s*'coding',\s*'general'\s*\)/", $uninstall), 'No hand-copied plan list may ride the uninstall sweep.');
+        $this->assertSame(0, preg_match("/array\(\s*'intl',\s*'cn'\s*\)/", $uninstall), 'No hand-copied region list may ride the uninstall sweep.');
     }
 }
