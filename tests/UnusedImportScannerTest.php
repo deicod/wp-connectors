@@ -202,6 +202,92 @@ FIXTURE
                 "<?php\nuse Vendor\\Package\\DeadTwo;",
                 1,
             ),
+            /*
+             * glm20-3: group-use declarations were invisible to the gate
+             * — the single-class pattern stops at the '{', so a dead
+             * import inside a group never flagged. Every import inside
+             * the braces is judged by the same mention contract as the
+             * single form.
+             */
+            'group-use with an unused member flags (glm20-3)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Package\{Used, Dead};
+$x = new Used();
+FIXTURE
+                ,
+                1,
+            ),
+            'group-use fully used does not flag (glm20-3)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Package\{Alpha, Beta as B};
+$x = new Alpha();
+$y = new B();
+FIXTURE
+                ,
+                0,
+            ),
+            'group-use alias member unused flags (glm20-3)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Package\{Alpha as A, Beta};
+$x = new Beta();
+FIXTURE
+                ,
+                1,
+            ),
+            'nested group-use unused member flags (glm20-3)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\{Pkg\{Deep}, Other};
+$x = new Deep();
+FIXTURE
+                ,
+                1,
+            ),
+            'function group-use unused member flags (glm20-3)' => array(
+                <<<'FIXTURE'
+<?php
+use function Vendor\{helper, dead_helper};
+helper();
+FIXTURE
+                ,
+                1,
+            ),
+            'group-use member mention in comment does not flag (glm20-3)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Package\{Widget};
+// The Widget handles this.
+FIXTURE
+                ,
+                0,
+            ),
+            /*
+             * The members are split on the MASKED view: a comma inside a
+             * blanked comment is not a member separator. Splitting the
+             * RAW bytes instead corrupts 'Dead /* ...' into a non-name
+             * shape that is skipped — the dead import fails OPEN, the
+             * exact silent false negative glm20-3 closes.
+             */
+            'comment comma cannot hide a group member (glm20-3)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Package\{Dead /* a, b */, Alpha};
+$x = new Alpha();
+FIXTURE
+                ,
+                1,
+            ),
+            'unterminated group use stays neutral (lint owns it)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\{Broken;
+FIXTURE
+                ,
+                0,
+            ),
         );
     }
 

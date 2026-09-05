@@ -175,12 +175,36 @@ function wp_connectors_unused_import_violations(string $root): int
         );
 
         $matches = array();
-        if (preg_match_all(
+        preg_match_all(
             '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+(?:\s+as\s+(\w+))?\s*;/m',
             $code_view,
             $matches,
             PREG_SET_ORDER | PREG_OFFSET_CAPTURE
-        ) === 0) {
+        );
+
+        /*
+         * glm20-3: GROUP-USE declarations (use Foo\{A, B as C};) are
+         * their own form — the single-class pattern above stops at the
+         * '{', so until now every import inside a group was invisible
+         * to the gate (a silent false negative of the exact
+         * phantom-dependency class the gate exists for). The opening is
+         * matched on the SAME masked view; the closing brace comes from
+         * the shared brace walk (string contents are masked and
+         * comments blanked, so no data brace can unbalance it), and the
+         * members are unrolled from the MASKED statement bytes — a
+         * comment blanked to spaces inside the body cannot hide the
+         * comma that splits two members the way its raw bytes would
+         * (glm17-15's length-not-text invariant, applied to the split).
+         */
+        $group_matches = array();
+        preg_match_all(
+            '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+\s*\{/m',
+            $code_view,
+            $group_matches,
+            PREG_SET_ORDER | PREG_OFFSET_CAPTURE
+        );
+
+        if ($matches === array() && $group_matches === array()) {
             continue;
         }
 
@@ -239,7 +263,144 @@ function wp_connectors_unused_import_violations(string $root): int
             ));
             ++$violations;
         }
+
+        foreach ($group_matches as $match) {
+            $open = $match[0][1] + strlen($match[0][0]) - 1;
+            $close = wp_connectors_matching_brace_end($code_view, $open);
+
+            /*
+             * The declaration must close with ';' right after the
+             * matching brace on the masked view; anything else (an
+             * unbalanced body the walk ran to EOF on, a missing
+             * terminator) is not a well-formed declaration — @lint owns
+             * unparseable files (the glm17 boundary), so the scanner
+             * stays neutral on that class.
+             */
+            if (1 !== preg_match('/^[ \t\r\n]*;/', (string) substr($code_view, $close + 1), $semi)) {
+                continue;
+            }
+            $statement_end = $close + 1 + strlen($semi[0]);
+
+            $prefix = preg_replace('/^use\s+(?:function\s+|const\s+)?|[\s{]+$/', '', $match[0][0]);
+            $member_imports = wp_connectors_group_use_imports(
+                (string) $prefix,
+                (string) substr($code_view, $open + 1, $close - $open - 1)
+            );
+
+            /*
+             * The RAW bytes at the captured offset (glm17-15), removed
+             * once for every member's mention check — the whole group
+             * statement is the declaration surface.
+             */
+            $statement = substr($source, $match[0][1], $statement_end - $match[0][1]);
+            $withoutUse = substr_replace($source, '', $match[0][1], strlen($statement));
+
+            foreach ($member_imports as $member_import) {
+                // Same mention contract as the single form: one
+                // word-boundary mention anywhere (code, comments,
+                // docblocks), case-insensitive (glm17-9).
+                if (preg_match('/\b' . preg_quote($member_import['short'], '/') . '\b/i', $withoutUse) === 1) {
+                    continue;
+                }
+
+                fwrite(STDERR, sprintf(
+                    "conventions: FAIL %s: unused import '%s' (group-use member) — the short name appears nowhere else in the file.\n",
+                    substr($file->getPathname(), strlen($root) + 1),
+                    $member_import['qualified']
+                ));
+                ++$violations;
+            }
+        }
     }
 
     return $violations;
+}
+
+/**
+ * Splits a group-use body at its TOP-LEVEL commas (glm20-3).
+ *
+ * A member may itself be a nested group ('Sub\{Deep, Deeper}'), so the
+ * split must respect brace depth; the body comes from the MASKED view,
+ * where string contents and comments cannot contribute commas.
+ *
+ * @param string $body The text between the group's braces (masked view).
+ * @return array<int, string> Non-empty, trimmed member texts.
+ */
+function wp_connectors_group_use_members(string $body): array
+{
+    $members = array();
+    $depth = 0;
+    $current = '';
+    $length = strlen($body);
+    for ($i = 0; $i < $length; ++$i) {
+        $char = $body[$i];
+        if ('{' === $char) {
+            ++$depth;
+        } elseif ('}' === $char) {
+            --$depth;
+        }
+
+        if (',' === $char && 0 === $depth) {
+            $members[] = trim($current);
+            $current = '';
+            continue;
+        }
+        $current .= $char;
+    }
+    $members[] = trim($current);
+
+    return array_values(array_filter($members, static function ($member): bool {
+        return '' !== $member;
+    }));
+}
+
+/**
+ * Unrolls one group-use statement's members into import pairs (glm20-3).
+ *
+ * Each member yields its qualified name (group prefix + member path) and
+ * the SHORT name other code references (the alias when 'as' is given,
+ * else the last segment of the MEMBER's own path — not the prefix:
+ * 'use Vendor\Pkg\{Sub\Widget};' is referenced as Widget). Nested
+ * groups recurse with the composed prefix. A member that is not a
+ * plain name/alias shape (only possible in a file lint already rejects)
+ * is skipped — the scanner stays neutral on unparseable input.
+ *
+ * @param string $prefix The group's namespace prefix ('Vendor\Pkg').
+ * @param string $body   The text between the group's braces (masked view).
+ * @return array<int, array{qualified: string, short: string}> Member imports.
+ */
+function wp_connectors_group_use_imports(string $prefix, string $body): array
+{
+    $imports = array();
+    foreach (wp_connectors_group_use_members($body) as $member) {
+        $open = strpos($member, '{');
+        if (false !== $open && '}' === substr(rtrim($member), -1)) {
+            foreach (wp_connectors_group_use_imports(
+                trim($prefix . '\\' . trim(substr($member, 0, $open)), '\\'),
+                (string) substr($member, $open + 1, -1)
+            ) as $nested) {
+                $imports[] = $nested;
+            }
+            continue;
+        }
+
+        $alias = '';
+        if (1 === preg_match('/^([\w\\\\]+)\s+as\s+(\w+)$/', $member, $parts)) {
+            $alias = $parts[2];
+            $member = $parts[1];
+        } elseif (1 !== preg_match('/^[\w\\\\]+$/', $member)) {
+            // Not a name/alias shape: unparseable input, lint owns it.
+            continue;
+        }
+
+        $last_backslash = strrpos($member, '\\');
+        $imports[] = array(
+            'qualified' => $prefix . '\\' . $member,
+            'short' => '' !== $alias
+                ? $alias
+                : (false === $last_backslash ? $member : substr($member, $last_backslash + 1)),
+        );
+    }
+
+    return $imports;
 }
