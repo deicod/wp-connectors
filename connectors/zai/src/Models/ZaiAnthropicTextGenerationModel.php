@@ -108,6 +108,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private const PROVIDER_LABEL = ZaiAnthropicProviderAvailability::REFUSAL_LABEL;
 
 	/**
+	 * The prompt the CURRENT in-flight request was prepared from —
+	 * captured in prepareGenerateTextParams() (glm15-5) so the
+	 * encodability attribution walk can name the first bad member when
+	 * the request-build whole-payload net fails.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array|null
+	 */
+	private $generation_prompt = null;
+
+	/**
 	 * Returns the wired authentication, protocol-wrapped for this surface.
 	 *
 	 * @since 0.2.0
@@ -186,6 +198,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$params = $this->prepareGenerateTextParams( $prompt );
 
+		/*
+		 * glm15-5: the request-build chokepoint net — the identical
+		 * glm13-11/glm14-4 mechanics the zai surface runs at its
+		 * createRequest(): ONE raw encode of the assembled payload that
+		 * both proves encodability (the typed pre-transport rejection,
+		 * with the attribution walk naming the first bad member) and
+		 * rides as the request's body string, deleting the transport's
+		 * send-time re-encode. See guard_assembled_params().
+		 */
+		$data = $this->guard_assembled_params( $params );
+
 		$endpoint = ZaiAnthropicEndpoint::for_current_settings();
 
 		/*
@@ -198,7 +221,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			HttpMethodEnum::POST(),
 			$endpoint->messages_url(),
 			array( 'Content-Type' => 'application/json' ),
-			$params,
+			$data,
 			$this->getRequestOptions()
 		);
 
@@ -209,6 +232,130 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$this->throwIfNotSuccessful( $response );
 
 		return $this->parseResponseToGenerativeAiResult( $response );
+	}
+
+	/**
+	 * Rejects an unassemblable request payload at the request-build
+	 * chokepoint — and rides the successful encode as the body (glm15-5).
+	 *
+	 * The port of the zai surface's glm13-11/glm14-4 net to this
+	 * surface's own request build: the mapping (this class, not a vendor
+	 * parent) used to eagerly json_encode every wire member per request
+	 * — every text part of the conversation history, the system
+	 * instruction, every tool declaration name/description/schema — and
+	 * the transport's Request::getBody() then re-encoded the identical
+	 * assembled payload, the exact per-member-walk pattern the sibling
+	 * surface replaced in this same PR. ONE raw encode of the assembled
+	 * $params now decides both halves:
+	 *
+	 * - SUCCESS: the encoded string is returned and handed to the
+	 *   Request as its $data — Request stores a string as the RAW body
+	 *   and getBody() returns it as-is, so the transport's send-time
+	 *   re-encode (the second whole-payload serialization every request
+	 *   of a tool-loop history paid) is gone. The wire bytes are
+	 *   unchanged — the same encoder, no flags, byte-identical to what
+	 *   getBody() would have produced from the array (this surface's
+	 *   generation requests always carry a JSON body: the literal
+	 *   Content-Type header two calls up). No plugin or vendor consumer
+	 *   reads getData() on the request (the transport consumes
+	 *   getBody() only, HttpTransporter::convertToPsr7Request).
+	 * - FAILURE: the per-member attribution walk (guard_wire_values())
+	 *   runs over the stashed prompt to name the first bad member with
+	 *   the precise message the eager per-site guards used to give; a
+	 *   member the walk does not know keeps the generic description.
+	 *   Both reject typed pre-transport, before any Request is built.
+	 *
+	 * The mapping sites keep every rule that is NOT pure
+	 * encodability, exactly like the zai surface's typed walk: identity
+	 * rules (non-empty tool ids/names, duplicates), shape rules
+	 * (list-root arguments/schemas, scalars, empty drops), the
+	 * stop-sequence per-entry rule, the schema normalization (a
+	 * TRANSFORM — its output rides the wire), the tool-result response
+	 * and output-schema guidance encodes (TRANSFORMS — their encoded
+	 * strings ride the wire), and the tool-arguments replay guard (the
+	 * precision-loss rule, with its glm12-12 stamp skip). One ordering
+	 * nuance the split shares with the zai surface: a payload carrying
+	 * BOTH a typed-walk violation (an empty tool name) and an
+	 * encodability violation now rejects on the TYPED one first (the
+	 * mapping still runs before the net); single-bad payloads keep
+	 * byte-identical messages through the attribution walk.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<string, mixed> $params The assembled request params.
+	 * @return string|array The encoded JSON body, or $params when the
+	 *                      net rejected (unreachable — the rejection
+	 *                      throws).
+	 * @throws InvalidArgumentException When any member cannot encode.
+	 */
+	private function guard_assembled_params( array $params ) {
+		$encoded = json_encode( $params ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (the GLM3 #4 verifier-round class).
+
+		if ( false !== $encoded ) {
+			// glm14-4's ride: this string is the request's body.
+			return $encoded;
+		}
+
+		$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );
+
+		JsonEncodeGuard::must_encode( $params, 'a request payload member', self::PROVIDER_LABEL );
+
+		return $params; // Unreachable: must_encode() rejects above.
+	}
+
+	/**
+	 * Attributes an assembled-payload encodability failure to its first
+	 * bad member (glm15-5).
+	 *
+	 * Runs ONLY when the request-build net (guard_assembled_params())
+	 * fails, over the stashed prompt: the same per-member
+	 * JsonEncodeGuard checks the eager mapping-site guards ran on every
+	 * request, preserving the precise first-bad-wins messages ('a
+	 * message text part', 'the system instruction', 'a declared tool
+	 * function name', ...) without the second O(payload) serialization
+	 * the happy path used to pay. The check order matches the mapping
+	 * order (messages, then system, then tool declarations), so a
+	 * multi-bad payload names the member the old eager walk named. A
+	 * member this walk does not know falls back to the caller's generic
+	 * description.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $prompt Prompt messages (list of Message).
+	 * @return void
+	 * @throws InvalidArgumentException When a wire value cannot encode.
+	 */
+	private function guard_wire_values( array $prompt ): void {
+		$config = $this->getConfig();
+
+		foreach ( $prompt as $message ) {
+			foreach ( $message->getParts() as $part ) {
+				if ( $part->getType()->isText() && ! $part->getChannel()->isThought() && '' !== (string) $part->getText() ) {
+					// Only visible, non-empty text ships (the mapping
+					// drops the others, so guarding them would
+					// over-reject).
+					JsonEncodeGuard::must_encode( (string) $part->getText(), 'a message text part', self::PROVIDER_LABEL );
+				}
+			}
+		}
+
+		$system_instruction = $config->getSystemInstruction();
+		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
+			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', self::PROVIDER_LABEL );
+		}
+
+		$function_declarations = $config->getFunctionDeclarations();
+		if ( \is_array( $function_declarations ) ) {
+			foreach ( $function_declarations as $declaration ) {
+				JsonEncodeGuard::must_encode( $declaration->getName(), 'a declared tool function name', self::PROVIDER_LABEL );
+				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
+
+				$input_schema = $declaration->getParameters();
+				if ( \is_array( $input_schema ) && array() !== $input_schema ) {
+					JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
+				}
+			}
+		}
 	}
 
 	/**
@@ -229,6 +376,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	protected function prepareGenerateTextParams( array $prompt ): array {
 		$this->validate_request( $prompt );
 
+		// glm15-5: the attribution walk reads this prompt if the
+		// request-build encodability net fails.
+		$this->generation_prompt = $prompt;
+
 		$config = $this->getConfig();
 
 		$params = array(
@@ -246,13 +397,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
 			/*
-			 * GLM3 #4: the system member is a wire STRING — the same
-			 * invalid-UTF-8 rejection as text parts (the shared
-			 * JsonEncodeGuard's raw-oracle rationale), not the
-			 * transport's raw JsonException surfaced as the generic 500.
+			 * GLM3 #4: the system member is a wire STRING — its
+			 * invalid-UTF-8 rejection is the shared JsonEncodeGuard's
+			 * raw-oracle rule. glm15-5: that pure-encodability check
+			 * rides the request-build whole-payload net now (the
+			 * attribution walk names 'the system instruction' on
+			 * failure), so it no longer runs eagerly per member.
 			 */
-			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', self::PROVIDER_LABEL );
-
 			$params['system'] = $system_instruction;
 		}
 
@@ -389,14 +540,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			/*
 			 * GLM6 #9: the identity and description strings ride the
-			 * tools member verbatim and were only ever EMPTINESS-checked —
-			 * an unencodable one (invalid UTF-8 from a DB row, say)
-			 * detonated in the transport's whole-request encode as the
-			 * generic 500 instead of the typed pre-transport 400 every
-			 * neighboring wire string receives.
+			 * tools member verbatim and were only ever EMPTINESS-checked
+			 * — an unencodable one (invalid UTF-8 from a DB row, say)
+			 * used to detonate in the transport's whole-request encode as
+			 * the generic 500. glm15-5: that pure-encodability check
+			 * rides the request-build whole-payload net now (the
+			 * attribution walk names the member on failure); the
+			 * identity rules above and below keep their eager typed
+			 * rejection.
 			 */
-			JsonEncodeGuard::must_encode( $name, 'a declared tool function name', self::PROVIDER_LABEL );
-			JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
 
 			/*
 			 * R18 (inline 3906485728): a returned tool_use identifies the
@@ -437,16 +589,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			/*
 			 * R20 (inline 3907008524): an unencodable schema value — NAN,
-			 * invalid UTF-8, a resource, a recursive structure — reached the
-			 * request untouched, so generation failed in the transport's
-			 * whole-request serialization instead of producing the adapter's
-			 * pre-transport configuration error. Validated with the same
-			 * RAW json_encode() oracle the output-schema (R19) and
-			 * tool-result (R18) rejections use (GLM4 #1: raw, not
-			 * wp_json_encode() — core's lossy UTF-8 rescue made that
-			 * variant dead code in production; GLM5 #16: single-sourced on
-			 * the shared JsonEncodeGuard); the empty schema keeps its
-			 * object normalization below.
+			 * invalid UTF-8, a resource, a RECURSIVE structure — used to
+			 * reach the request untouched, so generation failed in the
+			 * transport's whole-request serialization instead of
+			 * producing the adapter's pre-transport configuration error.
+			 *
+			 * glm15-5: this one encodability check stays EAGER even
+			 * though the request-build net covers the schema's
+			 * encodability too — the object normalization below is a
+			 * recursive TRANSFORM, and on a self-referential structure
+			 * (a caller-built array referencing itself) it recurses
+			 * until the memory limit: a PHP fatal no net can reject.
+			 * json_encode() detects recursion and returns false, so this
+			 * oracle is the recursion guard the transform needs before
+			 * it runs (GLM4 #1 raw-oracle rule; GLM5 #16 single-sourced).
 			 */
 			if ( \is_array( $input_schema ) && array() !== $input_schema ) {
 				JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
@@ -1025,15 +1181,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			/*
 			 * GLM3 #4 (verifier round): an invalid-UTF-8 string passed
-			 * every is_string check and detonated as a raw JsonException
-			 * in the transport's whole-request encode, surfacing as the
-			 * generic 500 (zai_error). The oracle is the shared
-			 * JsonEncodeGuard's RAW json_encode() — the same primitive
-			 * the SDK transport's Request::getBody() throws on (GLM5 #16
-			 * single-sourced it; see there for why wp_json_encode() and
-			 * mb_check_encoding() are not options).
+			 * every is_string check and used to detonate as a raw
+			 * JsonException in the transport's whole-request encode,
+			 * surfacing as the generic 500 (zai_error). glm15-5: the
+			 * pure-encodability half of that rule (the shared
+			 * JsonEncodeGuard's RAW json_encode oracle) rides the
+			 * request-build whole-payload net now — the attribution walk
+			 * names 'a message text part' on failure; the empty-drop
+			 * shape rule above keeps its eager form.
 			 */
-			JsonEncodeGuard::must_encode( $text, 'a message text part', self::PROVIDER_LABEL );
 
 			return array(
 				'type' => 'text',

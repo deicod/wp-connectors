@@ -108,6 +108,98 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
      * Snapshots.
      */
 
+    public function testTheHappyPathRunsOneEncodabilityPassOverTheAssembledPayload()
+    {        /*
+         * glm15-5 (source pin — the efficiency contract, twin of the zai
+         * surface's glm13-11/glm14-4 pin): the per-member encodability
+         * walk no longer runs eagerly on every request. The
+         * request-build chokepoint encodes the assembled payload ONCE
+         * and invokes the per-member walk only to ATTRIBUTE a failure,
+         * preserving the precise messages the encodability tests above
+         * still assert. The eager exceptions are the ones the mapping
+         * TRANSFORMS need: the tool-result response and output-schema
+         * guidance encodes (their strings ride the wire) and the tool
+         * schema's recursion guard (the normalize transform below it
+         * would fatal on a self-referential structure no net can
+         * reject). The behavioral pin for the ride is
+         * testTheGenerationRequestRidesTheNetsPreEncodedBody().
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php'
+        );
+
+        $this->assertStringContainsString(
+            '$encoded = json_encode( $params );',
+            $source,
+            'The request build must encode the payload exactly once, into the variable that becomes the request body.'
+        );
+        $this->assertStringContainsString(
+            '$data = $this->guard_assembled_params( $params );',
+            $source,
+            'generateTextResult() hands the assembled params to the one-encode net.'
+        );
+        $this->assertStringContainsString(
+            '$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );',
+            $source,
+            'The per-member encodability walk runs only as the attribution pass on net failure.'
+        );
+        $this->assertSame(
+            0,
+            preg_match_all('/must_encode\( \$text, \'a message text part\'/', $source),
+            'No eager per-text-part encodability pre-pass may remain at the mapping site.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/must_encode\( \$system_instruction, \'the system instruction\'/', $source),
+            'The system-instruction encodability check exists exactly once: the attribution walk, not an eager mapping-site pre-pass.'
+        );
+    }
+
+    public function testTheGenerationRequestRidesTheNetsPreEncodedBody()
+    {
+        /*
+         * glm15-5 (behavioral pin — the glm14-4 ride ported): the net's
+         * ONE json_encode is handed to the Request as its body string
+         * (Request stores a string $data as the raw body; getBody()
+         * returns it as-is), so the transport's send-time re-encode —
+         * the second whole-payload serialization every zai_anthropic
+         * generation paid — is gone. getData() is null on the ridden
+         * request and the wire body decodes to exactly the params the
+         * mapping assembled (the snapshot suite pins the wire shape
+         * already).
+         */
+        $transporter = new class implements \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface {
+            /**
+             * @var \WordPress\AiClient\Providers\Http\DTO\Request|null
+             */
+            public $captured_request;
+
+            public function send(\WordPress\AiClient\Providers\Http\DTO\Request $request, ?\WordPress\AiClient\Providers\Http\DTO\RequestOptions $options = null): \WordPress\AiClient\Providers\Http\DTO\Response
+            {
+                $this->captured_request = $request;
+
+                return new \WordPress\AiClient\Providers\Http\DTO\Response(200, array(), HttpResponseFactory::anthropicMessagesBody('ride ok'));
+            }
+        };
+
+        $model = $this->model();
+        $model->setHttpTransporter($transporter);
+
+        $result = $model->generateTextResult(array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))));
+
+        $captured = $transporter->captured_request;
+
+        $this->assertSame('ride ok', $result->toText());
+        $this->assertNotNull($captured, 'The capturing transporter must have received the request.');
+        $this->assertNull($captured->getData(), 'The params array must not ride the Request; the pre-encoded body string does (glm15-5).');
+
+        $decoded = (array) json_decode((string) $captured->getBody(), true);
+
+        $this->assertSame('glm-5.3', $decoded['model']);
+        $this->assertSame('user', $decoded['messages'][0]['role']);
+        $this->assertSame(array(array('type' => 'text', 'text' => 'Say hi.')), $decoded['messages'][0]['content']);
+    }
+
     public function testTheGenerationRouteOwnerMatchesTheWireRequest()
     {
         /*
