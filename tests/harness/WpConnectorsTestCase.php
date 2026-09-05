@@ -239,14 +239,22 @@ abstract class WpConnectorsTestCase extends TestCase
      * Tests that only mock the chat/completions transport call this first,
      * so no unexpected /models attempt disturbs their recorded requests.
      *
+     * glm15-12: the transient id rides the endpoint layer's one owner
+     * (discovery_cache_id()) — the hand-composed CACHE_PREFIX . md5()
+     * mirror this harness carried was the composition copy the whole
+     * repo had already migrated off; if the composition ever changes,
+     * the primed transients must stop matching what the directories
+     * read in the same edit, not ~31 call sites later.
+     *
      * @param list<string> $ids Model IDs to advertise (default glm-5.3).
      * @return void
      */
     protected function primeZaiDiscoveryTransient(array $ids = array( 'glm-5.3' ))
     {
+        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings();
+
         set_transient(
-            \Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::CACHE_PREFIX
-                . md5( \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() ),
+            \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
             $ids,
             \Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::DISCOVERY_TTL
         );
@@ -257,16 +265,18 @@ abstract class WpConnectorsTestCase extends TestCase
      *
      * Same purpose as primeZaiDiscoveryTransient() for the second provider:
      * tests that only mock the /v1/messages transport call this first, so no
-     * unexpected /v1/models attempt disturbs their recorded requests.
+     * unexpected /v1/models attempt disturbs their recorded requests. The
+     * transient id rides the endpoint layer's one owner too (glm15-12).
      *
      * @param list<string> $ids Model IDs to advertise (default glm-5.3).
      * @return void
      */
     protected function primeZaiAnthropicDiscoveryTransient(array $ids = array( 'glm-5.3' ))
     {
+        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings();
+
         set_transient(
-            \Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::CACHE_PREFIX
-                . md5( \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->cache_key() ),
+            \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
             $ids,
             \Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::DISCOVERY_TTL
         );

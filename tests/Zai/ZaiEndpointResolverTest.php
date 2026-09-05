@@ -326,6 +326,27 @@ PHP;
         }
 
         /*
+         * glm15-12: the test harness's two priming helpers ride the
+         * owner too — the hand-composed CACHE_PREFIX . md5(cache_key())
+         * mirror was the last private composition; a composition change
+         * would have silently stranded ~31 priming call sites against
+         * ids the directories no longer read. Both methods call the
+         * owner; no private md5-over-cache-key composition remains.
+         */
+        $harness = (string) file_get_contents(__DIR__ . '/../harness/WpConnectorsTestCase.php');
+
+        $this->assertSame(
+            2,
+            preg_match_all('/discovery_cache_id\(\s*\$endpoint->plan\(\),\s*\$endpoint->region\(\)\s*\)/', $harness),
+            'Both priming helpers compose the transient id through the endpoint layer owner.'
+        );
+        $this->assertSame(
+            0,
+            preg_match('/md5\(\s*[^)]*cache_key\(\)\s*\)/', $harness),
+            'No private md5-over-cache-key composition may ride the harness.'
+        );
+
+        /*
          * Verifier round on GLM8 #11: the no-literal rule is swept over
          * the WHOLE plugin and probe surface (not just the five
          * historical mirrors), so a new consumer file cannot reintroduce
