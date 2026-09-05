@@ -1198,6 +1198,52 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheToolSchemaMemoResetsUnderSameConfigDeclarationMutation()
+    {
+        /*
+         * glm16-16 (verifier round on glm16-6, empirically confirmed by
+         * two independent angles): the vendor ModelConfig is MUTABLE
+         * (public setFunctionDeclarations()), so the identity-only
+         * reset never fired for a batch loop mutating ONE config object
+         * — the SplObjectStorage's strong keys then pinned every
+         * superseded declaration for the model's lifetime, contradicting
+         * the documented current-config bound. The reset also fires on
+         * the strict declaration-list compare now; this pins BOTH the
+         * purity (each iteration ships its own iteration's schema) and
+         * the bound itself (the memo holds exactly the CURRENT
+         * declarations' entries, read through reflection).
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('pick', 'Picks', array('type' => 'object', 'properties' => array('a' => array()))),
+        ));
+        $model  = $this->model($config);
+        $prompt = array(new Message(MessageRoleEnum::user(), array(new MessagePart('go'))));
+
+        foreach (array('b', 'c', 'd') as $property) {
+            $config->setFunctionDeclarations(array(
+                new FunctionDeclaration('pick', 'Picks', array('type' => 'object', 'properties' => array($property => array()))),
+            ));
+
+            $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+            $model->generateTextResult($prompt);
+
+            $attempts = $this->sdkHttpAttempts();
+            $schema   = json_decode((string) end($attempts)['body'], true)['tools'][0]['input_schema'];
+            $this->assertArrayHasKey($property, $schema['properties'], "Iteration {$property} ships its own declaration's schema.");
+        }
+
+        $memo = new \ReflectionProperty(ZaiAnthropicTextGenerationModel::class, 'tool_schema_memo');
+        if (PHP_VERSION_ID < 80100) {
+            // Required on PHP <= 8.0; a deprecated no-op since 8.1.
+            $memo->setAccessible(true);
+        }
+        $storage = $memo->getValue($model);
+
+        $this->assertInstanceOf(\SplObjectStorage::class, $storage);
+        $this->assertCount(1, $storage, 'The memo holds exactly the CURRENT declaration set — superseded declarations are released, not pinned.');
+    }
+
     public function testParsedToolInputRoundTripsNestedObjectsOnReplay()
     {
         /*

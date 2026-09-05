@@ -143,18 +143,39 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	/**
 	 * The config whose declarations the memo holds (glm16-6).
 	 *
-	 * A config identity change — the vendor base's final setConfig()
-	 * can replace a live instance's config — resets the memo, so it
-	 * pins at most ONE config's declarations: the very declarations the
-	 * config itself already pins, zero extra retention for the typical
-	 * one-config instance lifetime, and a reconfiguring batch loop
-	 * (fresh declarations per item) never accumulates.
+	 * One of the memo's two reset triggers: a config identity change —
+	 * the vendor base's final setConfig() can replace a live instance's
+	 * config. The declarations snapshot below is the other (glm16-16:
+	 * the vendor ModelConfig is MUTABLE — a public
+	 * setFunctionDeclarations() — so one config object mutated in a
+	 * batch loop never changes identity while its declaration set
+	 * does).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @var \WordPress\AiClient\Providers\Models\DTO\ModelConfig|null
 	 */
 	private $tool_schema_memo_config = null;
+
+	/**
+	 * The declaration list the memo was built for (glm16-16).
+	 *
+	 * The exact list of FunctionDeclaration objects the current memo
+	 * holds entries for, compared by strict array identity (object
+	 * identity per element, order included) on every request build.
+	 * Either reconfiguration idiom — setConfig() replacement OR in-place
+	 * setFunctionDeclarations() mutation — changes the list and resets
+	 * the memo, so the memo pins at most the CURRENT declaration set:
+	 * the very declarations the config itself already pins, zero extra
+	 * retention under either idiom. The O(n) identity compare is
+	 * trivial beside the per-declaration encode-plus-walk the memo
+	 * exists to skip.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array|null
+	 */
+	private $tool_schema_memo_declarations = null;
 
 	/**
 	 * The RAW wired authentication — the SDK parent's getter, unwrapped
@@ -544,18 +565,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$declared_names = array();
 
 		/*
-		 * glm16-6: memo lifecycle. The memo lives for the CONFIG's
-		 * lifetime — the vendor base's final setConfig() can replace a
-		 * live instance's config, and a replacement resets the memo so
-		 * it pins at most the current config's declarations (see the
-		 * property docblocks). Entries themselves are identity-keyed and
-		 * pure: an entry computed for one declaration object can never
-		 * be wrong for it later.
+		 * glm16-6: memo lifecycle. The memo lives for the CURRENT
+		 * declaration set's lifetime, reset by EITHER reconfiguration
+		 * idiom (glm16-16): config identity change — the vendor base's
+		 * final setConfig() — or an in-place declaration-list change
+		 * through the vendor ModelConfig's public setters, detected by
+		 * the strict-list compare below. Entries themselves are
+		 * identity-keyed and pure: an entry computed for one
+		 * declaration object can never be wrong for it later.
 		 */
 		$config = $this->getConfig();
-		if ( null === $this->tool_schema_memo || $config !== $this->tool_schema_memo_config ) {
-			$this->tool_schema_memo        = new \SplObjectStorage();
-			$this->tool_schema_memo_config = $config;
+		if ( null === $this->tool_schema_memo
+			|| $config !== $this->tool_schema_memo_config
+			|| $function_declarations !== $this->tool_schema_memo_declarations ) {
+			$this->tool_schema_memo              = new \SplObjectStorage();
+			$this->tool_schema_memo_config       = $config;
+			$this->tool_schema_memo_declarations = $function_declarations;
 		}
 
 		$memo = $this->tool_schema_memo;

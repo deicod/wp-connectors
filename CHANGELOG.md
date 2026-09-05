@@ -6,6 +6,135 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM16 code review)
+
+- The probe judges the RAW wired authentication (glm16-1): the glm14-5
+  opaque-wiring guard was unreachable on the zai_anthropic surface —
+  its protocol-wrapping `getRequestAuthentication()` funnels every
+  wired instance through `wrap()`, whose RuntimeException for a foreign
+  implementation the probe's unwired catch misread as NO wiring, so the
+  fallback flew the effective key a caller never wired and its
+  rejection persisted as that key's invalid verdict (empirically
+  reproduced). The probe reads the raw instance through the new
+  `raw_request_authentication()` base hook (same name and meaning as
+  the protocol trait's abstract, so the zai_anthropic availability
+  satisfies it with the inherited implementation); the throw now means
+  exactly one thing — nothing is wired — and the FLIGHT credential
+  still goes back through the surface's one wrap funnel so a wired
+  Api-key flies with the surface's headers. Opaque wiring is
+  inconclusive on BOTH surfaces now: nothing flies, nothing persists.
+
+- A duplicate trailing `message_stop` is inert (glm16-2): a proxy or
+  replaying intermediary duplicating the final terminal frame
+  discarded a fully valid completed generation ('malformed event
+  frame'), while the OpenAI twin treats the identical appending-gateway
+  shape as harmless (duplicate `[DONE]` is a no-op; pinned). The
+  duplicate terminal no-ops — the pre-termination case ignores its
+  payload entirely, so the trailing policy does not start scrutinizing
+  it; content-bearing trailing events (message_start, content_block_*,
+  message_delta) keep their malformed rejection, and every corrupt
+  trailing shape was already rejected by the shared consume_frame()
+  pipeline before the policy runs.
+
+- `enum` is a data-valued schema keyword (glm16-3): the empty-object
+  normalization walk descended into enum members and rewrote their
+  schema-keyword-named empty arrays to `{}`, so the wire advertised a
+  DIFFERENT constant than the one declared, silently (the same class
+  GLM8 #6 fixed for default/examples/const; the walk's own docblock
+  already claimed enum passed untouched). enum joins the exempt set,
+  pinned with a member carrying `patternProperties: []`.
+
+- The zai surface's tool-declaration parameters schema gets the shape
+  rule (glm16-11): a list-root schema rode the wire verbatim inside
+  `tools[].function.parameters` to the generic misattributed upstream
+  400 — the error class glm13-8 fixed for the sibling output-schema
+  member and the zai_anthropic twin already rejects typed. Identity
+  rules stay first, with the twin's exact boundary: only a NON-EMPTY
+  list rejects (null and `[]` keep their pass-through).
+
+- Credential material the Authorization header cannot carry is refused
+  typed (glm16-13): the header value was raw concatenation with no
+  validation — the vendor HeadersCollection splits comma-joined values
+  (one credential silently became several header values) and nothing
+  before PSR-7 rejects CR/LF. A non-empty key containing control
+  characters or a comma now rejects pre-transport in the
+  RuntimeException binding-failure family, with a fixed message that
+  never interpolates the key; the empty key keeps its glm13-1
+  semantics, and the probe's fallback path validates through the same
+  chokepoint (an uncarriable DB key is inconclusive — nothing flown,
+  nothing persisted).
+
+- The scaffold test loads zai.php before asserting ZAI_VERSION
+  (glm16-12): the constant is defined only in that file (the PSR-4
+  autoloader cannot provide constants), so the test errored under
+  `--order-by=random` whenever it ran before any `bootPlugin()` test.
+  The harness's require_once makes it deterministic under every order.
+
+### Changed / hardened (zai / M2 — GLM16 code review)
+
+- One shared encodability-net owner (glm16-7): the request-build net
+  and its attribution walk were near-verbatim private twins between
+  the model files, kept in lockstep only by comments and already
+  diverged once historically. `Support\EncodabilityNet` owns the one
+  raw encode, the failure sequence, and the four verbatim-identical
+  walk segments; each surface keeps a thin composer pinning ITS
+  mapping order (which member a multi-bad payload names — pinned both
+  ways). The one genuine divergence is documented at its method: the
+  sampling-options segment is zai-only because the zai_anthropic
+  surface's eager transforms already reject those members before its
+  net. The glm13-11/glm14-4/glm15-5 one-pass source pins superseded to
+  scan the owner for the single raw oracle (documented supersession).
+- Same-role coalescing is linear (glm16-5): the coalescing loop
+  re-merged and re-validated the full accumulated turn per adjacent
+  SDK message (array_merge plus a whole-turn rescan — O(K²) in blocks
+  for the per-tool-result message shape). One seen-text bit per
+  coalesced turn seeds the per-message scan (equivalent to judging the
+  merged turn), and the merge appends in place.
+- Tool-schema normalization memoizes by declaration identity (glm16-6):
+  a tool loop re-ran the encodability oracle and the recursive
+  normalize walk per declaration per request for a wire form that
+  never changes (the DTO is immutable). An SplObjectStorage keyed by
+  declaration identity (WeakMap's semantics on the PHP 7.4 floor)
+  holds the results, reset when the config identity changes (the
+  vendor base's final `setConfig()` can replace a live instance's
+  config), so the memo pins at most the current config's declarations.
+  Rejections never memoize.
+- One shared mislabeled-body JSON fallback (glm16-8): the ~25-line
+  fallback scaffold (one decode, object-root gate, glm14-2 marker
+  propagation) lived twice. `Support\JsonFallbackResult` owns it,
+  taking the surface's parse callable over the already-decoded pair;
+  pinned by a direct unit test of the scaffold's contract.
+- `is_object_shape()` rides the shared sequential-key predicate
+  (glm16-9): the private re-encode probe was a fifth hand-rolled copy
+  of the rule `JsonShape::is_list()` was extracted to own, and paid a
+  full json_encode per tool_use input member per response parse. Key
+  inspection decides identically on every decoded input; the GLM7 #10
+  raw-oracle mechanism pin superseded to assert the predicate ride and
+  the absence of any encode.
+- The scalar tool_result JSON-encode convention is pinned, not
+  accidental (glm16-4): every response value ships as its JSON
+  encoding, strings included (artifact quotes visible to the model). A
+  raw string would be Anthropic-protocol-legal, but the zai twin's
+  tool-message content is the VENDOR parent's own `json_encode()`
+  (unoverridable), so raw strings here would present the same tool
+  result differently on the two surfaces. One convention, both
+  surfaces, every response type — the pin makes any change conscious.
+- Uninstall's surface set rides one registry (glm16-14): the
+  zai/zai_anthropic class pair was hand-enumerated three separate times
+  inside uninstall.php (endpoint pair, two settings pairs); one
+  registry drives all three class-based sweeps. The BY-DESIGN
+  class-free listings (pre-chain option deletions, broken-install
+  fallback literals) stay separate, and a source pin forbids the
+  surface classes from creeping back into a second listing.
+- Seven dead imports deleted and an unused-import guard added
+  (glm16-10): imports with no code use of the short name (FunctionCall,
+  SseFrameBuffer, Message, Response ×2, and one more the new scanner
+  found, PlanRegionSettings) implied call paths that do not exist.
+  The guard rides `bin/check-conventions.php` — conservative by
+  design: only an import whose short name appears NOWHERE else in the
+  file fails (a docblock TYPE is a real phpstan-resolved use; the
+  ModelMetadata import stays for exactly that reason).
+
 ### Fixed (zai / M2 — GLM15 code review)
 
 - The uninstall constant-rung test runs ISOLATED in a subprocess
