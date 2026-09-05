@@ -830,8 +830,48 @@ abstract class AbstractPlanRegionSettings {
 	 * @return string SHA-256 binding hash.
 	 */
 	public static function credential_binding( string $source, string $cache_key, string $key ): string {
-		return hash( 'sha256', $source . '|' . $cache_key . '|' . $key );
+		/*
+		 * glm15-6: the binding hash is a PURE function of its three
+		 * inputs, and one AI request derives it two to three times (the
+		 * credential gate, the probe consult, a rejection recording) —
+		 * the memo is keyed by the COMPLETE input tuple, so a changed
+		 * credential, source, or endpoint can never read another's
+		 * binding. Bounded: distinct keys are rare (per-request
+		 * credentials), and the map self-prunes past its cap.
+		 */
+		$memo_key = static::class . '|' . $source . '|' . $cache_key . '|' . $key;
+
+		if ( ! isset( self::$binding_cache[ $memo_key ] ) ) {
+			if ( \count( self::$binding_cache ) >= self::BINDING_CACHE_CAP ) {
+				array_shift( self::$binding_cache );
+			}
+
+			self::$binding_cache[ $memo_key ] = hash( 'sha256', $source . '|' . $cache_key . '|' . $key );
+		}
+
+		return self::$binding_cache[ $memo_key ];
 	}
+
+	/**
+	 * The memoized binding hashes (glm15-6), keyed by the complete
+	 * input tuple — see credential_binding().
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, string>
+	 */
+	private static $binding_cache = array();
+
+	/**
+	 * Upper bound on the memoized binding hashes: the live set is the
+	 * per-request credentials (a handful); the cap only stops a
+	 * pathological process (key-rotation loops) from growing it.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	private const BINDING_CACHE_CAP = 64;
 
 	/**
 	 * The probe-miss transient name PREFIX for this surface (glm15-9).

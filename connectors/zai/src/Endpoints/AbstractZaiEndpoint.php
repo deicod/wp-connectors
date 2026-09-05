@@ -124,6 +124,17 @@ abstract class AbstractZaiEndpoint {
 	/**
 	 * Returns the endpoint for an explicit plan × region combination.
 	 *
+	 * GLM15-6: the immutable value instance is MEMOIZED per concrete
+	 * surface and plan × region — one AI request resolves the endpoint
+	 * two to three times (the credential gate's binding, the request
+	 * build, a rejection recording), and the instances are immutable
+	 * (no setters, pinned), so the memo is a pure derivation with no
+	 * invalidation class. for_current_settings() still reads the
+	 * plan/region options on EVERY call (the retarget-the-next-request
+	 * contract is pinned); only the object construction is shared. The
+	 * key set is bounded by the matrix (two surfaces × two plans × two
+	 * regions).
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $plan   One of the surface's plans.
@@ -138,8 +149,30 @@ abstract class AbstractZaiEndpoint {
 			);
 		}
 
-		return new static( $plan, $region, static::MATRIX[ $plan ][ $region ] );
+		$cache_key = static::class . '|' . $plan . '|' . $region;
+
+		$cached = self::$for_cache[ $cache_key ] ?? null;
+
+		if ( $cached instanceof static ) {
+			return $cached;
+		}
+
+		$endpoint = new static( $plan, $region, static::MATRIX[ $plan ][ $region ] );
+
+		self::$for_cache[ $cache_key ] = $endpoint;
+
+		return $endpoint;
 	}
+
+	/**
+	 * The memoized immutable endpoint instances (glm15-6), keyed by
+	 * concrete class and plan × region — see for().
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, AbstractZaiEndpoint>
+	 */
+	private static $for_cache = array();
 
 	/**
 	 * Returns the endpoint for the currently stored settings.

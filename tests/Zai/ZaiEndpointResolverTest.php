@@ -132,6 +132,27 @@ final class ZaiEndpointResolverTest extends WpConnectorsTestCase
         $this->assertNotSame($endpoint, ZaiEndpoint::for_current_settings());
     }
 
+    public function testTheMemoizedValueInstanceIsSharedPerCombinationAndFreshPerInput()
+    {
+        /*
+         * glm15-6: for() memoizes the immutable value instance per
+         * concrete surface and plan × region — one AI request resolves
+         * the endpoint two to three times (the gate's binding, the
+         * request build, a rejection recording). The memo is keyed by
+         * the full input tuple: the same combination shares ONE
+         * instance, a different combination gets its own, and
+         * for_current_settings() still re-reads the options every call
+         * (the retarget-the-next-request contract, pinned above).
+         */
+        $first = ZaiEndpoint::for('coding', 'intl');
+        $this->assertSame($first, ZaiEndpoint::for('coding', 'intl'), 'The same plan × region shares one memoized instance.');
+        $this->assertNotSame($first, ZaiEndpoint::for('general', 'intl'), 'A different combination is a different instance.');
+        $this->assertNotSame($first, ZaiAnthropicEndpoint::for('coding', 'intl'), 'A different surface is a different instance.');
+
+        update_option(PlanRegionSettings::OPTION_REGION, 'cn');
+        $this->assertSame(ZaiEndpoint::for('coding', 'cn'), ZaiEndpoint::for_current_settings(), 'for_current_settings() still resolves the CURRENT options through the per-combination memo.');
+    }
+
     public function testUnknownCombinationIsRejected()
     {
         $this->expectException(InvalidArgumentException::class);

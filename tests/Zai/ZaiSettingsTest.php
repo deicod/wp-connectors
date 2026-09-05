@@ -654,6 +654,49 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheBindingMemoKeysByTheCompleteInputTuple()
+    {
+        /*
+         * glm15-6: credential_binding() is a pure hash derived two to
+         * three times per AI request (the credential gate, the probe
+         * consult, a rejection recording), so its memo must key on the
+         * COMPLETE tuple — surface class, source, endpoint identity,
+         * and the full key value — such that a changed input can never
+         * read another credential's binding (the cross-credential
+         * poisoning class glm13-1 exists to prevent).
+         */
+        $key = FakeSecrets::apiKey();
+
+        $this->assertSame(
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            'Identical inputs derive the identical binding (the memo is a pure derivation).'
+        );
+        $this->assertNotSame(
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', FakeSecrets::apiKey()),
+            'A different key derives a different binding.'
+        );
+        $this->assertNotSame(
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            PlanRegionSettings::credential_binding('database', 'zai|coding|intl', $key),
+            'A different source derives a different binding.'
+        );
+        $this->assertNotSame(
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            PlanRegionSettings::credential_binding('env', 'zai_anthropic|coding|intl', $key),
+            'A different endpoint scope (the surfaces\' provider identities) derives a different binding.'
+        );
+
+        // Source pin: the memo key rides the full tuple, never a partial one.
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Settings/AbstractPlanRegionSettings.php');
+        $this->assertStringContainsString(
+            "static::class . '|' . \$source . '|' . \$cache_key . '|' . \$key",
+            $source,
+            'The binding memo key names the class, source, endpoint, and key together.'
+        );
+    }
+
     public function testRegionRewriteWithSameValueDoesNotInvalidate()
     {
         $this->bootPlugin();
