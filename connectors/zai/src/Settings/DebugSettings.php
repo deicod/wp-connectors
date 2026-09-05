@@ -142,6 +142,16 @@ final class DebugSettings {
 	 *
 	 * Hooked on `update_option_zai_connector_zai_debug`.
 	 *
+	 * glm13-13: the comparison rides the shared is_scalar-guarded
+	 * option_values_equal() helper (GLM5 #9) — the bare (string) cast
+	 * this handler carried raised an Array-to-string conversion warning
+	 * for a non-scalar payload from out-of-band code (CLI, a corrupt
+	 * round trip), aborting the hook on installs whose error handler
+	 * throws and leaving the request log populated after logging was
+	 * disabled. The cast's failure direction was already the safe one
+	 * ('Array' !== '1' cleared anyway); the helper keeps that outcome
+	 * without the coercion.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param mixed $old_value Previous value.
@@ -149,7 +159,7 @@ final class DebugSettings {
 	 * @return void
 	 */
 	public static function handle_enabled_change( $old_value, $new_value ): void {
-		if ( '1' !== (string) $new_value ) {
+		if ( ! PlanRegionSettings::option_values_equal( '1', $new_value ) ) {
 			DebugLogger::clear();
 		}
 	}

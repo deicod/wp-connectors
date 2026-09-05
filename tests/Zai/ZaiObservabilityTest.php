@@ -394,6 +394,30 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         $this->assertSame($wrapped, LoggingHttpTransporter::wrap($wrapped), 'The decorator itself is never double-wrapped.');
     }
 
+    public function testADisabledChangeWithANonScalarPayloadStillClearsTheLog()
+    {
+        /*
+         * glm13-13: the enabled-change hook compared its payload with a
+         * bare (string) cast — a non-scalar payload from out-of-band code
+         * (update_option() with an array, CLI, a corrupt round trip)
+         * raised an Array-to-string conversion warning and, on installs
+         * whose error handler throws, aborted the hook before the log
+         * clear. The comparison rides the shared is_scalar-guarded
+         * option_values_equal() helper (GLM5 #9) now: the clear still
+         * runs (the failure direction was always the safe one) and no
+         * coercion happens.
+         */
+        update_option(DebugLogger::OPTION_LOG, array(
+            array('at' => 1700000000, 'method' => 'POST', 'url' => 'https://example.test/v1', 'status' => 200, 'duration_ms' => 12),
+        ), false);
+        $this->assertNotSame(array(), DebugLogger::entries(), 'Fixture: a log entry exists.');
+
+        DebugSettings::handle_enabled_change('1', array('enabled' => 1));
+
+        $this->assertSame(array(), DebugLogger::entries(), 'The log must clear for a non-scalar disabled payload.');
+        $this->assertFalse(get_option(DebugLogger::OPTION_LOG, false), 'No log option may survive the clear.');
+    }
+
     public function testBothModelSurfacesShareTheOneGenerationBoundaryTrait()
     {
         /*

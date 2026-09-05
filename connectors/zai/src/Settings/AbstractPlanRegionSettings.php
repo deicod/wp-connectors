@@ -580,7 +580,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @param mixed $new_value New hook payload.
 	 * @return bool True when the values are equivalent.
 	 */
-	private static function option_values_equal( $old_value, $new_value ): bool {
+	public static function option_values_equal( $old_value, $new_value ): bool {
 		if ( \is_scalar( $old_value ) && \is_scalar( $new_value ) ) {
 			return (string) $old_value === (string) $new_value;
 		}
