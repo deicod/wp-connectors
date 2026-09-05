@@ -1091,6 +1091,72 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testToolSchemaNormalizationIsMemoizedPerConfigIdentity()
+    {
+        /*
+         * glm16-6: the per-declaration schema pipeline (list-shape
+         * rejection, encodability oracle, recursive normalization) is
+         * memoized by declaration object identity for the config's
+         * lifetime. Three observable edges pinned: repeated builds with
+         * one config ship identical tools (the memo changes no output),
+         * a config REPLACEMENT with a same-named different-schema
+         * declaration ships the NEW schema (the memo resets with the
+         * config — no stale identity hit), and a list-root schema
+         * rejects on every build (rejections throw before any entry is
+         * stored, so nothing ever memoizes as accepted).
+         */
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('pick', 'Picks', array('type' => 'object', 'properties' => array('a' => array()))))->toArray(),
+            ),
+        ));
+        $model  = $this->model($config);
+        $prompt = array(new Message(MessageRoleEnum::user(), array(new MessagePart('go'))));
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+        $model->generateTextResult($prompt);
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(2, $attempts);
+        $this->assertSame(
+            json_decode((string) $attempts[0]['body'], true)['tools'],
+            json_decode((string) $attempts[1]['body'], true)['tools'],
+            'The memoized second build must ship the identical tools member.'
+        );
+
+        // Config replacement: same tool name, DIFFERENT declaration
+        // object and schema — the wire must reflect the new schema.
+        $model->setConfig(ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('pick', 'Picks', array('type' => 'object', 'properties' => array('b' => array('type' => 'string')))))->toArray(),
+            ),
+        )));
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $replaced = json_decode((string) $this->sdkHttpAttempts()[2]['body'], true)['tools'][0]['input_schema'];
+        $this->assertArrayHasKey('b', $replaced['properties'], 'The replacement config\'s schema ships.');
+        $this->assertArrayNotHasKey('a', $replaced['properties'], 'No stale schema may survive the config change.');
+
+        // A list-root schema rejects on EVERY build — the rejection
+        // never memoizes into an acceptance.
+        $model->setConfig(ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('pick', 'Picks', array('a', 'b')))->toArray(),
+            ),
+        )));
+        for ($i = 0; $i < 2; $i++) {
+            try {
+                $model->generateTextResult($prompt);
+                $this->fail('A list-root parameters schema must reject pre-transport.');
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('JSON object', $e->getMessage());
+            }
+        }
+    }
+
     public function testParsedToolInputRoundTripsNestedObjectsOnReplay()
     {
         /*

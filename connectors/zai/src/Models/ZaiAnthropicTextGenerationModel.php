@@ -121,6 +121,42 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private $generation_prompt = null;
 
 	/**
+	 * Normalized input schemas for the CURRENT config's tool
+	 * declarations, keyed by declaration object identity (glm16-6).
+	 *
+	 * The vendor FunctionDeclaration DTO is immutable (private
+	 * constructor-assigned properties, getters only), so the
+	 * list-shape/encodability/normalization pipeline is a PURE function
+	 * of the declaration: a tool loop that replays the conversation
+	 * every turn re-ran a full json_encode plus the recursive
+	 * normalization walk per declaration per request for a wire form
+	 * that never changes. SplObjectStorage gives WeakMap's
+	 * identity-keyed semantics on the PHP 7.4 floor (WeakMap is 8.0+;
+	 * a spl_object_id-keyed map is unsafe across GC id reuse).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var \SplObjectStorage|null
+	 */
+	private $tool_schema_memo = null;
+
+	/**
+	 * The config whose declarations the memo holds (glm16-6).
+	 *
+	 * A config identity change — the vendor base's final setConfig()
+	 * can replace a live instance's config — resets the memo, so it
+	 * pins at most ONE config's declarations: the very declarations the
+	 * config itself already pins, zero extra retention for the typical
+	 * one-config instance lifetime, and a reconfiguring batch loop
+	 * (fresh declarations per item) never accumulates.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var \WordPress\AiClient\Providers\Models\DTO\ModelConfig|null
+	 */
+	private $tool_schema_memo_config = null;
+
+	/**
 	 * The RAW wired authentication — the SDK parent's getter, unwrapped
 	 * (glm15-8: the protocol wrap lives once on the
 	 * SpeaksAnthropicMessagesProtocol trait).
@@ -522,6 +558,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$tools          = array();
 		$declared_names = array();
 
+		/*
+		 * glm16-6: memo lifecycle. The memo lives for the CONFIG's
+		 * lifetime — the vendor base's final setConfig() can replace a
+		 * live instance's config, and a replacement resets the memo so
+		 * it pins at most the current config's declarations (see the
+		 * property docblocks). Entries themselves are identity-keyed and
+		 * pure: an entry computed for one declaration object can never
+		 * be wrong for it later.
+		 */
+		$config = $this->getConfig();
+		if ( null === $this->tool_schema_memo || $config !== $this->tool_schema_memo_config ) {
+			$this->tool_schema_memo        = new \SplObjectStorage();
+			$this->tool_schema_memo_config = $config;
+		}
+
+		$memo = $this->tool_schema_memo;
+
 		foreach ( $function_declarations as $declaration ) {
 			/*
 			 * Codex R18 #2: a declared tool with an EMPTY name is the same
@@ -569,72 +622,85 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			$declared_names[ $name ] = true;
 
-			/*
-			 * The Messages protocol requires input_schema on every tool —
-			 * an OBJECT — even for functions without parameters. Both the
-			 * absent schema (null) and an EMPTY array schema () normalize
-			 * to the empty-object schema; a raw empty array would
-			 * JSON-encode as [] and fail upstream validation (Codex R1
-			 * finding 5). A NON-EMPTY sequential schema (Codex R7 #3)
-			 * serializes as a JSON LIST — same failure, so it is rejected
-			 * before transport with the same surface as the
-			 * invocation-arguments validation (R4 #4), never silently
-			 * re-shaped: the list test is exact (json_encode emits an array
-			 * only for 0-based sequential keys).
-			 */
-			$input_schema = $declaration->getParameters();
-
-			if ( \is_array( $input_schema ) && array() !== $input_schema && JsonShape::is_list( $input_schema ) ) {
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires tool parameter schemas to be a JSON object (a non-empty list was given).'
-				);
-			}
-
-			/*
-			 * R20 (inline 3907008524): an unencodable schema value — NAN,
-			 * invalid UTF-8, a resource, a RECURSIVE structure — used to
-			 * reach the request untouched, so generation failed in the
-			 * transport's whole-request serialization instead of
-			 * producing the adapter's pre-transport configuration error.
-			 *
-			 * glm15-5: this one encodability check stays EAGER even
-			 * though the request-build net covers the schema's
-			 * encodability too — the object normalization below is a
-			 * recursive TRANSFORM, and on a self-referential structure
-			 * (a caller-built array referencing itself) it recurses
-			 * until the memory limit: a PHP fatal no net can reject.
-			 * json_encode() detects recursion and returns false, so this
-			 * oracle is the recursion guard the transform needs before
-			 * it runs (GLM4 #1 raw-oracle rule; GLM5 #16 single-sourced).
-			 */
-			if ( \is_array( $input_schema ) && array() !== $input_schema ) {
-				JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
-			}
-
-			if ( null === $input_schema || array() === $input_schema ) {
-				$input_schema = array(
-					'type'       => 'object',
-					'properties' => new \stdClass(),
-				);
+			if ( $memo->offsetExists( $declaration ) ) {
+				/*
+				 * glm16-6: identity hit — the pipeline below is a pure
+				 * function of the immutable declaration, so its result for
+				 * this object can be reused as-is for every later request of
+				 * this config's lifetime (rejections never reach the memo:
+				 * they throw below before an entry is stored).
+				 */
+				$input_schema = $memo[ $declaration ];
 			} else {
 				/*
-				 * GLM8 #6: the empty-object normalization above fires only
-				 * when the WHOLE schema is empty, so a NON-empty schema
-				 * carrying an empty-array member at an object-demanding
-				 * keyword (['type'=>'object','properties'=>[],'required'=>[]])
-				 * shipped that member as JSON [] where the protocol's
-				 * meta-schema wants an object — risking an upstream 400 in
-				 * place of the adapter's own normalization. The object-map
-				 * keywords are normalized recursively; 'required' and every
-				 * other list-valued keyword keep their (schema-valid) [].
-				 *
-				 * GLM10 #6: the recursion now knows EVERY schema-valued
-				 * position — a property value of [], items: [], an allOf
-				 * element — not just the four map keywords, so an
-				 * empty-array SUBSCHEMA at any of them encodes as {} too
-				 * (see normalize_empty_object_members()).
+				 * The Messages protocol requires input_schema on every tool —
+				 * an OBJECT — even for functions without parameters. Both the
+				 * absent schema (null) and an EMPTY array schema () normalize
+				 * to the empty-object schema; a raw empty array would
+				 * JSON-encode as [] and fail upstream validation (Codex R1
+				 * finding 5). A NON-EMPTY sequential schema (Codex R7 #3)
+				 * serializes as a JSON LIST — same failure, so it is rejected
+				 * before transport with the same surface as the
+				 * invocation-arguments validation (R4 #4), never silently
+				 * re-shaped: the list test is exact (json_encode emits an array
+				 * only for 0-based sequential keys).
 				 */
-				$input_schema = self::normalize_empty_object_members( $input_schema );
+				$input_schema = $declaration->getParameters();
+
+				if ( \is_array( $input_schema ) && array() !== $input_schema && JsonShape::is_list( $input_schema ) ) {
+					throw new InvalidArgumentException(
+						'The zai_anthropic provider requires tool parameter schemas to be a JSON object (a non-empty list was given).'
+					);
+				}
+
+				/*
+				 * R20 (inline 3907008524): an unencodable schema value — NAN,
+				 * invalid UTF-8, a resource, a RECURSIVE structure — used to
+				 * reach the request untouched, so generation failed in the
+				 * transport's whole-request serialization instead of
+				 * producing the adapter's pre-transport configuration error.
+				 *
+				 * glm15-5: this one encodability check stays EAGER even
+				 * though the request-build net covers the schema's
+				 * encodability too — the object normalization below is a
+				 * recursive TRANSFORM, and on a self-referential structure
+				 * (a caller-built array referencing itself) it recurses
+				 * until the memory limit: a PHP fatal no net can reject.
+				 * json_encode() detects recursion and returns false, so this
+				 * oracle is the recursion guard the transform needs before
+				 * it runs (GLM4 #1 raw-oracle rule; GLM5 #16 single-sourced).
+				 */
+				if ( \is_array( $input_schema ) && array() !== $input_schema ) {
+					JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
+				}
+
+				if ( null === $input_schema || array() === $input_schema ) {
+					$input_schema = array(
+						'type'       => 'object',
+						'properties' => new \stdClass(),
+					);
+				} else {
+					/*
+					 * GLM8 #6: the empty-object normalization above fires only
+					 * when the WHOLE schema is empty, so a NON-empty schema
+					 * carrying an empty-array member at an object-demanding
+					 * keyword (['type'=>'object','properties'=>[],'required'=>[]])
+					 * shipped that member as JSON [] where the protocol's
+					 * meta-schema wants an object — risking an upstream 400 in
+					 * place of the adapter's own normalization. The object-map
+					 * keywords are normalized recursively; 'required' and every
+					 * other list-valued keyword keep their (schema-valid) [].
+					 *
+					 * GLM10 #6: the recursion now knows EVERY schema-valued
+					 * position — a property value of [], items: [], an allOf
+					 * element — not just the four map keywords, so an
+					 * empty-array SUBSCHEMA at any of them encodes as {} too
+					 * (see normalize_empty_object_members()).
+					 */
+					$input_schema = self::normalize_empty_object_members( $input_schema );
+				}
+
+				$memo[ $declaration ] = $input_schema;
 			}
 
 			$tools[] = array(
