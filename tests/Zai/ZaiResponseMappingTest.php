@@ -587,6 +587,60 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testToolCallsMissingIdentityMembersRejectAtParseTime()
+    {
+        /*
+         * glm18-2: the SDK parent coerces a missing/non-string id or
+         * name to null (an empty string passes through verbatim), so a
+         * corrupt tool_calls entry SUCCEEDED as a generation whose
+         * FunctionCall carries a null/empty identity — the exact turn
+         * the outbound replay guard rejects pre-transport on every
+         * later request of the conversation (GLM3 #1 poisoning at one
+         * remove). Both transports now reject the corruption at parse
+         * time, the zai_anthropic twin's Codex R9 #3 discipline.
+         */
+        $empty_id = '{"id":"chatcmpl-noid","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"","type":"function","function":{"name":"f","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}';
+        $this->queueSdkResponse(200, array(), $empty_id);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An empty tool-call id must reject at parse time.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('A tool call is missing its identity members', $e->getMessage());
+        }
+
+        $missing_name = '{"id":"chatcmpl-nonm","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_nm","type":"function","function":{"arguments":"{}"}}]},"finish_reason":"tool_calls"}]}';
+        $this->queueSdkResponse(200, array(), $missing_name);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A missing tool-call name must reject at parse time.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('A tool call is missing its identity members', $e->getMessage());
+        }
+
+        /*
+         * Streamed: the tool_calls delta never carries an id member, so
+         * the aggregator's accumulator keeps its initial null — the
+         * consolidated payload hands the parse hook the same corrupt
+         * entry a fragment-losing gateway produces.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-sid","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"function":{"name":"f","arguments":"{}"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-sid","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed tool call whose id fragments never arrived must reject at parse time.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('A tool call is missing its identity members', $e->getMessage());
+        }
+    }
+
     public function testAnEmptyListRootedArgumentsStringKeepsTheParentSemantics()
     {
         // GLM6 #2 guard: an EMPTY list root has no nested members whose

@@ -841,6 +841,31 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		$function_call = $part->getFunctionCall();
 		$args          = $function_call->getArgs();
 
+		/*
+		 * glm18-2: identities must be non-empty strings, not merely
+		 * present — the SDK parent coerces a missing/non-string id or
+		 * name to NULL and passes an empty string through verbatim, so a
+		 * corrupt tool_calls entry (a non-streaming body with an empty
+		 * id, or a stream whose id fragments never arrived: the
+		 * aggregator initializes each call's accumulator id to null and
+		 * only assigns on a string delta) consolidated into a SUCCESSFUL
+		 * generation whose FunctionCall carries a null/empty identity —
+		 * the exact turn the outbound replay guard then rejects
+		 * pre-transport on EVERY later request of the conversation
+		 * (GLM3 #1 poisoning at one remove: the turn never becomes
+		 * valid again). The corruption rejects at parse time instead,
+		 * the same place the zai_anthropic twin rejects its tool_use
+		 * counterpart (Codex R9 #3: 'A tool_use block is missing its
+		 * identity members.').
+		 */
+		if ( ! \is_string( $function_call->getId() ) || '' === $function_call->getId() || ! \is_string( $function_call->getName() ) || '' === $function_call->getName() ) {
+			throw FixedMessageResponseException::fixed(
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+				'tool_calls',
+				'A tool call is missing its identity members (a non-empty id and name).'
+			);
+		}
+
 		$raw_arguments = $tool_call_data['function']['arguments'] ?? null;
 
 		if ( \is_string( $raw_arguments ) ) {
