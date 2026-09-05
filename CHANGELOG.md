@@ -6,6 +6,23 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM16 verifier round)
+
+Independent security + correctness verification over the full glm16
+diff (8 verifier agents, per-finding adjudication; 8 raw candidates,
+4 confirmed — two distinct issues, each confirmed by two independent
+angles, the other four refuted by the verifiers themselves against the
+ledger or by reachability):
+
+- A garbled duplicate terminal rides the pipeline's shape check
+  (glm16-15, see the corrected glm16-2 entry below).
+- The tool-schema memo resets under same-config declaration mutation
+  (glm16-16, see the completed glm16-6 entry below).
+- The unused-import scanner removes only the first occurrence of a use
+  statement (glm16-17): a theoretical str_replace false positive
+  where a comment line ending in the exact use-statement text would be
+  stripped as well; not present in the repo today, hardened anyway.
+
 ### Fixed (zai / M2 — GLM16 code review)
 
 - The probe judges the RAW wired authentication (glm16-1): the glm14-5
@@ -73,23 +90,6 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   autoloader cannot provide constants), so the test errored under
   `--order-by=random` whenever it ran before any `bootPlugin()` test.
   The harness's require_once makes it deterministic under every order.
-
-### Fixed (zai / M2 — GLM16 verifier round)
-
-Independent security + correctness verification over the full glm16
-diff (8 verifier agents, per-finding adjudication; 8 raw candidates,
-4 confirmed — two distinct issues, each confirmed by two independent
-angles, the other four refuted by the verifiers themselves against the
-ledger or by reachability):
-
-- A garbled duplicate terminal rides the pipeline's shape check
-  (glm16-15, see the corrected glm16-2 entry above).
-- The tool-schema memo resets under same-config declaration mutation
-  (glm16-16, see the completed glm16-6 entry below).
-- The unused-import scanner removes only the first occurrence of a use
-  statement (glm16-17): a theoretical str_replace false positive
-  where a comment line ending in the exact use-statement text would be
-  stripped as well; not present in the repo today, hardened anyway.
 
 ### Changed / hardened (zai / M2 — GLM16 code review)
 
