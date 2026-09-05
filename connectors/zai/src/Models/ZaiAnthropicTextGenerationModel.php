@@ -223,7 +223,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @return RequestAuthenticationInterface
 	 */
 	protected function gate_authentication(): RequestAuthenticationInterface {
-		return parent::getRequestAuthentication();
+		/*
+		 * glm18-14: the gate hook DELEGATES to raw_request_authentication()
+		 * — the two bodies were byte-identical ('return
+		 * parent::getRequestAuthentication();'), so a future edit to one
+		 * hook could silently make the gate judge a different credential
+		 * instance than the one the protocol wrap authenticates with, on
+		 * this security-sensitive path. One body now; the gate's judging
+		 * contract (the docblock above) is unchanged.
+		 */
+		return $this->raw_request_authentication();
 	}
 
 	/**
