@@ -103,6 +103,34 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('--surface must be openai or anthropic', $output);
     }
 
+    public function testAHomelessEnvironmentSkipsTheFileFallbackCleanly()
+    {
+        /*
+         * glm15-3: under cron/systemd HOME is UNSET, getenv('HOME')
+         * returns false, and the old bare concatenation probed the
+         * filesystem ROOT ('/.config/z.ai/api_key') instead of skipping
+         * the fallback — silently using whatever unrelated readable file
+         * lives there as the live API key. With no HOME at all the key
+         * lookup must fail cleanly at the no-key diagnostic.
+         */
+        $repo = dirname(__DIR__, 2);
+
+        $command = 'env -i '
+            . escapeshellarg(PHP_BINARY) . ' '
+            . escapeshellarg($repo . '/bin/zai-live-probe.php')
+            . ' 2>&1';
+        exec($command, $outputLines, $exitCode);
+        $output = implode("\n", $outputLines);
+
+        $this->assertSame(2, $exitCode, "A keyless, HOME-less run must exit 2, got {$exitCode}: {$output}");
+        $this->assertStringContainsString('no key found', $output, 'With no HOME the file fallback is skipped, not concatenated onto false.');
+
+        // Source pin: the boolean-concatenation shape may not return.
+        $source = (string) file_get_contents($repo . '/bin/zai-live-probe.php');
+        $this->assertSame(0, preg_match('/getenv\(\s*[\'"]HOME[\'"]\s*\)\s*\./', $source), 'getenv(\'HOME\') may never be concatenated unchecked (false concatenates to a root path).');
+        $this->assertStringContainsString("\\is_string( \$home )", $source, 'The HOME fallback is guarded by a string check.');
+    }
+
     public function testThePerSurfaceFactsRideTheOwnerConstants()
     {
         /*

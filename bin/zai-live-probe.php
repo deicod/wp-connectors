@@ -54,6 +54,12 @@ use WordPress\AiClient\Providers\Http\HttpTransporter;
 /**
  * Resolves the live key from the documented runtime sources only.
  *
+ * glm15-3: HOME may be UNSET (cron, systemd) — getenv()
+ * then returns false, and the previous bare concatenation probed the
+ * filesystem ROOT ('/.config/z.ai/api_key'), silently using whatever
+ * unrelated readable file lives there as the live API key. The fallback
+ * is skipped entirely when no usable HOME exists.
+ *
  * @return string Empty when no key is available.
  */
 function zai_live_probe_key(): string
@@ -65,9 +71,12 @@ function zai_live_probe_key(): string
         }
     }
 
-    $file = getenv( 'HOME' ) . '/.config/z.ai/api_key';
-    if ( is_file( $file ) && is_readable( $file ) ) {
-        return trim( (string) file_get_contents( $file ) );
+    $home = getenv( 'HOME' );
+    if ( \is_string( $home ) && '' !== $home ) {
+        $file = $home . '/.config/z.ai/api_key';
+        if ( is_file( $file ) && is_readable( $file ) ) {
+            return trim( (string) file_get_contents( $file ) );
+        }
     }
 
     return '';
