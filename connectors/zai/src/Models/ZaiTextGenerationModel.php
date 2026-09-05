@@ -43,6 +43,7 @@ use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
+use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
@@ -567,6 +568,22 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		try {
 			return parent::parseResponseToGenerativeAiResult( $response );
 		} catch ( ResponseException $e ) {
+			/*
+			 * glm13-7: this plugin's own fixed-message rejections pass
+			 * through verbatim — the three tool-arguments rejections the
+			 * parse hook below throws (GLM6 #1, GLM5 #2, GLM12 #8) are
+			 * precise, actionable diagnostics the blanket rewrite ate,
+			 * degrading the byte-identical corruption on this surface to
+			 * the generic string while the zai_anthropic twin surfaced its
+			 * precise message end-to-end. Only the SDK parent's OWN
+			 * ResponseExceptions (whose messages can embed upstream body
+			 * content, e.g. a non-standard finish_reason) keep the fixed
+			 * generic rewrite.
+			 */
+			if ( $e instanceof FixedMessageResponseException ) {
+				throw $e;
+			}
+
 			// The SDK message may embed upstream body content (e.g. a
 			// non-standard finish_reason); replace it with a fixed string.
 			throw ResponseException::fromInvalidData(
@@ -716,7 +733,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @return \WordPress\AiClient\Messages\DTO\MessagePart|null The tool-call part, or null
 	 *                                              (the SDK caller then rejects the
 	 *                                              unexpected type).
-	 * @throws ResponseException When the arguments cannot replay onto the wire.
+	 * @throws FixedMessageResponseException When the arguments do not decode
+	 *                              or cannot replay onto the wire — the
+	 *                              ResponseException subtype whose precise
+	 *                              message parseNonStreamBody() passes
+	 *                              through (glm13-7).
 	 */
 	protected function parseResponseChoiceMessageToolCallPart( array $tool_call_data ): ?MessagePart { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated override name.
 		$part = parent::parseResponseChoiceMessageToolCallPart( $tool_call_data );
@@ -757,7 +778,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				 * is the same legal zero-arg shape. A literal "null" string
 				 * decodes cleanly and keeps the parent's semantics too.
 				 */
-				throw ResponseException::fromInvalidData(
+				throw FixedMessageResponseException::fixed(
 					self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					'tool_calls',
 					'A tool call carried an arguments string that is not valid JSON.'
@@ -802,14 +823,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 */
 		if ( \is_string( $raw_arguments ) ) {
 			if ( ! ToolArgsReplayGuard::wire_arguments_are_replayable( $raw_arguments ) ) {
-				throw ResponseException::fromInvalidData(
+				throw FixedMessageResponseException::fixed(
 					self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					'tool_calls',
 					'A tool call carried arguments that cannot be replayed (an unencodable or precision-loss value was given).'
 				);
 			}
 		} elseif ( ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
-			throw ResponseException::fromInvalidData(
+			throw FixedMessageResponseException::fixed(
 				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'tool_calls',
 				'A tool call carried arguments that cannot be replayed (an unencodable or precision-loss value was decoded).'

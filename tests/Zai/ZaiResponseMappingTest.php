@@ -257,7 +257,8 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($this->prompt());
             $this->fail('INF tool arguments must be rejected.');
         } catch (ResponseException $e) {
-            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+            // glm13-7: the precise GLM5 #2 diagnostic now surfaces end-to-end.
+            $this->assertStringContainsString('cannot be replayed (an unencodable or precision-loss value was given)', $e->getMessage());
         }
     }
 
@@ -304,7 +305,8 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
                 $this->model()->generateTextResult($this->prompt());
                 $this->fail("[{$label}] A lossy beyond-int literal must be rejected.");
             } catch (ResponseException $e) {
-                $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+                // glm13-7: the precise GLM12 #8 diagnostic now surfaces end-to-end.
+                $this->assertStringContainsString('cannot be replayed (an unencodable or precision-loss value was given)', $e->getMessage());
             }
         }
     }
@@ -380,13 +382,22 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
          * the value through untouched — an INF member reaches the guard
          * through the same channel.
          */
-        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-arr","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_arr","type":"function","function":{"name":"f","arguments":{"v":1e999}}}}]},"finish_reason":"tool_calls"}]}');
+        /*
+         * glm13-7 verifier note: this fixture was mis-nested JSON — the
+         * body never decoded, so the test exercised the malformed-body
+         * path (whose generic rewrite satisfied the old assertion) and
+         * never the pre-decoded INF member it was written for. The
+         * fixture is now valid and the precise decoded-path diagnostic
+         * is asserted.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-arr","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_arr","type":"function","function":{"name":"f","arguments":{"v":1e999}}}]},"finish_reason":"tool_calls"}]}');
 
         try {
             $this->model()->generateTextResult($this->prompt());
             $this->fail('INF inside pre-decoded tool arguments must be rejected.');
         } catch (ResponseException $e) {
-            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+            // glm13-7: the decoded-path diagnostic now surfaces end-to-end.
+            $this->assertStringContainsString('cannot be replayed (an unencodable or precision-loss value was decoded)', $e->getMessage());
         }
     }
 
@@ -407,7 +418,8 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($this->prompt());
             $this->fail('Truncated tool-call arguments must be rejected.');
         } catch (ResponseException $e) {
-            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+            // glm13-7: the precise GLM6 #1 diagnostic now surfaces end-to-end.
+            $this->assertStringContainsString('arguments string that is not valid JSON', $e->getMessage());
         }
     }
 
@@ -431,7 +443,9 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($this->prompt());
             $this->fail('Fragment-losing streamed tool arguments must be rejected.');
         } catch (ResponseException $e) {
-            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+            // glm13-7: the streamed twin of the GLM6 #1 diagnostic now
+            // surfaces end-to-end through the consolidated parse.
+            $this->assertStringContainsString('arguments string that is not valid JSON', $e->getMessage());
         }
     }
 
@@ -1098,7 +1112,8 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($this->prompt());
             $this->fail('A lossy literal beside an escape-dense string must be rejected.');
         } catch (ResponseException $e) {
-            $this->assertStringContainsString('The chat-completions payload was malformed.', $e->getMessage());
+            // glm13-7: the precise GLM12 #8 diagnostic now surfaces end-to-end.
+            $this->assertStringContainsString('cannot be replayed (an unencodable or precision-loss value was given)', $e->getMessage());
         }
     }
 
