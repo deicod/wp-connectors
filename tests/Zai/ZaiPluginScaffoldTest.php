@@ -192,4 +192,30 @@ PHP;
         $this->assertSame(3, did_action('init'));
         $this->assertNoDoingItWrong();
     }
+
+    public function testBootWiresEverySurfaceThroughTheOneSurfaceList()
+    {
+        /*
+         * glm15-13 (source pin): boot() iterates one SDK-free surface
+         * list — the per-surface hook block was copy-pasted (~7
+         * update/add-option hooks per surface plus the page/section
+         * asymmetry), and one missed copied line was exactly the
+         * stranded-invalidation bug class the file's own GLM5 #14
+         * comments document. Each surface class may appear in the list
+         * exactly once; every per-surface hook rides the foreach (the
+         * behavioral coverage above pins the wired hooks themselves).
+         */
+        $source = (string) file_get_contents(self::PLUGIN_FILE);
+
+        $this->assertStringContainsString('$surface_settings = array(', $source, 'boot() declares the one surface list.');
+        foreach (array('PlanRegionSettings::class', 'ZaiAnthropicPlanRegionSettings::class') as $surface) {
+            $this->assertSame(
+                1,
+                preg_match_all('/(?<![A-Za-z])' . preg_quote($surface, '/') . ',/', $source),
+                "{$surface} is a list entry exactly once, never a copy-pasted hook block."
+            );
+        }
+        $this->assertStringContainsString("foreach ( \$surface_settings as \$settings_class )", $source, 'The per-surface hooks ride the list iteration.');
+        $this->assertStringContainsString("foreach ( \$surface_settings as \$index => \$settings_class )", $source, 'The page-owner asymmetry rides the list order.');
+    }
 }
