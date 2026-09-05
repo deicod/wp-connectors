@@ -122,17 +122,35 @@ function wp_connectors_unused_import_violations(string $root): int
         }
 
         $matches = array();
-        if (preg_match_all('/^use\s+(?:function\s+|const\s+)?[\w\\\\]+(?:\s+as\s+(\w+))?\s*;/m', $source, $matches, PREG_SET_ORDER) === 0) {
+        if (preg_match_all(
+            '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+(?:\s+as\s+(\w+))?\s*;/m',
+            $source,
+            $matches,
+            PREG_SET_ORDER | PREG_OFFSET_CAPTURE
+        ) === 0) {
             continue;
         }
 
         foreach ($matches as $match) {
+            /*
+             * glm17-11: the offset capture IS the statement's position.
+             * The old code re-derived it with an unanchored strpos over
+             * the whole source, which removes the FIRST textual copy of
+             * the statement text — not necessarily the matched statement
+             * — and paid a full-source string copy plus rescan per match.
+             * The dead `false !== $usePosition` guard is gone too: the
+             * captured text is by construction a substring of $source at
+             * exactly this offset.
+             */
+            $statement        = $match[0][0];
+            $statement_offset = $match[0][1];
+
             // The short name is the alias when one is given, else the
             // last segment of the qualified name (the whole name for a
             // global class import with no backslash).
-            $qualified = trim(preg_replace('/^use\s+(?:function\s+|const\s+)?/', '', substr($match[0], 0, -1)));
+            $qualified = trim(preg_replace('/^use\s+(?:function\s+|const\s+)?/', '', substr($statement, 0, -1)));
             $lastBackslash = strrpos($qualified, '\\');
-            $alias = (string) ($match[1] ?? '');
+            $alias = isset($match[1][0]) && \is_string($match[1][0]) ? $match[1][0] : '';
             $short = '' !== $alias
                 ? $alias
                 : (false === $lastBackslash ? $qualified : substr($qualified, $lastBackslash + 1));
@@ -141,19 +159,15 @@ function wp_connectors_unused_import_violations(string $root): int
                 continue;
             }
 
-            // Remove the use statement itself (its FIRST occurrence
-            // only — glm16-17: str_replace removed every copy, so a
-            // comment line ending in the exact use-statement text
-            // would have been stripped too, flagging an import whose
-            // only other mention was that comment), then require at
-            // least one word-boundary mention of the short name
-            // anywhere in the remaining source (code, comments, or
-            // docblocks).
-            $withoutUse = $source;
-            $usePosition = strpos($withoutUse, $match[0]);
-            if (false !== $usePosition) {
-                $withoutUse = substr_replace($withoutUse, '', $usePosition, strlen($match[0]));
-            }
+            // Remove exactly the matched statement bytes at the
+            // captured offset (glm16-17: the removal must take ONE copy
+            // — str_replace removed every copy, so a comment line
+            // ending in the exact use-statement text was stripped too,
+            // flagging an import whose only other mention was that
+            // comment), then require at least one word-boundary mention
+            // of the short name anywhere in the remaining source (code,
+            // comments, or docblocks).
+            $withoutUse = substr_replace($source, '', $statement_offset, strlen($statement));
             // Case-insensitive: PHP class and function name resolution is
             // itself case-insensitive (glm17-9), so `new widget()` is a
             // real use of an import of ...Widget. The i modifier only
