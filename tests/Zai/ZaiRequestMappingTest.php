@@ -365,6 +365,34 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testAListRootedOutputSchemaIsRejectedBeforeTransport()
+    {
+        /*
+         * glm13-8 (the GLM12 #4/#5 misattributed-error class): the SDK
+         * setter accepts any array, so a list-root outputSchema encodes
+         * fine and previously rode response_format.json_schema verbatim
+         * to the spec-faithful endpoint's generic upstream 400 — with no
+         * hint the caller's schema shape was the cause. Typed rejection
+         * now, before any transport work.
+         */
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array(
+                'outputMimeType' => 'application/json',
+                'outputSchema' => array('a', 'b'),
+            )),
+            'output schema to be a JSON object'
+        );
+
+        // The empty list is the same non-object root (it encodes as []).
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array(
+                'outputMimeType' => 'application/json',
+                'outputSchema' => array(),
+            )),
+            'output schema to be a JSON object'
+        );
+    }
+
     public function testCustomOptionsAreRejectedBeforeTransport()
     {
         $config = ModelConfig::fromArray(array());

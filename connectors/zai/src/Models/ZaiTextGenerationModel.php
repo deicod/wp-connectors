@@ -45,6 +45,7 @@ use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
+use Deicod\WpConnectors\Zai\Support\JsonShape;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
@@ -1011,6 +1012,24 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		$output_schema = $config->getOutputSchema();
 		if ( \is_array( $output_schema ) ) {
+			/*
+			 * glm13-8 (the GLM12 #4/#5 error class, parity with the
+			 * twin's Codex R7 #3 parameter-schema rule): the SDK setter
+			 * accepts any array, so a LIST-root schema (['a','b'], or [])
+			 * encodes fine and rode the wire verbatim as
+			 * response_format.json_schema — where the spec-faithful
+			 * endpoint rejects it as the generic misattributed upstream
+			 * 400 with no hint the caller's schema shape is the cause.
+			 * Typed pre-transport rejection; the shape rule surfaces
+			 * before the encodability check, matching the twin's
+			 * identity-before-schema ordering.
+			 */
+			if ( JsonShape::is_list( $output_schema ) ) {
+				throw new InvalidArgumentException(
+					'The zai provider requires the configured output schema to be a JSON object (a list was given).'
+				);
+			}
+
 			JsonEncodeGuard::must_encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
 		}
 
