@@ -1057,6 +1057,25 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					'The zai provider requires the configured output schema to be a JSON object (a list was given).'
 				);
 			}
+
+			/*
+			 * glm14-1: the SDK parent forwards response_format ONLY under
+			 * the JSON mime (AbstractOpenAiCompatibleTextGenerationModel),
+			 * so under any other mime the configured schema never reaches
+			 * the assembled $data — the chokepoint net cannot fail on it,
+			 * and glm13-11's move of the schema's encodability check onto
+			 * the net let an unencodable schema under, say, text/plain fly
+			 * unchecked where the pre-glm13-11 eager walk rejected it typed
+			 * and the zai_anthropic twin still guards the schema on EITHER
+			 * signal. Guarded HERE, eagerly, only in the dropped case:
+			 * under the JSON mime the net's whole-payload encode covers
+			 * the schema exactly once, and the attribution walk names it
+			 * precisely on failure — the eager check would be the second
+			 * O(payload-member) serialization glm13-11 deleted.
+			 */
+			if ( 'application/json' !== $config->getOutputMimeType() ) {
+				JsonEncodeGuard::must_encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
+			}
 		}
 
 		$stop_sequences = $config->getStopSequences();

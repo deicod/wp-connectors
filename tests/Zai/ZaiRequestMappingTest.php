@@ -1154,6 +1154,17 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
                 $config->setOutputMimeType('application/json');
                 $config->setOutputSchema(array('properties' => array('bad' => "bin\xB1\x31ary")));
             }, 'The zai provider could not JSON-encode the configured output schema'),
+            /*
+             * glm14-1: the SDK parent drops response_format when the mime
+             * is not application/json, so the whole-payload net never sees
+             * the schema on this configuration — the regression case the
+             * glm13-11 restructure opened (silently flew at HEAD) and the
+             * eager walk closes again.
+             */
+            'unencodable output schema under a non-JSON mime' => array(static function (ModelConfig $config): void {
+                $config->setOutputSchema(array('properties' => array('bad' => "bin\xB1\x31ary")));
+                $config->setOutputMimeType('text/plain');
+            }, 'The zai provider could not JSON-encode the configured output schema'),
         );
     }
 
