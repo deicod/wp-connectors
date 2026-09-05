@@ -345,6 +345,28 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertMatchesSnapshot('structured-output', $url, $body);
     }
 
+    public function testAListRootedOutputSchemaIsRejectedBeforeTransport()
+    {
+        /*
+         * glm18-6 (cross-surface parity, the zai twin's glm13-8 rule):
+         * the SDK setter accepts any array, so a LIST-root schema
+         * embedded verbatim into the system-prompt guidance as the
+         * meaningless pseudo-instruction 'JSON Schema: ["a","b"]' — the
+         * model produced effectively unconstrained output and the
+         * caller got a 200 instead of the twin's typed rejection. The
+         * schema is advertised independently of the MIME option on this
+         * surface, so either signal with a list root rejects.
+         */
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array('outputSchema' => array('a', 'b'))),
+            'output schema to be a JSON object'
+        );
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array('outputMimeType' => 'application/json', 'outputSchema' => array())),
+            'output schema to be a JSON object'
+        );
+    }
+
     /**
      * @dataProvider provideUnencodableOutputSchemas
      */

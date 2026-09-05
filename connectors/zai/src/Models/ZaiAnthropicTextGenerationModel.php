@@ -525,8 +525,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @since 0.2.0
 	 *
 	 * @return string Guidance text (possibly embedding the outputSchema).
-	 * @throws InvalidArgumentException When the configured outputSchema
-	 *                                  cannot be JSON-encoded (Codex R19).
+	 * @throws InvalidArgumentException When the configured outputSchema is a
+	 *                                  JSON list (glm18-6) or cannot be
+	 *                                  JSON-encoded (Codex R19).
 	 */
 	private function json_output_guidance(): string {
 		$config = $this->getConfig();
@@ -541,6 +542,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$guidance = __( 'Respond with a single JSON value only — no markdown fences, no commentary, no surrounding text.', 'zai' );
 
 		if ( \is_array( $output_schema ) ) {
+			/*
+			 * glm18-6 (parity with the zai twin's glm13-8 rule): the SDK
+			 * setter accepts any array, so a LIST-root schema (['a','b'],
+			 * or []) encodes fine and previously embedded into the system
+			 * prompt as the meaningless pseudo-instruction 'JSON Schema:
+			 * ["a","b"]' — the model produced effectively unconstrained
+			 * output and the caller got a 200 with an unconstrained
+			 * payload instead of the twin's typed pre-transport
+			 * rejection. A JSON list is never a valid schema root; the
+			 * shape rule surfaces before the encodability check,
+			 * matching the twin's shape-before-encode ordering.
+			 */
+			if ( JsonShape::is_list( $output_schema ) ) {
+				throw new InvalidArgumentException(
+					'The zai_anthropic provider requires the configured output schema to be a JSON object (a list was given).'
+				);
+			}
+
 			/*
 			 * R19 (inline 3906739372): a constructible but unencodable
 			 * outputSchema — NAN, invalid UTF-8, a recursive structure — makes
