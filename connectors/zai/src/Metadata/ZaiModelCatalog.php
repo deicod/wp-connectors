@@ -27,7 +27,6 @@ use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use WordPress\AiClient\Providers\Models\DTO\SupportedOption;
 use WordPress\AiClient\Providers\Models\Enums\CapabilityEnum;
 use WordPress\AiClient\Providers\Models\Enums\OptionEnum;
-use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
 /**
  * Static model catalog and capability data.

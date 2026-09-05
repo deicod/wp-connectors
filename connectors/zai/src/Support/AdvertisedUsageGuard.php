@@ -20,7 +20,6 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Support;
 
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
-use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Providers\Models\DTO\ModelConfig;
 
 /**
