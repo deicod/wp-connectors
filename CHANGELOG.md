@@ -6,6 +6,121 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM19 verifier round)
+
+Independent security + correctness verification over the full glm19
+diff (7 verifier lenses — security, the glm19-1 float-form arithmetic,
+the exception/stamp commits, refactor behavior-neutrality, deletion
+completeness, test-pin integrity, ledger consistency; 11 raw
+candidates, 2 CONFIRMED on adjudication and fixed here, 9 refuted with
+empirical repros, source traces, and ledger lines):
+
+- Docblocks stop claiming deleted behavior (glm19-13): the DISCOVERY_TTL
+  owner's docblock still said in the present tense that "the directory
+  classes alias this as their public constant" — the exact aliasing
+  glm19-10 deleted and now pins AGAINST, so a maintainer reading the
+  owner could re-add the dead alias straight into a failing pin. Two
+  minor drift sites joined it (the glm19-7 absint() phpcs
+  justifications, the SseAggregator narration addressing the
+  glm19-11-deleted event_count() getter).
+- The stdClass stamp's trust boundary is stated and pinned (glm19-14):
+  glm19-3's "the stamp rides a proof" claim was sub-path-scoped — under
+  the same null-raw defensive branch the stdClass sub-path still stamps
+  with no validation of its own, and its justification conflated the
+  production caller (the aggregator channel, replay-validated at
+  acceptance) with the sub-path, which cannot prove origin. Closing it
+  in code would undo glm12-8's precise big-literal acceptance on its
+  own production channel, so the boundary is documented at the sub-path
+  and pinned as DELIBERATE: the boundary test asserts the stdClass
+  channel stamps an aggregator-accepted exact big literal (1e20) the
+  conservative walker would reject.
+
+### Fixed (zai / M2 — GLM19 round)
+
+All 12 findings of review round 19 (high, ledger-filtered), one commit
+each:
+
+- Float-form integer literals face the wire replay exactness oracle
+  (glm19-1): wire_arguments_are_replayable()'s plain-integer scan
+  guarded its digit runs against e/E/./- adjacency, which also made
+  every float token invisible — the exponent spelling of a lossy
+  beyond-int integer (9223372036854775809e0, …809 collapsing to the
+  …808 double) skipped the exactness check its plain-literal twin
+  fails, was stamped replayable, and permanently suppressed the
+  outbound oracle, while the decoded channels rejected the same value —
+  the raw-wire half of the glm12-8 contract and the same
+  collapse-window class glm18-1 closed on the decoded walker. A second
+  scan reconstructs each float-form token's exact decimal integer
+  expansion by digit arithmetic and applies the same %.0f oracle; a
+  float-form token decodes to a double even below the int range, so its
+  exact-integer guarantee ends at 2^53 (9007199254740993e0 is lossy);
+  genuinely fractional expansions keep their stable-double exemption.
+- The malformed-body rewrite covers the vendor
+  InvalidArgumentException family (glm19-2): a USER-role choice message
+  makes the vendor Candidate constructor throw
+  InvalidArgumentException — disjoint from the ResponseException the
+  rewrite caught — so the SDK-internal message escaped to the boundary
+  (zai_invalid_request 400) while the byte-equivalent corruption on
+  zai_anthropic yielded its typed 502-class role rejection, on all
+  three zai transports. Every plugin InvalidArgumentException is
+  outbound and never runs under the parent's parse; the marker family
+  still passes through and the mislabeled fallback keeps its
+  stream-typed error (glm14-2).
+- The replay stamp rides a proof on the defensive associative tool-input
+  sub-path (glm19-3): a pre-decoded associative payload with a null raw
+  oracle (caller-built territory, no aggregator behind it) used to
+  reach the GLM12 #12 return with no replay check ever having run —
+  stamping the call and permanently disabling the outbound oracle. The
+  sub-path now proves replayability through the FULL is_replayable()
+  oracle (a caller-built tree can carry INF/NAN/invalid UTF-8/recursion
+  the decoded fast path would miss); the stdClass channel keeps its
+  aggregator-backed stamp, with the trust boundary stated and pinned
+  (glm19-14).
+- PreDecodedResponse forwards the original headers and body (glm19-4):
+  the shim hollowed out the Response it wrapped (empty header map, null
+  body) though the original was in scope at both construction sites;
+  the constructor now takes the whole original Response so the
+  forwarding is structural.
+- Five twin request rules live on one shared label-parameterized guard
+  (glm19-5): empty tool name, duplicate tool name, list-root parameter
+  schema, list-root output schema, and maxTokens-positive were
+  near-verbatim twins across the two model classes — the branch's
+  CHANGELOG records five one-surface-late incidents of exactly that
+  drift shape. They live on Support\RequestShapeGuard once now
+  (the AdvertisedOptionGuard pattern).
+- Rejection messages interpolate PROVIDER_LABEL, not the slug literal
+  (glm19-6): the slug-rename path glm15-23 designed silently left 27
+  user-facing messages naming a provider id that no longer exists;
+  sprintf over the constant is byte-identical (the message pins pass
+  unchanged).
+- One effective_max_tokens() helper serves the wire member and the
+  token-limit payload (glm19-7): the defaulting expression was written
+  twice; a one-site edit would make the token-limit error report a
+  limit the request never carried.
+- The partially-answered-tool-turn rejection rides one thrower
+  (glm19-8): the message was written out twice; a one-copy wording edit
+  would break the byte-stable error contract.
+- The live probe's preferred model rides the catalog owner (glm19-9):
+  the hardcoded 'glm-5.3' literal would silently stale-date after the
+  next catalog refresh (and was plan-blind); the probe rides
+  ZaiModelCatalog::ids_for_plan($plan)[0] and the fallback to the
+  first discovered id emits a diagnostic.
+- The metadata directories' cache alias constants are deleted
+  (glm19-10): eight production-dead mirrors (four per directory) that
+  only tests read; the GLM4 #10 alias-agreement pins are superseded by
+  no-redeclaration anti-regression pins, and the 37 test references
+  rewire to the real owners (ZaiDiscoveryCache, the settings classes).
+- The SSE aggregators' observability API is gone (glm19-11):
+  is_done()/event_count()/malformed_count() were public API only tests
+  called, and the dead-store counters behind two of them existed purely
+  to feed the getters. Deleted; termination and event-accounting pins
+  read the live fields through a harness reflection helper, and the
+  malformed-count pins became behavioral assertions.
+- Plugin::PROVIDER_ID is deleted (glm19-12): orphaned by the
+  PROVIDER_CLASSES rewire; nothing referenced it, and a future consumer
+  would have read a value that no longer derives from the settings-layer
+  owner after a slug rename.
+
 ### Fixed (zai / M2 — GLM18 verifier round)
 
 Independent security + correctness verification over the full glm18
