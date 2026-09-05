@@ -85,7 +85,7 @@ ledger or by reachability):
 - A garbled duplicate terminal rides the pipeline's shape check
   (glm16-15, see the corrected glm16-2 entry above).
 - The tool-schema memo resets under same-config declaration mutation
-  (glm16-16, see the completed glm16-6 entry above).
+  (glm16-16, see the completed glm16-6 entry below).
 - The unused-import scanner removes only the first occurrence of a use
   statement (glm16-17): a theoretical str_replace false positive
   where a comment line ending in the exact use-statement text would be
