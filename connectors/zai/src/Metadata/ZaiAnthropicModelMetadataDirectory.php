@@ -357,13 +357,45 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		}
 
 		/*
+		 * glm18-4: this route's live-attested rejection shape is HTTP 200
+		 * CARRYING the failure envelope ({"success":false,"code":401,...}
+		 * — the glm12-1 envelope the probe judges definitive INVALID), so
+		 * a successful status alone proves nothing about the credential.
+		 * The ONE decode below serves both the verdict and the parse
+		 * (glm13-3's discipline): when the body IS the envelope, the
+		 * invalid verdict records through the same guarded persist path
+		 * the 401/403 branch rides — previously nothing recorded, the
+		 * misattributed missing-data rejection converted into the silent
+		 * 60s '_miss' marker plus fallback, and a stale VALID verdict
+		 * kept isConfigured() answering true while every window's first
+		 * generation learned of the revocation only through its own
+		 * doomed POST 401.
+		 */
+		$raw = ZaiModelListParser::decode_models_body( $response );
+
+		if ( ( new ZaiAnthropicProviderAvailability() )->record_rejection_body_verdict(
+			$raw,
+			function () {
+				return $this->getRequestAuthentication();
+			},
+			$endpoint->cache_key()
+		) ) {
+			throw ResponseException::fromInvalidData(
+				ZaiAnthropicProviderAvailability::REFUSAL_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the class-owned constant (GLM10 #9).
+				'data',
+				'Discovery failed: the credential was rejected for this endpoint.'
+			);
+		}
+
+		/*
 		 * GLM1 #11: the list parsing (shape checks, has_more rejection,
 		 * chat filter, plan intersection) is SHARED with the zai surface's
 		 * directory via ZaiModelListParser — the two copies had already
 		 * drifted twice (the has_more rejection and the plan intersection
 		 * existed only here). GLM10 #9 (verifier round): this surface
-		 * names itself in the parser's rejections.
+		 * names itself in the parser's rejections. glm18-4: the decoded
+		 * tree rides the parser's split entry (the one decode above).
 		 */
-		return ZaiModelListParser::parse_chat_ids( $response, $endpoint->plan(), ZaiAnthropicProviderAvailability::REFUSAL_LABEL );
+		return ZaiModelListParser::parse_decoded_chat_ids( $raw, $endpoint->plan(), ZaiAnthropicProviderAvailability::REFUSAL_LABEL );
 	}
 }

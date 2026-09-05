@@ -337,6 +337,62 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         );
     }
 
+    public function testEnvelopeRejectingDiscoveryPersistsTheInvalidVerdict()
+    {
+        /*
+         * glm18-4: this route's live-attested rejection shape is HTTP 200
+         * CARRYING the failure envelope — definitive INVALID for the
+         * probe since glm12-1, but discovery recorded verdicts only for
+         * the 401/403 STATUS set, so a server-side revocation arriving
+         * as the envelope persisted nothing and a stale VALID verdict
+         * kept isConfigured() answering true while every window's first
+         * generation learned of it only through its own doomed 401. The
+         * envelope now records through the same persist path the status
+         * branch rides: a subsequent availability consult answers from
+         * state with NO new request.
+         */
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::zaiStatusEnvelopeBody(401, 'token expired or incorrect'));
+
+        $models = $this->directory($key)->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The fallback still serves.');
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'Exactly one discovery attempt.');
+
+        $state = get_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state, 'The invalid verdict must be persisted.');
+        $this->assertSame('invalid', $state['valid']);
+
+        $availability = new Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability();
+        $this->assertFalse($availability->isConfigured(), 'An envelope-rejected key reports not-connected.');
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'The fresh state answers without another request.');
+    }
+
+    public function testANonCredentialEnvelopeBodyRecordsNothing()
+    {
+        /*
+         * glm18-4 (glm12-1 parity): a success:false envelope whose code
+         * is NOT in the definitive set (1113 balance/plan standing)
+         * rejects the account's standing, not the key — the predicate
+         * does not match, nothing records, and discovery degrades to
+         * the miss marker exactly like its 429 status twin.
+         */
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::zaiStatusEnvelopeBody(1113, 'insufficient balance'));
+
+        $models = $this->directory($key)->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The fallback still serves.');
+        $this->assertFalse(
+            get_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::STATE_OPTION),
+            'A non-credential envelope code must not persist a verdict.'
+        );
+    }
+
     public function testDiscoveryToleratesAGatewayBomPrefix()
     {
         /*

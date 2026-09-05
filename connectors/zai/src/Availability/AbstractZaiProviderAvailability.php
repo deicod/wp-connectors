@@ -985,6 +985,76 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			return;
 		}
 
+		$this->record_rejection_via_reader( $authentication_reader, $endpoint_cache_key );
+	}
+
+	/**
+	 * Records the definitive invalid verdict a 2xx body's rejection
+	 * ENVELOPE represents, when it is one (glm18-4).
+	 *
+	 * The z.ai Anthropic /v1/models route answers HTTP 200 for any or no
+	 * credential, carrying the rejection in the body — the probe has
+	 * judged that envelope definitive INVALID since GLM12 #1
+	 * (successful_response_verdict()), but the zai_anthropic directory's
+	 * discovery path recorded verdicts only for the 401/403 STATUS set,
+	 * so a revocation arriving as the 200 envelope persisted nothing and
+	 * a stale VALID verdict kept isConfigured() answering true (one
+	 * doomed generation per window learning of it only through the
+	 * generation route's 401). The directory now rides this predicate —
+	 * the same glm12-1 verdict logic the probe applies — through the
+	 * same guarded recorder the status path uses; one credential flies
+	 * AND binds, or no verdict persists.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed       $raw_body             The decoded 2xx body (the ONE decode
+	 *                                          the caller already performed for its
+	 *                                          parse — glm13-3's discipline).
+	 * @param callable    $authentication_reader Returns the wired authentication
+	 *                                          the request authenticated with (same
+	 *                                          contract as
+	 *                                          record_rejection_for_status()).
+	 * @param string|null $endpoint_cache_key  The request-time endpoint identity
+	 *                                         (GLM10 #1), or null for the current
+	 *                                         settings.
+	 * @return bool True when the body IS the definitive rejection envelope
+	 *              (the caller surfaces its auth-naming error; whether a
+	 *              verdict PERSISTED is the recorder's binding rules — an
+	 *              opaque or empty credential records nothing).
+	 */
+	public function record_rejection_body_verdict( $raw_body, callable $authentication_reader, ?string $endpoint_cache_key = null ): bool {
+		if ( ! self::probe_body_is_credential_rejection( $raw_body ) ) {
+			return false;
+		}
+
+		$this->record_rejection_via_reader( $authentication_reader, $endpoint_cache_key );
+
+		return true;
+	}
+
+	/**
+	 * The guarded recorder both definitive-rejection recorders share.
+	 *
+	 * The reader-closure dance record_rejection_for_status() established
+	 * (GLM10 #8): the RuntimeException-guarded wired-auth read, the
+	 * instanceof narrowing (glm14-5: an opaque non-Api-key credential
+	 * flew the request and records NOTHING — one credential flies AND
+	 * binds, or no verdict persists), and the record_definitive_verdict()
+	 * call with its glm13-1 empty-wire skip.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param callable    $authentication_reader Returns the wired authentication
+	 *                                        the rejecting request authenticated
+	 *                                        with (throws RuntimeException when
+	 *                                        unwired, which resolves the
+	 *                                        effective key instead).
+	 * @param string|null $endpoint_cache_key The request-time endpoint identity
+	 *                                        (GLM10 #1), or null for the current
+	 *                                        settings.
+	 * @return void
+	 */
+	private function record_rejection_via_reader( callable $authentication_reader, ?string $endpoint_cache_key ): void {
 		try {
 			$wired = $authentication_reader();
 		} catch ( RuntimeException $unwired ) {
