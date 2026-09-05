@@ -86,7 +86,7 @@ final class ZaiAnthropicProviderAvailability extends AbstractZaiProviderAvailabi
 	 *
 	 * @var string
 	 */
-	public const REFUSAL_LABEL = 'zai_anthropic';
+	public const REFUSAL_LABEL = ZaiAnthropicPlanRegionSettings::CACHE_SCOPE; // glm15-23: one surface-identity owner (see the settings layer).
 
 	/**
 	 * The provider's endpoint resolver class.

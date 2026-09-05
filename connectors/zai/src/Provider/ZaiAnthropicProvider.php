@@ -40,7 +40,11 @@ final class ZaiAnthropicProvider extends AbstractZaiProvider {
 	 *
 	 * @var string
 	 */
-	public const PROVIDER_ID = 'zai_anthropic';
+	// glm15-23: the surface identity slug has ONE owner per surface — the
+	// SDK-free settings layer's CACHE_SCOPE, loadable on every site (Codex
+	// R2 #3); this SDK-dependent registration constant and the availability
+	// layer's REFUSAL_LABEL alias it, so a rename changes the three together.
+	public const PROVIDER_ID = ZaiAnthropicPlanRegionSettings::CACHE_SCOPE;
 
 	/**
 	 * Card display name: distinguishes this provider's Connectors card from

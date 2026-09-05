@@ -79,7 +79,7 @@ final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 	 *
 	 * @var string
 	 */
-	public const REFUSAL_LABEL = 'zai';
+	public const REFUSAL_LABEL = PlanRegionSettings::CACHE_SCOPE; // glm15-23: one surface-identity owner (see the settings layer).
 
 	/**
 	 * The provider's endpoint resolver class.

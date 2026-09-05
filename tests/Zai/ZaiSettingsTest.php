@@ -697,6 +697,45 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         );
     }
 
+    public function testTheSurfaceIdentitySlugHasOneOwnerPerSurface()
+    {
+        /*
+         * glm15-23: the 'zai' and 'zai_anthropic' slugs each lived as
+         * three same-valued literals — PROVIDER_ID, REFUSAL_LABEL,
+         * CACHE_SCOPE — pinned equal only by reflection tests. A
+         * provider-ID rename is a 3-constant, 3-class edit where a
+         * missed alias leaves refusal labels and cache keys naming a
+         * surface core no longer registers under, and each new surface
+         * added another un-aliased literal pair by copy-paste
+         * precedent. The SDK-free settings layer owns the slug
+         * (loadable on every site, Codex R2 #3); the SDK-dependent
+         * registration and refusal constants alias it.
+         */
+        $this->assertSame('zai', PlanRegionSettings::CACHE_SCOPE, 'The zai settings layer owns its surface slug.');
+        $this->assertSame(PlanRegionSettings::CACHE_SCOPE, \Deicod\WpConnectors\Zai\Provider\ZaiProvider::PROVIDER_ID, 'The provider registration aliases the owner.');
+        $this->assertSame(PlanRegionSettings::CACHE_SCOPE, \Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::REFUSAL_LABEL, 'The refusal label aliases the owner.');
+
+        $this->assertSame('zai_anthropic', ZaiAnthropicPlanRegionSettings::CACHE_SCOPE, 'The zai_anthropic settings layer owns its surface slug.');
+        $this->assertSame(ZaiAnthropicPlanRegionSettings::CACHE_SCOPE, \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::PROVIDER_ID, 'The provider registration aliases the owner.');
+        $this->assertSame(ZaiAnthropicPlanRegionSettings::CACHE_SCOPE, \Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::REFUSAL_LABEL, 'The refusal label aliases the owner.');
+
+        // Source pins: the alias shape — no literal slug may ride the
+        // SDK-dependent identity constants.
+        foreach (array(
+            'src/Provider/ZaiProvider.php',
+            'src/Provider/ZaiAnthropicProvider.php',
+            'src/Availability/ZaiProviderAvailability.php',
+            'src/Availability/ZaiAnthropicProviderAvailability.php',
+        ) as $relative) {
+            $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/' . $relative);
+            $this->assertSame(
+                0,
+                preg_match("/= 'zai_anthropic';|(?<![A-Za-z-])= 'zai';/", $source),
+                "{$relative} must alias the settings owner's slug constant, not spell a literal."
+            );
+        }
+    }
+
     public function testRegionRewriteWithSameValueDoesNotInvalidate()
     {
         $this->bootPlugin();
