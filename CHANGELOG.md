@@ -6,6 +6,97 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM13 code review)
+
+- One credential flies and the same credential binds: an EMPTY
+  registry-wired key (`ZAI_API_KEY=''` in wp-config/.env — the SDK
+  wires the empty string verbatim) no longer authenticates the
+  availability probe with an empty Bearer while the verdict lands on
+  the ladder-resolved database key's binding; the probe treats an empty
+  wired credential exactly like none and authenticates with the
+  EFFECTIVE key, and a definitive answer earned by a request the empty
+  credential flew records nothing. Previously the 401 the empty
+  credential earned persisted under a VALID key's binding, reporting
+  not-connected for a working credential and clearing it through core's
+  key-save validation. A 401/403 on the GENERATION routes now records
+  its invalid verdict too (the same definitive evidence the probe and
+  the discovery routes already persist — request-time endpoint
+  capture, glm13-1 binding discipline), so a server-side-revoked key
+  stops reporting connected — and stops re-transmitting the dead
+  credential — within the request that learned the revocation instead
+  of the whole 300s TTL; the recorded verdict immediately feeds the
+  refusal gate.
+
+- A damaged Anthropic stream can no longer complete with fabricated
+  content: an unknown delta type on an index whose
+  `content_block_start` was never received is corruption, not a
+  synthesized-seed tolerance (live-reproduced: a stream whose only
+  delta was unknown completed successfully with an empty fabricated
+  text block and no flag — the missing-start-must-fail class every
+  KNOWN delta type already enforced; the Codex R14 #3 seed pin is
+  consciously superseded). Unknown deltas on a STARTED block keep
+  their forward-compatible tolerance. Position rejections inside
+  `start_block()` (duplicate index, contiguity gap) now run BEFORE
+  content validation, so a position-rejected tool_use start no longer
+  pollutes the tool-input error channel for a stream whose actual tool
+  arguments were fine.
+
+- The availability verdict predicate rides the discovery parser's ONE
+  extracted model-list entry rule: the verdict's private shape-check
+  copy had already diverged — its vacuous foreach accepted an EMPTY
+  `data` list (`{"data":[]}`), persisting VERDICT_VALID for a body the
+  parser rejects and the discovery seed refuses to cache. Both now
+  share `ZaiModelListParser::entry_failure_reason()` (the empty list
+  and the incomplete page are not the models-list shape and stay
+  inconclusive — superseding the verdict's earlier has_more tolerance
+  per the glm12-1 narrowing), and the cold-window probe body is decoded
+  ONCE, shared between the verdict and the discovery seed.
+
+- The zai surface's tool-arguments diagnostics survive its parse
+  sanitizer: the three precise rejections (not-valid-JSON fragments,
+  unencodable/precision-loss values, wire and decoded variants) now
+  carry a `FixedMessageResponseException` marker type the blanket
+  rewrite passes through, so the byte-identical corruption surfaces its
+  precise message on BOTH surfaces (the pre-decoded-INF test's fixture
+  was discovered to be mis-nested JSON that never exercised its path —
+  fixed). Cross-surface parity also lands for duplicate declared tool
+  names (a returned tool_call identifies the declaration only by name —
+  typed rejection like the twin's R18 rule) and list-root output
+  schemas (typed rejection instead of the misattributed upstream 400),
+  and both surfaces now judge an unbound instance in the same order
+  (transporter binding before option guards — the vendor-mandated order
+  of the zai surface's final parent method, which the zai_anthropic
+  surface's own generateTextResult() now mirrors; guards-first is not
+  implementable on the zai surface).
+
+- One serialization per request in the zai encodability pipeline: the
+  per-member pre-pass no longer eagerly json_encodes every member
+  (system instruction, every text part, every tool schema) before the
+  chokepoint's whole-payload net encodes the assembled params again —
+  the typed identity/shape walk runs eagerly, the encodability walk
+  runs only to ATTRIBUTE a net failure with the precise per-member
+  message, and the one exception (the tool-result response, whose
+  failed encode the SDK parent's own mapping launders into
+  `"content": "false"` before the net could see it) stays eager.
+  Tool-arguments strings decode ONCE per call (the replay guard takes
+  the caller's pre-decoded tree), and the cold-window probe body's
+  double decode is gone.
+
+- The `TokenLimitReachedException` owns its message at the WP_Error
+  boundary: the mapper passes the model's precise text (the limit
+  number, the 'Raise maxTokens' guidance) through under its
+  controlled-string policy — only this plugin constructs the exception
+  — and carries the typed `max_tokens` payload in the error data,
+  deleting the second message catalog that drifted from the model's
+  own. The debug enabled-change hook rides the shared
+  `option_values_equal()` comparison (a non-scalar payload from
+  out-of-band code no longer raises an Array-to-string warning that
+  could abort the log clear), and uninstall's probe-miss sweep
+  collects env/constant credentials through the settings owner's ONE
+  `env_constant_ladder()` — its hand-rolled rungs were the fourth copy
+  of the ladder body, the drift class that stranded hashed markers
+  twice before.
+
 ### Fixed (zai / M2 — GLM12 code review)
 
 - Availability verdicts read the models BODY, not the bare 2xx: z.ai's
