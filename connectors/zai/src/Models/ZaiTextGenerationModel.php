@@ -643,12 +643,20 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * succeeds. A ResponseException from that parse (a JSON object, but
 	 * not a valid chat.completion body) returns null so the caller
 	 * surfaces its stream-typed error; the header DID promise a stream.
+	 * The plugin's own fixed-message rejections
+	 * (FixedMessageResponseException, glm14-2) are the one exception:
+	 * they propagate, so a precise tool-arguments diagnostic surfaces
+	 * even when the gateway also mislabeled the body.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @param Response $response The stream-labeled response.
 	 * @return GenerativeAiResult|null The parsed result, or null when the
 	 *                                 body is not a chat.completion payload.
+	 * @throws FixedMessageResponseException When the body IS a JSON object
+	 *                                       whose parse produced one of this
+	 *                                       plugin's precise fixed-message
+	 *                                       rejections (glm14-2).
 	 */
 	private function json_fallback_result( Response $response ): ?GenerativeAiResult {
 		$body = (string) $response->getBody();
@@ -669,6 +677,21 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					? new PreDecodedResponse( $response->getStatusCode(), $data )
 					: $response
 			);
+		} catch ( FixedMessageResponseException $e ) {
+			/*
+			 * glm14-2: the precise tool-arguments diagnostics the parse
+			 * below throws (glm13-7's marker subclass) surface even on
+			 * the fallback path — swallowing them here degraded the
+			 * byte-identical corruption to the generic no-usable-event
+			 * message whenever the gateway also mislabeled the body,
+			 * exactly the degradation parseNonStreamBody's pass-through
+			 * exists to prevent. The marker is this plugin's OWN fixed
+			 * message; every other ResponseException (the body is a JSON
+			 * object but no valid chat.completion payload) still returns
+			 * null so the caller surfaces its stream-typed error — the
+			 * GLM12 #3 contract.
+			 */
+			throw $e;
 		} catch ( ResponseException $e ) {
 			return null;
 		}

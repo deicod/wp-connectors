@@ -387,6 +387,38 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAPreciseToolUseDiagnosticFromAMislabeledJsonBodySurfacesThroughTheFallback()
+    {
+        /*
+         * glm14-2: the twin of the zai surface's fallback fix. The
+         * tool_use input rejections are marker exceptions
+         * (FixedMessageResponseException) now, so a doubly-nonconforming
+         * gateway (a stream label on a Messages body whose tool_use
+         * block carries a list input) surfaces the precise corruption
+         * diagnostic instead of the generic malformed-event message.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), (string) wp_json_encode(array(
+            'id' => 'msg_mislabeled_tool',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array(
+                'type' => 'tool_use',
+                'id' => 'call_mislabeled',
+                'name' => 'get_weather',
+                'input' => array('not', 'an', 'object'),
+            )),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 9, 'output_tokens' => 5),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A mislabeled body with a corrupt tool_use input must surface the precise diagnostic.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('non-object input value', $e->getMessage());
+        }
+    }
+
     public function testMislabeledNonJsonBodiesKeepTheStreamTypedError()
     {
         /*

@@ -2,15 +2,17 @@
 /**
  * A ResponseException whose fixed message this plugin owns (glm13-7).
  *
- * The zai surface's parse pipeline re-wraps SDK parse failures so no
- * upstream field can reach an exception message — but that blanket catch
- * also ate THIS plugin's own precise rejections (the tool-arguments
- * diagnostics of GLM6 #1/GLM5 #2/GLM12 #8), degrading them to the one
- * generic string. This subclass is byte-identical to the SDK's
+ * The surfaces' parse pipelines re-wrap SDK parse failures so no upstream
+ * field can reach an exception message — but those blanket catches also
+ * ate THIS plugin's own precise rejections (the zai surface's
+ * tool-arguments diagnostics of GLM6 #1/GLM5 #2/GLM12 #8), degrading them
+ * to the one generic string. This subclass is byte-identical to the SDK's
  * ResponseException on the wire (same message shape, same instanceof
- * everywhere) and distinguishable only BY TYPE, so a sanitizing catch
- * can pass the plugin's fixed messages through and rewrite just the
- * genuinely unmapped failures.
+ * everywhere) and distinguishable only BY TYPE, so a sanitizing catch can
+ * pass the plugin's fixed messages through and rewrite just the genuinely
+ * unmapped failures. glm14-2 extended the family to the zai_anthropic
+ * surface's tool_use input rejections and to both surfaces' mislabeled-
+ * JSON fallbacks, whose null-out catches are the same sanitizing shape.
  *
  * @since 0.2.0
  *

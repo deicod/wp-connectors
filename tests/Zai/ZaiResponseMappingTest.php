@@ -827,6 +827,26 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAPreciseDiagnosticFromAMislabeledJsonBodySurfacesThroughTheFallback()
+    {
+        /*
+         * glm14-2: the fallback's null-out catch swallowed glm13-7's
+         * marker subclass, so a doubly-nonconforming gateway (a stream
+         * label on a JSON chat.completion body) degraded the precise
+         * tool-arguments diagnostic to the generic no-usable-event
+         * message — the exact degradation the marker exists to prevent.
+         * The marker propagates through the fallback now.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), '{"id":"chatcmpl-fb","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_fb","type":"function","function":{"name":"get_weather","arguments":"{\"city\":"}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Truncated tool-call arguments must surface their precise diagnostic even on the fallback path.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('arguments string that is not valid JSON', $e->getMessage());
+        }
+    }
+
     public function testTheNonStreamingPathDecodesTheBodyOnceAndHandsOffPreDecoded()
     {
         /*

@@ -60,6 +60,7 @@ use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
+use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonShape;
 use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
 use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
@@ -1414,16 +1415,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * Messages body) returns null so the caller surfaces its
 	 * stream-typed error; the typed truncation outcome
 	 * (TokenLimitReachedException) is a successful parse of a valid body
-	 * and propagates.
+	 * and propagates, as do the plugin's own fixed-message tool-arguments
+	 * rejections (FixedMessageResponseException, glm14-2).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $body The raw response body.
 	 * @return GenerativeAiResult|null The parsed result, or null when the
 	 *                                 body is not a Messages payload.
-	 * @throws TokenLimitReachedException When the JSON body is a valid
-	 *                                    Messages payload that stopped at
-	 *                                    the token limit.
+	 * @throws FixedMessageResponseException When the body IS a JSON object
+	 *                                       whose parse produced one of this
+	 *                                       plugin's precise fixed-message
+	 *                                       rejections (glm14-2). The typed
+	 *                                       truncation outcome
+	 *                                       (TokenLimitReachedException,
+	 *                                       documented above) propagates
+	 *                                       uncaught as well.
 	 */
 	private function json_fallback_result( string $body ): ?GenerativeAiResult {
 		if ( ! \is_object( json_decode( SseFrameBuffer::strip_stream_prefix( $body ) ) ) ) {
@@ -1432,6 +1439,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		try {
 			return $this->parse_body_string( $body );
+		} catch ( FixedMessageResponseException $e ) {
+			/*
+			 * glm14-2: this surface's precise tool-arguments diagnostics
+			 * (the tool_use input rejections below, thrown as the marker
+			 * subclass since this round) propagate even on the fallback
+			 * path — swallowing them here degraded the byte-identical
+			 * corruption to the generic malformed-event message whenever
+			 * the gateway also mislabeled the body. Every other
+			 * ResponseException (the body is a JSON object but no valid
+			 * Messages payload) still returns null so the caller surfaces
+			 * its stream-typed error — the GLM8 #5 contract.
+			 */
+			throw $e;
 		} catch ( ResponseException $e ) {
 			return null;
 		}
@@ -1787,6 +1807,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *                                        when unavailable.
 	 * @return MessagePart|null The part, or null for ignorable block types.
 	 * @throws ResponseException When a known block type has a malformed shape.
+	 * @throws FixedMessageResponseException When a tool_use block's input or
+	 *                                       arguments are corrupt (glm14-2:
+	 *                                       the marker subclass, so the
+	 *                                       mislabeled-JSON fallback passes
+	 *                                       the precise diagnostic through).
 	 */
 	private function parse_content_block( array $part_data, ?\stdClass $raw_part ): ?MessagePart {
 		$type = $part_data['type'] ?? null;
@@ -1870,15 +1895,21 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						 * array therefore needs no separate normalization —
 						 * GLM5 #19 removed the dead elseif that never ran
 						 * behind this rejecting branch).
+						 *
+						 * glm14-2: the tool_use input rejections carry the
+						 * marker subclass (the byte-identical
+						 * FixedMessageResponseException) so the mislabeled-
+						 * JSON fallback passes them through instead of
+						 * degrading them to the generic stream message.
 						 */
-						throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A tool_use block is missing its input member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+						throw FixedMessageResponseException::fixed( self::PROVIDER_LABEL, 'content', 'A tool_use block is missing its input member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					}
 				} else {
 					$raw_input = \property_exists( $raw_part, 'input' ) ? $raw_part->input : null;
 
 					if ( null === $raw_input ) {
 						// Missing input member or explicit null (R7 #1).
-						throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A tool_use block is missing its input member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+						throw FixedMessageResponseException::fixed( self::PROVIDER_LABEL, 'content', 'A tool_use block is missing its input member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					} elseif ( \is_object( $raw_input ) ) {
 						if ( array() === get_object_vars( $raw_input ) ) {
 							// The empty object {} means "no arguments"
@@ -1890,7 +1921,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					} else {
 						// A scalar, boolean, or JSON list value (an empty
 						// list included).
-						throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A tool_use block carried a non-object input value.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+						throw FixedMessageResponseException::fixed( self::PROVIDER_LABEL, 'content', 'A tool_use block carried a non-object input value.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					}
 				}
 
@@ -1921,7 +1952,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * undo the precise rule for exact big literals.
 				 */
 				if ( null !== $raw_part && null !== $args && ! ToolArgsReplayGuard::is_replayable_decoded( $args ) ) {
-					throw ResponseException::fromInvalidData(
+					/*
+					 * glm14-2: the marker subclass (byte-identical on the
+					 * wire) so the mislabeled-JSON fallback surfaces this
+					 * precise diagnostic instead of the generic stream
+					 * message — parity with the zai surface's glm13-7
+					 * marker family.
+					 */
+					throw FixedMessageResponseException::fixed(
 						self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 						'content',
 						'A tool_use block carried arguments that cannot be replayed (an unencodable or precision-loss value was decoded).'
