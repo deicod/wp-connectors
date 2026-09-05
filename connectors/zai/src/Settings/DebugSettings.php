@@ -115,6 +115,26 @@ final class DebugSettings {
 		}
 
 		$entries = DebugLogger::entries();
+
+		/*
+		 * glm18-5: entries() validates only the TOP level, so a scalar or
+		 * null ENTRY (out-of-band code, a corrupt round trip — the
+		 * option family's GLM5 #9 / glm13-13 hardening class) fatalled
+		 * the settings page mid-render: on PHP 8+ $entry['at'] on a
+		 * string throws outright; on 7.4 it warns per member and renders
+		 * 1970-01-01 rows. Only well-formed entries render; the rest of
+		 * the list does.
+		 */
+		$entries = array_values(
+			array_filter(
+				$entries,
+				static function ( $entry ): bool {
+					return \is_array( $entry )
+						&& isset( $entry['at'], $entry['method'], $entry['url'], $entry['status'], $entry['duration_ms'] );
+				}
+			)
+		);
+
 		if ( array() === $entries ) {
 			return;
 		}
