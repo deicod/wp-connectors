@@ -168,14 +168,25 @@ final class ZaiDiscoveryCache {
 	 * expiry remain authoritative); only the rebuild is skipped while
 	 * the content is unchanged.
 	 *
+	 * glm15-22: an optional PREBUILT map may ride along — the zai
+	 * surface's vendor parent forces a full metadata build inside its
+	 * discovery parse (parseResponseToModelMetadataList()), which the
+	 * directory used to discard for the IDs alone while this memo
+	 * rebuilt the identical metadata from scratch. The prebuilt map must
+	 * already carry map_from_ids()' semantics (the chat filter, the
+	 * id-keyed map shape); callers without one (the anthropic surface,
+	 * warm-cache reads) keep the rebuild.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param string $cache_id Endpoint-scoped transient key.
-	 * @param array  $ids      The resolved model IDs (list of string:
-	 *                         fallback, cached, or discovered).
+	 * @param string                            $cache_id Endpoint-scoped transient key.
+	 * @param array                             $ids      The resolved model IDs (list of string:
+	 *                                                    fallback, cached, or discovered).
+	 * @param array<string, ModelMetadata>|null $prebuilt An id-keyed map built from exactly
+	 *                                                these IDs during discovery, or null.
 	 * @return array<string, ModelMetadata> Map of model ID to metadata.
 	 */
-	public static function memoized_map( string $cache_id, array $ids ): array {
+	public static function memoized_map( string $cache_id, array $ids, ?array $prebuilt = null ): array {
 		$digest = md5( implode( "\n", $ids ) );
 
 		$memo = self::$memoized_maps[ $cache_id ] ?? null;
@@ -183,7 +194,7 @@ final class ZaiDiscoveryCache {
 		if ( null === $memo || $memo['digest'] !== $digest ) {
 			$memo = array(
 				'digest' => $digest,
-				'map'    => self::map_from_ids( $ids ),
+				'map'    => null !== $prebuilt ? $prebuilt : self::map_from_ids( $ids ),
 			);
 
 			self::$memoized_maps[ $cache_id ] = $memo;

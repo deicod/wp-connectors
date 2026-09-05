@@ -468,6 +468,41 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertFalse($directory->hasModelMetadata('glm-5.3'), 'The rebuilt map reflects the new ID list.');
     }
 
+    public function testColdDiscoveryHandsItsBuiltMetadataToTheMapMemo()
+    {
+        /*
+         * glm15-22 (source pin — the one-build efficiency contract): the
+         * vendor parent's discovery flow FORCES a full metadata build in
+         * parseResponseToModelMetadataList() (metadata construction plus
+         * sort per discovered ID), which this directory used to reduce
+         * to array_keys() while ZaiDiscoveryCache::map_from_ids()
+         * rebuilt the identical metadata for the same IDs — two full
+         * builds per cold-window discovery at sites that had already
+         * diverged (the rebuild re-applies the chat filter, the parse
+         * build did not). The parse stashes its built list and the
+         * cold-path memo call seeds from it through the SAME
+         * chat-filter rule; the newest-first and caching pins above
+         * hold the served map byte-identically.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Metadata/ZaiModelMetadataDirectory.php');
+
+        $this->assertStringContainsString(
+            '$this->discovery_built_metadata = $models;',
+            $source,
+            'The parse-side build is stashed for the cold-path memo seed.'
+        );
+        $this->assertStringContainsString(
+            'memoized_map( $cache_id, $ids, $this->take_discovery_built_map( $ids ) )',
+            $source,
+            'The cold path seeds the map memo with the parse-built metadata.'
+        );
+        $this->assertStringContainsString(
+            'ZaiModelCatalog::is_chat_model( $metadata->getId() )',
+            $source,
+            'The seed applies the one chat-filter build rule the cache rebuild applies.'
+        );
+    }
+
     public function testBothDirectoriesMemoizeThroughTheOneSharedOwner()
     {
         /*

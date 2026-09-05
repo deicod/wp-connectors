@@ -269,8 +269,103 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		 * ZaiDiscoveryCache (memoized_map()) — this surface's GLM8 #9
 		 * fields were a verbatim copy of the twin's GLM7 #13 pair, the
 		 * drift pattern the shared cache class exists to stop.
+		 *
+		 * glm15-22: on a COLD discovery the vendor parent's parse has
+		 * already built the full metadata list (the stash
+		 * parseResponseToModelMetadataList() left behind) — it rides
+		 * along as the memo's prebuilt map instead of being discarded
+		 * for the IDs alone and rebuilt identically by map_from_ids().
 		 */
-		return ZaiDiscoveryCache::memoized_map( $cache_id, $ids );
+		return ZaiDiscoveryCache::memoized_map( $cache_id, $ids, $this->take_discovery_built_map( $ids ) );
+	}
+
+	/**
+	 * The metadata list the vendor parent's discovery parse built, or
+	 * null — the cold-discovery hand-off to the map memo (glm15-22).
+	 *
+	 * The parent's sendListModelsRequest() REQUIRES a full
+	 * parseResponseToModelMetadataList() build (metadata construction
+	 * plus sort per discovered ID) whose result this directory reduced
+	 * to array_keys(); ZaiDiscoveryCache::map_from_ids() then rebuilt
+	 * the identical metadata for the same IDs — two full builds per
+	 * cold-window discovery, at build sites that had already diverged
+	 * (the cache's rebuild re-applies the chat filter, the parse-side
+	 * build did not). The parse stashes its built list; this converts a
+	 * matching stash into the id-keyed, chat-filtered map the memo
+	 * wants, and a non-matching stash (defensive: the list belongs to
+	 * another request or response) is ignored in favor of the rebuild.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<ModelMetadata>|null
+	 */
+	/**
+	 * The metadata list the vendor parent's discovery parse built, or
+	 * null — the cold-discovery hand-off to the map memo (glm15-22).
+	 *
+	 * The parent's sendListModelsRequest() REQUIRES a full
+	 * parseResponseToModelMetadataList() build (metadata construction
+	 * plus sort per discovered ID) whose result this directory reduced
+	 * to array_keys(); ZaiDiscoveryCache::map_from_ids() then rebuilt
+	 * the identical metadata for the same IDs — two full builds per
+	 * cold-window discovery, at build sites that had already diverged
+	 * (the cache's rebuild re-applies the chat filter, the parse-side
+	 * build did not). The parse stashes its built list;
+	 * take_discovery_built_map() converts a matching stash into the
+	 * id-keyed, chat-filtered map the memo wants, and a non-matching
+	 * stash (defensive: the list belongs to another request or
+	 * response) is ignored in favor of the rebuild.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<ModelMetadata>|null
+	 */
+	private $discovery_built_metadata = null;
+
+	/**
+	 * Pops the parse-built metadata list as the memo's prebuilt map, or
+	 * null when no usable stash exists (glm15-22).
+	 *
+	 * @param array $ids The IDs the cache resolved (list of string; the digest key).
+	 * @return array<string, ModelMetadata>|null The id-keyed, chat-filtered map.
+	 */
+	private function take_discovery_built_map( array $ids ): ?array {
+		$built                          = $this->discovery_built_metadata;
+		$this->discovery_built_metadata = null;
+
+		if ( null === $built ) {
+			return null;
+		}
+
+		/*
+		 * map_from_ids()' semantics exactly (the ONE build rule now):
+		 * chat models only, keyed by ID. The sort is irrelevant to the
+		 * map form; the stash's own build already sorted it.
+		 */
+		$map = array();
+		foreach ( $built as $metadata ) {
+			if ( ZaiModelCatalog::is_chat_model( $metadata->getId() ) ) {
+				$map[ $metadata->getId() ] = $metadata;
+			}
+		}
+
+		$map_keys = \array_keys( $map );
+		$expected = \array_values( $ids );
+		\sort( $map_keys );
+		\sort( $expected );
+
+		if ( $map_keys !== $expected ) {
+			// The stash does not describe these IDs (a different request's
+			// parse): fall back to the cache's own rebuild.
+			return null;
+		}
+
+		/*
+		 * The map keeps the stash's newest-first order (the parse's own
+		 * usort) — exactly what map_from_ids()' uasort produces, which
+		 * array_values() of the memo iterates downstream.
+		 */
+		return $map;
 	}
 
 	/**
@@ -439,6 +534,14 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		}
 
 		usort( $models, array( ZaiModelCatalog::class, 'sort_callback' ) );
+
+		/*
+		 * glm15-22: the vendor parent forces this full build; the
+		 * directory's cold-discovery flow takes the stash as the map
+		 * memo's prebuilt seed (same build, once) instead of reducing it
+		 * to IDs for map_from_ids() to rebuild identically.
+		 */
+		$this->discovery_built_metadata = $models;
 
 		return $models;
 	}
