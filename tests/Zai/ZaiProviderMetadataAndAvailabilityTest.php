@@ -564,6 +564,11 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
          * source shape so a second decode or a re-read of the response
          * body cannot silently return on the blocking pre-generation path
          * (the same source-pinning idiom the mapping suites use).
+         *
+         * glm14-10: the behavioral twin
+         * (testTheProbeReadsTheResponseBodyExactlyOnce) pins the
+         * OBSERVABLE contract through a counting Response double; this
+         * source pin stays as the mechanism's shape guard.
          */
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Availability/AbstractZaiProviderAvailability.php'
@@ -583,6 +588,62 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
             0,
             preg_match_all('/parse_chat_ids\(/', $source),
             'The probe must not re-enter the parser through the response-decoding entry.'
+        );
+    }
+
+    public function testTheProbeReadsTheResponseBodyExactlyOnce()
+    {
+        /*
+         * glm14-10: the one-decode efficiency contract on the blocking
+         * pre-generation path, pinned behaviorally — the probe's Response
+         * double counts getBody() reads, so a second decode or a body
+         * re-read ANYWHERE in the verdict/seed chain (inside
+         * decode_models_body, behind the seed, in a future verdict
+         * predicate) fails this pin directly, where a source-substring
+         * count can only hold the mechanism's textual shape.
+         */
+        $counting_response = new class(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiModelsBody(array('glm-5.3'))) extends \WordPress\AiClient\Providers\Http\DTO\Response {
+            /**
+             * @var int
+             */
+            public $body_reads = 0;
+
+            public function getBody(): ?string
+            {
+                $this->body_reads++;
+
+                return parent::getBody();
+            }
+        };
+
+        $transporter = new class($counting_response) implements \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface {
+            /**
+             * @var \WordPress\AiClient\Providers\Http\DTO\Response
+             */
+            private $response;
+
+            public function __construct(\WordPress\AiClient\Providers\Http\DTO\Response $response)
+            {
+                $this->response = $response;
+            }
+
+            public function send(\WordPress\AiClient\Providers\Http\DTO\Request $request, ?\WordPress\AiClient\Providers\Http\DTO\RequestOptions $options = null): \WordPress\AiClient\Providers\Http\DTO\Response
+            {
+                return $this->response;
+            }
+        };
+
+        $key = FakeSecrets::apiKey();
+        $instance = new ZaiProviderAvailability();
+        $instance->setHttpTransporter($transporter);
+        $instance->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        $this->assertTrue($instance->isConfigured(), 'A valid models list must validate the credential.');
+
+        $this->assertSame(
+            1,
+            $counting_response->body_reads,
+            'The probe reads the response body exactly once — the verdict, the seed, and any future predicate ride the ONE decode.'
         );
     }
 
