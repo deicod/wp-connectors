@@ -97,7 +97,6 @@ function wp_connectors_unused_import_violations(string $root): int
         }
 
         $source = (string) file_get_contents($file->getPathname());
-        $lines = null; // Parsed lazily per matching import below.
 
         $matches = array();
         if (preg_match_all('/^use\s+(?:function\s+|const\s+)?[\w\\\\]+(?:\s+as\s+(\w+))?\s*;/m', $source, $matches, PREG_SET_ORDER) === 0) {
