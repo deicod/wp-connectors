@@ -316,7 +316,34 @@ abstract class AbstractZaiEndpoint {
 	 * @return string The positive discovery transient id.
 	 */
 	final public static function discovery_cache_id( string $plan, string $region ): string {
-		return static::CACHE_PREFIX . md5( static::CACHE_SCOPE . '|' . $plan . '|' . $region );
+		return self::compose_discovery_cache_id( static::CACHE_PREFIX, static::CACHE_SCOPE, $plan, $region );
+	}
+
+	/**
+	 * The ONE discovery-transient-id FORMULA, parameterized (glm18-11).
+	 *
+	 * The glm12-10 settings-layer fallback re-composed this formula inline
+	 * from its own identifier constants, so a separator or layout change
+	 * here stranded every 12h transient the broken-install fallback swept
+	 * — the consistency tests pin the equality for the two real surfaces,
+	 * but only after the drift landed. The formula lives HERE once now;
+	 * the CONSTANT VALUES stay where glm15-23 pinned them (the SDK-free
+	 * settings layer owns them, the endpoint children alias them), so
+	 * callers hand their own prefix and scope in and late static binding
+	 * stays out of the composition.
+	 *
+	 * SDK-free loadable by construction (see discovery_cache_id()).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $prefix The surface's transient prefix (CACHE_PREFIX).
+	 * @param string $scope  The surface's cache-key scope (CACHE_SCOPE).
+	 * @param string $plan   One of the surface's plans.
+	 * @param string $region One of the surface's regions.
+	 * @return string The positive discovery transient id.
+	 */
+	final public static function compose_discovery_cache_id( string $prefix, string $scope, string $plan, string $region ): string {
+		return $prefix . md5( $scope . '|' . $plan . '|' . $region );
 	}
 
 	/**

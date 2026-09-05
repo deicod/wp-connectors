@@ -529,22 +529,26 @@ abstract class AbstractPlanRegionSettings {
 
 	/**
 	 * The discovery transient ids for one plan × region combination: the
-	 * endpoint owner's formula when the owner can load, else this layer's
-	 * own fallback composition (GLM12 #10).
+	 * endpoint owner when it can load, else the endpoint BASE's one
+	 * formula with this layer's own constants (GLM12 #10; glm18-11).
 	 *
 	 * The endpoint layer stays the ONE owner of the composition (GLM8
 	 * #11); the fallback exists only for the load-broken install, where
-	 * the sweep must still run, and mirrors the owner's formula from this
-	 * layer's own identifier constants (CACHE_PREFIX/CACHE_SCOPE — the
-	 * very constants the endpoint children alias, so the two can name
-	 * different values only if a child deliberately diverges, and the
-	 * consistency tests pin the formula equality for both real
-	 * surfaces). The '_miss' suffix still rides
-	 * ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX — never a literal (GLM8
-	 * #11) — and when even that SDK-free owner link is gone the fallback
-	 * yields nothing: with both links missing there is no composably
-	 * safe name left, and the sweep degrades to the state-option
-	 * deletion above, exactly the pre-GLM12-10 bounded behavior.
+	 * the sweep must still run. glm18-11: the fallback no longer MIRRORS
+	 * the owner's formula inline — it rides the endpoint base's
+	 * parameterized compose_discovery_cache_id() with this layer's own
+	 * identifier constants (CACHE_PREFIX/CACHE_SCOPE — the very constants
+	 * the endpoint children alias, so the two can name different values
+	 * only if a child deliberately diverges, and the consistency tests
+	 * pin the formula equality for both real surfaces). A separator or
+	 * layout change in the formula can no longer strand the fallback's
+	 * transient names on a partially-broken install. The '_miss' suffix
+	 * still rides ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX — never a
+	 * literal (GLM8 #11) — and when either SDK-free link (the endpoint
+	 * base, ZaiDiscoveryCache) is gone the fallback yields nothing: with
+	 * a link missing there is no composably safe name left, and the sweep
+	 * degrades to the state-option deletion above, exactly the
+	 * pre-GLM12-10 bounded behavior.
 	 *
 	 * @since 0.2.0
 	 *
@@ -559,13 +563,14 @@ abstract class AbstractPlanRegionSettings {
 			return $endpoint_class::discovery_transient_ids( $plan, $region );
 		}
 
+		$endpoint_base   = \Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint::class;
 		$discovery_cache = \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::class;
 
-		if ( ! \class_exists( $discovery_cache ) ) {
+		if ( ! \class_exists( $endpoint_base ) || ! \class_exists( $discovery_cache ) ) {
 			return array();
 		}
 
-		$cache_id = static::CACHE_PREFIX . md5( static::CACHE_SCOPE . '|' . $plan . '|' . $region );
+		$cache_id = $endpoint_base::compose_discovery_cache_id( static::CACHE_PREFIX, static::CACHE_SCOPE, $plan, $region );
 
 		return array(
 			$cache_id,
