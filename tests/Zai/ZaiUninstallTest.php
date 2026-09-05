@@ -573,45 +573,83 @@ PHP;
     public function testTheConstantRungsMarkersAreDeletedByTheSweepItself()
     {
         /*
-         * glm14-9: the source pin above (testTheCredentialCollection-
-         * RidesTheSettingsOwnerLadder) holds the sweep's COMPOSITION but
-         * never EXECUTED the constant rung it protects — the env rung was
-         * covered functionally, the constant-derived marker path only by
-         * source text. This executes it: the constant is defined, its
-         * derivable markers are planted through the settings owner's OWN
-         * probe_miss_transient_ids() (the same derivation the sweep uses,
-         * never a hand-rolled mirror), and the sweep must delete every
-         * one under an object cache — the GLM5 #11/GLM9 #8
-         * stranded-marker regression class, behaviorally. define()
-         * cannot be undone, so this test deliberately runs LAST in this
-         * file (and the suite) to keep the constant out of every other
-         * test's ladder.
+         * glm14-9 executed the constant rung the source pin above
+         * (testTheCredentialCollectionRidesTheSettingsOwnerLadder)
+         * protects — behaviorally, through the settings owner's OWN
+         * probe_miss_transient_ids() (never a hand-rolled mirror).
+         *
+         * glm15-1 replaced the in-process define() with SUBPROCESS
+         * isolation (the sibling GLM8 #15 pattern): define() cannot be
+         * undone, and the old "deliberately runs LAST" isolation was a
+         * file-ordering accident — under --order-by=random the leaked
+         * constant flipped every later test's env_constant_ladder()
+         * (12 failures + 2 errors, reproduced). The constant is defined
+         * in the child process only; the parent derives the expected
+         * markers through the owner and asserts the child's sweep
+         * deleted each — the GLM5 #11/GLM9 #8 stranded-marker
+         * regression class, without the ordering dependency.
          */
-        WpHarness::$external_object_cache = true;
+        $repo = dirname(__DIR__, 2);
+        $dir  = sys_get_temp_dir() . '/zai-constant-rung-' . getmypid();
+        $log  = $dir . '-calls.log';
+        @mkdir($dir, 0777, true);
 
         $constant_key = FakeSecrets::apiKey();
-        define('ZAI_API_KEY', $constant_key);
-
         $markers = \Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::probe_miss_transient_ids($constant_key);
         $this->assertNotEmpty($markers, 'The owner must derive markers for the constant-sourced credential.');
 
-        foreach ($markers as $marker) {
-            set_transient($marker, true, 60);
-        }
+        $script = <<<'PHP'
+<?php
+define('ZAI_API_KEY', $argv[1]);
+putenv('ZAI_API_KEY');
+define('WP_UNINSTALL_PLUGIN', 'zai/zai.php');
+$GLOBALS['__log'] = fopen(__DIR__ . '-calls.log', 'w');
+function __zai_log($name) { fwrite($GLOBALS['__log'], $name . "\n"); }
+function delete_option($option) { __zai_log('delete_option:' . $option); return true; }
+function delete_transient($transient) { __zai_log('delete_transient:' . $transient); return true; }
+function get_option($option, $default = false) { return $default; }
+function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags); }
+function is_multisite() { return false; }
+class wpdb_stub {
+    public $options = 'wp_options';
+    public function prepare($query, ...$args) { return $query; }
+    public function esc_like($text) { return $text; }
+    public function get_col($query) { return array(); }
+}
+$GLOBALS['wpdb'] = new wpdb_stub();
+require $argv[2] . '/connectors/zai/uninstall.php';
+echo "UNINSTALL_COMPLETED\n";
+PHP;
+        file_put_contents($dir . '/runner.php', $script);
+        @unlink($log);
 
-        zai_connector_zai_uninstall_site();
-
-        $remaining = array();
-        foreach (array_keys(WpHarness::$transients) as $transient) {
-            if (false !== strpos($transient, '_key_state_probe_')) {
-                $remaining[] = $transient;
-            }
-        }
-
-        $this->assertSame(
-            array(),
-            $remaining,
-            'Every constant-derived probe-miss marker must be deleted by the sweep: ' . wp_json_encode($remaining)
+        exec(
+            escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($dir . '/runner.php')
+            . ' ' . escapeshellarg($constant_key) . ' ' . escapeshellarg($repo) . ' 2>&1',
+            $outputLines,
+            $exitCode
         );
+        $output = implode("\n", $outputLines);
+        $calls  = is_file($log) ? (string) file_get_contents($log) : '';
+
+        $this->assertSame(0, $exitCode, "The subprocess uninstall must not fatal: {$output}");
+        $this->assertStringContainsString('UNINSTALL_COMPLETED', $output);
+
+        foreach ($markers as $marker) {
+            $this->assertStringContainsString(
+                'delete_transient:' . $marker,
+                $calls,
+                'The sweep must delete every constant-derived probe-miss marker through the owner derivation.'
+            );
+        }
+
+        // The isolation property itself: the constant never existed in
+        // THIS process (the glm15-1 regression — a leaked definition
+        // flipped 14 other tests under randomized order).
+        $this->assertFalse(\defined('ZAI_API_KEY'), 'The constant must stay defined in the child process only.');
+
+        @unlink($dir . '/runner.php');
+        @rmdir($dir);
+        @unlink($log);
     }
 }

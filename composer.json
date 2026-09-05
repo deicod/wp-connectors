@@ -66,7 +66,7 @@
         "phpcs": "phpcs -p",
         "phpcs-compat": "phpcs -p --standard=phpcs-compat.xml.dist",
         "phpstan": "phpstan analyse --memory-limit=512M --no-progress",
-        "test": "phpunit"
+        "test": "phpunit --order-by=random"
     },
     "scripts-descriptions": {
         "check": "Full offline validation entry point: syntax lint, PHPCS (WordPress + PHP 7.4 compatibility), static analysis, convention enforcement, and the PHPUnit suite. Never contacts the network.",

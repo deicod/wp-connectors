@@ -30,14 +30,26 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
     /**
      * Model instance wired to the harness transport with a fixture key.
      *
-     * The v1 directory serves the static catalog (no discovery HTTP), so
-     * generation produces exactly ONE request.
+     * The discovery transient is primed first so the directory resolves
+     * 'glm-5.3' with NO discovery HTTP and generation produces exactly ONE
+     * request. Without the priming, model resolution depends on the
+     * process-wide SDK state the vendor parent caches (glm15-1): the
+     * provider's directory instance is cached statically per class, so a
+     * test that wired authentication onto it earlier in the process leaves
+     * discovery able to authenticate — and to consume this test's single
+     * queued response — while an unwired cached instance throws before any
+     * transport and falls back to the static catalog. Default file order
+     * happened to keep the directory unwired here; randomized order does
+     * not, which is exactly the order dependency the suite's
+     * --order-by=random run exists to catch.
      *
      * @param string $key API key.
      * @return \Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel
      */
     private function model(string $key)
     {
+        $this->primeZaiAnthropicDiscoveryTransient();
+
         $model = ZaiAnthropicProvider::model('glm-5.3');
         $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
