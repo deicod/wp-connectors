@@ -693,21 +693,26 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	/**
 	 * The JSON Schema keywords whose value is caller DATA, not a
 	 * subschema: the walk must not descend into them (GLM8 #6 verifier
-	 * round).
+	 * round; glm16-3 added enum).
 	 *
 	 * A `default`/`examples`/`const` value may legitimately contain an
 	 * empty list at a key named 'properties' (say, a property-management
 	 * tool's default object) — descending into these keywords silently
 	 * converted such data to {} on the wire, altering the caller's
 	 * default/example values with no upstream error to surface the
-	 * change. Annotation keywords carry arbitrary JSON values, so they
-	 * pass through verbatim.
+	 * change. `enum` is the same class (glm16-3): its members are the
+	 * CONSTANTS a value must equal — arbitrary JSON values — and the
+	 * walk's fallthrough recursion rewrote an enum member's
+	 * schema-keyword-named empty arrays ({"enum":[{"patternProperties":
+	 * []}]} → {}), so the wire advertised a DIFFERENT constant than the
+	 * one declared, silently. Data-bearing keywords carry arbitrary
+	 * JSON values, so they pass through verbatim.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @var list<string>
 	 */
-	private const SCHEMA_DATA_VALUE_KEYS = array( 'default', 'examples', 'const' );
+	private const SCHEMA_DATA_VALUE_KEYS = array( 'default', 'examples', 'const', 'enum' );
 
 	/**
 	 * Normalizes one value occupying a SUBSCHEMA position (GLM10 #6).
@@ -742,8 +747,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * subschemas at ANY of them normalize identically, one level down
 	 * from the GLM8 #6 map keywords and beyond. Everything else —
 	 * non-empty members, scalars, objects, empty arrays at list- or
-	 * data-valued keywords (required, enum, unknown keywords), and the
-	 * DATA-valued annotation keywords (default/examples/const, verbatim)
+	 * data-valued keywords (required, unknown keywords), and the
+	 * DATA-valued keywords (default/examples/const/enum, verbatim)
 	 * — passes through untouched.
 	 *
 	 * @since 0.2.0

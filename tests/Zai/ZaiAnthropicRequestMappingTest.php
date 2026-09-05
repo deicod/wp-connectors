@@ -596,6 +596,12 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
          * (or examples/const) to {} — the caller's default/example data
          * shipped altered with no upstream error to surface the change.
          * Schema positions still normalize; data keywords pass verbatim.
+         *
+         * glm16-3: enum is the same class — its members are the
+         * CONSTANTS a value must equal, and the walk's fallthrough
+         * recursion rewrote an enum member's schema-keyword-named empty
+         * arrays, so the wire advertised a DIFFERENT constant than the
+         * one declared, silently.
          */
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
 
@@ -609,6 +615,10 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
                             'default' => array('properties' => array(), 'tags' => array()),
                             'examples' => array(array('definitions' => array())),
                             'const' => array('$defs' => array()),
+                            'enum' => array(
+                                array('patternProperties' => array()),
+                                array(),
+                            ),
                         ),
                     ),
                 )))->toArray(),
@@ -625,6 +635,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertStringContainsString('"default":{"properties":[],"tags":[]}', $raw, 'A default value passes through untouched.');
         $this->assertStringContainsString('"examples":[{"definitions":[]}]', $raw, 'An examples value passes through untouched.');
         $this->assertStringContainsString('"const":{"$defs":[]}', $raw, 'A const value passes through untouched.');
+        $this->assertStringContainsString('"enum":[{"patternProperties":[]},[]]', $raw, 'An enum value passes through untouched — its members are declared constants, not schema positions.');
         // ...while the enclosing SCHEMA position still normalizes.
         $this->assertStringContainsString('"properties":{"settings":', $raw, 'The enclosing schema positions are unaffected.');
     }
