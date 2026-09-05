@@ -94,11 +94,32 @@ function wp_connectors_unused_import_violations(string $root): int
     );
 
     foreach ($iterator as $file) {
+        if ($file->isDir()) {
+            // The iterator yields directories too, and one NAMED *.php
+            // passes the extension gate below (glm17-10).
+            continue;
+        }
         if ($file->getExtension() !== 'php') {
             continue;
         }
 
-        $source = (string) file_get_contents($file->getPathname());
+        $source = file_get_contents($file->getPathname());
+        if (false === $source) {
+            /*
+             * Loud, never silently compliant: the (string) cast used
+             * to turn a read failure into '' — an unreadable file was
+             * skipped with zero violations and a green gate, making
+             * the unused-import guarantee vacuous for exactly the
+             * files something is wrong with (glm17-10). Counted as a
+             * violation so the exit code stays non-zero.
+             */
+            fwrite(STDERR, sprintf(
+                "conventions: FAIL %s: unreadable file — the unused-import scan cannot run.\n",
+                substr($file->getPathname(), strlen($root) + 1)
+            ));
+            ++$violations;
+            continue;
+        }
 
         $matches = array();
         if (preg_match_all('/^use\s+(?:function\s+|const\s+)?[\w\\\\]+(?:\s+as\s+(\w+))?\s*;/m', $source, $matches, PREG_SET_ORDER) === 0) {
