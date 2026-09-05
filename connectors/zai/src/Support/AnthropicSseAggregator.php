@@ -1407,6 +1407,52 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 */
 	private function start_block( int $index, ?\stdClass $raw_block ): void {
 		/*
+		 * Codex R7 #4: a SECOND start for an already-started index is a
+		 * corrupt stream — silently replacing the accumulator discarded
+		 * every text/thinking/tool fragment collected so far, and the
+		 * later completion reported success with altered content. Flag it
+		 * and keep the ORIGINAL accumulator (the flag fails the response
+		 * before the payload is ever used).
+		 *
+		 * glm13-5: the position (duplicate first, contiguity next, content
+		 * validation last) is the rejection ORDER — a frame the stream
+		 * rejects for its POSITION must not first pollute the tool-input
+		 * error channel through the content checks below: a duplicate or
+		 * non-contiguous tool_use start whose content_block omitted
+		 * 'input' latched malformed_tool_input for a stream whose actual
+		 * tool arguments were fine, so any consumer reading that flag
+		 * alone (or reordering the model's flag checks) got the wrong
+		 * verdict for a frame that was never accepted at all.
+		 */
+		if ( \array_key_exists( $index, $this->blocks ) ) {
+			$this->malformed_event = true;
+
+			return;
+		}
+
+		/*
+		 * Codex R17 #2: started indexes must form the contiguous
+		 * zero-based sequence {0..N-1} — a truncated stream that lost
+		 * block 0 but delivered a complete block at index 1 passed the
+		 * non-negative-integer check, and the map iterates by arrival
+		 * order, so the gap was invisible downstream and the surviving
+		 * block became content position 0 of a successful but truncated
+		 * completion. Duplicates are already rejected above, so the map
+		 * size IS the next expected index; any smaller (reordering) or
+		 * larger (gap) value fails here. (The glm13-4 change removed the
+		 * unknown-delta synthesized-seed entry into this method — every
+		 * block now enters through a real content_block_start.) The
+		 * invariant doubles as the GLM10 #7 iteration-order guarantee:
+		 * accepted keys are exactly 0..N-1 in start order, so the map's
+		 * insertion order IS the stream order aggregated() iterates.
+		 */
+		if ( \count( $this->blocks ) !== $index ) {
+			$this->malformed_event = true;
+
+			return;
+		}
+
+		/*
 		 * Codex R8 #4: the block type is REQUIRED and must be a string —
 		 * a missing or non-string type silently became a text block, and a
 		 * following text_delta then succeeded on the fabricated block. No
@@ -1480,42 +1526,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			}
 		}
 
-		/*
-		 * Codex R7 #4: a SECOND start for an already-started index is a
-		 * corrupt stream — silently replacing the accumulator discarded
-		 * every text/thinking/tool fragment collected so far, and the
-		 * later completion reported success with altered content. Flag it
-		 * and keep the ORIGINAL accumulator (the flag fails the response
-		 * before the payload is ever used).
-		 */
-		if ( \array_key_exists( $index, $this->blocks ) ) {
-			$this->malformed_event = true;
-
-			return;
-		}
-
-		/*
-		 * Codex R17 #2: started indexes must form the contiguous
-		 * zero-based sequence {0..N-1} — a truncated stream that lost
-		 * block 0 but delivered a complete block at index 1 passed the
-		 * non-negative-integer check, and the map iterates by arrival
-		 * order, so the gap was invisible downstream and the surviving
-		 * block became content position 0 of a successful but truncated
-		 * completion. Duplicates are already rejected above, so the map
-		 * size IS the next expected index; any smaller (reordering) or
-		 * larger (gap) value fails here. (The glm13-4 change removed the
-		 * unknown-delta synthesized-seed entry into this method — every
-		 * block now enters through a real content_block_start.) The
-		 * invariant doubles as the GLM10 #7 iteration-order guarantee:
-		 * accepted keys are exactly 0..N-1 in start order, so the map's
-		 * insertion order IS the stream order aggregated() iterates.
-		 */
-		if ( \count( $this->blocks ) !== $index ) {
-			$this->malformed_event = true;
-
-			return;
-		}
-
 		$this->blocks[ $index ] = array(
 			'type'     => $type,
 			'text'     => null !== $raw_block && isset( $raw_block->text ) && \is_string( $raw_block->text ) ? $raw_block->text : '',
@@ -1530,9 +1540,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 
 	/**
 	 * Applies one content_block_delta to the accumulator at a stream index.
-	 *
-	 * A delta for an index without content_block_start (defensive) starts a
-	 * default text block first.
 	 *
 	 * GLM9 #15: the delta arrives as the one non-associative decode's
 	 * delta member — an object verified by dispatch_event()'s shape

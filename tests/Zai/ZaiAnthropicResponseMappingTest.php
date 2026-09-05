@@ -1827,6 +1827,74 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_INVALID_RESPONSE);
     }
 
+    public function testAPositionRejectedStartNeverPollutesTheToolInputChannel()
+    {
+        /*
+         * glm13-5: the rejection ORDER inside start_block() — duplicate
+         * first, contiguity next, content validation last. A frame the
+         * stream rejects for its POSITION must not first latch
+         * malformed_tool_input through the content checks: the flag is
+         * the tool-ARGUMENTS corruption verdict, and a duplicate or
+         * non-contiguous tool_use start whose content_block omitted
+         * 'input' reported tool-argument corruption for a stream whose
+         * actual tool arguments were fine. Driven on the aggregator
+         * directly so BOTH flags are observable, not just the model's
+         * first-flag message.
+         */
+        $duplicate = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_od","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_2","name":"other"}}' . "\n\n";
+
+        $aggregator = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $aggregator->feed($duplicate);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_malformed_event(), 'The duplicate start is position corruption.');
+        $this->assertFalse(
+            $aggregator->has_malformed_tool_input(),
+            'A position-rejected frame must not pollute the tool-input error channel.'
+        );
+
+        // Same discipline for the contiguity rejection: a gapped start
+        // (index 1 with no block 0) whose tool content is malformed.
+        $gapped = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_og","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_3","name":"lookup"}}' . "\n\n";
+
+        $aggregator = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $aggregator->feed($gapped);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_malformed_event(), 'The gapped start is position corruption.');
+        $this->assertFalse(
+            $aggregator->has_malformed_tool_input(),
+            'A position-rejected frame must not pollute the tool-input error channel.'
+        );
+
+        // The control: an in-position tool_use start with a missing input
+        // member still reports through the tool-input channel (Codex
+        // R7 #1 sibling) — the reorder moved WHEN content is judged, not
+        // WHETHER.
+        $in_position = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ok","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_4","name":"lookup"}}' . "\n\n";
+
+        $aggregator = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
+        $aggregator->feed($in_position);
+        $aggregator->finish();
+
+        $this->assertFalse($aggregator->has_malformed_event(), 'The position is valid; only the content is malformed.');
+        $this->assertTrue($aggregator->has_malformed_tool_input(), 'The absent input member is still tool-input corruption.');
+    }
+
     public function testAContradictingEventTypePairInvalidatesTheStream()
     {
         // Codex R7 #6: `event: ping` carrying a content_block_delta payload
