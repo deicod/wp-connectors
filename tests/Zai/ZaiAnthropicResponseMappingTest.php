@@ -2469,6 +2469,51 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
+    public function testAGarbledDuplicateMessageStopAfterMessageStopStillInvalidates()
+    {
+        /*
+         * glm16-15 (verifier round on glm16-2): the duplicate-terminal
+         * no-op keys on the event name alone and cannot see the payload,
+         * so consume_frame()'s non-object check judges the TERMINAL name
+         * post-termination too — a duplicate message_stop carrying a
+         * decodable NON-OBJECT payload (data: [], or a dropped chunk
+         * inside ["lost"]) rejects exactly like its pre-termination
+         * twin and like every other declared trailing name, instead of
+         * silently inerting (the glm16-2 justification wrongly claimed
+         * the pipeline already pre-rejected this shape — the check was
+         * pre-termination-only). Only the WELL-FORMED duplicate (an
+         * object payload) no-ops, pinned above.
+         */
+        foreach (array('[]', '["lost"]') as $garbled) {
+            $body = ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_pt6","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+                . 'event: content_block_delta' . "\n"
+                . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: {"type":"message_stop"}' . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: ' . $garbled . "\n\n";
+
+            $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+            try {
+                $this->model()->generateTextResult($this->prompt());
+                $this->fail("A garbled duplicate terminal ({$garbled}) must invalidate the stream.");
+            } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            }
+        }
+
+        $this->assertCount(2, $this->sdkHttpAttempts(), 'One flight per garbled shape — the rejection is a stream-parse verdict, not a pre-transport one.');
+    }
+
     public function testADeclaredEventWithADonePayloadAfterMessageStopIsJudgedNotSkipped()
     {
         /*
