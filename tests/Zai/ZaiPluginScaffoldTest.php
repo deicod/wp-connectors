@@ -213,18 +213,27 @@ PHP;
          * update/add-option hooks per surface plus the page/section
          * asymmetry), and one missed copied line was exactly the
          * stranded-invalidation bug class the file's own GLM5 #14
-         * comments document. Each surface class may appear in the list
-         * exactly once; every per-surface hook rides the foreach (the
-         * behavioral coverage above pins the wired hooks themselves).
+         * comments document. Every per-surface hook rides the foreach
+         * (the behavioral coverage above pins the wired hooks
+         * themselves).
+         *
+         * glm20-4 supersedes the literal-list form of this pin (test
+         * pins may be consciously superseded, the GLM10 #4 lesson):
+         * the list is no longer declared in the file at all — boot()
+         * derives it from the ONE cross-file owner (ZaiSurfaces, glm15-
+         * 13's list lifted out), so the bootstrap file enumerates no
+         * surface classes and a third surface needs no edit here. The
+         * behavioral hook coverage and the lockstep pins in
+         * ZaiSurfaceLockstepTest carry the drift guard.
          */
         $source = (string) file_get_contents(self::PLUGIN_FILE);
 
-        $this->assertStringContainsString('$surface_settings = array(', $source, 'boot() declares the one surface list.');
-        foreach (array('PlanRegionSettings::class', 'ZaiAnthropicPlanRegionSettings::class') as $surface) {
+        $this->assertStringContainsString('$surface_settings = ZaiSurfaces::settings_classes();', $source, 'boot() derives its surface list from the one cross-file owner.');
+        foreach (array('PlanRegionSettings', 'ZaiAnthropicPlanRegionSettings') as $surface) {
             $this->assertSame(
-                1,
-                preg_match_all('/(?<![A-Za-z])' . preg_quote($surface, '/') . ',/', $source),
-                "{$surface} is a list entry exactly once, never a copy-pasted hook block."
+                0,
+                preg_match_all('/(?<![A-Za-z])' . preg_quote($surface, '/') . '::class/', $source),
+                "{$surface} is not hand-enumerated in the bootstrap file — the owner states it."
             );
         }
         $this->assertStringContainsString("foreach ( \$surface_settings as \$settings_class )", $source, 'The per-surface hooks ride the list iteration.');

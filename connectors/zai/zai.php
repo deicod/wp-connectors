@@ -21,9 +21,8 @@ namespace Deicod\WpConnectors\Zai;
 
 use WordPress\AiClient\AiClient;
 use Deicod\WpConnectors\Zai\Settings\DebugSettings;
-use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
-use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\DebugLogger;
+use Deicod\WpConnectors\Zai\Support\ZaiSurfaces;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	return;
@@ -88,11 +87,14 @@ function boot(): void {
 
 	add_action( 'admin_notices', array( Plugin::class, 'render_dependency_notice' ) );
 
-	// The plugin's surfaces, first entry owning the shared settings page.
-	$surface_settings = array(
-		PlanRegionSettings::class,
-		ZaiAnthropicPlanRegionSettings::class,
-	);
+	/*
+	 * The plugin's surfaces, first entry owning the shared settings
+	 * page. glm20-4: the set rides the ONE cross-file owner
+	 * (ZaiSurfaces) — the hand-enumerated list here was one of four
+	 * lockstep listings of the same pair, the drift class the repo's
+	 * own comments record having stranded state twice.
+	 */
+	$surface_settings = ZaiSurfaces::settings_classes();
 
 	// Plan/region settings (Tasks 1.2/2.1). The guards run at priority 20,
 	// AFTER every register_settings call (10): the guard enumerates the

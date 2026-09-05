@@ -519,11 +519,12 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         $plugin = sys_get_temp_dir() . '/zai-uninstall-broken-' . getmypid();
         $log = $plugin . '-calls.log';
 
-        foreach (array('', '/src', '/src/Settings', '/src/Endpoints', '/src/Metadata') as $dir) {
+        foreach (array('', '/src', '/src/Settings', '/src/Endpoints', '/src/Metadata', '/src/Support') as $dir) {
             @mkdir($plugin . $dir, 0777, true);
         }
         copy($repo . '/connectors/zai/uninstall.php', $plugin . '/uninstall.php');
-        // The full owner chain EXCEPT one quarantined endpoint file.
+        // The full owner chain EXCEPT one quarantined endpoint file
+        // (glm20-4: the chain gained ZaiSurfaces, the surface owner).
         foreach (array(
             '/src/Settings/AbstractPlanRegionSettings.php',
             '/src/Settings/PlanRegionSettings.php',
@@ -531,6 +532,7 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
             '/src/Endpoints/AbstractZaiEndpoint.php',
             '/src/Endpoints/ZaiEndpoint.php',
             '/src/Metadata/ZaiDiscoveryCache.php',
+            '/src/Support/ZaiSurfaces.php',
         ) as $file) {
             copy($repo . '/connectors/zai' . $file, $plugin . $file);
         }
@@ -583,7 +585,7 @@ PHP;
         $this->assertStringContainsString('delete_transient:zai_connector_zai_models_', $calls2, 'The discovery sweep runs when the owner chain loads.');
 
         // Housekeeping for repeated runs.
-        foreach (array('/src/Settings', '/src/Endpoints', '/src/Metadata', '/src') as $dir) {
+        foreach (array('/src/Settings', '/src/Endpoints', '/src/Metadata', '/src/Support', '/src') as $dir) {
             @array_map('unlink', glob($plugin . $dir . '/*.php') ?: array());
             @rmdir($plugin . $dir);
         }
@@ -608,12 +610,17 @@ PHP;
 
         $this->assertSame(1, substr_count($source, 'require_once $'), 'Exactly one variable require: the map loop\'s.');
         $this->assertSame(1, substr_count($source, 'is_file('), 'Exactly one existence probe: the map loop\'s.');
+        /*
+         * glm20-4: seven pairs became eight — the surface registry's
+         * cross-file owner (ZaiSurfaces) joined the chain (loaded last,
+         * after every class its SURFACES rows name).
+         */
         $this->assertCount(
-            7,
+            8,
             array_filter(explode("\n", $source), static function ($line) {
                 return false !== strpos($line, "'Deicod\\WpConnectors\\Zai\\") && false !== strpos($line, "=> __DIR__ . '/src/");
             }),
-            'The seven owner pairs ride the one map.'
+            'The eight owner pairs ride the one map.'
         );
     }
 
@@ -624,16 +631,28 @@ PHP;
          * three separate times inside uninstall.php (the endpoint pair,
          * two settings-class pairs), so a third surface added to the
          * layers but missed in one listing silently stranded its options
-         * or markers. One registry drives all three class-based sweeps
-         * now; the source pin forbids the surface classes from creeping
-         * back into a second listing (each appears exactly once — its
-         * registry entry), while the BY-DESIGN class-free literals (the
-         * pre-chain option deletions, the broken-install fallback
+         * or markers. One registry drove all three class-based sweeps.
+         *
+         * glm20-4 supersedes the glm16-14 pin (test pins may be
+         * consciously superseded, the GLM10 #4 lesson): the registry no
+         * longer lives in this file at all — it rides the ONE
+         * cross-file owner (ZaiSurfaces::SURFACES, pinned against every
+         * other site by ZaiSurfaceLockstepTest), read only when the
+         * owner chain loaded it. The old "each surface class appears
+         * exactly once" pin becomes "appears ZERO times": the file no
+         * longer enumerates the surface classes in any form, which is
+         * the stronger guarantee. The BY-DESIGN class-free literals
+         * (the pre-chain option deletions, the broken-install fallback
          * prefixes) stay exactly as they are.
          */
         $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/uninstall.php');
 
-        $this->assertSame(1, substr_count($source, '$zai_connector_surfaces = array('), 'The one surface registry declaration.');
+        $this->assertSame(1, substr_count($source, 'ZaiSurfaces::SURFACES'), 'The one registry read: the cross-file owner\'s constant.');
+        $this->assertSame(
+            1,
+            substr_count($source, '$zai_connector_surfaces = $zai_connector_owner_ready'),
+            'The owner read is guarded — reading a class constant of an unloaded class is a fatal on the broken-install path (GLM8 #15).'
+        );
 
         foreach (array(
             'Settings\\PlanRegionSettings::class',
@@ -642,9 +661,9 @@ PHP;
             'Endpoints\\ZaiAnthropicEndpoint::class',
         ) as $surface_class) {
             $this->assertSame(
-                1,
+                0,
                 substr_count($source, $surface_class),
-                "{$surface_class} appears exactly once: its registry entry, never a second listing."
+                "{$surface_class} appears nowhere: the surface set is the owner's, never a local listing."
             );
         }
 

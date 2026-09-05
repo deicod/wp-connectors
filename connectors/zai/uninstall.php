@@ -95,6 +95,7 @@ function zai_connector_zai_uninstall_site() {
 		'Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint' => __DIR__ . '/src/Endpoints/ZaiEndpoint.php',
 		'Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint' => __DIR__ . '/src/Endpoints/ZaiAnthropicEndpoint.php',
 		'Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache' => __DIR__ . '/src/Metadata/ZaiDiscoveryCache.php',
+		'Deicod\WpConnectors\Zai\Support\ZaiSurfaces'   => __DIR__ . '/src/Support/ZaiSurfaces.php',
 	);
 
 	$zai_connector_owner_ready = true;
@@ -119,31 +120,31 @@ function zai_connector_zai_uninstall_site() {
 	}
 
 	/*
-	 * glm16-14: the zai/zai_anthropic surface set — ONE registry for the
+	 * glm16-14 consolidated the zai/zai_anthropic surface set — the
 	 * three class-based enumerations below (the discovery sweep's
 	 * endpoint classes, the probe-miss sweeps' settings classes, the
-	 * prefix collection's settings classes). The set was hand-enumerated
-	 * three separate times inside this one file, so a third surface (or
-	 * a renamed one) added to the settings/endpoint layers but missed in
-	 * one listing left plugin-owned options or probe-miss transients
-	 * surviving uninstall silently — the exact silent-strand drift this
-	 * file's own GLM8 #11/GLM9 #8 comments document for drifted name
-	 * formulas. The class-free option literals above and the
-	 * broken-install fallback literals below stay separate BY DESIGN:
-	 * they must run with no plugin class loaded. Bare ::class names
-	 * autoload nothing, so the registry is safe to state before the
-	 * owner chain's load attempts are known to have succeeded.
+	 * prefix collection's settings classes) — from this file's own
+	 * three hand-enumerated copies into one registry. glm20-4 lifts
+	 * that registry OUT of the file onto the ONE cross-file owner
+	 * (ZaiSurfaces, the same set Plugin::PROVIDER_CLASSES and
+	 * zai.php's hook wiring are pinned to by
+	 * tests/Zai/ZaiSurfaceLockstepTest.php): a third surface added to
+	 * the settings/endpoint layers but missed here left plugin-owned
+	 * options or probe-miss transients surviving uninstall silently —
+	 * the exact silent-strand drift this file's own GLM8 #11/GLM9 #8
+	 * comments document for drifted name formulas. The constant is read
+	 * ONLY when the owner chain loaded it (the ternary below: reading a
+	 * class constant of an unloaded class is a fatal, the exact
+	 * GLM8 #15 broken-install path the old bare-::class literal was
+	 * safe for — when the chain could not load, every gated sweep
+	 * below is skipped anyway, so the empty fallback is never iterated).
+	 * The class-free option literals above and the broken-install
+	 * fallback literals below stay separate BY DESIGN: they must run
+	 * with no plugin class loaded.
 	 */
-	$zai_connector_surfaces = array(
-		array(
-			'settings' => \Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::class,
-			'endpoint' => \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class,
-		),
-		array(
-			'settings' => \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::class,
-			'endpoint' => \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class,
-		),
-	);
+	$zai_connector_surfaces = $zai_connector_owner_ready
+		? \Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES
+		: array();
 
 	// Discovery cache transients for every endpoint combination of both
 	// surfaces, including the '_miss' negative-cache markers (GLM1 #6).
