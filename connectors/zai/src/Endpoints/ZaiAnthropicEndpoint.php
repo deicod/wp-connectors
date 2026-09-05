@@ -155,12 +155,18 @@ final class ZaiAnthropicEndpoint extends AbstractZaiEndpoint {
 	 * The path follows the plan's route (see MESSAGES_ROUTE_BY_PLAN): coding
 	 * serves {base}/messages, general {base}/v1/messages.
 	 *
+	 * glm18-12: the append rides the inherited api_url() — the one owner of
+	 * the single-slash append rule (GLM8 #10's URL-drift class) — exactly
+	 * like the zai sibling's generation_url(); the hand concatenation was
+	 * byte-identical today and could only drift from any future append-rule
+	 * fix.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @return string Full URL of the Messages route.
 	 */
 	public function messages_url(): string {
-		return $this->base_url() . self::MESSAGES_ROUTE_BY_PLAN[ $this->plan() ];
+		return $this->api_url( self::MESSAGES_ROUTE_BY_PLAN[ $this->plan() ] );
 	}
 
 	/**
