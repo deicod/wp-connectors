@@ -312,6 +312,45 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         );
     }
 
+    public function testAnEmptyWiredCredentialProbesWithTheEffectiveKeyOnTheAnthropicSurfaceToo()
+    {
+        /*
+         * glm13-1: the empty-wired probe rule is base behavior; this pins
+         * it through the anthropic surface's PROTOCOL-wrapping fallback —
+         * an empty registry-wired key must be skipped exactly like an
+         * unwired one, so the probe flies the effective database key
+         * with this surface's headers and the verdict binds that same
+         * credential.
+         */
+        putenv('ZAI_ANTHROPIC_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiAnthropicProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $instance->setRequestAuthentication(new ApiKeyRequestAuthentication(''));
+
+        $this->queueSdkResponse(403, array(), '{"type":"error","error":{"type":"forbidden"}}');
+
+        $this->assertFalse($instance->isConfigured());
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts, 'The probe must run: the effective key is non-empty.');
+        $this->assertSame(
+            array('Bearer ' . $key),
+            $attempts[0]['headers']['Authorization'] ?? null,
+            'The probe must fly the effective database key, never the empty wired credential.'
+        );
+        $this->assertSame(
+            array(ZaiAnthropicRequestAuthentication::ANTHROPIC_VERSION),
+            $attempts[0]['headers']['anthropic-version'] ?? null,
+            'The effective-key fallback must carry this surface\'s protocol headers.'
+        );
+
+        $state = get_option(ZaiAnthropicProviderAvailability::STATE_OPTION);
+        $this->assertSame('invalid', $state['valid'], 'The rejection the flown credential earned persists.');
+    }
+
     public function testAZaiValidatedStateCanNeverEstablishAnthropicStatus()
     {
         $key = FakeSecrets::apiKey();

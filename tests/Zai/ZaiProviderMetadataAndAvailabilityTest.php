@@ -238,6 +238,70 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertSame('invalid', $state['valid'], 'The definitive rejection persists.');
     }
 
+    public function testAnEmptyWiredCredentialProbesWithTheEffectiveKeyItBinds()
+    {
+        /*
+         * glm13-1: the SDK registry wires ZAI_API_KEY='' verbatim
+         * (getenv() returns the empty string, not false, so the wired
+         * ApiKeyRequestAuthentication carries an empty key) while a valid
+         * key sits in the database option. The probe must authenticate
+         * with the EFFECTIVE (database) credential — the exact one the
+         * verdict binding names — so the credential that flies and the
+         * credential that binds are one. The discriminating assertion is
+         * the Bearer header: the pre-fix probe flew the EMPTY credential
+         * and persisted the 401 it earned under the VALID key's binding.
+         */
+        putenv('ZAI_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $instance->setRequestAuthentication(new ApiKeyRequestAuthentication(''));
+
+        $this->queueSdkResponse(401, array(), '{"error":{"message":"bad key"}}');
+
+        $this->assertFalse($instance->isConfigured());
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts, 'The probe must run: the effective key is non-empty.');
+        $this->assertSame(
+            array('Bearer ' . $key),
+            $attempts[0]['headers']['Authorization'] ?? null,
+            'The probe must fly the effective database key, never the empty wired credential.'
+        );
+
+        // The 401 WAS earned by the database key (it flew), so the
+        // invalid verdict under its binding is coherent — not poisoning.
+        $state = get_option(ZaiProviderAvailability::STATE_OPTION);
+        $this->assertSame('invalid', $state['valid'], 'The rejection the flown credential earned persists.');
+    }
+
+    public function testADefinitiveVerdictForAnEmptyWiredCredentialRecordsNothing()
+    {
+        /*
+         * glm13-1 recorder half: a rejecting answer earned by a request
+         * the EMPTY wired credential flew (generation, discovery) says
+         * nothing about the effective credential — recording it under the
+         * effective binding is the cross-credential poisoning the probe
+         * half refuses above.
+         */
+        putenv('ZAI_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiProviderAvailability::KEY_OPTION, $key);
+
+        (new ZaiProviderAvailability())->record_definitive_verdict(
+            false,
+            new ApiKeyRequestAuthentication('')
+        );
+
+        $this->assertFalse(
+            get_option(ZaiProviderAvailability::STATE_OPTION, false),
+            'No verdict may be recorded for a credential that never flew.'
+        );
+        $this->assertNoHttpRequests();
+    }
+
     public function testADatabaseOnlyValidKeyConnectsThroughAnUnwiredProbe()
     {
         // GLM5 #10 (positive half): a valid database-only key must report

@@ -853,6 +853,21 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return void
 	 */
 	public function record_definitive_verdict( bool $valid, ?ApiKeyRequestAuthentication $authentication = null, ?string $endpoint_cache_key = null ): void {
+		/*
+		 * glm13-1: an EMPTY wired credential authenticates nothing a
+		 * verdict could name. A definitive answer earned by a request the
+		 * EMPTY credential flew (a generation or discovery request the SDK
+		 * authenticated with the wired instance) says nothing about the
+		 * ladder/database credential effective_for_authentication() would
+		 * resolve after skipping the empty key — persisting under that
+		 * binding is the cross-credential poisoning the probe's own empty
+		 * rule (see probe()) refuses. Nothing flew that a verdict could
+		 * name: record nothing.
+		 */
+		if ( null !== $authentication && '' === $authentication->getApiKey() ) {
+			return;
+		}
+
 		$effective = $this->effective_for_authentication( $authentication );
 
 		if ( '' === $effective['key'] ) {
@@ -1015,10 +1030,34 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			 * same resolution effective_key() performs) through the
 			 * surface's fallback authentication, so the database-only key
 			 * actually validates against the endpoint.
+			 *
+			 * glm13-1: an EMPTY wired credential authenticates nothing. The
+			 * SDK registry wires env/constant values verbatim — an empty
+			 * ZAI_API_KEY in wp-config/.env yields
+			 * ApiKeyRequestAuthentication('') (getenv() returns the empty
+			 * string, not false) — while the verdict binding
+			 * (effective_for_authentication()) skips an empty wired key and
+			 * names the ladder-resolved credential instead. Authenticating
+			 * with the empty key would fly ONE credential (the empty
+			 * Bearer) and persist the 401 it earns under a DIFFERENT
+			 * (possibly valid) key's binding — clearing a working
+			 * credential. An empty wired credential is treated exactly
+			 * like none: the probe authenticates with the EFFECTIVE key,
+			 * so one credential flies and the same credential binds.
 			 */
+			$authentication = null;
+
 			try {
-				$authentication = $this->getRequestAuthentication();
+				$wired = $this->getRequestAuthentication();
+
+				if ( ! ( $wired instanceof ApiKeyRequestAuthentication && '' === $wired->getApiKey() ) ) {
+					$authentication = $wired;
+				}
 			} catch ( Throwable $unwired ) {
+				$authentication = null;
+			}
+
+			if ( null === $authentication ) {
 				$effective = $this->effective_key();
 
 				if ( '' === $effective['key'] ) {
