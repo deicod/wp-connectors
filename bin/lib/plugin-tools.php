@@ -655,8 +655,19 @@ function wp_connectors_array_writes_recognized($code, $variable, $offset)
         }
     }
 
-    // Every assignment-shaped write must be a whole-array literal.
-    if (preg_match_all('/' . $quoted . '\s*(?:\.\s*=|=(?![=>]))\s*([^;]+);/', $before, $writes, PREG_SET_ORDER)) {
+    /*
+     * Every assignment-shaped write must be a whole-array literal.
+     * glm18-8: the operator alternation covers EVERY compound assignment
+     * form (+ = - = * = **= /= .= %= &= |= ^= <<= >>= ??=), not just =
+     * and .= — a '$map += $other;' union-merge was previously an
+     * INVISIBLE write channel, so the element-literal proof concluded
+     * all runtime values were the proven literals while the array union
+     * injected foreign entries (round 18 #8, empirically confirmed).
+     * The op tokens admit no internal whitespace in PHP, so no spacing
+     * variants are missed; comparisons (==, !=, <=, >=, =>) stay
+     * unmatched through the single-= lookahead and the op classes.
+     */
+    if (preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+);/', $before, $writes, PREG_SET_ORDER)) {
         foreach ($writes as $write) {
             if (! preg_match('/^(?:array\s*\(|\[)/i', trim($write[1]))) {
                 return false;
@@ -671,11 +682,12 @@ function wp_connectors_array_writes_recognized($code, $variable, $offset)
  * Same-file assignments to a variable that execute before a byte offset.
  *
  * The ONE assignment collector shared by the literal-free and the mixed
- * include analyses: statements of the shape `$x = …;` / `$x .= …;` whose
- * start lies in a region the include can read a write from — before the
- * include, or anywhere inside a loop construct that also contains it
- * (glm18-7: a write after the include inside that loop still executes
- * before the include's next iteration).
+ * include analyses: statements of the shape `$x = …;`, `$x .= …;`, and
+ * every other compound-assignment form (glm18-8) whose start lies in a
+ * region the include can read a write from — before the include, or
+ * anywhere inside a loop construct that also contains it (glm18-7: a
+ * write after the include inside that loop still executes before the
+ * include's next iteration).
  *
  * GLM10 #14: a foreach VALUE binding is an assignment-shaped read —
  * `foreach ($map as $k => $v)` hands $v every VALUE of $map — so it is
@@ -718,8 +730,16 @@ function wp_connectors_same_file_assignments($code, $variable, $offset)
         return false;
     };
 
+    /*
+     * glm18-8: the collector's operator alternation matches every
+     * compound assignment form too (the same set the write-shape check
+     * recognizes) — a '$map += $other;' write collected with its RHS
+     * keeps the every-assignment-must-prove rule covering the union:
+     * each value source (the prior whole writes, the unioned RHS) is
+     * analyzed separately, so a compound write can no longer hide.
+     */
     $assignments = array();
-    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\.)?=(?![=>])[^;]+;/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))[^;]+;/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
         foreach ($matches[0] as $assignment) {
             if (! $visible($assignment[1])) {
                 // Outside every region the include can read a write from.
