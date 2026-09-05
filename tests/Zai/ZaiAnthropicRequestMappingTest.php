@@ -2338,6 +2338,50 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame('text', $body['messages'][2]['content'][1]['type'], 'Trailing text after the results keeps its position.');
     }
 
+    public function testAManyMessageSplitAnswerTurnCoalescesCompletelyInOrder()
+    {
+        /*
+         * glm16-5: the per-tool-result message shape (one SDK user
+         * message per FunctionResponse — exactly what the coalescing
+         * exists for) builds the answering turn incrementally now: the
+         * judgment carries one seen-text bit per turn and the merge
+         * appends in place, instead of re-merging and re-validating the
+         * whole accumulated turn per message. This pins the OUTPUT of
+         * that incremental path at a size where the quadratic form paid
+         * ~K²/2 block visits: every result block present, in order, in
+         * ONE wire turn.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array()),
+        );
+        for ($i = 0; $i < 30; $i++) {
+            $prompt[1] = new Message(MessageRoleEnum::model(), array_merge(
+                $prompt[1]->getParts(),
+                array(new MessagePart(new FunctionCall("call_{$i}", 'ping', array('n' => $i))))
+            ));
+        }
+        for ($i = 0; $i < 30; $i++) {
+            $prompt[] = new Message(MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse("call_{$i}", 'ping', array('ok' => $i))),
+            ));
+        }
+        $prompt[] = new Message(MessageRoleEnum::user(), array(new MessagePart('All done.')));
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertCount(3, $body['messages'], 'One user turn, one assistant turn, one coalesced answering user turn.');
+        $answering = $body['messages'][2]['content'];
+        $this->assertCount(31, $answering, 'Thirty result blocks plus the trailing text block, all in one wire turn.');
+
+        for ($i = 0; $i < 30; $i++) {
+            $this->assertSame('tool_result', $answering[$i]['type'], "Result block {$i} keeps its position.");
+            $this->assertSame("call_{$i}", $answering[$i]['tool_use_id'], "Result block {$i} answers its own call.");
+        }
+        $this->assertSame('text', $answering[30]['type'], 'The trailing text block lands after every result.');
+        $this->assertSame('All done.', $answering[30]['text']);
+    }
+
     public function testATextOnlyUserTurnUnrelatedToToolsIsUnaffected()
     {
         // Codex R12 #2 (iv): plain user text with no tool_result anywhere

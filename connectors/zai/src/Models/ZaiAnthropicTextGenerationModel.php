@@ -869,6 +869,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$outstanding_tools = array();
 		$awaiting_answer   = false;
 		$previous_role     = null;
+		$turn_text_seen    = false;
 		$seen_tool_ids     = array();
 
 		foreach ( $messages as $message ) {
@@ -885,11 +886,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * message 1, result B in the immediately adjacent message 2)
 			 * before the coalescing below could merge them into the one
 			 * valid wire turn.
+			 *
+			 * glm16-5: the text-before-tool_result judgment keeps ONE bit
+			 * of turn state instead of re-scanning the merged turn —
+			 * whether any block contributed to the coalesced turn so far
+			 * was text. Reset here, at the same boundary.
 			 */
 			if ( $role !== $previous_role ) {
 				$this->advance_answer_window( $awaiting_answer, $outstanding_tools, $previous_role );
 
-				$previous_role = $role;
+				$previous_role  = $role;
+				$turn_text_seen = false;
 			}
 
 			$opens_tools = false;
@@ -939,30 +946,40 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				$awaiting_answer = true;
 			}
 
-			$last = \count( $prepared ) - 1;
-			if ( $last >= 0 && $prepared[ $last ]['role'] === $role ) {
+			$last     = \count( $prepared ) - 1;
+			$is_merge = $last >= 0 && $prepared[ $last ]['role'] === $role;
+
+			if ( 'user' === $role ) {
 				/*
 				 * Codex R12 #2: the coalescing merge must not produce a
 				 * user wire turn with text BEFORE its tool_result blocks —
 				 * Anthropic requires tool results to precede any text in
 				 * the turn answering tool calls, and the linkage checks
 				 * consume IDs regardless of position, so this order passed
-				 * local validation and 400'd upstream. Judged on the MERGED
-				 * turn (which also covers a single SDK message whose blocks
-				 * are already misordered).
+				 * local validation and 400'd upstream. Judged per MESSAGE
+				 * (glm16-5), seeded with the turn's accumulated state:
+				 * equivalent to judging the merged turn — a tool_result is
+				 * rejected exactly when text precedes it in an earlier
+				 * message of the same coalesced turn or earlier in its own
+				 * — without re-scanning the whole accumulated turn for
+				 * every adjacent SDK message (O(K²) in blocks for the
+				 * per-tool-result message shape the coalescing exists
+				 * for).
 				 */
-				$merged = array_merge( $prepared[ $last ]['content'], $blocks );
-
-				if ( 'user' === $role ) {
-					$this->reject_text_before_tool_results( $merged );
-				}
-
-				$prepared[ $last ]['content'] = $merged;
-				continue;
+				$turn_text_seen = $this->reject_text_before_tool_results( $blocks, $turn_text_seen );
 			}
 
-			if ( 'user' === $role ) {
-				$this->reject_text_before_tool_results( $blocks );
+			if ( $is_merge ) {
+				/*
+				 * glm16-5: appended in place — array_merge() rebuilt the
+				 * whole accumulated turn (another full copy per adjacent
+				 * SDK message) to the same end.
+				 */
+				foreach ( $blocks as $block ) {
+					$prepared[ $last ]['content'][] = $block;
+				}
+
+				continue;
 			}
 
 			$prepared[] = array(
@@ -1000,13 +1017,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
-	 * Rejects text blocks preceding tool-result blocks in a user turn.
+	 * Rejects text blocks preceding tool-result blocks in a user turn,
+	 * one SDK message's blocks at a time (Codex R12 #2; glm16-5 made the
+	 * judgment incremental).
 	 *
 	 * Anthropic requires tool_result blocks to come FIRST — before any
-	 * text block — in the user turn that answers tool calls (Codex R12
-	 * #2). Runs on the fully merged wire turn so both shapes are caught:
-	 * a text Message adjacent-before a FunctionResponse Message, and a
-	 * single SDK message whose blocks array already has text first. A user
+	 * text block — in the user turn that answers tool calls. The caller
+	 * scans each message's blocks against the accumulated turn state, so
+	 * both shapes are caught — a text Message adjacent-before a
+	 * FunctionResponse Message (through the seeded flag), and a single
+	 * SDK message whose blocks array already has text first — without
+	 * re-scanning the whole accumulated turn per adjacent message. A user
 	 * turn with no tool_result blocks is not an answering turn and is not
 	 * judged here — glm15-17: that fact needs no pre-scan, because the
 	 * rejection rule ('tool_result' seen after text) is unsatisfiable in
@@ -1016,21 +1037,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param list<array<string, mixed>> $blocks The merged wire-turn blocks.
-	 * @return void
+	 * @param list<array<string, mixed>> $blocks The message's wire blocks.
+	 * @param bool                       $text_seen Whether an earlier message of the same coalesced turn already contributed a text block.
+	 * @return bool Whether the turn has now seen text (the incoming flag OR this message's own text blocks).
 	 * @throws InvalidArgumentException When a text block precedes a tool_result block.
 	 */
-	private function reject_text_before_tool_results( array $blocks ): void {
-		$seen_text = false;
+	private function reject_text_before_tool_results( array $blocks, bool $text_seen ): bool {
 		foreach ( $blocks as $block ) {
 			if ( 'text' === $block['type'] ) {
-				$seen_text = true;
-			} elseif ( 'tool_result' === $block['type'] && $seen_text ) {
+				$text_seen = true;
+			} elseif ( 'tool_result' === $block['type'] && $text_seen ) {
 				throw new InvalidArgumentException(
 					'The zai_anthropic provider requires tool results to precede text blocks in the user turn following a tool call.'
 				);
 			}
 		}
+
+		return $text_seen;
 	}
 
 	/**
