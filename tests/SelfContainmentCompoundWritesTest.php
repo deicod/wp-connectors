@@ -158,4 +158,27 @@ final class SelfContainmentCompoundWritesTest extends TestCase
         $this->assertNotEmpty($violations, 'A .= write must keep flagging.');
         $this->assertStringContainsString('require $f', implode("\n", $violations));
     }
+
+    public function testAByReferenceAliasOfTheIncludeVariableRefuses(): void
+    {
+        /*
+         * glm18-18 (verifier round on the round-18 scanner fixes):
+         * `$alias = &$f;` is a write channel the plain-variable
+         * collector cannot see — writes through the alias never match
+         * the assignment regex — so the proof held on the literal alone
+         * while the runtime include loaded a foreign path (empirically
+         * confirmed). The alias's existence in a visible region
+         * refuses the proof, the same channel the map path has refused
+         * since the GLM10 #14 round.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\n\$f = __DIR__ . '/ok.php';\n\$alias = &\$f;\n\$alias = '/outside/pwned.php';\nrequire \$f;\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'An alias of the include variable must refuse the proof.');
+        $this->assertStringContainsString('require $f', implode("\n", $violations));
+    }
 }

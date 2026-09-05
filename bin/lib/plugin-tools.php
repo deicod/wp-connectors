@@ -807,6 +807,23 @@ function wp_connectors_same_file_assignments($code, $variable, $offset)
     };
 
     /*
+     * glm18-18 (verifier round): a by-reference alias whose SOURCE is
+     * the variable — `$alias = &$var;` — is a write channel the
+     * assignment regex cannot see (the collector matches writes TO the
+     * variable, never writes THROUGH an alias), so one anywhere in the
+     * visible regions refuses the proof entirely — the same channel
+     * the map path's array_writes_recognized() has refused since the
+     * GLM10 #14 round. The plain-variable path refused nothing:
+     * `$alias = &$f; $alias = <foreign>; require $f;` laundered
+     * (empirically confirmed).
+     */
+    foreach ($spans as $span) {
+        if (preg_match('/=\s*&\s*' . preg_quote($variable, '/') . '\b/', (string) substr($masked, $span[0], $span[1] - $span[0] + 1))) {
+            return array();
+        }
+    }
+
+    /*
      * glm18-8: the collector's operator alternation matches every
      * compound assignment form too (the same set the write-shape check
      * recognizes) — a '$map += $other;' write collected with its RHS
