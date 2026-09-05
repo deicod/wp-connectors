@@ -183,18 +183,24 @@ function zai_connector_zai_uninstall_site() {
 		);
 
 		foreach ( $zai_connector_settings_classes as $zai_connector_settings_class ) {
+			/*
+			 * glm13-15: the env/constant credential collection rides the
+			 * settings owner's ONE env_constant_ladder() — this file's
+			 * hand-rolled getenv()/defined() rungs were the fourth copy of
+			 * the ladder body (the very duplication that function was
+			 * extracted to remove), inside a branch where the owner class
+			 * is already loaded and already being called. When the ladder
+			 * learns a rule in the owner, this sweep keeps deriving the
+			 * same names instead of silently keeping the old semantics —
+			 * the failure mode that stranded hashed markers here twice
+			 * (GLM5 #11, GLM9 #8). The database rung stays local: it is
+			 * core-owned option state, not ladder resolution, and the key
+			 * option is deliberately still readable at uninstall time.
+			 */
 			$zai_connector_current_keys = array();
 
-			$zai_connector_env_value = getenv( $zai_connector_settings_class::KEY_ENV_NAME );
-			if ( \is_string( $zai_connector_env_value ) && '' !== $zai_connector_env_value ) {
-				$zai_connector_current_keys[] = $zai_connector_env_value;
-			}
-
-			if ( \defined( $zai_connector_settings_class::KEY_ENV_NAME ) ) {
-				$zai_connector_constant_value = \constant( $zai_connector_settings_class::KEY_ENV_NAME );
-				if ( \is_string( $zai_connector_constant_value ) && '' !== $zai_connector_constant_value ) {
-					$zai_connector_current_keys[] = $zai_connector_constant_value;
-				}
+			foreach ( $zai_connector_settings_class::env_constant_ladder() as $zai_connector_ladder_key ) {
+				$zai_connector_current_keys[] = $zai_connector_ladder_key;
 			}
 
 			$zai_connector_stored_value = get_option( $zai_connector_settings_class::KEY_OPTION, '' );

@@ -357,6 +357,36 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         $this->assertSame( array(), $remaining, 'Every derivable probe-miss marker of both surfaces must be deleted through the single owner: ' . wp_json_encode( $remaining ) );
     }
 
+    public function testTheCredentialCollectionRidesTheSettingsOwnerLadder()
+    {
+        /*
+         * glm13-15 (source pin): the deterministic sweep's env/constant
+         * credential collection composes through the settings owner's ONE
+         * env_constant_ladder() — the hand-rolled getenv()/defined() rungs
+         * this file carried were the fourth copy of the ladder body, and
+         * twice already a composition change without the lockstep edit
+         * stranded hashed markers here (GLM5 #11, GLM9 #8). The functional
+         * sweep is pinned above; this holds the composition itself.
+         */
+        $source = (string) file_get_contents( __DIR__ . '/../../connectors/zai/uninstall.php' );
+
+        $this->assertSame(
+            1,
+            preg_match_all( '/::env_constant_ladder\(\)/', $source ),
+            'The sweep must collect env/constant credentials through the one owner ladder.'
+        );
+        $this->assertSame(
+            0,
+            preg_match_all( '/getenv\( \$zai_connector_settings_class::KEY_ENV_NAME \)/', $source ),
+            'No hand-rolled env rung may return.'
+        );
+        $this->assertSame(
+            0,
+            preg_match_all( '/\\\\defined\( \$zai_connector_settings_class::KEY_ENV_NAME \)/', $source ),
+            'No hand-rolled constant rung may return.'
+        );
+    }
+
     public function testADatabaseErrorDuringTheProbeSweepDoesNotWarnOrSkipTheOtherCleanups()
     {
         /*
