@@ -68,7 +68,20 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
         fwrite(STDERR, "conventions: FAIL CHANGELOG.md is missing at the repository root.\n");
         ++$failures;
     }
-    $failures += wp_connectors_unused_import_violations($repoRoot . '/connectors');
+    /*
+     * glm17-17: a subdirectory the iterator cannot OPEN mid-recursion
+     * aborts the scan with an UnexpectedValueException (it cannot step
+     * past what it cannot enter). The gate converts the abort to the
+     * same loud-counted channel as the unreadable-FILE branch — a
+     * named FAIL and a non-zero exit instead of an uncaught fatal's
+     * stack trace — and the partial count scanned so far is kept.
+     */
+    try {
+        $failures += wp_connectors_unused_import_violations($repoRoot . '/connectors');
+    } catch (UnexpectedValueException $e) {
+        fwrite(STDERR, "conventions: FAIL connectors: unreadable subdirectory — the unused-import scan aborted ({$e->getMessage()}).\n");
+        ++$failures;
+    }
 
     printf("conventions: %d plugin dir(s) checked, %d violation(s)\n", count($pluginRoots), $failures);
     exit($failures === 0 ? 0 : 1);
@@ -96,6 +109,10 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
  *
  * @param string $root Directory to scan recursively for .php files.
  * @return int Violation count.
+ * @throws UnexpectedValueException When a subdirectory cannot be opened
+ *                                  mid-recursion (the scan cannot step
+ *                                  past it; the CLI gate converts the
+ *                                  abort to a counted FAIL — glm17-17).
  */
 function wp_connectors_unused_import_violations(string $root): int
 {

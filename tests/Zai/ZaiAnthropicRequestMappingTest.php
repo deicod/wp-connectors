@@ -1235,7 +1235,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
 
         $memo = new \ReflectionProperty(ZaiAnthropicTextGenerationModel::class, 'tool_schema_memo');
         if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a deprecated no-op since 8.1.
+            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
             $memo->setAccessible(true);
         }
         $storage = $memo->getValue($model);
@@ -1265,7 +1265,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
 
         $memo = new \ReflectionProperty(ZaiAnthropicTextGenerationModel::class, 'tool_schema_memo');
         if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a deprecated no-op since 8.1.
+            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
             $memo->setAccessible(true);
         }
 
