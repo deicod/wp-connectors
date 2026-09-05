@@ -205,6 +205,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *                                  verdict for the selected endpoint).
 	 */
 	public function generateTextResult( array $prompt ): GenerativeAiResult {
+		/*
+		 * glm13-12: transporter resolution precedes the guards — the
+		 * vendor-mandated order of the SDK parent's FINAL
+		 * generateTextResult() the zai surface rides (getHttpTransporter()
+		 * before prepareGenerateTextParams()), so identical misuse yields
+		 * the identical error on both surfaces: an unbound instance fails
+		 * the transporter binding (RuntimeException -> 500 zai_error
+		 * through the mapper) before its options are judged, exactly like
+		 * the zai surface. Guards-first is not implementable there — the
+		 * vendor method is final — so the surfaces unify on the one order
+		 * both can share.
+		 */
+		$http_transporter = $this->getHttpTransporter();
+
 		$this->refuse_refused_credentials();
 
 		$params = $this->prepareGenerateTextParams( $prompt );
@@ -230,7 +244,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$request = $this->getRequestAuthentication()->authenticateRequest( $request );
 
-		$response = $this->getHttpTransporter()->send( $request );
+		$response = $http_transporter->send( $request );
 
 		$this->throwIfNotSuccessful( $response );
 

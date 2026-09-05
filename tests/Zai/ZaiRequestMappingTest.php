@@ -831,8 +831,7 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
     }
 
     public function testTheHappyPathRunsOneEncodabilityPassOverTheAssembledPayload()
-    {
-        /*
+    {        /*
          * glm13-11 (source pin — the efficiency contract): the per-member
          * encodability pre-pass no longer runs eagerly on every request.
          * The createRequest() chokepoint encodes the assembled payload
@@ -863,6 +862,47 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
             $source,
             'The per-member encodability walk runs only as the attribution pass on net failure.'
         );
+    }
+
+    public function testAnUnboundInstanceFailsIdenticallyOnBothSurfaces()
+    {
+        /*
+         * glm13-12: identical misuse — a directly-constructed model
+         * outside ProviderRegistry carrying an unsupported option —
+         * yields the identical error on both surfaces: the transporter
+         * binding failure (RuntimeException, 500 zai_error) fires before
+         * the option guards, the vendor-mandated order of the zai
+         * surface's FINAL parent generateTextResult() that the
+         * zai_anthropic surface's own generateTextResult() now mirrors.
+         * (The zai surface cannot run guards first: the vendor method is
+         * final — the surfaces unify on the one order both can share.)
+         */
+        $this->primeZaiDiscoveryTransient();
+        $this->primeZaiAnthropicDiscoveryTransient();
+
+        $surfaces = array(
+            'zai' => ZaiProvider::model('glm-5.3', ModelConfig::fromArray(array('topK' => 5))),
+            'zai_anthropic' => Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3', ModelConfig::fromArray(array('topK' => 5))),
+        );
+
+        foreach ($surfaces as $label => $model) {
+            try {
+                $model->generateTextResult(array(
+                    new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+                ));
+                $this->fail("[{$label}] An unbound instance must fail the transporter binding.");
+            } catch (\WordPress\AiClient\Common\Exception\RuntimeException $e) {
+                $error = Deicod\WpConnectors\Zai\Support\ErrorMapper::to_wp_error($e);
+                $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_ERROR);
+                $this->assertSame(
+                    500,
+                    $error->get_error_data()['status'],
+                    "[{$label}] The binding failure must map to the 500 zai_error, never an option 400."
+                );
+            }
+        }
+
+        $this->assertNoHttpRequests();
     }
 
     /**
