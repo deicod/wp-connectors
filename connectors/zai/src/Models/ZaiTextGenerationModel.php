@@ -43,6 +43,7 @@ use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
+use Deicod\WpConnectors\Zai\Support\EncodabilityNet;
 use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonShape;
@@ -217,24 +218,29 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * stashed prompt) to name the first bad member with the precise
 		 * message the eager pre-pass used to give; a member the walk does
 		 * not know keeps this generic description.
+		 *
+		 * glm16-7: the net rides the shared EncodabilityNet owner (the
+		 * one raw encode + failure sequence both surfaces run); this
+		 * surface alone decides whether the encoded string RIDES as the
+		 * body (its createRequest() also serves requests that would not
+		 * carry a JSON body, so the ride is transport-conditional —
+		 * glm14-4).
 		 */
-		$encoded = json_encode( $data ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
+		$encoded = EncodabilityNet::encode(
+			$data,
+			self::PROVIDER_LABEL,
+			function () {
+				$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );
+			}
+		);
 
-		if ( false !== $encoded && self::carries_json_body( $method, $headers ) ) {
+		if ( self::carries_json_body( $method, $headers ) ) {
 			// glm14-4: the ride — this string is the request's body.
 			return $encoded;
 		}
 
-		if ( false !== $encoded ) {
-			// Not a JSON-body request: the array rides as it always did.
-			return $data;
-		}
-
-		$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );
-
-		JsonEncodeGuard::must_encode( $data, 'a request payload member', self::PROVIDER_LABEL );
-
-		return $data; // Unreachable: must_encode() rejects above.
+		// Not a JSON-body request: the array rides as it always did.
+		return $data;
 	}
 
 	/**
@@ -1272,7 +1278,8 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 	/**
 	 * Attributes an assembled-payload encodability failure to its first
-	 * bad member — the encodability half of the GLM6 #5 walk (glm13-11).
+	 * bad member — the encodability half of the GLM6 #5 walk (glm13-11;
+	 * glm16-7 composes the shared walk segments).
 	 *
 	 * Runs ONLY when the createRequest() chokepoint's whole-payload net
 	 * (guard_assembled_params()) fails, over the stashed prompt: the
@@ -1281,7 +1288,10 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * ('the system instruction', 'a message text part', ...) without the
 	 * second O(payload) serialization the happy path used to pay. A
 	 * member this walk does not know falls back to the caller's generic
-	 * description.
+	 * description. The segment ORDER matches the old eager pre-pass
+	 * (system, sampling options, tool declarations, text); see
+	 * EncodabilityNet for the one surface-specific segment (sampling)
+	 * and its documented divergence from the zai_anthropic twin.
 	 *
 	 * @since 0.2.0
 	 *
@@ -1292,57 +1302,9 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	private function guard_wire_values( array $prompt ): void {
 		$config = $this->getConfig();
 
-		$system_instruction = $config->getSystemInstruction();
-		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
-			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', self::PROVIDER_LABEL );
-		}
-
-		/*
-		 * Verifier round on GLM6 #5: the SDK parent ships the sampling
-		 * floats and the response-format schema verbatim too — a NAN
-		 * temperature/top_p or an unencodable outputSchema member reached
-		 * the transport's whole-request encode as the untyped
-		 * JsonException (generic 500), the exact divergence class the
-		 * walk exists to close (the zai_anthropic twin guards the schema
-		 * and rejects NAN temperature through its range checks).
-		 */
-		$temperature = $config->getTemperature();
-		if ( null !== $temperature ) {
-			JsonEncodeGuard::must_encode( $temperature, 'the temperature option', self::PROVIDER_LABEL );
-		}
-
-		$top_p = $config->getTopP();
-		if ( null !== $top_p ) {
-			JsonEncodeGuard::must_encode( $top_p, 'the top_p option', self::PROVIDER_LABEL );
-		}
-
-		$output_schema = $config->getOutputSchema();
-		if ( \is_array( $output_schema ) ) {
-			JsonEncodeGuard::must_encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
-		}
-
-		$function_declarations = $config->getFunctionDeclarations();
-		if ( \is_array( $function_declarations ) ) {
-			foreach ( $function_declarations as $declaration ) {
-				JsonEncodeGuard::must_encode( $declaration->getName(), 'a declared tool function name', self::PROVIDER_LABEL );
-				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
-
-				$input_schema = $declaration->getParameters();
-				if ( \is_array( $input_schema ) ) {
-					JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
-				}
-			}
-		}
-
-		foreach ( $prompt as $message ) {
-			foreach ( $message->getParts() as $part ) {
-				if ( $part->getType()->isText() && ! $part->getChannel()->isThought() ) {
-					// Only visible text ships (the parent drops thought
-					// parts, so guarding them would over-reject).
-					JsonEncodeGuard::must_encode( (string) $part->getText(), 'a message text part', self::PROVIDER_LABEL );
-					continue;
-				}
-			}
-		}
+		EncodabilityNet::guard_system_instruction( $config, self::PROVIDER_LABEL );
+		EncodabilityNet::guard_sampling_options( $config, self::PROVIDER_LABEL );
+		EncodabilityNet::guard_declarations( $config, self::PROVIDER_LABEL );
+		EncodabilityNet::guard_visible_text( $prompt, self::PROVIDER_LABEL );
 	}
 }

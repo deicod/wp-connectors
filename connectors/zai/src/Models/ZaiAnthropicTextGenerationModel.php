@@ -55,6 +55,7 @@ use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
+use Deicod\WpConnectors\Zai\Support\EncodabilityNet;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
@@ -322,29 +323,31 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @since 0.2.0
 	 *
 	 * @param array<string, mixed> $params The assembled request params.
-	 * @return string|array The encoded JSON body, or $params when the
-	 *                      net rejected (unreachable — the rejection
-	 *                      throws).
+	 * @return string The encoded JSON body (glm16-7: the shared net
+	 *                always returns the string — a failure rejects
+	 *                before any return).
 	 * @throws InvalidArgumentException When any member cannot encode.
 	 */
 	private function guard_assembled_params( array $params ) {
-		$encoded = json_encode( $params ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (the GLM3 #4 verifier-round class).
-
-		if ( false !== $encoded ) {
-			// glm14-4's ride: this string is the request's body.
-			return $encoded;
-		}
-
-		$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );
-
-		JsonEncodeGuard::must_encode( $params, 'a request payload member', self::PROVIDER_LABEL );
-
-		return $params; // Unreachable: must_encode() rejects above.
+		/*
+		 * glm16-7: the net rides the shared EncodabilityNet owner (the
+		 * one raw encode + failure sequence both surfaces run); the
+		 * Messages request ALWAYS carries a JSON body, so unlike the
+		 * zai twin there is no carries_json_body() branch — every
+		 * success rides as the body string (glm15-5).
+		 */
+		return EncodabilityNet::encode(
+			$params,
+			self::PROVIDER_LABEL,
+			function () {
+				$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );
+			}
+		);
 	}
 
 	/**
 	 * Attributes an assembled-payload encodability failure to its first
-	 * bad member (glm15-5).
+	 * bad member (glm15-5; glm16-7 composes the shared walk segments).
 	 *
 	 * Runs ONLY when the request-build net (guard_assembled_params())
 	 * fails, over the stashed prompt: the same per-member
@@ -352,11 +355,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * request, preserving the precise first-bad-wins messages ('a
 	 * message text part', 'the system instruction', 'a declared tool
 	 * function name', ...) without the second O(payload) serialization
-	 * the happy path used to pay. The check order matches the mapping
+	 * the happy path used to pay. The segment ORDER matches the mapping
 	 * order (messages, then system, then tool declarations), so a
 	 * multi-bad payload names the member the old eager walk named. A
 	 * member this walk does not know falls back to the caller's generic
-	 * description.
+	 * description. The sampling options are deliberately NOT composed
+	 * here — see EncodabilityNet::guard_sampling_options() for why the
+	 * zai twin composes them and this surface's eager transforms make
+	 * them dead branches.
 	 *
 	 * @since 0.2.0
 	 *
@@ -367,34 +373,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private function guard_wire_values( array $prompt ): void {
 		$config = $this->getConfig();
 
-		foreach ( $prompt as $message ) {
-			foreach ( $message->getParts() as $part ) {
-				if ( $part->getType()->isText() && ! $part->getChannel()->isThought() && '' !== (string) $part->getText() ) {
-					// Only visible, non-empty text ships (the mapping
-					// drops the others, so guarding them would
-					// over-reject).
-					JsonEncodeGuard::must_encode( (string) $part->getText(), 'a message text part', self::PROVIDER_LABEL );
-				}
-			}
-		}
-
-		$system_instruction = $config->getSystemInstruction();
-		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
-			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', self::PROVIDER_LABEL );
-		}
-
-		$function_declarations = $config->getFunctionDeclarations();
-		if ( \is_array( $function_declarations ) ) {
-			foreach ( $function_declarations as $declaration ) {
-				JsonEncodeGuard::must_encode( $declaration->getName(), 'a declared tool function name', self::PROVIDER_LABEL );
-				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
-
-				$input_schema = $declaration->getParameters();
-				if ( \is_array( $input_schema ) && array() !== $input_schema ) {
-					JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
-				}
-			}
-		}
+		/*
+		 * The mapping drops empty text parts, so the wire carries only
+		 * visible NON-EMPTY text — the shared segment's guard covers
+		 * exactly those (an empty string encodes fine either way).
+		 */
+		EncodabilityNet::guard_visible_text( $prompt, self::PROVIDER_LABEL );
+		EncodabilityNet::guard_system_instruction( $config, self::PROVIDER_LABEL );
+		EncodabilityNet::guard_declarations( $config, self::PROVIDER_LABEL );
 	}
 
 	/**

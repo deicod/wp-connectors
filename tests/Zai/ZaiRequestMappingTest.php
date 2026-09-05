@@ -897,6 +897,31 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testAMultiBadPayloadNamesTheMemberInTheZaiWalkOrder()
+    {
+        /*
+         * glm16-7: the attribution walk's segment ORDER is per-surface
+         * — this surface judges the system instruction before the text
+         * parts (the old eager pre-pass order), while the zai_anthropic
+         * twin judges text first (its mapping order). A payload
+         * carrying BOTH an unencodable system instruction and an
+         * unencodable text part names 'the system instruction' here
+         * and 'a message text part' there — the first-bad-wins
+         * contract each surface's composer owns on top of the shared
+         * EncodabilityNet segments.
+         */
+        $config = ModelConfig::fromArray(array('systemInstruction' => "Sy\xB1\x31stem"));
+        $prompt = array(new Message(MessageRoleEnum::user(), array(new MessagePart("Te\xB1\x31xt"))));
+
+        try {
+            $this->model($config)->generateTextResult($prompt);
+            $this->fail('An unencodable payload must reject pre-transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('the system instruction', $e->getMessage());
+            $this->assertStringNotContainsString('a message text part', $e->getMessage());
+        }
+    }
+
     public function testTheHappyPathRunsOneEncodabilityPassOverTheAssembledPayload()
     {        /*
          * glm13-11 (source pin — the efficiency contract): the per-member
@@ -918,14 +943,30 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
         );
+        /*
+         * glm16-7: the one encode lives in the shared EncodabilityNet
+         * owner now (both surfaces' nets single-sourced); the pin
+         * scans the owner for the single raw oracle and the model for
+         * the handoff and the transport-conditional ride — superseding
+         * the glm13-11/glm14-4 form that scanned for the encode
+         * statement in the model file itself.
+         */
+        $owner = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/EncodabilityNet.php'
+        );
 
-        $this->assertStringContainsString(
-            '$encoded = json_encode( $data );',
-            $source,
-            'The chokepoint must encode the payload exactly once, into the variable that becomes the request body.'
+        $this->assertSame(
+            1,
+            preg_match_all('/\$encoded = json_encode\( \$payload \);/', $owner),
+            'The shared net encodes the assembled payload exactly once, into the variable that becomes the request body.'
         );
         $this->assertStringContainsString(
-            'if ( false !== $encoded && self::carries_json_body( $method, $headers ) ) {',
+            '$encoded = EncodabilityNet::encode(',
+            $source,
+            'The chokepoint rides the shared one-encode net (glm16-7).'
+        );
+        $this->assertStringContainsString(
+            'if ( self::carries_json_body( $method, $headers ) ) {',
             $source,
             'The successful encode is returned as the request body (glm14-4), not recomputed at send time.'
         );

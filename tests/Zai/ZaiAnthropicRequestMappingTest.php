@@ -108,6 +108,27 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
      * Snapshots.
      */
 
+    public function testAMultiBadPayloadNamesTheMemberInTheAnthropicWalkOrder()
+    {
+        /*
+         * glm16-7: the mirror of the zai surface's order pin — THIS
+         * surface's walk composes text first (its mapping order:
+         * messages, then system, then tools), so the same multi-bad
+         * payload names 'a message text part' where the zai twin names
+         * 'the system instruction'.
+         */
+        $config = ModelConfig::fromArray(array('systemInstruction' => "Sy\xB1\x31stem"));
+        $prompt = array(new Message(MessageRoleEnum::user(), array(new MessagePart("Te\xB1\x31xt"))));
+
+        try {
+            $this->model($config)->generateTextResult($prompt);
+            $this->fail('An unencodable payload must reject pre-transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('a message text part', $e->getMessage());
+            $this->assertStringNotContainsString('the system instruction', $e->getMessage());
+        }
+    }
+
     public function testTheHappyPathRunsOneEncodabilityPassOverTheAssembledPayload()
     {        /*
          * glm15-5 (source pin — the efficiency contract, twin of the zai
@@ -127,16 +148,31 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php'
         );
+        /*
+         * glm16-7: the one encode lives in the shared EncodabilityNet
+         * owner now (both surfaces' nets single-sourced); the pin
+         * scans the owner for the single raw oracle and the model for
+         * the handoff — superseding the glm15-5 form that scanned for
+         * the encode statement in the model file itself.
+         */
+        $owner = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/EncodabilityNet.php'
+        );
 
-        $this->assertStringContainsString(
-            '$encoded = json_encode( $params );',
-            $source,
-            'The request build must encode the payload exactly once, into the variable that becomes the request body.'
+        $this->assertSame(
+            1,
+            preg_match_all('/\$encoded = json_encode\( \$payload \);/', $owner),
+            'The shared net encodes the assembled payload exactly once, into the variable that becomes the request body.'
         );
         $this->assertStringContainsString(
             '$data = $this->guard_assembled_params( $params );',
             $source,
             'generateTextResult() hands the assembled params to the one-encode net.'
+        );
+        $this->assertStringContainsString(
+            'return EncodabilityNet::encode(',
+            $source,
+            'The request-build net rides the shared owner (glm16-7).'
         );
         $this->assertStringContainsString(
             '$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );',
@@ -149,9 +185,14 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             'No eager per-text-part encodability pre-pass may remain at the mapping site.'
         );
         $this->assertSame(
-            1,
+            0,
             preg_match_all('/must_encode\( \$system_instruction, \'the system instruction\'/', $source),
-            'The system-instruction encodability check exists exactly once: the attribution walk, not an eager mapping-site pre-pass.'
+            'The system-instruction encodability check lives in the shared owner, not the model.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/must_encode\( \$system_instruction, \'the system instruction\'/', $owner),
+            'The system-instruction encodability check exists exactly once across the shared owner: the attribution walk, not an eager mapping-site pre-pass.'
         );
     }
 
