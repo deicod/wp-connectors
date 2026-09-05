@@ -445,7 +445,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$params = array(
 			'model'      => $this->metadata()->getId(),
-			'max_tokens' => $config->getMaxTokens() ?? self::DEFAULT_MAX_TOKENS,
+			'max_tokens' => $this->effective_max_tokens(),
 			'messages'   => $this->prepare_messages_param( $prompt ),
 		);
 
@@ -2377,6 +2377,27 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
+	 * The effective max_tokens value for the CURRENT config (glm19-7).
+	 *
+	 * One resolution rule for both consumers — the wire member at the
+	 * params build and the TokenLimitReachedException payload at the
+	 * finish-reason walk. The expression was written out twice; a
+	 * defaulting-rule edit at one site but not the other would make the
+	 * token-limit error message and WP_Error payload report a limit the
+	 * request never carried, so both read this one helper (the payload
+	 * drops its old absint() wrap: getMaxTokens() is ?int, the
+	 * expression is already int, and the payload's job is to name
+	 * EXACTLY what the wire member carried).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return int The configured max_tokens, or the surface default.
+	 */
+	private function effective_max_tokens(): int {
+		return $this->getConfig()->getMaxTokens() ?? self::DEFAULT_MAX_TOKENS;
+	}
+
+	/**
 	 * Maps a Messages stop reason to the SDK finish reason.
 	 *
 	 * @since 0.2.0
@@ -2415,7 +2436,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				return FinishReasonEnum::contentFilter();
 
 			case 'max_tokens':
-				$max_tokens = absint( $this->getConfig()->getMaxTokens() ?? self::DEFAULT_MAX_TOKENS );
+				$max_tokens = $this->effective_max_tokens();
 
 				throw new TokenLimitReachedException(
 					sprintf(
