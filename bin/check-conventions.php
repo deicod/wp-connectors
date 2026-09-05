@@ -82,8 +82,10 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
  * prose comments and docblock types (a docblock TYPE is a real
  * phpstan-resolved use); only an import whose short name appears
  * NOWHERE else is flagged. Mention matching is case-insensitive
- * (glm17-9): PHP name resolution is, so a mixed-case reference is a
- * real use.
+ * (glm17-9): class and function name resolution is case-insensitive,
+ * so a mixed-case reference is a real use (constants resolve
+ * case-SENSITIVELY — the i modifier is the conservative direction for
+ * every import kind, never a narrowing).
  *
  * @param string $root Directory to scan recursively for .php files.
  * @return int Violation count.
@@ -132,9 +134,11 @@ function wp_connectors_unused_import_violations(string $root): int
          * it as a real import and flagged a phantom unused import when
          * the short name appeared nowhere else. Both transforms are
          * length-preserving, so an offset captured in the masked view is
-         * the same byte offset in $source — and a real use statement
-         * contains neither comment nor string bytes, so its matched text
-         * is identical in both views.
+         * the same byte offset in $source. The matched TEXT may differ
+         * from the raw bytes (glm17-15: a comment between the qualified
+         * name and the `as` alias is legal PHP and blanks to spaces in
+         * the view), so the statement bytes are sliced from $source
+         * below, never taken from the match text.
          */
         $code_view = wp_connectors_mask_string_contents(
             wp_connectors_strip_comments($source)
@@ -157,12 +161,15 @@ function wp_connectors_unused_import_violations(string $root): int
              * the whole source, which removes the FIRST textual copy of
              * the statement text — not necessarily the matched statement
              * — and paid a full-source string copy plus rescan per match.
-             * The dead `false !== $usePosition` guard is gone too: the
-             * captured text is by construction a substring of $source at
-             * exactly this offset.
+             * The dead `false !== $usePosition` guard is gone too — the
+             * offset comes from the matcher itself.
              */
-            $statement        = $match[0][0];
             $statement_offset = $match[0][1];
+            // The REAL bytes at the captured offset, same LENGTH as the
+            // masked match (a mid-statement comment blanks to spaces in
+            // the view, so the match text is not the statement): used
+            // for the removal and the flag message (glm17-15).
+            $statement        = substr($source, $statement_offset, strlen($match[0][0]));
 
             // The short name is the alias when one is given, else the
             // last segment of the qualified name (the whole name for a
