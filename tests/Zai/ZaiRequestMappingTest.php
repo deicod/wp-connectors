@@ -24,6 +24,14 @@ use WordPress\AiClient\Tools\DTO\FunctionCall;
 use WordPress\AiClient\Tools\DTO\FunctionDeclaration;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
+use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
+use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel;
+use Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel;
+use Deicod\WpConnectors\Zai\Metadata\ZaiModelListParser;
+use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
+use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
 
 final class ZaiRequestMappingTest extends WpConnectorsTestCase
 {
@@ -43,63 +51,101 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         return $model;
     }
 
-    /**
-     * Runs one generation and returns [url, decodedBody, headers] of the
-     * single recorded request.
-     *
-     * @param list<Message>                                       $prompt
-     * @param \Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel $model
-     * @return array{0: string, 1: array, 2: array}
+    /*
+     * GLM12 #14: the capture/snapshot/reject helpers live once in
+     * WpConnectorsTestCase; this suite provides its surface's three
+     * facts (snapshot directory, capture success body, rejection
+     * model).
      */
-    private function captureRequest(array $prompt, $model): array
+
+    /**
+     * @return string
+     */
+    protected function snapshotDirectory(): string
     {
-        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
-        $model->generateTextResult($prompt);
-
-        $attempts = $this->sdkHttpAttempts();
-        $this->assertCount(1, $attempts);
-
-        return array(
-            $attempts[0]['url'],
-            (array) json_decode((string) $attempts[0]['body'], true),
-            $attempts[0]['headers'],
-        );
+        return __DIR__ . '/../fixtures/snapshots/zai';
     }
 
     /**
-     * Asserts the captured request equals the committed snapshot.
-     *
-     * @param string $name  Snapshot name.
-     * @param string $url   Request URL.
-     * @param array  $body  Decoded request body.
      * @return void
      */
-    private function assertMatchesSnapshot(string $name, string $url, array $body)
+    protected function queueCaptureResponse()
     {
-        $path = __DIR__ . '/../fixtures/snapshots/zai/' . $name . '.json';
-        $snapshot = array('url' => $url, 'body' => $body);
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+    }
 
-        if (!is_file($path)) {
-            @mkdir(dirname($path), 0755, true);
-            file_put_contents($path, json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
-            $this->markTestSkipped("Snapshot {$name} created; re-run to verify.");
-        }
-
-        $this->assertSame(
-            $snapshot,
-            (array) json_decode((string) file_get_contents($path), true),
-            "Captured request drifted from snapshot {$name}."
-        );
-
-        // Snapshots never contain credentials (headers are excluded by
-        // construction; assert the invariant anyway).
-        $this->assertStringNotContainsString('Bearer', (string) file_get_contents($path));
-        $this->assertStringNotContainsString('Authorization', (string) file_get_contents($path));
+    /**
+     * @param ModelConfig|null $config
+     * @return \Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel
+     */
+    protected function snapshotTestModel(?ModelConfig $config = null)
+    {
+        return $this->model($config);
     }
 
     /*
      * Snapshots.
      */
+
+    public function testTheGenerationRouteConstantMatchesTheWireRequest()
+    {
+        /*
+         * glm15-4: the endpoint layer's GENERATION_ROUTE feeds the live
+         * probe's generation-route evidence line, while the vendor SDK
+         * composes its generation path internally. The CAPTURED wire
+         * URL must equal generation_url(), so a vendor route change
+         * breaks this pin instead of the probe printing evidence for a
+         * URL no request ever made.
+         */
+        list($url) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))),
+            $this->model()
+        );
+
+        $this->assertSame(
+            \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->generation_url(),
+            $url,
+            'The endpoint-owned generation route must be the URL the wire request actually uses.'
+        );
+    }
+
+    public function testExplicitlyClearedListOptionsAreOmittedFromTheWire()
+    {
+        /*
+         * GLM12 #4 (parity with the zai_anthropic twin's GLM1 #4): the
+         * SDK setters are non-nullable, so [] is the only way to clear a
+         * list option (a tool loop neutralizing tools between turns, or
+         * PromptBuilder::usingFunctionDeclarations() with zero
+         * arguments) — and the SDK parent shipped the empty lists
+         * verbatim ("stop":[], "tools":[]), where the spec-faithful
+         * reading (min length 1) 400s with the generic misattributed
+         * message. Both members are omitted when empty, exactly like
+         * the twin.
+         */
+        $config = new ModelConfig();
+        $config->setStopSequences(array());
+        $config->setFunctionDeclarations(array());
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))),
+            $this->model($config)
+        );
+
+        $this->assertArrayNotHasKey('stop', $body, 'An explicitly-cleared stop list must not ship as "stop":[].');
+        $this->assertArrayNotHasKey('tools', $body, 'An explicitly-cleared tool list must not ship as "tools":[].');
+
+        // Non-empty lists keep the parent's mapping verbatim.
+        WpHarness::$sdk_http_attempts = array();
+        $kept = new ModelConfig();
+        $kept->setStopSequences(array('END'));
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))),
+            $this->model($kept)
+        );
+
+        $this->assertSame(array('END'), $body['stop'], 'A non-empty stop list still ships.');
+    }
 
     public function testMinimalRequestSnapshot()
     {
@@ -119,6 +165,50 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         // The live request carries the Bearer credential...
         $this->assertArrayHasKey('Authorization', $headers);
         $this->assertMatchesSnapshot('minimal', $url, $body);
+    }
+
+    public function testTheGenerationRequestRidesTheNetsPreEncodedBody()
+    {
+        /*
+         * glm14-4: the whole-payload net's ONE json_encode is handed to
+         * the Request as its body string (Request stores a string $data
+         * as the raw body; getBody() returns it as-is), so the
+         * transport's send-time re-encode — the second whole-payload
+         * serialization every zai generation paid end-to-end — is gone.
+         * getData() is null on the ridden request and the wire body
+         * decodes to exactly the params the parent assembled (the
+         * snapshot suite pins the wire shape already).
+         */
+        $transporter = new class implements \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface {
+            /**
+             * @var \WordPress\AiClient\Providers\Http\DTO\Request|null
+             */
+            public $captured_request;
+
+            public function send(\WordPress\AiClient\Providers\Http\DTO\Request $request, ?\WordPress\AiClient\Providers\Http\DTO\RequestOptions $options = null): \WordPress\AiClient\Providers\Http\DTO\Response
+            {
+                $this->captured_request = $request;
+
+                return new \WordPress\AiClient\Providers\Http\DTO\Response(200, array(), HttpResponseFactory::openAiChatCompletionBody('ride ok', 'glm-5.3'));
+            }
+        };
+
+        $model = $this->model();
+        $model->setHttpTransporter($transporter);
+
+        $result = $model->generateTextResult(array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))));
+
+        $captured = $transporter->captured_request;
+
+        $this->assertSame('ride ok', $result->toText());
+        $this->assertNotNull($captured, 'The capturing transporter must have received the request.');
+        $this->assertNull($captured->getData(), 'The params array must not ride the Request; the pre-encoded body string does (glm14-4).');
+
+        $decoded = (array) json_decode((string) $captured->getBody(), true);
+
+        $this->assertSame('glm-5.3', $decoded['model']);
+        $this->assertSame('user', $decoded['messages'][0]['role']);
+        $this->assertSame(array(array('type' => 'text', 'text' => 'Say hi.')), $decoded['messages'][0]['content']);
     }
 
     public function testConversationRequestSnapshot()
@@ -322,6 +412,24 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testNonPositiveMaxTokensIsRejectedBeforeTransport()
+    {
+        /*
+         * glm18-3 (cross-surface parity, the zai_anthropic twin's guard):
+         * the SDK's setMaxTokens() is a bare assignment, so maxTokens 0
+         * (or negative) rode "max_tokens" verbatim to the endpoint's
+         * generic misattributed 400. Typed pre-transport rejection now.
+         */
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array('maxTokens' => 0)),
+            'maxTokens'
+        );
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array('maxTokens' => -5)),
+            'maxTokens'
+        );
+    }
+
     public function testImageOutputModalityIsRejectedBeforeTransport()
     {
         $config = ModelConfig::fromArray(array());
@@ -338,6 +446,34 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertRejectedBeforeTransport(
             ModelConfig::fromArray(array('outputMimeType' => 'image/png')),
             'outputMimeType'
+        );
+    }
+
+    public function testAListRootedOutputSchemaIsRejectedBeforeTransport()
+    {
+        /*
+         * glm13-8 (the GLM12 #4/#5 misattributed-error class): the SDK
+         * setter accepts any array, so a list-root outputSchema encodes
+         * fine and previously rode response_format.json_schema verbatim
+         * to the spec-faithful endpoint's generic upstream 400 — with no
+         * hint the caller's schema shape was the cause. Typed rejection
+         * now, before any transport work.
+         */
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array(
+                'outputMimeType' => 'application/json',
+                'outputSchema' => array('a', 'b'),
+            )),
+            'output schema to be a JSON object'
+        );
+
+        // The empty list is the same non-object root (it encodes as []).
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array(
+                'outputMimeType' => 'application/json',
+                'outputSchema' => array(),
+            )),
+            'output schema to be a JSON object'
         );
     }
 
@@ -363,6 +499,120 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertArrayNotHasKey('modalities', $body);
     }
 
+    public function testExplicitZeroOptionValuesAreNeutralNotUnsupported()
+    {
+        /*
+         * Code-review GLM1 #12: reject_unsupported_options treated 0, '0',
+         * 0.0 and '' as "option set" while null/[]/false were tolerated —
+         * the setters are non-nullable, so explicitly NEUTRALIZING a
+         * previously set option with the only neutral value available
+         * (setTopK(0), setPresencePenalty(0.0)) hard-failed the request
+         * while setLogprobs(false) passed. Every falsy flavor is now
+         * equally "not set".
+         *
+         * GLM4 #4 narrowed the tolerance to the WIRE-INERT options: the
+         * request builder never forwards top-k, so setTopK(0) stays a
+         * neutral no-op (this test). The options it DOES forward whenever
+         * non-null (presence/frequency penalty, logprobs, top logprobs)
+         * reject even neutral values — see the next test: they would
+         * otherwise ship ("top_logprobs": 0 et al.) and buy the generic
+         * upstream error this guard exists to pre-empt.
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setTopK(0);
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
+            $this->model($config)
+        );
+
+        $this->assertSame('glm-5.3', $body['model'], 'The request must proceed with wire-inert falsy option values.');
+        $this->assertArrayNotHasKey('top_k', $body, 'A set-but-never-forwarded option must not appear on the wire.');
+    }
+
+    /**
+     * @dataProvider provideWireForwardedNeutralOptionValues
+     */
+    public function testWireForwardedNeutralOptionValuesAreRejectedBeforeTransport(callable $setter)
+    {
+        /*
+         * GLM4 #4: setLogprobs(false), setTopLogprobs(0),
+         * setPresencePenalty(0.0), setFrequencyPenalty(0.0) passed the
+         * !empty() guard — but the OpenAI-compatible request builder
+         * forwards every NON-NULL value of these options, so the neutral
+         * values shipped verbatim ("logprobs": false, "top_logprobs": 0,
+         * "presence_penalty": 0) and a spec-faithful endpoint rejected
+         * top_logprobs without logprobs=true with the GENERIC upstream
+         * error. The pinning test this replaces asserted only that the
+         * request proceeded — never that the keys were absent. Now the
+         * guard rejects the explicitly-set value typed, before transport.
+         */
+        $config = ModelConfig::fromArray(array());
+        $setter($config);
+
+        $this->assertRejectedBeforeTransport($config, 'would still be sent to the API');
+    }
+
+    /**
+     * @return array<string, list<callable>>
+     */
+    public function provideWireForwardedNeutralOptionValues()
+    {
+        return array(
+            'logprobs=false' => array(static function (ModelConfig $config): void {
+                $config->setLogprobs(false);
+            }),
+            'topLogprobs=0' => array(static function (ModelConfig $config): void {
+                $config->setTopLogprobs(0);
+            }),
+            'presencePenalty=0.0' => array(static function (ModelConfig $config): void {
+                $config->setPresencePenalty(0.0);
+            }),
+            'frequencyPenalty=0.0' => array(static function (ModelConfig $config): void {
+                $config->setFrequencyPenalty(0.0);
+            }),
+        );
+    }
+
+    public function testAnthropicParsedToolCallReplaysThroughThisSurfaceWithObjectNess()
+    {
+        /*
+         * GLM1 #2 verifier pin: a FunctionCall parsed by the zai_anthropic
+         * surface carries stdClass markers for nested empty/numeric-keyed
+         * objects; replaying it through THIS (OpenAI) surface must preserve
+         * object-ness too — the vendor mapping serializes the args with
+         * json_encode(), which encodes nested stdClass as JSON objects.
+         */
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'),
+            '{"id":"msg_x","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_x","name":"search","input":{"filter":{},"tags":{"0":"x"},"q":"lit"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
+
+        $anthropicModel = \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3');
+        $anthropicModel->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $anthropicModel->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+
+        $call = $anthropicModel->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ))->toMessage()->getParts()[0]->getFunctionCall();
+        $this->assertNotNull($call);
+
+        // Replay through THIS surface: the wire's tool-call arguments
+        // string must carry the same object shapes.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+        $this->model()->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart($call))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('toolu_x', 'search', array('ok' => true))))),
+        ));
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertStringContainsString(
+            '"arguments":"{\"filter\":{},\"tags\":{\"0\":\"x\"},\"q\":\"lit\"}"',
+            (string) $attempts[1]['body'],
+            'The OpenAI-surface replay must preserve the anthropic-parsed object shapes.'
+        );
+    }
+
     /**
      * Asserts the config is rejected before any HTTP attempt.
      *
@@ -370,17 +620,909 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
      * @param string      $needle Expected message fragment.
      * @return void
      */
-    private function assertRejectedBeforeTransport(ModelConfig $config, string $needle)
+    public function testUnencodableOutboundToolArgumentsAreRejectedBeforeTransport()
     {
+        /*
+         * Verifier round on GLM5 #2: the replay guard ran on INBOUND
+         * parses only — caller-supplied FunctionCall arguments traveled
+         * through the SDK parent's plain json_encode(), whose false
+         * silently shipped "arguments": false on a generation that then
+         * SUCCEEDED. The outbound mapper guards with the same shared
+         * ToolArgsReplayGuard now, typed pre-transport.
+         */
+        $this->primeZaiDiscoveryTransient();
+        $model = ZaiProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('t1', 'tool', array('v' => INF))))),
+        );
+
+        try {
+            $model->generateTextResult($prompt);
+            $this->fail('Unencodable outbound tool arguments must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not replay tool call arguments', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /*
+     * GLM6 #5: wire-value encodability guards (the GLM3 #4/GLM4 #1
+     * oracle, ported from the zai_anthropic surface).
+     */
+
+    public function testAnInvalidUtf8TextPartIsRejectedBeforeTransport()
+    {
+        /*
+         * The SDK parent's request mapping copies the caller's text part
+         * to the wire unvalidated, so an invalid-UTF-8 string detonated
+         * in the transport's whole-request json_encode as an untyped
+         * JsonException — the mapper's catch-all surfaced it as the
+         * generic 500 instead of this typed pre-transport rejection.
+         */
+        try {
+            $this->model()->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart("Scraped \xB1\x31 garbage"))),
+            ));
+            $this->fail('An invalid-UTF-8 text part must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a message text part', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAThoughtChannelTextPartIsNotEncodabilityGuarded()
+    {
+        // GLM6 #5 guard: thought parts never ship (the parent drops them
+        // from the content mapping), so guarding them would over-reject.
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+
+        $this->model()->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart("Reasoning \xB1\x31 noise", \WordPress\AiClient\Messages\Enums\MessagePartChannelEnum::thought()),
+                new MessagePart('go'),
+            )),
+        ));
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts);
+        $this->assertStringNotContainsString("\xB1", (string) $attempts[0]['body'], 'The thought part must not ship.');
+    }
+
+    public function testAnInvalidUtf8SystemInstructionIsRejectedBeforeTransport()
+    {
+        $config = ModelConfig::fromArray(array());
+        $config->setSystemInstruction("System \xB1\x31 garbage");
+
         try {
             $this->model($config)->generateTextResult(array(
                 new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
             ));
-            $this->fail("Config containing '{$needle}' must be rejected.");
+            $this->fail('An invalid-UTF-8 system instruction must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode the system instruction', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @dataProvider provideMalformedStopSequenceEntries
+     */
+    public function testMalformedStopSequenceEntriesAreRejectedBeforeTransport($sequences, $label)
+    {
+        /*
+         * GLM7 #7: the guard checked only JSON-encodability, so non-string
+         * and empty entries ([''], [0], ['END', null]) encoded fine and
+         * shipped verbatim ("stop":[""] reaches the wire because the SDK
+         * setter checks only list-ness) — the endpoint answered 400 with
+         * the generic misattributed message instead of the twin's typed
+         * pre-transport rejection (GLM3 #3 parity).
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setStopSequences($sequences);
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail("Malformed stop sequence entries must be rejected before transport: {$label}");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires every stop sequence to be a non-empty string.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideMalformedStopSequenceEntries()
+    {
+        return array(
+            'empty string entry' => array(array(''), 'empty string entry'),
+            'integer entry' => array(array(0), 'integer entry'),
+            'null entry' => array(array('END', null), 'null entry'),
+        );
+    }
+
+    public function testAnInvalidUtf8StopSequenceIsRejectedBeforeTransport()
+    {
+        $config = ModelConfig::fromArray(array());
+        $config->setStopSequences(array("END\xB1\x31"));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An invalid-UTF-8 stop sequence must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a stop sequence', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAnUncoveredForwardedMemberIsRejectedAtTheChokepoint()
+    {
+        /*
+         * GLM12 #7: guard_wire_values() and the advertised-option layer
+         * cover every member they have been told about BY NAME — a
+         * lockstep the GLM6 #5 verifier round already had to repair
+         * once. The createRequest() chokepoint's generic oracle is the
+         * lockstep-free net: an unassemblable value in ANY member —
+         * including one a future SDK release forwards before either
+         * guard learns its name — rejects as the typed pre-transport
+         * 400 instead of the transport's untyped JsonException (generic
+         * 500). Today every known member is covered by name, so the pin
+         * drives the chokepoint directly with a member no guard knows.
+         */
+        $model = $this->model();
+
+        $create = new \ReflectionMethod($model, 'createRequest');
+
+        try {
+            $create->invoke(
+                $model,
+                WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum::POST(),
+                'chat/completions',
+                array(),
+                array('future_member' => NAN)
+            );
+            $this->fail('A NAN in any assembled member must be rejected at the chokepoint.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a request payload member', $e->getMessage());
+        }
+
+        // The net rides the chokepoint itself: every assembled request
+        // passes it, not just ones some test invokes by hand (the
+        // GLM6 #14 source-pin precedent). glm14-4: the guard's return
+        // value becomes the request $data (the pre-encoded body).
+        $source = (string) file_get_contents(__DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php');
+        $this->assertSame(
+            1,
+            preg_match('/function createRequest\([^)]*\)[^{]*\{\s*if \( \\\\is_array\( \$data \) \) \{\s*\$data = \$this->guard_assembled_params\( \$data, \$method, \$headers \);/', $source),
+            'The chokepoint must guard every assembled request payload before the Request is built.'
+        );
+    }
+
+    public function testAnEmptyDeclaredToolNameIsRejectedBeforeTransport()
+    {
+        /*
+         * GLM12 #5 (parity with the zai_anthropic twin's Codex R18 #2):
+         * the declaration loop only encodability-checked the name, and
+         * json_encode('') succeeds — so an empty tool-function name
+         * (the DTO constructor validates nothing) shipped to the wire
+         * and failed upstream as the generic misattributed 'rejected
+         * the request' 400, where the twin rejects the identical shape
+         * typed pre-transport.
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('', 'Get the weather for a city', array('type' => 'object')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An empty declared tool name must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires declared tool functions to carry a non-empty name.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testDuplicateDeclaredToolNamesAreRejectedBeforeTransport()
+    {
+        /*
+         * glm13-9 (parity with the zai_anthropic twin's R18 rule): a
+         * returned tool_call identifies the selected declaration ONLY by
+         * name — two declarations sharing a name make that identification
+         * ambiguous, and the twin already rejects the identical shape
+         * typed pre-transport.
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('get_weather', 'Get the weather for a city', array('type' => 'object')),
+            new FunctionDeclaration('get_weather', 'A second, different tool under the same name', array('type' => 'object')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('A duplicate declared tool name must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires declared tool functions to carry unique names.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAListRootToolParameterSchemaIsRejectedBeforeTransport()
+    {
+        /*
+         * glm16-11 (parity with the zai_anthropic twin's Codex R7 #3
+         * rule, the same error class glm13-8 fixed for this surface's
+         * output-schema member): the SDK parent ships
+         * FunctionDeclaration::toArray() verbatim into
+         * tools[].function.parameters, so a list-root schema encodes
+         * fine and rode the wire unvalidated to the generic
+         * misattributed upstream 400. Typed rejection now, with the
+         * twin's exact boundary: only a NON-EMPTY list rejects — null
+         * and [] keep their pass-through (the twin normalizes them;
+         * over-rejecting here would diverge the surfaces).
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('pick', 'Picks', array('a', 'b')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('A list-root tool parameter schema must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires tool parameter schemas to be a JSON object (a non-empty list was given).', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+
+        // The boundary: null and the empty list keep the twin-tolerated
+        // pass-through — the request builds and ships them verbatim.
+        $tolerant = ModelConfig::fromArray(array());
+        $tolerant->setFunctionDeclarations(array(
+            new FunctionDeclaration('no_args', 'No arguments', null),
+            new FunctionDeclaration('empty', 'Empty schema', array()),
+        ));
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
+            $this->model($tolerant)
+        );
+
+        $this->assertArrayNotHasKey('parameters', $body['tools'][0]['function'], 'A null schema omits the member (the DTO contract).');
+        $this->assertSame(array(), $body['tools'][1]['function']['parameters'], 'An empty schema ships verbatim, exactly as before the rule.');
+    }
+
+    public function testAnInvalidUtf8ToolDeclarationIsRejectedBeforeTransport()
+    {
+        /*
+         * The declared name and description ride the tools member
+         * verbatim through the parent's prepareToolsParam() — only the
+         * parameter schema was shape-guarded (never encodability).
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('get_weather', "desc with \xB1\x31 invalid utf-8", array('type' => 'object')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An invalid-UTF-8 tool declaration must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a declared tool function description', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testUnencodableToolResultsAreRejectedBeforeTransport()
+    {
+        /*
+         * The SDK parent serializes the function response with plain
+         * json_encode() and string-casts the failure, so an unencodable
+         * tool result silently shipped as "content": false — telling the
+         * model the tool returned no output, the exact corruption class
+         * R18's guard fixed on the zai_anthropic surface.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_r', 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_r', 'get_weather', NAN)))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An unencodable tool result must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a tool result', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAMultiBadPayloadNamesTheMemberInTheZaiWalkOrder()
+    {
+        /*
+         * glm16-7: the attribution walk's segment ORDER is per-surface
+         * — this surface judges the system instruction before the text
+         * parts (the old eager pre-pass order), while the zai_anthropic
+         * twin judges text first (its mapping order). A payload
+         * carrying BOTH an unencodable system instruction and an
+         * unencodable text part names 'the system instruction' here
+         * and 'a message text part' there — the first-bad-wins
+         * contract each surface's composer owns on top of the shared
+         * EncodabilityNet segments.
+         */
+        $config = ModelConfig::fromArray(array('systemInstruction' => "Sy\xB1\x31stem"));
+        $prompt = array(new Message(MessageRoleEnum::user(), array(new MessagePart("Te\xB1\x31xt"))));
+
+        try {
+            $this->model($config)->generateTextResult($prompt);
+            $this->fail('An unencodable payload must reject pre-transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('the system instruction', $e->getMessage());
+            $this->assertStringNotContainsString('a message text part', $e->getMessage());
+        }
+    }
+
+    public function testTheHappyPathRunsOneEncodabilityPassOverTheAssembledPayload()
+    {        /*
+         * glm13-11 (source pin — the efficiency contract): the per-member
+         * encodability pre-pass no longer runs eagerly on every request.
+         * The createRequest() chokepoint encodes the assembled payload
+         * ONCE (the glm12-7 net) and invokes the per-member walk only to
+         * ATTRIBUTE a failure, preserving the precise messages the
+         * encodability tests above still assert — now through the
+         * attribution walk. The one eager exception is the tool-result
+         * RESPONSE (the test above): the parent's own mapping launders
+         * its failed encode into the string "false" before the net could
+         * see it, so that guard stays pre-mapping.
+         *
+         * glm14-4: the one encode rides end-to-end — it produces the
+         * request's body string (returned to createRequest()), so the
+         * transport's send-time re-encode is gone; the behavioral pin
+         * is testTheGenerationRequestRidesTheNetsPreEncodedBody().
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
+        );
+        /*
+         * glm16-7: the one encode lives in the shared EncodabilityNet
+         * owner now (both surfaces' nets single-sourced); the pin
+         * scans the owner for the single raw oracle and the model for
+         * the handoff and the transport-conditional ride — superseding
+         * the glm13-11/glm14-4 form that scanned for the encode
+         * statement in the model file itself.
+         */
+        $owner = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/EncodabilityNet.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match_all('/\$encoded = json_encode\( \$payload \);/', $owner),
+            'The shared net encodes the assembled payload exactly once, into the variable that becomes the request body.'
+        );
+        $this->assertStringContainsString(
+            '$encoded = EncodabilityNet::encode(',
+            $source,
+            'The chokepoint rides the shared one-encode net (glm16-7).'
+        );
+        $this->assertStringContainsString(
+            'if ( self::carries_json_body( $method, $headers ) ) {',
+            $source,
+            'The successful encode is returned as the request body (glm14-4), not recomputed at send time.'
+        );
+        $this->assertStringContainsString(
+            '$this->reject_misshapen_wire_values( $prompt );',
+            $source,
+            'validate_request() runs only the typed identity/shape walk.'
+        );
+        $this->assertStringContainsString(
+            '$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );',
+            $source,
+            'The per-member encodability walk runs only as the attribution pass on net failure.'
+        );
+    }
+
+    public function testAnUnboundInstanceFailsIdenticallyOnBothSurfaces()
+    {
+        /*
+         * glm13-12: identical misuse — a directly-constructed model
+         * outside ProviderRegistry carrying an unsupported option —
+         * yields the identical error on both surfaces: the transporter
+         * binding failure (RuntimeException, 500 zai_error) fires before
+         * the option guards, the vendor-mandated order of the zai
+         * surface's FINAL parent generateTextResult() that the
+         * zai_anthropic surface's own generateTextResult() now mirrors.
+         * (The zai surface cannot run guards first: the vendor method is
+         * final — the surfaces unify on the one order both can share.)
+         */
+        $this->primeZaiDiscoveryTransient();
+        $this->primeZaiAnthropicDiscoveryTransient();
+
+        $surfaces = array(
+            'zai' => ZaiProvider::model('glm-5.3', ModelConfig::fromArray(array('topK' => 5))),
+            'zai_anthropic' => Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3', ModelConfig::fromArray(array('topK' => 5))),
+        );
+
+        foreach ($surfaces as $label => $model) {
+            try {
+                $model->generateTextResult(array(
+                    new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+                ));
+                $this->fail("[{$label}] An unbound instance must fail the transporter binding.");
+            } catch (\WordPress\AiClient\Common\Exception\RuntimeException $e) {
+                $error = Deicod\WpConnectors\Zai\Support\ErrorMapper::to_wp_error($e);
+                $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_ERROR);
+                $this->assertSame(
+                    500,
+                    $error->get_error_data()['status'],
+                    "[{$label}] The binding failure must map to the 500 zai_error, never an option 400."
+                );
+            }
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @dataProvider provideIdentitylessToolResults
+     */
+    public function testIdentitylessReplayedToolResultsAreRejectedBeforeTransport($response, $label)
+    {
+        /*
+         * GLM9 #4: guard_wire_values() validated the tool-result VALUE
+         * but never its id — a null (or empty) id shipped to the wire as
+         * "tool_call_id": null (the SDK parent copies it unvalidated)
+         * and failed upstream as the generic 400 'rejected the request'
+         * message, where the zai_anthropic twin and this walk's own
+         * FunctionCall ids (GLM7 #7) reject the identical shape typed
+         * before transport.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_q', 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart($response))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail("A {$label} must be rejected before transport.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires every function-response part to carry the non-empty tool call id it answers.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideIdentitylessToolResults()
+    {
+        return array(
+            'null id' => array(new FunctionResponse(null, 'get_weather', array('temp' => 21)), 'null-id tool result'),
+            'empty id' => array(new FunctionResponse('', 'get_weather', array('temp' => 21)), 'empty-id tool result'),
+        );
+    }
+
+    public function testTheSharedIdentityGuardsServeBothSurfaces()
+    {
+        /*
+         * GLM9 #12: the stop-sequence and tool-identity rules ride the
+         * one shared JsonEncodeGuard, parameterized by provider label —
+         * the loops this extraction replaced had already drifted once
+         * (GLM3 #3 landed on zai_anthropic only; GLM7 #7 re-landed on
+         * zai). The same malformed input now rejects with the identical
+         * message modulo the label on both surfaces, by construction.
+         */
+        foreach (array('zai', 'zai_anthropic') as $label) {
+            try {
+                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_stop_sequences(array(0), $label);
+                $this->fail("[{$label}] A non-string stop-sequence entry must reject.");
+            } catch (InvalidArgumentException $e) {
+                $this->assertSame("The {$label} provider requires every stop sequence to be a non-empty string.", $e->getMessage());
+            }
+
+            try {
+                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_call_identity(new FunctionCall(null, 'tool', array('v' => 1)), $label);
+                $this->fail("[{$label}] A null-id tool call must reject.");
+            } catch (InvalidArgumentException $e) {
+                $this->assertSame("The {$label} provider requires every function-call part to carry a non-empty id and name.", $e->getMessage());
+            }
+
+            try {
+                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_result_identity(new FunctionResponse(null, 'tool', array('ok' => true)), 'tool call id', 'a tool result id', $label);
+                $this->fail("[{$label}] A null-id tool result must reject.");
+            } catch (InvalidArgumentException $e) {
+                $this->assertSame("The {$label} provider requires every function-response part to carry the non-empty tool call id it answers.", $e->getMessage());
+            }
+        }
+
+        // The valid shapes pass untouched through both labels.
+        foreach (array('zai', 'zai_anthropic') as $label) {
+            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_stop_sequences(array('END'), $label);
+            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_call_identity(new FunctionCall('call_1', 'tool', array('v' => 1)), $label);
+            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_result_identity(new FunctionResponse('call_1', 'tool', array('ok' => true)), 'tool call id', 'a tool result id', $label);
+        }
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function testTheDecodedFastPathAgreesWithTheFullOracle()
+    {
+        /*
+         * GLM9 #13: the inbound acceptance points call the replay guard
+         * on json_decode() products — the parse, both SSE acceptance
+         * points, and the arguments of every replayed historical tool
+         * call — so the guard ran its encode→decode→re-encode round
+         * trip on already-validated immutable values, O(K·S)
+         * serialization per request growing with the conversation. The
+         * structural fast path decides decode-origin values without
+         * building any string. Equivalence pin: across a matrix of
+         * decode-origin values (the hazards included), the fast path
+         * returns exactly what the full oracle returns.
+         */
+        $json_values = array(
+            'plain object' => '{"city":"Oslo","temp":21}',
+            'nested empty shapes' => '{"a":{},"b":{"c":[]}}',
+            'numeric-keyed object' => '{"0":"x","1":"y"}',
+            'ordinary float' => '{"v":1.5}',
+            'negative zero' => '{"v":-0.0}',
+            'unicode string' => '{"note":"héllo ✨"}',
+            'php-int-max integer' => '{"v":9223372036854775807}',
+            'INF (1e999)' => '{"v":1e999}',
+            'out-of-range integral float' => '{"v":9.3e18}',
+            'boundary window collapse (glm18-1)' => '{"v":9223372036854775809}',
+            'exact 2^63 double (glm18-1)' => '{"v":9223372036854775808}',
+            'negative boundary window (glm18-1)' => '{"v":-9223372036854775809}',
+            'empty object' => '{}',
+            'null member' => '{"v":null}',
+        );
+
+        foreach ($json_values as $label => $json) {
+            $decoded = json_decode($json);
+            $this->assertNotNull($decoded, "[{$label}] the fixture must decode.");
+
+            $this->assertSame(
+                Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard::is_replayable($decoded),
+                Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard::is_replayable_decoded($decoded),
+                "[{$label}] the decoded fast path must agree with the full oracle."
+            );
+        }
+
+        // The decode-origin hazards reject through the fast path alone,
+        // and the ordinary shapes pass.
+        $guard = 'Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard';
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":1e999}')), 'INF (the 1e999 decode) must reject.');
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":9.3e18}')), 'An out-of-range integral float must reject.');
+        $this->assertTrue($guard::is_replayable_decoded(json_decode('{"v":1.5}')), 'An ordinary float replays.');
+
+        /*
+         * glm18-1: the walker's bound is the FLOAT literal 2^63, never
+         * PHP_INT_MAX widened — the int constant compares as the 2^63
+         * double, so the strict > tied at exactly the boundary magnitude
+         * and every literal of the ~2048-wide window above PHP_INT_MAX
+         * (…809 collapsing to the …808 boundary double) passed the
+         * decoded-only conservative walker as "in range", silently
+         * altering the value on every later replay. Post-decode the
+         * window and the exact 2^63 literal are the SAME double, so both
+         * reject here — the exact literal replays only through the
+         * raw-string precise rule (pinned on both surfaces).
+         */
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":9223372036854775809}')), 'The boundary-window collapse (…809 → the 2^63 double) must reject decoded.');
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":9223372036854775808}')), 'The exact 2^63 double rejects decoded (undecidable from its lossy window).');
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":-9223372036854775809}')), 'The negative boundary window must reject decoded.');
+    }
+
+    public function testUnencodableToolCallIdentitiesAreRejectedBeforeTransport()
+    {
+        // The id and name ride the tool_calls member verbatim; both are
+        // guarded like every other caller-authored wire string.
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall("call_\xB1\x31", 'tool', array('v' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An invalid-UTF-8 tool call id must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a tool call id', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+
+        WpHarness::$sdk_http_attempts = array();
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_ok', "tool_\xB1\x31", array('v' => 1))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An invalid-UTF-8 tool call name must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not JSON-encode a tool call name', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @dataProvider provideIdentitylessToolCalls
+     */
+    public function testIdentitylessReplayedToolCallsAreRejectedBeforeTransport($call, $label)
+    {
+        /*
+         * GLM7 #7: the (string) casts let a null id (or name) pass the
+         * encodability guard while null itself rode the tool_calls member
+         * verbatim — the typed rejection the zai_anthropic twin's Codex
+         * R9 #3 gives the identical shape.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart($call))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail("A {$label} must be rejected before transport.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires every function-call part to carry a non-empty id and name.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideIdentitylessToolCalls()
+    {
+        return array(
+            'null id' => array(new FunctionCall(null, 'tool', array('v' => 1)), 'null-id tool call'),
+            'empty id' => array(new FunctionCall('', 'tool', array('v' => 1)), 'empty-id tool call'),
+            'null name' => array(new FunctionCall('call_ok', null, array('v' => 1)), 'null-name tool call'),
+            'empty name' => array(new FunctionCall('call_ok', '', array('v' => 1)), 'empty-name tool call'),
+        );
+    }
+
+    /**
+     * @dataProvider provideUnencodableConfigOptions
+     */
+    public function testUnencodableConfigOptionsAreRejectedBeforeTransport(callable $setter, string $needle)
+    {
+        /*
+         * Verifier round on GLM6 #5: the SDK parent ships temperature,
+         * top_p, and the response_format schema verbatim — a NAN float or
+         * an unencodable schema member detonated in the transport's
+         * whole-request json_encode as the untyped JsonException (generic
+         * 500), where every other caller-authored wire value rejects
+         * typed. The walk guards them like the rest.
+         */
+        $config = ModelConfig::fromArray(array());
+        $setter($config);
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('An unencodable config option must be rejected before transport.');
         } catch (InvalidArgumentException $e) {
             $this->assertStringContainsString($needle, $e->getMessage());
         }
 
         $this->assertNoHttpRequests();
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideUnencodableConfigOptions()
+    {
+        return array(
+            'NAN temperature' => array(static function (ModelConfig $config): void {
+                $config->setTemperature(NAN);
+            }, 'The zai provider could not JSON-encode the temperature option'),
+            'NAN top_p' => array(static function (ModelConfig $config): void {
+                $config->setTopP(NAN);
+            }, 'The zai provider could not JSON-encode the top_p option'),
+            'unencodable output schema' => array(static function (ModelConfig $config): void {
+                $config->setOutputMimeType('application/json');
+                $config->setOutputSchema(array('properties' => array('bad' => "bin\xB1\x31ary")));
+            }, 'The zai provider could not JSON-encode the configured output schema'),
+            /*
+             * glm14-1: the SDK parent drops response_format when the mime
+             * is not application/json, so the whole-payload net never sees
+             * the schema on this configuration — the regression case the
+             * glm13-11 restructure opened (silently flew at HEAD) and the
+             * eager walk closes again.
+             */
+            'unencodable output schema under a non-JSON mime' => array(static function (ModelConfig $config): void {
+                $config->setOutputSchema(array('properties' => array('bad' => "bin\xB1\x31ary")));
+                $config->setOutputMimeType('text/plain');
+            }, 'The zai provider could not JSON-encode the configured output schema'),
+        );
+    }
+
+    /*
+     * Credential refusal gate (R19/R20, extended to this surface by
+     * code-review GLM1 #1).
+     */
+
+    public function testGenerationIsRefusedWhileTheCredentialIsRegionPending()
+    {
+        /*
+         * The R19 refusal gate was wired only into the zai_anthropic
+         * surface; this (OpenAI) surface's generation still authenticated a
+         * region-pending credential against the newly selected endpoint —
+         * exactly the cross-region disclosure the gate exists to block.
+         */
+        $this->primeZaiDiscoveryTransient();
+        $key = FakeSecrets::apiKey();
+        $model = ZaiProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        update_option(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->region(),
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        try {
+            $model->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('Generation must be refused while the credential is region-pending.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('pending revalidation after a region switch', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testGenerationIsRefusedWhileAMatchingInvalidVerdictExists()
+    {
+        // A definitive invalid verdict for the exact key+endpoint binding
+        // refuses generation on this surface too. (GLM5 #11: the wired
+        // model key is a save-time candidate, so its binding normalizes
+        // to the 'database' identity at construction.)
+        $this->primeZaiDiscoveryTransient();
+        $key = FakeSecrets::apiKey();
+        $model = ZaiProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        $binding = hash('sha256', 'database|' . \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() . '|' . $key);
+        update_option(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::STATE_OPTION, array(
+            'binding' => $binding,
+            'valid' => 'invalid',
+            'checked_at' => time(),
+            'clock' => 'utc',
+        ));
+
+        try {
+            $model->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            ));
+            $this->fail('Generation must be refused while a matching invalid verdict exists.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('rejected for the selected endpoint', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testEachSurfaceNamesItselfOneWayInRejectionMessages()
+    {
+        /*
+         * GLM10 #9: each surface's guards and rejections interpolate ONE
+         * provider label — ridden on the availability owner's
+         * REFUSAL_LABEL — and the model sources carry no bare label
+         * literals. The zai surface previously mixed 'z.ai' (advertised
+         * guards, ResponseException labels) and 'zai' (JsonEncodeGuard
+         * sites) across ~25 sites; the anthropic surface mixed 'z.ai'
+         * and 'zai_anthropic' across ~40 — one surface's user-facing
+         * rejections named the provider two different ways.
+         */
+        $this->assertSame(
+            ZaiProviderAvailability::REFUSAL_LABEL,
+            (new \ReflectionClass(ZaiTextGenerationModel::class))->getConstant('PROVIDER_LABEL'),
+            'The zai model rides the availability owner\'s label.'
+        );
+        $this->assertSame(
+            ZaiAnthropicProviderAvailability::REFUSAL_LABEL,
+            (new \ReflectionClass(ZaiAnthropicTextGenerationModel::class))->getConstant('PROVIDER_LABEL'),
+            'The zai_anthropic model rides the availability owner\'s label.'
+        );
+
+        /*
+         * The drift guard (GLM11: ONE mechanic — the models' loop and
+         * the verifier-round path scan were two copies of the same
+         * guard with divergent mechanics, a hand-escaped regex plus
+         * repo-root path arithmetic against ReflectionClass file names
+         * plus preg_quote, exactly the divergence this test exists to
+         * prevent). Every guarded file must carry no bare label
+         * literal of either surface in argument position — the labels
+         * ride the availability owners' REFUSAL_LABEL constants — and
+         * a surface-owned file must not name the OTHER surface's
+         * availability class (a swapped constant interpolates no
+         * literal; only the wrong class reference betrays it). The
+         * shared parser and the availability base own no surface, so
+         * they ban both owners' names: they take the label as a
+         * parameter or static member, never a concrete owner's.
+         *
+         * The i18n text-domain calls are the ONE sanctioned quoted
+         * 'zai' (the domain literal shares the zai label's value) —
+         * they are stripped before the scan, so the anchor can cover
+         * every argument position without a text-domain exemption the
+         * old per-model label sets silently were: each model scanned
+         * only its own label, which is why the domain literal in the
+         * anthropic model's __() calls never tripped the comma
+         * anchor's blind spots.
+         *
+         * Scope (GLM11 #4, rescoping the GLM10 #9 verifier round's
+         * plugin-wide wording): the invariant pins the MODEL and
+         * DISCOVERY rejections — the guarded files above. The
+         * endpoint layer's unknown-combination message deliberately
+         * keeps the z.ai brand (the child-owned
+         * UNKNOWN_ENDPOINT_LABEL, 'z.ai' / 'z.ai Anthropic' — GLM8
+         * #10): that is display-facing branding, not a credential or
+         * parsing rejection, so the endpoint files are not guarded
+         * here.
+         */
+        $banned_labels = array('z.ai', ZaiProviderAvailability::REFUSAL_LABEL, ZaiAnthropicProviderAvailability::REFUSAL_LABEL);
+        foreach (array(
+            ZaiTextGenerationModel::class => ZaiProviderAvailability::class,
+            ZaiAnthropicTextGenerationModel::class => ZaiAnthropicProviderAvailability::class,
+            ZaiModelListParser::class => null,
+            ZaiModelMetadataDirectory::class => ZaiProviderAvailability::class,
+            ZaiAnthropicModelMetadataDirectory::class => ZaiAnthropicProviderAvailability::class,
+            AbstractZaiProviderAvailability::class => null,
+        ) as $guarded => $owner) {
+            $source = (string) preg_replace('/\w*__\((?:[^()]|\([^()]*\))*\)/', '', (string) file_get_contents((new \ReflectionClass($guarded))->getFileName()));
+            foreach ($banned_labels as $label) {
+                $this->assertSame(
+                    0,
+                    preg_match('/[\'"]' . preg_quote($label, '/') . '[\'"]\s*[,)]/', $source),
+                    "{$guarded} must interpolate the label constant, not the bare literal '{$label}'."
+                );
+            }
+            foreach (array(ZaiProviderAvailability::class, ZaiAnthropicProviderAvailability::class) as $availability_owner) {
+                if (null !== $owner && $availability_owner === $owner) {
+                    continue;
+                }
+                $this->assertSame(
+                    0,
+                    preg_match('/\b' . preg_quote((new \ReflectionClass($availability_owner))->getShortName(), '/') . '\b/', $source),
+                    "{$guarded} must not name the other surface's availability owner — a swapped REFUSAL_LABEL constant interpolates no literal, only the wrong class reference betrays it."
+                );
+            }
+        }
     }
 }

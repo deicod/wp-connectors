@@ -74,7 +74,9 @@ Auto-discovery derives per-connector metadata from `ProviderMetadata`:
 
 z.ai OpenAI-compatible surface can reuse the SDK's `AbstractOpenAiCompatible*` base classes
 (same as the community Ollama plugin). The Anthropic-compatible surface mirrors the official
-`ai-provider-for-anthropic` plugin (messages API, `x-api-key`-style headers — see §3.2).
+`ai-provider-for-anthropic` plugin's Messages mapping but authenticates with Bearer (not the
+official plugin's `x-api-key` — unverified on z.ai, see §3.2) and adds the
+`anthropic-version` header.
 
 ---
 
@@ -85,18 +87,35 @@ and production usage (`~/.local/bin/claude-glm`, `deicod/zai`).
 
 ### 3.1 Endpoint matrix
 
-| Surface | Plan | International (default) | China (optional) |
+| Surface | Plan | International | China (optional) |
 |---|---|---|---|
 | OpenAI-compatible | Coding (default) | `https://api.z.ai/api/coding/paas/v4` | `https://open.bigmodel.cn/api/coding/paas/v4` |
 | OpenAI-compatible | General (pay-as-you-go) | `https://api.z.ai/api/paas/v4` | `https://open.bigmodel.cn/api/paas/v4` |
 | Anthropic-compatible | Coding | `https://api.z.ai/api/coding/anthropic` | `https://open.bigmodel.cn/api/coding/anthropic` |
-| Anthropic-compatible | General | `https://api.z.ai/api/anthropic` | `https://open.bigmodel.cn/api/anthropic` |
+| Anthropic-compatible | General (default) | `https://api.z.ai/api/anthropic` | `https://open.bigmodel.cn/api/anthropic` |
 
 Probe evidence: all six hosts+paths exist (401 «token expired or incorrect» with dummy
 Bearer = auth reached, not 404); `/v1/models` under `api.z.ai/api/anthropic` and
 `api.z.ai/api/coding/anthropic` respond 401/200-shaped; `deicod/zai` defaults to
 `api.z.ai/api/coding/paas/v4` with `DefaultBaseURLGeneral` override; `claude-glm` uses
 `api.z.ai/api/anthropic` daily.
+
+**Anthropic-surface route amendment (2026-08-31, record 0007):** credentialed probes
+showed the two Anthropic plans route Messages DIFFERENTLY and that the coding surface
+cannot generate at all (as of that date):
+
+- **Messages routes:** general `{base}/v1/messages` (200-verified); coding
+  `{base}/messages` — the only coding route that is not a plain 404, but it answers
+  HTTP 200 with a wrapped error body (`{"code":500,"msg":"404 NOT_FOUND"}`), and
+  `{base}/v1/messages` answers HTTP 500 with the same wrapped 404. Probed with Bearer
+  and `x-api-key`, plain and `[1m]` model IDs — every combination fails.
+- **Models route:** `{base}/v1/models` works on BOTH plans (200 with the Anthropic
+  list shape, identical 10-model GLM list).
+- Consequently `zai_anthropic` **defaults to general+intl** (§3.3): the general
+  Messages endpoint is the production-proven path for Coding-Plan keys on the
+  Anthropic protocol (`claude-glm`). The coding base stays selectable for its
+  `/v1/models` route and in case z.ai fixes generation there; the plugin surfaces
+  the wrapped failure as a safe parse error.
 
 ### 3.2 Auth & protocol details
 
@@ -110,16 +129,22 @@ Bearer = auth reached, not 404); `/v1/models` under `api.z.ai/api/anthropic` and
   by z.ai (Bearer only) — send `anthropic-version: 2023-06-01` anyway for safety (harmless).
 - **Same API key works across coding/general and openai/anthropic surfaces on the same
   account/region.** Intl (z.ai) and China (bigmodel.cn) keys/accounts are **separate**.
+  Live note (record 0007): a Coding-Plan key GENERATES on the general Anthropic
+  endpoint — the Anthropic surface did not reproduce the OpenAI surface's
+  general-endpoint 429/1113 plan gate during the 2026-08-31 probes.
 
 ### 3.3 Plan & region model (per user requirements)
 
-- **Defaults: Coding Plan + International.** "General API" and "China region" are opt-in
-  selections (plugin settings), because:
+- **Defaults: Coding Plan + International** for the `zai` provider; `zai_anthropic`
+  defaults to **General + International** instead (record 0007: the coding-surface
+  Messages routes cannot generate as of 2026-08-31 — the general endpoint is the
+  production-proven path even for Coding-Plan keys). The other combinations are
+  opt-in selections (plugin settings), because:
   - Coding Plan is subscription-backed (cheaper/included usage, restricted to coding-suitable
     GLM models — e.g. `glm-4.5-air`, `glm-5.x`).
   - General API is pay-as-you-go, full model catalog.
 - Settings per provider (zai, zai_anthropic), stored as WP options:
-  - `zai_connector_{provider}_plan` ∈ `coding` (default) | `general`
+  - `zai_connector_{provider}_plan` ∈ `coding` | `general` (default per provider, above)
   - `zai_connector_{provider}_region` ∈ `intl` (default) | `cn`
 - URL resolution is **runtime** (option read per request build in the model/directory layer),
   NOT via static `baseUrl()` dispatch — `AbstractApiProvider::baseUrl()` stays per-surface
@@ -336,7 +361,9 @@ Rules:
 **M2 — zai_anthropic**
 - Card "z.ai (Anthropic API)"; Claude-Code-style workloads (system instruction, tools,
   JSON output) work via `generate_text()` incl. `outputSchema`.
-- Same plan/region matrix incl. coding-anthropic base URL.
+- Same plan/region matrix incl. coding-anthropic base URL (default general+intl per the
+  record-0007 amendment: the coding-surface Messages routes cannot generate as of
+  2026-08-31 — live PASS on general+intl through the plugin classes, record 0007).
 
 **M3 — codex (OpenAI OAuth)**
 - Device flow from plugin admin page (URL + code shown; poll; token stored encrypted).
@@ -377,9 +404,12 @@ Rules:
 - **O1:** `/models` on coding base URLs (both protocols) with valid key? → **Resolved for the
   OpenAI surface, international region** (2026-08-30 credentialed probe: HTTP 200 OpenAI-shape
   on both coding and general intl bases, identical 10-model GLM list — see
-  [`docs/architecture/0006-zai-models-evidence.md`](../architecture/0006-zai-models-evidence.md)).
-  M1 implements dynamic directory + plan-partitioned static fallback. The `cn` region and the
-  Anthropic surface remain unprobed; the static fallback stays authoritative there.
+  [`docs/architecture/0006-zai-models-evidence.md`](../architecture/0006-zai-models-evidence.md))
+  and **for the Anthropic surface, international region** (2026-08-31 credentialed probe:
+  HTTP 200 with the Anthropic list shape and the same 10-model GLM list on BOTH bases — see
+  [`docs/architecture/0007-zai-anthropic-surface.md`](../architecture/0007-zai-anthropic-surface.md)).
+  M1/M2 implement dynamic directories + plan-partitioned static fallbacks. The `cn` region
+  remains unprobed on both surfaces; the static fallback stays authoritative there.
 - **O2:** Codex model discovery via `chatgpt.com/backend-api/codex/models`? → M3.
 - **O3:** z.ai `x-api-key` header support on Anthropic surface (nice-to-have, Bearer suffices).
 - **O4:** CogView (image) / embedding models on general API — defer post-v1, directory is

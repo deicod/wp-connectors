@@ -18,12 +18,25 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 {
     private const FIXTURE = 'example-connector';
 
+    /**
+     * Whether dist/checksums.txt existed (and its content) before this
+     * class ran — a prepared dist/ directory's release manifest must
+     * survive every build test (Codex R1 finding 3), so tearDown restores
+     * it instead of deleting it when it pre-existed.
+     *
+     * @var string|null
+     */
+    private static $checksumsBefore = null;
+
     public static function setUpBeforeClass(): void
     {
         $dist = self::distDir();
         if (! is_dir($dist)) {
             mkdir($dist, 0755, true);
         }
+
+        $manifest = $dist . '/checksums.txt';
+        self::$checksumsBefore = is_file($manifest) ? (string) file_get_contents($manifest) : null;
     }
 
     protected function tearDown(): void
@@ -35,7 +48,16 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         foreach (glob(self::distDir() . '/connectors-' . self::FIXTURE . '-*') ?: array() as $file) {
             @unlink($file);
         }
-        @unlink(self::distDir() . '/checksums.txt');
+
+        // The shared manifest: restore a prepared one byte-for-byte (builds
+        // merge their own entries into it); delete it only when the class
+        // itself introduced it.
+        $manifest = self::distDir() . '/checksums.txt';
+        if (null !== self::$checksumsBefore) {
+            file_put_contents($manifest, self::$checksumsBefore);
+        } else {
+            @unlink($manifest);
+        }
 
         parent::tearDown();
     }
@@ -54,6 +76,190 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertFileExists($zipPath);
 
         return $zipPath;
+    }
+
+    /**
+     * Task 2.7: the REAL zai plugin artifact ships BOTH providers.
+     *
+     * The one plugin registers zai and zai_anthropic; the standalone zip
+     * must carry both providers' source trees, pass the inspector, and stay
+     * self-contained. The dist/ release-verification state around the
+     * build is preserved by withArtifactStatePreserved() (Codex R1 #3 /
+     * R2 #2) and asserted byte-identical after the restore.
+     */
+    public function testRealZaiArtifactShipsBothProvidersAndStaysStandalone()
+    {
+        $this->withArtifactStatePreserved(
+            'connectors-zai-0.1.0.zip',
+            function (string $zipPath): void {
+                $built = WpConnectorsBuild::buildPlugin(__DIR__ . '/../connectors/zai', self::distDir());
+                $this->assertSame($zipPath, $built);
+
+                $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-zai'));
+
+                $zip = new ZipArchive();
+                $this->assertTrue($zip->open($zipPath));
+                $names = array();
+                for ($i = 0; $i < $zip->numFiles; ++$i) {
+                    $names[] = $zip->getNameIndex($i);
+                }
+                $zip->close();
+
+                foreach (array(
+                    'zai/src/Provider/ZaiProvider.php',
+                    'zai/src/Provider/ZaiAnthropicProvider.php',
+                    'zai/src/Models/ZaiTextGenerationModel.php',
+                    'zai/src/Models/ZaiAnthropicTextGenerationModel.php',
+                    'zai/src/Metadata/ZaiModelMetadataDirectory.php',
+                    'zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
+                    'zai/src/Authentication/ZaiAnthropicRequestAuthentication.php',
+                    'zai/src/Support/AnthropicSseAggregator.php',
+                    'zai/assets/zai.svg',
+                    'zai/uninstall.php',
+                    'zai/LICENSE',
+                ) as $required) {
+                    $this->assertContains($required, $names, "The artifact must ship {$required}.");
+                }
+
+                // Exactly the two expected root PHP files: the one plugin
+                // header file (the second provider is a registered class inside
+                // the same plugin, not a second plugin) and uninstall.php.
+                $mains = array_filter($names, static function (string $name): bool {
+                    return 1 === preg_match('/^zai\/[^\/]+\.php$/', $name);
+                });
+                $this->assertSame(array('zai/uninstall.php', 'zai/zai.php'), array_values($mains));
+            },
+            function (string $sidecarPrevious, string $manifestPrevious, string $sidecarPath, string $manifestPath): void {
+                $this->assertSame($sidecarPrevious, (string) file_get_contents($sidecarPath), 'The checksum sidecar must survive the test byte-for-byte.');
+                $this->assertSame($manifestPrevious, (string) file_get_contents($manifestPath), 'The checksum manifest must survive the test byte-for-byte.');
+            }
+        );
+    }
+
+    /**
+     * Codex R2 #2: a FAILING build/artifact assertion must not leave the
+     * seeded verification files behind — the removal of test-introduced
+     * files runs in the OUTER finally of withArtifactStatePreserved(), on
+     * every exit path (tearDown only removes example-connector/demo
+     * artifacts, so a lingering connectors-zai sidecar would contaminate
+     * later runs).
+     */
+    public function testAFailingArtifactAssertionCleansUpIntroducedVerificationState()
+    {
+        /*
+         * Codex R3 #3: the regression must run against ANY dist/ state,
+         * including a prepared release directory — so it drives the guard
+         * with a throwaway artifact name that can never collide with a
+         * real release sidecar (no unconditional absence precondition on
+         * connectors-zai-0.1.0.zip.sha256).
+         */
+        $zipName = 'connectors-zai-cleanup-probe.zip';
+        $sidecarPath = self::distDir() . '/' . $zipName . '.sha256';
+        $manifestPath = self::distDir() . '/checksums.txt';
+        $manifestExisted = is_file($manifestPath);
+
+        // Defensive: clear any leftover probe sidecar from a previous
+        // broken run so the postcondition below stays meaningful.
+        @unlink($sidecarPath);
+
+        try {
+            $this->withArtifactStatePreserved(
+                $zipName,
+                function (): void {
+                    // Any failing build/artifact assertion — no build needed.
+                    $this->fail('simulated artifact assertion failure');
+                },
+                static function (): void {
+                }
+            );
+            $this->fail('The simulated failure must propagate.');
+        } catch (PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('simulated artifact assertion failure', $e->getMessage());
+        }
+
+        $this->assertFileDoesNotExist($sidecarPath, 'The introduced probe sidecar must be removed even on a failing path.');
+        if (! $manifestExisted) {
+            // On a prepared dist/ the helper must (and does) keep the real
+            // manifest — the removal postcondition only holds when the test
+            // environment had none.
+            $this->assertFileDoesNotExist($manifestPath, 'The introduced manifest must be removed even on a failing path.');
+        }
+    }
+
+    /**
+     * Runs $body against a real build's dist/ release-verification state
+     * with the state preserved on every exit path.
+     *
+     * Codex R1 #3: a build run rewrites the zip, its .sha256 sidecar, and
+     * the zip's entry in dist/checksums.txt, so all three pieces are
+     * snapshotted (seeded with sentinels when absent, so the restore path
+     * always runs) and restored byte-for-byte afterwards.
+     *
+     * Codex R2 #2: the structure is two NESTED finally blocks — the inner
+     * one restores state, the OUTER one removes whatever the test
+     * introduced — so a failing assertion inside $body cannot skip the
+     * cleanup and leave seeded files behind. $verifyRestored runs between
+     * the two (success path only) to assert the restoration.
+     *
+     * @param string   $zipName         Artifact zip basename, e.g. 'connectors-zai-0.1.0.zip'.
+     * @param callable $body            Build + artifact assertions; receives the zip path.
+     * @param callable $verifyRestored  Post-restore assertions; receives
+     *                                  ($sidecarPrevious, $manifestPrevious, $sidecarPath, $manifestPath).
+     * @return void
+     */
+    private function withArtifactStatePreserved(string $zipName, callable $body, callable $verifyRestored): void
+    {
+        $zipPath = self::distDir() . '/' . $zipName;
+        $sidecarPath = $zipPath . '.sha256';
+        $manifestPath = self::distDir() . '/checksums.txt';
+
+        $sidecarSeed = '0000000000000000000000000000000000000000000000000000000000000000  ' . $zipName . "\n";
+        $manifestSeed = '0000000000000000000000000000000000000000000000000000000000000000  ' . $zipName . "\n";
+
+        $zipExisted = is_file($zipPath);
+        $zipPrevious = $zipExisted ? (string) file_get_contents($zipPath) : '';
+        $sidecarExisted = is_file($sidecarPath);
+        $sidecarPrevious = $sidecarExisted ? (string) file_get_contents($sidecarPath) : $sidecarSeed;
+        $manifestExisted = is_file($manifestPath);
+        $manifestPrevious = $manifestExisted ? (string) file_get_contents($manifestPath) : $manifestSeed;
+
+        if (! $sidecarExisted) {
+            file_put_contents($sidecarPath, $sidecarSeed);
+        }
+        if (! $manifestExisted) {
+            file_put_contents($manifestPath, $manifestSeed);
+        }
+
+        try {
+            try {
+                $body($zipPath);
+            } finally {
+                // Restore-or-remove every file the build touched.
+                if ($zipExisted) {
+                    if ($zipPrevious !== (string) file_get_contents($zipPath)) {
+                        file_put_contents($zipPath, $zipPrevious);
+                    }
+                } elseif (is_file($zipPath)) {
+                    @unlink($zipPath);
+                }
+
+                file_put_contents($sidecarPath, $sidecarPrevious);
+                file_put_contents($manifestPath, $manifestPrevious);
+            }
+
+            $verifyRestored($sidecarPrevious, $manifestPrevious, $sidecarPath, $manifestPath);
+        } finally {
+            // Remove ONLY what this test introduced — on every exit path
+            // (an assertion failure above must not leave seeded files
+            // behind). A prepared dist/ keeps its real state; tearDown's
+            // guarded manifest cleanup is a no-op then.
+            if (! $sidecarExisted) {
+                @unlink($sidecarPath);
+            }
+            if (! $manifestExisted) {
+                @unlink($manifestPath);
+            }
+        }
     }
 
     public function testFixturePluginZipsWithChecksum()
@@ -490,6 +696,169 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('resolves outside the plugin dir through $dependency', $report);
         $this->assertStringContainsString('depends on $unknown with no resolvable same-file assignment', $report);
         $this->assertStringContainsString('combines the anchor with unresolvable runtime segments', $report);
+
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
+    /*
+     * The map + foreach include idiom the uninstall owner chain uses
+     * (GLM10 #14): the synthetic binding and the array-literal proof it
+     * unlocked must not LAUNDER shapes a direct include is flagged for.
+     * Verifier round on that change — three empirically-demonstrated
+     * escapes of the first cut, each old-flagged/new-passing at runtime:
+     * an anchored map VALUE mixing in a runtime segment, an element
+     * append the assignment collector cannot see, and a function
+     * parameter default the caller's argument overrides.
+     */
+
+    public function testMapAndForeachIncludeLaunderingIsRejected()
+    {
+        $tempPlugin = self::distDir() . '/.map-launder-test/map-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\MapDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+        file_put_contents($tempPlugin . '/src/support.php', "<?php\n// the sanctioned in-root map target\n");
+        // (a) Anchored map value with a runtime tail: the per-segment
+        // proof the direct form applies must judge the map VALUE too.
+        file_put_contents($tempPlugin . '/runtime-value.php', "<?php\n\$page = isset(\$_GET['page']) ? \$_GET['page'] : 'home';\n\$map = array( __DIR__ . '/' . \$page . '.php' );\nforeach ( \$map as \$file ) {\n    require \$file;\n}\n");
+        // (a2) Same-file-resolvable escaping tail through a map value.
+        file_put_contents($tempPlugin . '/trailing-value.php', "<?php\n\$sub = '../../outside';\n\$map = array( __DIR__ . '/' . \$sub . '.php' );\nforeach ( \$map as \$file ) {\n    require \$file;\n}\n");
+        // (b) Element append after the literal: an unmodeled write form.
+        file_put_contents($tempPlugin . '/append.php', "<?php\n\$map = array( __DIR__ . '/src/support.php' );\n\$map[] = '/tmp/abs-target-test.php';\nforeach ( \$map as \$file ) {\n    require \$file;\n}\n");
+        // (c) Function parameter default the caller overrides: the
+        // assignment regex sees the default, the runtime sees the caller.
+        file_put_contents($tempPlugin . '/param-default.php', "<?php\nfunction map_demo_load( \$map = array( __DIR__ . '/src/support.php' ) ) {\n    foreach ( \$map as \$file ) {\n        require \$file;\n    }\n}\nmap_demo_load( array( '/tmp/abs-target-test.php' ) );\n");
+        // (d) The sanctioned shape: literal-only map values, whole-array
+        // writes only — exactly the uninstall owner chain's idiom.
+        file_put_contents($tempPlugin . '/sanctioned.php', "<?php\n\$map = array( __DIR__ . '/src/support.php' );\nforeach ( \$map as \$class => \$file ) {\n    if ( ! class_exists( \$class, false ) ) {\n        require_once \$file;\n    }\n}\n");
+
+        $violations = wp_connectors_self_containment_violations($tempPlugin);
+
+        $byFile = array();
+        foreach ($violations as $violation) {
+            foreach (array( 'runtime-value.php', 'trailing-value.php', 'append.php', 'param-default.php', 'sanctioned.php', 'src/autoload.php' ) as $relative) {
+                if (strpos($violation, $relative) !== false) {
+                    $byFile[$relative] = ($byFile[$relative] ?? 0) + 1;
+                }
+            }
+        }
+        $this->assertSame(1, $byFile['runtime-value.php'] ?? 0, 'A map value mixing the anchor with an unresolvable runtime segment must be flagged: ' . implode("\n", $violations));
+        $this->assertSame(1, $byFile['trailing-value.php'] ?? 0, 'A map value escaping only through its resolved tail must be flagged.');
+        $this->assertSame(1, $byFile['append.php'] ?? 0, 'An element append after the literal must refuse the map proof.');
+        $this->assertSame(1, $byFile['param-default.php'] ?? 0, 'A parameter default the caller overrides must refuse the map proof.');
+        $this->assertSame(0, $byFile['sanctioned.php'] ?? 0, 'The sanctioned literal-only map shape must stay clean.');
+        $this->assertSame(0, $byFile['src/autoload.php'] ?? 0, 'The mandated PSR-4 autoloader include must stay clean.');
+
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
+    /*
+     * glm15-2: string and heredoc CONTENTS are never analyzed as code.
+     * The analyzer's scans used to run over regex comment-stripped
+     * source, so an assignment, signature, or include keyword written
+     * inside a quoted string or heredoc body counted as a statement:
+     * a phantom in-string assignment could SATISFY a variable include
+     * the runtime never resolves that way (a false accept), and phantom
+     * includes/writes could refuse legitimate files (false flags).
+     */
+
+    public function testStringAndHeredocContentsAreNeverAnalyzedAsCode()
+    {
+        $tempPlugin = self::distDir() . '/.string-contents-test/string-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\StringDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+        file_put_contents($tempPlugin . '/src/support.php', "<?php\n// the in-root target every clean fixture below reaches\n");
+
+        // (a) Decoys in single-quoted, interpolated, and nowdoc strings
+        // around a REAL in-root variable include: nothing may be flagged.
+        $stringsClean = <<<'FIXTURE'
+<?php
+$decoy = '$path = "/tmp/abs-target-test.php";';
+$banner = "welcome {$map['k']} require $path;";
+$note = <<<'TXT'
+// a comment-looking heredoc line
+$path = '/tmp/heredoc-decoy-test.php';
+function not_a_real_signature( $map = array() ) {}
+require $path;
+TXT;
+$path = __DIR__ . '/src/support.php';
+require $path;
+FIXTURE;
+        file_put_contents($tempPlugin . '/strings-clean.php', $stringsClean);
+
+        // (b) The ONLY "assignment" to $dep lives inside a string: at
+        // runtime $dep is whatever the caller passed, so the include
+        // must stay flagged — the phantom assignment must not satisfy
+        // it (the false-accept direction).
+        $stringOnly = <<<'FIXTURE'
+<?php
+$decoy = '$dep = __DIR__ . "/src/support.php";';
+require $dep;
+FIXTURE;
+        file_put_contents($tempPlugin . '/string-only-assignment.php', $stringOnly);
+
+        // (c) An escaping include written inside a nowdoc: text the
+        // plugin merely prints, never a statement (the false-flag
+        // direction).
+        $heredocInclude = <<<'FIXTURE'
+<?php
+$note = <<<'TXT'
+require __DIR__ . '/../../outside/bootstrap.php';
+TXT;
+require __DIR__ . '/src/support.php';
+FIXTURE;
+        file_put_contents($tempPlugin . '/heredoc-include.php', $heredocInclude);
+
+        // (d) Real comments carrying include/assignment text stay
+        // ignored (pins the token-based comment strip).
+        $commentDecoy = <<<'FIXTURE'
+<?php
+// require '/outside.php';
+/* $x = '/tmp/x.php'; */
+require __DIR__ . '/src/support.php';
+FIXTURE;
+        file_put_contents($tempPlugin . '/comment-decoy.php', $commentDecoy);
+
+        // (e) The sanctioned map idiom in a file that ALSO carries
+        // map-writings text inside strings: the phantom element write
+        // and signature must not refuse the literal proof.
+        $mapDecoy = <<<'FIXTURE'
+<?php
+$doc = '$map[] = "/tmp/append.php"; function f( $map = array() ) {}';
+$map = array( __DIR__ . '/src/support.php' );
+foreach ( $map as $class => $file ) {
+    if ( ! class_exists( $class, false ) ) {
+        require_once $file;
+    }
+}
+FIXTURE;
+        file_put_contents($tempPlugin . '/map-decoy.php', $mapDecoy);
+
+        $violations = wp_connectors_self_containment_violations($tempPlugin);
+
+        $byFile = array();
+        foreach ($violations as $violation) {
+            foreach (array( 'strings-clean.php', 'string-only-assignment.php', 'heredoc-include.php', 'comment-decoy.php', 'map-decoy.php', 'src/autoload.php' ) as $relative) {
+                if (strpos($violation, $relative) !== false) {
+                    $byFile[$relative] = ($byFile[$relative] ?? 0) + 1;
+                }
+            }
+        }
+        $this->assertSame(0, $byFile['strings-clean.php'] ?? 0, 'Decoy code text inside strings/heredocs must never be flagged: ' . implode("\n", $violations));
+        $this->assertSame(1, $byFile['string-only-assignment.php'] ?? 0, 'A variable include whose only assignment is string text must stay flagged.');
+        $this->assertSame(0, $byFile['heredoc-include.php'] ?? 0, 'An include keyword inside a nowdoc body is not a statement.');
+        $this->assertSame(0, $byFile['comment-decoy.php'] ?? 0, 'Include text inside real comments must stay ignored.');
+        $this->assertSame(0, $byFile['map-decoy.php'] ?? 0, 'Phantom map writes inside strings must not refuse the sanctioned map proof.');
+        $this->assertSame(0, $byFile['src/autoload.php'] ?? 0, 'The mandated PSR-4 autoloader include must stay clean.');
+
+        $this->assertStringContainsString('no resolvable same-file assignment', implode("\n", $violations));
 
         WpHarness::rrmdir(dirname($tempPlugin));
     }

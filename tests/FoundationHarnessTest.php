@@ -27,6 +27,80 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      */
 
     /**
+     * Core option-write semantics (code-review GLM1 #7): a first save with
+     * no option row delegates to add_option() and fires ONLY the
+     * add_option_ hook family; real updates fire the update family.
+     */
+    public function testSanitizeKeyMirrorsCoreScalarSemantics()
+    {
+        /*
+         * GLM3 #8: core sanitizes only SCALAR keys — an array POST value
+         * yields '' (never a coerced string, never a TypeError), and the
+         * sanitize_key filter still fires with the original value. The
+         * stub's earlier (string) cast masked array inputs, so the
+         * settings guard could not be tested against them.
+         */
+        $seen = null;
+        add_filter('sanitize_key', function ($sanitized, $raw) use (&$seen) {
+            $seen = $raw;
+            return $sanitized;
+        }, 10, 2);
+
+        $this->assertSame('', sanitize_key(array('x')), 'A non-scalar key returns the empty string, as in core.');
+        $this->assertSame(array('x'), $seen, 'The filter still receives the original raw value.');
+        $this->assertSame('abc_def-1', sanitize_key('ABC_def-1!'));
+        $this->assertSame('42', sanitize_key(42));
+    }
+
+    public function testUpdateOptionOnAMissingRowDelegatesToAddOptionHooks()
+    {
+        update_option('wpct_probe_opt', 'first');
+
+        $this->assertSame(1, did_action('add_option_wpct_probe_opt'), 'The add-option hook family fires for a first save.');
+        $this->assertSame(0, did_action('update_option_wpct_probe_opt'), 'The update hooks must NOT fire when no row existed.');
+        $this->assertSame(0, did_action('updated_option'));
+        $this->assertSame('first', get_option('wpct_probe_opt'));
+
+        update_option('wpct_probe_opt', 'second');
+
+        $this->assertSame(1, did_action('update_option_wpct_probe_opt'), 'A real update fires the specific update hook.');
+        $this->assertSame(1, did_action('updated_option'));
+        $this->assertSame('second', get_option('wpct_probe_opt'));
+    }
+
+    /**
+     * Request-superglobal isolation, part 1 (code-review #13): pollutes
+     * $_POST/$_GET/$_REQUEST en bloc exactly the way settings tests do.
+     * MUST run before testRequestSuperglobalsAreRestoredBetweenTests —
+     * PHPUnit executes same-class tests in declaration order.
+     */
+    public function testRequestSuperglobalPollutionForTheNextTest()
+    {
+        $_POST = array('option_page' => 'zai_connector', 'plan' => 'general', '_wpnonce' => 'stale');
+        $_GET = array('page' => 'zai-connector');
+        $_REQUEST = $_POST;
+
+        $this->assertSame('zai_connector', $_POST['option_page']);
+    }
+
+    /**
+     * Part 2: setUp()'s WpHarness::reset() must have restored the pristine
+     * bootstrap snapshot by now. The previous reset() only unset nonce
+     * keys, so the en-bloc assignment above leaked between tests
+     * (code-review #13) — an order-dependent failure waiting for
+     * --filter runs, suite reordering, or newly added tests.
+     */
+    public function testRequestSuperglobalsAreRestoredBetweenTests()
+    {
+        $this->assertArrayNotHasKey('option_page', $_POST, '$_POST must not leak between tests.');
+        $this->assertArrayNotHasKey('plan', $_POST, 'Non-nonce POST state must not leak either.');
+        $this->assertArrayNotHasKey('page', $_GET);
+        $this->assertSame(WpHarness::$request_superglobals_snapshot['POST'], $_POST, '$_POST must equal the pristine bootstrap snapshot.');
+        $this->assertSame(WpHarness::$request_superglobals_snapshot['GET'], $_GET, '$_GET must equal the pristine bootstrap snapshot.');
+        $this->assertSame(WpHarness::$request_superglobals_snapshot['REQUEST'], $_REQUEST, '$_REQUEST must equal the pristine bootstrap snapshot.');
+    }
+
+    /**
      * The provider registered by the plugin at init priority 5 must be
      * visible to a core-style observer at init priority 15 (where
      * _wp_connectors_init() performs auto-discovery in WP 7.0).

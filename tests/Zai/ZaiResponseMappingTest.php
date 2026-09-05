@@ -19,11 +19,15 @@ use WordPress\AiClient\Messages\Enums\MessagePartChannelEnum;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\Exception\ClientException;
 use WordPress\AiClient\Providers\Http\Exception\NetworkException;
+use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\Exception\ServerException;
 use WordPress\AiClient\Results\Enums\FinishReasonEnum;
+use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
+use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
+use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 
 final class ZaiResponseMappingTest extends WpConnectorsTestCase
 {
@@ -79,6 +83,117 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(10, $result->getTokenUsage()->getTotalTokens());
     }
 
+    public function testABomPrefixedJsonBodyStillParses()
+    {
+        /*
+         * GLM9 #3: the zai_anthropic twin's GLM8 #3 fix, landed there
+         * only — a UTF-8 BOM prepended to an application/json
+         * chat.completion body made json_decode() fail, the SDK
+         * fallback re-decode failed on the same BOM'd body, and a
+         * valid generation surfaced as 'The chat-completions payload
+         * was malformed.' The shared strip_stream_prefix() now runs
+         * before both decodes here too (whitespace around the BOM
+         * included), so both surfaces of one provider tolerate the
+         * identical gateway/CDN prefix shape.
+         */
+        $payload = (string) wp_json_encode(array(
+            'id' => 'chatcmpl-bom-json',
+            'choices' => array(array(
+                'index' => 0,
+                'message' => array('role' => 'assistant', 'content' => 'Bom-tolerant.'),
+                'finish_reason' => 'stop',
+            )),
+            'usage' => array('prompt_tokens' => 7, 'completion_tokens' => 3, 'total_tokens' => 10),
+        ));
+
+        foreach (array(
+            'bare BOM' => "\xEF\xBB\xBF" . $payload,
+            'whitespace then BOM' => " \xEF\xBB\xBF" . $payload,
+            'BOM then whitespace' => "\xEF\xBB\xBF " . $payload,
+        ) as $label => $body) {
+            $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), $body);
+
+            $result = $this->model()->generateTextResult($this->prompt());
+
+            $this->assertSame('Bom-tolerant.', $result->toText(), "[{$label}] The BOM must not fail the JSON parse.");
+            $this->assertSame('chatcmpl-bom-json', $result->getId(), "[{$label}] The id parses.");
+            $this->assertSame(10, $result->getTokenUsage()->getTotalTokens(), "[{$label}] The usage parses.");
+        }
+    }
+
+    public function testABomPrefixedNonJsonBodyStillFailsTyped()
+    {
+        // GLM9 #3 guard: the strip is a prefix tolerance, not a rescue —
+        // a BOM before garbage keeps the typed malformed-payload
+        // rejection exactly like the BOM-less body.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), "\xEF\xBB\xBFnot json at all");
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A BOM before a non-JSON body must still fail.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('chat-completions payload was malformed', $e->getMessage());
+        }
+    }
+
+    public function testAUserRoleChoiceMessageFailsAsAMalformedPayloadOnEveryTransport()
+    {
+        /*
+         * glm19-2: the vendor parent's parser builds a Candidate from each
+         * choice message, and a USER-role message makes its constructor
+         * throw InvalidArgumentException ('Message must be a model
+         * message.') — a throw family disjoint from the ResponseException
+         * the malformed-body rewrite caught, so the SDK-internal message
+         * escaped to the boundary (zai_invalid_request 400) while the
+         * byte-equivalent corruption on the zai_anthropic twin yields its
+         * typed 502-class role rejection. The rewrite covers both families
+         * on every transport that funnels through parseNonStreamBody():
+         * the unlabeled JSON body, the SSE-aggregated stream (the
+         * aggregator stores delta.role verbatim by design), and the
+         * mislabeled-JSON fallback (where the rewritten rejection is the
+         * non-marker family JsonFallbackResult nulls out, keeping the
+         * stream-typed error — glm14-2's header-promised-a-stream
+         * contract).
+         */
+        $body = '{"id":"chatcmpl-userrole","choices":[{"message":{"role":"user","content":"hi"},"finish_reason":"stop"}]}';
+
+        $json = array('Content-Type' => 'application/json');
+        $this->queueSdkResponse(200, $json, $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A user-role choice message must not surface as a request rejection.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('chat-completions payload was malformed', $e->getMessage());
+            $this->assertStringNotContainsString('model message', $e->getMessage(), 'The SDK-internal message must not escape.');
+        }
+
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-userrole","choices":[{"index":0,"delta":{"role":"user","content":"hi"},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A user-role delta must not surface as a request rejection.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('chat-completions payload was malformed', $e->getMessage());
+        }
+
+        // The mislabeled-JSON fallback: a stream header over the JSON body.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A user-role message under a stream header must not surface as a request rejection.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('No usable chat.completion.chunk event was received.', $e->getMessage());
+        }
+    }
+
     public function testParsesReasoningContentAsThoughtPart()
     {
         $this->queueSdkResponse(200, array(), wp_json_encode(array(
@@ -125,6 +240,1159 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(FinishReasonEnum::toolCalls(), $result->getCandidates()[0]->getFinishReason());
     }
 
+    public function testToolCallArgumentsPreserveNestedObjectNessThroughReplay()
+    {
+        /*
+         * GLM5 #1: the SDK parent's ASSOCIATIVE arguments decode collapses
+         * a nested {} to [] and a numeric-keyed object to a list, so this
+         * surface's own tool loop shipped ALTERED arguments on the very
+         * next replay ({"opts":{},"rows":{"0":"a"}} became
+         * {"opts":[],"rows":["a"]}) — the GLM1 #2 object-ness preservation
+         * existed on the zai_anthropic surface only. The parser re-derives
+         * the tree from a RAW decode through the same shared walk now, so
+         * the replay is byte-identical.
+         */
+        $this->queueSdkResponse(200, array(), wp_json_encode(array(
+            'id' => 'chatcmpl-obj',
+            'choices' => array(array(
+                'message' => array(
+                    'role' => 'assistant',
+                    'content' => null,
+                    'tool_calls' => array(array(
+                        'id' => 'call_obj',
+                        'type' => 'function',
+                        'function' => array('name' => 'do_thing', 'arguments' => '{"opts":{},"rows":{"0":"a"},"plain":{"k":"v"}}'),
+                    )),
+                ),
+                'finish_reason' => 'tool_calls',
+            )),
+        )));
+
+        $assistant = $this->model()->generateTextResult($this->prompt())->toMessage();
+
+        $args = $assistant->getParts()[0]->getFunctionCall()->getArgs();
+        $this->assertInstanceOf('stdClass', $args['opts'], 'A nested empty object must stay an object.');
+        $this->assertInstanceOf('stdClass', $args['rows'], 'A nested numeric-keyed object must stay an object.');
+        $this->assertSame(array('k' => 'v'), $args['plain'], 'An ordinary object keeps its ergonomic array form.');
+
+        // Replay the answered turn: the outbound arguments string must
+        // carry exactly the object shapes the model produced.
+        $this->queueSdkResponse(200, array(), wp_json_encode(array(
+            'id' => 'chatcmpl-after',
+            'choices' => array(array(
+                'message' => array('role' => 'assistant', 'content' => 'done'),
+                'finish_reason' => 'stop',
+            )),
+        )));
+
+        $this->model()->generateTextResult(array(
+            $this->prompt()[0],
+            $assistant,
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('call_obj', 'do_thing', array('ok' => true))),
+            )),
+        ));
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertStringContainsString(
+            '"arguments":"{\"opts\":{},\"rows\":{\"0\":\"a\"},\"plain\":{\"k\":\"v\"}}"',
+            (string) $attempts[1]['body'],
+            'The zai surface replay must preserve the parsed object shapes.'
+        );
+    }
+
+    public function testToolCallArgumentsDecodingToInfAreRejectedTyped()
+    {
+        /*
+         * GLM5 #2: 1e999 decodes to INF, which the SDK parent's outbound
+         * json_encode() turns into false — every later request of the
+         * conversation shipped "arguments": false. The shared replay guard
+         * (GLM4 #2, previously wired on the zai_anthropic surface only)
+         * rejects the value at parse time in this surface's typed channel.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-inf","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_inf","type":"function","function":{"name":"f","arguments":"{\"v\":1e999}"}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('INF tool arguments must be rejected.');
+        } catch (ResponseException $e) {
+            // glm13-7: the precise GLM5 #2 diagnostic now surfaces end-to-end.
+            $this->assertStringContainsString('cannot be replayed (an unencodable or precision-loss value was given)', $e->getMessage());
+        }
+    }
+
+    public function testExactlyRepresentableBigIntegersReplay()
+    {
+        /*
+         * GLM12 #8: 100000000000000000000 IS 1e20 exactly (10^20 = 2^20 ·
+         * 5^20 and 5^20 < 2^53), and 9223372036854775808 IS 2^63 — both
+         * survive the platform decode EXACTLY and re-encode stably, so
+         * rejecting them (the old blanket out-of-range walker rule) failed
+         * valid generations. The raw wire string is in hand at this
+         * surface's acceptance hook, so the PRECISE literal rule decides:
+         * exact replays, lossy rejects (next test).
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-big","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_big","type":"function","function":{"name":"f","arguments":"{\"n\":100000000000000000000}"}}]},"finish_reason":"tool_calls"}]}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+        $this->assertSame(1.0E20, $call->getArgs()['n'], 'The exact 1e20 literal replays as the same double.');
+
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-big2","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_big2","type":"function","function":{"name":"f","arguments":"{\"boundary\":9223372036854775808}"}}]},"finish_reason":"tool_calls"}]}');
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+        $this->assertSame(9.223372036854775808E18, $call->getArgs()['boundary'], '2^63 is exactly representable and replays.');
+    }
+
+    public function testLossyBigIntegersStillRejectTyped()
+    {
+        /*
+         * GLM12 #8 (the other edge of the precise rule): a literal whose
+         * nearest double is a DIFFERENT integer — the ~2048-wide boundary
+         * window above PHP_INT_MAX, 20 nines collapsing to 1e20, every
+         * coarser magnitude — is a true precision loss at decode time and
+         * still rejects.
+         */
+        $lossyBodies = array(
+            'boundary window' => '{"id":"chatcmpl-lossy1","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_l1","type":"function","function":{"name":"f","arguments":"{\"n\":9223372036854775809}"}}]},"finish_reason":"tool_calls"}]}',
+            'twenty nines collapse to 1e20' => '{"id":"chatcmpl-lossy2","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_l2","type":"function","function":{"name":"f","arguments":"{\"n\":99999999999999999999}"}}]},"finish_reason":"tool_calls"}]}',
+            'coarser magnitude' => '{"id":"chatcmpl-lossy3","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_l3","type":"function","function":{"name":"f","arguments":"{\"n\":12345678901234567890}"}}]},"finish_reason":"tool_calls"}]}',
+        );
+
+        foreach ($lossyBodies as $label => $body) {
+            $this->queueSdkResponse(200, array(), $body);
+
+            try {
+                $this->model()->generateTextResult($this->prompt());
+                $this->fail("[{$label}] A lossy beyond-int literal must be rejected.");
+            } catch (ResponseException $e) {
+                // glm13-7: the precise GLM12 #8 diagnostic now surfaces end-to-end.
+                $this->assertStringContainsString('cannot be replayed (an unencodable or precision-loss value was given)', $e->getMessage());
+            }
+        }
+    }
+
+    public function testDigitsInsideArgumentStringsAreDataNotLiterals()
+    {
+        /*
+         * GLM12 #8: the literal scan runs on the raw token with JSON
+         * string literals stripped — a lossy-looking digit run inside a
+         * STRING value replays verbatim and must not reject the call.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-note","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_note","type":"function","function":{"name":"f","arguments":"{\"note\":\"ref 999999999999999999999999999999 times\"}"}}]},"finish_reason":"tool_calls"}]}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame('ref 999999999999999999999999999999 times', $call->getArgs()['note']);
+    }
+
+    public function testThePreciseWireLiteralRuleDecidesExactVersusLossy()
+    {
+        /*
+         * GLM12 #8 unit pin: wire_arguments_are_replayable() — the exact
+         * formatter (sprintf('%.0f') of the decoded double) must reproduce
+         * every beyond-int integer literal, exponent giants reject through
+         * the encode oracle, and in-range shapes never consult the rule.
+         */
+        $guard = 'Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard';
+
+        $exact = array(
+            '1e20 digit form' => '{"n":100000000000000000000}',
+            '2^63' => '{"n":9223372036854775808}',
+            'negative exact' => '{"n":-100000000000000000000}',
+            'nested exact' => '{"rows":[{"id":1000000000000000000000}]}',
+            'in-range int' => '{"v":9223372036854775807}',
+            'float, never integral-beyond' => '{"v":1.5}',
+            'exponent float (stable double)' => '{"v":1e20}',
+            /*
+             * glm19-1: float-form spellings of an EXACT integer accept —
+             * the exponent/fraction scan reconstructs the literal's
+             * decimal expansion and the %.0f oracle reproduces it.
+             */
+            'exponent spelling of 2^63' => '{"n":9223372036854775808e0}',
+            'fraction spelling of 2^63' => '{"n":9223372036854775808.0}',
+            'mantissa+fraction+exponent spelling of 2^63' => '{"n":9.223372036854775808e18}',
+            'exponent spelling of 2^53' => '{"v":9007199254740992e0}',
+            'fractional expansion stays exempt' => '{"v":0.1e0}',
+            'fractional with positive exponent' => '{"v":123.450e3}',
+            'digits in a string' => '{"note":"99999999999999999999999"}',
+            'digits in a key' => '{"99999999999999999999":"x"}',
+            'empty string' => '',
+        );
+        foreach ($exact as $label => $json) {
+            $this->assertTrue($guard::wire_arguments_are_replayable($json), "[{$label}] must replay.");
+        }
+
+        $lossy = array(
+            'boundary window (…809)' => '{"n":9223372036854775809}',
+            'negative boundary' => '{"n":-9223372036854775809}',
+            'coarser magnitude' => '{"n":12345678901234567890}',
+            'nested lossy' => '{"rows":[{"id":12345678901234567890}]}',
+            'INF exponent giant' => '{"v":1e999}',
+            'INF digit giant' => '{"v":' . str_repeat('9', 400) . '}',
+            /*
+             * glm19-1: the same lossy integers in float-form spellings —
+             * the e/E/./- adjacency guards hid every float token from
+             * the plain-integer scan, so the exponent spelling of …809
+             * accepted while its plain twin rejected (empirically
+             * confirmed on the real class). Below the int range the
+             * exact-integer guarantee ends at 2^53 (a float-form token
+             * decodes to a double), and an integral-but-inexact big
+             * float (1.5e25 — the expansion is the integer 15·10^24 the
+             * double does not equal) rejects like its digit-run twin.
+             */
+            'exponent spelling of the boundary window' => '{"n":9223372036854775809e0}',
+            'fraction spelling of the boundary window' => '{"n":9223372036854775809.0}',
+            'negative exponent spelling of the boundary window' => '{"n":-9223372036854775809e0}',
+            'exponent spelling of a coarser magnitude' => '{"n":12345678901234567890e0}',
+            'exponent spelling below int range (2^53+1)' => '{"v":9007199254740993e0}',
+            'integral inexact big float' => '{"v":1.5e25}',
+            /*
+             * GLM12 verifier round: an escape-dense string value (~20k
+             * escapes) used to exhaust the PCRE recursion limit in the
+             * string stripper, and the engine failure FAILED OPEN —
+             * silently accepting a lossy literal in the same arguments.
+             */
+            'escape-dense + lossy literal' => '{"doc":"' . str_repeat('x\"y', 20000) . '","tracking_id":99999999999999999999}',
+        );
+        foreach ($lossy as $label => $json) {
+            $this->assertFalse($guard::wire_arguments_are_replayable($json), "[{$label}] must reject.");
+        }
+
+        $exact['escape-dense + exact literal'] = '{"doc":"' . str_repeat('x\"y', 20000) . '","tracking_id":100000000000000000000}';
+        $this->assertTrue($guard::wire_arguments_are_replayable($exact['escape-dense + exact literal']), 'The precise rule must keep working at scale (no engine failure on the possessive stripper).');
+
+        /*
+         * glm13-10 (behavioral no-op, source-pinned): both production
+         * call sites hand the guard the tree they decoded immediately
+         * beforehand — the zai parse hook its GLM6 #1 decode, the
+         * Anthropic streamed tool block its object check — so the guard
+         * runs one decode per arguments string instead of two (plus the
+         * redundant encode oracle pass over the same value).
+         */
+        $model_source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
+        );
+        $this->assertSame(
+            1,
+            preg_match('/wire_arguments_are_replayable\(\s*\$raw_arguments,\s*\$raw\s*\)/', $model_source),
+            'The zai parse hook must pass its pre-decoded tree to the guard.'
+        );
+
+        $aggregator_source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
+        );
+        $this->assertSame(
+            1,
+            preg_match('/wire_arguments_are_replayable\(\s*\$block\[\'json\'\],\s*\$decoded\s*\)/', $aggregator_source),
+            'The Anthropic streamed tool block must pass its pre-decoded tree to the guard.'
+        );
+    }
+
+    public function testPreDecodedToolCallArgumentsWithInfAreRejectedTyped()
+    {
+        /*
+         * GLM5 #2 (fallback path): when the body carries the arguments as
+         * a pre-decoded JSON member (not a string), the SDK parent passes
+         * the value through untouched — an INF member reaches the guard
+         * through the same channel.
+         */
+        /*
+         * glm13-7 verifier note: this fixture was mis-nested JSON — the
+         * body never decoded, so the test exercised the malformed-body
+         * path (whose generic rewrite satisfied the old assertion) and
+         * never the pre-decoded INF member it was written for. The
+         * fixture is now valid and the precise decoded-path diagnostic
+         * is asserted.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-arr","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_arr","type":"function","function":{"name":"f","arguments":{"v":1e999}}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('INF inside pre-decoded tool arguments must be rejected.');
+        } catch (ResponseException $e) {
+            // glm13-7: the decoded-path diagnostic now surfaces end-to-end.
+            $this->assertStringContainsString('cannot be replayed (an unencodable or precision-loss value was decoded)', $e->getMessage());
+        }
+    }
+
+    public function testTruncatedToolCallArgumentsAreRejectedNotSilentlyEmptied()
+    {
+        /*
+         * GLM6 #1: a non-streaming body carrying an arguments string that
+         * fails JSON decode left the SDK parent's null-args call standing
+         * (the replay guard tolerates null), so the generation SUCCEEDED
+         * with finish reason toolCalls and getArgs() null — a consumer
+         * could execute a possibly side-effecting tool with arguments the
+         * model never produced. Typed rejection now, never a fabricated
+         * empty call.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-tr","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_tr","type":"function","function":{"name":"get_weather","arguments":"{\"city\":"}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Truncated tool-call arguments must be rejected.');
+        } catch (ResponseException $e) {
+            // glm13-7: the precise GLM6 #1 diagnostic now surfaces end-to-end.
+            $this->assertStringContainsString('arguments string that is not valid JSON', $e->getMessage());
+        }
+    }
+
+    public function testTheMarkerClassDerivesItsMessageFromTheSdkFactory()
+    {
+        /*
+         * glm14-8: fixed() used to hand-roll a byte-copy of the SDK
+         * factory's format string, so an SDK release that rewords
+         * fromInvalidData() would silently split the wire contract —
+         * plugin-thrown markers keeping the old shape while SDK-thrown
+         * exceptions carry the new one. The message is the factory's own
+         * product now; the delegation is the pin (the end-to-end literal
+         * tails above pin today's shape).
+         */
+        $this->assertSame(
+            ResponseException::fromInvalidData('z.ai', 'tool_calls', 'A diagnostic message.')->getMessage(),
+            FixedMessageResponseException::fixed('z.ai', 'tool_calls', 'A diagnostic message.')->getMessage(),
+            'The marker subclass\'s message must be the SDK factory\'s own product.'
+        );
+    }
+
+    public function testStreamedToolCallArgumentsLosingAFragmentAreRejectedNotSilentlyEmptied()
+    {
+        /*
+         * GLM6 #1 (streamed half): a gateway dropping one arguments delta
+         * leaves the concatenated fragments invalid JSON — the exact
+         * corruption the non-streaming twin above rejects, reaching the
+         * same channel through the consolidated payload.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-trs","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_trs","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-trs","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]},"finish_reason":"tool_calls"}]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Fragment-losing streamed tool arguments must be rejected.');
+        } catch (ResponseException $e) {
+            // glm13-7: the streamed twin of the GLM6 #1 diagnostic now
+            // surfaces end-to-end through the consolidated parse.
+            $this->assertStringContainsString('arguments string that is not valid JSON', $e->getMessage());
+        }
+    }
+
+    public function testALiteralJsonNullArgumentsStringKeepsTheParentSemantics()
+    {
+        // GLM6 #1 guard: only DECODE FAILURES reject — a literal "null"
+        // string is valid JSON and keeps the SDK parent's null-args
+        // semantics (the empty-call representation this surface documents).
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-nu","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_nu","type":"function","function":{"name":"ping","arguments":"null"}}]},"finish_reason":"tool_calls"}]}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertNull($call->getArgs());
+    }
+
+    public function testAnEmptyArgumentsStringKeepsTheParentSemantics()
+    {
+        /*
+         * GLM6 #1 (verifier round): the streamed aggregator initializes
+         * arguments to '' and only appends fragments, so a legitimate
+         * zero-argument streamed call consolidates to '' — and a
+         * non-streaming "arguments": "" is the same legal zero-arg shape.
+         * Both keep the SDK parent's null-args semantics; only genuinely
+         * undecodable strings reject.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-es","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_es","type":"function","function":{"name":"ping","arguments":""}}]},"finish_reason":"tool_calls"}]}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertNull($call->getArgs());
+    }
+
+    public function testAStreamedZeroArgumentToolCallConsolidatingToEmptyStillSucceeds()
+    {
+        // GLM6 #1 (verifier round, streamed half): no arguments fragment
+        // ever arrives, so the consolidated arguments string is ''.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-za","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_za","type":"function","function":{"name":"ping","arguments":""}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-za","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame('call_za', $call->getId());
+        $this->assertNull($call->getArgs(), "A streamed zero-argument call consolidating to '' keeps the null-args semantics.");
+    }
+
+    public function testListRootedToolCallArgumentsPreserveNestedObjectNessThroughReplay()
+    {
+        /*
+         * GLM6 #2: the object-ness walk ran only for stdClass roots, so a
+         * LIST-rooted arguments string kept the SDK parent's associative
+         * decode — whose nested empty and numeric-keyed objects re-encoded
+         * as JSON lists on every later replay ([{"a":{}},{"0":"x"}] became
+         * [{"a":[]},["x"]]), the GLM5 #1 corruption class one level down.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-lr","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_lr","type":"function","function":{"name":"batch","arguments":"[{\"a\":{}},{\"0\":\"x\"}]"}}]},"finish_reason":"tool_calls"}]}');
+
+        $assistant = $this->model()->generateTextResult($this->prompt())->toMessage();
+
+        $args = $assistant->getParts()[0]->getFunctionCall()->getArgs();
+        $this->assertIsArray($args, 'A list root must stay a list.');
+        $this->assertArrayHasKey(0, $args);
+        $this->assertInstanceOf('stdClass', $args[0]['a'], 'A nested empty object must stay an object under a list root.');
+        $this->assertInstanceOf('stdClass', $args[1], 'A nested numeric-keyed object must stay an object under a list root.');
+        $this->assertSame('x', $args[1]->{'0'});
+
+        // Replay the answered turn: the outbound arguments string must
+        // carry exactly the object shapes the model produced.
+        $this->queueSdkResponse(200, array(), wp_json_encode(array(
+            'id' => 'chatcmpl-lr-after',
+            'choices' => array(array(
+                'message' => array('role' => 'assistant', 'content' => 'done'),
+                'finish_reason' => 'stop',
+            )),
+        )));
+
+        $this->model()->generateTextResult(array(
+            $this->prompt()[0],
+            $assistant,
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('call_lr', 'batch', array('ok' => true))),
+            )),
+        ));
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertStringContainsString(
+            '"arguments":"[{\"a\":{}},{\"0\":\"x\"}]"',
+            (string) $attempts[1]['body'],
+            'The zai surface replay must preserve nested object shapes under a list root.'
+        );
+    }
+
+    public function testToolCallsMissingIdentityMembersRejectAtParseTime()
+    {
+        /*
+         * glm18-2: the SDK parent coerces a missing/non-string id or
+         * name to null (an empty string passes through verbatim), so a
+         * corrupt tool_calls entry SUCCEEDED as a generation whose
+         * FunctionCall carries a null/empty identity — the exact turn
+         * the outbound replay guard rejects pre-transport on every
+         * later request of the conversation (GLM3 #1 poisoning at one
+         * remove). Both transports now reject the corruption at parse
+         * time, the zai_anthropic twin's Codex R9 #3 discipline.
+         */
+        $empty_id = '{"id":"chatcmpl-noid","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"","type":"function","function":{"name":"f","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}';
+        $this->queueSdkResponse(200, array(), $empty_id);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An empty tool-call id must reject at parse time.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('A tool call is missing its identity members', $e->getMessage());
+        }
+
+        $missing_name = '{"id":"chatcmpl-nonm","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_nm","type":"function","function":{"arguments":"{}"}}]},"finish_reason":"tool_calls"}]}';
+        $this->queueSdkResponse(200, array(), $missing_name);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A missing tool-call name must reject at parse time.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('A tool call is missing its identity members', $e->getMessage());
+        }
+
+        /*
+         * Streamed: the tool_calls delta never carries an id member, so
+         * the aggregator's accumulator keeps its initial null — the
+         * consolidated payload hands the parse hook the same corrupt
+         * entry a fragment-losing gateway produces.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-sid","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"function":{"name":"f","arguments":"{}"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-sid","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed tool call whose id fragments never arrived must reject at parse time.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('A tool call is missing its identity members', $e->getMessage());
+        }
+    }
+
+    public function testAnEmptyListRootedArgumentsStringKeepsTheParentSemantics()
+    {
+        // GLM6 #2 guard: an EMPTY list root has no nested members whose
+        // object-ness could be lost — it decodes identically through the
+        // walk and the SDK parent's associative decode alike.
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-el","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_el","type":"function","function":{"name":"ping","arguments":"[]"}}]},"finish_reason":"tool_calls"}]}');
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame(array(), $call->getArgs());
+    }
+
+    public function testALateNonMergingUsageMemberDoesNotPoisonTheMergedOne()
+    {
+        /*
+         * GLM6 #3: the streamed validator compared the merged usage
+         * member against the raw oracle of the LAST usage-BEARING frame,
+         * while the merge takes the last frame whose usage was an ARRAY —
+         * so a trailing "usage":"corrupt" member handed the validator a
+         * frame the consolidated payload does not carry and rejected an
+         * otherwise-complete generation. The oracle now describes exactly
+         * the merged frame.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-ln","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-ln","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}',
+            'data: {"id":"chatcmpl-ln","usage":"corrupt"}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(5, $result->getTokenUsage()->getTotalTokens(), 'The merged usage member stands.');
+    }
+
+    public function testALateNullUsageMemberChangesNothingAboutTheMergedUsage()
+    {
+        /*
+         * GLM6 #3 (null variant) originally pinned that a trailing
+         * "usage":null must not lose the raw oracle for the merged empty
+         * LIST member — GLM7 #8 then restored master semantics on this
+         * surface, where "usage":[] zero-defaults, so the shape no longer
+         * rejects here. The invariant that remains: the late null member
+         * does not merge and must not disturb the merged member's
+         * accounting (zeros, not an error).
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-ln2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-ln2","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":[]}',
+            'data: {"id":"chatcmpl-ln2","usage":null}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(0, $result->getTokenUsage()->getTotalTokens(), 'The merged empty-list usage keeps master zero semantics despite the later null member.');
+    }
+
+    public function testAStreamedUnencodableNonUsageMemberIsRejectedTypedNotMasked()
+    {
+        /*
+         * GLM6 #6: finish_reason (like delta.role) is stored verbatim by
+         * the aggregator's merge, so an INF value — "finish_reason":1e999
+         * — made wp_json_encode($aggregated) return false and the string
+         * cast collapsed the consolidated body to '': the SDK parse then
+         * failed as the generic 'payload was malformed', masking the real
+         * cause. The whole-payload encodability check rejects typed now.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-inf2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-inf2","choices":[{"index":0,"delta":{},"finish_reason":1e999}]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed unencodable non-usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('cannot be JSON-encoded', $e->getMessage());
+            $this->assertStringNotContainsString('malformed', $e->getMessage(), 'The generic masked message must not fire.');
+        }
+    }
+
+    public function testTheStreamedEncodabilityOracleMatchesTheStructuralWalker()
+    {
+        /*
+         * GLM10 #10: the whole-payload json_encode() INF oracle swapped
+         * for the GLM9 #13 structural walker (O(tree) with zero
+         * serialization per streamed generation). The pin: on every
+         * REACHABLE aggregated shape the two decide alike — INF at any
+         * depth fails the encode and the walker alike; clean payloads
+         * pass both. The one disclosed strict superset (a finite
+         * integral float beyond PHP_INT_MAX, which json_encode()
+         * accepts) is pinned as the walker's decision, matching the
+         * SDK's downstream is_string gates.
+         */
+        $clean = array(
+            'id' => 'chatcmpl-x',
+            'choices' => array(array('index' => 0, 'delta' => array('role' => 'assistant', 'content' => 'Hi'), 'finish_reason' => 'stop')),
+            'usage' => array('prompt_tokens' => 1, 'completion_tokens' => 2, 'total_tokens' => 3),
+        );
+        $this->assertNotFalse(json_encode($clean));
+        $this->assertTrue(ToolArgsReplayGuard::is_replayable_decoded($clean), 'A clean payload passes the walker.');
+
+        $infShapes = array(
+            'finish_reason INF' => array('choices' => array(array('finish_reason' => INF))),
+            'deeply nested INF' => array('choices' => array(array('delta' => array('content' => 'x'), 'meta' => array('deep' => array(INF))))),
+            'INF under a list' => array('choices' => array(array('tool_calls' => array(array('function' => array('arguments' => INF)))))),
+        );
+        foreach ($infShapes as $label => $payload) {
+            $this->assertFalse(json_encode($payload), "{$label}: the encode oracle rejects it.");
+            $this->assertFalse(ToolArgsReplayGuard::is_replayable_decoded($payload), "{$label}: the walker rejects it identically.");
+        }
+
+        $beyondInt = array('choices' => array(array('finish_reason' => 1e300)));
+        $this->assertNotFalse(json_encode($beyondInt), 'Sanity: the encode oracle ACCEPTS a beyond-PHP_INT_MAX float (the disclosed superset).');
+        $this->assertFalse(ToolArgsReplayGuard::is_replayable_decoded($beyondInt), 'The walker rejects it — as the downstream is_string gates would.');
+    }
+
+    public function testTheDecodedStreamHandOffParsesExactlyLikeTheEncodedOne()
+    {
+        /*
+         * GLM6 #14: the consolidated payload now reaches the SDK parser
+         * DECODED (the pre-decoded Response shim) instead of through a
+         * wp_json_encode()/getData() round trip. The shapes are identical
+         * by construction (the payload is built from associative frame
+         * decodes); this parity test pins that end-to-end for the heavy
+         * shape classes — awkward tool-call stream indexes, text content,
+         * usage — against the same assertions the encoded path carried.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_b","type":"function","function":{"name":"tool_b","arguments":"{\"x\":"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"tool_a","arguments":"{}"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-hd","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"1}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+        $parts = $result->toMessage()->getParts();
+
+        $this->assertSame('Hello', $result->toText());
+        $this->assertSame('chatcmpl-hd', $result->getId());
+        $this->assertSame(FinishReasonEnum::toolCalls(), $result->getCandidates()[0]->getFinishReason());
+
+        $calls = array();
+        foreach ($parts as $part) {
+            if (null !== $part->getFunctionCall()) {
+                $calls[] = $part->getFunctionCall();
+            }
+        }
+
+        $this->assertCount(2, $calls);
+        $this->assertSame('call_a', $calls[0]->getId(), 'Tool calls arrive reindexed by stream index.');
+        $this->assertInstanceOf('stdClass', $calls[0]->getArgs(), 'An empty-object arguments string stays an object (GLM5 #1).');
+        $this->assertSame(array(), get_object_vars($calls[0]->getArgs()));
+        $this->assertSame('call_b', $calls[1]->getId());
+        $this->assertSame(array('x' => 1), $calls[1]->getArgs());
+
+        $this->assertSame(11, $result->getTokenUsage()->getPromptTokens());
+        $this->assertSame(7, $result->getTokenUsage()->getCompletionTokens());
+        $this->assertSame(18, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    public function testTheStreamedConsolidationNoLongerRoundTripsThroughAJsonBody()
+    {
+        /*
+         * GLM6 #14 (verifier round): the decoded hand-off is
+         * behavior-preserving by design, so a behavioral parity test
+         * cannot discriminate it from the wp_json_encode()/getData()
+         * round trip it replaced. This pins the mechanism at the source
+         * level (the GLM6 #10 extraction-pattern precedent): the streamed
+         * consolidation must construct the pre-decoded Response and must
+         * not re-encode the aggregated payload.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match('/new PreDecodedResponse\(/', $source),
+            'The streamed consolidation must hand the parser the pre-decoded payload.'
+        );
+        $this->assertSame(
+            0,
+            preg_match('/wp_json_encode\(\s*\$aggregated/', $source),
+            'The aggregated payload must not be re-encoded into a synthetic body.'
+        );
+    }
+
+    public function testAJsonBodyMislabeledAsAStreamFallsBackToTheNonStreamingParse()
+    {
+        /*
+         * GLM12 #3 (the glm8-5 mechanism ported from the zai_anthropic
+         * twin): a doubly-nonconforming gateway that labels a complete
+         * chat.completion JSON body with Content-Type: text/event-stream
+         * routed the body to the SSE aggregator, which found no data:
+         * field line and killed a valid generation — while the
+         * byte-identical response succeeded on the twin. The no-usable-
+         * event verdict defers to the JSON the label promised the body
+         * wasn't: a full non-streaming parse (usage validation included)
+         * completes the generation.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), HttpResponseFactory::openAiChatCompletionBody('wp-connectors json fallback ok'));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('wp-connectors json fallback ok', $result->toText());
+        $this->assertSame(15, $result->getTokenUsage()->getTotalTokens(), 'The fallback runs the full non-streaming parse, usage included.');
+    }
+
+    public function testAPrettyPrintedJsonBodyMislabeledAsAStreamFallsBackToo()
+    {
+        /*
+         * GLM12 #3 (framing edge): a pretty-printed JSON body contains
+         * blank lines, so the frame buffer splits it into several
+         * frames — none carrying a data: field. Aggregation still
+         * produces nothing usable, and the fallback still recovers the
+         * body.
+         */
+        $pretty = wp_json_encode(json_decode(HttpResponseFactory::openAiChatCompletionBody('pretty fallback ok')), JSON_PRETTY_PRINT);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), (string) $pretty);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('pretty fallback ok', $result->toText());
+    }
+
+    public function testAStreamLabeledBodyThatIsNoCompletionKeepsTheStreamTypedError()
+    {
+        /*
+         * GLM12 #3 (the negative edge): the fallback is a RECOVERY, not a
+         * reroute — a body that is no chat.completion payload (an empty
+         * JSON object, a plain string) keeps the stream-typed error; the
+         * header DID promise a stream.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), '{}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream-labeled empty object must keep the stream-typed rejection.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('No usable chat.completion.chunk event was received.', $e->getMessage());
+        }
+    }
+
+    public function testAPreciseDiagnosticFromAMislabeledJsonBodySurfacesThroughTheFallback()
+    {
+        /*
+         * glm14-2: the fallback's null-out catch swallowed glm13-7's
+         * marker subclass, so a doubly-nonconforming gateway (a stream
+         * label on a JSON chat.completion body) degraded the precise
+         * tool-arguments diagnostic to the generic no-usable-event
+         * message — the exact degradation the marker exists to prevent.
+         * The marker propagates through the fallback now.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), '{"id":"chatcmpl-fb","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_fb","type":"function","function":{"name":"get_weather","arguments":"{\"city\":"}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Truncated tool-call arguments must surface their precise diagnostic even on the fallback path.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('arguments string that is not valid JSON', $e->getMessage());
+        }
+    }
+
+    public function testTheChoiceIndexRuleLivesInOnePredicate()
+    {
+        /*
+         * glm15-14 (source pin): the 8-line choice/tool-call index
+         * validity guard was duplicated verbatim three times (the
+         * choice loop, the tool-call loop, the trailing-frame loop) —
+         * the next index-rule change landing on one copy only would
+         * give pre- and post-sentinel frames different corruption
+         * verdicts for the same payload shape. One sound_index()
+         * predicate carries the rule; the malformed-index behavioral
+         * pins above (GLM7 #1) hold the verdicts.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/SseAggregator.php'
+        );
+
+        $this->assertSame(
+            3,
+            preg_match_all('/self::sound_index\(/', $source),
+            'All three merge sites ride the one predicate.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/! \\\\is_int\(\s*\$entry\[\'index\'\]\s*\)/', $source),
+            'The is_int index rule is stated exactly once: inside sound_index().'
+        );
+    }
+
+    public function testTheFallbackGateRidesTheSharedDecodeOnBothSurfaces()
+    {
+        /*
+         * glm15-7 (source pin, both surfaces): the mislabeled-JSON
+         * fallback used to hand-roll its object-root oracle —
+         * is_object(json_decode(strip_stream_prefix($body))) — and then
+         * route through JsonBodyDecoder::decode, which strips and
+         * decodes the same body twice more: three json_decodes and two
+         * prefix strips of one potentially large body. The decoder's
+         * raw view IS the object-root oracle, so the fallback decodes
+         * once and gates on that. The pins forbid the hand-rolled
+         * oracle shape in BOTH model files (the behavioral fallback
+         * suites above pin the outcomes).
+         */
+        foreach (array(
+            'zai' => __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php',
+            'zai_anthropic' => __DIR__ . '/../../connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php',
+        ) as $surface => $file) {
+            $source = (string) file_get_contents($file);
+
+            $this->assertSame(
+                0,
+                preg_match_all('/is_object\(\s*json_decode\(\s*SseFrameBuffer::strip_stream_prefix/', $source),
+                "The {$surface} fallback must gate on the shared decode's raw view, not a hand-rolled oracle."
+            );
+            $this->assertStringContainsString('JsonBodyDecoder::decode( $body )', $source, "The {$surface} fallback decodes the body once.");
+        }
+    }
+
+    public function testTheNonStreamingPathDecodesTheBodyOnceAndHandsOffPreDecoded()
+    {
+        /*
+         * GLM7 #9: the decoded hand-off is behavior-preserving by design
+         * (the entire non-streaming suite runs through it), so — the
+         * GLM6 #14 source-level precedent — this pins the mechanism: the
+         * non-streaming branch must hand the parser a PreDecodedResponse
+         * built from ONE shared decode, and reject_malformed_usage() must
+         * not re-read the Response (the vendor getData() re-decodes the
+         * whole body per call; three decodes where master paid one).
+         *
+         * glm15-11 supersession (the GLM10 #4 lesson: a pin may be
+         * consciously superseded when its invariant is extended): the
+         * non-streamed and JSON-fallback branches now ride the ONE
+         * parse_decoded_chat_body() helper, so the PreDecodedResponse
+         * construction exists exactly once — the streamed path keeps
+         * its own hand-off — and both decoders reach the parser through
+         * the shared pipeline (usage validation, derived total, hand-
+         * off) that previously lived twice in this class.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
+        );
+
+        $this->assertSame(
+            2,
+            preg_match_all('/new PreDecodedResponse\(/', $source),
+            'Exactly two hand-off sites: the shared non-streaming helper and the streamed path (glm15-11 collapsed the fallback copy into the helper).'
+        );
+        $this->assertSame(
+            2,
+            preg_match_all('/\$this->parse_decoded_chat_body\(/', $source),
+            'The non-streaming branch and the JSON fallback both ride the one shared pipeline helper.'
+        );
+        $this->assertSame(
+            0,
+            preg_match('/reject_malformed_usage\(\s*\$response\s*\)/', $source),
+            'The usage pre-check must consume the shared decode, not a fresh Response read.'
+        );
+    }
+
+    public function testNonStreamingStringUsageMemberIsRejectedTyped()
+    {
+        /*
+         * GLM5 #3: a string usage member reached the SDK parent's
+         * int-typed TokenUsage constructor unvalidated (the shared
+         * validator was wired into the Anthropic transports only) and
+         * detonated as a raw strict-types TypeError — surfaced by the
+         * mapper's catch-all as the generic 500 instead of the typed
+         * zai_invalid_response.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-u1","choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":"5","completion_tokens":3,"total_tokens":8}}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A string usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('Token counts must be non-negative integers.', $e->getMessage());
+        }
+    }
+
+    public function testNonStreamingListShapedUsageMemberIsRejectedTyped()
+    {
+        // GLM5 #3: a list-shaped usage member is not a JSON object.
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-u2","choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":[1,2]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A list-shaped usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage());
+        }
+    }
+
+    public function testStreamedInfUsageMemberIsRejectedTypedNotMasked()
+    {
+        /*
+         * GLM5 #3 (streamed half): an INF usage member made
+         * wp_json_encode($aggregated) return false, collapsing the
+         * consolidated body to '' so the failure surfaced as 'The
+         * chat-completions payload was malformed.', masking the real
+         * cause. The usage member is validated before the re-encode now.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-su","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-su","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1e999,"completion_tokens":1,"total_tokens":2}}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed INF usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('Token counts must be non-negative integers.', $e->getMessage());
+        }
+    }
+
+    public function testStreamedListShapedUsageMemberIsRejectedTyped()
+    {
+        // GLM5 #3: the aggregator's associative decode cannot tell a JSON
+        // list usage from an object; the validator's fallback can.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-su2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-su2","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":[1,2]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed list-shaped usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage());
+        }
+    }
+
+    public function testStreamedEmptyListUsageMemberKeepsMasterZeroSemantics()
+    {
+        /*
+         * GLM7 #8: master read token counts with ($usage['prompt_tokens']
+         * ?? 0), so a streamed final "usage":[] produced a SUCCESSFUL
+         * zero-defaulted generation on the legacy surface — semantics the
+         * GLM5 #3 shared validator silently dropped when it wired both
+         * surfaces onto one strict rule. The lenient mode restores them
+         * (the Anthropic surface keeps rejecting the identical shape).
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-su3","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-su3","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":[]}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(0, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    /**
+     * @dataProvider provideMasterToleratedUsageShapes
+     */
+    public function testMasterToleratedUsageShapesKeepSucceeding($usageFragment, $expectedTotal, $label)
+    {
+        /*
+         * GLM7 #8 (non-streamed half): "usage":null, "usage":[], and
+         * explicitly-null token members all zero-defaulted on master —
+         * the strict shared validator turned each into a typed rejection
+         * for every existing zai consumer. Lenient mode keeps the master
+         * verdicts; genuinely corrupt shapes (scalars, non-empty lists,
+         * string counts) still reject.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-mt","choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],' . $usageFragment . '}');
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('hi', $result->toText(), "{$label}: the generation must succeed.");
+        $this->assertSame($expectedTotal, $result->getTokenUsage()->getTotalTokens(), "{$label}: master zero/default semantics.");
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideMasterToleratedUsageShapes()
+    {
+        return array(
+            'null usage member' => array('"usage":null', 0, 'null usage member'),
+            'empty list usage member' => array('"usage":[]', 0, 'empty list usage member'),
+            'null prompt member' => array('"usage":{"prompt_tokens":null,"completion_tokens":3,"total_tokens":3}', 3, 'null prompt member'),
+        );
+    }
+
+    public function testStreamedEmptyObjectUsageMemberStaysTolerated()
+    {
+        // Verifier round on GLM5 #3: the legitimate "usage":{} shape keeps
+        // its documented default-zero tolerance on BOTH transports.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-su4","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-su4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{}}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(0, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    /**
+     * @dataProvider provideAbsentTotalUsageShapes
+     */
+    public function testAnAbsentTotalTokensMemberIsDerivedBySummation($usageFragment, $expectedTotal, $label)
+    {
+        /*
+         * GLM12 #6: the GLM7 #8 lenient tolerance stays — partial usage
+         * objects still succeed — but the ABSENT total is no longer
+         * defaulted to 0 by the SDK parent's per-member ?? 0: it is
+         * derived prompt+completion (the zai_anthropic twin's rule), on
+         * the non-streaming body and the consolidated stream alike, so a
+         * partial usage object no longer reports totalTokens() === 0 for
+         * hundreds of billed tokens. A PRESENT total stands verbatim —
+         * even an explicit 0 (a data-bearing zero from a zero-normalizing
+         * gateway is not the parser's call to override).
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-dt","choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],' . $usageFragment . '}');
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('hi', $result->toText(), "{$label}: the generation must succeed.");
+        $this->assertSame($expectedTotal, $result->getTokenUsage()->getTotalTokens(), "{$label}: the total verdict.");
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    public function provideAbsentTotalUsageShapes()
+    {
+        return array(
+            'absent total' => array('"usage":{"prompt_tokens":500,"completion_tokens":120}', 620, 'absent total'),
+            'explicit null total' => array('"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":null}', 5, 'explicit null total'),
+            'present total stands' => array('"usage":{"prompt_tokens":500,"completion_tokens":120,"total_tokens":99}', 99, 'present total stands'),
+            'present zero total stands' => array('"usage":{"prompt_tokens":500,"completion_tokens":120,"total_tokens":0}', 0, 'present zero total stands'),
+            'usage without any members' => array('"usage":{}', 0, 'usage without any members'),
+        );
+    }
+
+    public function testAStreamedPartialUsageFrameDerivesItsAbsentTotal()
+    {
+        // GLM12 #6 (streamed half): the consolidated payload gets the same
+        // derivation as the non-streaming body.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-dts","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-dts","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":4}}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(11, $result->getTokenUsage()->getTotalTokens(), 'The streamed absent total is derived prompt+completion.');
+    }
+
+    public function testAcceptedToolArgumentsReplayWithoutReRunningTheOracle()
+    {
+        /*
+         * GLM12 #12 (stamp-at-acceptance): the args an inbound
+         * acceptance validated are immutable, so the parsed call returns
+         * as a ReplayValidatedFunctionCall and the outbound replay
+         * guard SKIPS its serializing oracle for it — the pin is
+         * load-bearing twice: the O(K·S) re-serialization per request
+         * is gone, and the stamp carries the PRECISE GLM12 #8 verdict
+         * (the exact 1e20 literal the full oracle's conservative walker
+         * would reject), keeping the parse and replay verdicts in
+         * agreement for the same value.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-rp","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_rp","type":"function","function":{"name":"f","arguments":"{\"n\":100000000000000000000}"}}]},"finish_reason":"tool_calls"}]}');
+
+        $assistantPart = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0];
+        $call = $assistantPart->getFunctionCall();
+
+        $this->assertInstanceOf(\Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall::class, $call, 'Inbound-accepted calls carry the replay stamp.');
+
+        $prompt = array(
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::model(), array($assistantPart)),
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(new MessagePart('and then?'))),
+        );
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('replayed', 'glm-5.3'));
+
+        $this->assertSame('replayed', $this->model()->generateTextResult($prompt)->toText(), 'The stamped turn replays without re-running the oracle.');
+
+        $replay = (array) json_decode((string) $this->sdkHttpAttempts()[1]['body'], true);
+        $replayedArgs = json_decode($replay['messages'][1]['tool_calls'][0]['function']['arguments'], true);
+        $this->assertSame(1.0E20, $replayedArgs['n'], 'The exact big literal rides the replay verbatim.');
+    }
+
+    public function testCallerBuiltCallsStillRunTheFullOutboundOracle()
+    {
+        /*
+         * GLM12 #12 (the skip's scope): only INBOUND-accepted calls
+         * carry the stamp. A caller-built plain SDK FunctionCall (a tool
+         * loop feeding back a computed value) keeps the full oracle —
+         * its args were never validated anywhere.
+         */
+        $prompt = array(
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(WordPress\AiClient\Messages\Enums\MessageRoleEnum::model(), array(new MessagePart(new WordPress\AiClient\Tools\DTO\FunctionCall('call_c', 'f', array('v' => INF))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An unstamped caller-built call must run the outbound oracle.');
+        } catch (WordPress\AiClient\Common\Exception\InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider could not replay tool call arguments', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function testAnEscapeDenseToolCallStillRejectsLossyLiterals()
+    {
+        /*
+         * GLM12 verifier round (end-to-end): the PCRE recursion limit
+         * failure the stripper used to hit on escape-dense arguments
+         * failed OPEN — the lossy 20-nines literal rode through
+         * accepted AND stamped (the outbound oracle skipped forever
+         * after). The precise rule must reject the lossy literal even
+         * beside a 60KB escape-dense string value.
+         */
+        $arguments = '{"doc":"' . str_repeat('x\"y', 20000) . '","tracking_id":99999999999999999999}';
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-dense","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_dense","type":"function","function":{"name":"f","arguments":' . wp_json_encode($arguments) . '}}]},"finish_reason":"tool_calls"}]}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A lossy literal beside an escape-dense string must be rejected.');
+        } catch (ResponseException $e) {
+            // glm13-7: the precise GLM12 #8 diagnostic now surfaces end-to-end.
+            $this->assertStringContainsString('cannot be replayed (an unencodable or precision-loss value was given)', $e->getMessage());
+        }
+    }
+
     public function testLengthFinishReasonMapsToLength()
     {
         $this->queueSdkResponse(200, array(), wp_json_encode(array(
@@ -160,6 +1428,340 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('chatcmpl-s', $result->getId());
         $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
         $this->assertSame(7, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    public function testPostSentinelFramesDoNotMutateTheCompletedPayload()
+    {
+        /*
+         * GLM5 #7: 'data: [DONE]' set the sentinel flag but nothing
+         * consulted it, so frames an intermediary APPENDED after it
+         * still merged into the aggregated payload — content
+         * concatenated, finish reason and usage overwritten — silently
+         * mutating a completed generation. GLM7 #2 narrowed the policy:
+         * trailing frames may only COMPLETE the payload (see the
+         * gap-fill test below); overwriting data it already carries
+         * stays rejected.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), implode("\n\n", array(
+            'data: {"id":"chatcmpl-td","choices":[{"index":0,"delta":{"role":"assistant","content":"A"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-td","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":3,"total_tokens":7}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-td","choices":[{"index":0,"delta":{"content":"GHOST"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-td","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":99,"completion_tokens":99,"total_tokens":198}}',
+            '',
+        )));
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('A', $result->toText(), 'Post-sentinel content must not merge into the completion.');
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason(), 'Post-sentinel finish reasons must not overwrite the completion.');
+        $this->assertSame(7, $result->getTokenUsage()->getTotalTokens(), 'Post-sentinel usage must not overwrite the completion.');
+    }
+
+    public function testFinalUsageAndFinishReasonAfterTheDoneSentinelCompleteThePayload()
+    {
+        /*
+         * GLM7 #2: appending gateways emit the FINAL chunk (the one
+         * carrying finish_reason and usage) after the `data: [DONE]`
+         * sentinel — the repo's records document the shape. Master
+         * merged it; the GLM5 #7 wholesale drop made the completed
+         * generation fail the SDK parse (missing
+         * choices[0].finish_reason) or report zero token usage. The
+         * trailing terminal data gap-fills the payload now.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-tg","choices":[{"index":0,"delta":{"role":"assistant","content":"Completed"},"finish_reason":null}]}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-tg","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":5,"total_tokens":16}}',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame('stop', $aggregated['choices'][0]['finish_reason'], 'A trailing finish reason must complete a choice that lacks one.');
+        $this->assertSame(16, $aggregated['usage']['total_tokens'], 'A trailing usage member must fill the payload when none merged pre-sentinel.');
+        $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'), 'Trailing frames must not count as content events.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Completed', $result->toText());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+        $this->assertSame(16, $result->getTokenUsage()->getTotalTokens());
+    }
+
+    public function testAnEmptyPreSentinelUsageMemberDoesNotBlockTheTrailingGapFill()
+    {
+        /*
+         * Verifier round on GLM7 #2: an intermediate "usage":{} (a
+         * null-usage normalization several OpenAI-compatible gateways
+         * emit) passed the isset-merge, so the strict null gap-fill
+         * guard counted it as "usage already merged" — the appending
+         * gateway's real final usage chunk after the sentinel was
+         * silently dropped and the completed generation reported zero
+         * tokens where master's last-wins merge carried the real counts.
+         * An empty member carries no token data: it is gap-fillable.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-eu","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}],"usage":{}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-eu","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame(15, $aggregated['usage']['total_tokens'], 'The trailing usage must complete an empty pre-sentinel member.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(15, $result->getTokenUsage()->getTotalTokens(), 'Zero-token silent undercounting versus master is the exact regression GLM7 #2 fixes.');
+    }
+
+    public function testAZeroValuedPreSentinelUsageMemberDoesNotBlockTheTrailingGapFill()
+    {
+        /*
+         * GLM12 #9: a gateway that zero-normalizes usage
+         * ("usage":{"prompt_tokens":0} on every chunk) writes a
+         * non-empty but INFORMATIONALLY EMPTY member — zero is exactly
+         * the lenient validator's absent-member default — and the
+         * GLM7-2 emptiness guard (empty {} only) let it block the
+         * post-[DONE] gap-fill, silently zeroing the appending
+         * gateway's real final counts. Zero-valued members gap-fill
+         * like empty ones.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-zu","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}],"usage":{"prompt_tokens":0}}',
+            'data: {"id":"chatcmpl-zu","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-zu","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":9,"total_tokens":18}}',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame(18, $aggregated['usage']['total_tokens'], 'The trailing usage must complete a zero-normalized pre-sentinel member.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(18, $result->getTokenUsage()->getTotalTokens(), 'The real final counts must not be silently zeroed.');
+    }
+
+    public function testADataBearingPreSentinelUsageMemberStillBlocksTheGapFill()
+    {
+        /*
+         * GLM12 #9 (the standing edge): ONE non-zero count makes the
+         * member data-bearing — the gap-fill must not overwrite it, and
+         * a corrupt member (a string count) stays standing for the
+         * validator's typed rejection rather than being rescued.
+         */
+        $dataBearing = implode("\n\n", array(
+            'data: {"id":"chatcmpl-db","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":0,"total_tokens":3}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-db","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":9,"total_tokens":18}}',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($dataBearing);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame(3, $aggregated['usage']['total_tokens'], 'A data-bearing member stands; the trailing one must not overwrite it.');
+
+        $corrupt = implode("\n\n", array(
+            'data: {"id":"chatcmpl-cu","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":"x"}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-cu","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":9,"total_tokens":18}}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $corrupt);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A corrupt pre-sentinel usage member must reach the validator, not be rescued by the gap-fill.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('Token counts must be non-negative integers.', $e->getMessage());
+        }
+    }
+
+    public function testTheLazyUsageOracleDescribesTheMergedWinner()
+    {
+        /*
+         * GLM10 #12: gateways that emit "usage":{} on EVERY chunk (the
+         * GLM7-2 comment's documented shape) used to pay a second full
+         * non-associative decode PER TOKEN-DELTA frame for an oracle the
+         * last-wins merge discarded on the next frame. The raw data
+         * string is captured now and raw_usage() decodes the single
+         * winner once, lazily and memoized — the pin: the oracle still
+         * describes exactly the frame the consolidated payload carries,
+         * across the every-chunk shape, the trailing gap-fill, and
+         * repeated reads.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-lz","choices":[{"index":0,"delta":{"role":"assistant","content":"H"}}],"usage":{}}',
+            'data: {"id":"chatcmpl-lz","choices":[{"index":0,"delta":{"content":"i"}}],"usage":{}}',
+            'data: {"id":"chatcmpl-lz","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":2,"total_tokens":9}}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+        $this->assertSame(9, $aggregated['usage']['total_tokens'], 'The last usage-bearing frame wins the merge.');
+
+        $oracle = $aggregator->raw_usage();
+        $this->assertInstanceOf(\stdClass::class, $oracle, 'The oracle keeps the winner\'s object-ness.');
+        $this->assertSame(9, $oracle->total_tokens, 'The oracle describes the FINAL frame, not the discarded empty members.');
+        $this->assertSame($oracle, $aggregator->raw_usage(), 'The memoized read is stable across repeated calls.');
+        $this->assertSame($aggregated, $aggregator->aggregated(), 'Repeated assembly is idempotent (GLM10 #13).');
+
+        // The trailing gap-fill re-points the oracle at the trailing frame.
+        $trailing = implode("\n\n", array(
+            'data: {"id":"chatcmpl-lz2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":"stop"}],"usage":{}}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-lz2","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}',
+            '',
+        ));
+
+        $gap = new SseAggregator();
+        $gap->feed($trailing);
+        $gap->finish();
+
+        $gap_payload = $gap->aggregated();
+        $this->assertSame(14, $gap_payload['usage']['total_tokens']);
+        $this->assertSame(14, $gap->raw_usage()->total_tokens, 'After the gap-fill the oracle describes the TRAILING frame.');
+    }
+
+    public function testPostSentinelFramesOpenNoNewTurnsAndCountMalformed()
+    {
+        /*
+         * GLM7 #2 (aggregator half): a trailing frame cannot create a
+         * choice accumulator (an unknown index is gap-fill-inert), its
+         * delta content never merges, and its malformed JSON still
+         * counts — master's decode pipeline, minus the content mutation.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-tn","choices":[{"index":0,"delta":{"role":"assistant","content":"Only"},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-tn","choices":[{"index":5,"delta":{"content":"GHOST"},"finish_reason":"length"}]}',
+            'data: not json',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+
+        $aggregated = $aggregator->aggregated();
+
+        $this->assertSame('Only', $aggregated['choices'][0]['message']['content'], 'Post-sentinel content must not merge.');
+        $this->assertArrayNotHasKey(1, $aggregated['choices'], 'A trailing unknown index must not open a new choice turn.');
+        $this->assertSame('stop', $aggregated['choices'][0]['finish_reason'], 'A trailing finish reason must not replace a present one.');
+        $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'), 'Neither the malformed post-sentinel frame nor the unknown-index trailing frame counts as a content event.');
+        $this->assertFalse($aggregator->has_malformed_event(), 'Well-formed trailing frames are not corruption.');
+    }
+
+    public function testAStreamPrefixedWithAUtf8BomStillAggregates()
+    {
+        /*
+         * GLM3 #7: a gateway/CDN-prepended BOM glued itself to the first
+         * data: frame, which then matched no known prefix and was
+         * silently dropped — on this surface a single-event stream
+         * aggregated to null and failed with 'No usable
+         * chat.completion.chunk event was received.' The shared
+         * SseFrameBuffer now strips the BOM at stream start.
+         */
+        $body = "\xEF\xBB\xBF" . implode("\n\n", array(
+            'data: {"id":"chatcmpl-bom","choices":[{"index":0,"delta":{"role":"assistant","content":"Bom-proof."},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Bom-proof.', $result->toText());
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+    }
+
+    /**
+     * @dataProvider provideMangledContentTypeStreamLeads
+     */
+    public function testStreamsSniffedByBodyLeadWhenTheContentTypeIsMangled($lead, $label)
+    {
+        /*
+         * GLM4 #3: this surface's sniff recognized only a leading 'data:'
+         * line, so the exact scenario the Anthropic twin's GLM3 #5/#7
+         * fixes cite — a gateway that mangles/omits the
+         * text/event-stream Content-Type AND prepends a BOM or a
+         * ': keepalive' comment — misrouted the stream to the JSON
+         * parser and died as 'The chat-completions payload was
+         * malformed' although the shared SseFrameBuffer would have
+         * framed it fine. Both surfaces now sniff through the shared
+         * EventStreamSniff.
+         */
+        $body = $lead . implode("\n\n", array(
+            'data: {"id":"chatcmpl-sniff","choices":[{"index":0,"delta":{"role":"assistant","content":"Sniffed anyway."},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/octet-stream'), $body);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Sniffed anyway.', $result->toText(), "[{$label}] The body lead must sniff as an event stream.");
+        $this->assertSame(FinishReasonEnum::stop(), $result->getCandidates()[0]->getFinishReason());
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideMangledContentTypeStreamLeads()
+    {
+        return array(
+            'leading comment line' => array(': keepalive' . "\n\n", 'leading comment line'),
+            'leading UTF-8 BOM' => array("\xEF\xBB\xBF", 'leading UTF-8 BOM'),
+            'BOM then comment line' => array("\xEF\xBB\xBF: keepalive" . "\n\n", 'BOM then comment line'),
+            'leading event field' => array('event: message' . "\n\n", 'leading event field'),
+            // GLM4 #8: the shared sniff also recognizes the id:/retry:
+            // SSE fields both aggregators tolerate mid-stream.
+            'leading id field' => array('id: 42' . "\n\n", 'leading id field'),
+            'leading retry field' => array('retry: 3000' . "\n\n", 'leading retry field'),
+            // GLM6 #11: PHP's default whitespace set — a NUL or vertical
+            // tab byte before the first field line must not stop the sniff.
+            'leading NUL byte' => array("\0\n", 'leading NUL byte'),
+            'leading vertical tab' => array("\x0B\n", 'leading vertical tab'),
+            // GLM8 #2: whitespace around a BOM rides the one canonical
+            // prefix rule (SseFrameBuffer::strip_stream_prefix) — the
+            // sniff accepted these shapes while the framing dropped their
+            // first frame silently, corrupting the aggregated content.
+            'whitespace then BOM' => array(" \xEF\xBB\xBF", 'whitespace then BOM'),
+            'BOM then whitespace' => array("\xEF\xBB\xBF ", 'BOM then whitespace'),
+            'newline then BOM' => array("\r\n\xEF\xBB\xBF", 'newline then BOM'),
+        );
     }
 
     public function testStreamsToolCallDeltasMergedAcrossChunks()
@@ -243,6 +1845,109 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * @dataProvider provideUnusableChoiceIndexes
+     */
+    public function testStreamedChoicesWithUnusableIndexesAreRejectedTyped($indexFragment, $label)
+    {
+        /*
+         * GLM7 #1: a chunk choice whose 'index' member is missing, null,
+         * or not a non-negative integer was silently SKIPPED (that
+         * delta's content vanished from a successful stream) or
+         * int-COERCED into the wrong accumulator — the Anthropic twin
+         * added in this branch rejects the identical corruption as a
+         * malformed event, and the legacy surface now fails typed
+         * through the same channel instead of returning wrong output.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-bi","choices":[{"index":0,"delta":{"role":"assistant","content":"Good"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-bi","choices":[{' . $indexFragment . '"delta":{"content":"MISSING"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-bi","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+        $aggregator->aggregated();
+
+        $this->assertTrue($aggregator->has_malformed_event(), "{$label}: the unusable choice index must flag the stream.");
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail("{$label}: an unusable choice index must be rejected typed.");
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('malformed chunk event', $e->getMessage());
+            $this->assertStringNotContainsString('MISSING', $e->getMessage(), 'Raw event payloads must not be echoed.');
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideUnusableChoiceIndexes()
+    {
+        return array(
+            'index omitted' => array('', 'index omitted'),
+            'index null' => array('"index":null,', 'index null'),
+            'index string' => array('"index":"0",', 'index string'),
+            'index float' => array('"index":1.9,', 'index float'),
+            'index negative' => array('"index":-1,', 'index negative'),
+        );
+    }
+
+    /**
+     * @dataProvider provideUnusableToolCallIndexes
+     */
+    public function testStreamedToolCallDeltasWithUnusableIndexesAreRejectedTyped($toolIndexFragment, $label)
+    {
+        /*
+         * GLM7 #1 (tool-call half): a tool_calls delta whose 'index' is
+         * null passed array_key_exists() and coerced to 0 — the fragment
+         * merged into the WRONG call's accumulator; a missing one was
+         * skipped, silently truncating the call's arguments.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-ti","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_ok","type":"function","function":{"name":"get_weather","arguments":"{}"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-ti","choices":[{"index":0,"delta":{"tool_calls":[{' . $toolIndexFragment . '"function":{"arguments":"{\\"city\\":\\"Paris\\"}"}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-ti","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+        $aggregator->aggregated();
+
+        $this->assertTrue($aggregator->has_malformed_event(), "{$label}: the unusable tool-call index must flag the stream.");
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail("{$label}: an unusable tool-call index must be rejected typed.");
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('malformed chunk event', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function provideUnusableToolCallIndexes()
+    {
+        return array(
+            'tool index omitted' => array('', 'tool index omitted'),
+            'tool index null' => array('"index":null,', 'tool index null'),
+            'tool index string' => array('"index":"1",', 'tool index string'),
+            'tool index float' => array('"index":0.9,', 'tool index float'),
+        );
+    }
+
     public function testStreamParserToleratesSplitFramesCrlfCommentsAndMalformedEvents()
     {
         $body = ""
@@ -261,9 +1966,9 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
         $aggregator->finish();
 
-        $this->assertTrue($aggregator->is_done());
-        $this->assertSame(3, $aggregator->event_count());
-        $this->assertSame(1, $aggregator->malformed_count());
+        $this->assertTrue($this->aggregator_state($aggregator, 'done'));
+        $this->assertSame(3, $this->aggregator_state($aggregator, 'event_count'));
+        $this->assertCount(1, $aggregator->aggregated()['choices'], 'The malformed frame opens no second choice turn.');
 
         $aggregated = $aggregator->aggregated();
         $this->assertSame('ABC', $aggregated['choices'][0]['message']['content']);
@@ -278,7 +1983,8 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($this->prompt());
             $this->fail('An all-malformed stream must throw.');
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
-            $this->assertStringContainsString('z.ai', $e->getMessage());
+            // GLM10 #9: the surface's one unified provider label.
+            $this->assertStringContainsString('Unexpected zai API response', $e->getMessage());
             $this->assertStringNotContainsString('broken', $e->getMessage(), 'Raw event payloads must not be echoed.');
         }
     }
@@ -369,7 +2075,7 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $aggregator->feed('data: {"id":"chatcmpl-f2","choices":[{"index":0,"delta":{"role":"assistant","content":"CR tail."},"finish_reason":"stop"}]}' . "\r");
         $aggregator->finish();
 
-        $this->assertSame(1, $aggregator->event_count());
+        $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'));
         $this->assertSame('CR tail.', $aggregator->aggregated()['choices'][0]['message']['content']);
     }
 
@@ -438,6 +2144,11 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
 
         foreach ($cases as $status => $needle) {
             WpHarness::$sdk_http_attempts = array();
+            // glm13-6: a 401/403 iteration now records the invalid
+            // verdict, and the credential gate would refuse the NEXT
+            // iteration's generation before it reaches its own status —
+            // each iteration starts from a clean verdict store.
+            delete_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_OPTION);
             $this->queueSdkResponse($status, array(), HttpResponseFactory::openAiErrorBody('ignored upstream text'));
 
             try {
@@ -448,6 +2159,50 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
                 $this->assertStringNotContainsString('ignored upstream text', $e->getMessage());
             }
         }
+    }
+
+    public function testACredentialRejectingGenerationStatusRecordsTheInvalidVerdict()
+    {
+        /*
+         * glm13-6: a 401 on the GENERATION route is the endpoint
+         * rejecting the credential itself — the same definitive evidence
+         * the probe and the discovery routes persist. Without the
+         * recording, a key revoked server-side kept the connector
+         * reporting connected (re-transmitting the dead credential) for
+         * the whole 300s STATE_TTL.
+         */
+        $key = FakeSecrets::apiKey();
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
+
+        $this->primeZaiDiscoveryTransient();
+        $model = ZaiProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
+
+        try {
+            $model->generateTextResult($this->prompt());
+            $this->fail('The 401 must throw.');
+        } catch ( ClientException $e ) {
+            $this->assertSame(401, $e->getCode());
+        }
+
+        $state = get_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_OPTION);
+        $this->assertSame('invalid', $state['valid'], 'The generation-route rejection must persist its verdict.');
+
+        // The recorded verdict is the refusal gate's input: the next
+        // generation REFUSES instead of re-transmitting the dead key.
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{}');
+
+        try {
+            $model->generateTextResult($this->prompt());
+            $this->fail('A definitively rejected credential must be refused.');
+        } catch ( \WordPress\AiClient\Common\Exception\InvalidArgumentException $e ) {
+            $this->assertStringContainsString('refuses generation', $e->getMessage());
+        }
+
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'The refused generation must not re-transmit the credential.');
     }
 
     public function testNoRetriesAreAttemptedOn429()
@@ -630,28 +2385,9 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
      *
      * Requires the WordPress core source; set WP_CONNECTORS_TEST_WP_ROOT
      * (defaults to ~/wp-ai-research/wordpress when present). Skipped
-     * otherwise — never fails a checkout without core.
+     * otherwise — never fails a checkout without core. The loader itself
+     * (glm15-18) rides the shared harness: corePromptBuilderClass().
      */
-
-    /**
-     * Loads the real core prompt builder class file.
-     *
-     * @return class-string<WP_AI_Client_Prompt_Builder>
-     */
-    private function corePromptBuilderClass(): string
-    {
-        $home = (string) getenv('HOME');
-        $wpRoot = (string) (getenv('WP_CONNECTORS_TEST_WP_ROOT') ?: ($home !== '' ? $home . '/wp-ai-research/wordpress' : ''));
-        $file = $wpRoot . '/wp-includes/ai-client/class-wp-ai-client-prompt-builder.php';
-
-        if ('' === $wpRoot || ! is_file($file)) {
-            $this->markTestSkipped('WP core source not found (set WP_CONNECTORS_TEST_WP_ROOT to the WordPress checkout).');
-        }
-
-        require_once $file;
-
-        return 'WP_AI_Client_Prompt_Builder';
-    }
 
     /**
      * Boots the provider into the registry and settles the availability

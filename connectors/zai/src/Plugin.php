@@ -17,6 +17,7 @@ namespace Deicod\WpConnectors\Zai;
 
 use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Providers\ProviderRegistry;
+use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 
 /**
@@ -27,16 +28,20 @@ use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 final class Plugin {
 
 	/**
-	 * The provider ID registered by this plugin.
+	 * The provider classes this plugin registers, in registration order.
 	 *
-	 * Core derives the connector card and the API-key option name
-	 * (connectors_ai_zai_api_key) from it (architecture record 0001).
+	 * Each registration is individually guarded (see register()): the
+	 * providers have distinct IDs, so neither can replace the other, and a
+	 * failed registration of the second class leaves the first registered.
 	 *
-	 * @since 0.1.0
+	 * @since 0.2.0
 	 *
-	 * @var string
+	 * @var list<class-string>
 	 */
-	const PROVIDER_ID = 'zai';
+	const PROVIDER_CLASSES = array(
+		ZaiProvider::class,
+		ZaiAnthropicProvider::class,
+	);
 
 	/**
 	 * Whether the PHP AI Client SDK is available.
@@ -53,11 +58,17 @@ final class Plugin {
 	}
 
 	/**
-	 * Registers the z.ai provider with the given registry.
+	 * Registers the plugin's providers with the given registry.
 	 *
 	 * Idempotent: a provider already registered under the same class name (or
 	 * the provider ID) is left untouched, so repeated `init` executions are
-	 * harmless.
+	 * harmless. Providers are registered one at a time in a fixed order —
+	 * the zai provider first — and each registration is independent, so a
+	 * failing or skipped later registration can neither prevent nor damage an
+	 * earlier one. The provider ID is additionally guarded: the SDK's
+	 * registerProvider() silently overwrites an ID already held by a
+	 * DIFFERENT class, so this method refuses to register onto a foreign
+	 * registration instead of replacing it (Task 2.1).
 	 *
 	 * @since 0.1.0
 	 *
@@ -65,11 +76,19 @@ final class Plugin {
 	 * @return void
 	 */
 	public static function register( ProviderRegistry $registry ): void {
-		if ( $registry->hasProvider( ZaiProvider::class ) ) {
-			return;
-		}
+		foreach ( self::PROVIDER_CLASSES as $provider_class ) {
+			if ( $registry->hasProvider( $provider_class ) ) {
+				continue;
+			}
 
-		$registry->registerProvider( ZaiProvider::class );
+			if ( $registry->hasProvider( $provider_class::metadata()->getId() ) ) {
+				// Another class already owns this provider ID: never
+				// replace a foreign registration.
+				continue;
+			}
+
+			$registry->registerProvider( $provider_class );
+		}
 	}
 
 	/**

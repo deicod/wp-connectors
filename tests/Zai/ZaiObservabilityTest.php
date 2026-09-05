@@ -15,11 +15,18 @@ use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
+use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use WordPress\AiClient\Providers\Http\DTO\Request;
+use WordPress\AiClient\Providers\Http\DTO\Response;
+use WordPress\AiClient\Providers\Http\DTO\RequestOptions;
+use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use Deicod\WpConnectors\Zai\Plugin;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Settings\DebugSettings;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\DebugLogger;
+use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 
 final class ZaiObservabilityTest extends WpConnectorsTestCase
 {
@@ -36,6 +43,25 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
 
         return $model;
+    }
+
+    public function testTheLiveProbeCatchesThrowableNotException()
+    {
+        /*
+         * GLM7 #14: the probe's discovery and generation steps caught
+         * Exception only, so a PHP Error (a TypeError/ValueError from a
+         * strict-types mismatch in the SDK/DTO layer against a live
+         * response shape) crashed the script with an uncaught fatal and
+         * a stack trace — breaking the safe-facts reporting rule for the
+         * exact failure path the probe exists to diagnose. The probe
+         * cannot run in the offline suite, so the mechanism is pinned at
+         * the source level (the GLM6 #14 precedent): every step handler
+         * catches Throwable, none catches Exception.
+         */
+        $source = (string) file_get_contents(__DIR__ . '/../../bin/zai-live-probe.php');
+
+        $this->assertSame(2, preg_match_all('/catch \( Throwable \$e \)/', $source), 'Both step handlers must catch Throwable.');
+        $this->assertSame(0, preg_match_all('/catch \( Exception/', $source), 'No step handler may catch Exception only.');
     }
 
     /**
@@ -147,6 +173,41 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         $this->assertSame(DebugLogger::STATUS_TRANSPORT_ERROR, $entry['status']);
     }
 
+    public function testEngineErrorsFromTheClientAreLoggedWithStatusZeroToo()
+    {
+        /*
+         * GLM9 #7: the decorator caught only \Exception, so an \Error
+         * (a TypeError escaping the wrapped PSR-18 client) propagated
+         * without the status-0 entry the docblock promises for EVERY
+         * transport failure — the admin's request log showed no trace
+         * of the failed round trip. The catch is \Throwable now; the
+         * error still propagates untouched and its message is never
+         * logged.
+         */
+        update_option(DebugLogger::OPTION_ENABLED, '1');
+
+        $inner = new class implements HttpTransporterInterface {
+            public function send(Request $request, ?RequestOptions $options = null): Response
+            {
+                throw new \TypeError('engine exploded');
+            }
+        };
+
+        $request = new Request(HttpMethodEnum::GET(), 'https://api.z.ai/api/paas/v4/models');
+
+        try {
+            (new LoggingHttpTransporter($inner))->send($request);
+            $this->fail('Expected the engine Error to propagate.');
+        } catch (\TypeError $e) {
+            $this->assertSame('engine exploded', $e->getMessage());
+        }
+
+        $entries = DebugLogger::entries();
+        $entry = $entries[count($entries) - 1];
+        $this->assertSame(DebugLogger::STATUS_TRANSPORT_ERROR, $entry['status']);
+        $this->assertStringNotContainsString('engine exploded', wp_json_encode($entry), 'Thrown messages are never logged.');
+    }
+
     public function testRingBufferIsBounded()
     {
         update_option(DebugLogger::OPTION_ENABLED, '1');
@@ -197,6 +258,39 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         $this->assertCount(1, DebugLogger::entries());
     }
 
+    public function testEverySettingsFieldAttachesToARegisteredSection()
+    {
+        // Codex R6 #6: the debug field was attached to the old option-group
+        // section id, which no section registers — do_settings_sections()
+        // renders only fields of registered sections, so the checkbox had
+        // silently disappeared from Settings → z.ai.
+        $this->loadPlugin(__DIR__ . '/../../connectors/zai/zai.php', '\Deicod\WpConnectors\Zai\boot');
+        $this->asAdministrator();
+        do_action('admin_menu');
+
+        $sections = WpHarness::$settings_sections[PlanRegionSettings::PAGE_SLUG] ?? array();
+        $this->assertContains(PlanRegionSettings::SECTION_ID, $sections, 'The zai section must be registered.');
+        $this->assertContains(Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::SECTION_ID, $sections, 'The zai_anthropic section must be registered.');
+
+        $fields = WpHarness::$settings_fields[PlanRegionSettings::PAGE_SLUG] ?? array();
+        $this->assertNotEmpty($fields, 'Fields must be registered for the settings page.');
+
+        foreach ($fields as $sectionId => $fieldIds) {
+            $this->assertContains(
+                $sectionId,
+                $sections,
+                "Section {$sectionId} has fields but is never registered — do_settings_sections() would not render them."
+            );
+        }
+
+        // The one shared debug toggle renders on the zai provider's section.
+        $this->assertContains(
+            DebugLogger::OPTION_ENABLED,
+            $fields[PlanRegionSettings::SECTION_ID] ?? array(),
+            'The debug field must render on the registered zai section.'
+        );
+    }
+
     public function testDebugOptionIsRegisteredWithTheSettingsApi()
     {
         $this->loadPlugin(__DIR__ . '/../../connectors/zai/zai.php', '\Deicod\WpConnectors\Zai\boot');
@@ -229,6 +323,39 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         $this->assertSame('', (string) ob_get_clean());
     }
 
+    public function testTheLogViewerSkipsMalformedEntries()
+    {
+        /*
+         * glm18-5: entries() validates only the TOP level, so a scalar
+         * or null ENTRY (out-of-band code, a corrupt round trip — the
+         * option family's GLM5 #9 / glm13-13 hardening class) fatalled
+         * the settings page mid-render: on PHP 8+ $entry['at'] on a
+         * string throws outright; on 7.4 it warned per member and
+         * rendered 1970-01-01 rows. Only well-formed entries render;
+         * the rest of the list does.
+         */
+        update_option(DebugLogger::OPTION_LOG, array(
+            'a scalar entry',
+            null,
+            array('at' => 1750000000, 'method' => 'GET'), // Missing members.
+            array('at' => 1750000100, 'method' => array('nested'), 'url' => 'https://api.z.ai/z', 'status' => 200, 'duration_ms' => 1.0), // glm18-16: array-valued member.
+            array('at' => 1750000250, 'method' => 'GET', 'url' => 'https://api.z.ai/y', 'status' => 401, 'duration_ms' => 1.0),
+            array('at' => 1750000500, 'method' => 'POST', 'url' => 'https://api.z.ai/x', 'status' => 200, 'duration_ms' => 2.5),
+        ));
+
+        $this->asAdministrator();
+        ob_start();
+        DebugSettings::render_log();
+        $output = (string) ob_get_clean();
+
+        $this->assertStringContainsString('Recent z.ai requests', $output);
+        $this->assertSame(3, substr_count($output, '<tr>'), 'The header row plus only the two well-formed entries render.');
+        $this->assertStringContainsString('https://api.z.ai/x', $output);
+        $this->assertStringContainsString('https://api.z.ai/y', $output);
+        $this->assertStringNotContainsString('https://api.z.ai/z', $output, 'An array-valued member entry is malformed, not rendered.');
+        $this->assertStringNotContainsString('1970-01-01', $output, 'A malformed entry must not render as an epoch row.');
+    }
+
     /*
      * Plugin-row Settings link.
      */
@@ -256,12 +383,119 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         $directory = new Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory();
         $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $directory->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+
+        /*
+         * GLM12 #2: the probe's models response seeds the discovery
+         * transient, so the directory lookup right after it makes NO
+         * second request to the same URL — one logged GET, where this
+         * test previously pinned the double fetch.
+         */
+        $directory->listModelMetadata();
+
+        $statuses = array_map(static function (array $entry) {
+            return $entry['method'] . ' ' . $entry['status'];
+        }, DebugLogger::entries());
+        $this->assertSame(array('GET 200'), $statuses, 'A seeded discovery makes no second request.');
+
+        // The directory's OWN discovery request is logged the same way
+        // once the transient is cold again.
+        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings();
+        delete_transient(\Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::discovery_cache_id($endpoint->plan(), $endpoint->region()));
+
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
         $directory->listModelMetadata();
 
         $statuses = array_map(static function (array $entry) {
             return $entry['method'] . ' ' . $entry['status'];
         }, DebugLogger::entries());
-        $this->assertSame(array('GET 200', 'GET 200'), $statuses);
+        $this->assertSame(array('GET 200', 'GET 200'), $statuses, 'The directory-issued discovery request is logged too.');
+    }
+    public function testTheWrapHelperIsIdempotent()
+    {
+        /*
+         * GLM6 #13: the idempotent wrap rule (install the debug logger,
+         * never double-wrap) lived copy-pasted in five setHttpTransporter()
+         * overrides; the one shared helper owns it now. This pins the two
+         * behaviors every override relies on: a plain transporter is
+         * wrapped, the decorator itself passes through unchanged.
+         */
+        $plain = AiClient::defaultRegistry()->getHttpTransporter();
+
+        $wrapped = LoggingHttpTransporter::wrap($plain);
+        $this->assertInstanceOf(LoggingHttpTransporter::class, $wrapped, 'A plain transporter is wrapped.');
+
+        $this->assertSame($wrapped, LoggingHttpTransporter::wrap($wrapped), 'The decorator itself is never double-wrapped.');
+    }
+
+    public function testADisabledChangeWithANonScalarPayloadStillClearsTheLog()
+    {
+        /*
+         * glm13-13: the enabled-change hook compared its payload with a
+         * bare (string) cast — a non-scalar payload from out-of-band code
+         * (update_option() with an array, CLI, a corrupt round trip)
+         * raised an Array-to-string conversion warning and, on installs
+         * whose error handler throws, aborted the hook before the log
+         * clear. The comparison rides the shared is_scalar-guarded
+         * option_values_equal() helper (GLM5 #9) now: the clear still
+         * runs (the failure direction was always the safe one) and no
+         * coercion happens.
+         */
+        update_option(DebugLogger::OPTION_LOG, array(
+            array('at' => 1700000000, 'method' => 'POST', 'url' => 'https://example.test/v1', 'status' => 200, 'duration_ms' => 12),
+        ), false);
+        $this->assertNotSame(array(), DebugLogger::entries(), 'Fixture: a log entry exists.');
+
+        DebugSettings::handle_enabled_change('1', array('enabled' => 1));
+
+        $this->assertSame(array(), DebugLogger::entries(), 'The log must clear for a non-scalar disabled payload.');
+        $this->assertFalse(get_option(DebugLogger::OPTION_LOG, false), 'No log option may survive the clear.');
+    }
+
+    public function testBothModelSurfacesShareTheOneGenerationBoundaryTrait()
+    {
+        /*
+         * GLM9 #11: generate_text() and setHttpTransporter()'s logging
+         * wrap were byte-identical between the two model classes
+         * (different SDK parents, so no common base is possible), and
+         * the credential-gate sequence differed only in its wiring —
+         * they live in the one SafeGenerationBoundary trait now, a
+         * sibling of ThrowsSafeHttpErrors, with each surface owning
+         * only its two wiring hooks. This pin holds the structure: both
+         * classes use the trait, and each surface's
+         * credential_gate_availability() hook routes to ITS OWN
+         * availability class (one provider's gate must never consult
+         * the other's verdict state).
+         */
+        $zai_model = $this->model();
+        $this->primeZaiAnthropicDiscoveryTransient();
+        $anthropic_model = \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3');
+
+        foreach (array(
+            'zai' => array($zai_model, 'Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability'),
+            'zai_anthropic' => array($anthropic_model, 'Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability'),
+        ) as $label => $surface) {
+            $model = $surface[0];
+            $availability_class = $surface[1];
+
+            $this->assertContains(
+                'Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary',
+                class_uses($model) ?: array(),
+                "[{$label}] The model surface must take the shared generation boundary."
+            );
+
+            $gate = \Closure::bind(
+                static function () use ($model) {
+                    return $model->credential_gate_availability();
+                },
+                null,
+                get_class($model)
+            );
+
+            $this->assertInstanceOf(
+                $availability_class,
+                $gate(),
+                "[{$label}] The credential-gate hook routes to this surface's own availability class."
+            );
+        }
     }
 }

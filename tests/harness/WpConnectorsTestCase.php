@@ -15,7 +15,13 @@ declare(strict_types=1);
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Messages\DTO\Message;
+use WordPress\AiClient\Messages\DTO\MessagePart;
+use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Providers\Http\HttpTransporter;
+use WordPress\AiClient\Providers\Models\DTO\ModelConfig;
+use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 
 abstract class WpConnectorsTestCase extends TestCase
 {
@@ -234,17 +240,72 @@ abstract class WpConnectorsTestCase extends TestCase
      * Tests that only mock the chat/completions transport call this first,
      * so no unexpected /models attempt disturbs their recorded requests.
      *
+     * glm15-12: the transient id rides the endpoint layer's one owner
+     * (discovery_cache_id()) — the hand-composed CACHE_PREFIX . md5()
+     * mirror this harness carried was the composition copy the whole
+     * repo had already migrated off; if the composition ever changes,
+     * the primed transients must stop matching what the directories
+     * read in the same edit, not ~31 call sites later.
+     *
      * @param list<string> $ids Model IDs to advertise (default glm-5.3).
      * @return void
      */
     protected function primeZaiDiscoveryTransient(array $ids = array( 'glm-5.3' ))
     {
+        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings();
+
         set_transient(
-            \Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::CACHE_PREFIX
-                . md5( \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() ),
+            \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
             $ids,
-            \Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::DISCOVERY_TTL
+            \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::DISCOVERY_TTL
         );
+    }
+
+    /**
+     * Primes the zai_anthropic discovery transient for the CURRENT endpoint.
+     *
+     * Same purpose as primeZaiDiscoveryTransient() for the second provider:
+     * tests that only mock the /v1/messages transport call this first, so no
+     * unexpected /v1/models attempt disturbs their recorded requests. The
+     * transient id rides the endpoint layer's one owner too (glm15-12).
+     *
+     * @param list<string> $ids Model IDs to advertise (default glm-5.3).
+     * @return void
+     */
+    protected function primeZaiAnthropicDiscoveryTransient(array $ids = array( 'glm-5.3' ))
+    {
+        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings();
+
+        set_transient(
+            \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
+            $ids,
+            \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::DISCOVERY_TTL
+        );
+    }
+
+    /**
+     * Reads a private SSE aggregator state field (glm19-11).
+     *
+     * The aggregators' observability getters (is_done()/event_count()/
+     * malformed_count()) were a public API only tests called and are
+     * deleted; the DONE/EVENT-COUNT/TERMINATED state stays internal
+     * (the aggregation gates read it), so the pins that assert
+     * termination or event accounting read the field through
+     * reflection — no production surface widened.
+     *
+     * @param object $aggregator The aggregator instance.
+     * @param string $field      The private field name ('done', 'event_count', 'terminated').
+     * @return mixed The field value.
+     */
+    protected function aggregator_state($aggregator, string $field)
+    {
+        $property = new \ReflectionProperty($aggregator, $field);
+        if (PHP_VERSION_ID < 80100) {
+            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
+            $property->setAccessible(true);
+        }
+
+        return $property->getValue($aggregator);
     }
 
     /**
@@ -276,6 +337,75 @@ abstract class WpConnectorsTestCase extends TestCase
     {
         $this->assertSame(array(), WpHarness::$http_attempts, 'Unexpected wp_remote_* attempts.');
         $this->assertSame(array(), WpHarness::$sdk_http_attempts, 'Unexpected SDK transport attempts.');
+    }
+
+    /*
+     * ---------------------------------------------------------------
+     * Directory-suite helpers (glm15-19: the selectEndpoint()/idList()
+     * twins lived privately in both directory suites, one settings class
+     * apart, with docblocks already drifted from their assertions).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Writes one surface's plan/region options — the endpoint selection
+     * the directories' discovery-cache ids key on.
+     *
+     * @param string $settings_class The surface's settings class (PlanRegionSettings::class / ZaiAnthropicPlanRegionSettings::class).
+     * @param string $plan           One of the surface's plans.
+     * @param string $region         One of the surface's regions.
+     * @return void
+     */
+    protected function selectEndpoint(string $settings_class, string $plan, string $region)
+    {
+        update_option($settings_class::OPTION_PLAN, $plan);
+        update_option($settings_class::OPTION_REGION, $region);
+    }
+
+    /**
+     * The model IDs of a metadata list.
+     *
+     * @param list<ModelMetadata> $models
+     * @return list<string>
+     */
+    protected function idList(array $models): array
+    {
+        return array_map(static function (ModelMetadata $m) {
+            return $m->getId();
+        }, $models);
+    }
+
+    /*
+     * ---------------------------------------------------------------
+     * WP core source loading (the core-path mapping suites).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Loads the real core prompt builder class file.
+     *
+     * glm15-18: this loader was a byte-identical copy in both surface
+     * mapping suites; a fix to the core-source lookup path or skip
+     * condition landing on one suite only made the zai and zai_anthropic
+     * core-builder tests silently skip or run against different core
+     * checkouts, diverging coverage of the same ErrorMapper/core-code
+     * path.
+     *
+     * @return class-string<WP_AI_Client_Prompt_Builder>
+     */
+    protected function corePromptBuilderClass(): string
+    {
+        $home = (string) getenv('HOME');
+        $wpRoot = (string) (getenv('WP_CONNECTORS_TEST_WP_ROOT') ?: ($home !== '' ? $home . '/wp-ai-research/wordpress' : ''));
+        $file = $wpRoot . '/wp-includes/ai-client/class-wp-ai-client-prompt-builder.php';
+
+        if ('' === $wpRoot || ! is_file($file)) {
+            $this->markTestSkipped('WP core source not found (set WP_CONNECTORS_TEST_WP_ROOT to the WordPress checkout).');
+        }
+
+        require_once $file;
+
+        return 'WP_AI_Client_Prompt_Builder';
     }
 
     /*
@@ -358,5 +488,146 @@ abstract class WpConnectorsTestCase extends TestCase
     public static function assertNotWPError($actual)
     {
         self::assertNotInstanceOf(WP_Error::class, $actual);
+    }
+
+    /*
+     * ---------------------------------------------------------------
+     * Request capture, snapshots, and pre-transport rejections
+     * (GLM12 #14 — hoisted from the byte-identical twin copies the two
+     * mapping suites carried, whose captureRequest had already forked
+     * once on the try/catch).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Directory holding this suite's committed request snapshots.
+     *
+     * The default is the shared snapshots directory; a suite with its
+     * own snapshot family overrides (the surface mapping suites use
+     * fixtures/snapshots/zai and fixtures/snapshots/zai-anthropic).
+     *
+     * @return string Absolute path, no trailing slash.
+     */
+    protected function snapshotDirectory(): string
+    {
+        return __DIR__ . '/../fixtures/snapshots';
+    }
+
+    /**
+     * Queues the one successful response captureRequest() drives its
+     * generation with. A suite whose surface parses a specific protocol
+     * overrides with that protocol's success body.
+     *
+     * @return void
+     */
+    protected function queueCaptureResponse()
+    {
+        $this->queueSdkResponse(200, array(), '');
+    }
+
+    /**
+     * The wired model the pre-transport rejection helper drives. A suite
+     * using assertRejectedBeforeTransport() overrides with its own
+     * provider's model (discovery transient primed, harness transporter,
+     * fixture key); the loud default catches a missing override instead
+     * of silently testing nothing.
+     *
+     * @param ModelConfig|null $config Optional model configuration.
+     * @return object The wired model.
+     */
+    protected function snapshotTestModel(?ModelConfig $config = null)
+    {
+        throw new RuntimeException(get_class($this) . ' must provide the rejection-helper model.');
+    }
+
+    /**
+     * Runs one generation and returns [url, decodedBody, headers] of the
+     * single recorded request.
+     *
+     * GLM12 #14: the twin copies are reconciled on the explicit
+     * pre-transport-failure branch — an InvalidArgumentException from
+     * the guarded mapping surfaces as a named failure, not an uncaught
+     * error.
+     *
+     * @param list<Message> $prompt Prompt to send.
+     * @param object        $model  A wired text-generation model.
+     * @return array{0: string, 1: array, 2: array}
+     */
+    protected function captureRequest(array $prompt, $model): array
+    {
+        $this->queueCaptureResponse();
+
+        try {
+            $model->generateTextResult($prompt);
+        } catch (InvalidArgumentException $e) {
+            // The captured body is still available; surface it for debugging.
+            $this->fail('Request failed pre-transport or in parsing: ' . $e->getMessage());
+        }
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts);
+
+        return array(
+            $attempts[0]['url'],
+            (array) json_decode((string) $attempts[0]['body'], true),
+            $attempts[0]['headers'],
+        );
+    }
+
+    /**
+     * Asserts the captured request equals the committed snapshot.
+     *
+     * Snapshots are created on first run (the test skips that run and
+     * must be re-run to verify); headers are excluded by construction
+     * and the credential invariants are asserted regardless.
+     *
+     * @param string $name  Snapshot name.
+     * @param string $url   Request URL.
+     * @param array  $body  Decoded request body.
+     * @return void
+     */
+    protected function assertMatchesSnapshot(string $name, string $url, array $body)
+    {
+        $path = $this->snapshotDirectory() . '/' . $name . '.json';
+        $snapshot = array('url' => $url, 'body' => $body);
+
+        if (!is_file($path)) {
+            @mkdir(dirname($path), 0755, true);
+            file_put_contents($path, json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+            $this->markTestSkipped("Snapshot {$name} created; re-run to verify.");
+        }
+
+        $this->assertSame(
+            $snapshot,
+            (array) json_decode((string) file_get_contents($path), true),
+            "Captured request drifted from snapshot {$name}."
+        );
+
+        // Snapshots never contain credentials (headers are excluded by
+        // construction; assert the invariant anyway).
+        $this->assertStringNotContainsString('Bearer', (string) file_get_contents($path));
+        $this->assertStringNotContainsString('Authorization', (string) file_get_contents($path));
+    }
+
+    /**
+     * Asserts the configuration is rejected before any transport work,
+     * with the given needle in its message.
+     *
+     * @param ModelConfig $config The configuration under test.
+     * @param string      $needle Expected message fragment.
+     * @return void
+     */
+    protected function assertRejectedBeforeTransport(ModelConfig $config, string $needle)
+    {
+        try {
+            $this->snapshotTestModel($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail("Config containing '{$needle}' must be rejected.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString($needle, $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
     }
 }

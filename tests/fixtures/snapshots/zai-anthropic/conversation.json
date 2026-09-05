@@ -1,0 +1,42 @@
+{
+    "url": "https://api.z.ai/api/anthropic/v1/messages",
+    "body": {
+        "model": "glm-5.3",
+        "max_tokens": 128,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hello."
+                    }
+                ]
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Hi!"
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Bye."
+                    }
+                ]
+            }
+        ],
+        "system": "You are terse.",
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "stop_sequences": [
+            "END"
+        ]
+    }
+}

@@ -49,6 +49,27 @@ final class LoggingHttpTransporter implements HttpTransporterInterface {
 	}
 
 	/**
+	 * Wraps the transporter unless it already IS the logging decorator
+	 * (GLM6 #13).
+	 *
+	 * The idempotent wrap rule — install the debug logger on whatever
+	 * transporter arrives, never double-wrap — was copy-pasted in five
+	 * setHttpTransporter() overrides (both models, both metadata
+	 * directories, the availability base); a change to the rule would
+	 * have had to land in five places in lockstep, the exact drift
+	 * pattern the shared-support extractions exist to stop. Each override
+	 * now delegates here in one line.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param HttpTransporterInterface $transporter Transporter to install.
+	 * @return HttpTransporterInterface The transporter, wrapped when needed.
+	 */
+	public static function wrap( HttpTransporterInterface $transporter ): HttpTransporterInterface {
+		return $transporter instanceof self ? $transporter : new self( $transporter );
+	}
+
+	/**
 	 * Sends the request through the inner transporter, logging the round trip.
 	 *
 	 * @since 0.1.0
@@ -56,7 +77,7 @@ final class LoggingHttpTransporter implements HttpTransporterInterface {
 	 * @param Request             $request The request to send.
 	 * @param RequestOptions|null $options Optional transport options.
 	 * @return Response The response received.
-	 * @throws \Exception Whatever the inner transporter throws on failure.
+	 * @throws \Throwable Whatever the inner transporter throws on failure.
 	 */
 	public function send( Request $request, ?RequestOptions $options = null ): Response {
 		$method = (string) $request->getMethod()->value;
@@ -65,7 +86,16 @@ final class LoggingHttpTransporter implements HttpTransporterInterface {
 
 		try {
 			$response = $this->inner->send( $request, $options );
-		} catch ( \Exception $e ) {
+		} catch ( \Throwable $e ) {
+			/*
+			 * GLM9 #7: \Throwable, not \Exception — an \Error (a
+			 * TypeError escaping the wrapped PSR-18 client, say)
+			 * propagated without the status-0 entry the class docblock
+			 * promises for EVERY transport failure, so the admin's
+			 * request log showed no trace of the failed round trip.
+			 * The throwable is re-thrown untouched either way (its
+			 * message is never logged).
+			 */
 			DebugLogger::log( $method, $url, DebugLogger::STATUS_TRANSPORT_ERROR, ( microtime( true ) - $start ) * 1000 );
 
 			throw $e;

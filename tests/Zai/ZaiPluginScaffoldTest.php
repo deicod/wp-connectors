@@ -50,15 +50,12 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
         $this->assertTrue(AiClient::defaultRegistry()->hasProvider('zai'));
     }
 
-    public function testRegistersOnlyTheZaiProviderInMilestone1()
+    public function testRegistersBothProvidersInMilestone2()
     {
         $this->bootPlugin();
 
         $this->assertTrue(AiClient::defaultRegistry()->hasProvider('zai'));
-        $this->assertFalse(
-            AiClient::defaultRegistry()->hasProvider('zai_anthropic'),
-            'zai_anthropic belongs to Milestone 2 and must not be registered yet.'
-        );
+        $this->assertTrue(AiClient::defaultRegistry()->hasProvider('zai_anthropic'));
     }
 
     public function testRegistersWithAFreshRegistryWithoutDuplicating()
@@ -70,7 +67,8 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
         Plugin::register($fresh);
 
         $this->assertTrue($fresh->hasProvider('zai'));
-        $this->assertSame(array('zai'), $fresh->getRegisteredProviderIds());
+        $this->assertTrue($fresh->hasProvider('zai_anthropic'));
+        $this->assertSame(array('zai', 'zai_anthropic'), $fresh->getRegisteredProviderIds());
     }
 
     /*
@@ -79,6 +77,18 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
 
     public function testPluginHeaderAcceptsStandaloneSdkSites()
     {
+        /*
+         * glm16-12: ZAI_VERSION is defined only by loading zai.php — the
+         * PSR-4 autoloader cannot provide constants — so this test errors
+         * under --order-by=random (the canonical composer test invocation
+         * since glm15-1) whenever it runs before any bootPlugin() test.
+         * Loading the plugin file here (the harness's require_once, no
+         * boot) makes the constant deterministic under every order; the
+         * subprocess twin below keeps the LOAD-TIME behavior checks
+         * isolated as before.
+         */
+        $this->loadPlugin(self::PLUGIN_FILE);
+
         $source = (string) file_get_contents(self::PLUGIN_FILE);
 
         $this->assertSame(1, preg_match('/^\s*\*?\s*Requires at least:\s*(.+)$/mi', $source, $requires));
@@ -97,6 +107,40 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
     /*
      * Missing SDK: the guarded bootstrap must no-op without fatals.
      */
+
+    public function testAForeignVersionConstantDoesNotEmitARedefinitionNotice()
+    {
+        /*
+         * GLM5 #15: ZAI_VERSION was defined without a defined() guard, so
+         * any other plugin/theme defining the same generic constant first
+         * emitted an E_NOTICE on every request and this plugin silently
+         * reported the foreign version. Verified in a subprocess: the
+         * plugin file is already loaded in this process, and the guard's
+         * effect is only observable at load time.
+         */
+        $script = ''
+            . 'define("ABSPATH", "/tmp/");'
+            . 'define("ZAI_VERSION", "9.9-foreign");'
+            . 'function add_action(...$args) {}'
+            . 'function add_filter(...$args) {}'
+            . 'function plugin_basename($file) { return $file; }'
+            . 'require ' . var_export(self::PLUGIN_FILE, true) . ';'
+            . 'echo "ZAI_VERSION=" . ZAI_VERSION;'
+            . '';
+
+        $command = escapeshellarg(PHP_BINARY)
+            . ' -d error_reporting=-1 -d display_errors=1 -r '
+            . escapeshellarg($script)
+            . ' 2>&1';
+
+        exec($command, $output_lines, $exit_code);
+        $output = implode("\n", $output_lines);
+
+        $this->assertSame(0, $exit_code, "Loading with a foreign ZAI_VERSION must not fatal: {$output}");
+        $this->assertStringNotContainsString('already defined', $output, 'No constant-redefinition notice may be emitted.');
+        $this->assertStringNotContainsString('Notice', $output, 'No notice may be emitted at load time.');
+        $this->assertStringContainsString('ZAI_VERSION=9.9-foreign', $output, 'The foreign value stands (the guarded define is skipped): the guard exists to stop the per-request notice, not to fight the collision.');
+    }
 
     public function testMissingSdkBootstrapIsASafeNoOp()
     {
@@ -159,5 +203,31 @@ PHP;
         $this->assertTrue(AiClient::defaultRegistry()->hasProvider('zai'));
         $this->assertSame(3, did_action('init'));
         $this->assertNoDoingItWrong();
+    }
+
+    public function testBootWiresEverySurfaceThroughTheOneSurfaceList()
+    {
+        /*
+         * glm15-13 (source pin): boot() iterates one SDK-free surface
+         * list — the per-surface hook block was copy-pasted (~7
+         * update/add-option hooks per surface plus the page/section
+         * asymmetry), and one missed copied line was exactly the
+         * stranded-invalidation bug class the file's own GLM5 #14
+         * comments document. Each surface class may appear in the list
+         * exactly once; every per-surface hook rides the foreach (the
+         * behavioral coverage above pins the wired hooks themselves).
+         */
+        $source = (string) file_get_contents(self::PLUGIN_FILE);
+
+        $this->assertStringContainsString('$surface_settings = array(', $source, 'boot() declares the one surface list.');
+        foreach (array('PlanRegionSettings::class', 'ZaiAnthropicPlanRegionSettings::class') as $surface) {
+            $this->assertSame(
+                1,
+                preg_match_all('/(?<![A-Za-z])' . preg_quote($surface, '/') . ',/', $source),
+                "{$surface} is a list entry exactly once, never a copy-pasted hook block."
+            );
+        }
+        $this->assertStringContainsString("foreach ( \$surface_settings as \$settings_class )", $source, 'The per-surface hooks ride the list iteration.');
+        $this->assertStringContainsString("foreach ( \$surface_settings as \$index => \$settings_class )", $source, 'The page-owner asymmetry rides the list order.');
     }
 }

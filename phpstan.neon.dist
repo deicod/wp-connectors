@@ -15,3 +15,47 @@ parameters:
 	# the same stubs the test harness loads).
 	bootstrapFiles:
 		- tests/harness/wp-stubs.php
+	ignoreErrors:
+		# GLM6 #12: the three shared bases reference CHILD-owned identifier
+		# constants through static:: by design — a provider child that
+		# forgets a declaration fails LOUDLY (undefined-constant fatal on a
+		# test-covered path) instead of silently inheriting a sibling
+		# provider's option names. PHPStan's type system cannot express
+		# abstract class constants (interface constants are treated as
+		# final, so the usual workaround is unavailable), so these accesses
+		# are suppressed HERE, pinned to their exact counts: a new or
+		# removed static:: identifier access in these files changes the
+		# count and fails analysis, forcing a conscious decision. The
+		# children's declarations are pinned by reflection tests instead.
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Settings/AbstractPlanRegionSettings.php
+			# GLM12 #10: +2 (the load-broken-install sweep fallback composes
+			# the discovery ids from static::CACHE_PREFIX/CACHE_SCOPE, the
+			# same constants the endpoint children alias).
+			# glm15-16: -2 (each enum field wrapper passes its option
+			# constant once into the shared renderer where two inline
+			# attribute reads used to spell it).
+			count: 26
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Availability/AbstractZaiProviderAvailability.php
+			# GLM10 #9 verifier round: +1 (refuse_discovery()'s label rides
+			# static::REFUSAL_LABEL like refuse_generation()'s already did).
+			# GLM12 #2: +1 (the discovery seed names the parser rejection
+			# through static::REFUSAL_LABEL too).
+			count: 13
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Provider/AbstractZaiProvider.php
+			count: 1
+		# GLM8 #10: the shared endpoint base reads the CHILD-owned
+		# identifier constants (matrix, suffixes, cache scope, settings
+		# class, rejection label) through static:: by the same GLM6 #12
+		# design — a child that forgets a declaration fails LOUDLY, and
+		# the children's declarations are pinned by reflection tests
+		# (see ZaiEndpointResolverTest).
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Endpoints/AbstractZaiEndpoint.php
+			count: 9

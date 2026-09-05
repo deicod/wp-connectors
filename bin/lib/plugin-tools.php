@@ -14,14 +14,126 @@ declare(strict_types=1);
 /**
  * Strips docblock and line comments so checks only see functional code.
  *
+ * glm15-2: comment removal is TOKEN-based (token_get_all), not regex —
+ * the previous regex strip also deleted comment-LOOKING lines inside
+ * string and heredoc bodies, so text a plugin merely prints was judged
+ * as PHP. Comment bytes become SPACES, preserving every byte offset in
+ * the file: statements and offsets sliced from the stripped source line
+ * up with the original exactly.
+ *
+ * glm17-14: a comment token's trailing line terminator is PRESERVED,
+ * not blanked. On PHP < 8.0 the tokenizer includes the newline in
+ * T_COMMENT (8.0+ emits it as separate whitespace), so blanking the
+ * whole token joined the next line onto the comment's line in this
+ * view — un-anchoring every ^-anchored line scan on those runtimes
+ * (the unused-import scanner's /^use/m silently missed real dead
+ * imports on the composer-pinned 7.4 floor; empirically confirmed in
+ * the glm17 verifier round). Keeping the terminator byte verbatim
+ * preserves length, so the offset invariant above is untouched, and
+ * on PHP 8.0+ this branch is a no-op (the token carries no newline).
+ *
  * @param string $source PHP source.
- * @return string Source with comments removed.
+ * @return string Source with comments replaced by spaces (same length;
+ *                 any line terminator inside the comment token stays).
  */
 function wp_connectors_strip_comments($source)
 {
-    $withoutDocblocks = (string) preg_replace('#/\*.*?\*/#s', '', $source);
+    $stripped = '';
+    foreach (token_get_all($source) as $token) {
+        $id = is_array($token) ? $token[0] : null;
+        $text = is_array($token) ? $token[1] : $token;
 
-    return (string) preg_replace('/^\s*(?:\*|\/\/|#).*$/m', '', $withoutDocblocks);
+        if (T_COMMENT === $id || T_DOC_COMMENT === $id) {
+            $terminator = preg_match('/(?:\r\n|\n|\r)\z/', $text, $tail) ? $tail[0] : '';
+            $stripped .= str_repeat(' ', strlen($text) - strlen($terminator)) . $terminator;
+            continue;
+        }
+
+        $stripped .= $text;
+    }
+
+    return $stripped;
+}
+
+/**
+ * Blanks string and heredoc CONTENTS so code-shape scans see only code.
+ *
+ * glm15-2: the include/assignment/signature analyses were regexes over
+ * comment-stripped source, so a '$var = ...;' or 'function' or
+ * 'require ...;' written inside a quoted string or heredoc counted as
+ * real code — a phantom assignment could satisfy (or poison) a variable
+ * include's resolution and phantom includes were analyzed as
+ * statements. This returns a copy of the SAME LENGTH where every byte
+ * belonging to a string region — single/double-quoted literals, heredoc
+ * and nowdoc bodies, and {$...} interpolations inside them — is a
+ * space. Real code keeps its bytes and its offsets, so matches found on
+ * the masked copy slice the true statement text out of the original.
+ *
+ * @param string $code PHP source (comment-stripping optional).
+ * @return string Same-length copy with string contents blanked.
+ */
+function wp_connectors_mask_string_contents($code)
+{
+    $masked = '';
+    $in_heredoc = false;
+    $in_interpolated = false;
+    $curly = 0;
+
+    foreach (token_get_all($code) as $token) {
+        $id = is_array($token) ? $token[0] : null;
+        $text = is_array($token) ? $token[1] : $token;
+
+        if (T_START_HEREDOC === $id) {
+            $masked .= str_repeat(' ', strlen($text));
+            $in_heredoc = true;
+            continue;
+        }
+        if (T_END_HEREDOC === $id) {
+            $masked .= str_repeat(' ', strlen($text));
+            $in_heredoc = false;
+            continue;
+        }
+
+        $in_string = $in_heredoc || $in_interpolated || $curly > 0;
+
+        if (T_CURLY_OPEN === $id || T_DOLLAR_OPEN_CURLY_BRACES === $id) {
+            ++$curly;
+            $masked .= str_repeat(' ', strlen($text));
+            continue;
+        }
+        if ($curly > 0 && '{' === $token) {
+            ++$curly;
+        } elseif ($curly > 0 && '}' === $token) {
+            --$curly;
+        }
+        if (T_CONSTANT_ENCAPSED_STRING === $id || T_ENCAPSED_AND_WHITESPACE === $id) {
+            // Simple literals anywhere; content chunks of heredocs and
+            // interpolated strings (the quotes ride these tokens except
+            // for the opening double quote of an interpolated string).
+            $masked .= str_repeat(' ', strlen($text));
+            continue;
+        }
+        if ($in_string) {
+            // Interpolated variables, operator/object tokens inside
+            // {$...}, and the structural quotes/braces: masked.
+            if ($in_interpolated && 0 === $curly && '"' === $token) {
+                $in_interpolated = false;
+            }
+            $masked .= str_repeat(' ', strlen($text));
+            continue;
+        }
+        if ('"' === $token) {
+            // A bare double quote opens an interpolated string (a simple
+            // one was swallowed whole as T_CONSTANT_ENCAPSED_STRING).
+            $in_interpolated = true;
+            $masked .= ' ';
+            continue;
+        }
+
+        $masked .= $text;
+    }
+
+    return $masked;
 }
 
 /**
@@ -356,12 +468,352 @@ function wp_connectors_include_runtime_segments($statement)
 }
 
 /**
+ * The byte offset closing the brace opened at $open, or end-of-file when
+ * unbalanced (glm18-17: the walk the visibility spans share).
+ *
+ * @param string $masked String-masked source (strings blank, code braces only).
+ * @param int    $open   Offset of the opening '{'.
+ * @return int Offset of the matching '}' (or the last byte).
+ */
+function wp_connectors_matching_brace_end($masked, $open)
+{
+    $length = strlen($masked);
+    $depth = 0;
+    for ($i = $open; $i < $length; ++$i) {
+        if ('{' === $masked[ $i ]) {
+            ++$depth;
+        } elseif ('}' === $masked[ $i ]) {
+            --$depth;
+            if (0 === $depth) {
+                return $i;
+            }
+        }
+    }
+
+    return $length - 1;
+}
+
+/**
+ * The byte offset closing the paren opened at $open, or false when
+ * unbalanced (glm18-17: the walk the visibility spans share).
+ *
+ * @param string $masked String-masked source.
+ * @param int    $open   Offset of the opening '('.
+ * @return int|false Offset of the matching ')', or false.
+ */
+function wp_connectors_matching_paren_end($masked, $open)
+{
+    $length = strlen($masked);
+    $depth = 0;
+    for ($i = $open; $i < $length; ++$i) {
+        if ('(' === $masked[ $i ]) {
+            ++$depth;
+        } elseif (')' === $masked[ $i ]) {
+            --$depth;
+            if (0 === $depth) {
+                return $i;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
+ * The byte regions whose variable writes an include at $offset can read
+ * (glm18-7).
+ *
+ * Straight-line execution reads only writes placed BEFORE the include —
+ * but inside a loop the include also sits in, that ordering inverts: a
+ * write placed later in the loop body still executes before the
+ * include's NEXT iteration, so a plain "before the offset" cut models
+ * straight-line execution only and let loop shapes launder foreign
+ * include paths past the gate (round 18: a while-loop reassignment
+ * placed after the require produced zero violations while the second
+ * iteration included an out-of-root marker, empirically confirmed). The
+ * visible region is [0, $offset) plus the span of every loop construct
+ * that CONTAINS $offset.
+ *
+ * glm18-17 (verifier round): a do-while's span covers its TRAILING
+ * condition too — the construct re-executes `while (cond);` after every
+ * pass, so a write in the tail executes after the include each
+ * iteration and is read by its next pass (the round-18 form ended the
+ * span at the body's closing brace and the tail laundered, empirically
+ * confirmed); a BRACELESS do (`do require ...; while (cond);`) is
+ * matched as well and over-approximates to end-of-file.
+ *
+ * glm18-19 (verifier round): FUNCTION-declaration spans join the set —
+ * recursion and repeated callback invocation re-enter a body, so every
+ * write in the enclosing function of an include is visible to it,
+ * before or after the include's own position.
+ *
+ * Every span is OVER-approximated: a braced body closes at its matching
+ * brace on the string-masked view (string/heredoc contents are blank,
+ * so the depth count only sees code braces), and any shape we do not
+ * confidently parse — an alternative-syntax body (while: … endwhile;),
+ * a braceless single-statement body, a tail whose parens we cannot
+ * close — extends to end-of-file instead. A wider region can only
+ * refuse more proofs, never launder one.
+ *
+ * @param string $masked String-masked source (same length as the code).
+ * @param int    $offset Byte offset the include statement starts at.
+ * @return list<array{0: int, 1: int}> Inclusive [start, end] byte ranges.
+ */
+function wp_connectors_write_visibility_spans($masked, $offset)
+{
+    $spans = array(array(0, max(0, $offset - 1)));
+    $length = strlen($masked);
+
+    if (! preg_match_all('/\b(?:while|for|foreach)\s*\(|\bdo\s*\{|\bdo\b(?!\s*\{)|\bfunction\b/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
+        return $spans;
+    }
+
+    foreach ($loops[0] as $loop) {
+        $construct = $loop[0];
+        $last = $loop[1] + strlen($construct) - 1; // Position of '(' or '{', or the keyword's last letter.
+
+        if ('n' === $construct[ strlen($construct) - 1 ]) {
+            /*
+             * A function/method/closure declaration (glm18-19, verifier
+             * round): recursion and repeated callback invocation are
+             * backward edges the loop spans do not model — a write
+             * placed after the include inside a function that re-enters
+             * executes before the include's NEXT activation (round 18:
+             * the recursion fixture laundered a foreign path,
+             * empirically confirmed). Every write in the enclosing
+             * function's body is therefore visible to an include
+             * inside it. A bodyless declaration (interface/abstract —
+             * a ';' before any '{') bounds nothing; a body brace we
+             * cannot close falls to the shared EOF approximation.
+             */
+            $j = $loop[1] + strlen($construct);
+            $body_open = false;
+            while ($j < $length) {
+                if (';' === $masked[ $j ]) {
+                    break; // Bodyless declaration: no body to span.
+                }
+                if ('{' === $masked[ $j ]) {
+                    $body_open = $j;
+                    break;
+                }
+                ++$j;
+            }
+            if (false === $body_open) {
+                continue;
+            }
+            $body_close = wp_connectors_matching_brace_end($masked, $body_open);
+
+            if ($offset >= $loop[1] && $offset <= $body_close) {
+                $spans[] = array($loop[1], $body_close);
+            }
+            continue;
+        }
+
+        if ('o' === $construct[ strlen($construct) - 1 ]) {
+            // A braceless `do statement; while (...);`: the single-statement
+            // body and the tail cannot be bounded textually — EOF.
+            if ($offset >= $loop[1]) {
+                $spans[] = array($loop[1], $length - 1);
+            }
+            continue;
+        }
+
+        if ('{' === $masked[ $last ]) {
+            // A braced `do { ... } while (cond);`.
+            $body_close = wp_connectors_matching_brace_end($masked, $last);
+
+            if ($body_close < $length - 1) {
+                /*
+                 * glm18-17: extend through the trailing condition — its
+                 * re-execution each pass makes tail writes visible to an
+                 * include inside the body. Anything unparsable after the
+                 * body falls to the EOF approximation below.
+                 */
+                $j = $body_close + 1;
+                while ($j < $length && ctype_space($masked[ $j ])) {
+                    ++$j;
+                }
+                if (0 === stripos((string) substr($masked, $j, 5), 'while')) {
+                    $paren = strpos($masked, '(', $j);
+                    $tail_close = false === $paren ? false : wp_connectors_matching_paren_end($masked, $paren);
+                    if (false !== $tail_close) {
+                        $body_close = $tail_close;
+                    } else {
+                        $body_close = $length - 1;
+                    }
+                }
+            }
+
+            if ($offset >= $loop[1] && $offset <= $body_close) {
+                $spans[] = array($loop[1], $body_close);
+            }
+            continue;
+        }
+
+        // while/for/foreach: walk the header parens to the matching close.
+        $header_close = wp_connectors_matching_paren_end($masked, $last);
+
+        if (false === $header_close) {
+            continue; // A header we cannot close bounds nothing.
+        }
+        $j = $header_close + 1;
+        while ($j < $length && ctype_space($masked[ $j ])) {
+            ++$j;
+        }
+        if ($j >= $length) {
+            continue;
+        }
+        if ('{' !== $masked[ $j ]) {
+            // Alternative-syntax or braceless body: unbounded (EOF).
+            if ($offset >= $loop[1]) {
+                $spans[] = array($loop[1], $length - 1);
+            }
+            continue;
+        }
+
+        $body_close = wp_connectors_matching_brace_end($masked, $j);
+
+        if ($offset >= $loop[1] && $offset <= $body_close) {
+            $spans[] = array($loop[1], $body_close);
+        }
+    }
+
+    return $spans;
+}
+
+/**
+ * Whether every textual WRITE to a variable visible to an include is a
+ * form the map-literal analysis models (GLM10 verifier round on #14).
+ *
+ * The synthetic foreach binding and the array-literal proof reason
+ * about the values a map variable's same-file assignments carry —
+ * which is only the set of runtime values when nothing else can write
+ * the map. Strict rule: every assignment-shaped write is a WHOLE-array
+ * array()/[] literal, and the variable never appears as an element
+ * access ($map[...] — read or write, element shapes are unmodeled), a
+ * list() target, an array-write helper argument, a by-reference
+ * binding, or inside a function signature (a parameter DEFAULT the
+ * assignment regex can mistake for the map's definition while the
+ * caller's argument wins at runtime). Any unrecognized shape refuses
+ * the proof, restoring the flagged default.
+ *
+ * @param string $code     Comment-stripped source of the file.
+ * @param string $variable Variable token, including the leading '$'.
+ * @param int    $offset   Byte offset the include starts at.
+ * @return bool True when only whole-array literal writes are visible to the include.
+ */
+function wp_connectors_array_writes_recognized($code, $variable, $offset)
+{
+    /*
+     * glm15-2: the write-shape scan runs on the string-masked copy, so
+     * '$map[...]', 'function ...(' or '$map = scalar;' text inside a
+     * quoted string or heredoc body can neither refuse a legitimate
+     * map-literal proof nor launder one (same length as $code, so the
+     * offsets are interchangeable).
+     *
+     * glm18-7: the scanned region is every region whose writes the
+     * include can read — the pre-include prefix plus any loop construct
+     * spanning the include (a write placed after it inside that loop
+     * still executes before the include's next iteration). Regions are
+     * concatenated; a seam can only splice unrelated fragments into a
+     * false match, which refuses the proof — the safe direction.
+     */
+    $masked = wp_connectors_mask_string_contents($code);
+    $before = '';
+    foreach (wp_connectors_write_visibility_spans($masked, $offset) as $span) {
+        $before .= (string) substr($masked, $span[0], $span[1] - $span[0] + 1);
+    }
+    $quoted = preg_quote($variable, '/');
+
+    // Element access, append, or element write: $map[...].
+    if (preg_match('/' . $quoted . '\s*\[/', $before)) {
+        return false;
+    }
+
+    // list() destructuring mentioning the map.
+    if (preg_match('/\blist\s*\([^)]*' . $quoted . '/i', $before)) {
+        return false;
+    }
+
+    // Array-write helpers.
+    if (preg_match('/(?:array_push|array_unshift|array_splice|unset)\s*\(\s*' . $quoted . '\b/i', $before)) {
+        return false;
+    }
+
+    // By-reference aliasing (a write channel through &$map).
+    if (preg_match('/=\s*&\s*' . $quoted . '\b/', $before)) {
+        return false;
+    }
+
+    // An occurrence inside a function signature (a parameter default).
+    if (preg_match_all('/\bfunction\b/i', $before, $functions, PREG_OFFSET_CAPTURE)) {
+        foreach ($functions[0] as $function) {
+            $open = strpos($before, '(', $function[1]);
+            if (false === $open) {
+                continue;
+            }
+            $depth = 0;
+            $length = strlen($before);
+            $close = $length - 1;
+            for ($i = $open; $i < $length; ++$i) {
+                $char = $before[ $i ];
+                if ($char === '(') {
+                    ++$depth;
+                } elseif ($char === ')') {
+                    --$depth;
+                    if (0 === $depth) {
+                        $close = $i;
+                        break;
+                    }
+                }
+            }
+            if (false !== strpos((string) substr($before, $function[1], $close - $function[1] + 1), $variable)) {
+                return false;
+            }
+        }
+    }
+
+    /*
+     * Every assignment-shaped write must be a whole-array literal.
+     * glm18-8: the operator alternation covers EVERY compound assignment
+     * form (+ = - = * = **= /= .= %= &= |= ^= <<= >>= ??=), not just =
+     * and .= — a '$map += $other;' union-merge was previously an
+     * INVISIBLE write channel, so the element-literal proof concluded
+     * all runtime values were the proven literals while the array union
+     * injected foreign entries (round 18 #8, empirically confirmed).
+     * The op tokens admit no internal whitespace in PHP, so no spacing
+     * variants are missed; comparisons (==, !=, <=, >=, =>) stay
+     * unmatched through the single-= lookahead and the op classes.
+     */
+    if (preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+);/', $before, $writes, PREG_SET_ORDER)) {
+        foreach ($writes as $write) {
+            if (! preg_match('/^(?:array\s*\(|\[)/i', trim($write[1]))) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
  * Same-file assignments to a variable that execute before a byte offset.
  *
  * The ONE assignment collector shared by the literal-free and the mixed
- * include analyses: statements of the shape `$x = …;` / `$x .= …;` whose
- * start precedes $offset (an assignment after the include cannot be read
- * by it).
+ * include analyses: statements of the shape `$x = …;`, `$x .= …;`, and
+ * every other compound-assignment form (glm18-8) whose start lies in a
+ * region the include can read a write from — before the include, or
+ * anywhere inside a loop construct that also contains it (glm18-7: a
+ * write after the include inside that loop still executes before the
+ * include's next iteration).
+ *
+ * GLM10 #14: a foreach VALUE binding is an assignment-shaped read —
+ * `foreach ($map as $k => $v)` hands $v every VALUE of $map — so it is
+ * also collected, as the synthetic assignment `$v = $map;` that the
+ * plain-variable analyses then resolve through $map's own same-file
+ * assignment (e.g. the uninstall owner chain's map of literal __DIR__
+ * paths). Bindings the foreach regex cannot parse are simply not
+ * collected: a variable include through them stays flagged.
  *
  * @param string $code     Comment-stripped source of the file.
  * @param string $variable Variable token, including the leading '$'.
@@ -370,14 +822,100 @@ function wp_connectors_include_runtime_segments($statement)
  */
 function wp_connectors_same_file_assignments($code, $variable, $offset)
 {
+    /*
+     * glm15-2: assignment POSITIONS are matched on the string-masked
+     * copy (same length as $code), so an assignment-shaped line inside
+     * a quoted string or heredoc body is never collected — a phantom
+     * in-string assignment could otherwise satisfy a variable include
+     * the runtime never resolves that way. The matched offsets slice
+     * the REAL statement (string literals intact) out of $code.
+     *
+     * glm18-7: an assignment placed AFTER the include is invisible only
+     * under straight-line execution — inside a loop the include also
+     * sits in, a later write still executes before the include's next
+     * iteration, so visibility rides the write-visibility spans (the
+     * pre-include prefix plus every spanning loop construct).
+     */
+    $masked = wp_connectors_mask_string_contents($code);
+    $spans  = wp_connectors_write_visibility_spans($masked, $offset);
+    $visible = static function (int $at) use ($spans): bool {
+        foreach ($spans as $span) {
+            if ($at >= $span[0] && $at <= $span[1]) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    /*
+     * glm18-18 (verifier round): a by-reference alias whose SOURCE is
+     * the variable — `$alias = &$var;` — is a write channel the
+     * assignment regex cannot see (the collector matches writes TO the
+     * variable, never writes THROUGH an alias), so one anywhere in the
+     * visible regions refuses the proof entirely — the same channel
+     * the map path's array_writes_recognized() has refused since the
+     * GLM10 #14 round. The plain-variable path refused nothing:
+     * `$alias = &$f; $alias = <foreign>; require $f;` laundered
+     * (empirically confirmed).
+     */
+    foreach ($spans as $span) {
+        if (preg_match('/=\s*&\s*' . preg_quote($variable, '/') . '\b/', (string) substr($masked, $span[0], $span[1] - $span[0] + 1))) {
+            return array();
+        }
+    }
+
+    /*
+     * glm18-8: the collector's operator alternation matches every
+     * compound assignment form too (the same set the write-shape check
+     * recognizes) — a '$map += $other;' write collected with its RHS
+     * keeps the every-assignment-must-prove rule covering the union:
+     * each value source (the prior whole writes, the unioned RHS) is
+     * analyzed separately, so a compound write can no longer hide.
+     */
     $assignments = array();
-    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\.)?=(?![=>])[^;]+;/', $code, $matches, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))[^;]+;/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
         foreach ($matches[0] as $assignment) {
-            if ($assignment[1] >= $offset) {
-                // Assigned after the include — the include cannot read it.
+            if (! $visible($assignment[1])) {
+                // Outside every region the include can read a write from.
                 continue;
             }
-            $assignments[] = $assignment[0];
+            $assignments[] = (string) substr($code, $assignment[1], strlen($assignment[0]));
+        }
+    }
+
+    if (preg_match_all('/foreach\s*\((.+?)\)\s*\{/', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
+        foreach ($foreaches[1] as $foreach_match) {
+            if (! $visible($foreach_match[1])) {
+                // The binding is outside every region the include reads.
+                continue;
+            }
+            $foreach = array((string) substr($code, $foreach_match[1], strlen($foreach_match[0])), $foreach_match[1]);
+            if (! preg_match('/^(.+?)\s+as\s+(.+)$/s', $foreach[0], $parts)) {
+                continue;
+            }
+            $value_variable = trim($parts[2]);
+            $arrow = strpos($value_variable, '=>');
+            if (false !== $arrow) {
+                $value_variable = trim((string) substr($value_variable, $arrow + 2));
+            }
+            if ($value_variable !== $variable) {
+                continue;
+            }
+            $source = trim($parts[1]);
+            if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $source)
+                && ! wp_connectors_array_writes_recognized($code, $source, $offset)) {
+                /*
+                 * Verifier round on GLM10 #14: the map can be written in
+                 * forms this analysis cannot model ($map[] appends,
+                 * element writes, a parameter default the caller's
+                 * argument overrides) — the analyzed value set would not
+                 * be a superset of the runtime values, so the binding is
+                 * refused and the include stays flagged.
+                 */
+                continue;
+            }
+            $assignments[] = $variable . ' = ' . $source . ';';
         }
     }
 
@@ -529,6 +1067,56 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
         $reasons = array();
         foreach ($assignments as $assignment) {
             $expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
+
+            /*
+             * GLM10 #14: an assignment whose value is an array() literal
+             * (the uninstall owner chain's map) or a plain VARIABLE bound
+             * by a foreach over one resolves through the map's own
+             * same-file literal — every element VALUE must prove in-root
+             * by the same literal analysis a direct include passes.
+             * Verifier round: only when the owned variable's writes are
+             * all whole-array literals (an element write or append the
+             * assignment collector cannot see would make the analyzed
+             * values a non-superset of the runtime ones); otherwise the
+             * literal falls through to the not-anchored rejection.
+             */
+            if (preg_match('/^(?:array\s*\(|\[)/i', $expression)
+                && wp_connectors_array_writes_recognized($code, $argument, $offset)) {
+                foreach (wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir) as $reason) {
+                    $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
+                }
+                continue;
+            }
+
+            if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $expression)) {
+                $inner_assignments = wp_connectors_same_file_assignments($code, $expression, $offset);
+                if ($inner_assignments === array()) {
+                    $reasons[] = sprintf('variable %s depends on %s with no resolvable same-file assignment', $argument, $expression);
+                    continue;
+                }
+                foreach ($inner_assignments as $inner_assignment) {
+                    $inner_expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($inner_assignment)), ';');
+                    if (preg_match('/^(?:array\s*\(|\[)/i', $inner_expression)
+                        && wp_connectors_array_writes_recognized($code, $expression, $offset)) {
+                        foreach (wp_connectors_array_literal_value_reasons($file, $code, $inner_expression, $offset, $pluginDir) as $reason) {
+                            $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
+                        }
+                        continue;
+                    }
+                    foreach (wp_connectors_include_expression_reasons($file, $inner_expression, $pluginDir) as $reason) {
+                        $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
+                    }
+                    // An inner assignment may itself mix the anchor with
+                    // runtime segments — the same per-segment proof the
+                    // direct case applies, or a trailing `$x` would ride
+                    // an anchored literal unnoticed.
+                    foreach (wp_connectors_runtime_segment_reasons($file, $code, $inner_expression, $offset, $pluginDir) as $reason) {
+                        $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
+                    }
+                }
+                continue;
+            }
+
             foreach (wp_connectors_include_expression_reasons($file, $expression, $pluginDir) as $reason) {
                 $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
             }
@@ -546,6 +1134,120 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
     $reasons = wp_connectors_include_expression_reasons($file, $argument, $pluginDir);
 
     return $reasons === array() ? array() : array( sprintf('expression %s', $reasons[0]) );
+}
+
+/**
+ * Reasons an array() literal's element VALUES cannot be proven in-root
+ * (GLM10 #14).
+ *
+ * The map shape the uninstall owner chain uses — one `$map = array( ... )`
+ * literal whose values are the include targets a foreach binds — is
+ * statically decidable exactly the way a direct include is: every element
+ * VALUE expression (the right side of a top-level `=>`, or a bare list
+ * element) must pass wp_connectors_include_expression_reasons(). The
+ * elements are split on depth-zero commas of a length-preserving
+ * string-blanked copy, so commas and arrows inside quoted keys or nested
+ * structures never cut an element.
+ *
+ * @param string $file       Absolute path of the file containing the literal.
+ * @param string $code       Comment-stripped source of that file.
+ * @param string $expression The array() / [] literal.
+ * @param int    $offset     Byte offset the include starts at.
+ * @param string $pluginDir  Absolute plugin directory.
+ * @return list<string> Violation reasons (empty when every value is provably in-root).
+ */
+function wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir)
+{
+    $inner = (string) preg_replace('/^(?:array\s*\(|\[)\s*/i', '', trim($expression));
+    $inner = (string) preg_replace('/\s*\)?\]?\s*$/', '', $inner);
+
+    // Blank string contents WITHOUT changing the byte length, so comma
+    // cut positions computed on the blanked copy slice the ORIGINAL.
+    $blanked = (string) preg_replace_callback(
+        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/s',
+        static function ($match) {
+            return '\'' . str_repeat('x', max(0, strlen($match[0]) - 2)) . '\'';
+        },
+        $inner
+    );
+
+    $elements = array();
+    $cut = -1;
+    $depth = 0;
+    $length = strlen($blanked);
+    for ($i = 0; $i < $length; ++$i) {
+        $char = $blanked[ $i ];
+        if ($char === '(' || $char === '[') {
+            ++$depth;
+        } elseif ($char === ')' || $char === ']') {
+            --$depth;
+        }
+        if ($char === ',' && $depth === 0) {
+            $elements[] = trim((string) substr($inner, $cut + 1, $i - $cut - 1));
+            $cut = $i;
+        }
+    }
+    $tail = trim((string) substr($inner, $cut + 1));
+    if ('' !== $tail) {
+        $elements[] = $tail;
+    }
+
+    $reasons = array();
+    $values = 0;
+    foreach ($elements as $element) {
+        if ('' === $element) {
+            continue;
+        }
+
+        // The VALUE side of a top-level `=>` (the arrow inside a nested
+        // structure sits below depth zero and never splits this element).
+        $element_blank = (string) preg_replace_callback(
+            '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/s',
+            static function ($match) {
+                return '\'' . str_repeat('x', max(0, strlen($match[0]) - 2)) . '\'';
+            },
+            $element
+        );
+        $depth = 0;
+        $value = $element;
+        $length = strlen($element_blank);
+        for ($i = 0; $i < $length - 1; ++$i) {
+            $char = $element_blank[ $i ];
+            if ($char === '(' || $char === '[') {
+                ++$depth;
+            } elseif ($char === ')' || $char === ']') {
+                --$depth;
+            }
+            if (0 === $depth && '=' === $char && '>' === $element_blank[ $i + 1 ]) {
+                $value = trim((string) substr($element, $i + 2));
+                break;
+            }
+        }
+
+        ++$values;
+        foreach (wp_connectors_include_expression_reasons($file, $value, $pluginDir) as $reason) {
+            $reasons[] = sprintf('includes a map value (%s) that %s', $value, $reason);
+        }
+
+        /*
+         * Verifier round on GLM10 #14: a value may itself mix the anchor
+         * with runtime segments (`__DIR__ . '/' . $page . '.php'`) — the
+         * literal analysis above passes it (anchored, carries a quoted
+         * literal), so the per-segment proof the direct-assignment branch
+         * applies must run here too, or routing an escaping expression
+         * through a map + foreach launders what a direct include is
+         * flagged for.
+         */
+        foreach (wp_connectors_runtime_segment_reasons($file, $code, $value, $offset, $pluginDir) as $reason) {
+            $reasons[] = sprintf('includes a map value (%s) that %s', $value, $reason);
+        }
+    }
+
+    if (0 === $values) {
+        return array( 'includes no element values' );
+    }
+
+    return $reasons;
 }
 
 /**
@@ -578,8 +1280,18 @@ function wp_connectors_self_containment_violations($pluginDir)
         $code = wp_connectors_strip_comments((string) file_get_contents($path));
         $relative = str_replace($pluginDir . '/', '', $path);
 
-        if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $code, $includes, PREG_OFFSET_CAPTURE)) {
-            foreach ($includes[0] as $include) {
+        /*
+         * glm15-2: the include keyword scan runs on the string-masked
+         * copy (same length as $code), so a 'require ...;' or
+         * '$x = ...;' written inside a quoted string or heredoc is never
+         * analyzed as a statement — matched offsets slice the REAL
+         * statement (literals intact) out of $code.
+         */
+        $masked = wp_connectors_mask_string_contents($code);
+
+        if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $masked, $includes, PREG_OFFSET_CAPTURE)) {
+            foreach ($includes[0] as $include_match) {
+                $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
                 if (preg_match_all('/[\'"]([^\'"]+)[\'"]/', $include[0], $literals)) {
                     foreach ($literals[1] as $literal) {
                         $dynamic = (strpos($literal, '${') !== false);

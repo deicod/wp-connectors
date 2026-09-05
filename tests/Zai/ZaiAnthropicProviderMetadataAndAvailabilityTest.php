@@ -1,0 +1,599 @@
+<?php
+/**
+ * Task 2.1 — zai_anthropic provider metadata and availability tests.
+ *
+ * Covers the second provider's metadata shapes, the invalid-key →
+ * not-connected criterion validated INDEPENDENTLY of the zai provider (its
+ * validated state can never establish this provider's status), and the
+ * persisted state binding/scoping rules.
+ *
+ * @package wp-connectors
+ */
+
+declare( strict_types=1 );
+
+use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
+use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
+use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
+use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
+use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
+
+final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
+{
+    /**
+     * Builds a standalone availability instance wired to the harness
+     * transporter with the given key.
+     *
+     * @param string $key API key (fixture value).
+     * @return ZaiAnthropicProviderAvailability
+     */
+    private function availability(string $key): ZaiAnthropicProviderAvailability
+    {
+        $instance = new ZaiAnthropicProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $instance->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        return $instance;
+    }
+
+    /*
+     * Provider metadata across SDK versions.
+     */
+
+    public function testMetadataShapeOnMinimumSdk()
+    {
+        $args = ZaiAnthropicProvider::provider_metadata_args('1.1.0');
+
+        $this->assertCount(5, $args);
+        $this->assertSame('zai_anthropic', $args[0]);
+        $this->assertSame('z.ai (Anthropic API)', $args[1]);
+        $this->assertSame('https://z.ai/manage/apikey/apikey', $args[3]);
+    }
+
+    public function testMetadataShapeOnSdk120AddsDescription()
+    {
+        $args = ZaiAnthropicProvider::provider_metadata_args('1.2.0');
+
+        $this->assertCount(6, $args);
+        $this->assertSame('GLM text generation via the z.ai Anthropic-compatible API.', $args[5]);
+    }
+
+    public function testTheDescriptionLiteralSitsInsideATranslationCallForExtraction()
+    {
+        // GLM6 #10: the extractable SOURCE shape, pinned like the zai
+        // provider's (see the twin test for the rationale).
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Provider/ZaiAnthropicProvider.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match('/__\(\s*\'GLM text generation via the z\.ai Anthropic-compatible API\.\',\s*\'zai\'\s*\)/', $source),
+            'The description literal must appear inside a __() call for POT extraction.'
+        );
+    }
+
+    public function testMetadataShapeOnSdk130AddsLogo()
+    {
+        $args = ZaiAnthropicProvider::provider_metadata_args('1.3.0');
+
+        $this->assertCount(7, $args);
+        $this->assertStringEndsWith('/assets/zai.svg', $args[6]);
+        $this->assertFileExists($args[6], 'Logo file must ship inside the plugin.');
+    }
+
+    public function testCredentialsUrlFollowsTheAnthropicRegionSelectionOnly()
+    {
+        // Only the zai_anthropic region drives this provider's link.
+        update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'cn');
+        update_option(PlanRegionSettings::OPTION_REGION, 'intl');
+
+        $this->assertSame(
+            'https://open.bigmodel.cn/usercenter/apikeys',
+            ZaiAnthropicProvider::provider_metadata_args('1.1.0')[3],
+            'The anthropic cn region must advertise the open.bigmodel.cn key portal.'
+        );
+
+        // Flipping the ZAI provider's region changes nothing for this one.
+        update_option(PlanRegionSettings::OPTION_REGION, 'cn');
+        $this->assertSame(ZaiAnthropicProvider::CN_CREDENTIALS_URL, ZaiAnthropicProvider::provider_metadata_args('1.1.0')[3]);
+
+        update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'intl');
+        $this->assertSame(
+            'https://z.ai/manage/apikey/apikey',
+            ZaiAnthropicProvider::provider_metadata_args('1.1.0')[3],
+            'The anthropic intl region keeps the z.ai key portal.'
+        );
+    }
+
+    public function testDetectedSdkProducesTheNewerShape()
+    {
+        $metadata = ZaiAnthropicProvider::metadata();
+
+        $this->assertSame('zai_anthropic', $metadata->getId());
+        $this->assertNotNull($metadata->getAuthenticationMethod());
+        $this->assertTrue($metadata->getAuthenticationMethod()->isApiKey());
+        if (version_compare(AiClient::VERSION, '1.2.0', '>=')) {
+            $this->assertSame('GLM text generation via the z.ai Anthropic-compatible API.', $metadata->getDescription());
+        }
+    }
+
+    /*
+     * Availability: independent validation (Task 2.1's core requirement).
+     */
+
+    public function testNonemptyButInvalidKeyReportsNotConnected()
+    {
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        /*
+         * GLM12 #1: the live /v1/models route NEVER answers 401 — it
+         * answers HTTP 200 for any or no credential with the rejection in
+         * the body (live curl capture 2026-09-04, intl/cn/coding bases).
+         * The M2 exit criterion must pass against the REAL shape; the old
+         * 401 mock passed only against a response the live endpoint never
+         * produces.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::zaiStatusEnvelopeBody(401, 'token expired or incorrect'));
+
+        $this->assertFalse($instance->isConfigured(), 'An invalid key must report not-connected for THIS provider (M2 exit criterion).');
+
+        $state = get_option(ZaiAnthropicProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state);
+        $this->assertSame('invalid', $state['valid']);
+        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'No zai state may be written by this provider.');
+    }
+
+    public function testA200BodyThatSaysNothingDefinitiveStaysInconclusive()
+    {
+        /*
+         * GLM12 #1 (the other edge of the body-aware verdict): a 2xx whose
+         * body is neither an authenticated model list nor the credential
+         * rejection envelope — a gateway HTML page, an empty body, a
+         * foreign JSON shape — must stay INCONCLUSIVE: it must not bless
+         * the credential as connected, and it must not persist an unproven
+         * invalid verdict (core clears keys on false).
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/html'), '<html>gateway sign-in</html>');
+        $this->assertTrue($instance->isConfigured(), 'An unrecognized 2xx body keeps the configured-pending default, never a definitive connected.');
+        $this->assertFalse(get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false), 'No verdict may persist from an unrecognized body.');
+    }
+
+    public function testANonCredentialFailureEnvelopeUnder200StaysInconclusive()
+    {
+        /*
+         * GLM12 #1: the in-band envelope rejects the CREDENTIAL only when
+         * its code is a definitive rejection (401/403). A success:false
+         * body about the account's STANDING — 1113 balance/plan, the 429
+         * twin of record 0006 — must not invalidate an otherwise valid
+         * key.
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::zaiStatusEnvelopeBody(1113, 'Insufficient balance or no resource package'));
+        $this->assertTrue($instance->isConfigured(), 'A balance failure says nothing about the credential.');
+        $this->assertFalse(get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false), 'A non-credential envelope must not persist a verdict.');
+    }
+
+    public function testARejectionEnvelopeUnder200ResolvesRegionDistrustAsNotConnected()
+    {
+        /*
+         * GLM12 #1 (the distrust half of the finding): the unauthenticated
+         * 200 used to clear the region-switch distrust flag while blessing
+         * the old-region key as VALID. The envelope verdict is definitive
+         * INVALID: the distrust resolves AND the riding credential reports
+         * not-connected.
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $region = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->region();
+        update_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => $region,
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::zaiStatusEnvelopeBody(401, 'token expired or incorrect'));
+        $this->assertFalse($instance->isConfigured(), 'The riding credential must report not-connected on the in-body rejection.');
+        $this->assertFalse(
+            get_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, false),
+            'A definitive in-body rejection resolves the region-switch distrust.'
+        );
+        $this->assertSame('invalid', get_option(ZaiAnthropicProviderAvailability::STATE_OPTION)['valid']);
+    }
+
+    public function testValidKeyProbesOnceAndPersistsStateWithoutTheKey()
+    {
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array(), '{"data":[{"id":"glm-5.3","display_name":"GLM 5.3","type":"model"}]}');
+        $this->assertTrue($instance->isConfigured());
+
+        // Within the TTL the persisted verdict answers; no second probe.
+        $this->assertTrue($instance->isConfigured());
+        $this->assertCount(1, $this->sdkHttpAttempts());
+
+        $state = get_option(ZaiAnthropicProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state);
+        $this->assertSame('valid', $state['valid']);
+        $this->assertOptionNotPlaintext(
+            ZaiAnthropicProviderAvailability::STATE_OPTION,
+            $key,
+            'The persisted state must contain a binding hash, never the key.'
+        );
+    }
+
+    public function testTheProbeTargetsTheAnthropicSurfaceModelsRoute()
+    {
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array(), '{"data":[{"id":"glm-5.3","type":"model"}]}');
+        $this->assertTrue($instance->isConfigured());
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $attempts[0]['url']);
+    }
+
+    public function testAValidProbeSeedsTheAnthropicDiscoveryTransient()
+    {
+        /*
+         * GLM12 #2 on this surface: the probe's models body seeds the
+         * ANTHROPIC directory's discovery transient (its own endpoint-
+         * scoped id), and the directory's next lookup consumes the seed
+         * without its own authenticated GET.
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.3-flash')));
+        $this->assertTrue($instance->isConfigured());
+
+        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings();
+        $this->assertSame(
+            array('glm-5.3', 'glm-5.3-flash'),
+            get_transient(\Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::discovery_cache_id($endpoint->plan(), $endpoint->region())),
+            'The probe response must seed this surface\'s discovery transient.'
+        );
+
+        $directory = new \Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory();
+        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+
+        $models = $directory->listModelMetadata();
+        $this->assertCount(2, $models, 'Discovery serves the seeded catalog.');
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'Discovery must consume the seeded transient, not re-fetch the same URL.');
+    }
+
+    public function testADatabaseOnlyKeyValidatesThroughAnUnwiredProbeWithProtocolHeaders()
+    {
+        /*
+         * GLM5 #10: a database-only key (no env/constant, so nothing wired
+         * by the registry) rode an unwired probe — inconclusive forever.
+         * The fallback probe must authenticate with this surface's
+         * PROTOCOL headers (Bearer + anthropic-version, never x-api-key),
+         * exactly like its wired requests.
+         */
+        putenv('ZAI_ANTHROPIC_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiAnthropicProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        // Deliberately NO request authentication wired: the registry's
+        // database-only shape.
+
+        $this->queueSdkResponse(403, array(), '{"type":"error","error":{"type":"forbidden"}}');
+
+        $this->assertFalse($instance->isConfigured(), 'A database-only rejected key must report not-connected.');
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts, 'The probe must actually validate the stored key.');
+        $this->assertSame(
+            array('Bearer ' . $key),
+            $attempts[0]['headers']['Authorization'] ?? null,
+            'The fallback probe must authenticate with the stored key.'
+        );
+        $this->assertSame(
+            array(ZaiAnthropicRequestAuthentication::ANTHROPIC_VERSION),
+            $attempts[0]['headers']['anthropic-version'] ?? null,
+            'The fallback probe must carry this surface\'s protocol headers.'
+        );
+    }
+
+    public function testAnEmptyWiredCredentialProbesWithTheEffectiveKeyOnTheAnthropicSurfaceToo()
+    {
+        /*
+         * glm13-1: the empty-wired probe rule is base behavior; this pins
+         * it through the anthropic surface's PROTOCOL-wrapping fallback —
+         * an empty registry-wired key must be skipped exactly like an
+         * unwired one, so the probe flies the effective database key
+         * with this surface's headers and the verdict binds that same
+         * credential.
+         */
+        putenv('ZAI_ANTHROPIC_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiAnthropicProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $instance->setRequestAuthentication(new ApiKeyRequestAuthentication(''));
+
+        $this->queueSdkResponse(403, array(), '{"type":"error","error":{"type":"forbidden"}}');
+
+        $this->assertFalse($instance->isConfigured());
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts, 'The probe must run: the effective key is non-empty.');
+        $this->assertSame(
+            array('Bearer ' . $key),
+            $attempts[0]['headers']['Authorization'] ?? null,
+            'The probe must fly the effective database key, never the empty wired credential.'
+        );
+        $this->assertSame(
+            array(ZaiAnthropicRequestAuthentication::ANTHROPIC_VERSION),
+            $attempts[0]['headers']['anthropic-version'] ?? null,
+            'The effective-key fallback must carry this surface\'s protocol headers.'
+        );
+
+        $state = get_option(ZaiAnthropicProviderAvailability::STATE_OPTION);
+        $this->assertSame('invalid', $state['valid'], 'The rejection the flown credential earned persists.');
+    }
+
+    public function testAnOpaqueWiredCredentialFliesNothingAndBindsNothingOnTheAnthropicSurfaceToo()
+    {
+        /*
+         * glm16-1: the glm14-5 opaque rule was UNREACHABLE on this
+         * surface — its protocol-wrapping getRequestAuthentication()
+         * converts a foreign wiring into wrap()'s RuntimeException,
+         * which the probe's unwired catch misread as NO wiring: the
+         * fallback flew the database key a caller never wired and its
+         * rejection persisted as that key's invalid verdict
+         * (empirically reproduced: one Bearer <db-key> attempt, state
+         * {'valid'=>'invalid'}). Judging the RAW wired instance keeps
+         * opaque wiring inconclusive — nothing flies, nothing persists,
+         * configured-pending — exactly like the zai surface's pinned
+         * twin.
+         */
+        putenv('ZAI_ANTHROPIC_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiAnthropicProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $instance->setRequestAuthentication($this->opaqueAuthentication());
+
+        // A doomed rejection would be served to whatever flew; none may.
+        $this->queueSdkResponse(403, array(), '{"type":"error","error":{"type":"forbidden"}}');
+
+        $this->assertTrue(
+            $instance->isConfigured(),
+            'Opaque wiring reports configured-pending, never a verdict for a credential that never flew.'
+        );
+
+        $this->assertNoHttpRequests();
+        $this->assertFalse(
+            get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false),
+            'No verdict may be recorded for a credential the binding cannot name.'
+        );
+    }
+
+    /**
+     * A foreign (non-Api-key) request authentication — the opaque wiring
+     * only third-party setRequestAuthentication() callers can produce.
+     *
+     * @return \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface
+     */
+    private function opaqueAuthentication()
+    {
+        return new class implements \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface {
+            public function authenticateRequest(WordPress\AiClient\Providers\Http\DTO\Request $request): WordPress\AiClient\Providers\Http\DTO\Request
+            {
+                return $request;
+            }
+
+            public static function getJsonSchema(): array
+            {
+                return array();
+            }
+        };
+    }
+
+    public function testAZaiValidatedStateCanNeverEstablishAnthropicStatus()
+    {
+        $key = FakeSecrets::apiKey();
+
+        // The zai provider validated this exact key (state present, valid,
+        // same region/plan selections) — zai_anthropic must still probe on
+        // its own: its state option is separate and its binding embeds the
+        // provider-scoped endpoint identity.
+        update_option(ZaiProviderAvailability::STATE_OPTION, array(
+            'binding'    => hash('sha256', 'database|zai|coding|intl|' . $key),
+            'valid'      => 'valid',
+            'checked_at' => time() + 60,
+            'clock'      => ZaiProviderAvailability::STATE_CLOCK_UTC,
+        ));
+        update_option(ZaiProviderAvailability::KEY_OPTION, $key);
+
+        // The anthropic endpoint rejects the credential.
+        $instance = $this->availability($key);
+        $this->queueSdkResponse(401, array(), '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}');
+
+        $this->assertFalse(
+            $instance->isConfigured(),
+            'Task 1.4\'s validated state for zai must not establish zai_anthropic\'s status.'
+        );
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'The verdict must come from this provider\'s own probe.');
+    }
+
+    public function testAnAnthropicValidatedStateCanNeverEstablishZaiStatus()
+    {
+        $key = FakeSecrets::apiKey();
+
+        // Mirror image: a valid anthropic verdict, then the zai endpoint
+        // rejects — zai reports not-connected on the strength of its own
+        // (missing) state and its own probe.
+        update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array(
+            'binding'    => hash('sha256', 'runtime|zai_anthropic|coding|intl|' . $key),
+            'valid'      => 'valid',
+            'checked_at' => time() + 60,
+            'clock'      => ZaiAnthropicProviderAvailability::STATE_CLOCK_UTC,
+        ));
+
+        $zai = new ZaiProviderAvailability();
+        $zai->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $zai->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
+
+        $this->assertFalse($zai->isConfigured());
+    }
+
+    public function testNoKeyMeansNotConfiguredAndStateCleared()
+    {
+        update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array('binding' => 'stale', 'valid' => 'valid'));
+
+        $instance = new ZaiAnthropicProviderAvailability();
+
+        $this->assertFalse($instance->isConfigured());
+        $this->assertFalse(get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false), 'Stale state must be removed when no key exists.');
+        $this->assertNoHttpRequests();
+    }
+
+    public function testRateLimitResponseDoesNotInvalidateAValidKey()
+    {
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        // z.ai 429 is also code 1113 (plan/balance mismatch, record 0006):
+        // inconclusive for the credential.
+        $this->queueSdkResponse(429, array(), '{"type":"error","error":{"type":"rate_limit_error","message":"Insufficient balance"}}');
+        $this->assertTrue($instance->isConfigured(), 'An inconclusive probe must not report not-connected.');
+        $this->assertFalse(get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false), 'A 429 must not persist a verdict.');
+    }
+
+    public function testRegionSwitchForcesRevalidationAgainstTheNewAnthropicEndpoint()
+    {
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array(), '{"data":[{"id":"glm-5.3","type":"model"}]}');
+        $this->assertTrue($instance->isConfigured());
+        $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $this->sdkHttpAttempts()[0]['url']);
+
+        update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'cn');
+
+        $this->queueSdkResponse(401, array(), '{"type":"error","error":{"type":"authentication_error","message":"wrong region"}}');
+        $this->assertFalse($instance->isConfigured(), 'An international key must not count as connected on the China endpoint.');
+        $this->assertSame(
+            'https://open.bigmodel.cn/api/anthropic/v1/models',
+            $this->sdkHttpAttempts()[1]['url'],
+            'The revalidation probe must target the new region\'s ANTHROPIC endpoint.'
+        );
+    }
+
+    public function testEffectiveKeyResolutionUsesTheAnthropicNames()
+    {
+        putenv('ZAI_ANTHROPIC_API_KEY');
+
+        $dbKey = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $dbKey);
+        $plain = new ZaiAnthropicProviderAvailability();
+
+        $this->assertSame(array('key' => $dbKey, 'source' => 'database'), $plain->effective_key());
+
+        delete_option(ZaiAnthropicProviderAvailability::KEY_OPTION);
+        $this->assertSame(array('key' => '', 'source' => 'none'), $plain->effective_key());
+
+        // The zai provider's key option is NOT a source for this provider.
+        update_option(ZaiProviderAvailability::KEY_OPTION, 'zai-only-key');
+        $this->assertSame(array('key' => '', 'source' => 'none'), $plain->effective_key());
+        delete_option(ZaiProviderAvailability::KEY_OPTION);
+    }
+
+    public function testAnthropicEnvNameDrivesTheEnvSource()
+    {
+        $envKey = FakeSecrets::apiKey();
+
+        try {
+            putenv('ZAI_ANTHROPIC_API_KEY=' . $envKey);
+
+            $instance = $this->availability($envKey);
+            $this->assertSame(array('key' => $envKey, 'source' => 'env'), $instance->effective_key());
+        } finally {
+            putenv('ZAI_ANTHROPIC_API_KEY');
+        }
+    }
+
+    public function testTheSharedCredentialGateHelperServesEveryConsumer()
+    {
+        /*
+         * GLM4 #9: the credential-refusal gate was copy-pasted at four
+         * consumers (both model surfaces, both metadata directories)
+         * with already-divergent wiring — the anthropic model read the
+         * raw parent getter while the anthropic directory read its
+         * wrapping override, and each copy carried its own predicate and
+         * messages. One predicate decides for all four now; this pin
+         * holds its contract: foreign/unset wiring is not the gate's
+         * concern, an ApiKey instance delegates to the same state
+         * readers, and both model surfaces throw the one builder's
+         * fixed wording.
+         */
+        $key = FakeSecrets::apiKey();
+        $availability = $this->availability($key);
+
+        // Not the gate's concern: null and foreign wiring.
+        $this->assertNull($availability->generation_refusal_for_wired_authentication(null));
+        $foreign = new class implements RequestAuthenticationInterface {
+            public function authenticateRequest(WordPress\AiClient\Providers\Http\DTO\Request $request): WordPress\AiClient\Providers\Http\DTO\Request
+            {
+                return $request;
+            }
+
+            public static function getJsonSchema(): array
+            {
+                return array();
+            }
+        };
+        $this->assertNull($availability->generation_refusal_for_wired_authentication($foreign));
+
+        // Clean state: an ApiKey instance passes the gate.
+        $this->assertNull($availability->generation_refusal_for_wired_authentication(new ApiKeyRequestAuthentication($key)));
+
+        // Region-pending state binding this exact key to the selected
+        // region: the shared predicate reports it and the shared builder
+        // emits the fixed message both model surfaces throw.
+        $region = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->region();
+        update_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => $region,
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        $wired = new ApiKeyRequestAuthentication($key);
+        $this->assertSame('region_pending', $availability->generation_refusal_for_wired_authentication($wired));
+        $this->assertSame(
+            'region_pending',
+            $availability->generation_refusal_reason($wired),
+            'The shared predicate must decide exactly as the state readers do.'
+        );
+        $this->assertSame(
+            'The zai_anthropic provider refuses generation: the active environment credential is pending revalidation after a region switch.',
+            ZaiAnthropicProviderAvailability::refusal_message('zai_anthropic', 'region_pending')
+        );
+        $this->assertSame(
+            'The zai provider refuses generation: the active credential was rejected for the selected endpoint.',
+            ZaiProviderAvailability::refusal_message('zai', 'invalid_verdict')
+        );
+    }
+}

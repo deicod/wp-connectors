@@ -246,13 +246,30 @@ documented exception.
 
 ## Milestone 2 — z.ai Anthropic-compatible provider (`zai_anthropic`)
 
-- [ ] **Milestone 2 complete.** Check this milestone only after Tasks 2.1–2.7 are checked, the one
+- [x] **Milestone 2 complete.** Check this milestone only after Tasks 2.1–2.7 are checked, the one
   z.ai plugin registers both providers without collisions, and the M2 SPEC acceptance criteria
   pass across every plan/region endpoint through mocked tests.
 
+  M2 completion evidence (2026-08-31): offline matrix green (`composer check`:
+  391 tests, 1807 assertions, PHPCS/PHPCompatibility/PHPStan/conventions/
+  secret-scan clean; M1 regressions green throughout). Live probe (record 0007,
+  coding-plan key): `zai_anthropic` availability → `/v1/models` discovery → one
+  Messages generation PASS end-to-end on general+intl (the provider's default
+  after the record-0007 amendment: glm-5.3, 130 tokens); the coding+intl
+  Anthropic base serves `/v1/models` but its Messages routes return wrapped
+  404s for every probed combination (model IDs plain and `[1m]`, Bearer and
+  x-api-key), so the SPEC (§3.1 route matrix, §3.2 note, §3.3 defaults) was
+  amended in the same change and the default moved to general — the
+  production-proven path (`claude-glm`). The O1 Anthropic half is resolved:
+  `/v1/models` returns HTTP 200 with the Anthropic list shape and the same
+  10-model GLM list on both plans; dynamic discovery ships with the tested
+  plan-partitioned static fallback. Uninstall removes both providers' options
+  and caches; the artifact test proves the standalone zip ships both
+  providers' trees.
+
 ### Tasks
 
-- [ ] **Task 2.1 — Add the second provider and independent settings.** Extend the existing z.ai
+- [x] **Task 2.1 — Add the second provider and independent settings.** Extend the existing z.ai
   plugin to register `zai_anthropic` idempotently and add its own
   `zai_connector_zai_anthropic_plan` and `_region` options with the same defaults and controls.
   Keep API-key storage/auth metadata distinct as core derives it from provider ID. A region
@@ -267,17 +284,17 @@ documented exception.
   invalid-key status test above, and failure of
   one registration cannot silently replace the other.
 
-- [ ] **Task 2.2 — Extend endpoint resolution for Anthropic URLs.** Map coding/general × intl/cn to
+- [x] **Task 2.2 — Extend endpoint resolution for Anthropic URLs.** Map coding/general × intl/cn to
   the four `/anthropic` bases and append `/v1/messages` or `/v1/models` exactly once. Read settings
   at request time while retaining the required canonical `baseUrl()`. Check this task only after
   table-driven tests cover all final request URLs and option changes between requests.
 
-- [ ] **Task 2.3 — Implement Bearer authentication and protocol headers.** Inject
+- [x] **Task 2.3 — Implement Bearer authentication and protocol headers.** Inject
   `Authorization: Bearer <key>`, `anthropic-version: 2023-06-01`, and safe content headers; do not
   depend on unverified `x-api-key` support. Check this task only after exact-header tests prove no
   duplicate/conflicting auth header and logging tests prove full redaction.
 
-- [ ] **Task 2.4 — Implement Anthropic metadata/catalog.** Create the custom metadata directory,
+- [x] **Task 2.4 — Implement Anthropic metadata/catalog.** Create the custom metadata directory,
   static GLM fallback, capability declarations, sorting, optional cached `/v1/models` discovery,
   and graceful failure policy. The discovery cache MUST be scoped by endpoint identity
   (provider/plan/region in the cache key, or invalidation on settings change) exactly as in
@@ -289,19 +306,19 @@ documented exception.
   Check this task only after static/discovered/fallback tests pass for BOTH plan selections,
   and the Anthropic half of O1 is documented accurately.
 
-- [ ] **Task 2.5 — Implement Messages request mapping.** Translate system instruction, alternating
+- [x] **Task 2.5 — Implement Messages request mapping.** Translate system instruction, alternating
   chat content blocks, text and supported images, tools/tool results, JSON output guidance,
   `outputSchema`, max tokens, temperature, top-p, and stop sequences to the Anthropic-compatible
   Messages format. Handle protocol constraints such as required max tokens and role ordering.
   Check this task only after focused fixtures cover every advertised option and unsupported input
   fails before HTTP.
 
-- [ ] **Task 2.6 — Implement Messages response/stream mapping.** Normalize message content,
+- [x] **Task 2.6 — Implement Messages response/stream mapping.** Normalize message content,
   tool-use blocks, stop reasons, usage, and Anthropic SSE event sequences into SDK results. Reuse
   only protocol-neutral error/redaction helpers from M1. Check this task only after success,
   interleaved content/tool deltas, malformed stream, 401/403/429/5xx, and transport tests pass.
 
-- [ ] **Task 2.7 — Validate and document M2.** Update the plugin/readme documentation for two
+- [x] **Task 2.7 — Validate and document M2.** Update the plugin/readme documentation for two
   cards, two independent endpoint selectors and key fields, known model-list behavior, and examples
   for system instructions, tools, and structured output. Run the full z.ai regression suite and
   optional live tests without committing output containing credentials. Check this task only after
@@ -309,9 +326,28 @@ documented exception.
 
 ### Exit criteria
 
-- One standalone plugin exposes both `zai` and `zai_anthropic` cards.
-- Messages requests use Bearer authentication and the required version header for all endpoints.
-- Tools and `outputSchema` round-trip through representative mocked Claude-Code-style workloads.
+- [x] One standalone plugin exposes both `zai` and `zai_anthropic` cards. —
+  both providers registered idempotently (ZaiAnthropicPluginScaffoldTest:
+  both IDs before core discovery at init 15, no duplication, no silent
+  replacement of a foreign ID registration); cards distinct ('z.ai' /
+  'z.ai (Anthropic API)'); both trees inside the built zip
+  (BuildArtifactsTest::testRealZaiArtifactShipsBothProvidersAndStaysStandalone).
+- [x] Messages requests use Bearer authentication and the required version header for all endpoints. —
+  exact header-set tests on generation and the availability probe
+  (ZaiAnthropicAuthHeadersTest): one `Authorization: Bearer <key>`, one
+  `anthropic-version: 2023-06-01`, Content-Type on generation, never
+  `x-api-key`, never a duplicate credential header — with the endpoint
+  matrix resolved per plan/region at request time
+  (ZaiAnthropicEndpointResolverTest) and the plan-dependent Messages route
+  verified live (record 0007).
+- [x] Tools and `outputSchema` round-trip through representative mocked Claude-Code-style workloads. —
+  request snapshots for the tool round trip (declaration → tool_use →
+  tool_result) and structured output (tests/fixtures/snapshots/zai-anthropic/),
+  response mapping of tool_use blocks and interleaved SSE tool deltas, and
+  JSON guidance embedding the outputSchema (ZaiAnthropicRequestMappingTest,
+  ZaiAnthropicResponseMappingTest); the genuine WP_AI_Client_Prompt_Builder
+  path proves `using_provider('zai_anthropic')->generate_text()` end to end
+  with mocked transport.
 
 ---
 
