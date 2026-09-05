@@ -754,6 +754,33 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testDuplicateDeclaredToolNamesAreRejectedBeforeTransport()
+    {
+        /*
+         * glm13-9 (parity with the zai_anthropic twin's R18 rule): a
+         * returned tool_call identifies the selected declaration ONLY by
+         * name — two declarations sharing a name make that identification
+         * ambiguous, and the twin already rejects the identical shape
+         * typed pre-transport.
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('get_weather', 'Get the weather for a city', array('type' => 'object')),
+            new FunctionDeclaration('get_weather', 'A second, different tool under the same name', array('type' => 'object')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('A duplicate declared tool name must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires declared tool functions to carry unique names.', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testAnInvalidUtf8ToolDeclarationIsRejectedBeforeTransport()
     {
         /*

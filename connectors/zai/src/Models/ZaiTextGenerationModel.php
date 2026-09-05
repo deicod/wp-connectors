@@ -1048,6 +1048,8 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		$function_declarations = $config->getFunctionDeclarations();
 		if ( \is_array( $function_declarations ) ) {
+			$declared_names = array();
+
 			foreach ( $function_declarations as $declaration ) {
 				/*
 				 * GLM12 #5 (parity with the zai_anthropic twin's Codex
@@ -1074,6 +1076,25 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 				JsonEncodeGuard::must_encode( $name, 'a declared tool function name', self::PROVIDER_LABEL );
 				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
+
+				/*
+				 * glm13-9 (parity with the twin's R18 rule, one surface
+				 * late): a returned tool_call identifies the selected
+				 * declaration ONLY by name (the SDK maps the response to
+				 * FunctionCall(id, function.name, args) — name is the
+				 * only declaration reference on the DTO), so two
+				 * declarations sharing a name make that identification
+				 * ambiguous and a name-keyed consumer dispatches against
+				 * the wrong tool. A duplicate is a typed pre-transport
+				 * rejection exactly as on the twin.
+				 */
+				if ( isset( $declared_names[ $name ] ) ) {
+					throw new InvalidArgumentException(
+						'The zai provider requires declared tool functions to carry unique names.'
+					);
+				}
+
+				$declared_names[ $name ] = true;
 
 				$input_schema = $declaration->getParameters();
 				if ( \is_array( $input_schema ) ) {
