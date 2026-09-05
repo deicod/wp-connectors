@@ -52,7 +52,11 @@ ledger or by reachability):
   the final terminal frame discarded a fully valid completed generation
   ('malformed event frame'), while the OpenAI twin treats the identical
   appending-gateway shape as harmless (duplicate `[DONE]` is a no-op;
-  pinned). A WELL-FORMED duplicate (object payload) no-ops — the
+  pinned). A WELL-FORMED duplicate no-ops — well-formed means a
+  decodable object payload whose type member is absent or agrees with
+  the declaration (an object with a non-string or contradicting type
+  member still rejects, through the same termination-independent
+  declaration checks the pre-termination twin faces); the
   pre-termination case ignores a well-formed payload entirely.
   Content-bearing trailing events (message_start, content_block_*,
   message_delta) keep their malformed rejection, and a GARBLED
