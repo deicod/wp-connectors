@@ -59,6 +59,7 @@ use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonFallbackResult;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
+use Deicod\WpConnectors\Zai\Support\RequestShapeGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
@@ -562,12 +563,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * rejection. A JSON list is never a valid schema root; the
 			 * shape rule surfaces before the encodability check,
 			 * matching the twin's shape-before-encode ordering.
+			 * glm19-5: the rule lives on the shared RequestShapeGuard.
 			 */
-			if ( JsonShape::is_list( $output_schema ) ) {
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires the configured output schema to be a JSON object (a list was given).'
-				);
-			}
+			RequestShapeGuard::reject_list_root_output_schema( $output_schema, self::PROVIDER_LABEL );
 
 			/*
 			 * R19 (inline 3906739372): a constructible but unencodable
@@ -666,14 +664,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * name to a string, so '' is the only constructible empty
 			 * identity. Identity errors surface BEFORE the schema checks
 			 * (first-bad-wins), matching the call path's ordering.
+			 * glm19-5: the rule lives on the shared RequestShapeGuard.
 			 */
 			$name = $declaration->getName();
 
-			if ( '' === $name ) {
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires declared tool functions to carry a non-empty name.'
-				);
-			}
+			RequestShapeGuard::reject_empty_tool_name( $name, self::PROVIDER_LABEL );
 
 			/*
 			 * GLM6 #9: the identity and description strings ride the
@@ -693,13 +688,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * name make that identification ambiguous (the caller may
 			 * validate or execute the call against the wrong tool), so a
 			 * duplicate is a typed pre-transport rejection like the empty
-			 * name above.
+			 * name above. glm19-5: the rule lives on the shared
+			 * RequestShapeGuard.
 			 */
-			if ( isset( $declared_names[ $name ] ) ) {
-				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires declared tool functions to carry unique names.'
-				);
-			}
+			RequestShapeGuard::reject_duplicate_tool_name( $name, $declared_names, self::PROVIDER_LABEL );
 
 			$declared_names[ $name ] = true;
 
@@ -728,11 +720,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 */
 				$input_schema = $declaration->getParameters();
 
-				if ( \is_array( $input_schema ) && array() !== $input_schema && JsonShape::is_list( $input_schema ) ) {
-					throw new InvalidArgumentException(
-						'The zai_anthropic provider requires tool parameter schemas to be a JSON object (a non-empty list was given).'
-					);
-				}
+				/*
+				 * glm19-5: the shape rule lives on the shared
+				 * RequestShapeGuard (Codex R7 #3's boundary: only a
+				 * NON-EMPTY list rejects; null and [] normalize to the
+				 * empty-object schema below).
+				 */
+				RequestShapeGuard::reject_list_root_parameter_schema( $input_schema, self::PROVIDER_LABEL );
 
 				/*
 				 * R20 (inline 3907008524): an unencodable schema value — NAN,
@@ -2483,13 +2477,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 */
 		AdvertisedUsageGuard::reject_unsupported( $config, $prompt, self::PROVIDER_LABEL );
 
-		// max_tokens is required and must be positive; a zero/negative value
-		// would be a protocol error upstream.
-		if ( null !== $config->getMaxTokens() && 1 > $config->getMaxTokens() ) {
-			throw new InvalidArgumentException(
-				'The zai_anthropic provider requires maxTokens to be a positive number.'
-			);
-		}
+		/*
+		 * max_tokens is required and must be positive; a zero/negative value
+		 * would be a protocol error upstream. glm19-5: the rule lives on
+		 * the shared RequestShapeGuard (glm18-3's twin parity).
+		 */
+		RequestShapeGuard::reject_non_positive_max_tokens( $config->getMaxTokens(), self::PROVIDER_LABEL );
 
 		/*
 		 * GLM1 #8: the Messages protocol bounds temperature and top_p to

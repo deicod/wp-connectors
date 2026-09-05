@@ -46,10 +46,10 @@ use Deicod\WpConnectors\Zai\Support\EncodabilityNet;
 use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonFallbackResult;
-use Deicod\WpConnectors\Zai\Support\JsonShape;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
+use Deicod\WpConnectors\Zai\Support\RequestShapeGuard;
 use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
@@ -1085,12 +1085,9 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * zero/negative value rode "max_tokens" verbatim to the
 		 * spec-faithful endpoint's generic misattributed upstream 400
 		 * instead of a typed pre-transport rejection naming the member.
+		 * glm19-5: the rule lives on the shared RequestShapeGuard.
 		 */
-		if ( null !== $config->getMaxTokens() && 1 > $config->getMaxTokens() ) {
-			throw new InvalidArgumentException(
-				'The zai provider requires maxTokens to be a positive number.'
-			);
-		}
+		RequestShapeGuard::reject_non_positive_max_tokens( $config->getMaxTokens(), self::PROVIDER_LABEL );
 
 		/*
 		 * GLM6 #5: every caller-authored WIRE value the SDK parent's
@@ -1179,13 +1176,10 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 * 400 with no hint the caller's schema shape is the cause.
 			 * Typed pre-transport rejection; the shape rule surfaces
 			 * before the encodability check, matching the twin's
-			 * identity-before-schema ordering.
+			 * identity-before-schema ordering. glm19-5: the rule lives
+			 * on the shared RequestShapeGuard.
 			 */
-			if ( JsonShape::is_list( $output_schema ) ) {
-				throw new InvalidArgumentException(
-					'The zai provider requires the configured output schema to be a JSON object (a list was given).'
-				);
-			}
+			RequestShapeGuard::reject_list_root_output_schema( $output_schema, self::PROVIDER_LABEL );
 
 			/*
 			 * glm14-1: the SDK parent forwards response_format ONLY under
@@ -1242,11 +1236,12 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				 */
 				$name = $declaration->getName();
 
-				if ( '' === $name ) {
-					throw new InvalidArgumentException(
-						'The zai provider requires declared tool functions to carry a non-empty name.'
-					);
-				}
+				/*
+				 * glm19-5: the identity rules live on the shared
+				 * RequestShapeGuard (Codex R18 #2's empty-name rule via
+				 * the twin's parity).
+				 */
+				RequestShapeGuard::reject_empty_tool_name( $name, self::PROVIDER_LABEL );
 
 				/*
 				 * glm13-9 (parity with the twin's R18 rule, one surface
@@ -1257,13 +1252,10 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				 * declarations sharing a name make that identification
 				 * ambiguous and a name-keyed consumer dispatches against
 				 * the wrong tool. A duplicate is a typed pre-transport
-				 * rejection exactly as on the twin.
+				 * rejection exactly as on the twin. glm19-5: the rule
+				 * lives on the shared RequestShapeGuard.
 				 */
-				if ( isset( $declared_names[ $name ] ) ) {
-					throw new InvalidArgumentException(
-						'The zai provider requires declared tool functions to carry unique names.'
-					);
-				}
+				RequestShapeGuard::reject_duplicate_tool_name( $name, $declared_names, self::PROVIDER_LABEL );
 
 				$declared_names[ $name ] = true;
 
@@ -1283,15 +1275,12 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				 * first (the twin's ordering); the boundary is the twin's:
 				 * only a NON-EMPTY list rejects — null and [] keep their
 				 * pass-through (the twin normalizes them; nothing here
-				 * over-rejects what the twin accepts).
+				 * over-rejects what the twin accepts). glm19-5: the rule
+				 * lives on the shared RequestShapeGuard.
 				 */
 				$input_schema = $declaration->getParameters();
 
-				if ( \is_array( $input_schema ) && array() !== $input_schema && JsonShape::is_list( $input_schema ) ) {
-					throw new InvalidArgumentException(
-						'The zai provider requires tool parameter schemas to be a JSON object (a non-empty list was given).'
-					);
-				}
+				RequestShapeGuard::reject_list_root_parameter_schema( $input_schema, self::PROVIDER_LABEL );
 			}
 		}
 
