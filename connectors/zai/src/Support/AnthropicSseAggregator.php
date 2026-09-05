@@ -316,6 +316,38 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	}
 
 	/**
+	 * Validates one frame's usage member through the shared
+	 * UsageValidator and returns its associative view (glm20-6).
+	 *
+	 * The message_start and message_delta handlers carried the
+	 * validate-before-cast block as near-verbatim copies — the exact
+	 * lockstep-drift shape Codex R15 #1 collapsed across the LAYERS
+	 * (the streamed copy and the non-streaming parser's) — so a
+	 * usage-rule edit could land on one frame type only and the same
+	 * stream's usage verdict silently diverge between message_start and
+	 * message_delta. One helper serves both now.
+	 *
+	 * Null return means the validator rejected: the caller flags the
+	 * frame malformed and returns. A non-null return is the associative
+	 * view every downstream storage rule judges; it is ALWAYS an array,
+	 * never null — the strict Anthropic rule rejects a JSON null usage
+	 * as not-an-object, so a VALID usage is always an object-shaped
+	 * array (GLM9 #15's null-ness preservation, the (array) null empty-
+	 * array laundering trap, lives here).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $usage The frame's usage member (decoded).
+	 * @return array|null The validated associative view, or null when
+	 *                    the caller must flag the frame malformed.
+	 */
+	private function validated_usage_view( $usage ): ?array {
+		$usage_array = null === $usage ? null : (array) $usage;
+
+		return null !== UsageValidator::failure_reason( $usage_array, $usage ) ? null : $usage_array;
+	}
+
+	/**
 	 * Aggregates the consumed events into one Messages payload.
 	 *
 	 * A stream that never delivered a stop reason (message_delta missing —
@@ -891,18 +923,13 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					 * past-PHP_INT_MAX prompt side from silently promoting to
 					 * float in the consolidated payload.
 					 *
-					 * GLM9 #15: the one object-tree decode hands the
-					 * validator the same two views it always judged by —
-					 * the (array) cast of the usage value is the
-					 * associative view, the property itself the raw
-					 * oracle — without the second full-payload decode. A
-					 * JSON null keeps its null-ness (the associative
-					 * decode's own shape), because (array) null is the
-					 * EMPTY array, not null.
+					 * glm20-6: the validate-before-cast mechanics (GLM9 #15's
+					 * two-view decode and null-ness preservation included)
+					 * ride the one shared validated_usage_view() helper the
+					 * message_delta frame type calls identically.
 					 */
-					$usage       = $message->usage;
-					$usage_array = null === $usage ? null : (array) $usage;
-					if ( null !== UsageValidator::failure_reason( $usage_array, $usage ) ) {
+					$usage_array = $this->validated_usage_view( $message->usage );
+					if ( null === $usage_array ) {
 						$this->malformed_event = true;
 
 						return;
@@ -1128,13 +1155,12 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				}
 				if ( \property_exists( $raw, 'usage' ) ) {
 					// Codex R15 #1: same validation as message_start's input
-					// side — GLM4 #11: the one shared validator; GLM9 #15:
-					// the associative view is the (array) cast, the raw
-					// oracle the property itself, null-ness preserved
-					// (see message_start).
-					$usage       = $raw->usage;
-					$usage_array = null === $usage ? null : (array) $usage;
-					if ( null !== UsageValidator::failure_reason( $usage_array, $usage ) ) {
+					// side — glm20-6: the one shared validated_usage_view()
+					// helper message_start calls identically (GLM4 #11's
+					// shared validator; GLM9 #15's two-view decode and
+					// null-ness preservation ride it).
+					$usage_array = $this->validated_usage_view( $raw->usage );
+					if ( null === $usage_array ) {
 						$this->malformed_event = true;
 
 						return;
@@ -1153,7 +1179,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					 * carrying only the output side (the legacy shape)
 					 * leaves the start-side input standing.
 					 */
-					if ( \is_array( $usage_array ) && UsageValidator::has_input_side( $usage_array ) ) {
+					if ( UsageValidator::has_input_side( $usage_array ) ) {
 						$delta_input = UsageValidator::input_total( $usage_array );
 
 						if ( null === $delta_input ) {

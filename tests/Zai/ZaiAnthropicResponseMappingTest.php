@@ -3993,6 +3993,30 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
 
         $this->assertSame('The usage member must be a JSON object.', $validator::message_for_reason('not_object'), 'One fixed rejection message per reason.');
         $this->assertSame('Token counts must be non-negative integers.', $validator::message_for_reason('bad_member'), 'One fixed rejection message per reason.');
+
+        /*
+         * glm20-6 (source pin): the aggregator's message_start and
+         * message_delta handlers judged the same member through two
+         * near-verbatim copies of this rule — the exact in-file twin of
+         * the cross-layer drift this test pins. One
+         * validated_usage_view() helper serves both frame types now:
+         * the aggregator may call failure_reason() exactly once (the
+         * helper's), and both handlers ride the helper.
+         */
+        $aggregator_source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
+        );
+
+        $this->assertSame(
+            1,
+            substr_count($aggregator_source, 'UsageValidator::failure_reason('),
+            'The aggregator judges usage through the one shared helper, never a second inline copy.'
+        );
+        $this->assertSame(
+            2,
+            substr_count($aggregator_source, '$this->validated_usage_view('),
+            'Both usage-carrying frame types (message_start, message_delta) ride the shared helper.'
+        );
     }
 
     public function testAStreamedInputSideUsageOverflowInvalidatesTheStream()
