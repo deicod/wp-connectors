@@ -468,8 +468,104 @@ function wp_connectors_include_runtime_segments($statement)
 }
 
 /**
- * Whether every textual WRITE to a variable before an offset is a form
- * the map-literal analysis models (GLM10 verifier round on #14).
+ * The byte regions whose variable writes an include at $offset can read
+ * (glm18-7).
+ *
+ * Straight-line execution reads only writes placed BEFORE the include —
+ * but inside a loop the include also sits in, that ordering inverts: a
+ * write placed later in the loop body still executes before the
+ * include's NEXT iteration, so a plain "before the offset" cut models
+ * straight-line execution only and let loop shapes launder foreign
+ * include paths past the gate (round 18: a while-loop reassignment
+ * placed after the require produced zero violations while the second
+ * iteration included an out-of-root marker, empirically confirmed). The
+ * visible region is [0, $offset) plus the span of every loop construct
+ * that CONTAINS $offset.
+ *
+ * Every span is OVER-approximated: a braced body closes at its matching
+ * brace on the string-masked view (string/heredoc contents are blank,
+ * so the depth count only sees code braces), and any shape we do not
+ * confidently parse — an alternative-syntax body (while: … endwhile;),
+ * a braceless single-statement body — extends to end-of-file instead. A
+ * wider region can only refuse more proofs, never launder one.
+ *
+ * @param string $masked String-masked source (same length as the code).
+ * @param int    $offset Byte offset the include statement starts at.
+ * @return list<array{0: int, 1: int}> Inclusive [start, end] byte ranges.
+ */
+function wp_connectors_write_visibility_spans($masked, $offset)
+{
+    $spans = array(array(0, max(0, $offset - 1)));
+    $length = strlen($masked);
+
+    if (! preg_match_all('/\b(?:while|for|foreach)\s*\(|\bdo\s*\{/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
+        return $spans;
+    }
+
+    foreach ($loops[0] as $loop) {
+        $body_open = $loop[1] + strlen($loop[0]) - 1; // Position of '(' or '{'.
+
+        if ('(' === $masked[ $body_open ]) {
+            // Walk the header parens to the matching close.
+            $depth = 0;
+            $header_close = false;
+            for ($i = $body_open; $i < $length; ++$i) {
+                if ('(' === $masked[ $i ]) {
+                    ++$depth;
+                } elseif (')' === $masked[ $i ]) {
+                    --$depth;
+                    if (0 === $depth) {
+                        $header_close = $i;
+                        break;
+                    }
+                }
+            }
+            if (false === $header_close) {
+                continue; // A header we cannot close bounds nothing.
+            }
+            $j = $header_close + 1;
+            while ($j < $length && ctype_space($masked[ $j ])) {
+                ++$j;
+            }
+            if ($j >= $length) {
+                continue;
+            }
+            if ('{' !== $masked[ $j ]) {
+                // Alternative-syntax or braceless body: unbounded (EOF).
+                if ($offset >= $loop[1]) {
+                    $spans[] = array($loop[1], $length - 1);
+                }
+                continue;
+            }
+            $body_open = $j;
+        }
+
+        // Brace-match the body on the masked view.
+        $depth = 0;
+        $body_close = $length - 1;
+        for ($i = $body_open; $i < $length; ++$i) {
+            if ('{' === $masked[ $i ]) {
+                ++$depth;
+            } elseif ('}' === $masked[ $i ]) {
+                --$depth;
+                if (0 === $depth) {
+                    $body_close = $i;
+                    break;
+                }
+            }
+        }
+
+        if ($offset >= $loop[1] && $offset <= $body_close) {
+            $spans[] = array($loop[1], $body_close);
+        }
+    }
+
+    return $spans;
+}
+
+/**
+ * Whether every textual WRITE to a variable visible to an include is a
+ * form the map-literal analysis models (GLM10 verifier round on #14).
  *
  * The synthetic foreach binding and the array-literal proof reason
  * about the values a map variable's same-file assignments carry —
@@ -486,7 +582,7 @@ function wp_connectors_include_runtime_segments($statement)
  * @param string $code     Comment-stripped source of the file.
  * @param string $variable Variable token, including the leading '$'.
  * @param int    $offset   Byte offset the include starts at.
- * @return bool True when only whole-array literal writes precede the offset.
+ * @return bool True when only whole-array literal writes are visible to the include.
  */
 function wp_connectors_array_writes_recognized($code, $variable, $offset)
 {
@@ -496,8 +592,19 @@ function wp_connectors_array_writes_recognized($code, $variable, $offset)
      * quoted string or heredoc body can neither refuse a legitimate
      * map-literal proof nor launder one (same length as $code, so the
      * offsets are interchangeable).
+     *
+     * glm18-7: the scanned region is every region whose writes the
+     * include can read — the pre-include prefix plus any loop construct
+     * spanning the include (a write placed after it inside that loop
+     * still executes before the include's next iteration). Regions are
+     * concatenated; a seam can only splice unrelated fragments into a
+     * false match, which refuses the proof — the safe direction.
      */
-    $before = (string) substr(wp_connectors_mask_string_contents($code), 0, $offset);
+    $masked = wp_connectors_mask_string_contents($code);
+    $before = '';
+    foreach (wp_connectors_write_visibility_spans($masked, $offset) as $span) {
+        $before .= (string) substr($masked, $span[0], $span[1] - $span[0] + 1);
+    }
     $quoted = preg_quote($variable, '/');
 
     // Element access, append, or element write: $map[...].
@@ -565,8 +672,10 @@ function wp_connectors_array_writes_recognized($code, $variable, $offset)
  *
  * The ONE assignment collector shared by the literal-free and the mixed
  * include analyses: statements of the shape `$x = …;` / `$x .= …;` whose
- * start precedes $offset (an assignment after the include cannot be read
- * by it).
+ * start lies in a region the include can read a write from — before the
+ * include, or anywhere inside a loop construct that also contains it
+ * (glm18-7: a write after the include inside that loop still executes
+ * before the include's next iteration).
  *
  * GLM10 #14: a foreach VALUE binding is an assignment-shaped read —
  * `foreach ($map as $k => $v)` hands $v every VALUE of $map — so it is
@@ -590,14 +699,30 @@ function wp_connectors_same_file_assignments($code, $variable, $offset)
      * in-string assignment could otherwise satisfy a variable include
      * the runtime never resolves that way. The matched offsets slice
      * the REAL statement (string literals intact) out of $code.
+     *
+     * glm18-7: an assignment placed AFTER the include is invisible only
+     * under straight-line execution — inside a loop the include also
+     * sits in, a later write still executes before the include's next
+     * iteration, so visibility rides the write-visibility spans (the
+     * pre-include prefix plus every spanning loop construct).
      */
     $masked = wp_connectors_mask_string_contents($code);
+    $spans  = wp_connectors_write_visibility_spans($masked, $offset);
+    $visible = static function (int $at) use ($spans): bool {
+        foreach ($spans as $span) {
+            if ($at >= $span[0] && $at <= $span[1]) {
+                return true;
+            }
+        }
+
+        return false;
+    };
 
     $assignments = array();
     if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\.)?=(?![=>])[^;]+;/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
         foreach ($matches[0] as $assignment) {
-            if ($assignment[1] >= $offset) {
-                // Assigned after the include — the include cannot read it.
+            if (! $visible($assignment[1])) {
+                // Outside every region the include can read a write from.
                 continue;
             }
             $assignments[] = (string) substr($code, $assignment[1], strlen($assignment[0]));
@@ -606,8 +731,8 @@ function wp_connectors_same_file_assignments($code, $variable, $offset)
 
     if (preg_match_all('/foreach\s*\((.+?)\)\s*\{/', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
         foreach ($foreaches[1] as $foreach_match) {
-            if ($foreach_match[1] >= $offset) {
-                // The loop body (and its includes) runs after the binding.
+            if (! $visible($foreach_match[1])) {
+                // The binding is outside every region the include reads.
                 continue;
             }
             $foreach = array((string) substr($code, $foreach_match[1], strlen($foreach_match[0])), $foreach_match[1]);
