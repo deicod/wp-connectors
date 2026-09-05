@@ -169,16 +169,25 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * to add temperature/top_p/outputSchema after the initial landing).
 	 * The advertised-option layer covers the members it knows too, but
 	 * BOTH layers must learn each new forwarded member by name. This one
-	 * oracle over the assembled $data closes the class wholesale: any
-	 * value in ANY
-	 * member — known, forgotten, or added by a future SDK release — that
-	 * the transport's whole-request encode would fail on (NAN, INF,
-	 * invalid UTF-8, recursion) rejects HERE as the typed pre-transport
-	 * 400 instead of the untyped JsonException surfaced by the mapper's
-	 * catch-all as the generic 500. The typed walk's per-member messages
-	 * degrade to this one generic description only for members the typed
-	 * walk does not know — every covered family still rejects upstream,
-	 * first-bad-wins, with its precise message.
+	 * oracle over the assembled $data closes the class for every member
+	 * that REACHES $data verbatim: any value in ANY forwarded member —
+	 * known, forgotten, or added by a future SDK release — that the
+	 * transport's whole-request encode would fail on (NAN, INF, invalid
+	 * UTF-8, recursion) rejects HERE as the typed pre-transport 400
+	 * instead of the untyped JsonException surfaced by the mapper's
+	 * catch-all as the generic 500.
+	 *
+	 * glm14-3, the honest boundary: the net sees only what assembly
+	 * PRODUCED. Values the parent PRE-ENCODES with a plain json_encode
+	 * and string-casts on failure (a failed encode launders into a
+	 * literal false the net happily passes) or DROPS conditionally never
+	 * reach $data and are structurally invisible here — they keep their
+	 * own eager guards in the typed walk (see
+	 * reject_misshapen_wire_values() for the enumeration). The typed
+	 * walk's per-member messages degrade to this one generic description
+	 * only for members the typed walk does not know — every covered
+	 * family still rejects upstream, first-bad-wins, with its precise
+	 * message.
 	 *
 	 * The oracle is the shared JsonEncodeGuard's RAW json_encode (the
 	 * GLM3 #4 primitive): the assembled $data is CALLER-built (not a
@@ -1042,15 +1051,29 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * duplicate declared names, list-root output schemas, non-string and
 	 * empty stop entries, tool-result and tool-call identity). The pure
 	 * ENCODABILITY half rides the createRequest() chokepoint's
-	 * whole-payload net (guard_assembled_params()), which auto-covers
-	 * every member the parent forwards — including members added by
-	 * future SDK releases — with ONE serialization per request; the old
-	 * eager per-member pre-pass (a second O(payload) serialization on
-	 * every request) survives only as the attribution walk that net runs
-	 * on failure (guard_wire_values()). The one exception rides here
-	 * eager: the tool-result RESPONSE, whose failed encode the parent's
-	 * own mapping launders into the string "false" before the net could
-	 * ever see it.
+	 * whole-payload net (guard_assembled_params()) with ONE serialization
+	 * per request; the old eager per-member pre-pass (a second
+	 * O(payload) serialization on every request) survives only as the
+	 * attribution walk that net runs on failure (guard_wire_values()).
+	 *
+	 * glm14-3: the net's coverage contract is every member the parent
+	 * forwards VERBATIM to $data — including members added by future SDK
+	 * releases. It structurally cannot cover members the parent
+	 * TRANSFORMS or DROPS before assembly, and the vendor parent has two
+	 * plain-json_encode LAUNDER sites and one conditional DROP today,
+	 * each with its own eager guard outside the net:
+	 * - the tool-result RESPONSE (prepareMessagesParam string-casts a
+	 *   failed encode into "content": false) — must_encode below, the
+	 *   glm13-11 exception;
+	 * - the outbound tool-call ARGUMENTS (getMessagePartToolCallData
+	 *   string-casts into "arguments": false) — the replay-guard
+	 *   override, whose ReplayValidatedFunctionCall stamp skip is the
+	 *   glm12-12 contract;
+	 * - the configured output SCHEMA under a non-JSON mime (the parent
+	 *   forwards response_format only under application/json) — the
+	 *   glm14-1 eager check above.
+	 * A future SDK release that adds a fourth pre-encode or drop site
+	 * needs its own eager guard; the net alone will not catch it.
 	 *
 	 * @since 0.2.0
 	 *
