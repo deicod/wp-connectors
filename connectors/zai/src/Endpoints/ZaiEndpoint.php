@@ -75,6 +75,22 @@ final class ZaiEndpoint extends AbstractZaiEndpoint {
 	const MODELS_ROUTE = 'models';
 
 	/**
+	 * The chat-completion route this surface serves at the base URL.
+	 *
+	 * GLM15-4: the vendor SDK's OpenAI-compat parent composes its
+	 * generation requests against this path internally — the constant
+	 * exists so evidence channels (the live probe's route line) name
+	 * the URL through the endpoint layer instead of an inline literal,
+	 * and the mapping suite pins it to the CAPTURED wire URL so a
+	 * vendor route change breaks a test, not the evidence.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const GENERATION_ROUTE = 'chat/completions';
+
+	/**
 	 * Path suffixes this surface appends to the base URL.
 	 *
 	 * @since 0.2.0
@@ -121,4 +137,15 @@ final class ZaiEndpoint extends AbstractZaiEndpoint {
 	 * @var string
 	 */
 	const UNKNOWN_ENDPOINT_LABEL = 'z.ai';
+
+	/**
+	 * The chat-completion URL of this endpoint (glm15-4).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return string Full URL of the generation route.
+	 */
+	public function generation_url(): string {
+		return $this->api_url( self::GENERATION_ROUTE );
+	}
 }

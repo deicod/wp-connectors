@@ -162,4 +162,18 @@ final class ZaiAnthropicEndpoint extends AbstractZaiEndpoint {
 	public function messages_url(): string {
 		return $this->base_url() . self::MESSAGES_ROUTE_BY_PLAN[ $this->plan() ];
 	}
+
+	/**
+	 * The generation URL of this endpoint (glm15-4): the plan-dependent
+	 * Messages route — the surface's model requests messages_url()
+	 * directly, so generation_url() is that same owner, never a flat
+	 * constant that could drift from MESSAGES_ROUTE_BY_PLAN.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return string Full URL of the generation route.
+	 */
+	public function generation_url(): string {
+		return $this->messages_url();
+	}
 }

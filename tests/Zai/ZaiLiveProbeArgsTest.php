@@ -186,5 +186,17 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
          */
         $this->assertStringContainsString("'live ' . \$endpoint->models_url()", $source, 'The discovery evidence names the surface\'s own models URL.');
         $this->assertSame(0, preg_match('/live \/v1\/models/', $source), 'No hardcoded models route may ride the evidence line.');
+
+        /*
+         * glm15-4: the generation-route evidence rides the endpoint
+         * layer's generation_url() owner — the instanceof ternary plus
+         * the inline 'chat/completions' literal could print a URL the
+         * plugin never requests after any vendor or plan route change,
+         * and the literal existed nowhere else in src, so nothing
+         * failed. The pins forbid both shapes in the probe.
+         */
+        $this->assertStringContainsString("->generation_url()", $source, 'The generation-route evidence rides the endpoint owner.');
+        $this->assertSame(0, preg_match('/chat\/completions/', $source), 'No inline generation-route literal may ride the probe.');
+        $this->assertSame(0, preg_match('/instanceof ZaiAnthropicEndpoint \?/', $source), 'No instanceof route picking: the endpoint owns the route.');
     }
 }

@@ -87,6 +87,28 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
      * Snapshots.
      */
 
+    public function testTheGenerationRouteConstantMatchesTheWireRequest()
+    {
+        /*
+         * glm15-4: the endpoint layer's GENERATION_ROUTE feeds the live
+         * probe's generation-route evidence line, while the vendor SDK
+         * composes its generation path internally. The CAPTURED wire
+         * URL must equal generation_url(), so a vendor route change
+         * breaks this pin instead of the probe printing evidence for a
+         * URL no request ever made.
+         */
+        list($url) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))),
+            $this->model()
+        );
+
+        $this->assertSame(
+            \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->generation_url(),
+            $url,
+            'The endpoint-owned generation route must be the URL the wire request actually uses.'
+        );
+    }
+
     public function testExplicitlyClearedListOptionsAreOmittedFromTheWire()
     {
         /*

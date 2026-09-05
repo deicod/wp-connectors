@@ -108,6 +108,27 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
      * Snapshots.
      */
 
+    public function testTheGenerationRouteOwnerMatchesTheWireRequest()
+    {
+        /*
+         * glm15-4 (twin of the zai surface's GENERATION_ROUTE pin): the
+         * endpoint's generation_url() is the plan-dependent Messages
+         * route, and the CAPTURED wire URL must equal it — the live
+         * probe's generation-route evidence rides this owner, so the
+         * pin keeps the evidence channel honest against a route change.
+         */
+        list($url) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))),
+            $this->model()
+        );
+
+        $this->assertSame(
+            \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->generation_url(),
+            $url,
+            'The endpoint-owned generation route must be the URL the wire request actually uses.'
+        );
+    }
+
     public function testMinimalRequestSnapshot()
     {
         list($url, $body, $headers) = $this->captureRequest(

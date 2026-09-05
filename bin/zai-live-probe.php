@@ -235,7 +235,14 @@ zai_live_probe_report( 'region', $region );
 $endpoint = $surface_facts['endpoint']::for_current_settings();
 zai_live_probe_report( 'endpoint base', $endpoint->base_url() );
 zai_live_probe_report( 'models route', $endpoint->models_url() );
-zai_live_probe_report( 'messages route', $endpoint instanceof ZaiAnthropicEndpoint ? $endpoint->messages_url() : $endpoint->api_url( 'chat/completions' ) );
+/*
+ * glm15-4: the generation-route evidence rides the endpoint layer's one
+ * owner (generation_url()) — the previous instanceof ternary plus the
+ * inline chat-completion route literal could print a URL the plugin never
+ * requests after any vendor or plan route change (the Anthropic surface
+ * already varies /messages vs /v1/messages by plan).
+ */
+zai_live_probe_report( 'generation route', $endpoint->generation_url() );
 
 // A REAL transporter (curl, no redirects) — this script intentionally
 // performs live network requests.

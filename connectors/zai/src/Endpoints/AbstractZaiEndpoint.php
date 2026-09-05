@@ -223,6 +223,25 @@ abstract class AbstractZaiEndpoint {
 	}
 
 	/**
+	 * The generation URL of this endpoint (glm15-4).
+	 *
+	 * The one-owner route the surfaces' generation requests — and any
+	 * evidence channel naming them — ride. The openai surface composes
+	 * its GENERATION_ROUTE constant (kept honest against the vendor
+	 * SDK's own wire path by the mapping suite's captured-URL pin); the
+	 * anthropic surface serves the plan-dependent Messages route
+	 * (messages_url()), so it derives instead of declaring a flat
+	 * constant. Callers (bin/zai-live-probe.php's route evidence) no
+	 * longer hand-pick the URL through instanceof plus an inline route
+	 * literal that can drift from what the plugin actually requests.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return string Full URL of the generation route.
+	 */
+	abstract public function generation_url(): string;
+
+	/**
 	 * Cache-key-safe identity of this endpoint (provider, plan, region).
 	 *
 	 * Distinct per surface (the CACHE_SCOPE string), so availability
