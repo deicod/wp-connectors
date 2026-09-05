@@ -344,6 +344,17 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             'in-range int' => '{"v":9223372036854775807}',
             'float, never integral-beyond' => '{"v":1.5}',
             'exponent float (stable double)' => '{"v":1e20}',
+            /*
+             * glm19-1: float-form spellings of an EXACT integer accept —
+             * the exponent/fraction scan reconstructs the literal's
+             * decimal expansion and the %.0f oracle reproduces it.
+             */
+            'exponent spelling of 2^63' => '{"n":9223372036854775808e0}',
+            'fraction spelling of 2^63' => '{"n":9223372036854775808.0}',
+            'mantissa+fraction+exponent spelling of 2^63' => '{"n":9.223372036854775808e18}',
+            'exponent spelling of 2^53' => '{"v":9007199254740992e0}',
+            'fractional expansion stays exempt' => '{"v":0.1e0}',
+            'fractional with positive exponent' => '{"v":123.450e3}',
             'digits in a string' => '{"note":"99999999999999999999999"}',
             'digits in a key' => '{"99999999999999999999":"x"}',
             'empty string' => '',
@@ -359,6 +370,23 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             'nested lossy' => '{"rows":[{"id":12345678901234567890}]}',
             'INF exponent giant' => '{"v":1e999}',
             'INF digit giant' => '{"v":' . str_repeat('9', 400) . '}',
+            /*
+             * glm19-1: the same lossy integers in float-form spellings —
+             * the e/E/./- adjacency guards hid every float token from
+             * the plain-integer scan, so the exponent spelling of …809
+             * accepted while its plain twin rejected (empirically
+             * confirmed on the real class). Below the int range the
+             * exact-integer guarantee ends at 2^53 (a float-form token
+             * decodes to a double), and an integral-but-inexact big
+             * float (1.5e25 — the expansion is the integer 15·10^24 the
+             * double does not equal) rejects like its digit-run twin.
+             */
+            'exponent spelling of the boundary window' => '{"n":9223372036854775809e0}',
+            'fraction spelling of the boundary window' => '{"n":9223372036854775809.0}',
+            'negative exponent spelling of the boundary window' => '{"n":-9223372036854775809e0}',
+            'exponent spelling of a coarser magnitude' => '{"n":12345678901234567890e0}',
+            'exponent spelling below int range (2^53+1)' => '{"v":9007199254740993e0}',
+            'integral inexact big float' => '{"v":1.5e25}',
             /*
              * GLM12 verifier round: an escape-dense string value (~20k
              * escapes) used to exhaust the PCRE recursion limit in the

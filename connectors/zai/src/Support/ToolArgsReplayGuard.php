@@ -172,7 +172,11 @@ final class ToolArgsReplayGuard {
 	 * is a true precision loss at decode time. An exponent-form giant
 	 * ("1e999") decodes to INF and rejects through the encode oracle on
 	 * the decoded tree; digit strings beyond ~1e309 decode to INF the
-	 * same way.
+	 * same way. glm19-1: float-form spellings of an integer (exponent or
+	 * fraction — 9223372036854775809e0, …809.0) face the same oracle on
+	 * their reconstructed exact decimal expansion; a float-form token
+	 * decodes to a DOUBLE even below the int range, so its exact-integer
+	 * guarantee ends at 2^53 (see float_literal_is_lossy_integer()).
 	 *
 	 * JSON string literals (values AND keys — "call 999…9 times" as a
 	 * note, an id-shaped key) are stripped before the scan: their digits
@@ -234,10 +238,6 @@ final class ToolArgsReplayGuard {
 			return self::is_replayable_decoded( $decoded );
 		}
 
-		if ( 0 === $matches ) {
-			return true;
-		}
-
 		foreach ( $literals[0] as $literal ) {
 			$negative = '-' === $literal[0];
 			$digits   = $negative ? \substr( $literal, 1 ) : $literal;
@@ -270,7 +270,123 @@ final class ToolArgsReplayGuard {
 			}
 		}
 
+		/*
+		 * glm19-1: float-form tokens (an exponent or fraction part) are
+		 * their own literal class. The e/E/./- adjacency guards above
+		 * keep the PLAIN-integer scan from matching inside a float token,
+		 * but they also made every float token invisible to the rule: an
+		 * exponent spelling of a lossy beyond-int integer
+		 * (9223372036854775809e0 — …809 collapsing to the …808 double)
+		 * accepted where its plain-literal twin rejects and the decoded
+		 * walker rejects too, so one raw string gave the two channels of
+		 * a single surface opposite verdicts — the raw-wire half of the
+		 * glm12-8 contract (reject true precision loss) and the same
+		 * collapse-window class glm18-1 closed on the decoded walker.
+		 * Every float-form token whose exact decimal expansion is an
+		 * INTEGER now faces the same %.0f exactness oracle; genuinely
+		 * fractional expansions (0.1, 1.5, 1e-5) keep their stable-double
+		 * exemption.
+		 */
+		$float_matches = preg_match_all( '/(?<![\d.eE-])-?\d+(?:\.\d+)?[eE][-+]?\d+(?![\d.eE-])|(?<![\d.eE-])-?\d+\.\d+(?![\d.eE-])/', $without_strings, $float_literals );
+
+		if ( false === $float_matches ) {
+			// Engine failure on the float scan: fail closed, exactly like
+			// the stripper and the plain scan above.
+			return self::is_replayable_decoded( $decoded );
+		}
+
+		foreach ( $float_literals[0] as $token ) {
+			if ( self::float_literal_is_lossy_integer( $token ) ) {
+				return false;
+			}
+		}
+
 		return true;
+	}
+
+	/**
+	 * Whether a float-form JSON number token (an exponent or fraction
+	 * part) denotes an INTEGER the platform decode does not keep exact
+	 * (glm19-1).
+	 *
+	 * The token's exact decimal expansion is reconstructed by
+	 * decimal-point arithmetic on its own digit string — bcmath is not a
+	 * WordPress dependency, and no double may be consulted for the
+	 * LITERAL side of the comparison. The oracle then mirrors the
+	 * plain-literal rule: sprintf('%.0f') of the decoded double must
+	 * reproduce the expansion digit for digit. Two regime differences
+	 * from the plain scan are load-bearing:
+	 *
+	 * - the decoded value of a float-form token is a DOUBLE even below
+	 *   the int range, so the exact-integer guarantee ends at 2^53, not
+	 *   PHP_INT_MAX (9007199254740993e0 rounds to …992, while the plain
+	 *   literal decodes to an exact int);
+	 * - a genuinely fractional expansion (any nonzero digit beyond the
+	 *   point — 0.1, 1.5, 1e-5) is a stable double and stays exempt: the
+	 *   walker's own integral class is the boundary of the rule.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $token A numeric token carrying a '.' or exponent part.
+	 * @return bool True when the token denotes an integer the decode loses.
+	 */
+	private static function float_literal_is_lossy_integer( string $token ): bool {
+		$negative = '-' === $token[0];
+		$body     = $negative ? \substr( $token, 1 ) : $token;
+
+		if ( ! preg_match( '/^(\d+)(?:\.(\d+))?(?:[eE]([-+]?\d+))?$/', $body, $parts ) ) {
+			// Not a JSON number shape; the caller pre-validated that the
+			// document decodes, so this cannot fire — stay neutral.
+			return false;
+		}
+
+		$digits      = $parts[1] . ( $parts[2] ?? '' );
+		$significant = \ltrim( $digits, '0' );
+
+		if ( '' === $significant ) {
+			// Zero in any spelling: decodes to ±0.0 and replays stably.
+			return false;
+		}
+
+		/*
+		 * The point index counts from the digit string's start; strip the
+		 * same leading zeros so the length counts SIGNIFICANT integer
+		 * digits. A saturated exponent cast can push the arithmetic past
+		 * the int range (PHP widens to float), so renormalize before any
+		 * string use — both saturation directions land outside (0, 309].
+		 */
+		$integer_length = (int) ( \strlen( $parts[1] ) + (int) ( $parts[3] ?? '0' ) - ( \strlen( $digits ) - \strlen( $significant ) ) );
+
+		if ( $integer_length <= 0 ) {
+			// |value| < 1: fractional by construction.
+			return false;
+		}
+
+		if ( $integer_length > 309 ) {
+			// More integer digits than any finite double carries (DBL_MAX
+			// formatted %.0f has 309): the decode cannot keep the integer.
+			return true;
+		}
+
+		if ( $integer_length < \strlen( $significant ) && '' !== \rtrim( \substr( $significant, $integer_length ), '0' ) ) {
+			// Nonzero digits beyond the point: a genuinely fractional
+			// value — a stable double, the walker's exempt class.
+			return false;
+		}
+
+		$integer = $integer_length >= \strlen( $significant )
+			? $significant . \str_repeat( '0', $integer_length - \strlen( $significant ) )
+			: \substr( $significant, 0, $integer_length );
+
+		$value = (float) $token;
+
+		if ( \is_infinite( $value ) ) {
+			// An exponent giant the encode oracle already rejected; the
+			// belt stays for direct calls on this helper's contract.
+			return true;
+		}
+
+		return sprintf( '%.0f', $value ) !== ( $negative ? '-' : '' ) . $integer;
 	}
 
 	/**
