@@ -905,15 +905,29 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
          * built from ONE shared decode, and reject_malformed_usage() must
          * not re-read the Response (the vendor getData() re-decodes the
          * whole body per call; three decodes where master paid one).
+         *
+         * glm15-11 supersession (the GLM10 #4 lesson: a pin may be
+         * consciously superseded when its invariant is extended): the
+         * non-streamed and JSON-fallback branches now ride the ONE
+         * parse_decoded_chat_body() helper, so the PreDecodedResponse
+         * construction exists exactly once — the streamed path keeps
+         * its own hand-off — and both decoders reach the parser through
+         * the shared pipeline (usage validation, derived total, hand-
+         * off) that previously lived twice in this class.
          */
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
         );
 
         $this->assertSame(
-            3,
+            2,
             preg_match_all('/new PreDecodedResponse\(/', $source),
-            'The streamed, non-streamed, and JSON-fallback paths must hand the parser the pre-decoded payload (GLM12 #3 added the third hand-off).'
+            'Exactly two hand-off sites: the shared non-streaming helper and the streamed path (glm15-11 collapsed the fallback copy into the helper).'
+        );
+        $this->assertSame(
+            2,
+            preg_match_all('/\$this->parse_decoded_chat_body\(/', $source),
+            'The non-streaming branch and the JSON fallback both ride the one shared pipeline helper.'
         );
         $this->assertSame(
             0,

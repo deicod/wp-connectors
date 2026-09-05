@@ -400,24 +400,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 */
 			list( $data, $raw ) = JsonBodyDecoder::decode( $body );
 
-			/*
-			 * GLM5 #3 stands: the usage member is validated BEFORE the SDK
-			 * parse — a string/INF member reached the SDK parent's
-			 * int-typed TokenUsage constructor unvalidated (the shared
-			 * validator was wired into the Anthropic transports only) and
-			 * detonated as a raw strict-types TypeError, surfaced by the
-			 * mapper's catch-all as the generic 500 instead of the typed
-			 * zai_invalid_response.
-			 */
-			$this->reject_malformed_usage( $data, $raw );
-
-			$data = self::derive_absent_total_tokens( $data );
-
-			return $this->parseNonStreamBody(
-				null !== $data
-					? new PreDecodedResponse( $response->getStatusCode(), $data )
-					: $response
-			);
+			return $this->parse_decoded_chat_body( $response, $data, $raw );
 		}
 
 		$aggregator = new SseAggregator();
@@ -547,6 +530,42 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 */
 		return $this->parseNonStreamBody(
 			new PreDecodedResponse( $response->getStatusCode(), $aggregated )
+		);
+	}
+
+	/**
+	 * Runs the non-streaming chat.completion parse pipeline over an
+	 * already-decoded body pair (glm15-11).
+	 *
+	 * The JSON-body pipeline — usage validation (GLM5 #3: BEFORE the SDK
+	 * parse, so a string/INF member cannot detonate the parent's
+	 * int-typed TokenUsage constructor as a raw TypeError), the derived
+	 * total (GLM12 #6), and the pre-decoded hand-off to the SDK parser
+	 * (GLM6 #14) — was re-implemented step-for-step in
+	 * json_fallback_result(), so a pipeline change (a new validation
+	 * step, a different hand-off) had to be edited twice within one
+	 * class: a missed edit made a stream-mislabeled body parse
+	 * differently from an unlabeled one, the exact divergence class
+	 * glm14-2 was landed to prevent. Both decoders call this one
+	 * helper now.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response   $response The response the pair was decoded from.
+	 * @param array|null $data     The associatively decoded body.
+	 * @param mixed      $raw      The raw object-ness view of the same body.
+	 * @return GenerativeAiResult The parsed result.
+	 * @throws ResponseException When the payload is malformed.
+	 */
+	private function parse_decoded_chat_body( Response $response, $data, $raw ): GenerativeAiResult {
+		$this->reject_malformed_usage( $data, $raw );
+
+		$data = self::derive_absent_total_tokens( $data );
+
+		return $this->parseNonStreamBody(
+			null !== $data
+				? new PreDecodedResponse( $response->getStatusCode(), $data )
+				: $response
 		);
 	}
 
@@ -700,15 +719,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		}
 
 		try {
-			$this->reject_malformed_usage( $data, $raw );
-
-			$data = self::derive_absent_total_tokens( $data );
-
-			return $this->parseNonStreamBody(
-				null !== $data
-					? new PreDecodedResponse( $response->getStatusCode(), $data )
-					: $response
-			);
+			return $this->parse_decoded_chat_body( $response, $data, $raw );
 		} catch ( FixedMessageResponseException $e ) {
 			/*
 			 * glm14-2: the precise tool-arguments diagnostics the parse
