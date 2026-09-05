@@ -46,12 +46,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
      */
     private function modelWithKey(string $key)
     {
-        $this->primeZaiAnthropicDiscoveryTransient();
-        $model = ZaiAnthropicProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
-
-        return $model;
+        return $this->wiredZaiAnthropicModel($key);
     }
 
     /**
@@ -64,12 +59,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
      */
     private function model(?ModelConfig $config = null)
     {
-        $this->primeZaiAnthropicDiscoveryTransient();
-        $model = ZaiAnthropicProvider::model('glm-5.3', $config);
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
-
-        return $model;
+        return $this->wiredZaiAnthropicModel(null, $config);
     }
 
     /*

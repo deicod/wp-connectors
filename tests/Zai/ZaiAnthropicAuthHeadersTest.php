@@ -48,13 +48,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
      */
     private function model(string $key)
     {
-        $this->primeZaiAnthropicDiscoveryTransient();
-
-        $model = ZaiAnthropicProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
-
-        return $model;
+        return $this->wiredZaiAnthropicModel($key);
     }
 
     /**

@@ -284,6 +284,43 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
+     * A zai_anthropic model wired for one harness-recorded request
+     * (glm20-11).
+     *
+     * The one 4-statement wiring every zai_anthropic suite needs: prime
+     * the discovery transient (glm15-1: the vendor parent caches the
+     * directory statically per class, so an unwired cached instance
+     * throws pre-transport under randomized order — the old accidental
+     * pass), resolve the model, bind the registry's harness
+     * transporter, and authenticate with an ApiKeyRequestAuthentication.
+     * The wiring was copy-pasted five times across the suites (four
+     * private model() helpers plus one inline); a wiring change — a
+     * registry step, FakeSecrets key handling, a transporter swap — had
+     * to land five places, and a missed edit silently left one suite
+     * testing a differently-wired model while staying green.
+     *
+     * @param string|null      $key    Exact API key to authenticate with, or
+     *                                 null for a fresh per-call fixture key
+     *                                 (FakeSecrets::apiKey() is random per
+     *                                 call — pass a captured value when a
+     *                                 test binds flags/verdicts to the key).
+     * @param ModelConfig|null $config Optional model configuration.
+     * @return \Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel
+     */
+    protected function wiredZaiAnthropicModel(?string $key = null, ?ModelConfig $config = null)
+    {
+        $this->primeZaiAnthropicDiscoveryTransient();
+
+        $model = \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3', $config);
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication(
+            null === $key ? FakeSecrets::apiKey() : $key
+        ));
+
+        return $model;
+    }
+
+    /**
      * Reads a private SSE aggregator state field (glm19-11).
      *
      * The aggregators' observability getters (is_done()/event_count()/

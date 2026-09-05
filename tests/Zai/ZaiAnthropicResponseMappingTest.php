@@ -38,12 +38,7 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
      */
     private function model()
     {
-        $this->primeZaiAnthropicDiscoveryTransient();
-        $model = ZaiAnthropicProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
-
-        return $model;
+        return $this->wiredZaiAnthropicModel();
     }
 
     /**
@@ -6435,10 +6430,7 @@ $body = ''
         $key = FakeSecrets::apiKey();
         update_option(\Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
 
-        $this->primeZaiAnthropicDiscoveryTransient();
-        $model = ZaiAnthropicProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+        $model = $this->wiredZaiAnthropicModel($key);
 
         $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('invalid x-api-key'));
 
