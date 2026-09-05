@@ -1225,6 +1225,50 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame(1.0E20, $replay['messages'][1]['content'][0]['input']['scale'], 'The exact big literal rides the replay verbatim.');
     }
 
+    public function testTheDefensiveAssociativeToolInputProvesReplayabilityBeforeTheStamp()
+    {
+        /*
+         * glm19-3: parse_content_block()'s defensive sub-path (no raw
+         * oracle, an ASSOCIATIVE input array — caller-built territory,
+         * no aggregator behind it) used to fall through to the
+         * GLM12 #12 return with NO replay check ever having run,
+         * stamping the call ReplayValidatedFunctionCall and permanently
+         * disabling the outbound replay oracle for arguments nothing
+         * validated. The stamp now rides a proof: the FULL
+         * is_replayable() oracle (a caller-built tree can carry
+         * INF/NAN the decoded fast-path walker alone would miss),
+         * throwing the same marker rejection as the raw-oracle
+         * branch's replay failure. Latent by construction — no
+         * production caller passes an associative input with a null
+         * raw view (the streamed channel hands stdClass, the body
+         * channel always holds the non-associative decode) — pinned by
+         * reflection like the private-guard contracts elsewhere.
+         */
+        $model = $this->model();
+        $parse = new \ReflectionMethod($model, 'parse_content_block');
+        if (PHP_VERSION_ID < 80100) {
+            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
+            $parse->setAccessible(true);
+        }
+
+        $inf_input = array('type' => 'tool_use', 'id' => 'toolu_df', 'name' => 'convert', 'input' => array('qty' => INF));
+
+        try {
+            $parse->invoke($model, $inf_input, null);
+            $this->fail('An unreplayable defensive associative input must not be stamped.');
+        } catch (\Deicod\WpConnectors\Zai\Support\FixedMessageResponseException $e) {
+            $this->assertStringContainsString('cannot be replayed', $e->getMessage());
+        }
+
+        $playable = $parse->invoke(
+            $model,
+            array('type' => 'tool_use', 'id' => 'toolu_ok', 'name' => 'convert', 'input' => array('qty' => 3)),
+            null
+        );
+
+        $this->assertInstanceOf(\Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall::class, $playable->getFunctionCall(), 'A proven defensive input keeps the stamp.');
+    }
+
     public function testStreamedEscapeDenseToolInputStillRejectsLossyLiterals()
     {
         /*

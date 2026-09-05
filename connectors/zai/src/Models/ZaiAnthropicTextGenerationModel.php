@@ -2199,6 +2199,25 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						 * degrading them to the generic stream message.
 						 */
 						throw FixedMessageResponseException::fixed( self::PROVIDER_LABEL, 'content', 'A tool_use block is missing its input member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+					} elseif ( ! ToolArgsReplayGuard::is_replayable( $args ) ) {
+						/*
+						 * glm19-3: the defensive associative sub-path has NO
+						 * validator behind it — the stdClass sub-path above is
+						 * the aggregator's channel (its input was replay-
+						 * validated there, precisely or conservatively, per
+						 * the GLM12 #8 split), but an associative payload with
+						 * a null raw oracle is caller-built territory, and the
+						 * GLM12 #12 stamp at the return used to apply to it
+						 * unconditionally — permanently disabling the
+						 * outbound replay oracle for arguments that never
+						 * passed ANY check. The stamp now rides a proof: the
+						 * FULL is_replayable() oracle (not the decoded fast
+						 * path — a caller-built tree can carry INF, NAN,
+						 * invalid UTF-8, or recursion the walker alone would
+						 * miss), the same oracle the outbound guard runs, so
+						 * parse verdict and replay verdict stay in agreement.
+						 */
+						throw FixedMessageResponseException::fixed( self::PROVIDER_LABEL, 'content', 'A tool_use block carried arguments that cannot be replayed (an unencodable or precision-loss value was decoded).' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					}
 				} else {
 					$raw_input = \property_exists( $raw_part, 'input' ) ? $raw_part->input : null;
