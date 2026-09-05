@@ -468,47 +468,32 @@ function wp_connectors_include_runtime_segments($statement)
 }
 
 /**
- * The byte offset closing the brace opened at $open, or end-of-file when
- * unbalanced (glm18-17: the walk the visibility spans share).
+ * The byte offset closing the delimiter opened at $open, or false when
+ * unbalanced (glm20-10: the ONE depth walk both delimiters share).
  *
- * @param string $masked String-masked source (strings blank, code braces only).
- * @param int    $open   Offset of the opening '{'.
- * @return int Offset of the matching '}' (or the last byte).
+ * The brace and paren forms used to be two copies differing only in
+ * delimiter literals — and had already diverged (EOF on one walk's
+ * unbalanced input, false on the other's), the drift shape a copy
+ * invites: a fix to one walk's semantics had to land twice or the
+ * callers silently got different answers. The walk itself now answers
+ * only what it can know — 'closed here' or false ('cannot close') —
+ * and each caller states its own unbalanced POLICY at its site.
+ *
+ * @param string $masked     String-masked source (strings blank, so data
+ *                           delimiters cannot unbalance the walk).
+ * @param int    $open       Offset of the opening delimiter.
+ * @param string $open_char  The opening delimiter ('{' or '(').
+ * @param string $close_char The closing delimiter ('}' or ')').
+ * @return int|false Offset of the matching close, or false.
  */
-function wp_connectors_matching_brace_end($masked, $open)
+function wp_connectors_matching_delimiter_end($masked, $open, $open_char, $close_char)
 {
     $length = strlen($masked);
     $depth = 0;
     for ($i = $open; $i < $length; ++$i) {
-        if ('{' === $masked[ $i ]) {
+        if ($open_char === $masked[ $i ]) {
             ++$depth;
-        } elseif ('}' === $masked[ $i ]) {
-            --$depth;
-            if (0 === $depth) {
-                return $i;
-            }
-        }
-    }
-
-    return $length - 1;
-}
-
-/**
- * The byte offset closing the paren opened at $open, or false when
- * unbalanced (glm18-17: the walk the visibility spans share).
- *
- * @param string $masked String-masked source.
- * @param int    $open   Offset of the opening '('.
- * @return int|false Offset of the matching ')', or false.
- */
-function wp_connectors_matching_paren_end($masked, $open)
-{
-    $length = strlen($masked);
-    $depth = 0;
-    for ($i = $open; $i < $length; ++$i) {
-        if ('(' === $masked[ $i ]) {
-            ++$depth;
-        } elseif (')' === $masked[ $i ]) {
+        } elseif ($close_char === $masked[ $i ]) {
             --$depth;
             if (0 === $depth) {
                 return $i;
@@ -517,6 +502,45 @@ function wp_connectors_matching_paren_end($masked, $open)
     }
 
     return false;
+}
+
+/**
+ * The byte offset closing the brace opened at $open, or end-of-file when
+ * unbalanced (glm18-17: the walk the visibility spans share).
+ *
+ * glm20-10: the shared delimiter walk wearing the visibility spans'
+ * own POLICY for an unclosable brace — over-approximate to EOF, the
+ * glm18-7 boundary: a wider region only refuses proofs, never launders
+ * one, so the span grows rather than under-bounds. This wrapper is the
+ * one place that policy lives; every caller below gets it by name.
+ *
+ * @param string $masked String-masked source (strings blank, code braces only).
+ * @param int    $open   Offset of the opening '{'.
+ * @return int Offset of the matching '}' (or the last byte).
+ */
+function wp_connectors_matching_brace_end($masked, $open)
+{
+    $end = wp_connectors_matching_delimiter_end($masked, $open, '{', '}');
+
+    return false === $end ? strlen($masked) - 1 : $end;
+}
+
+/**
+ * The byte offset closing the paren opened at $open, or false when
+ * unbalanced (glm18-17: the walk the visibility spans share).
+ *
+ * glm20-10: the shared delimiter walk under the honest contract —
+ * false lets each caller state its own unbalanced policy where the
+ * do-while tail approximates to EOF but a loop header that cannot
+ * close bounds nothing.
+ *
+ * @param string $masked String-masked source.
+ * @param int    $open   Offset of the opening '('.
+ * @return int|false Offset of the matching ')', or false.
+ */
+function wp_connectors_matching_paren_end($masked, $open)
+{
+    return wp_connectors_matching_delimiter_end($masked, $open, '(', ')');
 }
 
 /**

@@ -47,9 +47,55 @@ final class SelfContainmentLoopWritesTest extends TestCase
         @rmdir($this->root);
     }
 
+    public function testTheTwoDelimiterMatchersShareOneWalkWithStatedPolicies(): void
+    {
+        /*
+         * glm20-10: the brace and paren walks were two copies that had
+         * already diverged (EOF vs false on unbalanced input) — drift a
+         * copy invites, in the very helpers the visibility spans above
+         * are computed from. One parameterized walk serves both now;
+         * the pin holds the three observable contracts: both delimiters
+         * close correctly (nesting included), the brace wrapper
+         * over-approximates to EOF (the spans' refuse-never-launder
+         * boundary), and the paren wrapper stays honest (false) so each
+         * caller states its own policy.
+         */
+        $masked = 'a(b(c)d) e{f{g}h}i';
+
+        $this->assertSame(7, wp_connectors_matching_paren_end($masked, 1), 'The paren walk closes through nesting.');
+        $this->assertSame(16, wp_connectors_matching_brace_end($masked, 9), 'The brace walk closes through nesting.');
+
+        $unclosable = 'x( y{';
+        $this->assertSame(4, wp_connectors_matching_brace_end($unclosable, 3), 'An unclosable brace over-approximates to EOF.');
+        $this->assertFalse(wp_connectors_matching_paren_end($unclosable, 1), 'An unclosable paren is honestly false.');
+
+        /*
+         * Source pin: the depth loop exists once — the wrappers ride
+         * the shared walk, never a second copy.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__) . '/bin/lib/plugin-tools.php');
+
+        $this->assertSame(
+            1,
+            substr_count($source, 'wp_connectors_matching_delimiter_end($masked, $open, $open_char, $close_char)'),
+            'Exactly one depth walk: the parameterized matcher itself.'
+        );
+        $this->assertSame(
+            1,
+            substr_count($source, "wp_connectors_matching_delimiter_end(\$masked, \$open, '{', '}')"),
+            'The brace wrapper delegates to the shared walk.'
+        );
+        $this->assertSame(
+            1,
+            substr_count($source, "wp_connectors_matching_delimiter_end(\$masked, \$open, '(', ')')"),
+            'The paren wrapper delegates to the shared walk.'
+        );
+    }
+
     /**
      * @dataProvider loopWriteFixtureProvider
      */
+
     public function testALoopNestedWriteAfterTheIncludeFlags(string $source): void
     {
         file_put_contents($this->root . '/fixture.php', $source);
