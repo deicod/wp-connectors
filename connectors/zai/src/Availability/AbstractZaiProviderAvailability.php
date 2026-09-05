@@ -1200,12 +1200,15 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	/**
 	 * Reports whether a decoded 2xx body is a model list.
 	 *
-	 * This is deliberately the MINIMAL entry rule of the shared discovery
-	 * parser (ZaiModelListParser): a data member that is a JSON list whose
-	 * entries each carry a non-empty string id — and nothing more. The
-	 * chat filter, the has_more rejection, and the plan intersection are
-	 * CATALOG concerns, not credential ones: a valid key on a plan whose
-	 * intersection is empty, or a paginated list, still authenticated, so
+	 * GLM13 #2: the predicate rides the shared discovery parser's ONE
+	 * entry rule (ZaiModelListParser::entry_failure_reason()) — the
+	 * verdict's private shape-check copy had already diverged from it
+	 * (a vacuous foreach over zero entries accepted an EMPTY data list
+	 * the parser rejects, persisting VERDICT_VALID for a body carrying
+	 * no authentication proof). What stays OUT of the verdict is exactly
+	 * what stays out of the entry rule: the chat filter and the plan
+	 * intersection are catalog concerns, not credential ones — a valid
+	 * key on a plan whose intersection is empty still authenticated, so
 	 * the verdict must not import them.
 	 *
 	 * @since 0.2.0
@@ -1214,17 +1217,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return bool True when the body is an authenticated-looking model list.
 	 */
 	private static function probe_body_is_models_list( $raw ): bool {
-		if ( ! \is_object( $raw ) || ! isset( $raw->data ) || ! \is_array( $raw->data ) ) {
-			return false;
-		}
-
-		foreach ( $raw->data as $entry ) {
-			if ( ! \is_object( $entry ) || ! isset( $entry->id ) || ! \is_string( $entry->id ) || '' === $entry->id ) {
-				return false;
-			}
-		}
-
-		return true;
+		return null === ZaiModelListParser::entry_failure_reason( $raw );
 	}
 
 	/**

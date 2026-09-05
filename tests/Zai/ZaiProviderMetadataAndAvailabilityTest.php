@@ -450,23 +450,55 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
     public function testAValidProbeDoesNotSeedDiscoveryFromACatalogUnusableBody()
     {
         /*
-         * GLM12 #2 (the seed's edge): a body that authenticates the
-         * credential but fails the CATALOG read — an incomplete page
-         * (has_more) — still yields the VALID verdict, but nothing is
-         * seeded: discovery keeps its own flow (live attempt, negative
-         * marker, plan fallback) with its own failure caching.
+         * GLM12 #2 (the seed's edge): a body that fails the CATALOG read
+         * seeds nothing — discovery keeps its own flow (live attempt,
+         * negative marker, plan fallback) with its own failure caching.
+         *
+         * glm13-2 supersedes the earlier VERDICT-valid half of this pin:
+         * an incomplete page (has_more) is not the models-list shape the
+         * shared parser's ENTRY rule accepts, so the verdict predicate —
+         * which now rides that one rule — treats it as an UNRECOGNIZED
+         * 2xx body: still configured-pending, but no verdict persists
+         * (the glm12-1 narrowing: only the models-list shape is VALID).
          */
         $key = FakeSecrets::apiKey();
         $instance = $this->availability($key);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}],"has_more":true}');
-        $this->assertTrue($instance->isConfigured(), 'An authenticated-but-paginated body still validates the credential.');
-        $this->assertSame('valid', get_option(ZaiProviderAvailability::STATE_OPTION)['valid'], 'The verdict stands regardless of the seed.');
+        $this->assertTrue($instance->isConfigured(), 'An unrecognized 2xx body keeps the configured-pending default.');
+        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'An incomplete page must not persist a verdict.');
 
         $endpoint = ZaiEndpoint::for_current_settings();
         $this->assertFalse(
             get_transient(ZaiEndpoint::discovery_cache_id($endpoint->plan(), $endpoint->region())),
             'A catalog-unusable body must not seed the discovery transient.'
+        );
+    }
+
+    public function testAnEmptyModelsListUnderHttp200IsNotAValidVerdict()
+    {
+        /*
+         * glm13-2: {"data":[]} passed the verdict predicate's private
+         * shape-copy vacuously (a foreach over zero entries) and
+         * persisted VERDICT_VALID for the 300s STATE_TTL — while the
+         * shared parser rejects the body (no usable chat ID) and the
+         * discovery seed refuses to cache it. The predicate rides the
+         * parser's ONE entry rule now: an empty list is an UNRECOGNIZED
+         * 2xx body and stays INCONCLUSIVE (glm12-1) — never connected,
+         * never an unproven invalid verdict.
+         */
+        $key = FakeSecrets::apiKey();
+        $instance = $this->availability($key);
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[]}');
+
+        $this->assertTrue($instance->isConfigured(), 'An unrecognized 2xx body keeps the configured-pending default.');
+        $this->assertFalse(get_option(ZaiProviderAvailability::STATE_OPTION, false), 'An empty models list must not persist a valid verdict.');
+
+        $endpoint = ZaiEndpoint::for_current_settings();
+        $this->assertFalse(
+            get_transient(ZaiEndpoint::discovery_cache_id($endpoint->plan(), $endpoint->region())),
+            'An empty models list must not seed the discovery transient.'
         );
     }
 

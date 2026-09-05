@@ -83,47 +83,72 @@ final class ZaiModelListParser {
 		 * the single object-view decode serves both the shape checks and
 		 * the reads (the GLM9 #15 object-tree idiom).
 		 */
-		$body = SseFrameBuffer::strip_stream_prefix( (string) $response->getBody() );
-		$raw  = json_decode( $body );
+		return self::parse_decoded_chat_ids(
+			self::decode_models_body( $response ),
+			$plan,
+			$provider_label
+		);
+	}
 
-		if ( ! \is_object( $raw ) || ! isset( $raw->data ) ) {
-			throw ResponseException::fromMissingData( $provider_label, 'data' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
-		}
+	/**
+	 * The ONE BOM-safe object-view decode of a models body (glm13-3).
+	 *
+	 * The availability probe decodes the SAME body its verdict and the
+	 * discovery seed consume; this shared decode keeps the strip + decode
+	 * at one site so the verdict path and the seed path can never see (or
+	 * pay for) two different decodes of one response.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Response $response The /models response.
+	 * @return mixed The decoded body (stdClass, scalar, or null).
+	 */
+	public static function decode_models_body( Response $response ) {
+		return json_decode( SseFrameBuffer::strip_stream_prefix( (string) $response->getBody() ) );
+	}
 
-		/*
-		 * Object-ness oracle (Codex R14 #4): only a JSON array decodes
-		 * to a PHP list; an object-shaped {"data":{"only":{"id":...}}}
-		 * decodes to stdClass here, and iterating the object's VALUES as
-		 * entries would treat a malformed catalog as successful live
-		 * discovery and cache it.
-		 */
-		if ( ! \is_array( $raw->data ) ) {
-			throw ResponseException::fromInvalidData( $provider_label, 'data', 'The discovered model list must be a JSON list.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
-		}
+	/**
+	 * Runs the model-list parser over an ALREADY-DECODED body (glm13-3).
+	 *
+	 * Same contract as parse_chat_ids(), minus the decode — the caller
+	 * (the availability probe's discovery seed) holds the pre-decoded
+	 * tree from the same response.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed  $raw            The decoded response body.
+	 * @param string $plan           The active plan ('coding' or 'general').
+	 * @param string $provider_label The consuming surface's provider label.
+	 * @return list<string> Chat-capable, in-plan model IDs.
+	 * @throws ResponseException When the entry shape is not a model list
+	 *                           or no usable chat ID remains after the
+	 *                           catalog read.
+	 */
+	public static function parse_decoded_chat_ids( $raw, string $plan, string $provider_label ): array {
+		$reason = self::entry_failure_reason( $raw );
 
-		/*
-		 * Codex R15 #3 — decision: treat an incomplete page as discovery
-		 * FAILURE (option a) rather than following the after_id cursor. A
-		 * partial catalog with has_more: true would otherwise be cached,
-		 * freezing the directory to one page and dropping known in-plan
-		 * models; cursor-following would add a transport loop to a
-		 * connector whose discovery is opportunistic (the static plan
-		 * catalog is authoritative), so the strict path is to fall back to
-		 * it — the page says it is incomplete, therefore it is not a
-		 * catalog. STRICT bool: a present has_more that is not exactly
-		 * false (string "true", 1, null) is not the documented shape and
-		 * fails the same way. Shared by BOTH surfaces since GLM1 #11.
-		 */
-		if ( \property_exists( $raw, 'has_more' ) && false !== $raw->has_more ) {
-			throw ResponseException::fromInvalidData( $provider_label, 'data', 'The discovered model list reported additional pages.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
+		if ( null !== $reason ) {
+			switch ( $reason ) {
+				case 'not_a_list':
+					throw ResponseException::fromInvalidData( $provider_label, 'data', 'The discovered model list must be a JSON list.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
+
+				case 'additional_pages':
+					throw ResponseException::fromInvalidData( $provider_label, 'data', 'The discovered model list reported additional pages.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
+
+				case 'entry_id':
+					throw ResponseException::fromInvalidData( $provider_label, 'data', 'Every entry must carry a non-empty string "id".' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
+
+				case 'empty_list':
+				case 'missing_data':
+				default:
+					// The empty list rejects exactly like the missing
+					// member always did: no usable data.
+					throw ResponseException::fromMissingData( $provider_label, 'data' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
+			}
 		}
 
 		$ids = array();
 		foreach ( $raw->data as $entry ) {
-			if ( ! \is_object( $entry ) || ! isset( $entry->id ) || ! \is_string( $entry->id ) || '' === $entry->id ) {
-				throw ResponseException::fromInvalidData( $provider_label, 'data', 'Every entry must carry a non-empty string "id".' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
-			}
-
 			$ids[] = $entry->id;
 		}
 
@@ -150,5 +175,85 @@ final class ZaiModelListParser {
 		}
 
 		return $chat_ids;
+	}
+
+	/**
+	 * The model-list ENTRY failure of a decoded body, or null when the
+	 * body carries the model-list shape (glm13-2).
+	 *
+	 * ONE rule TWO consumers ride — the discovery parser (throws the
+	 * per-reason rejection through entry_rejection()) and the
+	 * availability verdict predicate (an entry failure means the body is
+	 * no VALID verdict evidence and falls through to the inconclusive
+	 * rules). The verdict's private shape-check copy had already
+	 * diverged: its vacuous foreach over zero entries accepted an EMPTY
+	 * data list the parser rejects, persisting VERDICT_VALID for a body
+	 * carrying no authentication proof.
+	 *
+	 * The rule is everything the parser checks BEFORE the catalog
+	 * concerns (chat filter, plan intersection, non-empty survivors) —
+	 * those stay parse-only: a body that authenticated is valid verdict
+	 * evidence even when its catalog intersection is empty. This
+	 * supersedes the verdict's earlier tolerance of a has_more body
+	 * (an incomplete page is not a catalog, Codex R15 #3, so it is not
+	 * the models-list shape either): such a body is INCONCLUSIVE for the
+	 * credential now — never a valid verdict, never an unproven invalid
+	 * one.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $raw Decoded response body.
+	 * @return string|null Failure reason, or null for the model-list shape.
+	 */
+	public static function entry_failure_reason( $raw ): ?string {
+		if ( ! \is_object( $raw ) || ! isset( $raw->data ) ) {
+			return 'missing_data';
+		}
+
+		/*
+		 * Object-ness oracle (Codex R14 #4): only a JSON array decodes
+		 * to a PHP list; an object-shaped {"data":{"only":{"id":...}}}
+		 * decodes to stdClass here, and iterating the object's VALUES as
+		 * entries would treat a malformed catalog as successful live
+		 * discovery and cache it.
+		 */
+		if ( ! \is_array( $raw->data ) ) {
+			return 'not_a_list';
+		}
+
+		/*
+		 * Codex R15 #3 — decision: treat an incomplete page as discovery
+		 * FAILURE (option a) rather than following the after_id cursor. A
+		 * partial catalog with has_more: true would otherwise be cached,
+		 * freezing the directory to one page and dropping known in-plan
+		 * models; cursor-following would add a transport loop to a
+		 * connector whose discovery is opportunistic (the static plan
+		 * catalog is authoritative), so the strict path is to fall back to
+		 * it — the page says it is incomplete, therefore it is not a
+		 * catalog. STRICT bool: a present has_more that is not exactly
+		 * false (string "true", 1, null) is not the documented shape and
+		 * fails the same way. Shared by BOTH surfaces since GLM1 #11.
+		 */
+		if ( \property_exists( $raw, 'has_more' ) && false !== $raw->has_more ) {
+			return 'additional_pages';
+		}
+
+		/*
+		 * glm13-2: a data list with ZERO entries is not the models-list
+		 * shape either — the parser's catalog stage rejects it (no usable
+		 * chat ID), and a body carrying no entries carries no
+		 * authentication proof worth a VALID verdict.
+		 */
+		if ( array() === $raw->data ) {
+			return 'empty_list';
+		}
+
+		foreach ( $raw->data as $entry ) {
+			if ( ! \is_object( $entry ) || ! isset( $entry->id ) || ! \is_string( $entry->id ) || '' === $entry->id ) {
+				return 'entry_id';
+			}
+		}
+
+		return null;
 	}
 }
