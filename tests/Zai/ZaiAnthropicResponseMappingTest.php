@@ -2373,6 +2373,41 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
     }
 
+    public function testADuplicateMessageStopAfterMessageStopStaysTolerated()
+    {
+        /*
+         * glm16-2: a proxy or replaying intermediary that duplicates the
+         * final message_stop frame discards a fully valid completed
+         * generation — handle_trailing_event()'s declared-event rule
+         * counted the inert duplicate terminal as malformed ('would
+         * mutate a completed generation' cannot apply to a frame whose
+         * pre-termination twin ignores its payload entirely). The
+         * duplicate is a no-op now, the appending-gateway tolerance the
+         * OpenAI twin pins for its own sentinel (duplicate 'data:
+         * [DONE]'); content-bearing trailing events keep their
+         * invalidation (testADataEventAfterMessageStopInvalidatesTheStream).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_pt5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
     public function testADeclaredEventWithADonePayloadAfterMessageStopIsJudgedNotSkipped()
     {
         /*

@@ -1239,9 +1239,10 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 *
 				 * GLM5 #18: a SECOND message_stop can no longer reach
 				 * this case — dispatch_event() routes post-termination
-				 * frames to handle_trailing_event(), whose
-				 * declared-content-bearing rule invalidates them (the
-				 * old in-case duplicate check is subsumed).
+				 * frames to handle_trailing_event(), whose duplicate-
+				 * terminal tolerance no-ops them (glm16-2: the frame
+				 * is inert; the old in-case duplicate check is
+				 * subsumed).
 				 *
 				 * GLM7 #16: one flag, set once — is_done() and the
 				 * trailing-frame gates all read it.
@@ -1273,9 +1274,12 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 * - an error event (either declaration) sets the error flag — the
 	 *   model surfaces its fixed typed error message;
 	 * - a frame DECLARING any other known content-bearing event
-	 *   (message_start, content_block_*, message_delta, a second
-	 *   message_stop) would mutate a completed generation and stays
-	 *   corrupt;
+	 *   (message_start, content_block_*, message_delta) would mutate a
+	 *   completed generation and stays corrupt;
+	 * - a duplicate terminal message_stop is inert (glm16-2: the
+	 *   appending-gateway tolerance the OpenAI twin pins for its own
+	 *   sentinel) — nothing it carries can change a completed
+	 *   generation;
 	 * - everything else — pings and UNKNOWN event names or payload types
 	 *   (a future benign telemetry/heartbeat frame an intermediary may
 	 *   append) — is trailing noise; the completed generation stands.
@@ -1294,8 +1298,28 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			return;
 		}
 
+		if ( 'message_stop' === $type ) {
+			/*
+			 * glm16-2: a duplicate TERMINAL is inert — the completed
+			 * generation stands. A proxy or replaying intermediary that
+			 * duplicates the final message_stop frame discards nothing
+			 * but the duplicate: the pre-termination message_stop case
+			 * ignores the payload entirely, so the trailing policy for
+			 * the same event does not start scrutinizing it (every
+			 * corrupt trailing shape — undecodable or non-object
+			 * payload, declaration disagreement — was already rejected
+			 * by the shared consume_frame() pipeline before this
+			 * policy). This is the appending-gateway tolerance the
+			 * OpenAI twin pins for its own sentinel (a duplicate
+			 * 'data: [DONE]' is a no-op; well-formed trailing frames
+			 * are not corruption).
+			 */
+			return;
+		}
+
 		if ( \in_array( $type, self::DECLARED_EVENTS, true ) ) {
-			// A declared content-bearing event after the terminal
+			// A declared content-bearing event (message_start,
+			// content_block_*, message_delta) after the terminal
 			// message_stop would mutate a completed generation.
 			++$this->malformed;
 			$this->malformed_event = true;
