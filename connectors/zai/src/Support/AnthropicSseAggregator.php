@@ -1036,15 +1036,13 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					return;
 				}
 
-				if ( 'text_delta' === $raw_delta->type
-					&& ( ! \property_exists( $raw_delta, 'text' ) || ! \is_string( $raw_delta->text ) ) ) {
-					$this->malformed_event = true;
-
-					return;
-				}
-
-				if ( 'thinking_delta' === $raw_delta->type
-					&& ( ! \property_exists( $raw_delta, 'thinking' ) || ! \is_string( $raw_delta->thinking ) ) ) {
+				/*
+				 * glm15-21: the text_delta/thinking_delta member guards
+				 * ride the one has_string_content_member() map (the same
+				 * rule start_block() applies to its text/thinking block
+				 * types — Codex R13 #3 / the R4 verifier sweep).
+				 */
+				if ( ! self::has_string_content_member( $raw_delta->type, $raw_delta ) ) {
 					$this->malformed_event = true;
 
 					return;
@@ -1379,6 +1377,54 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	}
 
 	/**
+	 * The string content member each known content-carrying block/delta
+	 * type requires (glm15-21).
+	 *
+	 * The 'known non-tool block requires its string content member' rule
+	 * (Codex R13 #3 for block starts, the R4 verifier sweep for deltas)
+	 * was encoded as four near-identical 5-line guards — start_block()'s
+	 * text/thinking cases and dispatch_event()'s text_delta/thinking_delta
+	 * cases. One map states it: the next block type with a content member
+	 * (a citation or signature delta, say) is one entry plus one case arm,
+	 * never a fifth pasted guard that misses one site and gives starts and
+	 * deltas different corruption verdicts for the same payload shape.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, string> Block/delta type => required string member.
+	 */
+	private const STRING_CONTENT_MEMBERS = array(
+		'text'           => 'text',
+		'thinking'       => 'thinking',
+		'text_delta'     => 'text',
+		'thinking_delta' => 'thinking',
+	);
+
+	/**
+	 * Whether one known block/delta payload carries its required string
+	 * content member (glm15-21).
+	 *
+	 * Types absent from STRING_CONTENT_MEMBERS carry no member requirement
+	 * here (tool_use validates its input member separately; unknown types
+	 * keep their forward-compatible tolerance) and pass unchanged.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string         $type    The block/delta type member.
+	 * @param \stdClass|null $payload The block/delta payload, or null when the member was absent.
+	 * @return bool True when the payload satisfies the rule.
+	 */
+	private static function has_string_content_member( string $type, ?\stdClass $payload ): bool {
+		$member = self::STRING_CONTENT_MEMBERS[ $type ] ?? null;
+
+		if ( null === $member ) {
+			return true;
+		}
+
+		return null !== $payload && \property_exists( $payload, $member ) && \is_string( $payload->{$member} );
+	}
+
+	/**
 	 * Starts (or resets) the content block accumulator at a stream index.
 	 *
 	 * A tool_use block's ORIGINAL input shape is validated here against
@@ -1472,14 +1518,11 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * previously defaulted to '' and a later valid delta produced a
 		 * successful response whose start payload was malformed (unlike
 		 * the equivalent malformed deltas and non-streaming blocks).
+		 * glm15-21: the 5-line presence guard this used to spell twice
+		 * here and twice in dispatch_event()'s delta cases rides the
+		 * one has_string_content_member() map.
 		 */
-		if ( 'text' === $type && ( null === $raw_block || ! \property_exists( $raw_block, 'text' ) || ! \is_string( $raw_block->text ) ) ) {
-			$this->malformed_event = true;
-
-			return;
-		}
-
-		if ( 'thinking' === $type && ( null === $raw_block || ! \property_exists( $raw_block, 'thinking' ) || ! \is_string( $raw_block->thinking ) ) ) {
+		if ( ! self::has_string_content_member( $type, $raw_block ) ) {
 			$this->malformed_event = true;
 
 			return;

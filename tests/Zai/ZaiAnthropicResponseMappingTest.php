@@ -336,6 +336,40 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheContentMemberRuleLivesInOneMap()
+    {
+        /*
+         * glm15-21 (source pin): the 'known non-tool block requires its
+         * string content member' rule was four near-identical 5-line
+         * guards (start_block's text/thinking, dispatch_event's
+         * text_delta/thinking_delta); the next content-carrying type
+         * pasted as a fifth copy would risk starts and deltas judging
+         * the same shape differently. One STRING_CONTENT_MEMBERS map
+         * and one has_string_content_member() helper carry the rule
+         * (Codex R13 #3 / R4 pins above hold the verdicts).
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
+        );
+
+        $this->assertStringContainsString("const STRING_CONTENT_MEMBERS = array(", $source, 'The content-member rule is one map.');
+        $this->assertSame(
+            3,
+            preg_match_all('/self::has_string_content_member\(|function has_string_content_member\(/', $source),
+            'The one helper definition plus its two guard sites (start_block and dispatch_event).'
+        );
+        $this->assertSame(
+            0,
+            preg_match("/'text' === \\\$type && \(/", $source),
+            'No pasted per-type presence guard may remain at the start site.'
+        );
+        $this->assertSame(
+            0,
+            preg_match("/'text_delta' === \\\$raw_delta->type/", $source),
+            'No pasted per-type presence guard may remain at the delta site.'
+        );
+    }
+
     public function testApplyDeltaRunsOneSwitchOnTheDeltaType()
     {
         /*
