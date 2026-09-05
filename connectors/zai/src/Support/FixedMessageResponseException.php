@@ -36,6 +36,14 @@ final class FixedMessageResponseException extends ResponseException {
 	 * Builds a fixed-message rejection in the SDK's fromInvalidData()
 	 * message shape.
 	 *
+	 * GLM14-8: the byte-identical promise holds BY CONSTRUCTION — the
+	 * message is the parent factory's own product, not a hand-rolled
+	 * sprintf copy of its format string. An SDK release that rewords
+	 * fromInvalidData() updates this subclass's messages with it, so the
+	 * wire contract the class exists to uphold (the SDK's shape,
+	 * everywhere, always) cannot split between SDK-thrown and
+	 * plugin-thrown exceptions.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $api_name   The provider label (the surface's REFUSAL_LABEL).
@@ -44,6 +52,8 @@ final class FixedMessageResponseException extends ResponseException {
 	 * @return self
 	 */
 	public static function fixed( string $api_name, string $field_name, string $message ): self {
-		return new self( sprintf( 'Unexpected %s API response: Invalid "%s" key: %s', $api_name, $field_name, $message ) );
+		return new self(
+			ResponseException::fromInvalidData( $api_name, $field_name, $message )->getMessage()
+		);
 	}
 }

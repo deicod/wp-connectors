@@ -25,6 +25,7 @@ use WordPress\AiClient\Results\Enums\FinishReasonEnum;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
+use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 
@@ -447,6 +448,24 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             // glm13-7: the precise GLM6 #1 diagnostic now surfaces end-to-end.
             $this->assertStringContainsString('arguments string that is not valid JSON', $e->getMessage());
         }
+    }
+
+    public function testTheMarkerClassDerivesItsMessageFromTheSdkFactory()
+    {
+        /*
+         * glm14-8: fixed() used to hand-roll a byte-copy of the SDK
+         * factory's format string, so an SDK release that rewords
+         * fromInvalidData() would silently split the wire contract —
+         * plugin-thrown markers keeping the old shape while SDK-thrown
+         * exceptions carry the new one. The message is the factory's own
+         * product now; the delegation is the pin (the end-to-end literal
+         * tails above pin today's shape).
+         */
+        $this->assertSame(
+            ResponseException::fromInvalidData('z.ai', 'tool_calls', 'A diagnostic message.')->getMessage(),
+            FixedMessageResponseException::fixed('z.ai', 'tool_calls', 'A diagnostic message.')->getMessage(),
+            'The marker subclass\'s message must be the SDK factory\'s own product.'
+        );
     }
 
     public function testStreamedToolCallArgumentsLosingAFragmentAreRejectedNotSilentlyEmptied()
