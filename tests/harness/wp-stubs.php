@@ -1240,7 +1240,17 @@ function current_time($type = 'U', $gmt = false)
         return WpHarness::now() + ($gmt ? 0 : WpHarness::$utc_offset);
     }
     if ('mysql' === $type) {
-        return gmdate('Y-m-d H:i:s', WpHarness::now());
+        /*
+         * glm20-12: the mysql form honors $gmt exactly like the
+         * timestamp branch and core's own implementation — non-gmt
+         * renders the site's LOCAL time (now + the offset), gmt stays
+         * offset-free. The unconditional gmdate() pinned UTC strings
+         * while the timestamp branch honored the offset, so code under
+         * test adopting current_time('mysql') for cache/log timestamps
+         * would have written divergent strings in production on any
+         * non-UTC site.
+         */
+        return gmdate('Y-m-d H:i:s', WpHarness::now() + ($gmt ? 0 : WpHarness::$utc_offset));
     }
 
     return WpHarness::now();

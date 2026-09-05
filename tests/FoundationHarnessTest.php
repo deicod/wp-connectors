@@ -310,6 +310,35 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(wp_next_scheduled('test_clock_event'));
     }
 
+    public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
+    {
+        /*
+         * glm20-12: the stub's 'mysql' branch returned UTC
+         * unconditionally while the 'timestamp' branch honored
+         * $gmt/WpHarness::$utc_offset — core's current_time('mysql')
+         * renders LOCAL time for the non-gmt form, so the harness could
+         * never exercise local-time mysql timestamps and a test could
+         * pass against code that writes divergent strings in production
+         * on any non-UTC site.
+         */
+        WpHarness::$utc_offset = 2 * HOUR_IN_SECONDS;
+
+        $local = current_time('mysql');
+        $gmt = current_time('mysql', true);
+
+        $this->assertSame(
+            gmdate('Y-m-d H:i:s', WpHarness::now() + 2 * HOUR_IN_SECONDS),
+            $local,
+            'The non-gmt mysql form renders the site-local time.'
+        );
+        $this->assertSame(gmdate('Y-m-d H:i:s', WpHarness::now()), $gmt, 'The gmt mysql form stays offset-free.');
+        $this->assertSame(
+            gmdate('Y-m-d H:i:s', WpHarness::now() + 2 * HOUR_IN_SECONDS),
+            gmdate('Y-m-d H:i:s', current_time('timestamp')),
+            'The mysql and timestamp forms agree on the offset, exactly like core.'
+        );
+    }
+
     public function testNoncesAreDeterministicAndUserBound()
     {
         $this->asAdministrator();
