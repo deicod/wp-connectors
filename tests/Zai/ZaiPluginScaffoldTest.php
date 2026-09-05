@@ -77,6 +77,18 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
 
     public function testPluginHeaderAcceptsStandaloneSdkSites()
     {
+        /*
+         * glm16-12: ZAI_VERSION is defined only by loading zai.php — the
+         * PSR-4 autoloader cannot provide constants — so this test errors
+         * under --order-by=random (the canonical composer test invocation
+         * since glm15-1) whenever it runs before any bootPlugin() test.
+         * Loading the plugin file here (the harness's require_once, no
+         * boot) makes the constant deterministic under every order; the
+         * subprocess twin below keeps the LOAD-TIME behavior checks
+         * isolated as before.
+         */
+        $this->loadPlugin(self::PLUGIN_FILE);
+
         $source = (string) file_get_contents(self::PLUGIN_FILE);
 
         $this->assertSame(1, preg_match('/^\s*\*?\s*Requires at least:\s*(.+)$/mi', $source, $requires));
