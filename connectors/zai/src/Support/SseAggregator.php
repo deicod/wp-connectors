@@ -536,8 +536,8 @@ final class SseAggregator extends AbstractSseAggregator {
 		/*
 		 * GLM10 #13: the decoded event merges into the accumulators
 		 * immediately — nothing retains it — and the counter replaces
-		 * the decoded-frame list (event_count()'s contract is
-		 * unchanged).
+		 * the decoded-frame list (the field's accounting is unchanged;
+		 * its glm19-11-deleted public getter is gone).
 		 */
 		++$this->event_count;
 		$this->merge_event( $decoded, $data );

@@ -36,8 +36,11 @@ final class ZaiDiscoveryCache {
 	/**
 	 * Seconds a successful discovery response stays cached per endpoint.
 	 *
-	 * The directory classes alias this as their public constant (tests
-	 * and external mirrors pin those), so the TTL has one source.
+	 * Deleted in glm19-10: the directory classes' alias constants (they were
+	 * production-dead mirrors only tests read): the TTL has one source —
+	 * HERE — and a pin forbids the directories from re-declaring the
+	 * aliases. External mirrors of the literal value are pinned
+	 * separately.
 	 *
 	 * @since 0.2.0
 	 *
