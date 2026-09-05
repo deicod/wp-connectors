@@ -39,6 +39,7 @@ use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog;
 use Deicod\WpConnectors\Zai\Plugin;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
@@ -375,9 +376,20 @@ try {
 // the anthropic surface; chat completion on the openai surface).
 $start = microtime( true );
 try {
-    $model_id = 'glm-5.3';
-    if ( isset( $models ) && ! $provider_class::modelMetadataDirectory()->hasModelMetadata( $model_id ) && array() !== $models ) {
-        $model_id = $models[0]->getId();
+    /*
+     * glm19-9: the preferred id rides the catalog owner the probe's own
+     * header declares every fact rides — ids_for_plan()'s first entry,
+     * not a hardcoded literal (the coding and general plan heads differ,
+     * and the next catalog refresh would silently stale-date a shared
+     * literal). The fallback to the first DISCOVERED id when live
+     * metadata does not carry the preferred id now emits a diagnostic:
+     * acceptance evidence must name which model fronted the plan.
+     */
+    $model_id = ZaiModelCatalog::ids_for_plan( $plan )[0];
+    if ( isset( $models ) && array() !== $models && ! $provider_class::modelMetadataDirectory()->hasModelMetadata( $model_id ) ) {
+        $fallback_id   = $models[0]->getId();
+        $model_id      = $fallback_id;
+        zai_live_probe_report( 'model fallback', "preferred catalog id absent from discovered metadata — using {$fallback_id}" );
     }
     /**
      * getProviderModel() (not the bare Provider::model()) binds the
