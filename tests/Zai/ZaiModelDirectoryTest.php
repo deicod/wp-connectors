@@ -51,16 +51,11 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         return $directory;
     }
 
-    /**
-     * @param string $plan Plan.
-     * @param string $region Region.
-     * @return void
+    /*
+     * glm15-19: selectEndpoint()/idList() ride the shared harness — the
+     * private twins differed only in their settings class (and their
+     * docblocks had already drifted from their assertions).
      */
-    private function selectEndpoint(string $plan, string $region)
-    {
-        update_option(PlanRegionSettings::OPTION_PLAN, $plan);
-        update_option(PlanRegionSettings::OPTION_REGION, $region);
-    }
 
     /*
      * Static catalog data.
@@ -90,7 +85,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testDiscoveredModelsSortNewestFirst()
     {
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array_reverse(self::OBSERVED_MODELS)));
 
         $models = $this->directory()->listModelMetadata();
@@ -145,7 +140,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testDiscoveryHitsTheSelectedEndpointAndCaches()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(self::OBSERVED_MODELS));
 
         $first = $this->directory();
@@ -184,7 +179,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * availability gate must refuse enumeration here, degrading to the
          * static plan fallback WITHOUT any authenticated request.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         update_option(PlanRegionSettings::REGION_PENDING_OPTION, array(
             'region' => 'intl',
@@ -207,7 +202,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         // key+endpoint binding must refuse enumeration on this surface too.
         // (GLM5 #11: the runtime save-time source normalizes to the
         // 'database' identity at binding construction.)
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         $binding = hash('sha256', 'database|' . \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() . '|' . $key);
         update_option(PlanRegionSettings::STATE_OPTION, array(
@@ -236,7 +231,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * not a catalog, so it must fall back and never reach the
          * positive cache.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"object":"list","data":[{"id":"glm-5.3"}],"has_more":true,"first_id":"glm-5.3","last_id":"glm-5.3"}');
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()), 'A paginated page must fall back to the plan catalog.');
@@ -252,7 +247,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * shared parsing intersects BOTH surfaces with the ACTIVE plan's
          * catalog before anything is cached.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-4.7', 'glm-4.5')));
 
         $ids = $this->idList($this->directory()->listModelMetadata());
@@ -273,7 +268,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * twin's semantics for this surface's SDK-mediated flow. The
          * plan save is injected mid-round-trip by a wrapping transporter.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
 
         $inner = AiClient::defaultRegistry()->getHttpTransporter();
         $directory = new ZaiModelMetadataDirectory();
@@ -311,7 +306,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
     public function testDiscoveryCacheExpires()
     {
         $this->freezeTime(1700000000);
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
 
         // ONE directory instance across the expiry — the production shape
@@ -332,7 +327,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testTransientInvalidationBypassesTheSdkCacheLayerToo()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
 
         // Warm both layers the way a successful request does.
@@ -363,7 +358,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
         try {
             $this->freezeTime(1700000000);
-            $this->selectEndpoint('coding', 'intl');
+            $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
 
             $directory = $this->directory();
             $base_key = Closure::bind(
@@ -406,7 +401,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testPlanSwitchBeforeExpiryRefetchesTheOtherEndpoint()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
 
         $this->directory()->listModelMetadata(); // Warms the coding|intl cache.
@@ -414,7 +409,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
         // Switch plan well inside the TTL: the general endpoint must be
         // re-fetched, never served the coding cache.
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-4.5')));
 
         $models = $this->directory()->listModelMetadata();
@@ -426,11 +421,11 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testRegionSwitchBeforeExpiryRefetchesTheOtherEndpoint()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
         $this->directory()->listModelMetadata();
 
-        $this->selectEndpoint('coding', 'cn');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'cn');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
 
         $models = $this->directory()->listModelMetadata();
@@ -455,7 +450,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * transient-content change (the read stays authoritative) swaps
          * the memo key and rebuilds.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->primeZaiDiscoveryTransient(array('glm-5.3', 'glm-5.2'));
 
         $directory = $this->directory();
@@ -503,7 +498,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testUnauthorizedDiscoveryFallsBackToThePlanCatalog()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
 
         $models = $this->directory()->listModelMetadata();
@@ -533,7 +528,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * a subsequent availability consult answers from state with NO
          * new request.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         update_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
         $this->queueSdkResponse($status, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
@@ -580,7 +575,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * Messages/completions paths, missed on this route. The parser
          * owns one BOM-safe decode now.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(
             200,
             array(),
@@ -608,7 +603,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * previously got the intl rejection persisted under the cn
          * binding.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         update_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
 
@@ -656,7 +651,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         // GLM9 #5 guard: only the definitive credential rejections
         // persist — a 404 (the unprobed route shape) stays an
         // inconclusive failure whose verdict store stays untouched.
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         update_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
         $this->queueSdkResponse(404, array(), '{"error":{"message":"no route"}}');
@@ -675,7 +670,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testGeneralPlanFallbackContainsTheFullCatalog()
     {
-        $this->selectEndpoint('general', 'cn');
+        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'cn');
 
         // cn is unprobed; any discovery failure falls back per plan.
         $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
@@ -687,7 +682,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testMalformedDiscoveryResponseFallsBack()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
 
         $bodies = array(
             'not json at all',
@@ -721,7 +716,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * meanwhile.
          */
         $this->freezeTime(1700000000);
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad key'));
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()));
@@ -744,7 +739,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
     public function testFallbackIsNotCachedSoAValidKeyCanDiscoverLater()
     {
         $this->freezeTime(1700000000);
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
 
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad key'));
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()));
@@ -765,7 +760,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testTransportFailureFallsBackWithoutFatal()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->allowUnmockedHttp = true;
 
         $models = $this->directory()->listModelMetadata();
@@ -779,7 +774,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testDiscoveredModelsCarryCapabilitiesAndOptions()
     {
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
 
         $metadata = $this->directory()->getModelMetadata('glm-5.3');
@@ -855,7 +850,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         // GLM naming grammar, but nothing VERIFIED says it chats — the plan
         // forbids advertising capabilities from family names alone. Unknown
         // IDs from /models are excluded from advertised chat metadata.
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array(
             'glm-6-image',
             'glm-6-preview',
@@ -878,7 +873,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         // Every fallback-catalog ID counts as verified chat support: mixed
         // into a discovery response (alongside non-chat noise), all of them
         // survive filtering, per plan and region data alike.
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array_merge(
             array('glm-6-image', 'cogview-4', 'embedding-3'),
             ZaiModelCatalog::GENERAL_MODELS
@@ -897,7 +892,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         // word-form IDs, unverified family-shaped releases) must not
         // advertise them: they would get full chat metadata and then fail
         // at /chat/completions (review finding).
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array(
             'embedding-3',
             'cogview-4',
@@ -923,7 +918,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
     public function testDiscoveryWithOnlyNonChatIdsFallsBackToThePlanCatalog()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('embedding-3', 'cogview-4', 'glm-6-image')));
 
         $models = $this->directory()->listModelMetadata();
@@ -958,7 +953,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $directory = $registry->getProviderClassName('zai')::modelMetadataDirectory();
         $directory->invalidateCaches(); // Reset cross-test process state only.
 
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
         $models = $directory->listModelMetadata();
         $this->assertCount(1, $models);
@@ -967,7 +962,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         // Same provider, same directory instance, same registry: switch the
         // endpoint and list again — the next request must hit the NEW
         // endpoint, never the warm cache from the previous one.
-        $this->selectEndpoint('general', 'cn');
+        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'cn');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-4.5')));
         $models = $directory->listModelMetadata();
 
@@ -991,11 +986,11 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             ZaiModelMetadataDirectory::class
         );
 
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
         $coding_intl = $base_key();
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'intl');
         $general_intl = $base_key();
-        $this->selectEndpoint('coding', 'cn');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'cn');
         $coding_cn = $base_key();
 
         $this->assertNotSame($coding_intl, $general_intl);
@@ -1006,7 +1001,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
     public function testFallbackIsNotCachedAtTheSdkLayerEither()
     {
         $this->freezeTime(1700000000);
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
 
         $directory = $this->directory();
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('bad key'));
@@ -1142,10 +1137,4 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
      * @param list<ModelMetadata> $models
      * @return list<string>
      */
-    private function idList(array $models): array
-    {
-        return array_map(static function (ModelMetadata $m) {
-            return $m->getId();
-        }, $models);
-    }
 }

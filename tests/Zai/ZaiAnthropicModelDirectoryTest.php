@@ -40,27 +40,11 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         return $directory;
     }
 
-    /**
-     * @param string $plan Plan.
-     * @param string $region Region.
-     * @return void
+    /*
+     * glm15-19: selectEndpoint()/idList() ride the shared harness — the
+     * private twins differed only in their settings class (and their
+     * docblocks had already drifted from their assertions).
      */
-    private function selectEndpoint(string $plan, string $region)
-    {
-        update_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, $plan);
-        update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, $region);
-    }
-
-    /**
-     * @param list<string> $models
-     * @return list<string>
-     */
-    private function idList(array $models): array
-    {
-        return array_map(static function (ModelMetadata $m) {
-            return $m->getId();
-        }, $models);
-    }
 
     /*
      * Static catalog data (shared, plan-partitioned).
@@ -88,7 +72,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     {
         // No cached transient: discovery is attempted; its failure (here a
         // 404 — the unprobed route shape) must leave the plan fallback.
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(404, array(), '{"type":"error","error":{"type":"not_found_error","message":"no route"}}');
 
         $models = $this->directory()->listModelMetadata();
@@ -103,7 +87,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testDiscoveryHitsTheSelectedEndpointWithProtocolHeadersAndCaches()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.2', 'glm-5.3', 'glm-5.3-flash')));
 
@@ -130,7 +114,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         // plan (record 0007), but the coding subscription exposes only its
         // restricted model set — general-only GLM 4.x entries must not be
         // advertised OR cached.
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array(
             'glm-5.3', 'glm-5.3-flash', 'glm-4.7', 'glm-4.5', 'glm-4.5-air',
         )));
@@ -153,7 +137,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testGeneralPlanDiscoveryKeepsTheFullList()
     {
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array(
             'glm-5.3', 'glm-4.7', 'glm-4.5',
         )));
@@ -170,7 +154,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     {
         // Nothing survives the plan intersection: the plan fallback applies
         // and nothing is cached.
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-4.5', 'glm-4.5-air')));
 
         $models = $this->directory()->listModelMetadata();
@@ -181,7 +165,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testDiscoveryAcceptsTheOpenAiListShapeToo()
     {
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-4.5')));
 
         $ids = $this->idList($this->directory()->listModelMetadata());
@@ -192,7 +176,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     public function testDiscoveryCacheExpires()
     {
         $this->freezeTime(1700000000);
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
 
         $directory = $this->directory();
@@ -213,7 +197,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testPlanSwitchBeforeExpiryRefetchesTheOtherEndpoint()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
 
         $this->directory()->listModelMetadata(); // Warms the coding|intl cache.
@@ -221,7 +205,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
         // Switch plan well inside the TTL: the general endpoint must be
         // re-fetched, never served the coding cache.
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-4.5')));
 
         $models = $this->directory()->listModelMetadata();
@@ -233,11 +217,11 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testRegionSwitchBeforeExpiryRefetchesTheOtherEndpoint()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
         $this->directory()->listModelMetadata();
 
-        $this->selectEndpoint('coding', 'cn');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'cn');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.2')));
 
         $models = $this->directory()->listModelMetadata();
@@ -250,7 +234,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     {
         // Prime the ZAI provider's warm cache for the same plan/region
         // selection; the anthropic directory must still fetch its own.
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         set_transient(
             Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::CACHE_PREFIX . md5('zai|coding|intl'),
             array('glm-4.5'),
@@ -270,7 +254,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testUnauthorizedDiscoveryFallsBackToThePlanCatalog()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('token expired or incorrect', 'authentication_error'));
 
         $models = $this->directory()->listModelMetadata();
@@ -290,7 +274,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * and a transient-content change (the read stays authoritative)
          * swaps the memo key and rebuilds.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->primeZaiAnthropicDiscoveryTransient(array('glm-5.3', 'glm-5.2'));
 
         $directory = $this->directory();
@@ -323,7 +307,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * is recorded through the probe's own persist path: a subsequent
          * availability consult answers from state with NO new request.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
         $this->queueSdkResponse($status, array(), HttpResponseFactory::anthropicErrorBody('token expired or incorrect', 'authentication_error'));
@@ -362,7 +346,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * static fallback on every request. The parser owns one BOM-safe
          * decode now.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(
             200,
             array(),
@@ -387,7 +371,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * bind the endpoint the rejecting request actually HIT (the
          * $endpoint captured at request time).
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
 
@@ -437,7 +421,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * persist — a 404 (the unprobed route shape) stays an
          * inconclusive failure whose verdict store stays untouched.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
         $this->queueSdkResponse(404, array(), '{"type":"error","error":{"type":"not_found_error","message":"no route"}}');
@@ -453,7 +437,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testGeneralPlanFallbackContainsTheFullCatalog()
     {
-        $this->selectEndpoint('general', 'cn');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'general', 'cn');
 
         $this->queueSdkResponse(404, array(), '{"type":"error","error":{"type":"not_found_error","message":"not found"}}');
 
@@ -469,7 +453,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * NOT a catalog — caching it for 12 hours would freeze the
          * directory to one page and drop known in-plan models.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
 
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}],"has_more":true,"first_id":"glm-5.3","last_id":"glm-5.3"}');
 
@@ -485,7 +469,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     public function testNonBooleanHasMoreValuesFailDiscoveryToo($hasMoreJson)
     {
         // STRICT shape: "true"/1/null are not the documented bool.
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
 
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}],' . $hasMoreJson . '}');
 
@@ -510,7 +494,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     {
         // Guards: has_more:false is a complete page; an absent member is
         // the pre-existing shape.
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
 
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}],"has_more":false}');
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), '{"data":[{"id":"glm-5.3"}]}');
@@ -530,7 +514,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * endpoint by model ENUMERATION — the static fallback serves and
          * no authenticated request leaves.
          */
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         $directory = $this->directory($key);
 
@@ -551,7 +535,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     {
         // R20 (inline 3907008518): a definitive invalid verdict for the
         // exact key+endpoint binding also gates enumeration.
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         $directory = $this->directory($key);
 
@@ -575,7 +559,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     {
         // Guard: no pending flag and no invalid verdict — discovery
         // authenticates and discovers as before.
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
 
         $models = $this->directory()->listModelMetadata();
@@ -586,7 +570,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testMalformedDiscoveryResponsesFallBack()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
 
         $bodies = array(
             'not json at all',
@@ -619,7 +603,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * meanwhile.
          */
         $this->freezeTime(1700000000);
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(404, array(), HttpResponseFactory::anthropicErrorBody('no route'));
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()));
@@ -642,7 +626,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     public function testFallbackIsNotCachedSoAValidKeyCanDiscoverLater()
     {
         $this->freezeTime(1700000000);
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
 
         $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('bad key'));
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($this->directory()->listModelMetadata()));
@@ -663,7 +647,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testTransportFailureFallsBackWithoutFatal()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->allowUnmockedHttp = true;
 
         $models = $this->directory()->listModelMetadata();
@@ -673,7 +657,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testDiscoveryDropsModelIdsWithoutKnownChatSupport()
     {
-        $this->selectEndpoint('general', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'general', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array(
             'embedding-3',
             'cogview-4',
@@ -696,7 +680,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testDiscoveryWithOnlyNonChatIdsFallsBackToThePlanCatalog()
     {
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('embedding-3', 'cogview-4', 'glm-6-image')));
 
         $models = $this->directory()->listModelMetadata();
@@ -803,7 +787,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         // whole process — exactly like a long-running request or WP-CLI.
         $directory = $registry->getProviderClassName('zai_anthropic')::modelMetadataDirectory();
 
-        $this->selectEndpoint('coding', 'intl');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
         $this->assertCount(1, $this->idList($directory->listModelMetadata()));
         $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/models', $this->sdkHttpAttempts()[0]['url']);
@@ -811,7 +795,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         // Same provider, same directory instance, same registry: switch the
         // endpoint and list again — the next request must hit the NEW
         // endpoint, never the warm cache from the previous one.
-        $this->selectEndpoint('general', 'cn');
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'general', 'cn');
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-4.5')));
         $models = $directory->listModelMetadata();
 

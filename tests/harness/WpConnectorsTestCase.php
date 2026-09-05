@@ -21,6 +21,7 @@ use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Providers\Http\HttpTransporter;
 use WordPress\AiClient\Providers\Models\DTO\ModelConfig;
+use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 
 abstract class WpConnectorsTestCase extends TestCase
 {
@@ -311,6 +312,42 @@ abstract class WpConnectorsTestCase extends TestCase
     {
         $this->assertSame(array(), WpHarness::$http_attempts, 'Unexpected wp_remote_* attempts.');
         $this->assertSame(array(), WpHarness::$sdk_http_attempts, 'Unexpected SDK transport attempts.');
+    }
+
+    /*
+     * ---------------------------------------------------------------
+     * Directory-suite helpers (glm15-19: the selectEndpoint()/idList()
+     * twins lived privately in both directory suites, one settings class
+     * apart, with docblocks already drifted from their assertions).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Writes one surface's plan/region options — the endpoint selection
+     * the directories' discovery-cache ids key on.
+     *
+     * @param string $settings_class The surface's settings class (PlanRegionSettings::class / ZaiAnthropicPlanRegionSettings::class).
+     * @param string $plan           One of the surface's plans.
+     * @param string $region         One of the surface's regions.
+     * @return void
+     */
+    protected function selectEndpoint(string $settings_class, string $plan, string $region)
+    {
+        update_option($settings_class::OPTION_PLAN, $plan);
+        update_option($settings_class::OPTION_REGION, $region);
+    }
+
+    /**
+     * The model IDs of a metadata list.
+     *
+     * @param list<ModelMetadata> $models
+     * @return list<string>
+     */
+    protected function idList(array $models): array
+    {
+        return array_map(static function (ModelMetadata $m) {
+            return $m->getId();
+        }, $models);
     }
 
     /*
