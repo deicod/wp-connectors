@@ -429,6 +429,35 @@ final class SseAggregator extends AbstractSseAggregator {
 	}
 
 	/**
+	 * The index of one decoded choice/tool-call entry, or null when the
+	 * entry is not a sound array carrying a non-negative INTEGER index
+	 * (glm15-14).
+	 *
+	 * The GLM7 #1 rule — a missing, null, non-integer, or negative
+	 * index is corruption, never an int-coerced accumulator key — was
+	 * stated verbatim at the three merge sites (the choice loop, the
+	 * tool-call loop, the trailing-frame loop); ONE predicate keeps the
+	 * next index-rule change from landing on one copy only and giving
+	 * pre- and post-sentinel frames different corruption verdicts for
+	 * the same payload shape.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $entry One decoded choices[] / tool_calls[] element.
+	 * @return int|null The non-negative index, or null when unsound.
+	 */
+	private static function sound_index( $entry ): ?int {
+		if ( ! \is_array( $entry )
+			|| ! isset( $entry['index'] )
+			|| ! \is_int( $entry['index'] )
+			|| $entry['index'] < 0 ) {
+			return null;
+		}
+
+		return $entry['index'];
+	}
+
+	/**
 	 * Merges streamed tool-call deltas by their index.
 	 *
 	 * @since 0.1.0
@@ -445,18 +474,16 @@ final class SseAggregator extends AbstractSseAggregator {
 			 * (the fragment vanished) and a null index even passed
 			 * array_key_exists() to coerce to 0, merging the fragment
 			 * into tool accumulator 0 of the WRONG call. Non-negative
-			 * integer or the stream fails typed.
+			 * integer or the stream fails typed (glm15-14: the index
+			 * rule rides the one sound_index() predicate).
 			 */
-			if ( ! \is_array( $tool_delta )
-				|| ! isset( $tool_delta['index'] )
-				|| ! \is_int( $tool_delta['index'] )
-				|| $tool_delta['index'] < 0 ) {
+			$index = self::sound_index( $tool_delta );
+
+			if ( null === $index ) {
 				$this->malformed_event = true;
 
 				continue;
 			}
-
-			$index = $tool_delta['index'];
 
 			if ( ! isset( $accumulated[ $index ] ) ) {
 				$accumulated[ $index ] = array(
@@ -616,17 +643,16 @@ final class SseAggregator extends AbstractSseAggregator {
 			 * be a non-negative INTEGER (the associative decode
 			 * preserves JSON int-ness, so is_int() rejects "1", 1.9,
 			 * true, and null exactly like the twin's raw oracle).
+			 * glm15-14: the rule rides the one sound_index() predicate.
 			 */
-			if ( ! \is_array( $choice )
-				|| ! isset( $choice['index'] )
-				|| ! \is_int( $choice['index'] )
-				|| $choice['index'] < 0 ) {
+			$index = self::sound_index( $choice );
+
+			if ( null === $index ) {
 				$this->malformed_event = true;
 
 				continue;
 			}
 
-			$index                   = $choice['index'];
 			$this->choices[ $index ] = $this->merge_choice( $this->choices[ $index ] ?? null, $choice );
 		}
 	}
@@ -662,18 +688,18 @@ final class SseAggregator extends AbstractSseAggregator {
 
 		foreach ( $decoded['choices'] as $choice ) {
 			// GLM7 #1 parity: an unusable index in a trailing frame is the
-			// same corruption class as a pre-sentinel one.
-			if ( ! \is_array( $choice )
-				|| ! isset( $choice['index'] )
-				|| ! \is_int( $choice['index'] )
-				|| $choice['index'] < 0 ) {
+			// same corruption class as a pre-sentinel one (glm15-14: the
+			// rule rides the one sound_index() predicate).
+			$index = self::sound_index( $choice );
+
+			if ( null === $index ) {
 				$this->malformed_event = true;
 
 				continue;
 			}
 
 			if ( \array_key_exists( 'finish_reason', $choice ) && null !== $choice['finish_reason'] ) {
-				$this->trailing_finish_reasons[ $choice['index'] ] = $choice['finish_reason'];
+				$this->trailing_finish_reasons[ $index ] = $choice['finish_reason'];
 			}
 		}
 	}

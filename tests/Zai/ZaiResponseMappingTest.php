@@ -866,6 +866,34 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheChoiceIndexRuleLivesInOnePredicate()
+    {
+        /*
+         * glm15-14 (source pin): the 8-line choice/tool-call index
+         * validity guard was duplicated verbatim three times (the
+         * choice loop, the tool-call loop, the trailing-frame loop) —
+         * the next index-rule change landing on one copy only would
+         * give pre- and post-sentinel frames different corruption
+         * verdicts for the same payload shape. One sound_index()
+         * predicate carries the rule; the malformed-index behavioral
+         * pins above (GLM7 #1) hold the verdicts.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/SseAggregator.php'
+        );
+
+        $this->assertSame(
+            3,
+            preg_match_all('/self::sound_index\(/', $source),
+            'All three merge sites ride the one predicate.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/! \\\\is_int\(\s*\$entry\[\'index\'\]\s*\)/', $source),
+            'The is_int index rule is stated exactly once: inside sound_index().'
+        );
+    }
+
     public function testTheFallbackGateRidesTheSharedDecodeOnBothSurfaces()
     {
         /*
