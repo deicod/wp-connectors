@@ -22,6 +22,12 @@ ledger or by reachability):
   statement (glm16-17): a theoretical str_replace false positive
   where a comment line ending in the exact use-statement text would be
   stripped as well; not present in the repo today, hardened anyway.
+  The rework also dropped the old removal's trailing-"\n" requirement
+  (str_replace could only match a statement followed by a bare LF), a
+  pass-to-fail gate delta the entry must own: dead imports in CRLF
+  files and at EOF-without-newline are detected for the first time —
+  the old removal never matched there, so such imports were never
+  flagged (glm17 review #5; pinned by the scanner's fixture tests).
 
 ### Fixed (zai / M2 — GLM16 code review)
 
