@@ -59,7 +59,7 @@ use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\Traits\WithHttpTransporterTrait;
 use WordPress\AiClient\Providers\Http\Traits\WithRequestAuthenticationTrait;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
-use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
+use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
@@ -79,7 +79,18 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		setHttpTransporter as trait_set_transporter; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- trait method alias.
 	}
 	use WithRequestAuthenticationTrait {
-		getRequestAuthentication as trait_get_request_authentication; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- trait method alias.
+		WithRequestAuthenticationTrait::getRequestAuthentication as trait_get_request_authentication; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- trait method alias.
+	}
+
+	/*
+	 * glm15-8: the protocol wrap rides the shared trait (the bespoke
+	 * getRequestAuthentication() override this class carried), and the
+	 * SDK trait's raw getter stays reachable through the alias above
+	 * for the one hook below. The insteadof resolves the two traits'
+	 * same-named methods in favor of the protocol wrap.
+	 */
+	use SpeaksAnthropicMessagesProtocol {
+		SpeaksAnthropicMessagesProtocol::getRequestAuthentication insteadof WithRequestAuthenticationTrait; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
 	}
 
 	/**
@@ -154,14 +165,16 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	}
 
 	/**
-	 * Returns the wired authentication, protocol-wrapped for this surface.
+	 * The RAW wired authentication — the SDK trait's aliased getter,
+	 * unwrapped (glm15-8: the protocol wrap lives once on the
+	 * SpeaksAnthropicMessagesProtocol trait).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @return RequestAuthenticationInterface
 	 */
-	public function getRequestAuthentication(): RequestAuthenticationInterface { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
-		return ZaiAnthropicRequestAuthentication::wrap( $this->trait_get_request_authentication() );
+	protected function raw_request_authentication(): RequestAuthenticationInterface {
+		return $this->trait_get_request_authentication();
 	}
 
 	/**

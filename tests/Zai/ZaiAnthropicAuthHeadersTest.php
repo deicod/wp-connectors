@@ -248,6 +248,35 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         ZaiAnthropicRequestAuthentication::wrap($foreign);
     }
 
+    public function testEveryAnthropicSdkClassSpeaksTheProtocolThroughTheOneTrait()
+    {
+        /*
+         * glm15-8: the protocol wrap was re-declared as a bespoke
+         * getRequestAuthentication() override in each of the three
+         * SDK-interfaced classes — a fourth class speaking the surface
+         * that forgets the override silently sends plain ApiKey auth
+         * (requests still succeed against z.ai while violating the
+         * never-x-api-key contract, so the omission fails open and
+         * undetected). The SpeaksAnthropicMessagesProtocol trait owns
+         * the wrap now; the pins hold every SDK-interfaced class on
+         * the trait and forbid the bespoke-override shape.
+         */
+        $classes = array(
+            'the model' => 'src/Models/ZaiAnthropicTextGenerationModel.php',
+            'the metadata directory' => 'src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
+            'the availability' => 'src/Availability/ZaiAnthropicProviderAvailability.php',
+        );
+
+        foreach ($classes as $label => $relative) {
+            $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/' . $relative);
+
+            $this->assertStringContainsString('use SpeaksAnthropicMessagesProtocol', $source, "{$label} composes the protocol trait.");
+            $this->assertStringContainsString('raw_request_authentication()', $source, "{$label} supplies the raw-authentication hook.");
+            $this->assertSame(0, preg_match('/ZaiAnthropicRequestAuthentication::wrap\(\s*parent::/', $source), "{$label} carries no bespoke parent-wrap override.");
+            $this->assertSame(0, preg_match('/ZaiAnthropicRequestAuthentication::wrap\(\s*\$this->trait_/', $source), "{$label} carries no bespoke trait-wrap override.");
+        }
+    }
+
     /*
      * Exact header sets on the real request surfaces.
      */

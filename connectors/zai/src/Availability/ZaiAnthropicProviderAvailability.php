@@ -24,8 +24,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Availability;
 
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
-use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
+use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 
@@ -35,6 +34,7 @@ use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
  * @since 0.2.0
  */
 final class ZaiAnthropicProviderAvailability extends AbstractZaiProviderAvailability {
+	use SpeaksAnthropicMessagesProtocol;
 
 	// The four identifier constants below mirror the SDK-free settings
 	// layer (ZaiAnthropicPlanRegionSettings), which owns them so settings
@@ -111,32 +111,16 @@ final class ZaiAnthropicProviderAvailability extends AbstractZaiProviderAvailabi
 	}
 
 	/**
-	 * Returns the wired authentication, protocol-wrapped for this surface.
-	 *
-	 * The registry wires the SDK's plain ApiKeyRequestAuthentication (core's
-	 * key store is protocol-agnostic); every request this class sends must
-	 * carry the Anthropic surface's headers instead, so the wired instance
-	 * is funneled through ZaiAnthropicRequestAuthentication::wrap().
+	 * The RAW wired authentication — the SDK parent's getter, unwrapped
+	 * (glm15-8: the protocol wrap — and the UNWIRED-probe fallback's
+	 * wrap, GLM5 #10 — lives once on the SpeaksAnthropicMessagesProtocol
+	 * trait).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @return RequestAuthenticationInterface
 	 */
-	public function getRequestAuthentication(): RequestAuthenticationInterface { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
-		return ZaiAnthropicRequestAuthentication::wrap( parent::getRequestAuthentication() );
-	}
-
-	/**
-	 * The UNWIRED-probe fallback authentication, protocol-wrapped too
-	 * (GLM5 #10): a database-only key must validate against the endpoint
-	 * with this surface's headers, never the plain OpenAI-style auth.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param string $key The effective credential.
-	 * @return RequestAuthenticationInterface
-	 */
-	protected static function fallback_authentication( string $key ): RequestAuthenticationInterface {
-		return ZaiAnthropicRequestAuthentication::wrap( new ApiKeyRequestAuthentication( $key ) );
+	protected function raw_request_authentication(): RequestAuthenticationInterface {
+		return parent::getRequestAuthentication();
 	}
 }

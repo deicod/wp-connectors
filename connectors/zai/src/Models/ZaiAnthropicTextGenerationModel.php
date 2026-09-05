@@ -48,7 +48,7 @@ use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use WordPress\AiClient\Results\DTO\TokenUsage;
 use WordPress\AiClient\Results\Enums\FinishReasonEnum;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
-use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
+use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
@@ -76,6 +76,7 @@ use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implements TextGenerationModelInterface {
 	use ThrowsSafeHttpErrors;
 	use SafeGenerationBoundary;
+	use SpeaksAnthropicMessagesProtocol;
 
 	/**
 	 * Default maximum number of tokens for one generation.
@@ -120,14 +121,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private $generation_prompt = null;
 
 	/**
-	 * Returns the wired authentication, protocol-wrapped for this surface.
+	 * The RAW wired authentication — the SDK parent's getter, unwrapped
+	 * (glm15-8: the protocol wrap lives once on the
+	 * SpeaksAnthropicMessagesProtocol trait).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @return RequestAuthenticationInterface
 	 */
-	public function getRequestAuthentication(): RequestAuthenticationInterface { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
-		return ZaiAnthropicRequestAuthentication::wrap( parent::getRequestAuthentication() );
+	protected function raw_request_authentication(): RequestAuthenticationInterface {
+		return parent::getRequestAuthentication();
 	}
 
 	/**
