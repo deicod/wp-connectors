@@ -145,6 +145,50 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertMatchesSnapshot('minimal', $url, $body);
     }
 
+    public function testTheGenerationRequestRidesTheNetsPreEncodedBody()
+    {
+        /*
+         * glm14-4: the whole-payload net's ONE json_encode is handed to
+         * the Request as its body string (Request stores a string $data
+         * as the raw body; getBody() returns it as-is), so the
+         * transport's send-time re-encode — the second whole-payload
+         * serialization every zai generation paid end-to-end — is gone.
+         * getData() is null on the ridden request and the wire body
+         * decodes to exactly the params the parent assembled (the
+         * snapshot suite pins the wire shape already).
+         */
+        $transporter = new class implements \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface {
+            /**
+             * @var \WordPress\AiClient\Providers\Http\DTO\Request|null
+             */
+            public $captured_request;
+
+            public function send(\WordPress\AiClient\Providers\Http\DTO\Request $request, ?\WordPress\AiClient\Providers\Http\DTO\RequestOptions $options = null): \WordPress\AiClient\Providers\Http\DTO\Response
+            {
+                $this->captured_request = $request;
+
+                return new \WordPress\AiClient\Providers\Http\DTO\Response(200, array(), HttpResponseFactory::openAiChatCompletionBody('ride ok', 'glm-5.3'));
+            }
+        };
+
+        $model = $this->model();
+        $model->setHttpTransporter($transporter);
+
+        $result = $model->generateTextResult(array(new Message(MessageRoleEnum::user(), array(new MessagePart('Say hi.')))));
+
+        $captured = $transporter->captured_request;
+
+        $this->assertSame('ride ok', $result->toText());
+        $this->assertNotNull($captured, 'The capturing transporter must have received the request.');
+        $this->assertNull($captured->getData(), 'The params array must not ride the Request; the pre-encoded body string does (glm14-4).');
+
+        $decoded = (array) json_decode((string) $captured->getBody(), true);
+
+        $this->assertSame('glm-5.3', $decoded['model']);
+        $this->assertSame('user', $decoded['messages'][0]['role']);
+        $this->assertSame(array(array('type' => 'text', 'text' => 'Say hi.')), $decoded['messages'][0]['content']);
+    }
+
     public function testConversationRequestSnapshot()
     {
         $config = ModelConfig::fromArray(array(
@@ -717,11 +761,12 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
 
         // The net rides the chokepoint itself: every assembled request
         // passes it, not just ones some test invokes by hand (the
-        // GLM6 #14 source-pin precedent).
+        // GLM6 #14 source-pin precedent). glm14-4: the guard's return
+        // value becomes the request $data (the pre-encoded body).
         $source = (string) file_get_contents(__DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php');
         $this->assertSame(
             1,
-            preg_match('/function createRequest\([^)]*\)[^{]*\{\s*if \( \\\\is_array\( \$data \) \) \{\s*\$this->guard_assembled_params\( \$data \);/', $source),
+            preg_match('/function createRequest\([^)]*\)[^{]*\{\s*if \( \\\\is_array\( \$data \) \) \{\s*\$data = \$this->guard_assembled_params\( \$data, \$method, \$headers \);/', $source),
             'The chokepoint must guard every assembled request payload before the Request is built.'
         );
     }
@@ -842,15 +887,25 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
          * RESPONSE (the test above): the parent's own mapping launders
          * its failed encode into the string "false" before the net could
          * see it, so that guard stays pre-mapping.
+         *
+         * glm14-4: the one encode rides end-to-end — it produces the
+         * request's body string (returned to createRequest()), so the
+         * transport's send-time re-encode is gone; the behavioral pin
+         * is testTheGenerationRequestRidesTheNetsPreEncodedBody().
          */
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
         );
 
         $this->assertStringContainsString(
-            'if ( false !== json_encode( $data ) ) {',
+            '$encoded = json_encode( $data );',
             $source,
-            'The chokepoint must return after ONE successful whole-payload encode.'
+            'The chokepoint must encode the payload exactly once, into the variable that becomes the request body.'
+        );
+        $this->assertStringContainsString(
+            'if ( false !== $encoded && self::carries_json_body( $method, $headers ) ) {',
+            $source,
+            'The successful encode is returned as the request body (glm14-4), not recomputed at send time.'
         );
         $this->assertStringContainsString(
             '$this->reject_misshapen_wire_values( $prompt );',

@@ -132,7 +132,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 */
 	protected function createRequest( HttpMethodEnum $method, string $path, array $headers = array(), $data = null ): Request {
 		if ( \is_array( $data ) ) {
-			$this->guard_assembled_params( $data );
+			$data = $this->guard_assembled_params( $data, $method, $headers );
 		}
 
 		$endpoint = ZaiEndpoint::for_current_settings();
@@ -195,13 +195,31 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * not sound here — NAN, invalid UTF-8, and recursion are exactly the
 	 * caller-value hazards the walker cannot see.
 	 *
+	 * glm14-4: the net's ONE encode is also the request's LAST — when
+	 * this request carries a JSON body (a body-carrying method with a
+	 * JSON Content-Type, Request::getBody()'s own branch), the encoded
+	 * string is returned and handed to the Request as its $data: Request
+	 * stores a string as the RAW body and getBody() returns it as-is, so
+	 * the transport's send-time json_encode (the second whole-payload
+	 * serialization every zai generation paid end-to-end) is gone. The
+	 * wire bytes are unchanged — the same encoder, no flags, the same
+	 * depth, byte-identical to what getBody() would have produced from
+	 * the array — and no plugin or vendor consumer reads getData() on
+	 * the generation request (the transport consumes getBody() only,
+	 * HttpTransporter::convertToPsr7Request). A request that would NOT
+	 * have JSON-encoded its data (a GET's query params, a form body)
+	 * keeps the array verbatim.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param array<string, mixed> $data The assembled request params.
-	 * @return void
+	 * @param array<string, mixed>               $data    The assembled request params.
+	 * @param HttpMethodEnum                     $method  The request's HTTP method.
+	 * @param array<string, string|list<string>> $headers The request headers.
+	 * @return string|array The encoded JSON body when this request carries
+	 *                      one, or $data unchanged when it does not.
 	 * @throws InvalidArgumentException When any member cannot encode.
 	 */
-	private function guard_assembled_params( array $data ): void {
+	private function guard_assembled_params( array $data, HttpMethodEnum $method, array $headers ) {
 		/*
 		 * glm13-11: the happy path is ONE raw encode of the assembled
 		 * payload — the per-member encodability pre-pass this chokepoint
@@ -215,13 +233,49 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * message the eager pre-pass used to give; a member the walk does
 		 * not know keeps this generic description.
 		 */
-		if ( false !== json_encode( $data ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
-			return;
+		$encoded = json_encode( $data ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
+
+		if ( false !== $encoded && self::carries_json_body( $method, $headers ) ) {
+			// glm14-4: the ride — this string is the request's body.
+			return $encoded;
+		}
+
+		if ( false !== $encoded ) {
+			// Not a JSON-body request: the array rides as it always did.
+			return $data;
 		}
 
 		$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );
 
 		JsonEncodeGuard::must_encode( $data, 'a request payload member', self::PROVIDER_LABEL );
+
+		return $data; // Unreachable: must_encode() rejects above.
+	}
+
+	/**
+	 * Reports whether the request would carry the encoded $data as its
+	 * JSON body — Request::getBody()'s own encoding branch, mirrored so
+	 * the net's returned string is exactly what getBody() would have
+	 * produced (glm14-4).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param HttpMethodEnum                     $method  The request's HTTP method.
+	 * @param array<string, string|list<string>> $headers The request headers.
+	 * @return bool True when getBody() would JSON-encode the data array.
+	 */
+	private static function carries_json_body( HttpMethodEnum $method, array $headers ): bool {
+		if ( ! $method->hasBody() ) {
+			return false;
+		}
+
+		$content_type = $headers['Content-Type'] ?? '';
+
+		if ( \is_array( $content_type ) ) {
+			$content_type = $content_type[0] ?? '';
+		}
+
+		return false !== stripos( (string) $content_type, 'application/json' );
 	}
 
 	/**
