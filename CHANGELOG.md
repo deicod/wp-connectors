@@ -6,6 +6,80 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM17 verifier round)
+
+Independent security + correctness verification over the full glm17
+diff (6 verifier lenses — memo lifecycle, scanner false
+negatives/positives, docs accuracy, security, suite health; 11 raw
+candidates, all confirmed on adjudication; 8 fixed here, 3
+pre-existing boundaries documented in the refutation ledger):
+
+- strip_comments keeps the comment's line terminator (glm17-14): on
+  PHP < 8.0 the tokenizer includes the trailing newline inside
+  T_COMMENT, so the all-spaces strip joined the next line onto the
+  comment's line in the code view and un-anchored the scanner's
+  /^use/m — REAL dead imports silently unflagged on the
+  composer-pinned 7.4 floor, with the verdict flipping by runtime
+  (empirically reproduced in docker php:7.4-cli: 0 violations before,
+  1 after). Length-preserving, a no-op on 8.0+, pinned by a
+  version-independent contract test.
+- The scanner's view invariant is LENGTH, and the statement bytes are
+  real (glm17-15): a legal mid-statement comment blanks to spaces in
+  the masked view, so "matched text is identical in both views" was
+  false — the statement is sliced from the raw source at the captured
+  offset (truthful flag message included), and the case-insensitivity
+  rationale now scopes itself to classes and functions (constants
+  resolve case-sensitively; the i modifier stays the conservative
+  direction).
+- Requiring the scanner is side-effect-free, and the loud/directory
+  pins bite (glm17-16): the CLI diagnostics no longer flip
+  display_errors in every requiring process; glm17-12's directory-skip
+  test was vacuous (the iterator never yields plain directories — a
+  symlink to a directory is the fixture now); glm17-10's loud
+  unreadable branch is pinned by a dangling symlink, the one
+  unreadable shape that fails under root too.
+- The unreadable-subdirectory abort rides the counted channel
+  (glm17-17): a mode-000 subdirectory mid-recursion used to escape as
+  an uncaught fatal — the CLI gate converts it to a named FAIL with
+  the partial count kept. The setAccessible() guard comments are
+  re-dated (a silent no-op since 8.1, deprecated only since 8.5).
+
+### Fixed (zai / M2 — GLM17 code review)
+
+All 13 CONFIRMED findings of review round 17 (high, ledger-filtered),
+one commit each:
+
+- The tool-schema memo releases on the clear-to-empty idiom (glm17-1):
+  every reset site sat behind the params build's non-empty gate, so
+  setFunctionDeclarations([]) reset nothing and the cleared window
+  kept the superseded set pinned while the config held none — the
+  exact pinning glm16-16's bound claim said was gone. A build with a
+  cleared/absent list releases the memo; the at-most-current-set bound
+  holds at every request build under every idiom (pinned: the cleared
+  build nulls the memo, and a fresh set after the clear ships its own
+  schema with no stale hit).
+- The unused-import scanner is hardened on its finding/mention/removal
+  edges (glm17-8/9/11/13): imports are located on the token-masked
+  view (a column-0 `use ...;` inside a nowdoc/heredoc body or a block
+  comment is data, not an import — the phantom reproduced end-to-end
+  with the real scanner), mentions match case-insensitively, the
+  removal rides the regex's own offset capture (no strpos re-derivation,
+  no full-source rescan, dead guard deleted), and the dead `$lines`
+  store is gone. Unreadable files fail the gate loudly instead of
+  passing vacuously, and a directory named *.php is skipped
+  explicitly (glm17-10). The whole contract is pinned by fixture
+  tests for the first time (glm17-12), including glm16-17's CRLF/EOF
+  detection delta.
+- CHANGELOG and ledger accuracy (glm17-2..7): the glm16-2 headline
+  states the corrected claim; the verifier-round section sits at the
+  top of Unreleased with every cross-reference pointing the right
+  way; the glm16-17 entry owns its pass-to-fail CRLF/EOF delta; the
+  glm16-2 no-op boundary names its exact payload condition (decodable
+  object, type member absent or agreeing); the glm16-6 memo entries
+  tell the storage's real semantics (identity-keyed like WeakMap but
+  STRONG-keyed — pinned until a reset releases) and the three-idiom
+  bound truthfully.
+
 ### Fixed (zai / M2 — GLM16 verifier round)
 
 Independent security + correctness verification over the full glm16
