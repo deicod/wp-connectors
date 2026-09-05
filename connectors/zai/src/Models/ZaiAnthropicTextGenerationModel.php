@@ -1144,9 +1144,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 */
 		if ( $awaiting_answer && array() !== $outstanding_tools ) {
 			if ( 'user' === $previous_role ) {
-				throw new InvalidArgumentException(
-					sprintf( 'The %s provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-				);
+				$this->reject_partially_answered_tool_turn();
 			}
 
 			throw new InvalidArgumentException(
@@ -1234,13 +1232,33 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		if ( 'user' === $previous_role ) {
 			// The answering coalesced user turn has ended.
 			if ( array() !== $outstanding_tools ) {
-				throw new InvalidArgumentException(
-					sprintf( 'The %s provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-				);
+				$this->reject_partially_answered_tool_turn();
 			}
 
 			$awaiting_answer = false;
 		}
+	}
+
+	/**
+	 * Rejects a user turn that left tool calls of the preceding
+	 * assistant turn unanswered (glm19-8).
+	 *
+	 * The message was written out twice — the end-of-history branch and
+	 * advance_answer_window() — and a wording edit to one copy would
+	 * make the same corruption report two different messages depending
+	 * on whether the offending turn ends the conversation; the
+	 * byte-stable error contract the mapping/snapshot tests pin rides
+	 * one thrower now.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 * @throws InvalidArgumentException Always.
+	 */
+	private function reject_partially_answered_tool_turn(): void {
+		throw new InvalidArgumentException(
+			sprintf( 'The %s provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+		);
 	}
 
 	/**
