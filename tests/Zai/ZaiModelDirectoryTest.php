@@ -531,6 +531,25 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame(array('glm-5.3', 'glm-5.2'), array_keys(ZaiDiscoveryCache::memoized_map('test_cache_zai', $ids)));
     }
 
+    public function testTheMapMemoDigestsOnlyTheStringViewOfTheIdList()
+    {
+        /*
+         * glm18-9: the memo digest md5()-imploded the RAW id list, so a
+         * transient row carrying a non-string entry (a foreign or
+         * corrupt write; no in-repo writer produces one) raised an
+         * Array-to-string warning on every directory lookup for the
+         * transient's 12h TTL — and an ErrorException out of this
+         * documented never-throw path on hosts whose error handler
+         * throws. The digest now rides the same string-only view
+         * map_from_ids() keeps; the corrupt entry cannot change the
+         * built map (it is dropped from it too), so the memo stays
+         * faithful. failOnWarning makes the unguarded call fail here.
+         */
+        $map = ZaiDiscoveryCache::memoized_map('test_cache_corrupt', array(array('x'), 'glm-5.3', null, ''));
+
+        $this->assertSame(array('glm-5.3'), array_keys($map), 'The corrupt entries drop exactly as map_from_ids() drops them.');
+    }
+
     public function testUnauthorizedDiscoveryFallsBackToThePlanCatalog()
     {
         $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');

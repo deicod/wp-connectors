@@ -187,7 +187,26 @@ final class ZaiDiscoveryCache {
 	 * @return array<string, ModelMetadata> Map of model ID to metadata.
 	 */
 	public static function memoized_map( string $cache_id, array $ids, ?array $prebuilt = null ): array {
-		$digest = md5( implode( "\n", $ids ) );
+		/*
+		 * glm18-9: the digest rides the same string-only view of the list
+		 * map_from_ids() keeps — an md5() over the RAW list raised an
+		 * Array-to-string warning (an ErrorException out of this
+		 * documented never-throw path on hosts whose error handler
+		 * throws) on every directory lookup for a transient row carrying
+		 * a non-string entry (a foreign or corrupt write; no in-repo
+		 * writer produces one) — for the transient's whole 12h TTL.
+		 * Dropped entries cannot change the built map (map_from_ids()
+		 * drops them from it too), so a digest over the string-only list
+		 * is still a faithful memo key.
+		 */
+		$string_ids = array();
+		foreach ( $ids as $id ) {
+			if ( \is_string( $id ) && '' !== $id ) {
+				$string_ids[] = $id;
+			}
+		}
+
+		$digest = md5( implode( "\n", $string_ids ) );
 
 		$memo = self::$memoized_maps[ $cache_id ] ?? null;
 
