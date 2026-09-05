@@ -129,6 +129,33 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheIdentitySegmentsPrecedeTheOldWalkSegmentsOnThisSurface()
+    {
+        /*
+         * glm20-8: the identity encodability halves joined the walk
+         * composition at THIS surface's mapping position — the
+         * identities guarded during message mapping, so they compose
+         * FIRST and a payload carrying both an unencodable tool-call
+         * name and an unencodable text part names the identity (the
+         * member the old eager guard named), not 'a message text part'.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart("Te\xB1\x31xt"))),
+            new Message(MessageRoleEnum::model(), array(
+                new MessagePart(new FunctionCall("call_\xB1\x31", 'tool', array('v' => 1))),
+            )),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse("call_\xB1\x31", 'tool', array('ok' => true))))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('An unencodable payload must reject pre-transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not JSON-encode a tool call id', $e->getMessage());
+            $this->assertStringNotContainsString('a message text part', $e->getMessage());
+        }
+    }
+
     public function testTheHappyPathRunsOneEncodabilityPassOverTheAssembledPayload()
     {        /*
          * glm15-5 (source pin — the efficiency contract, twin of the zai
@@ -1881,21 +1908,35 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
 
     public function testAnInvalidUtf8ToolResultIdIsRejectedBeforeTransport()
     {
-        // GLM6 #9: the tool_result tool_use_id is a wire string like the
-        // rest — encodability-guarded, not just emptiness-checked. (The
-        // answered call itself stays valid, isolating THIS guard; the
-        // identity guards above cover the call side.)
+        /*
+         * GLM6 #9: the tool_result tool_use_id is a wire string like
+         * the rest — encodability-guarded, not just emptiness-checked.
+         *
+         * glm20-8 supersedes the old fixture (test pins may be
+         * consciously superseded, the GLM10 #4 lesson): the identity
+         * encodability halves moved from the eager mapping guards to
+         * the attribution walk, so the OLD isolation trick — a
+         * MISMATCHED result id, which the eager identity encode caught
+         * before the pairing rule — now names the pairing rejection
+         * instead (the more actionable diagnosis). A MATCHED pair
+         * shares one id string, so the walk names the CALL side first
+         * ('a tool call id'); the guarantee the test exists for is
+         * unchanged: an unencodable tool id rejects typed
+         * pre-transport, never reaching the wire.
+         */
+        $bad_id = "call_r_\xB1\x31";
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
-            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_ok2', 'get_weather', array('city' => 'Oslo'))))),
-            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse("call_r_\xB1\x31", 'get_weather', array('ok' => true))))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall($bad_id, 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse($bad_id, 'get_weather', array('ok' => true))))),
         );
 
         try {
             $this->model()->generateTextResult($prompt);
-            $this->fail('An invalid-UTF-8 tool result id must be rejected before transport.');
+            $this->fail('An invalid-UTF-8 tool id must be rejected before transport.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('The zai_anthropic provider could not JSON-encode a tool result tool_use id', $e->getMessage());
+            $this->assertStringContainsString('The zai_anthropic provider could not JSON-encode a tool call id', $e->getMessage());
+            $this->assertStringNotContainsString('unmatched, stale, or duplicate', $e->getMessage(), 'A matched pair must not trip the pairing rule.');
         }
 
         $this->assertNoHttpRequests();

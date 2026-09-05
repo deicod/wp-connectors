@@ -410,6 +410,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$config = $this->getConfig();
 
 		/*
+		 * glm20-8: the prompt's tool identities and the stop-sequence
+		 * entries join the composition — their encodability halves left
+		 * the mapping-time eager guards for this walk (the values ride
+		 * the assembled params the net already encodes once), composed
+		 * at the positions the mapping order gave them: the identities
+		 * guard during message mapping, the stop sequences after it.
+		 */
+		EncodabilityNet::guard_prompt_tool_identities( $prompt, self::PROVIDER_LABEL, 'a tool result tool_use id' );
+		EncodabilityNet::guard_stop_sequences( $config, self::PROVIDER_LABEL );
+
+		/*
 		 * The mapping drops empty text parts, so the wire carries only
 		 * visible NON-EMPTY text — the shared segment's guard covers
 		 * exactly those (an empty string encodes fine either way).
@@ -496,9 +507,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * input already receives. GLM9 #12: the per-entry rule rides
 			 * the shared JsonEncodeGuard (the same invalid-UTF-8 oracle
 			 * as text parts, GLM3 #4) — the twin loops this extraction
-			 * replaced had already drifted once.
+			 * replaced had already drifted once. glm20-8: the SHAPE half
+			 * stays eager here; the entries' encodability rides the net's
+			 * attribution walk (EncodabilityNet::guard_stop_sequences(),
+			 * composed after the identity segments this surface's mapping
+			 * order gives them).
 			 */
-			JsonEncodeGuard::must_encode_stop_sequences( $stop_sequences, self::PROVIDER_LABEL );
+			JsonEncodeGuard::reject_misshapen_stop_sequences( $stop_sequences, self::PROVIDER_LABEL );
 
 			$params['stop_sequences'] = $stop_sequences;
 		}
@@ -1390,9 +1405,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * every other — encodability-guarded, not just
 			 * emptiness-checked. GLM9 #12: the identity rule rides the
 			 * shared JsonEncodeGuard, the same one the zai surface's
-			 * GLM7 #7 contract lives in.
+			 * GLM7 #7 contract lives in. glm20-8: the SHAPE half stays
+			 * eager here; the strings encodability rides the
+			 * attribution walks identity segment (composed first, this
+			 * surfaces mapping order).
 			 */
-			JsonEncodeGuard::must_encode_tool_call_identity( $function_call, self::PROVIDER_LABEL );
+			JsonEncodeGuard::reject_tool_call_identity( $function_call, self::PROVIDER_LABEL );
 
 			/*
 			 * The Messages protocol requires an OBJECT for tool_use input.
@@ -1491,9 +1509,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * the rest (GLM6 #9: encodability-guarded, not just
 			 * emptiness-checked). GLM9 #12: the identity rule rides the
 			 * shared JsonEncodeGuard — the same one the zai surface's
-			 * GLM9 #4 guard lives in, one protocol-name apart.
+			 * GLM9 #4 guard lives in, one protocol-name apart. glm20-8: the
+			 * SHAPE half stays eager here; the id's encodability rides the
+			 * attribution walk's identity segment under this surface's own
+			 * subject ('a tool result tool_use id').
 			 */
-			JsonEncodeGuard::must_encode_tool_result_identity( $function_response, 'tool_use id', 'a tool result tool_use id', self::PROVIDER_LABEL );
+			JsonEncodeGuard::reject_tool_result_identity( $function_response, 'tool_use id', self::PROVIDER_LABEL );
 
 			/*
 			 * R18 (inline 3906485711): an unencodable tool-result value — NAN,

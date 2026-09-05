@@ -1210,8 +1210,16 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 * rides the shared JsonEncodeGuard now, the same guard the
 			 * zai_anthropic twin's GLM3 #3 contract lives in — the twin
 			 * loops this extraction replaced had already drifted once.
+			 *
+			 * glm20-8: only the SHAPE half stays eager here; the entries'
+			 * encodability rides the net's attribution walk
+			 * (EncodabilityNet::guard_stop_sequences(), composed at this
+			 * segment list's position) — they travel inside the assembled
+			 * params the net already encodes once, so the eager per-entry
+			 * encode was the second serialization glm13-11 deleted
+			 * everywhere else.
 			 */
-			JsonEncodeGuard::must_encode_stop_sequences( $stop_sequences, self::PROVIDER_LABEL );
+			JsonEncodeGuard::reject_misshapen_stop_sequences( $stop_sequences, self::PROVIDER_LABEL );
 		}
 
 		$function_declarations = $config->getFunctionDeclarations();
@@ -1297,9 +1305,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * FunctionCall ids give the precise typed
 					 * pre-transport rejection for the identical shape.
 					 * GLM9 #12: the identity rule rides the shared
-					 * JsonEncodeGuard.
+					 * JsonEncodeGuard. glm20-8: the SHAPE half stays
+					 * eager here; the id's encodability rides the
+					 * attribution walk's identity segment.
 					 */
-					JsonEncodeGuard::must_encode_tool_result_identity( $part->getFunctionResponse(), 'tool call id', 'a tool result id', self::PROVIDER_LABEL );
+					JsonEncodeGuard::reject_tool_result_identity( $part->getFunctionResponse(), 'tool call id', self::PROVIDER_LABEL );
 
 					/*
 					 * glm13-11 exception: the tool-result RESPONSE cannot
@@ -1326,9 +1336,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * casts let a NULL id or name ride the wire
 					 * unvalidated) rides the shared JsonEncodeGuard —
 					 * the same one the zai_anthropic twin's Codex R9 #3
-					 * contract lives in.
+					 * contract lives in. glm20-8: the SHAPE half stays
+					 * eager here; the strings' encodability rides the
+					 * attribution walk's identity segment.
 					 */
-					JsonEncodeGuard::must_encode_tool_call_identity( $part->getFunctionCall(), self::PROVIDER_LABEL );
+					JsonEncodeGuard::reject_tool_call_identity( $part->getFunctionCall(), self::PROVIDER_LABEL );
 				}
 			}
 		}
@@ -1351,6 +1363,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * EncodabilityNet for the one surface-specific segment (sampling)
 	 * and its documented divergence from the zai_anthropic twin.
 	 *
+	 * glm20-8: the stop-sequence entries and the prompt's tool
+	 * identities join the composition — their encodability halves left
+	 * the typed walk's eager guards for this walk (the values ride the
+	 * assembled params the net already encodes once), composed at the
+	 * positions the old typed-walk order gave them (stop sequences,
+	 * then the per-part identities) so a multi-bad payload keeps naming
+	 * the member the eager order named.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param array $prompt Prompt messages (list of Message).
@@ -1360,6 +1380,8 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	private function guard_wire_values( array $prompt ): void {
 		$config = $this->getConfig();
 
+		EncodabilityNet::guard_stop_sequences( $config, self::PROVIDER_LABEL );
+		EncodabilityNet::guard_prompt_tool_identities( $prompt, self::PROVIDER_LABEL, 'a tool result id' );
 		EncodabilityNet::guard_system_instruction( $config, self::PROVIDER_LABEL );
 		EncodabilityNet::guard_sampling_options( $config, self::PROVIDER_LABEL );
 		EncodabilityNet::guard_declarations( $config, self::PROVIDER_LABEL );

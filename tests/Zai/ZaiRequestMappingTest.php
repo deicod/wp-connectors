@@ -987,6 +987,31 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAMultiBadPayloadNamesTheIdentityBeforeTheOldWalkSegmentsOnTheZaiSurface()
+    {
+        /*
+         * glm20-8: the stop-sequence and identity encodability halves
+         * joined this surface's walk composition at the typed walk's
+         * old positions — stop sequences guarded BEFORE the identities,
+         * both before the pre-existing segments — so a payload carrying
+         * an unencodable stop sequence AND an unencodable system
+         * instruction names 'a stop sequence' (the member the old
+         * eager guard named).
+         */
+        $config = ModelConfig::fromArray(array(
+            'systemInstruction' => "Sy\xB1\x31stem",
+            'stopSequences' => array("EN\xB1\x31D"),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(new Message(MessageRoleEnum::user(), array(new MessagePart('go')))));
+            $this->fail('An unencodable payload must reject pre-transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not JSON-encode a stop sequence', $e->getMessage());
+            $this->assertStringNotContainsString('the system instruction', $e->getMessage());
+        }
+    }
+
     public function testTheHappyPathRunsOneEncodabilityPassOverTheAssembledPayload()
     {        /*
          * glm13-11 (source pin — the efficiency contract): the per-member
@@ -1138,24 +1163,31 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
          * (GLM3 #3 landed on zai_anthropic only; GLM7 #7 re-landed on
          * zai). The same malformed input now rejects with the identical
          * message modulo the label on both surfaces, by construction.
+         *
+         * glm20-8: the guards are SHAPE-only at the eager sites now —
+         * the encodability halves ride the attribution walk's
+         * EncodabilityNet segments (pinned through the model-level
+         * behavioral tests above, which still assert the encode
+         * messages through the walk); the unit rows below pin the
+         * shape rejections and the untouched valid shapes.
          */
         foreach (array('zai', 'zai_anthropic') as $label) {
             try {
-                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_stop_sequences(array(0), $label);
+                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::reject_misshapen_stop_sequences(array(0), $label);
                 $this->fail("[{$label}] A non-string stop-sequence entry must reject.");
             } catch (InvalidArgumentException $e) {
                 $this->assertSame("The {$label} provider requires every stop sequence to be a non-empty string.", $e->getMessage());
             }
 
             try {
-                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_call_identity(new FunctionCall(null, 'tool', array('v' => 1)), $label);
+                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::reject_tool_call_identity(new FunctionCall(null, 'tool', array('v' => 1)), $label);
                 $this->fail("[{$label}] A null-id tool call must reject.");
             } catch (InvalidArgumentException $e) {
                 $this->assertSame("The {$label} provider requires every function-call part to carry a non-empty id and name.", $e->getMessage());
             }
 
             try {
-                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_result_identity(new FunctionResponse(null, 'tool', array('ok' => true)), 'tool call id', 'a tool result id', $label);
+                Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::reject_tool_result_identity(new FunctionResponse(null, 'tool', array('ok' => true)), 'tool call id', $label);
                 $this->fail("[{$label}] A null-id tool result must reject.");
             } catch (InvalidArgumentException $e) {
                 $this->assertSame("The {$label} provider requires every function-response part to carry the non-empty tool call id it answers.", $e->getMessage());
@@ -1164,9 +1196,9 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
 
         // The valid shapes pass untouched through both labels.
         foreach (array('zai', 'zai_anthropic') as $label) {
-            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_stop_sequences(array('END'), $label);
-            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_call_identity(new FunctionCall('call_1', 'tool', array('v' => 1)), $label);
-            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::must_encode_tool_result_identity(new FunctionResponse('call_1', 'tool', array('ok' => true)), 'tool call id', 'a tool result id', $label);
+            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::reject_misshapen_stop_sequences(array('END'), $label);
+            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::reject_tool_call_identity(new FunctionCall('call_1', 'tool', array('v' => 1)), $label);
+            Deicod\WpConnectors\Zai\Support\JsonEncodeGuard::reject_tool_result_identity(new FunctionResponse('call_1', 'tool', array('ok' => true)), 'tool call id', $label);
         }
 
         $this->addToAssertionCount(1);

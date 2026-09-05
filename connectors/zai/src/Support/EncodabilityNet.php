@@ -18,7 +18,12 @@
  * ITS OWN mapping order (the order preserves which member a multi-bad
  * payload names — pinned per surface), and the one genuinely
  * surface-specific segment (the sampling options) is opt-in with its
- * divergence documented at the method.
+ * divergence documented at the method. glm20-8 added the stop-sequence
+ * and prompt-tool-identity segments (the encodability halves of the
+ * old eager composite guards, whose SHAPE halves stay eager at the
+ * params build); the identity segment takes one per-surface parameter —
+ * the tool-result id's attribution subject the protocols spell
+ * differently.
  *
  * @since 0.2.0
  *
@@ -186,6 +191,80 @@ final class EncodabilityNet {
 			foreach ( $message->getParts() as $part ) {
 				if ( $part->getType()->isText() && ! $part->getChannel()->isThought() ) {
 					JsonEncodeGuard::must_encode( (string) $part->getText(), 'a message text part', $provider_label );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Guards every configured stop-sequence entry's encodability (a
+	 * shared walk segment, glm20-8).
+	 *
+	 * The entries ship inside the assembled params, so the net's one
+	 * encode already proves their encodability — this segment only
+	 * NAMES the first bad entry on failure. The SHAPE rule (non-string
+	 * or empty entries) stays eager at the params build
+	 * (JsonEncodeGuard::reject_misshapen_stop_sequences()): a misshapen
+	 * entry must reject before the payload assembles at all. Both
+	 * surfaces compose this segment at the position their old eager
+	 * encode occupied relative to the identity segments (zai guarded
+	 * stop sequences before the identities; zai_anthropic after its
+	 * message mapping), so a multi-bad payload keeps naming the member
+	 * the eager order named.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param ModelConfig $config         The request's configuration.
+	 * @param string      $provider_label The surface's provider label.
+	 * @return void
+	 * @throws \WordPress\AiClient\Common\Exception\InvalidArgumentException When an entry cannot encode.
+	 */
+	public static function guard_stop_sequences( ModelConfig $config, string $provider_label ): void {
+		$stop_sequences = $config->getStopSequences();
+		if ( ! \is_array( $stop_sequences ) ) {
+			return;
+		}
+
+		foreach ( $stop_sequences as $sequence ) {
+			JsonEncodeGuard::must_encode( $sequence, 'a stop sequence', $provider_label );
+		}
+	}
+
+	/**
+	 * Guards every tool part's identity strings' encodability (a shared
+	 * walk segment, glm20-8).
+	 *
+	 * The tool-call id/name and the tool-result id ship inside the
+	 * assembled params verbatim, so the net's one encode already proves
+	 * their encodability — this segment only NAMES the first bad
+	 * identity on failure, walking the prompt in part order (the order
+	 * the old eager per-part guards fired in). The SHAPE rules (null or
+	 * empty identities) stay eager at the mapping/typed-walk sites
+	 * (JsonEncodeGuard::reject_tool_call_identity() /
+	 * reject_tool_result_identity()). $tool_result_id_subject carries
+	 * each surface's own attribution ('a tool result id' on zai, 'a
+	 * tool result tool_use id' on zai_anthropic) — the one parameter
+	 * the twin protocols spell differently.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param Message[] $prompt                 Prompt messages (list of Message).
+	 * @param string    $provider_label         The surface's provider label.
+	 * @param string    $tool_result_id_subject The tool-result id's attribution subject.
+	 * @return void
+	 * @throws \WordPress\AiClient\Common\Exception\InvalidArgumentException When an identity cannot encode.
+	 */
+	public static function guard_prompt_tool_identities( array $prompt, string $provider_label, string $tool_result_id_subject ): void {
+		foreach ( $prompt as $message ) {
+			foreach ( $message->getParts() as $part ) {
+				if ( $part->getType()->isFunctionCall() && null !== $part->getFunctionCall() ) {
+					JsonEncodeGuard::must_encode( $part->getFunctionCall()->getId(), 'a tool call id', $provider_label );
+					JsonEncodeGuard::must_encode( $part->getFunctionCall()->getName(), 'a tool call name', $provider_label );
+					continue;
+				}
+
+				if ( $part->getType()->isFunctionResponse() && null !== $part->getFunctionResponse() ) {
+					JsonEncodeGuard::must_encode( $part->getFunctionResponse()->getId(), $tool_result_id_subject, $provider_label );
 				}
 			}
 		}
