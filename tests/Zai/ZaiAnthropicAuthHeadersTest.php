@@ -65,23 +65,13 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         return array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))));
     }
 
-    /**
-     * A minimal successful Messages response body.
-     *
-     * @return string
+    /*
+     * glm15-20: the success body rides HttpResponseFactory::
+     * anthropicMessagesBody() — the hand-rolled minimal Messages shape
+     * duplicated the canonical fixture (only usage numbers apart), so a
+     * Messages-payload contract change updated the factory for the
+     * mapping suites while this suite kept posting a stale shape.
      */
-    private function messagesBody()
-    {
-        return (string) wp_json_encode(array(
-            'id' => 'msg_fixture',
-            'type' => 'message',
-            'role' => 'assistant',
-            'content' => array(array('type' => 'text', 'text' => 'ok')),
-            'model' => 'glm-5.3',
-            'stop_reason' => 'end_turn',
-            'usage' => array('input_tokens' => 5, 'output_tokens' => 1),
-        ));
-    }
 
     /*
      * The authentication class in isolation.
@@ -284,7 +274,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
     public function testGenerationSendsTheExactHeaderSet()
     {
         $key = FakeSecrets::apiKey();
-        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), $this->messagesBody());
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('ok'));
 
         $this->model($key)->generateTextResult($this->prompt());
 
@@ -371,7 +361,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
     {
         update_option(DebugLogger::OPTION_ENABLED, '1');
         $key = FakeSecrets::apiKey();
-        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), $this->messagesBody());
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('ok'));
 
         $this->model($key)->generateTextResult($this->prompt());
 
