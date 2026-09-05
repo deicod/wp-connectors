@@ -6,6 +6,130 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM18 verifier round)
+
+Independent security + correctness verification over the full glm18
+diff (6 verifier lenses — replay boundary, parse guards,
+availability/discovery, the conventions scanner, security, refactor
+safety; 41 raw candidates, 5 CONFIRMED on adjudication and fixed here,
+36 refuted with quoted guards, tests, and ledger lines):
+
+- One verdict precedence for 2xx bodies (glm18-15): the glm18-4 body
+  recorder consulted the envelope predicate alone, so a HYBRID body (a
+  well-formed models list that also carries success:false + a
+  definitive code) persisted VALID at the probe (models-list checked
+  first) and INVALID at the zai_anthropic directory from the same
+  evidence — the fresh invalid state then answered isConfigured()
+  false with no new request while core clears keys on false
+  (empirically reproduced in the repo's own harness). The recorder
+  applies the probe's precedence: a body that passes the models-list
+  entry rule is never a rejection.
+- The log-viewer member guard requires SCALARS (glm18-16): isset()
+  alone passes an array-valued member and the renderer's (string)
+  casts raise the Array-to-string warning — the exact settings-page
+  fatal class glm18-5 was written to prevent.
+- do-while visibility spans cover the trailing condition (glm18-17):
+  the construct re-executes `while (cond);` after every pass, so a
+  tail write executed before the include's next pass while sitting
+  outside every span (empirically laundered, braced and braceless).
+  The do span extends through the tail's parens; braceless do
+  over-approximates to EOF.
+- A by-reference alias of the include variable refuses the proof
+  (glm18-18): `$alias = &$f;` made every later write through the alias
+  invisible to the plain-variable collector (`$alias = &$f; $alias =
+  '/outside/...'; require $f;` laundered) — the map path has refused
+  the same channel since the GLM10 #14 round.
+- Function-declaration spans join the visibility set (glm18-19):
+  recursion and repeated callback invocation are backward edges the
+  loop spans did not model — a write after the include inside a
+  function that re-enters executed before the include's next
+  activation (empirically laundered). Every write in the enclosing
+  function of an include is visible to it now.
+
+### Fixed (zai / M2 — GLM18 round)
+
+All 14 findings of review round 18 (high, ledger-filtered), one commit
+each:
+
+- The decoded-only walker's out-of-range bound is the 2^63 FLOAT
+  literal (glm18-1): comparing \abs($value) > PHP_INT_MAX widens the
+  int constant to the 2^63 double and ties at the boundary magnitude,
+  so every literal of the ~2048-wide collapse window above
+  PHP_INT_MAX passed the conservative walker and was stamped
+  replayable, silently altering the value on every later replay — the
+  exact precision-loss poisoning the glm12-8 split rule's conservative
+  half exists to refuse, with the two delivery channels of one surface
+  giving opposite verdicts (input_json_delta fragments rejected the
+  same literal through the precise wire rule).
+- A zai tool call without non-empty identity members rejects at parse
+  time (glm18-2): the SDK parent coerces a missing id/name to null (an
+  empty string passes through), so a corrupt tool_calls entry —
+  including a stream whose id fragments never arrived — consolidated
+  into a successful generation whose turn the outbound replay guard
+  then rejects on every later request: GLM3 #1 poisoning at one
+  remove. The zai_anthropic twin's Codex R9 #3 discipline, extended.
+- maxTokens positivity rejects typed on the zai surface (glm18-3):
+  the SDK setter is a bare assignment, so 0/-x rode "max_tokens"
+  verbatim into the endpoint's generic misattributed 400 instead of
+  the twin's typed pre-transport rejection.
+- The zai_anthropic directory records the 200-carried rejection
+  envelope (glm18-4): this route answers HTTP 200 for any or no
+  credential, carrying the rejection in the body — the glm12-1
+  envelope the probe judges definitive INVALID — but discovery
+  recorded verdicts only for the 401/403 STATUS set, so a revocation
+  persisted nothing and a stale VALID verdict kept isConfigured()
+  answering true. The directory rides the probe's rule through the
+  same guarded recorder (glm14-5 opaque-wire and glm13-1 empty-wire
+  binding rules unchanged) with the ONE decode serving verdict and
+  parse. The zai (OpenAI) directory keeps status-only recording — the
+  envelope shape is live-attested for the Anthropic route only.
+- The debug log viewer skips malformed entries (glm18-5): entries()
+  validates only the top level, and a scalar/null entry fatalled the
+  settings page mid-render (PHP 8 throw; 7.4 warnings and epoch rows).
+  Only well-formed entries render; the rest of the list does.
+- A list-root output schema rejects typed on zai_anthropic (glm18-6):
+  a JSON list is never a valid schema root, but the SDK setter accepts
+  any array, so ['a','b'] embedded verbatim into the system-prompt
+  guidance as a meaningless pseudo-instruction while the zai twin
+  rejected typed (glm13-8). Same JsonShape::is_list() rule, before the
+  encodability guard, on either signal.
+- The self-containment scanner sees loop-nested writes (glm18-7): the
+  offset cut ("an assignment after the include cannot be read by it")
+  modeled straight-line execution only — inside a loop the include
+  also sits in, a later write executes before the include's next
+  iteration, and loop shapes laundered foreign include paths past the
+  CI gate (empirically confirmed). Write visibility is a REGION SET
+  now: the pre-include prefix plus every loop construct containing the
+  include, over-approximated (unparsable shapes extend to EOF — a
+  wider region only refuses proofs, never launders one).
+- Compound-assignment writes are recognized (glm18-8): the write-shape
+  checks matched only '$var =' / '$var .=', so '$map += $other;' was
+  an invisible write channel and the element-literal proof concluded
+  all runtime values were the proven literals while the array union
+  injected foreign entries (empirically confirmed). The full compound
+  set matches in both regexes; collecting a compound write with its
+  RHS keeps the every-assignment-must-prove rule covering the union.
+- The map-memo digest rides the string-only view of the id list
+  (glm18-9): memoized_map() md5()-imploded the RAW cached list, so a
+  non-string transient row raised Array-to-string warnings on every
+  directory lookup for the transient's 12h TTL.
+- One sanitize_enum() serves the plan/region read and write paths
+  (glm18-10): the private helpers were byte-identical twins; a future
+  rule change edited into one could desynchronize what is stored from
+  what reads normalize.
+- The broken-install fallback rides the endpoint base's one formula
+  (glm18-11): the settings layer re-composed the discovery cache-id
+  inline; the base now owns the parameterized
+  compose_discovery_cache_id() (late static binding stays out of it,
+  the constant values stay settings-owned per glm15-23).
+- messages_url() routes through the inherited api_url() (glm18-12):
+  byte-identical today, drift-proof against future append-rule fixes.
+- The zero-caller mark_region_switch_pending() delegator is deleted
+  (glm18-13): the SDK-free settings owner is the one entry point.
+- The credential gate's auth hook delegates to the raw hook
+  (glm18-14): the two byte-identical bodies could drift apart on a
+  security-sensitive path.
+
 ### Fixed (zai / M2 — GLM17 verifier round)
 
 Independent security + correctness verification over the full glm17
