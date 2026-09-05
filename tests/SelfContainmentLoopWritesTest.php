@@ -75,6 +75,12 @@ final class SelfContainmentLoopWritesTest extends TestCase
             'foreach loop over a runtime source' => array(
                 "<?php\n\$f = __DIR__ . '/c.php';\nforeach (array(1, 2) as \$n) {\n    require \$f;\n    \$f = \$_GET['page'];\n}\n",
             ),
+            'do-while with a write in the trailing condition (glm18-17)' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\n\$i = 0;\ndo {\n    require \$f;\n    ++\$i;\n} while (\$f = \$_GET['page']);\n",
+            ),
+            'braceless do-while with a write in the tail (glm18-17)' => array(
+                "<?php\n\$f = __DIR__ . '/ok2.php';\n\$i = 0;\ndo require \$f;\nwhile (\$f = \$_GET['page']);\n",
+            ),
         );
     }
 
@@ -87,6 +93,21 @@ final class SelfContainmentLoopWritesTest extends TestCase
         file_put_contents(
             $this->root . '/fixture.php',
             "<?php\n\$f = __DIR__ . '/d.php';\nrequire \$f;\n\$f = \$_GET['page'];\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
+    }
+
+    public function testALegitimateDoWhileWhoseTailDoesNotWriteStaysClean(): void
+    {
+        /*
+         * glm18-17 control: the tail is now INSIDE the span, so the
+         * uninstall owner's legitimate do-while shape (no write to the
+         * include variable in the tail) must stay clean.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\n\$f = __DIR__ . '/d2.php';\n\$i = 0;\ndo {\n    require \$f;\n    ++\$i;\n} while (\$i < 2);\n"
         );
 
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));

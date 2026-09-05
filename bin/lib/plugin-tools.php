@@ -468,6 +468,58 @@ function wp_connectors_include_runtime_segments($statement)
 }
 
 /**
+ * The byte offset closing the brace opened at $open, or end-of-file when
+ * unbalanced (glm18-17: the walk the visibility spans share).
+ *
+ * @param string $masked String-masked source (strings blank, code braces only).
+ * @param int    $open   Offset of the opening '{'.
+ * @return int Offset of the matching '}' (or the last byte).
+ */
+function wp_connectors_matching_brace_end($masked, $open)
+{
+    $length = strlen($masked);
+    $depth = 0;
+    for ($i = $open; $i < $length; ++$i) {
+        if ('{' === $masked[ $i ]) {
+            ++$depth;
+        } elseif ('}' === $masked[ $i ]) {
+            --$depth;
+            if (0 === $depth) {
+                return $i;
+            }
+        }
+    }
+
+    return $length - 1;
+}
+
+/**
+ * The byte offset closing the paren opened at $open, or false when
+ * unbalanced (glm18-17: the walk the visibility spans share).
+ *
+ * @param string $masked String-masked source.
+ * @param int    $open   Offset of the opening '('.
+ * @return int|false Offset of the matching ')', or false.
+ */
+function wp_connectors_matching_paren_end($masked, $open)
+{
+    $length = strlen($masked);
+    $depth = 0;
+    for ($i = $open; $i < $length; ++$i) {
+        if ('(' === $masked[ $i ]) {
+            ++$depth;
+        } elseif (')' === $masked[ $i ]) {
+            --$depth;
+            if (0 === $depth) {
+                return $i;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
  * The byte regions whose variable writes an include at $offset can read
  * (glm18-7).
  *
@@ -482,12 +534,21 @@ function wp_connectors_include_runtime_segments($statement)
  * visible region is [0, $offset) plus the span of every loop construct
  * that CONTAINS $offset.
  *
+ * glm18-17 (verifier round): a do-while's span covers its TRAILING
+ * condition too — the construct re-executes `while (cond);` after every
+ * pass, so a write in the tail executes after the include each
+ * iteration and is read by its next pass (the round-18 form ended the
+ * span at the body's closing brace and the tail laundered, empirically
+ * confirmed); a BRACELESS do (`do require ...; while (cond);`) is
+ * matched as well and over-approximates to end-of-file.
+ *
  * Every span is OVER-approximated: a braced body closes at its matching
  * brace on the string-masked view (string/heredoc contents are blank,
  * so the depth count only sees code braces), and any shape we do not
  * confidently parse — an alternative-syntax body (while: … endwhile;),
- * a braceless single-statement body — extends to end-of-file instead. A
- * wider region can only refuse more proofs, never launder one.
+ * a braceless single-statement body, a tail whose parens we cannot
+ * close — extends to end-of-file instead. A wider region can only
+ * refuse more proofs, never launder one.
  *
  * @param string $masked String-masked source (same length as the code).
  * @param int    $offset Byte offset the include statement starts at.
@@ -498,62 +559,77 @@ function wp_connectors_write_visibility_spans($masked, $offset)
     $spans = array(array(0, max(0, $offset - 1)));
     $length = strlen($masked);
 
-    if (! preg_match_all('/\b(?:while|for|foreach)\s*\(|\bdo\s*\{/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
+    if (! preg_match_all('/\b(?:while|for|foreach)\s*\(|\bdo\s*\{|\bdo\b(?!\s*\{)/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
         return $spans;
     }
 
     foreach ($loops[0] as $loop) {
-        $body_open = $loop[1] + strlen($loop[0]) - 1; // Position of '(' or '{'.
+        $construct = $loop[0];
+        $last = $loop[1] + strlen($construct) - 1; // Position of '(' or '{', or the do keyword's 'o'.
 
-        if ('(' === $masked[ $body_open ]) {
-            // Walk the header parens to the matching close.
-            $depth = 0;
-            $header_close = false;
-            for ($i = $body_open; $i < $length; ++$i) {
-                if ('(' === $masked[ $i ]) {
-                    ++$depth;
-                } elseif (')' === $masked[ $i ]) {
-                    --$depth;
-                    if (0 === $depth) {
-                        $header_close = $i;
-                        break;
+        if ('o' === $construct[ strlen($construct) - 1 ]) {
+            // A braceless `do statement; while (...);`: the single-statement
+            // body and the tail cannot be bounded textually — EOF.
+            if ($offset >= $loop[1]) {
+                $spans[] = array($loop[1], $length - 1);
+            }
+            continue;
+        }
+
+        if ('{' === $masked[ $last ]) {
+            // A braced `do { ... } while (cond);`.
+            $body_close = wp_connectors_matching_brace_end($masked, $last);
+
+            if ($body_close < $length - 1) {
+                /*
+                 * glm18-17: extend through the trailing condition — its
+                 * re-execution each pass makes tail writes visible to an
+                 * include inside the body. Anything unparsable after the
+                 * body falls to the EOF approximation below.
+                 */
+                $j = $body_close + 1;
+                while ($j < $length && ctype_space($masked[ $j ])) {
+                    ++$j;
+                }
+                if (0 === stripos((string) substr($masked, $j, 5), 'while')) {
+                    $paren = strpos($masked, '(', $j);
+                    $tail_close = false === $paren ? false : wp_connectors_matching_paren_end($masked, $paren);
+                    if (false !== $tail_close) {
+                        $body_close = $tail_close;
+                    } else {
+                        $body_close = $length - 1;
                     }
                 }
             }
-            if (false === $header_close) {
-                continue; // A header we cannot close bounds nothing.
+
+            if ($offset >= $loop[1] && $offset <= $body_close) {
+                $spans[] = array($loop[1], $body_close);
             }
-            $j = $header_close + 1;
-            while ($j < $length && ctype_space($masked[ $j ])) {
-                ++$j;
-            }
-            if ($j >= $length) {
-                continue;
-            }
-            if ('{' !== $masked[ $j ]) {
-                // Alternative-syntax or braceless body: unbounded (EOF).
-                if ($offset >= $loop[1]) {
-                    $spans[] = array($loop[1], $length - 1);
-                }
-                continue;
-            }
-            $body_open = $j;
+            continue;
         }
 
-        // Brace-match the body on the masked view.
-        $depth = 0;
-        $body_close = $length - 1;
-        for ($i = $body_open; $i < $length; ++$i) {
-            if ('{' === $masked[ $i ]) {
-                ++$depth;
-            } elseif ('}' === $masked[ $i ]) {
-                --$depth;
-                if (0 === $depth) {
-                    $body_close = $i;
-                    break;
-                }
-            }
+        // while/for/foreach: walk the header parens to the matching close.
+        $header_close = wp_connectors_matching_paren_end($masked, $last);
+
+        if (false === $header_close) {
+            continue; // A header we cannot close bounds nothing.
         }
+        $j = $header_close + 1;
+        while ($j < $length && ctype_space($masked[ $j ])) {
+            ++$j;
+        }
+        if ($j >= $length) {
+            continue;
+        }
+        if ('{' !== $masked[ $j ]) {
+            // Alternative-syntax or braceless body: unbounded (EOF).
+            if ($offset >= $loop[1]) {
+                $spans[] = array($loop[1], $length - 1);
+            }
+            continue;
+        }
+
+        $body_close = wp_connectors_matching_brace_end($masked, $j);
 
         if ($offset >= $loop[1] && $offset <= $body_close) {
             $spans[] = array($loop[1], $body_close);
