@@ -6091,6 +6091,22 @@ $body = ''
 
         $this->assertWPError($error, ErrorMapper::CODE_TOKEN_LIMIT);
         $this->assertStringContainsString('token limit', $error->get_error_message());
+
+        /*
+         * glm13-14: the exception owns the message — the mapper passes the
+         * model's precise text through (the limit number and the 'Raise
+         * maxTokens' guidance) instead of rebuilding a second, vaguer
+         * catalog string, and the typed max_tokens payload rides the
+         * WP_Error data.
+         */
+        $this->assertStringContainsString('Raise maxTokens', $error->get_error_message(), 'The model\'s actionable guidance must reach the caller.');
+        $this->assertStringContainsString((string) Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel::DEFAULT_MAX_TOKENS, $error->get_error_message(), 'The configured limit number must reach the caller.');
+        $this->assertSame(
+            Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel::DEFAULT_MAX_TOKENS,
+            $error->get_error_data()['max_tokens'],
+            'The typed max_tokens payload rides the WP_Error data.'
+        );
+        $this->assertSame(400, $error->get_error_data()['status']);
     }
 
     public function testGenerateTextMapsTransportFailuresToTypedWpErrors()

@@ -239,20 +239,27 @@ final class ErrorMapper {
 
 		if ( $exception instanceof TokenLimitReachedException ) {
 			/*
-			 * Codex R5 #4: a null typed payload means the model's CONTEXT
-			 * window was exhausted (model_context_window_exceeded) — advice
-			 * to raise maxTokens cannot recover that and leaves even less
-			 * room, so the guidance differs from the genuine output-token
-			 * limit case.
+			 * glm13-14: the exception OWNS the message — this mapper branch
+			 * was a second catalog that discarded the model's precise text
+			 * (the limit number and the 'Raise maxTokens' guidance, both
+			 * built into the throw at the parse site) and maintained the
+			 * context-window string byte-identically in two files. Only
+			 * this plugin constructs the exception (the SDK never throws
+			 * it), always from fixed __() strings — the same
+			 * controlled-string pass-through policy the branches below
+			 * apply. The max_tokens typed payload rides the WP_Error data
+			 * (null for the Codex R5 #4 context-window case, whose
+			 * reduce-the-input guidance cannot be recovered by raising
+			 * maxTokens — the distinction lives in the model's own two
+			 * messages now).
 			 */
-			$message = null === $exception->getMaxTokens()
-				? __( 'The generation stopped because the conversation exceeds the model\'s context window. Reduce the input — truncate the history or shorten the prompt — and try again.', 'zai' )
-				: __( 'The generation stopped because the configured token limit was reached.', 'zai' );
-
 			return new \WP_Error(
 				self::CODE_TOKEN_LIMIT,
-				$message,
-				array( 'status' => 400 )
+				$exception->getMessage(),
+				array(
+					'status'     => 400,
+					'max_tokens' => $exception->getMaxTokens(),
+				)
 			);
 		}
 
