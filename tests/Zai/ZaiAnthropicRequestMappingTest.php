@@ -1049,6 +1049,48 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertSame('{"temp_c":21}', $body['messages'][2]['content'][0]['content'], 'The tool_result carries the exact JSON.' );
     }
 
+    public function testScalarToolResultsShipJsonEncodedLikeTheOpenAITwin()
+    {
+        /*
+         * glm16-4: the tool_result content convention is DELIBERATE —
+         * every response value ships as its JSON encoding, strings
+         * included, so a plain-string tool result carries literal
+         * artifact quotes. A raw string (or a text-block mapping) would
+         * be Anthropic-protocol-legal, but the zai twin's tool-message
+         * content is the VENDOR parent's own json_encode($response) —
+         * not overridable without replacing the SDK's message mapping —
+         * so raw strings here would present the SAME tool result to the
+         * model differently on the two surfaces. One convention, both
+         * surfaces, every response type: this pin makes any change to
+         * it a conscious decision, never silent drift.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_s', 'weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_s', 'weather', 'Partly cloudy, 21C')))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_n', 'temp', array('unit' => 'c'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_n', 'temp', 21)))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_b', 'ok', array())))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_b', 'ok', true)))),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        // Coalescing: three user turns, each answering its predecessor.
+        $results = array();
+        foreach ($body['messages'] as $message) {
+            if ('user' === $message['role'] && 'tool_result' === ($message['content'][0]['type'] ?? null)) {
+                $results[] = $message['content'][0]['content'];
+            }
+        }
+
+        $this->assertSame(
+            array('"Partly cloudy, 21C"', '21', 'true'),
+            $results,
+            'String, number, and boolean tool results all ship as their JSON encoding, exactly like the vendor parent maps them on the OpenAI surface.'
+        );
+    }
+
     public function testParsedToolInputRoundTripsNestedObjectsOnReplay()
     {
         /*

@@ -1327,6 +1327,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * shared JsonEncodeGuard) — under production wp_json_encode()
 			 * an invalid-UTF-8 tool result was lossily re-encoded and
 			 * shipped, telling the model altered tool output.
+			 *
+			 * glm16-4: EVERY response value ships as its JSON encoding,
+			 * strings included ('Partly cloudy' → "\"Partly cloudy\"") —
+			 * a DELIBERATE convention, not an oversight. A raw string (or
+			 * a text-block mapping) is Anthropic-protocol-legal, but the
+			 * zai twin's tool-message content is the VENDOR parent's own
+			 * json_encode($response) (the SDK's message mapping — not
+			 * overridable without replacing it), so a raw-string mapping
+			 * HERE would present the SAME tool result to the model
+			 * differently on the two surfaces. One convention, both
+			 * surfaces, every response type; pinned by
+			 * testScalarToolResultsShipJsonEncodedLikeTheOpenAITwin.
 			 */
 			$encoded = JsonEncodeGuard::encode( $function_response->getResponse(), 'a tool result', self::PROVIDER_LABEL );
 
