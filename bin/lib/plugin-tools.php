@@ -14,14 +14,113 @@ declare(strict_types=1);
 /**
  * Strips docblock and line comments so checks only see functional code.
  *
+ * glm15-2: comment removal is TOKEN-based (token_get_all), not regex —
+ * the previous regex strip also deleted comment-LOOKING lines inside
+ * string and heredoc bodies, so text a plugin merely prints was judged
+ * as PHP. Comment bytes become SPACES, preserving every byte offset in
+ * the file: statements and offsets sliced from the stripped source line
+ * up with the original exactly.
+ *
  * @param string $source PHP source.
- * @return string Source with comments removed.
+ * @return string Source with comments replaced by spaces (same length).
  */
 function wp_connectors_strip_comments($source)
 {
-    $withoutDocblocks = (string) preg_replace('#/\*.*?\*/#s', '', $source);
+    $stripped = '';
+    foreach (token_get_all($source) as $token) {
+        $id = is_array($token) ? $token[0] : null;
+        $text = is_array($token) ? $token[1] : $token;
 
-    return (string) preg_replace('/^\s*(?:\*|\/\/|#).*$/m', '', $withoutDocblocks);
+        if (T_COMMENT === $id || T_DOC_COMMENT === $id) {
+            $stripped .= str_repeat(' ', strlen($text));
+            continue;
+        }
+
+        $stripped .= $text;
+    }
+
+    return $stripped;
+}
+
+/**
+ * Blanks string and heredoc CONTENTS so code-shape scans see only code.
+ *
+ * glm15-2: the include/assignment/signature analyses were regexes over
+ * comment-stripped source, so a '$var = ...;' or 'function' or
+ * 'require ...;' written inside a quoted string or heredoc counted as
+ * real code — a phantom assignment could satisfy (or poison) a variable
+ * include's resolution and phantom includes were analyzed as
+ * statements. This returns a copy of the SAME LENGTH where every byte
+ * belonging to a string region — single/double-quoted literals, heredoc
+ * and nowdoc bodies, and {$...} interpolations inside them — is a
+ * space. Real code keeps its bytes and its offsets, so matches found on
+ * the masked copy slice the true statement text out of the original.
+ *
+ * @param string $code PHP source (comment-stripping optional).
+ * @return string Same-length copy with string contents blanked.
+ */
+function wp_connectors_mask_string_contents($code)
+{
+    $masked = '';
+    $in_heredoc = false;
+    $in_interpolated = false;
+    $curly = 0;
+
+    foreach (token_get_all($code) as $token) {
+        $id = is_array($token) ? $token[0] : null;
+        $text = is_array($token) ? $token[1] : $token;
+
+        if (T_START_HEREDOC === $id) {
+            $masked .= str_repeat(' ', strlen($text));
+            $in_heredoc = true;
+            continue;
+        }
+        if (T_END_HEREDOC === $id) {
+            $masked .= str_repeat(' ', strlen($text));
+            $in_heredoc = false;
+            continue;
+        }
+
+        $in_string = $in_heredoc || $in_interpolated || $curly > 0;
+
+        if (T_CURLY_OPEN === $id || T_DOLLAR_OPEN_CURLY_BRACES === $id) {
+            ++$curly;
+            $masked .= str_repeat(' ', strlen($text));
+            continue;
+        }
+        if ($curly > 0 && '{' === $token) {
+            ++$curly;
+        } elseif ($curly > 0 && '}' === $token) {
+            --$curly;
+        }
+        if (T_CONSTANT_ENCAPSED_STRING === $id || T_ENCAPSED_AND_WHITESPACE === $id) {
+            // Simple literals anywhere; content chunks of heredocs and
+            // interpolated strings (the quotes ride these tokens except
+            // for the opening double quote of an interpolated string).
+            $masked .= str_repeat(' ', strlen($text));
+            continue;
+        }
+        if ($in_string) {
+            // Interpolated variables, operator/object tokens inside
+            // {$...}, and the structural quotes/braces: masked.
+            if ($in_interpolated && 0 === $curly && '"' === $token) {
+                $in_interpolated = false;
+            }
+            $masked .= str_repeat(' ', strlen($text));
+            continue;
+        }
+        if ('"' === $token) {
+            // A bare double quote opens an interpolated string (a simple
+            // one was swallowed whole as T_CONSTANT_ENCAPSED_STRING).
+            $in_interpolated = true;
+            $masked .= ' ';
+            continue;
+        }
+
+        $masked .= $text;
+    }
+
+    return $masked;
 }
 
 /**
@@ -378,7 +477,14 @@ function wp_connectors_include_runtime_segments($statement)
  */
 function wp_connectors_array_writes_recognized($code, $variable, $offset)
 {
-    $before = (string) substr($code, 0, $offset);
+    /*
+     * glm15-2: the write-shape scan runs on the string-masked copy, so
+     * '$map[...]', 'function ...(' or '$map = scalar;' text inside a
+     * quoted string or heredoc body can neither refuse a legitimate
+     * map-literal proof nor launder one (same length as $code, so the
+     * offsets are interchangeable).
+     */
+    $before = (string) substr(wp_connectors_mask_string_contents($code), 0, $offset);
     $quoted = preg_quote($variable, '/');
 
     // Element access, append, or element write: $map[...].
@@ -464,23 +570,34 @@ function wp_connectors_array_writes_recognized($code, $variable, $offset)
  */
 function wp_connectors_same_file_assignments($code, $variable, $offset)
 {
+    /*
+     * glm15-2: assignment POSITIONS are matched on the string-masked
+     * copy (same length as $code), so an assignment-shaped line inside
+     * a quoted string or heredoc body is never collected — a phantom
+     * in-string assignment could otherwise satisfy a variable include
+     * the runtime never resolves that way. The matched offsets slice
+     * the REAL statement (string literals intact) out of $code.
+     */
+    $masked = wp_connectors_mask_string_contents($code);
+
     $assignments = array();
-    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\.)?=(?![=>])[^;]+;/', $code, $matches, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\.)?=(?![=>])[^;]+;/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
         foreach ($matches[0] as $assignment) {
             if ($assignment[1] >= $offset) {
                 // Assigned after the include — the include cannot read it.
                 continue;
             }
-            $assignments[] = $assignment[0];
+            $assignments[] = (string) substr($code, $assignment[1], strlen($assignment[0]));
         }
     }
 
-    if (preg_match_all('/foreach\s*\((.+?)\)\s*\{/', $code, $foreaches, PREG_OFFSET_CAPTURE)) {
-        foreach ($foreaches[1] as $foreach) {
-            if ($foreach[1] >= $offset) {
+    if (preg_match_all('/foreach\s*\((.+?)\)\s*\{/', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
+        foreach ($foreaches[1] as $foreach_match) {
+            if ($foreach_match[1] >= $offset) {
                 // The loop body (and its includes) runs after the binding.
                 continue;
             }
+            $foreach = array((string) substr($code, $foreach_match[1], strlen($foreach_match[0])), $foreach_match[1]);
             if (! preg_match('/^(.+?)\s+as\s+(.+)$/s', $foreach[0], $parts)) {
                 continue;
             }
@@ -870,8 +987,18 @@ function wp_connectors_self_containment_violations($pluginDir)
         $code = wp_connectors_strip_comments((string) file_get_contents($path));
         $relative = str_replace($pluginDir . '/', '', $path);
 
-        if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $code, $includes, PREG_OFFSET_CAPTURE)) {
-            foreach ($includes[0] as $include) {
+        /*
+         * glm15-2: the include keyword scan runs on the string-masked
+         * copy (same length as $code), so a 'require ...;' or
+         * '$x = ...;' written inside a quoted string or heredoc is never
+         * analyzed as a statement — matched offsets slice the REAL
+         * statement (literals intact) out of $code.
+         */
+        $masked = wp_connectors_mask_string_contents($code);
+
+        if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $masked, $includes, PREG_OFFSET_CAPTURE)) {
+            foreach ($includes[0] as $include_match) {
+                $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
                 if (preg_match_all('/[\'"]([^\'"]+)[\'"]/', $include[0], $literals)) {
                     foreach ($literals[1] as $literal) {
                         $dynamic = (strpos($literal, '${') !== false);

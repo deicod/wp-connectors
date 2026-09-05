@@ -756,6 +756,114 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * glm15-2: string and heredoc CONTENTS are never analyzed as code.
+     * The analyzer's scans used to run over regex comment-stripped
+     * source, so an assignment, signature, or include keyword written
+     * inside a quoted string or heredoc body counted as a statement:
+     * a phantom in-string assignment could SATISFY a variable include
+     * the runtime never resolves that way (a false accept), and phantom
+     * includes/writes could refuse legitimate files (false flags).
+     */
+
+    public function testStringAndHeredocContentsAreNeverAnalyzedAsCode()
+    {
+        $tempPlugin = self::distDir() . '/.string-contents-test/string-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\StringDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+        file_put_contents($tempPlugin . '/src/support.php', "<?php\n// the in-root target every clean fixture below reaches\n");
+
+        // (a) Decoys in single-quoted, interpolated, and nowdoc strings
+        // around a REAL in-root variable include: nothing may be flagged.
+        $stringsClean = <<<'FIXTURE'
+<?php
+$decoy = '$path = "/tmp/abs-target-test.php";';
+$banner = "welcome {$map['k']} require $path;";
+$note = <<<'TXT'
+// a comment-looking heredoc line
+$path = '/tmp/heredoc-decoy-test.php';
+function not_a_real_signature( $map = array() ) {}
+require $path;
+TXT;
+$path = __DIR__ . '/src/support.php';
+require $path;
+FIXTURE;
+        file_put_contents($tempPlugin . '/strings-clean.php', $stringsClean);
+
+        // (b) The ONLY "assignment" to $dep lives inside a string: at
+        // runtime $dep is whatever the caller passed, so the include
+        // must stay flagged — the phantom assignment must not satisfy
+        // it (the false-accept direction).
+        $stringOnly = <<<'FIXTURE'
+<?php
+$decoy = '$dep = __DIR__ . "/src/support.php";';
+require $dep;
+FIXTURE;
+        file_put_contents($tempPlugin . '/string-only-assignment.php', $stringOnly);
+
+        // (c) An escaping include written inside a nowdoc: text the
+        // plugin merely prints, never a statement (the false-flag
+        // direction).
+        $heredocInclude = <<<'FIXTURE'
+<?php
+$note = <<<'TXT'
+require __DIR__ . '/../../outside/bootstrap.php';
+TXT;
+require __DIR__ . '/src/support.php';
+FIXTURE;
+        file_put_contents($tempPlugin . '/heredoc-include.php', $heredocInclude);
+
+        // (d) Real comments carrying include/assignment text stay
+        // ignored (pins the token-based comment strip).
+        $commentDecoy = <<<'FIXTURE'
+<?php
+// require '/outside.php';
+/* $x = '/tmp/x.php'; */
+require __DIR__ . '/src/support.php';
+FIXTURE;
+        file_put_contents($tempPlugin . '/comment-decoy.php', $commentDecoy);
+
+        // (e) The sanctioned map idiom in a file that ALSO carries
+        // map-writings text inside strings: the phantom element write
+        // and signature must not refuse the literal proof.
+        $mapDecoy = <<<'FIXTURE'
+<?php
+$doc = '$map[] = "/tmp/append.php"; function f( $map = array() ) {}';
+$map = array( __DIR__ . '/src/support.php' );
+foreach ( $map as $class => $file ) {
+    if ( ! class_exists( $class, false ) ) {
+        require_once $file;
+    }
+}
+FIXTURE;
+        file_put_contents($tempPlugin . '/map-decoy.php', $mapDecoy);
+
+        $violations = wp_connectors_self_containment_violations($tempPlugin);
+
+        $byFile = array();
+        foreach ($violations as $violation) {
+            foreach (array( 'strings-clean.php', 'string-only-assignment.php', 'heredoc-include.php', 'comment-decoy.php', 'map-decoy.php', 'src/autoload.php' ) as $relative) {
+                if (strpos($violation, $relative) !== false) {
+                    $byFile[$relative] = ($byFile[$relative] ?? 0) + 1;
+                }
+            }
+        }
+        $this->assertSame(0, $byFile['strings-clean.php'] ?? 0, 'Decoy code text inside strings/heredocs must never be flagged: ' . implode("\n", $violations));
+        $this->assertSame(1, $byFile['string-only-assignment.php'] ?? 0, 'A variable include whose only assignment is string text must stay flagged.');
+        $this->assertSame(0, $byFile['heredoc-include.php'] ?? 0, 'An include keyword inside a nowdoc body is not a statement.');
+        $this->assertSame(0, $byFile['comment-decoy.php'] ?? 0, 'Include text inside real comments must stay ignored.');
+        $this->assertSame(0, $byFile['map-decoy.php'] ?? 0, 'Phantom map writes inside strings must not refuse the sanctioned map proof.');
+        $this->assertSame(0, $byFile['src/autoload.php'] ?? 0, 'The mandated PSR-4 autoloader include must stay clean.');
+
+        $this->assertStringContainsString('no resolvable same-file assignment', implode("\n", $violations));
+
+        WpHarness::rrmdir(dirname($tempPlugin));
+    }
+
+    /*
      * All-plugin build mode (finding: a connector directory without a valid
      * main-file header was silently omitted from the no-argument build — a
      * damaged or new connector vanished from a release with exit 0).
