@@ -79,7 +79,9 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
  * short name outside the use statement counts as a use, including
  * prose comments and docblock types (a docblock TYPE is a real
  * phpstan-resolved use); only an import whose short name appears
- * NOWHERE else is flagged.
+ * NOWHERE else is flagged. Mention matching is case-insensitive
+ * (glm17-9): PHP name resolution is, so a mixed-case reference is a
+ * real use.
  *
  * @param string $root Directory to scan recursively for .php files.
  * @return int Violation count.
@@ -131,7 +133,11 @@ function wp_connectors_unused_import_violations(string $root): int
             if (false !== $usePosition) {
                 $withoutUse = substr_replace($withoutUse, '', $usePosition, strlen($match[0]));
             }
-            if (preg_match('/\b' . preg_quote($short, '/') . '\b/', $withoutUse) === 1) {
+            // Case-insensitive: PHP class and function name resolution is
+            // itself case-insensitive (glm17-9), so `new widget()` is a
+            // real use of an import of ...Widget. The i modifier only
+            // widens what counts as a use — strictly more conservative.
+            if (preg_match('/\b' . preg_quote($short, '/') . '\b/i', $withoutUse) === 1) {
                 continue;
             }
 
