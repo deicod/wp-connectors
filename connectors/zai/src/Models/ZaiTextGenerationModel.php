@@ -534,7 +534,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * frame decodes, which is what getData() would return.
 		 */
 		return $this->parseNonStreamBody(
-			new PreDecodedResponse( $response->getStatusCode(), $aggregated )
+			new PreDecodedResponse( $response, $aggregated )
 		);
 	}
 
@@ -569,7 +569,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		return $this->parseNonStreamBody(
 			null !== $data
-				? new PreDecodedResponse( $response->getStatusCode(), $data )
+				? new PreDecodedResponse( $response, $data )
 				: $response
 		);
 	}

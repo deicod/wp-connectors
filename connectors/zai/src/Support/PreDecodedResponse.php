@@ -19,6 +19,16 @@
  * is exactly what getData() would produce — and the model's
  * whole-payload encodability check (GLM6 #6) still guards the hand-off.
  *
+ * glm19-4: the shim now carries the ORIGINAL response's headers and
+ * body, not just its status — the old constructor forwarded an empty
+ * header map and a null body, so any reader beyond getData() (a future
+ * SDK release reading Content-Type off the wrapped response, a new
+ * caller wanting the raw stream text) silently saw an empty view with
+ * no failure signal, though the original Response was in scope at both
+ * construction sites. Taking the whole original Response makes the
+ * forwarding structural: no caller can hand off a decoded payload
+ * without its provenance.
+ *
  * @since 0.2.0
  *
  * @package wp-connectors
@@ -51,11 +61,14 @@ final class PreDecodedResponse extends Response {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param int                  $status_code The original response's status code.
-	 * @param array<string, mixed> $decoded    The consolidated payload.
+	 * @param Response             $original The response the payload was
+	 *                                       decoded from — its status,
+	 *                                       headers, and body ride along
+	 *                                       verbatim (glm19-4).
+	 * @param array<string, mixed> $decoded The consolidated payload.
 	 */
-	public function __construct( int $status_code, array $decoded ) {
-		parent::__construct( $status_code, array(), null );
+	public function __construct( Response $original, array $decoded ) {
+		parent::__construct( $original->getStatusCode(), $original->getHeaders(), $original->getBody() );
 
 		$this->decoded = $decoded;
 	}
