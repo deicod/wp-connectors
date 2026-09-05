@@ -848,6 +848,53 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testAListRootToolParameterSchemaIsRejectedBeforeTransport()
+    {
+        /*
+         * glm16-11 (parity with the zai_anthropic twin's Codex R7 #3
+         * rule, the same error class glm13-8 fixed for this surface's
+         * output-schema member): the SDK parent ships
+         * FunctionDeclaration::toArray() verbatim into
+         * tools[].function.parameters, so a list-root schema encodes
+         * fine and rode the wire unvalidated to the generic
+         * misattributed upstream 400. Typed rejection now, with the
+         * twin's exact boundary: only a NON-EMPTY list rejects — null
+         * and [] keep their pass-through (the twin normalizes them;
+         * over-rejecting here would diverge the surfaces).
+         */
+        $config = ModelConfig::fromArray(array());
+        $config->setFunctionDeclarations(array(
+            new FunctionDeclaration('pick', 'Picks', array('a', 'b')),
+        ));
+
+        try {
+            $this->model($config)->generateTextResult(array(
+                new Message(MessageRoleEnum::user(), array(new MessagePart('hi'))),
+            ));
+            $this->fail('A list-root tool parameter schema must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('The zai provider requires tool parameter schemas to be a JSON object (a non-empty list was given).', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+
+        // The boundary: null and the empty list keep the twin-tolerated
+        // pass-through — the request builds and ships them verbatim.
+        $tolerant = ModelConfig::fromArray(array());
+        $tolerant->setFunctionDeclarations(array(
+            new FunctionDeclaration('no_args', 'No arguments', null),
+            new FunctionDeclaration('empty', 'Empty schema', array()),
+        ));
+
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
+            $this->model($tolerant)
+        );
+
+        $this->assertArrayNotHasKey('parameters', $body['tools'][0]['function'], 'A null schema omits the member (the DTO contract).');
+        $this->assertSame(array(), $body['tools'][1]['function']['parameters'], 'An empty schema ships verbatim, exactly as before the rule.');
+    }
+
     public function testAnInvalidUtf8ToolDeclarationIsRejectedBeforeTransport()
     {
         /*

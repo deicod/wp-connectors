@@ -1207,6 +1207,32 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				}
 
 				$declared_names[ $name ] = true;
+
+				/*
+				 * glm16-11 (parity with the twin's Codex R7 #3 rule, the
+				 * same error class glm13-8 fixed for this surface's
+				 * output-schema member): the SDK parent ships
+				 * FunctionDeclaration::toArray() verbatim into
+				 * tools[].function.parameters, so a LIST-root parameters
+				 * schema (['a','b']) encodes fine and rode the wire
+				 * unvalidated — the spec-faithful endpoint answers the
+				 * generic misattributed 'rejected the request' 400 with no
+				 * hint the caller's schema shape is the cause, exactly the
+				 * misattributed-error class the zai_anthropic twin rejects
+				 * typed pre-transport and this same walk rejects for the
+				 * sibling output-schema member above. Identity rules stay
+				 * first (the twin's ordering); the boundary is the twin's:
+				 * only a NON-EMPTY list rejects — null and [] keep their
+				 * pass-through (the twin normalizes them; nothing here
+				 * over-rejects what the twin accepts).
+				 */
+				$input_schema = $declaration->getParameters();
+
+				if ( \is_array( $input_schema ) && array() !== $input_schema && JsonShape::is_list( $input_schema ) ) {
+					throw new InvalidArgumentException(
+						'The zai provider requires tool parameter schemas to be a JSON object (a non-empty list was given).'
+					);
+				}
 			}
 		}
 
