@@ -176,6 +176,19 @@ final class SseFrameBuffer {
 	/**
 	 * Feeds a raw chunk of the event stream.
 	 *
+	 * GLM15-24 (the honest bound): functionally correct for ANY chunking,
+	 * but asymptotically each call re-normalizes line endings and rescans
+	 * for frame delimiters over the ENTIRE unconsumed buffer — feeding one
+	 * large frame in k small chunks costs O(k · unconsumed-tail), quadratic
+	 * in the tail size (consumed frames are already split off; it is never
+	 * quadratic in the whole stream). Both production callers feed the
+	 * COMPLETE body in one call, so the bound is latent; a persistent
+	 * normalized/scanned cursor (paying only for the newly appended bytes)
+	 * is deferred until an incremental consumer exists — the prefix-strip
+	 * states rewrite the buffer head and the CR-hold rewrites its tail, so
+	 * every cursor transition there is regression surface in this, the
+	 * suite's most heavily pinned support class, for zero current benefit.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $chunk Raw bytes as received from the transport.
@@ -254,6 +267,13 @@ final class SseFrameBuffer {
 			$this->buffer = substr( $this->buffer, 0, -1 );
 		}
 
+		/*
+		 * glm15-24: this whole-buffer str_replace is half of feed()'s
+		 * documented O(unconsumed-tail) per-call bound — see the
+		 * docblock. It is one pass, not one pass per frame (the scan
+		 * below is offset-driven, Codex R18 #1), and the single-feed
+		 * shape both model parsers use keeps it O(body).
+		 */
 		$this->buffer = str_replace( array( "\r\n", "\r" ), "\n", $this->buffer ) . $held_back_cr;
 
 		/*

@@ -112,6 +112,28 @@ final class SseFrameBufferTest extends WpConnectorsTestCase
         $this->assertNull($buffer->pull());
     }
 
+    public function testTheIncrementalFeedingBoundIsDocumentedAtFeed()
+    {
+        /*
+         * glm15-24: the latent incremental-feed cost — each feed()
+         * re-normalizes and rescans the entire unconsumed buffer, so
+         * chunk-by-chunk feeding of one large frame is quadratic in the
+         * TAIL (never the whole stream; consumed frames are split off)
+         * — is accepted and documented, not fixed: both production
+         * callers feed the complete body in one call, and a persistent
+         * normalized/scanned cursor would make the prefix-strip and
+         * CR-hold buffer rewrites regression surface in this heavily
+         * pinned class. The pin holds the honest statement at the
+         * site; re-open only with an incremental consumer or a
+         * demonstrated slow path (the ledger entry).
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Support/SseFrameBuffer.php');
+
+        $this->assertStringContainsString('the honest bound', $source, 'feed() documents its per-call bound.');
+        $this->assertStringContainsString('O(k · unconsumed-tail)', $source, 'The stated bound names the unit it is quadratic in.');
+        $this->assertStringContainsString('deferred until an incremental consumer exists', $source, 'The deferral condition is stated at the site.');
+    }
+
     public function testEightyThousandFramesFeedAndDrainQuickly()
     {
         /*
