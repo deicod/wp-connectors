@@ -6,6 +6,89 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM14 code review)
+
+- An unencodable configured output schema is rejected typed under EVERY
+  output MIME again (glm14-1): glm13-11's move of the schema's
+  encodability check onto the whole-payload net lost the case the SDK
+  parent never forwards — `response_format` ships only under
+  `application/json`, so a schema configured under, say, `text/plain`
+  never reached the assembled payload and flew unchecked (reproduced:
+  typed rejection before glm13-11, silent flight after), where the
+  pre-glm13-11 eager walk rejected it and the zai_anthropic twin guards
+  the schema on EITHER signal. The typed walk guards exactly the
+  dropped case eagerly; under the JSON mime the net still covers the
+  schema once and the attribution walk names it precisely.
+
+- The precise tool-arguments diagnostics surface on the mislabeled-JSON
+  fallback paths too (glm14-2): glm13-7's
+  `FixedMessageResponseException` pass-through lived only in the
+  non-streaming parse, so a doubly-nonconforming gateway (a JSON body
+  labeled `text/event-stream`) still degraded the precise message to
+  the generic stream error — the round's "precise message on BOTH
+  surfaces" claim did not hold on that path. Both surfaces' fallbacks
+  pass the marker through, and the zai_anthropic surface's tool_use
+  input rejections (missing input member, non-object input value,
+  non-replayable arguments) carry the marker type now — byte-identical
+  on the wire, `instanceof`-compatible everywhere; every other parse
+  failure keeps the GLM12 #3 / GLM8 #5 recovery contracts (null, and
+  the stream-typed error).
+
+- One credential flies AND binds for opaque wiring as well (glm14-5):
+  glm13-1's empty-wire skip covered only an EMPTY Api-key; a non-Api-key
+  `RequestAuthentication` (wirable only by third-party code calling
+  `setRequestAuthentication()` directly) flew the probe and the
+  generation/discovery recorders while the verdict binding named the
+  ladder/database key — the cross-credential poisoning class. The probe
+  stays inconclusive under opaque wiring (nothing flies, nothing
+  persists, configured-pending instead of a poisoned not-connected) and
+  the recorders record nothing; unwired and empty-wire semantics are
+  unchanged.
+
+- The whole-payload encodability net's ONE serialization is also the
+  request's LAST (glm14-4): the encoded body string rides the Request
+  directly (`getBody()` returns a stored string as-is), so the vendor
+  transport's send-time re-encode — a second O(payload) serialization
+  on every zai chat/completions call, paid end-to-end on every request
+  of a tool-loop history — is gone. The wire bytes are unchanged (the
+  same encoder, flags, and depth `getBody()` used); requests that would
+  not JSON-encode their data (query params, form bodies) keep the array
+  verbatim.
+
+### Changed / hardened (zai / M2 — GLM14 code review)
+
+- The encodability net's documented coverage contract matches its real
+  boundary (glm14-3): the net covers every member the SDK parent
+  forwards VERBATIM; members the parent PRE-ENCODES with a
+  string-cast (the tool-result response, the tool-call arguments) or
+  DROPS conditionally (the schema under a non-JSON mime) keep their own
+  eager guards. The comments no longer promise the net "auto-covers
+  every member the parent forwards" while naming one exception — the
+  vendor parent has two launder sites and one drop today, and a future
+  fourth site needs its own eager guard.
+- The generation-route verdict recorder rides the shared
+  `SafeGenerationBoundary` (glm14-6): one concrete mechanic through the
+  trait's existing availability/authentication hooks and a
+  `capture_generation_endpoint()` stash, replacing verbatim copies in
+  both model classes that had already begun drifting textually.
+- The model-list parser's entry-failure reasons are typed constants
+  with ONE rejection map (glm14-7): an unmapped reason — one a future
+  edit returns without extending the map — throws the internal lockstep
+  RuntimeException instead of the old switch's silent default-arm
+  degradation to the missing-data rejection; the `entry_rejection()`
+  method the docblock referenced since glm13-2 exists.
+- The marker class derives its message from the SDK's
+  `ResponseException::fromInvalidData()` factory (glm14-8) — the
+  byte-identical wire shape holds by construction, so an SDK release
+  rewording the factory can no longer silently split the contract
+  between SDK-thrown and plugin-thrown exceptions.
+- Test hardening: the uninstall sweep's CONSTANT rung executes
+  behaviorally (glm14-9 — the constant is defined, markers planted
+  through the settings owner's own derivation, and the sweep must
+  delete them; the source pin stays as the composition guard), and the
+  probe's one-decode contract is pinned by a counting Response double
+  (glm14-10) instead of source substring counts alone.
+
 ### Fixed (zai / M2 — GLM13 code review)
 
 - One credential flies and the same credential binds: an EMPTY
