@@ -478,6 +478,58 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheToolUseObjectShapeRidesTheSequentialKeyRule()
+    {
+        /*
+         * glm16-9: is_object_shape() rides JsonShape::is_list() (GLM8
+         * #13's one source) instead of a private re-encode probe. This
+         * pins the key-rule boundary on the tool_use input path: the
+         * pathological numeric-KEYED JSON object ({"0":"x"}) collapses
+         * onto the list side after an associative decode and rejects
+         * exactly like a real list (the probe's own documented
+         * limitation — the two implementations agree on every decoded
+         * input), while any non-sequential key set (mixed string/int
+         * keys) is the object shape and parses.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_tool_numkey',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array(
+                'type' => 'tool_use',
+                'id' => 'call_numkey',
+                'name' => 'pick',
+                'input' => array('0' => 'x'),
+            )),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 9, 'output_tokens' => 5),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A numeric-keyed JSON object collapses onto the list side and must reject.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('non-object input value', $e->getMessage());
+        }
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_tool_mixed',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array(
+                'type' => 'tool_use',
+                'id' => 'call_mixed',
+                'name' => 'pick',
+                'input' => array('a' => 1, '0' => 'x'),
+            )),
+            'stop_reason' => 'tool_use',
+            'usage' => array('input_tokens' => 9, 'output_tokens' => 5),
+        )));
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+        $this->assertNotNull($call, 'A mixed-key object input is the object shape and must parse.');
+    }
+
     public function testMislabeledNonJsonBodiesKeepTheStreamTypedError()
     {
         /*
@@ -1269,6 +1321,15 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
          * GLM6 #14 source-level precedent pins the mechanism instead:
          * the probe must run on the RAW oracle so the defensive branch
          * decides identically under test and in production.
+         *
+         * glm16-9 supersedes the mechanism pin: is_object_shape() no
+         * longer encodes at all — it rides the shared JsonShape
+         * sequential-key predicate (GLM8 #13's one source; the fifth
+         * hand-rolled copy the extraction existed to prevent). Key
+         * inspection involves NO encoder, so the raw-vs-core divergence
+         * this pin guarded against cannot arise by construction; the
+         * pin now asserts the predicate ride and the absence of any
+         * encoder call.
          */
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php'
@@ -1286,13 +1347,13 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
 
         $this->assertSame(
             1,
-            preg_match('/json_encode\( \$value \);/', $body),
-            'is_object_shape() must probe through the RAW json_encode() oracle.'
+            preg_match('/JsonShape::is_list\( \$value \)/', $body),
+            'is_object_shape() must ride the shared sequential-key predicate (glm16-9).'
         );
         $this->assertSame(
             0,
-            preg_match('/wp_json_encode/', $body),
-            'is_object_shape() must not depend on core\'s lossy wp_json_encode().'
+            preg_match('/json_encode/', $body),
+            'is_object_shape() must not encode at all — no raw-vs-core divergence can arise.'
         );
     }
 

@@ -2242,19 +2242,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *
 	 * The response body is decoded associatively, so JSON objects and JSON
 	 * lists both arrive as PHP arrays — and the EMPTY object {} and the
-	 * empty list [] collapse to the same empty array, which key inspection
-	 * cannot tell apart. Re-encoding restores the distinction: only JSON
-	 * objects encode with a leading brace. Lists (including []), scalars,
-	 * booleans, and null all fail the probe. The pathological
+	 * empty list [] collapse to the same empty array. Lists (including
+	 * []), scalars, booleans, and null all fail the test. The pathological
 	 * numeric-keyed JSON object ({"0":…}) is indistinguishable from a list
 	 * after an associative decode and is rejected with it.
 	 *
-	 * GLM7 #10: the probe uses the RAW json_encode() oracle (the GLM3 #4
-	 * primitive the shared JsonEncodeGuard single-sources, GLM5 #16) —
-	 * core's wp_json_encode() lossily rescues invalid UTF-8 in production
-	 * and never returns false for a string, so this branch decided
-	 * DIFFERENTLY under the deliberately stricter test stub than in
-	 * production for the same payload (the GLM4 #1 dead-oracle class).
+	 * glm16-9: the sequential-key rule rides the shared JsonShape
+	 * predicate (GLM8 #13's one source) — the private re-encode probe
+	 * this replaces was a fifth hand-rolled copy of the same rule, and
+	 * it paid a full json_encode per tool_use input member on every
+	 * response parse. Key inspection decides identically on every
+	 * DECODED input (a json_decode tree is always encodable — the
+	 * probe's unencodable-array branch was unreachable here) and
+	 * sidesteps the GLM7 #10 raw-oracle divergence question outright.
 	 *
 	 * @since 0.2.0
 	 *
@@ -2266,9 +2266,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			return false;
 		}
 
-		$encoded = json_encode( $value ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM7 #10; the GLM3 #4 verifier-round class).
-
-		return \is_string( $encoded ) && '{' === substr( $encoded, 0, 1 );
+		return ! JsonShape::is_list( $value );
 	}
 
 	/**
