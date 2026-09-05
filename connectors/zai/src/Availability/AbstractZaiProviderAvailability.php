@@ -984,9 +984,12 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * a stale VALID verdict kept isConfigured() answering true (one
 	 * doomed generation per window learning of it only through the
 	 * generation route's 401). The directory now rides this predicate —
-	 * the same glm12-1 verdict logic the probe applies — through the
-	 * same guarded recorder the status path uses; one credential flies
-	 * AND binds, or no verdict persists.
+	 * the same glm12-1 verdict logic the probe applies, INCLUDING its
+	 * precedence (glm18-15: a body that passes the models-list entry
+	 * rule is valid evidence, so the envelope only rejects bodies that
+	 * are not model lists) — through the same guarded recorder the
+	 * status path uses; one credential flies AND binds, or no verdict
+	 * persists.
 	 *
 	 * @since 0.2.0
 	 *
@@ -1006,6 +1009,24 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *              opaque or empty credential records nothing).
 	 */
 	public function record_rejection_body_verdict( $raw_body, callable $authentication_reader, ?string $endpoint_cache_key = null ): bool {
+		/*
+		 * glm18-15 (verifier round on glm18-4): the probe's ONE verdict
+		 * rule checks the models-list shape FIRST
+		 * (successful_response_verdict()), so a HYBRID body — a
+		 * well-formed models list that also carries the failure envelope
+		 * — is VALID evidence there. The glm18-4 form of this recorder
+		 * consulted the envelope predicate alone, answering the same
+		 * body INVALID: one 2xx answer then persisted opposite verdicts
+		 * at the two sites (empirically reproduced in the repo's own
+		 * harness), the fresh poisoned invalid state answering
+		 * isConfigured() false with no new request while core clears
+		 * keys on false. One precedence, one source: the envelope
+		 * records a verdict only when the body is NOT a models list.
+		 */
+		if ( self::probe_body_is_models_list( $raw_body ) ) {
+			return false;
+		}
+
 		if ( ! self::probe_body_is_credential_rejection( $raw_body ) ) {
 			return false;
 		}

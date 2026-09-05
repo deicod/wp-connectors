@@ -393,6 +393,54 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         );
     }
 
+    public function testAHybridModelsListCarryingTheEnvelopeIsNotARejection()
+    {
+        /*
+         * glm18-15 (verifier round on glm18-4): the probe's one verdict
+         * rule checks the models-list shape FIRST, so a HYBRID body — a
+         * well-formed list that also carries success:false + a
+         * definitive code — is VALID evidence there. The glm18-4 form
+         * of the body recorder consulted the envelope alone and
+         * answered the same body INVALID: one 2xx answer persisted
+         * opposite verdicts at the two sites, the fresh invalid state
+         * answering isConfigured() false with no new request while core
+         * clears keys on false. The recorder applies the probe's
+         * precedence now: the hybrid is a models list, discovery
+         * parses it, and no verdict is recorded by the directory.
+         */
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+        $this->queueSdkResponse(
+            200,
+            array(),
+            '{"data":[{"id":"glm-5.3"},{"id":"glm-5.2"}],"success":false,"code":401,"msg":"token expired or incorrect"}'
+        );
+
+        $models = $this->directory($key)->listModelMetadata();
+
+        $this->assertSame(array('glm-5.3', 'glm-5.2'), $this->idList($models), 'The hybrid body parses as the models list it also is.');
+        $this->assertFalse(
+            get_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::STATE_OPTION),
+            'A body the probe judges VALID must not persist invalid here.'
+        );
+
+        /*
+         * The probe on the SAME body: the models-list shape wins there
+         * too — one precedence at both verdict sites, no divergence.
+         */
+        $availability = new Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability();
+        $availability->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $availability->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+        $this->queueSdkResponse(
+            200,
+            array(),
+            '{"data":[{"id":"glm-5.3"},{"id":"glm-5.2"}],"success":false,"code":401,"msg":"token expired or incorrect"}'
+        );
+
+        $this->assertTrue($availability->isConfigured(), 'The probe still judges the hybrid body by its models-list half.');
+    }
+
     public function testDiscoveryToleratesAGatewayBomPrefix()
     {
         /*
