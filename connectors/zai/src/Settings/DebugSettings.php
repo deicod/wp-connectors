@@ -124,13 +124,23 @@ final class DebugSettings {
 		 * string throws outright; on 7.4 it warns per member and renders
 		 * 1970-01-01 rows. Only well-formed entries render; the rest of
 		 * the list does.
+		 *
+		 * glm18-16 (verifier round): the members must be SCALARS, not
+		 * merely set — isset() passes an ARRAY-valued member, and the
+		 * (string) casts below then raise the same Array-to-string
+		 * conversion warning class the guard exists to prevent.
 		 */
 		$entries = array_values(
 			array_filter(
 				$entries,
 				static function ( $entry ): bool {
 					return \is_array( $entry )
-						&& isset( $entry['at'], $entry['method'], $entry['url'], $entry['status'], $entry['duration_ms'] );
+						&& isset( $entry['at'], $entry['method'], $entry['url'], $entry['status'], $entry['duration_ms'] )
+						&& \is_scalar( $entry['at'] )
+						&& \is_scalar( $entry['method'] )
+						&& \is_scalar( $entry['url'] )
+						&& \is_scalar( $entry['status'] )
+						&& \is_scalar( $entry['duration_ms'] );
 				}
 			)
 		);

@@ -338,6 +338,7 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
             'a scalar entry',
             null,
             array('at' => 1750000000, 'method' => 'GET'), // Missing members.
+            array('at' => 1750000100, 'method' => array('nested'), 'url' => 'https://api.z.ai/z', 'status' => 200, 'duration_ms' => 1.0), // glm18-16: array-valued member.
             array('at' => 1750000250, 'method' => 'GET', 'url' => 'https://api.z.ai/y', 'status' => 401, 'duration_ms' => 1.0),
             array('at' => 1750000500, 'method' => 'POST', 'url' => 'https://api.z.ai/x', 'status' => 200, 'duration_ms' => 2.5),
         ));
@@ -351,6 +352,7 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         $this->assertSame(3, substr_count($output, '<tr>'), 'The header row plus only the two well-formed entries render.');
         $this->assertStringContainsString('https://api.z.ai/x', $output);
         $this->assertStringContainsString('https://api.z.ai/y', $output);
+        $this->assertStringNotContainsString('https://api.z.ai/z', $output, 'An array-valued member entry is malformed, not rendered.');
         $this->assertStringNotContainsString('1970-01-01', $output, 'A malformed entry must not render as an epoch row.');
     }
 
