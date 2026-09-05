@@ -14,8 +14,10 @@
  * a finish_reason for an accumulated choice missing one, a usage member
  * when none merged; never an overwrite of data already carried, GLM5 #7
  * narrowed by GLM7 #2), comment lines (`:`), ignorable
- * `event:`/`id:`/`retry:` fields, malformed JSON events (counted and
- * skipped, never fatal), and — via the shared SseFrameBuffer — split
+ * `event:`/`id:`/`retry:` fields, malformed JSON events (flagged via
+ * has_malformed_event() and skipped — never fatal in the aggregator
+ * itself; glm19-11 removed the malformed-frame counter, the flag is the
+ * record), and — via the shared SseFrameBuffer — split
  * frames (chunks may end mid-frame), CR/LF/CRLF line terminators mixed
  * freely, and a final unterminated frame.
  *

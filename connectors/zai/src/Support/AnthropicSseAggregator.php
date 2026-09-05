@@ -17,7 +17,9 @@
  * sentinel (message_stop ends the stream), and content is block-indexed
  * rather than choice-indexed.
  *
- * Malformed JSON events are counted and skipped, never fatal; unknown event
+ * Malformed JSON events are flagged via has_malformed_event() and skipped —
+ * never fatal in the aggregator itself (glm19-11 removed the malformed-frame
+ * counter; the flag is the record); unknown event
  * types and fields are ignored. Error EVENTS are recorded as a flag only —
  * their upstream payload is never retained (the model surfaces a fixed,
  * redacted message). Tool-use blocks whose accumulated input_json_delta
@@ -542,8 +544,8 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 * could arrive) is the same corrupt error event its
 			 * undecodable- and non-object-payload siblings are (GLM7
 			 * #4: the declaration itself is the error signal; the
-			 * payload's condition cannot un-declare it) — counted
-			 * malformed and flagged like them, or a complete stream
+			 * payload's condition cannot un-declare it) — flagged
+			 * malformed like them, or a complete stream
 			 * followed by the bare declaration aggregated as a SUCCESS.
 			 * Every OTHER data-less declaration keeps its ignorable
 			 * status: a lost lifecycle event (message_start,
