@@ -830,6 +830,41 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testTheHappyPathRunsOneEncodabilityPassOverTheAssembledPayload()
+    {
+        /*
+         * glm13-11 (source pin — the efficiency contract): the per-member
+         * encodability pre-pass no longer runs eagerly on every request.
+         * The createRequest() chokepoint encodes the assembled payload
+         * ONCE (the glm12-7 net) and invokes the per-member walk only to
+         * ATTRIBUTE a failure, preserving the precise messages the
+         * encodability tests above still assert — now through the
+         * attribution walk. The one eager exception is the tool-result
+         * RESPONSE (the test above): the parent's own mapping launders
+         * its failed encode into the string "false" before the net could
+         * see it, so that guard stays pre-mapping.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'
+        );
+
+        $this->assertStringContainsString(
+            'if ( false !== json_encode( $data ) ) {',
+            $source,
+            'The chokepoint must return after ONE successful whole-payload encode.'
+        );
+        $this->assertStringContainsString(
+            '$this->reject_misshapen_wire_values( $prompt );',
+            $source,
+            'validate_request() runs only the typed identity/shape walk.'
+        );
+        $this->assertStringContainsString(
+            '$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );',
+            $source,
+            'The per-member encodability walk runs only as the attribution pass on net failure.'
+        );
+    }
+
     /**
      * @dataProvider provideIdentitylessToolResults
      */

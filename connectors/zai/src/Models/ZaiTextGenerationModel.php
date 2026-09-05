@@ -96,6 +96,18 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	private $generation_endpoint_cache_key = null;
 
 	/**
+	 * The prompt the CURRENT in-flight request was prepared from —
+	 * captured in prepareGenerateTextParams() (glm13-11) so the
+	 * encodability attribution walk can name the first bad member when
+	 * the createRequest() chokepoint's whole-payload net fails.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array|null
+	 */
+	private $generation_prompt = null;
+
+	/**
 	 * Builds the request against the CURRENT plan/region endpoint.
 	 *
 	 * The option read happens here, at request-build time — never at
@@ -181,6 +193,25 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @throws InvalidArgumentException When any member cannot encode.
 	 */
 	private function guard_assembled_params( array $data ): void {
+		/*
+		 * glm13-11: the happy path is ONE raw encode of the assembled
+		 * payload — the per-member encodability pre-pass this chokepoint
+		 * used to run eagerly in validate_request() serialized every
+		 * member individually (system instruction, every text part, every
+		 * tool schema) and then this net serialized the same values again
+		 * inside $params, a redundant O(payload) pass on every request of
+		 * a tool-loop history. Only when the net FAILS does the
+		 * per-member attribution walk run (guard_wire_values(), over the
+		 * stashed prompt) to name the first bad member with the precise
+		 * message the eager pre-pass used to give; a member the walk does
+		 * not know keeps this generic description.
+		 */
+		if ( false !== json_encode( $data ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
+			return;
+		}
+
+		$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );
+
 		JsonEncodeGuard::must_encode( $data, 'a request payload member', self::PROVIDER_LABEL );
 	}
 
@@ -204,6 +235,10 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 */
 	protected function prepareGenerateTextParams( array $prompt ): array {
 		$this->refuse_refused_credentials();
+
+		// glm13-11: the attribution walk reads this prompt if the
+		// assembled-params encodability net fails at createRequest().
+		$this->generation_prompt = $prompt;
 
 		$this->validate_request( $prompt );
 
@@ -944,77 +979,64 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		/*
 		 * GLM6 #5: every caller-authored WIRE value the SDK parent's
-		 * request mapping ships verbatim is encodability-guarded here —
-		 * the GLM3 #4/GLM4 #1 guards existed on the zai_anthropic surface
-		 * only, so an invalid-UTF-8 (or NAN-bearing) text part or system
-		 * instruction detonated in the transport's whole-request
-		 * json_encode(..., JSON_THROW_ON_ERROR) as an untyped
-		 * JsonException, surfaced by the mapper's catch-all as the
-		 * generic 500 instead of this typed pre-transport 400. This
-		 * surface's mapping lives in the SDK parent (no per-site hooks
-		 * without duplicating it), so the walk runs once over the prompt
-		 * and configuration — every value the parent copies to the wire
-		 * unvalidated passes the same shared oracle the twin applies at
-		 * its mapping sites. Tool-call ARGUMENTS need no entry here: the
-		 * outbound replay guard below already rejects unencodable ones
-		 * typed.
+		 * request mapping ships verbatim is encodability-guarded before
+		 * transport — the GLM3 #4/GLM4 #1 guards existed on the
+		 * zai_anthropic surface only, so an invalid-UTF-8 (or
+		 * NAN-bearing) text part or system instruction detonated in the
+		 * transport's whole-request json_encode(..., JSON_THROW_ON_ERROR)
+		 * as an untyped JsonException, surfaced by the mapper's catch-all
+		 * as the generic 500 instead of this typed pre-transport 400.
+		 * This surface's mapping lives in the SDK parent (no per-site
+		 * hooks without duplicating it), so the walk runs once over the
+		 * prompt and configuration — every value the parent copies to the
+		 * wire unvalidated passes the same shared oracle the twin applies
+		 * at its mapping sites. Tool-call ARGUMENTS need no entry here:
+		 * the outbound replay guard below already rejects unencodable
+		 * ones typed.
+		 *
+		 * glm13-11: the walk is now the TYPED half — identity and shape
+		 * rules whose rejections name the member (empty/duplicate
+		 * declared names, list-root output schemas, non-string/empty stop
+		 * entries, tool-result and tool-call identity, the tool-result
+		 * response's laundered-encode exception). The pure-ENCODABILITY
+		 * half of the old walk rides the createRequest() chokepoint's
+		 * whole-payload net now, with this walk retained as the
+		 * attribution pass on failure (guard_wire_values()).
 		 */
-		$this->guard_wire_values( $prompt );
+		$this->reject_misshapen_wire_values( $prompt );
 	}
 
 	/**
-	 * Rejects unencodable caller-authored wire values before transport
-	 * (GLM6 #5).
+	 * Rejects misshapen caller-authored wire VALUES before transport —
+	 * the TYPED half of the GLM6 #5 walk (glm13-11).
 	 *
 	 * The zai surface's request mapping is the SDK parent's
 	 * (prepareGenerateTextParams()), which copies the caller's strings and
-	 * tool-result values into the request params with at most type juggling
-	 * — never an encodability check — and the parent's tool-response
-	 * serialization uses plain json_encode(), whose failure string-casts to
-	 * 'content': false, telling the model the tool returned no output. One
-	 * walk over the prompt and the model configuration guards every such
-	 * value through the shared JsonEncodeGuard oracle (the same one the
-	 * zai_anthropic twin applies at its mapping sites), first-bad-wins,
-	 * before any request build or transport work.
-	 *
-	 * GLM12 #7: this enumeration names the members it knows; the
-	 * createRequest() chokepoint's generic oracle
-	 * (guard_assembled_params()) is the lockstep-free net that
-	 * auto-covers everything else the parent forwards — including
-	 * members added by future SDK releases.
+	 * tool-result values into the request params with at most type
+	 * juggling — never a validation the endpoint would not answer with
+	 * the generic misattributed 400. This walk carries every rule whose
+	 * rejection must NAME the member: identity and shape rules (empty and
+	 * duplicate declared names, list-root output schemas, non-string and
+	 * empty stop entries, tool-result and tool-call identity). The pure
+	 * ENCODABILITY half rides the createRequest() chokepoint's
+	 * whole-payload net (guard_assembled_params()), which auto-covers
+	 * every member the parent forwards — including members added by
+	 * future SDK releases — with ONE serialization per request; the old
+	 * eager per-member pre-pass (a second O(payload) serialization on
+	 * every request) survives only as the attribution walk that net runs
+	 * on failure (guard_wire_values()). The one exception rides here
+	 * eager: the tool-result RESPONSE, whose failed encode the parent's
+	 * own mapping launders into the string "false" before the net could
+	 * ever see it.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @param array $prompt Prompt messages (list of Message).
 	 * @return void
-	 * @throws InvalidArgumentException When a wire value cannot encode.
+	 * @throws InvalidArgumentException When a wire value is misshapen.
 	 */
-	private function guard_wire_values( array $prompt ): void {
+	private function reject_misshapen_wire_values( array $prompt ): void {
 		$config = $this->getConfig();
-
-		$system_instruction = $config->getSystemInstruction();
-		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
-			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', self::PROVIDER_LABEL );
-		}
-
-		/*
-		 * Verifier round on GLM6 #5: the SDK parent ships the sampling
-		 * floats and the response-format schema verbatim too — a NAN
-		 * temperature/top_p or an unencodable outputSchema member reached
-		 * the transport's whole-request encode as the untyped
-		 * JsonException (generic 500), the exact divergence class the
-		 * walk exists to close (the zai_anthropic twin guards the schema
-		 * and rejects NAN temperature through its range checks).
-		 */
-		$temperature = $config->getTemperature();
-		if ( null !== $temperature ) {
-			JsonEncodeGuard::must_encode( $temperature, 'the temperature option', self::PROVIDER_LABEL );
-		}
-
-		$top_p = $config->getTopP();
-		if ( null !== $top_p ) {
-			JsonEncodeGuard::must_encode( $top_p, 'the top_p option', self::PROVIDER_LABEL );
-		}
 
 		$output_schema = $config->getOutputSchema();
 		if ( \is_array( $output_schema ) ) {
@@ -1035,8 +1057,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					'The zai provider requires the configured output schema to be a JSON object (a list was given).'
 				);
 			}
-
-			JsonEncodeGuard::must_encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
 		}
 
 		$stop_sequences = $config->getStopSequences();
@@ -1080,9 +1100,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					);
 				}
 
-				JsonEncodeGuard::must_encode( $name, 'a declared tool function name', self::PROVIDER_LABEL );
-				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
-
 				/*
 				 * glm13-9 (parity with the twin's R18 rule, one surface
 				 * late): a returned tool_call identifies the selected
@@ -1101,23 +1118,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				}
 
 				$declared_names[ $name ] = true;
-
-				$input_schema = $declaration->getParameters();
-				if ( \is_array( $input_schema ) ) {
-					JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
-				}
 			}
 		}
 
 		foreach ( $prompt as $message ) {
 			foreach ( $message->getParts() as $part ) {
-				if ( $part->getType()->isText() && ! $part->getChannel()->isThought() ) {
-					// Only visible text ships (the parent drops thought
-					// parts, so guarding them would over-reject).
-					JsonEncodeGuard::must_encode( (string) $part->getText(), 'a message text part', self::PROVIDER_LABEL );
-					continue;
-				}
-
 				if ( $part->getType()->isFunctionResponse() && null !== $part->getFunctionResponse() ) {
 					/*
 					 * GLM9 #4: the id ships as "tool_call_id" verbatim
@@ -1134,12 +1139,16 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					JsonEncodeGuard::must_encode_tool_result_identity( $part->getFunctionResponse(), 'tool call id', 'a tool result id', self::PROVIDER_LABEL );
 
 					/*
-					 * The parent's message mapping json_encodes the tool
-					 * response with plain json_encode() and string-casts
-					 * the failure — an unencodable result silently shipped
-					 * as "content": false (the R18 corruption class the
-					 * zai_anthropic surface fixed, with the identical
-					 * guard).
+					 * glm13-11 exception: the tool-result RESPONSE cannot
+					 * ride the post-mapping encodability net — the SDK
+					 * parent's message mapping json_encodes it with plain
+					 * json_encode() and STRING-CASTS the failure, so by
+					 * createRequest() time an unencodable result has
+					 * already laundered into the string "false" (which
+					 * encodes fine — the R18 'content': false corruption
+					 * class). Its encodability guard stays eager here,
+					 * PRE-mapping, the one value whose check cannot wait
+					 * for the net.
 					 */
 					JsonEncodeGuard::must_encode( $part->getFunctionResponse()->getResponse(), 'a tool result', self::PROVIDER_LABEL );
 					continue;
@@ -1157,6 +1166,82 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * contract lives in.
 					 */
 					JsonEncodeGuard::must_encode_tool_call_identity( $part->getFunctionCall(), self::PROVIDER_LABEL );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Attributes an assembled-payload encodability failure to its first
+	 * bad member — the encodability half of the GLM6 #5 walk (glm13-11).
+	 *
+	 * Runs ONLY when the createRequest() chokepoint's whole-payload net
+	 * (guard_assembled_params()) fails, over the stashed prompt: the
+	 * same per-member JsonEncodeGuard checks the eager pre-pass ran on
+	 * every request, preserving the precise first-bad-wins messages
+	 * ('the system instruction', 'a message text part', ...) without the
+	 * second O(payload) serialization the happy path used to pay. A
+	 * member this walk does not know falls back to the caller's generic
+	 * description.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $prompt Prompt messages (list of Message).
+	 * @return void
+	 * @throws InvalidArgumentException When a wire value cannot encode.
+	 */
+	private function guard_wire_values( array $prompt ): void {
+		$config = $this->getConfig();
+
+		$system_instruction = $config->getSystemInstruction();
+		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
+			JsonEncodeGuard::must_encode( $system_instruction, 'the system instruction', self::PROVIDER_LABEL );
+		}
+
+		/*
+		 * Verifier round on GLM6 #5: the SDK parent ships the sampling
+		 * floats and the response-format schema verbatim too — a NAN
+		 * temperature/top_p or an unencodable outputSchema member reached
+		 * the transport's whole-request encode as the untyped
+		 * JsonException (generic 500), the exact divergence class the
+		 * walk exists to close (the zai_anthropic twin guards the schema
+		 * and rejects NAN temperature through its range checks).
+		 */
+		$temperature = $config->getTemperature();
+		if ( null !== $temperature ) {
+			JsonEncodeGuard::must_encode( $temperature, 'the temperature option', self::PROVIDER_LABEL );
+		}
+
+		$top_p = $config->getTopP();
+		if ( null !== $top_p ) {
+			JsonEncodeGuard::must_encode( $top_p, 'the top_p option', self::PROVIDER_LABEL );
+		}
+
+		$output_schema = $config->getOutputSchema();
+		if ( \is_array( $output_schema ) ) {
+			JsonEncodeGuard::must_encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
+		}
+
+		$function_declarations = $config->getFunctionDeclarations();
+		if ( \is_array( $function_declarations ) ) {
+			foreach ( $function_declarations as $declaration ) {
+				JsonEncodeGuard::must_encode( $declaration->getName(), 'a declared tool function name', self::PROVIDER_LABEL );
+				JsonEncodeGuard::must_encode( $declaration->getDescription(), 'a declared tool function description', self::PROVIDER_LABEL );
+
+				$input_schema = $declaration->getParameters();
+				if ( \is_array( $input_schema ) ) {
+					JsonEncodeGuard::must_encode( $input_schema, 'a declared tool parameter schema', self::PROVIDER_LABEL );
+				}
+			}
+		}
+
+		foreach ( $prompt as $message ) {
+			foreach ( $message->getParts() as $part ) {
+				if ( $part->getType()->isText() && ! $part->getChannel()->isThought() ) {
+					// Only visible text ships (the parent drops thought
+					// parts, so guarding them would over-reject).
+					JsonEncodeGuard::must_encode( (string) $part->getText(), 'a message text part', self::PROVIDER_LABEL );
+					continue;
 				}
 			}
 		}
