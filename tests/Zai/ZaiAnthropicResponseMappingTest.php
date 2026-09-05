@@ -1059,6 +1059,48 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testBothMalformedFlagsLatchedReportsTheToolInputDiagnosis()
+    {
+        /*
+         * glm20-2: the malformed-event and malformed-tool-input flags are
+         * independent and CAN latch on one stream — here a declared
+         * content_block_delta with an undecodable payload (Codex R4 #3
+         * corruption, flagged and skipped) rides the same stream as a
+         * tool block whose accumulated input decodes to INF (GLM4 #2).
+         * The old event-first order surfaced only 'malformed event
+         * frame' and permanently masked the actionable tool-args
+         * diagnosis; the tool-args verdict now wins. The GLM8 #5 JSON
+         * fallback is untouched by the swap — its live scenario (a whole
+         * JSON body mislabeled as a stream) produces no tool blocks, so
+         * this flag cannot be set there.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_both","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_both","name":"get_weather","input":{}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"amount\":1e999}"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta"' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream with both corruption classes must fail.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage(), 'The tool-args diagnosis must win over the generic frame error.');
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testStreamedExactBigToolInputLiteralsReplayAndLossyOnesReject()
     {
         /*

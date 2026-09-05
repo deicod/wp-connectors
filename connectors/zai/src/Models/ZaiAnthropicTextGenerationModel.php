@@ -1595,6 +1595,30 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$aggregated = $aggregator->aggregated();
 
+		if ( $aggregator->has_malformed_tool_input() ) {
+			/*
+			 * Truncated/corrupt streamed tool arguments: substituting {}
+			 * would fabricate a tool call whose inputs the model never
+			 * produced (Codex R1 finding 1), so the response fails as a
+			 * parse error with a fixed message instead.
+			 *
+			 * glm20-2: this check runs BEFORE the malformed-event check —
+			 * the flags are independent and latch simultaneously when one
+			 * frame corrupts while a tool block's input JSON is also
+			 * truncated, and the event-first order permanently masked the
+			 * actionable tool-args diagnosis behind the generic frame
+			 * error. The GLM8 #5 JSON fallback below stays untouched: its
+			 * live scenario (a whole JSON body mislabeled as a stream)
+			 * produces no tool blocks, so this flag cannot be set there
+			 * and the fallback's position after it is unchanged.
+			 */
+			throw ResponseException::fromInvalidData(
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+				'stream',
+				'A tool_use block in the message stream carried malformed input JSON.'
+			);
+		}
+
 		if ( $aggregator->has_malformed_event() ) {
 			/*
 			 * GLM8 #5: the sniff trusts a text/event-stream Content-Type
@@ -1628,18 +1652,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
 				'The message stream contained a malformed event frame.'
-			);
-		}
-
-		if ( $aggregator->has_malformed_tool_input() ) {
-			// Truncated/corrupt streamed tool arguments: substituting {}
-			// would fabricate a tool call whose inputs the model never
-			// produced (Codex R1 finding 1), so the response fails as a
-			// parse error with a fixed message instead.
-			throw ResponseException::fromInvalidData(
-				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
-				'stream',
-				'A tool_use block in the message stream carried malformed input JSON.'
 			);
 		}
 
