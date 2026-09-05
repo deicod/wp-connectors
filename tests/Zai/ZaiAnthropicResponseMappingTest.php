@@ -1267,6 +1267,40 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         );
 
         $this->assertInstanceOf(\Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall::class, $playable->getFunctionCall(), 'A proven defensive input keeps the stamp.');
+
+        /*
+         * glm19-14 (verifier round): the stdClass sibling under the same
+         * null-raw defensive path is the AGGREGATOR's production channel
+         * and stamps on the aggregator's word — its input was
+         * replay-validated at acceptance (precisely for accumulated
+         * fragments, conservatively for initial input; the GLM12 #8
+         * split), and re-validating here through the conservative walker
+         * would reject the exact big literals the precise rule accepted.
+         * The sub-path cannot PROVE origin, so a caller-BUILT stdClass
+         * (no such caller today) still stamps unvalidated — the residual
+         * latent shape glm19-3 closed for the associative sibling but
+         * deliberately leaves open here. Pinned as a documented BOUNDARY,
+         * not an accident: this assertion must be revisited (with the
+         * glm19-14 boundary note) by anything that makes the stdClass
+         * path prove origin.
+         */
+        $stdclass_part = $parse->invoke(
+            $model,
+            array(
+                'type' => 'tool_use',
+                'id' => 'toolu_agg',
+                'name' => 'convert',
+                'input' => json_decode('{"qty": 1e20}'),
+            ),
+            null
+        );
+
+        $this->assertInstanceOf(
+            \Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall::class,
+            $stdclass_part->getFunctionCall(),
+            'The stdClass channel stamps without re-validation (the aggregator proved the input at acceptance; glm19-14 boundary).'
+        );
+        $this->assertSame(1.0E20, $stdclass_part->getFunctionCall()->getArgs()['qty'], 'The stdClass channel keeps the aggregator-accepted exact big literal the conservative walker would reject (the glm12-8 split, pinned at the boundary).');
     }
 
     public function testStreamedEscapeDenseToolInputStillRejectsLossyLiterals()

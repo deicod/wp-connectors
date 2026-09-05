@@ -2192,6 +2192,26 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 						 * raw-oracle branch below it (GLM5 #1: the walk
 						 * lives on the shared Support\ToolArgsObjectNess,
 						 * used by the zai surface's parser too).
+						 *
+						 * glm19-14 (verifier round) — the TRUST BOUNDARY,
+						 * stated honestly: this sub-path stamps the part
+						 * (GLM12 #12) on the aggregator's word. Every
+						 * production caller reaching here IS the
+						 * aggregator channel, whose input was replay-
+						 * validated at acceptance — precisely for the
+						 * accumulated-JSON fragments, conservatively for
+						 * the initial input (the GLM12 #8 split) — and
+						 * re-validating here through the conservative
+						 * walker would REJECT the exact big literals that
+						 * precise rule accepted, undoing glm12-8 on its
+						 * own production channel. But the sub-path cannot
+						 * PROVE origin: a caller-built stdClass with a
+						 * null raw view (no such caller today) would
+						 * stamp UNVALIDATED — the residual latent shape
+						 * glm19-3 closed for the associative sibling but
+						 * deliberately leaves open here, because closing
+						 * it costs the precise rule. Pinned as boundary,
+						 * not accident: see the glm19-14 test.
 						 */
 						$args = array() === get_object_vars( $args ) ? null : ToolArgsObjectNess::from_raw( $args );
 					} elseif ( null === $args || ! self::is_object_shape( $args ) ) {
@@ -2214,20 +2234,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					} elseif ( ! ToolArgsReplayGuard::is_replayable( $args ) ) {
 						/*
 						 * glm19-3: the defensive associative sub-path has NO
-						 * validator behind it — the stdClass sub-path above is
-						 * the aggregator's channel (its input was replay-
-						 * validated there, precisely or conservatively, per
-						 * the GLM12 #8 split), but an associative payload with
-						 * a null raw oracle is caller-built territory, and the
-						 * GLM12 #12 stamp at the return used to apply to it
-						 * unconditionally — permanently disabling the
-						 * outbound replay oracle for arguments that never
-						 * passed ANY check. The stamp now rides a proof: the
-						 * FULL is_replayable() oracle (not the decoded fast
-						 * path — a caller-built tree can carry INF, NAN,
-						 * invalid UTF-8, or recursion the walker alone would
-						 * miss), the same oracle the outbound guard runs, so
-						 * parse verdict and replay verdict stay in agreement.
+						 * validator behind it (the stdClass sub-path above
+						 * rides the aggregator's trust — see the glm19-14
+						 * boundary note there), so an associative payload
+						 * with a null raw oracle is caller-built territory,
+						 * and the GLM12 #12 stamp at the return used to
+						 * apply to it unconditionally — permanently
+						 * disabling the outbound replay oracle for
+						 * arguments that never passed ANY check. The stamp
+						 * now rides a proof: the FULL is_replayable()
+						 * oracle (not the decoded fast path — a
+						 * caller-built tree can carry INF, NAN, invalid
+						 * UTF-8, or recursion the walker alone would miss),
+						 * the same oracle the outbound guard runs, so parse
+						 * verdict and replay verdict stay in agreement.
 						 */
 						throw FixedMessageResponseException::fixed( self::PROVIDER_LABEL, 'content', 'A tool_use block carried arguments that cannot be replayed (an unencodable or precision-loss value was decoded).' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 					}
