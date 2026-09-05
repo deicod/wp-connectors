@@ -130,9 +130,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * of the declaration: a tool loop that replays the conversation
 	 * every turn re-ran a full json_encode plus the recursive
 	 * normalization walk per declaration per request for a wire form
-	 * that never changes. SplObjectStorage gives WeakMap's
-	 * identity-keyed semantics on the PHP 7.4 floor (WeakMap is 8.0+;
-	 * a spl_object_id-keyed map is unsafe across GC id reuse).
+	 * that never changes. SplObjectStorage is the identity-keyed store
+	 * on the PHP 7.4 floor (WeakMap is 8.0+; a spl_object_id-keyed map
+	 * is unsafe across GC id reuse) — but unlike WeakMap it holds
+	 * STRONG keys: the storage itself pins every declaration it holds
+	 * until a reset releases it, which is why the reset set must cover
+	 * every reconfiguration idiom (glm16-16/glm17-1).
 	 *
 	 * @since 0.2.0
 	 *

@@ -125,8 +125,10 @@ ledger or by reachability):
   completed by glm16-16): a tool loop re-ran the encodability oracle
   and the recursive normalize walk per declaration per request for a
   wire form that never changes (the DTO is immutable). An
-  SplObjectStorage keyed by declaration identity (WeakMap's semantics
-  on the PHP 7.4 floor) holds the results, reset when the config
+  SplObjectStorage keyed by declaration identity — identity-keyed like
+  the PHP 8.0+ WeakMap it substitutes for on the 7.4 floor, but
+  STRONG-keyed: the storage itself pins every declaration it holds
+  until a reset releases it (glm17-7) — holds the results, reset when the config
   identity changes OR the declaration list itself changes (glm16-16,
   verifier round: the vendor ModelConfig is mutable — an in-place
   `setFunctionDeclarations()` loop never changes identity, and the
