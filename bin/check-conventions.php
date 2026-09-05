@@ -119,10 +119,19 @@ function wp_connectors_unused_import_violations(string $root): int
                 continue;
             }
 
-            // Remove the use statement itself, then require at least
-            // one word-boundary mention of the short name anywhere in
-            // the remaining source (code, comments, or docblocks).
-            $withoutUse = str_replace($match[0] . "\n", '', $source);
+            // Remove the use statement itself (its FIRST occurrence
+            // only — glm16-17: str_replace removed every copy, so a
+            // comment line ending in the exact use-statement text
+            // would have been stripped too, flagging an import whose
+            // only other mention was that comment), then require at
+            // least one word-boundary mention of the short name
+            // anywhere in the remaining source (code, comments, or
+            // docblocks).
+            $withoutUse = $source;
+            $usePosition = strpos($withoutUse, $match[0]);
+            if (false !== $usePosition) {
+                $withoutUse = substr_replace($withoutUse, '', $usePosition, strlen($match[0]));
+            }
             if (preg_match('/\b' . preg_quote($short, '/') . '\b/', $withoutUse) === 1) {
                 continue;
             }
