@@ -31,6 +31,42 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      * no option row delegates to add_option() and fires ONLY the
      * add_option_ hook family; real updates fire the update family.
      */
+    public function testWpdbPrepareSubstitutesBoundValuesVerbatim()
+    {
+        /*
+         * glm20-9: preg_replace() processes $n backreference tokens
+         * inside replacement strings even when the pattern has no
+         * capture groups, so a bound value containing '$1' was silently
+         * consumed by the stub ('_transient_x$1probe%' became
+         * '_transient_xprobe%') where core wpdb::prepare() substitutes
+         * verbatim — a test binding such a value would fail (or pass a
+         * wrong assertion) for a reason impossible against real wpdb.
+         */
+        $like = "SELECT option_name FROM wp_options WHERE option_name LIKE %s";
+
+        $this->assertSame(
+            "SELECT option_name FROM wp_options WHERE option_name LIKE '_transient_x\$1probe%'",
+            $GLOBALS['wpdb']->prepare($like, '_transient_x$1probe%'),
+            'A $1 token in a bound value substitutes verbatim, never as a backreference.'
+        );
+        $this->assertSame(
+            "SELECT option_name FROM wp_options WHERE option_name LIKE 'a\$0b'",
+            $GLOBALS['wpdb']->prepare($like, 'a$0b'),
+            'A $0 token (the whole-match splice) substitutes verbatim too.'
+        );
+
+        /*
+         * The backslash collapse get_col()'s LIKE-to-regex conversion
+         * relies on is unchanged: addslashes() doubles the backslash,
+         * the replacement processing un-doubles it.
+         */
+        $this->assertSame(
+            "SELECT option_name FROM wp_options WHERE option_name LIKE 'a\\b'",
+            $GLOBALS['wpdb']->prepare($like, 'a\b'),
+            'The addslashes/replace backslash round trip keeps producing a single backslash.'
+        );
+    }
+
     public function testSanitizeKeyMirrorsCoreScalarSemantics()
     {
         /*

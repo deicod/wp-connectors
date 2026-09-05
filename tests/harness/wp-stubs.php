@@ -398,7 +398,24 @@ if (!class_exists('wpdb')) {
                 } else {
                     $replacement = "'" . addslashes((string) $arg) . "'";
                 }
-                $query = (string) preg_replace('/%s|%d/', $replacement, $query, 1);
+                /*
+                 * glm20-9: only '$' is escaped in the replacement —
+                 * preg_replace() processes backreference tokens inside
+                 * replacement strings ($1-$9 splice a capture, $0 the
+                 * whole match, \1 the octal form) even when the pattern
+                 * HAS no capture groups, so a bound value carrying '$1'
+                 * was silently consumed ('_transient_x$1probe%' became
+                 * '_transient_xprobe%'), diverging from core
+                 * wpdb::prepare(), which substitutes verbatim (all
+                 * three shapes verified on the engine). The backslash
+                 * is deliberately NOT escaped: addslashes() doubles
+                 * every backslash, and the replacement processing's
+                 * \\ -> \ collapse is what get_col() below already
+                 * relies on — escaping it would double every backslash
+                 * in the harness's SQL and break the LIKE-to-regex
+                 * conversion.
+                 */
+                $query = (string) preg_replace('/%s|%d/', addcslashes($replacement, '$'), $query, 1);
             }
 
             return $query;
