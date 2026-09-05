@@ -1604,71 +1604,72 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * a text/thinking block silently omitted the tool call while the
 		 * stream finished with stop_reason tool_use, and text/thinking
 		 * deltas on a tool block accumulated then discarded. Mismatches
-		 * now invalidate the stream; unknown delta types keep their
+		 * invalidate the stream; unknown delta types keep their
 		 * forward-compatible tolerance (no block-type claim to violate).
+		 *
+		 * glm15-15: the type mapping and the application were TWO
+		 * consecutive switches on the same member, each re-checking the
+		 * string-ness dispatch_event() had already enforced — one switch
+		 * now maps AND applies, so a new delta type is one case, never
+		 * two lockstep edits. The mismatch rejection stays first inside
+		 * each case (the apply never runs on a rejected delta).
 		 */
-		$expected_type = null;
-		if ( isset( $delta->type ) && \is_string( $delta->type ) ) {
-			switch ( $delta->type ) {
-				case 'text_delta':
-					$expected_type = 'text';
-					break;
-				case 'thinking_delta':
-					$expected_type = 'thinking';
-					break;
-				case 'input_json_delta':
-					$expected_type = 'tool_use';
-					break;
-			}
-		}
+		switch ( $delta->type ) {
+			case 'text_delta':
+				if ( 'text' !== $this->blocks[ $index ]['type'] ) {
+					$this->malformed_event = true;
 
-		if ( null !== $expected_type && $this->blocks[ $index ]['type'] !== $expected_type ) {
-			if ( 'tool_use' === $expected_type ) {
-				// Tool-argument corruption: the malformed-tool-input error.
-				$this->malformed_tool_input = true;
-			} else {
-				$this->malformed_event = true;
-			}
-
-			return;
-		}
-
-		if ( isset( $delta->type ) && \is_string( $delta->type ) ) {
-			switch ( $delta->type ) {
-				case 'text_delta':
-					if ( isset( $delta->text ) && \is_string( $delta->text ) ) {
-						$this->blocks[ $index ]['text'] .= $delta->text;
-					}
 					return;
+				}
 
-				case 'thinking_delta':
-					if ( isset( $delta->thinking ) && \is_string( $delta->thinking ) ) {
-						$this->blocks[ $index ]['thinking'] .= $delta->thinking;
-					}
+				if ( isset( $delta->text ) && \is_string( $delta->text ) ) {
+					$this->blocks[ $index ]['text'] .= $delta->text;
+				}
+
+				return;
+
+			case 'thinking_delta':
+				if ( 'thinking' !== $this->blocks[ $index ]['type'] ) {
+					$this->malformed_event = true;
+
 					return;
+				}
 
-				case 'input_json_delta':
-					/*
-					 * The protocol's partial_json member is a STRING, and
-					 * in this tool-JSON context it is REQUIRED: a missing,
-					 * null, or non-string member (isset() is false for both
-					 * missing and null — Codex R4 #1) is a corrupt
-					 * streamed-arguments event. Dropping it silently would
-					 * surface a no-argument call built from a broken stream
-					 * — flag it like every other malformed tool input.
-					 */
-					if ( ! \property_exists( $delta, 'partial_json' ) || ! \is_string( $delta->partial_json ) ) {
-						$this->malformed_tool_input = true;
+				if ( isset( $delta->thinking ) && \is_string( $delta->thinking ) ) {
+					$this->blocks[ $index ]['thinking'] .= $delta->thinking;
+				}
 
-						return;
-					}
+				return;
 
-					$this->blocks[ $index ]['json'] .= $delta->partial_json;
-					if ( '' !== $delta->partial_json ) {
-						$this->blocks[ $index ]['has_json'] = true;
-					}
+			case 'input_json_delta':
+				if ( 'tool_use' !== $this->blocks[ $index ]['type'] ) {
+					// Tool-argument corruption: the malformed-tool-input error.
+					$this->malformed_tool_input = true;
+
 					return;
-			}
+				}
+
+				/*
+				 * The protocol's partial_json member is a STRING, and
+				 * in this tool-JSON context it is REQUIRED: a missing,
+				 * null, or non-string member (isset() is false for both
+				 * missing and null — Codex R4 #1) is a corrupt
+				 * streamed-arguments event. Dropping it silently would
+				 * surface a no-argument call built from a broken stream
+				 * — flag it like every other malformed tool input.
+				 */
+				if ( ! \property_exists( $delta, 'partial_json' ) || ! \is_string( $delta->partial_json ) ) {
+					$this->malformed_tool_input = true;
+
+					return;
+				}
+
+				$this->blocks[ $index ]['json'] .= $delta->partial_json;
+				if ( '' !== $delta->partial_json ) {
+					$this->blocks[ $index ]['has_json'] = true;
+				}
+
+				return;
 		}
 	}
 }

@@ -336,6 +336,31 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testApplyDeltaRunsOneSwitchOnTheDeltaType()
+    {
+        /*
+         * glm15-15 (source pin): apply_delta() ran two consecutive
+         * switches on $delta->type — one only mapping delta type to
+         * expected block type, one applying — each behind a redundant
+         * isset/is_string guard dispatch_event() had already enforced.
+         * Adding a delta type meant two lockstep edits; forgetting the
+         * mapping switch left the new delta silently type-unchecked
+         * against the accumulator. One switch maps AND applies; the
+         * delta-type behavioral pins above (R6 #3 mismatches, R4 #1
+         * partial_json, unknown-type tolerance) hold the verdicts.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match_all('/switch \( \$delta->type \)/', $source),
+            'apply_delta() dispatches exactly one switch on the delta type.'
+        );
+        $this->assertSame(0, preg_match('/\$expected_type/', $source), 'No separate mapping switch/variable may return.');
+    }
+
     public function testAJsonBodyMislabeledAsEventStreamParsesViaTheFallback()
     {
         /*
