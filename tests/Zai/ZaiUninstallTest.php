@@ -617,6 +617,42 @@ PHP;
         );
     }
 
+    public function testTheSurfaceSetRidesOneRegistry()
+    {
+        /*
+         * glm16-14: the zai/zai_anthropic surface set was hand-enumerated
+         * three separate times inside uninstall.php (the endpoint pair,
+         * two settings-class pairs), so a third surface added to the
+         * layers but missed in one listing silently stranded its options
+         * or markers. One registry drives all three class-based sweeps
+         * now; the source pin forbids the surface classes from creeping
+         * back into a second listing (each appears exactly once — its
+         * registry entry), while the BY-DESIGN class-free literals (the
+         * pre-chain option deletions, the broken-install fallback
+         * prefixes) stay exactly as they are.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/uninstall.php');
+
+        $this->assertSame(1, substr_count($source, '$zai_connector_surfaces = array('), 'The one surface registry declaration.');
+
+        foreach (array(
+            'Settings\\PlanRegionSettings::class',
+            'Settings\\ZaiAnthropicPlanRegionSettings::class',
+            'Endpoints\\ZaiEndpoint::class',
+            'Endpoints\\ZaiAnthropicEndpoint::class',
+        ) as $surface_class) {
+            $this->assertSame(
+                1,
+                substr_count($source, $surface_class),
+                "{$surface_class} appears exactly once: its registry entry, never a second listing."
+            );
+        }
+
+        $this->assertSame(1, substr_count($source, "\$zai_connector_surface['endpoint']::discovery_transient_ids"), 'The discovery sweep iterates the registry.');
+        $this->assertSame(1, substr_count($source, "\$zai_connector_surface['settings']::probe_miss_transient_prefix"), 'The prefix collection iterates the registry.');
+        $this->assertSame(1, substr_count($source, "\$zai_connector_settings_class = \$zai_connector_surface['settings'];"), 'The derivable probe-miss sweep iterates the registry.');
+    }
+
     public function testTheConstantRungsMarkersAreDeletedByTheSweepItself()
     {
         /*

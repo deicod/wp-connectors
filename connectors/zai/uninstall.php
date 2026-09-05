@@ -118,15 +118,39 @@ function zai_connector_zai_uninstall_site() {
 		}
 	}
 
+	/*
+	 * glm16-14: the zai/zai_anthropic surface set — ONE registry for the
+	 * three class-based enumerations below (the discovery sweep's
+	 * endpoint classes, the probe-miss sweeps' settings classes, the
+	 * prefix collection's settings classes). The set was hand-enumerated
+	 * three separate times inside this one file, so a third surface (or
+	 * a renamed one) added to the settings/endpoint layers but missed in
+	 * one listing left plugin-owned options or probe-miss transients
+	 * surviving uninstall silently — the exact silent-strand drift this
+	 * file's own GLM8 #11/GLM9 #8 comments document for drifted name
+	 * formulas. The class-free option literals above and the
+	 * broken-install fallback literals below stay separate BY DESIGN:
+	 * they must run with no plugin class loaded. Bare ::class names
+	 * autoload nothing, so the registry is safe to state before the
+	 * owner chain's load attempts are known to have succeeded.
+	 */
+	$zai_connector_surfaces = array(
+		array(
+			'settings' => \Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::class,
+			'endpoint' => \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class,
+		),
+		array(
+			'settings' => \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::class,
+			'endpoint' => \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class,
+		),
+	);
+
 	// Discovery cache transients for every endpoint combination of both
 	// surfaces, including the '_miss' negative-cache markers (GLM1 #6).
 	// This file is global-namespace (uninstall context), so the endpoint
 	// classes are addressed by their fully-qualified names; skipped
 	// entirely when the owner chain above could not load.
 	if ( $zai_connector_owner_ready ) {
-		$zai_connector_endpoint_class           = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class;
-		$zai_connector_anthropic_endpoint_class = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class;
-
 		/*
 		 * glm15-10: the plan/region loops ride the declared owner
 		 * (AbstractPlanRegionSettings::PLANS/REGIONS, loaded right
@@ -138,12 +162,8 @@ function zai_connector_zai_uninstall_site() {
 		 */
 		foreach ( \Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings::PLANS as $zai_connector_plan ) {
 			foreach ( \Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings::REGIONS as $zai_connector_region ) {
-				$zai_connector_cache_id_pairs = array(
-					$zai_connector_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),
-					$zai_connector_anthropic_endpoint_class::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ),
-				);
-				foreach ( $zai_connector_cache_id_pairs as $zai_connector_cache_id_pair ) {
-					foreach ( $zai_connector_cache_id_pair as $zai_connector_cache_id ) {
+				foreach ( $zai_connector_surfaces as $zai_connector_surface ) {
+					foreach ( $zai_connector_surface['endpoint']::discovery_transient_ids( $zai_connector_plan, $zai_connector_region ) as $zai_connector_cache_id ) {
 						delete_transient( $zai_connector_cache_id );
 					}
 				}
@@ -186,12 +206,9 @@ function zai_connector_zai_uninstall_site() {
 	 * transients, so the residual window is bounded.
 	 */
 	if ( $zai_connector_owner_ready ) {
-		$zai_connector_settings_classes = array(
-			\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::class,
-			\Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::class,
-		);
+		foreach ( $zai_connector_surfaces as $zai_connector_surface ) {
+			$zai_connector_settings_class = $zai_connector_surface['settings'];
 
-		foreach ( $zai_connector_settings_classes as $zai_connector_settings_class ) {
 			/*
 			 * glm13-15: the env/constant credential collection rides the
 			 * settings owner's ONE env_constant_ladder() — this file's
@@ -248,13 +265,8 @@ function zai_connector_zai_uninstall_site() {
 		);
 
 	if ( $zai_connector_owner_ready ) {
-		foreach (
-			array(
-				\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::class,
-				\Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::class,
-			) as $zai_connector_settings_class
-		) {
-			$zai_connector_probe_prefixes[] = '_transient_' . $zai_connector_settings_class::probe_miss_transient_prefix();
+		foreach ( $zai_connector_surfaces as $zai_connector_surface ) {
+			$zai_connector_probe_prefixes[] = '_transient_' . $zai_connector_surface['settings']::probe_miss_transient_prefix();
 		}
 	}
 
