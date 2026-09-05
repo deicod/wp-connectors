@@ -1100,6 +1100,56 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testPreDecodedToolInputBoundaryWindowRejects()
+    {
+        /*
+         * glm18-1: the content_block_start INPUT member is pre-decoded
+         * (an object on the wire, not an accumulated input_json_delta
+         * string), so the CONSERVATIVE walker judges it — and its bound
+         * used to compare \abs($value) > PHP_INT_MAX, which widens the
+         * int constant to the 2^63 double and TIES at the boundary
+         * magnitude: a lossy literal of the ~2048-wide window above
+         * PHP_INT_MAX (…809 collapsing to the …808 boundary double)
+         * passed as replayable, latched the block, and silently altered
+         * the value on every later replay — while the SAME literal
+         * delivered as input_json_delta fragments rejected through the
+         * precise wire rule, so the surface gave opposite verdicts by
+         * delivery channel. Post-decode the window and the exact 2^63
+         * literal are the same double, so both reject here now.
+         */
+        $lossy = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_ti","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_ti","name":"track","input":{"tracking_id":9223372036854775809}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $lossy);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A boundary-window literal in the pre-decoded input must fail like malformed input JSON.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+
+        $exact = str_replace('9223372036854775809', '9223372036854775808', str_replace('msg_ti', 'msg_te', $lossy));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $exact);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('The exact 2^63 literal in the pre-decoded input must reject conservatively (indistinguishable from its lossy window).');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
     public function testTheCorruptEventClassificationLivesOnce()
     {
         /*

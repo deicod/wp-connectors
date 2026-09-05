@@ -296,8 +296,17 @@ final class ToolArgsReplayGuard {
 			 * only finite floats — all integral above 2^63, all
 			 * stable-replaying doubles, rejected conservatively (see the
 			 * docblock).
+			 *
+			 * glm18-1: the bound is the FLOAT literal 2^63, never
+			 * PHP_INT_MAX — comparing a float against the int constant
+			 * widens the constant to the 2^63 double, so the comparison
+			 * ties at exactly the boundary magnitude and every literal of
+			 * the ~2048-wide window above PHP_INT_MAX (…809 collapsing to
+			 * …808) slipped through as "in range". The exact 2^63 float
+			 * itself is the window's collapse target, so it rejects here
+			 * too — only the raw-string precise rule may accept it.
 			 */
-			return \floor( $value ) === $value && \abs( $value ) > PHP_INT_MAX;
+			return \floor( $value ) === $value && \abs( $value ) >= 9223372036854775808.0;
 		}
 
 		if ( \is_array( $value ) ) {

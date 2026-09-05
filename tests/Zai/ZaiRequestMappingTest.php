@@ -1178,6 +1178,9 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
             'php-int-max integer' => '{"v":9223372036854775807}',
             'INF (1e999)' => '{"v":1e999}',
             'out-of-range integral float' => '{"v":9.3e18}',
+            'boundary window collapse (glm18-1)' => '{"v":9223372036854775809}',
+            'exact 2^63 double (glm18-1)' => '{"v":9223372036854775808}',
+            'negative boundary window (glm18-1)' => '{"v":-9223372036854775809}',
             'empty object' => '{}',
             'null member' => '{"v":null}',
         );
@@ -1199,6 +1202,22 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":1e999}')), 'INF (the 1e999 decode) must reject.');
         $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":9.3e18}')), 'An out-of-range integral float must reject.');
         $this->assertTrue($guard::is_replayable_decoded(json_decode('{"v":1.5}')), 'An ordinary float replays.');
+
+        /*
+         * glm18-1: the walker's bound is the FLOAT literal 2^63, never
+         * PHP_INT_MAX widened — the int constant compares as the 2^63
+         * double, so the strict > tied at exactly the boundary magnitude
+         * and every literal of the ~2048-wide window above PHP_INT_MAX
+         * (…809 collapsing to the …808 boundary double) passed the
+         * decoded-only conservative walker as "in range", silently
+         * altering the value on every later replay. Post-decode the
+         * window and the exact 2^63 literal are the SAME double, so both
+         * reject here — the exact literal replays only through the
+         * raw-string precise rule (pinned on both surfaces).
+         */
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":9223372036854775809}')), 'The boundary-window collapse (…809 → the 2^63 double) must reject decoded.');
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":9223372036854775808}')), 'The exact 2^63 double rejects decoded (undecidable from its lossy window).');
+        $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":-9223372036854775809}')), 'The negative boundary window must reject decoded.');
     }
 
     public function testUnencodableToolCallIdentitiesAreRejectedBeforeTransport()
