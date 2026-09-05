@@ -1062,7 +1062,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					 */
 					if ( isset( $seen_tool_ids[ $block['id'] ] ) ) {
 						throw new InvalidArgumentException(
-							'The zai_anthropic provider requires tool call ids to be unique across the conversation (duplicate tool call id).'
+							sprintf( 'The %s provider requires tool call ids to be unique across the conversation (duplicate tool call id).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 						);
 					}
 
@@ -1074,7 +1074,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				} elseif ( 'tool_result' === $block['type'] ) {
 					if ( ! isset( $outstanding_tools[ $block['tool_use_id'] ] ) ) {
 						throw new InvalidArgumentException(
-							'The zai_anthropic provider requires every tool result to answer the preceding assistant tool call with the same id (unmatched, stale, or duplicate tool result).'
+							sprintf( 'The %s provider requires every tool result to answer the preceding assistant tool call with the same id (unmatched, stale, or duplicate tool result).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 						);
 					}
 
@@ -1145,12 +1145,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		if ( $awaiting_answer && array() !== $outstanding_tools ) {
 			if ( 'user' === $previous_role ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).'
+					sprintf( 'The %s provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				);
 			}
 
 			throw new InvalidArgumentException(
-				'The zai_anthropic provider requires the final assistant tool call turn to be answered by a following user turn (unanswered tool call at the end of the conversation).'
+				sprintf( 'The %s provider requires the final assistant tool call turn to be answered by a following user turn (unanswered tool call at the end of the conversation).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			);
 		}
 
@@ -1189,7 +1189,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				$text_seen = true;
 			} elseif ( 'tool_result' === $block['type'] && $text_seen ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires tool results to precede text blocks in the user turn following a tool call.'
+					sprintf( 'The %s provider requires tool results to precede text blocks in the user turn following a tool call.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				);
 			}
 		}
@@ -1235,7 +1235,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			// The answering coalesced user turn has ended.
 			if ( array() !== $outstanding_tools ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).'
+					sprintf( 'The %s provider requires the user turn after a tool call to answer every tool call of that turn (partially answered tool turn).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				);
 			}
 
@@ -1289,13 +1289,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		foreach ( $message->getParts() as $part ) {
 			if ( $part->getType()->isFunctionCall() && ! $is_assistant ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires function-call (tool_use) parts to sit in assistant messages.'
+					sprintf( 'The %s provider requires function-call (tool_use) parts to sit in assistant messages.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				);
 			}
 
 			if ( $part->getType()->isFunctionResponse() && $is_assistant ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires function-response (tool_result) parts to sit in user messages.'
+					sprintf( 'The %s provider requires function-response (tool_result) parts to sit in user messages.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				);
 			}
 
@@ -1307,7 +1307,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		if ( array() === $blocks ) {
 			throw new InvalidArgumentException(
-				'The zai_anthropic provider requires every message to carry at least one translatable (text, tool call, or tool result) part.'
+				sprintf( 'The %s provider requires every message to carry at least one translatable (text, tool call, or tool result) part.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			);
 		}
 
@@ -1399,13 +1399,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 			if ( \is_array( $input ) && array() !== $input && JsonShape::is_list( $input ) ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires tool arguments to be a JSON object (a non-empty list was given).'
+					sprintf( 'The %s provider requires tool arguments to be a JSON object (a non-empty list was given).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				);
 			}
 
 			if ( null !== $input && '' !== $input && ! \is_array( $input ) && ! \is_object( $input ) ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider requires tool arguments to be a JSON object (a scalar was given).'
+					sprintf( 'The %s provider requires tool arguments to be a JSON object (a scalar was given).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				);
 			}
 
@@ -1453,7 +1453,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			if ( ! $function_call instanceof ReplayValidatedFunctionCall
 				&& ! ToolArgsReplayGuard::is_replayable( $input ) ) {
 				throw new InvalidArgumentException(
-					'The zai_anthropic provider could not replay tool arguments (an unencodable or precision-loss value was given).'
+					sprintf( 'The %s provider could not replay tool arguments (an unencodable or precision-loss value was given).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				);
 			}
 
@@ -2501,14 +2501,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$temperature = $config->getTemperature();
 		if ( null !== $temperature && ( \is_nan( $temperature ) || $temperature < 0 || $temperature > 1 ) ) {
 			throw new InvalidArgumentException(
-				'The zai_anthropic provider requires temperature between 0 and 1 (the Anthropic Messages protocol range).'
+				sprintf( 'The %s provider requires temperature between 0 and 1 (the Anthropic Messages protocol range).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			);
 		}
 
 		$top_p = $config->getTopP();
 		if ( null !== $top_p && ( \is_nan( $top_p ) || $top_p < 0 || $top_p > 1 ) ) {
 			throw new InvalidArgumentException(
-				'The zai_anthropic provider requires top_p between 0 and 1 (the Anthropic Messages protocol range).'
+				sprintf( 'The %s provider requires top_p between 0 and 1 (the Anthropic Messages protocol range).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			);
 		}
 
@@ -2535,14 +2535,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private function validate_message_order( array $prompt ): void {
 		if ( array() === $prompt ) {
 			throw new InvalidArgumentException(
-				'The zai_anthropic provider requires at least one message.'
+				sprintf( 'The %s provider requires at least one message.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			);
 		}
 
 		$first_role = $this->message_role_string( $prompt[0]->getRole() );
 		if ( 'user' !== $first_role ) {
 			throw new InvalidArgumentException(
-				'The zai_anthropic provider requires the first message to use the user role.'
+				sprintf( 'The %s provider requires the first message to use the user role.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			);
 		}
 	}

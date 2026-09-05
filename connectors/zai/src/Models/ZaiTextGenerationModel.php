@@ -1042,7 +1042,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		if ( ! $function_call instanceof ReplayValidatedFunctionCall
 			&& ! ToolArgsReplayGuard::is_replayable( $function_call->getArgs() ) ) {
 			throw new InvalidArgumentException(
-				'The zai provider could not replay tool call arguments (an unencodable or precision-loss value was given).'
+				sprintf( 'The %s provider could not replay tool call arguments (an unencodable or precision-loss value was given).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			);
 		}
 
