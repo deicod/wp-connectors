@@ -24,17 +24,21 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   Api-key flies with the surface's headers. Opaque wiring is
   inconclusive on BOTH surfaces now: nothing flies, nothing persists.
 
-- A duplicate trailing `message_stop` is inert (glm16-2): a proxy or
-  replaying intermediary duplicating the final terminal frame
-  discarded a fully valid completed generation ('malformed event
-  frame'), while the OpenAI twin treats the identical appending-gateway
-  shape as harmless (duplicate `[DONE]` is a no-op; pinned). The
-  duplicate terminal no-ops — the pre-termination case ignores its
-  payload entirely, so the trailing policy does not start scrutinizing
-  it; content-bearing trailing events (message_start, content_block_*,
-  message_delta) keep their malformed rejection, and every corrupt
-  trailing shape was already rejected by the shared consume_frame()
-  pipeline before the policy runs.
+- A duplicate trailing `message_stop` is inert (glm16-2, corrected by
+  glm16-15): a proxy or replaying intermediary duplicating the final
+  terminal frame discarded a fully valid completed generation
+  ('malformed event frame'), while the OpenAI twin treats the identical
+  appending-gateway shape as harmless (duplicate `[DONE]` is a no-op;
+  pinned). A WELL-FORMED duplicate (object payload) no-ops — the
+  pre-termination case ignores a well-formed payload entirely.
+  Content-bearing trailing events (message_start, content_block_*,
+  message_delta) keep their malformed rejection, and a GARBLED
+  duplicate (decodable non-object payload, e.g. `data: []`) rejects
+  through the pipeline's non-object check, which judges the terminal
+  name post-termination too (glm16-15, verifier round: the check was
+  pre-termination-only, so the name-keyed no-op initially swallowed
+  that shape — the one declared trailing name whose corruption
+  detection was silently lost; restored and pinned both ways).
 
 - `enum` is a data-valued schema keyword (glm16-3): the empty-object
   normalization walk descended into enum members and rewrote their
@@ -70,6 +74,23 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   `--order-by=random` whenever it ran before any `bootPlugin()` test.
   The harness's require_once makes it deterministic under every order.
 
+### Fixed (zai / M2 — GLM16 verifier round)
+
+Independent security + correctness verification over the full glm16
+diff (8 verifier agents, per-finding adjudication; 8 raw candidates,
+4 confirmed — two distinct issues, each confirmed by two independent
+angles, the other four refuted by the verifiers themselves against the
+ledger or by reachability):
+
+- A garbled duplicate terminal rides the pipeline's shape check
+  (glm16-15, see the corrected glm16-2 entry above).
+- The tool-schema memo resets under same-config declaration mutation
+  (glm16-16, see the completed glm16-6 entry above).
+- The unused-import scanner removes only the first occurrence of a use
+  statement (glm16-17): a theoretical str_replace false positive
+  where a comment line ending in the exact use-statement text would be
+  stripped as well; not present in the repo today, hardened anyway.
+
 ### Changed / hardened (zai / M2 — GLM16 code review)
 
 - One shared encodability-net owner (glm16-7): the request-build net
@@ -90,14 +111,18 @@ versioning per plugin follows its own header `Version` (no monorepo version).
   for the per-tool-result message shape). One seen-text bit per
   coalesced turn seeds the per-message scan (equivalent to judging the
   merged turn), and the merge appends in place.
-- Tool-schema normalization memoizes by declaration identity (glm16-6):
-  a tool loop re-ran the encodability oracle and the recursive
-  normalize walk per declaration per request for a wire form that
-  never changes (the DTO is immutable). An SplObjectStorage keyed by
-  declaration identity (WeakMap's semantics on the PHP 7.4 floor)
-  holds the results, reset when the config identity changes (the
-  vendor base's final `setConfig()` can replace a live instance's
-  config), so the memo pins at most the current config's declarations.
+- Tool-schema normalization memoizes by declaration identity (glm16-6,
+  completed by glm16-16): a tool loop re-ran the encodability oracle
+  and the recursive normalize walk per declaration per request for a
+  wire form that never changes (the DTO is immutable). An
+  SplObjectStorage keyed by declaration identity (WeakMap's semantics
+  on the PHP 7.4 floor) holds the results, reset when the config
+  identity changes OR the declaration list itself changes (glm16-16,
+  verifier round: the vendor ModelConfig is mutable — an in-place
+  `setFunctionDeclarations()` loop never changes identity, and the
+  strong-keyed storage pinned every superseded declaration; the strict
+  list compare restores the documented bound — the memo pins at most
+  the CURRENT declaration set — under both reconfiguration idioms).
   Rejections never memoize.
 - One shared mislabeled-body JSON fallback (glm16-8): the ~25-line
   fallback scaffold (one decode, object-root gate, glm14-2 marker
