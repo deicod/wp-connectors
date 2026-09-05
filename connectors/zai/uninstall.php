@@ -218,10 +218,36 @@ function zai_connector_zai_uninstall_site() {
 
 	global $wpdb;
 
-	$zai_connector_probe_prefixes = array(
-		'_transient_zai_connector_zai_key_state_probe_',
-		'_transient_zai_connector_zai_anthropic_key_state_probe_',
-	);
+	/*
+	 * glm15-9: the marker-name prefixes ride the settings owner's ONE
+	 * export (probe_miss_transient_prefix()) whenever the owner chain
+	 * loaded above — this file's two hand-mirrored literals were the
+	 * same mirror class that stranded hashed markers twice (GLM5 #11,
+	 * GLM9 #8): a STATE_OPTION rename or a third surface's prefix added
+	 * to settings but missed here left 60s credential-binding transients
+	 * surviving uninstall silently. On the broken install (chain did
+	 * not load) the historical literals remain as the bounded fallback,
+	 * exactly like the discovery sweep's degradation above: the
+	 * deterministic deletions already ran through the owner or not at
+	 * all, and the residual window is the marker's own 60s TTL.
+	 */
+	$zai_connector_probe_prefixes = $zai_connector_owner_ready
+		? array()
+		: array(
+			'_transient_zai_connector_zai_key_state_probe_',
+			'_transient_zai_connector_zai_anthropic_key_state_probe_',
+		);
+
+	if ( $zai_connector_owner_ready ) {
+		foreach (
+			array(
+				\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::class,
+				\Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::class,
+			) as $zai_connector_settings_class
+		) {
+			$zai_connector_probe_prefixes[] = '_transient_' . $zai_connector_settings_class::probe_miss_transient_prefix();
+		}
+	}
 
 	foreach ( $zai_connector_probe_prefixes as $zai_connector_probe_prefix ) {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- one-shot uninstall sweep over rows whose names embed a credential-binding hash (unknowable, hence enumerated); there is no object cache to consult on uninstall and nothing persistent is introduced.

@@ -387,6 +387,53 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         );
     }
 
+    public function testTheMarkerEnumerationRidesTheOwnerPrefixComposition()
+    {
+        /*
+         * glm15-9: the wp_options LIKE sweep hand-mirrored the marker
+         * name prefix (STATE_OPTION . '_probe_') as two literals — the
+         * same mirror class that stranded hashed markers twice (GLM5
+         * #11, GLM9 #8). The prefix rides the settings owner's ONE
+         * export when the chain loads; markers planted through the
+         * OWNER method (arbitrary binding tails the deterministic
+         * sweep cannot know) must be deleted by the enumeration alone.
+         */
+        $zai_marker = \Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::probe_miss_transient_name(
+            hash( 'sha256', 'glm15-9-arbitrary-zai-binding' )
+        );
+        $anthropic_marker = \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::probe_miss_transient_name(
+            hash( 'sha256', 'glm15-9-arbitrary-anthropic-binding' )
+        );
+        set_transient( $zai_marker, true, 60 );
+        set_transient( $anthropic_marker, true, 60 );
+
+        // The composition pins: the prefix is the owner's STATE_OPTION
+        // head, and the full name is the prefix plus the md5 tail.
+        $this->assertSame(
+            'zai_connector_zai_key_state_probe_',
+            \Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::probe_miss_transient_prefix()
+        );
+        $this->assertSame(
+            'zai_connector_zai_anthropic_key_state_probe_',
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::probe_miss_transient_prefix()
+        );
+
+        zai_connector_zai_uninstall_site();
+
+        $this->assertFalse( get_transient( $zai_marker ), 'An owner-composed zai marker is deleted by the prefix enumeration.' );
+        $this->assertFalse( get_transient( $anthropic_marker ), 'An owner-composed zai_anthropic marker is deleted by the prefix enumeration.' );
+
+        // Source pin: the loaded-owner branch composes through the one
+        // export (the literals remain only as the broken-install
+        // fallback).
+        $source = (string) file_get_contents( dirname( __DIR__, 2 ) . '/connectors/zai/uninstall.php' );
+        $this->assertSame(
+            1,
+            preg_match_all( '/::probe_miss_transient_prefix\(\)/', $source ),
+            'The enumeration composes its prefixes through the settings owner export.'
+        );
+    }
+
     public function testADatabaseErrorDuringTheProbeSweepDoesNotWarnOrSkipTheOtherCleanups()
     {
         /*

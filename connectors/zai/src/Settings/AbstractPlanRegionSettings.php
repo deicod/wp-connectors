@@ -834,12 +834,31 @@ abstract class AbstractPlanRegionSettings {
 	}
 
 	/**
+	 * The probe-miss transient name PREFIX for this surface (glm15-9).
+	 *
+	 * The enumeration consumers (uninstall's wp_options LIKE sweep)
+	 * need the fixed head of the marker names — the state option plus
+	 * '_probe_' — as ONE owner export, not a hand-mirrored literal: a
+	 * rename of STATE_OPTION or the '_probe_' segment, or a third
+	 * surface's prefix added to settings but missed in a mirror, left
+	 * 60s credential-binding transients surviving uninstall silently
+	 * (the exact stranded-marker class GLM5 #11/GLM9 #8 document).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return string The marker-name prefix (no '_transient_' framing).
+	 */
+	public static function probe_miss_transient_prefix(): string {
+		return static::STATE_OPTION . '_probe_';
+	}
+
+	/**
 	 * The probe-miss transient name for one binding (GLM9 #8).
 	 *
-	 * The name composition — the state option, '_probe_', md5 of the
-	 * binding — rides the same single owner as the binding formula, so
-	 * the writer and the uninstall sweep can never disagree about which
-	 * transient a binding's marker lives in.
+	 * The name composition — the prefix, md5 of the binding — rides the
+	 * same single owner as the binding formula, so the writer and the
+	 * uninstall sweep can never disagree about which transient a
+	 * binding's marker lives in.
 	 *
 	 * @since 0.2.0
 	 *
@@ -847,7 +866,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return string Transient name holding the miss marker.
 	 */
 	public static function probe_miss_transient_name( string $binding ): string {
-		return static::STATE_OPTION . '_probe_' . md5( $binding );
+		return static::probe_miss_transient_prefix() . md5( $binding );
 	}
 
 	/**
