@@ -668,7 +668,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return string The effective region ('intl' or 'cn').
 	 */
 	private static function effective_region( $value ): string {
-		return self::sanitize_stored( $value, self::REGIONS, self::DEFAULT_REGION );
+		return self::sanitize_enum( $value, self::REGIONS, self::DEFAULT_REGION );
 	}
 
 	/**
@@ -965,7 +965,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return string 'coding' or 'general'.
 	 */
 	public static function get_plan(): string {
-		return self::sanitize_stored( get_option( static::OPTION_PLAN, static::DEFAULT_PLAN ), self::PLANS, static::DEFAULT_PLAN );
+		return self::sanitize_enum( get_option( static::OPTION_PLAN, static::DEFAULT_PLAN ), self::PLANS, static::DEFAULT_PLAN );
 	}
 
 	/**
@@ -976,7 +976,7 @@ abstract class AbstractPlanRegionSettings {
 	 * @return string 'intl' or 'cn'.
 	 */
 	public static function get_region(): string {
-		return self::sanitize_stored( get_option( static::OPTION_REGION, static::DEFAULT_REGION ), self::REGIONS, static::DEFAULT_REGION );
+		return self::sanitize_enum( get_option( static::OPTION_REGION, static::DEFAULT_REGION ), self::REGIONS, static::DEFAULT_REGION );
 	}
 
 	/**
@@ -1008,18 +1008,22 @@ abstract class AbstractPlanRegionSettings {
 	}
 
 	/**
-	 * Sanitizes one enum submission — the shared two-branch check both fields ride (glm15-16).
+	 * Sanitizes one enum value — the shared two-branch check every plan/region
+	 * read and write rides (glm15-16; glm18-10 unified the write path's copy).
 	 *
-	 * Both sanitize_plan() and sanitize_region() were the same check differing
-	 * only in enum list and fallback getter; the wrappers resolve the
-	 * fallback (the currently stored value or the child-owned default,
-	 * per their getters) and hand it in.
+	 * The sanitize_plan()/sanitize_region() write path and the
+	 * get_plan()/get_region()/effective_region() read path were the same
+	 * check differing only in enum list and fallback; the wrappers resolve
+	 * the fallback (the currently stored value or the child-owned default,
+	 * per their getters) and hand it in. One helper keeps what is stored and
+	 * what reads normalize on the same rule — a future rule change can no
+	 * longer land on one path only.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param mixed  $value          Submitted value.
+	 * @param mixed  $value          Submitted or stored value.
 	 * @param array  $allowed_values The enum values (PLANS/REGIONS).
-	 * @param string $fallback       The effective stored value when the submission is not in the enum.
+	 * @param string $fallback       The effective stored value when the value is not in the enum.
 	 * @return string One of the allowed values.
 	 */
 	private static function sanitize_enum( $value, array $allowed_values, string $fallback ): string {
@@ -1060,23 +1064,5 @@ abstract class AbstractPlanRegionSettings {
 		}
 
 		return __( 'International (api.z.ai)', 'zai' );
-	}
-
-	/**
-	 * Normalizes a stored option value against an allowlist with a fallback.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param mixed  $value          Stored value.
-	 * @param array  $allowed_values Allowed values.
-	 * @param string $fallback       Value used when the stored value is corrupt.
-	 * @return string One of the allowed values.
-	 */
-	private static function sanitize_stored( $value, array $allowed_values, string $fallback ): string {
-		if ( \is_string( $value ) && \in_array( $value, $allowed_values, true ) ) {
-			return $value;
-		}
-
-		return $fallback;
 	}
 }
