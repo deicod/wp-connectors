@@ -19,6 +19,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Metadata;
 
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
@@ -29,6 +30,40 @@ use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
  * @since 0.2.0
  */
 final class ZaiModelListParser {
+
+	/**
+	 * Entry-failure reasons (glm14-7): typed constants, not bare strings —
+	 * the rejection map below keys on them, so a reason added without its
+	 * rejection mapping fails LOUDLY instead of silently degrading to the
+	 * missing-data shape the old switch's default arm produced.
+	 *
+	 * @since 0.2.0
+	 */
+	private const ENTRY_MISSING_DATA     = 'missing_data';
+	private const ENTRY_NOT_A_LIST       = 'not_a_list';
+	private const ENTRY_ADDITIONAL_PAGES = 'additional_pages';
+	private const ENTRY_EMPTY_LIST       = 'empty_list';
+	private const ENTRY_ENTRY_ID         = 'entry_id';
+
+	/**
+	 * The ONE rejection mapping for the entry-failure reasons: the precise
+	 * message each reason rejects with, or null for the two no-usable-data
+	 * rejections that throw fromMissingData() exactly like the missing
+	 * member always did. entry_rejection() consults this map alone — the
+	 * reason set and the rejection set can never drift apart silently
+	 * (glm14-7).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, string|null>
+	 */
+	private const ENTRY_REJECTION_MESSAGES = array(
+		self::ENTRY_MISSING_DATA     => null,
+		self::ENTRY_EMPTY_LIST       => null,
+		self::ENTRY_NOT_A_LIST       => 'The discovered model list must be a JSON list.',
+		self::ENTRY_ADDITIONAL_PAGES => 'The discovered model list reported additional pages.',
+		self::ENTRY_ENTRY_ID         => 'Every entry must carry a non-empty string "id".',
+	);
 
 	/**
 	 * Parses a model-list response into chat-capable, in-plan model IDs.
@@ -128,23 +163,12 @@ final class ZaiModelListParser {
 		$reason = self::entry_failure_reason( $raw );
 
 		if ( null !== $reason ) {
-			switch ( $reason ) {
-				case 'not_a_list':
-					throw ResponseException::fromInvalidData( $provider_label, 'data', 'The discovered model list must be a JSON list.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
-
-				case 'additional_pages':
-					throw ResponseException::fromInvalidData( $provider_label, 'data', 'The discovered model list reported additional pages.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
-
-				case 'entry_id':
-					throw ResponseException::fromInvalidData( $provider_label, 'data', 'Every entry must carry a non-empty string "id".' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
-
-				case 'empty_list':
-				case 'missing_data':
-				default:
-					// The empty list rejects exactly like the missing
-					// member always did: no usable data.
-					throw ResponseException::fromMissingData( $provider_label, 'data' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
-			}
+			/*
+			 * glm14-7: the rejection rides the ONE reason→message map —
+			 * the switch's default arm used to fold any future or renamed
+			 * reason silently into the missing-data shape.
+			 */
+			self::entry_rejection( $reason, $provider_label ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed messages by design; the label is the caller's surface constant (GLM10 #9).
 		}
 
 		$ids = array();
@@ -178,6 +202,46 @@ final class ZaiModelListParser {
 	}
 
 	/**
+	 * The typed rejection for an entry-failure reason (glm14-7 — the
+	 * method entry_failure_reason()'s docblock has referenced by name
+	 * since glm13-2; it exists now).
+	 *
+	 * The map is the single source: a mapped null message rejects
+	 * fromMissingData() exactly like the missing member always did; an
+	 * UNMAPPED reason — one a future edit of entry_failure_reason()
+	 * returns without extending ENTRY_REJECTION_MESSAGES — throws the
+	 * internal lockstep RuntimeException instead of silently degrading
+	 * to the generic missing-data shape the old switch's default arm
+	 * produced. The runtime failure is the honest outcome: reason and
+	 * rejection disagreeing is a bug, not a data condition.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $reason         An entry-failure reason constant.
+	 * @param string $provider_label The consuming surface's provider label.
+	 * @return void
+	 * @throws ResponseException The reason's mapped rejection — every
+	 *                           declared reason carries one.
+	 * @throws RuntimeException When the reason carries no rejection
+	 *                          mapping.
+	 */
+	private static function entry_rejection( string $reason, string $provider_label ): void {
+		if ( ! \array_key_exists( $reason, self::ENTRY_REJECTION_MESSAGES ) ) {
+			throw new RuntimeException( 'Unmapped model-list entry reason: ' . $reason ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a developer-facing lockstep invariant naming a class constant, never response data.
+		}
+
+		$message = self::ENTRY_REJECTION_MESSAGES[ $reason ];
+
+		if ( null === $message ) {
+			// The empty list rejects exactly like the missing member
+			// always did: no usable data.
+			throw ResponseException::fromMissingData( $provider_label, 'data' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
+		}
+
+		throw ResponseException::fromInvalidData( $provider_label, 'data', $message ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the caller's surface constant (GLM10 #9).
+	}
+
+	/**
 	 * The model-list ENTRY failure of a decoded body, or null when the
 	 * body carries the model-list shape (glm13-2).
 	 *
@@ -203,11 +267,12 @@ final class ZaiModelListParser {
 	 * @since 0.2.0
 	 *
 	 * @param mixed $raw Decoded response body.
-	 * @return string|null Failure reason, or null for the model-list shape.
+	 * @return string|null Failure reason (an ENTRY_* constant), or null
+	 *                     for the model-list shape.
 	 */
 	public static function entry_failure_reason( $raw ): ?string {
 		if ( ! \is_object( $raw ) || ! isset( $raw->data ) ) {
-			return 'missing_data';
+			return self::ENTRY_MISSING_DATA;
 		}
 
 		/*
@@ -218,7 +283,7 @@ final class ZaiModelListParser {
 		 * discovery and cache it.
 		 */
 		if ( ! \is_array( $raw->data ) ) {
-			return 'not_a_list';
+			return self::ENTRY_NOT_A_LIST;
 		}
 
 		/*
@@ -235,7 +300,7 @@ final class ZaiModelListParser {
 		 * fails the same way. Shared by BOTH surfaces since GLM1 #11.
 		 */
 		if ( \property_exists( $raw, 'has_more' ) && false !== $raw->has_more ) {
-			return 'additional_pages';
+			return self::ENTRY_ADDITIONAL_PAGES;
 		}
 
 		/*
@@ -245,12 +310,12 @@ final class ZaiModelListParser {
 		 * authentication proof worth a VALID verdict.
 		 */
 		if ( array() === $raw->data ) {
-			return 'empty_list';
+			return self::ENTRY_EMPTY_LIST;
 		}
 
 		foreach ( $raw->data as $entry ) {
 			if ( ! \is_object( $entry ) || ! isset( $entry->id ) || ! \is_string( $entry->id ) || '' === $entry->id ) {
-				return 'entry_id';
+				return self::ENTRY_ENTRY_ID;
 			}
 		}
 

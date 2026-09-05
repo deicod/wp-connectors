@@ -14,12 +14,14 @@ declare( strict_types=1 );
 use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Messages\Enums\ModalityEnum;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\HttpTransporter;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use WordPress\AiClient\Providers\Models\Enums\OptionEnum;
 use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog;
+use Deicod\WpConnectors\Zai\Metadata\ZaiModelListParser;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
@@ -1049,6 +1051,91 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
         // The external mirrors keep pinning the literal suffix value.
         $this->assertSame('_miss', ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX);
+    }
+
+    public function testEveryEntryFailureReasonIsTypedAndMappedToItsRejection()
+    {
+        /*
+         * glm14-7: the rejection switch's default arm silently mapped any
+         * future or renamed entry-failure reason to the missing-data
+         * rejection. The reasons are typed ENTRY_* constants now, and the
+         * rejection rides ONE reason→message map: every reason string
+         * entry_failure_reason() can return over the malformed-shape
+         * battery must (a) be one of the declared constants and (b)
+         * carry a rejection in that map, so a future reason without its
+         * mapping fails LOUDLY (the lockstep RuntimeException) instead
+         * of degrading silently.
+         */
+        $reflection = new \ReflectionClass(ZaiModelListParser::class);
+        $reason_constants = array_filter(
+            array_keys($reflection->getConstants()),
+            static function (string $name): bool {
+                return 'ENTRY_' === substr($name, 0, 6) && 'ENTRY_REJECTION_MESSAGES' !== $name;
+            }
+        );
+        $messages = $reflection->getConstant('ENTRY_REJECTION_MESSAGES');
+
+        // Every declared reason constant carries its rejection mapping.
+        foreach ($reason_constants as $constant) {
+            $reason = $reflection->getConstant($constant);
+            $this->assertArrayHasKey(
+                $reason,
+                $messages,
+                "The {$constant} reason must carry a rejection in the one map."
+            );
+        }
+
+        $shapes = array(
+            'null body' => null,
+            'missing data member' => (object) array('other' => 1),
+            'object-shaped data' => (object) array('data' => (object) array('only' => (object) array('id' => 'glm-5.3'))),
+            'additional pages' => (object) array('data' => array((object) array('id' => 'glm-5.3')), 'has_more' => true),
+            'empty list' => (object) array('data' => array()),
+            'bad entry id' => (object) array('data' => array((object) array('id' => 0))),
+        );
+
+        foreach ($shapes as $label => $raw) {
+            $reason = ZaiModelListParser::entry_failure_reason($raw);
+
+            $this->assertNotNull($reason, "[{$label}] The malformed shape must produce a failure reason.");
+            $this->assertContains(
+                $reason,
+                array_map(static function (string $name) use ($reflection) {
+                    return $reflection->getConstant($name);
+                }, $reason_constants),
+                "[{$label}] Every returnable reason must be a declared ENTRY_* constant."
+            );
+            $this->assertArrayHasKey($reason, $messages, "[{$label}] The reason must carry a rejection mapping.");
+        }
+
+        // The one map builds every reason's rejection (the old default
+        // arm's silently-missing cases now throw instead).
+        $build = new \ReflectionMethod(ZaiModelListParser::class, 'entry_rejection');
+
+        foreach ($reason_constants as $constant) {
+            $reason = $reflection->getConstant($constant);
+
+            try {
+                $build->invoke(null, $reason, 'z.ai');
+                $this->fail("The {$constant} reason must throw its typed rejection.");
+            } catch (ResponseException $e) {
+                // The mapped rejection — the pin.
+            }
+        }
+
+        // An unmapped reason fails LOUDLY (the lockstep invariant), never
+        // the silent missing-data degradation the old default arm gave.
+        try {
+            $build->invoke(null, 'future_reason', 'z.ai');
+            $this->fail('An unmapped reason must throw the lockstep invariant.');
+        } catch (\WordPress\AiClient\Common\Exception\RuntimeException $e) {
+            $this->assertStringContainsString('Unmapped model-list entry reason', $e->getMessage());
+        }
+
+        // The valid shape still carries no reason.
+        $this->assertNull(ZaiModelListParser::entry_failure_reason(
+            (object) array('data' => array((object) array('id' => 'glm-5.3')))
+        ));
     }
 
     /**
