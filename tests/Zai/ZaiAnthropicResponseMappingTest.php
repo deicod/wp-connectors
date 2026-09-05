@@ -5718,15 +5718,17 @@ $body = ''
         }
     }
 
-    public function testAnUnknownDeltaOnAnUnseenIndexStillSeedsAndCompletes()
+    public function testAnUnknownDeltaOnAnUnseenIndexInvalidatesTheStream()
     {
         /*
-         * Codex R14 #3: the forward-compatible seed path itself — NO
-         * content_block_start precedes the unknown delta, so the
-         * synthesized block must satisfy the R13 #3 start-member
-         * validation. A subsequent text delta proves the seed is a
-         * working text accumulator (GLM3 #1: the completion carries
-         * translatable content).
+         * glm13-4 (supersedes the Codex R14 #3 seed tolerance): an
+         * unknown delta on an index whose content_block_start was never
+         * received is the same missing-start evidence any KNOWN delta
+         * type is (Codex R5 #2/R10 #3) — the seed path fabricated an
+         * empty text block and let a damaged stream complete. Unknown
+         * deltas on a STARTED block keep their forward-compatible
+         * tolerance (see testAnUnknownDeltaTypeWithoutAStartBlockStaysSeeded,
+         * whose stream DOES start block 0).
          */
         $body = ''
             . 'event: message_start' . "\n"
@@ -5734,7 +5736,7 @@ $body = ''
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
-            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Seeded."}}' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Never."}}' . "\n\n"
             . 'event: content_block_stop' . "\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
             . 'event: message_delta' . "\n"
@@ -5744,9 +5746,44 @@ $body = ''
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
-        $result = $this->model()->generateTextResult($this->prompt());
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An unknown delta on a never-started index must fail the stream.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
 
-        $this->assertSame('Seeded.', $result->toText(), 'The unknown delta seeds a valid text block a later delta can append to; the stream completes.');
+    public function testADamagedStreamWhoseOnlyDeltaIsUnknownNeverFabricatesContent()
+    {
+        /*
+         * glm13-4 live repro: the stream carries NO content_block_start
+         * and ONE unknown delta — the seeded tolerance aggregated it into
+         * a clean payload with a FABRICATED empty text block and no
+         * corruption flag, so the caller received a successful generation
+         * with empty content (the exact missing-start-must-fail class).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_fr","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"future_delta","payload":42}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream whose only delta arrived for a never-started index must never complete, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('future_delta', $e->getMessage(), 'Raw event payloads must not be echoed.');
+        }
     }
 
     public function testAnUnknownDeltaTypeWithoutAStartBlockStaysSeeded()

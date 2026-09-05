@@ -1503,13 +1503,12 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * block became content position 0 of a successful but truncated
 		 * completion. Duplicates are already rejected above, so the map
 		 * size IS the next expected index; any smaller (reordering) or
-		 * larger (gap) value fails here. Synthesized seeds
-		 * (unknown-delta compatibility path) enter through this same
-		 * method and obey the same rule — a seed occupies an index the
-		 * way a started block does. The invariant doubles as the
-		 * GLM10 #7 iteration-order guarantee: accepted keys are exactly
-		 * 0..N-1 in start order, so the map's insertion order IS the
-		 * stream order aggregated() iterates.
+		 * larger (gap) value fails here. (The glm13-4 change removed the
+		 * unknown-delta synthesized-seed entry into this method — every
+		 * block now enters through a real content_block_start.) The
+		 * invariant doubles as the GLM10 #7 iteration-order guarantee:
+		 * accepted keys are exactly 0..N-1 in start order, so the map's
+		 * insertion order IS the stream order aggregated() iterates.
 		 */
 		if ( \count( $this->blocks ) !== $index ) {
 			$this->malformed_event = true;
@@ -1567,36 +1566,26 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 * TRUNCATED completion (for tool deltas, one with NO
 			 * FunctionCall at all). ALL known delta types now require an
 			 * existing started block and invalidate the stream otherwise;
-			 * unknown (future) delta types keep the seed below — they carry
-			 * no content this aggregator maps, so seeding loses nothing.
+			 * unknown (future) delta types carry no content this aggregator
+			 * maps, but an UNKNOWN delta on a never-started index is the
+			 * same missing-start evidence any known type is (glm13-4, live
+			 * repro: the former synthesized-seed tolerance let a damaged
+			 * stream whose ONLY delta was unknown complete successfully
+			 * with a fabricated empty text block and no corruption flag) —
+			 * the seed path is gone, and every delta type on an unstarted
+			 * index rejects. Unknown deltas on a STARTED block keep their
+			 * forward-compatible tolerance below (no block-type claim to
+			 * violate, no missing start to hide).
 			 */
-			if ( isset( $delta->type ) && \is_string( $delta->type ) ) {
-				if ( 'input_json_delta' === $delta->type ) {
-					$this->malformed_tool_input = true;
+			if ( 'input_json_delta' === $delta->type ) {
+				$this->malformed_tool_input = true;
 
-					return;
-				}
-
-				if ( 'text_delta' === $delta->type || 'thinking_delta' === $delta->type ) {
-					$this->malformed_event = true;
-
-					return;
-				}
+				return;
 			}
 
-			/*
-			 * Codex R14 #3: the seed must satisfy the R13 #3 start-member
-			 * validation — a bare type-only text block is malformed there.
-			 * Unknown (future) delta types still carry no content this
-			 * aggregator maps, so an empty initial text value loses nothing.
-			 */
-			$this->start_block(
-				$index,
-				(object) array(
-					'type' => 'text',
-					'text' => '',
-				)
-			);
+			$this->malformed_event = true;
+
+			return;
 		}
 
 		/*
