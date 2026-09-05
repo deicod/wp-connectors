@@ -69,7 +69,9 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
 
 /**
  * Flags `use` imports whose short name appears nowhere else in the file
- * (glm16-10).
+ * (glm16-10). Imports are located on a token-masked view of the source
+ * (glm17-8): a column-0 `use ...;` line inside a nowdoc/heredoc body
+ * or a block comment is data, not an import, and never counts.
  *
  * Dead imports imply call paths that do not exist (an import of
  * SseFrameBuffer suggests the class does its own framing), so every
@@ -121,10 +123,27 @@ function wp_connectors_unused_import_violations(string $root): int
             continue;
         }
 
+        /*
+         * glm17-8: imports are FOUND on the token-masked view, never the
+         * raw source — the glm15-2 idiom (wp_connectors_strip_comments()
+         * + wp_connectors_mask_string_contents(), both same-length). A
+         * column-0 `use ...;` line inside a nowdoc/heredoc body or a
+         * block comment is DATA, not code; the raw-source regex treated
+         * it as a real import and flagged a phantom unused import when
+         * the short name appeared nowhere else. Both transforms are
+         * length-preserving, so an offset captured in the masked view is
+         * the same byte offset in $source — and a real use statement
+         * contains neither comment nor string bytes, so its matched text
+         * is identical in both views.
+         */
+        $code_view = wp_connectors_mask_string_contents(
+            wp_connectors_strip_comments($source)
+        );
+
         $matches = array();
         if (preg_match_all(
             '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+(?:\s+as\s+(\w+))?\s*;/m',
-            $source,
+            $code_view,
             $matches,
             PREG_SET_ORDER | PREG_OFFSET_CAPTURE
         ) === 0) {
