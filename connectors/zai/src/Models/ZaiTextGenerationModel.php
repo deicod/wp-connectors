@@ -645,11 +645,13 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @param Response $response The chat.completion response.
 	 * @return GenerativeAiResult The parsed result.
 	 * @throws ResponseException With a fixed message when the payload is malformed.
+	 * @throws InvalidArgumentException Never surfaces: caught with the
+	 *                                  ResponseException and rewritten (glm19-2).
 	 */
 	private function parseNonStreamBody( Response $response ): GenerativeAiResult {
 		try {
 			return parent::parseResponseToGenerativeAiResult( $response );
-		} catch ( ResponseException $e ) {
+		} catch ( ResponseException | InvalidArgumentException $e ) {
 			/*
 			 * glm13-7: this plugin's own fixed-message rejections pass
 			 * through verbatim — the three tool-arguments rejections the
@@ -661,6 +663,25 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 * ResponseExceptions (whose messages can embed upstream body
 			 * content, e.g. a non-standard finish_reason) keep the fixed
 			 * generic rewrite.
+			 *
+			 * glm19-2: the vendor parent's parser also throws
+			 * InvalidArgumentException — a USER-role choice message makes
+			 * the Candidate constructor reject ('Message must be a model
+			 * message.'), a throw family disjoint from ResponseException
+			 * that used to escape this rewrite entirely and surface
+			 * through the boundary as the SDK-internal message on a
+			 * zai_invalid_request 400, while the byte-equivalent
+			 * corruption on the zai_anthropic twin yields its typed
+			 * 502-class rejection (its own role walk names the member
+			 * before any Candidate is built). The rewrite covers both
+			 * families now — every InvalidArgumentException reachable
+			 * inside the parent's parse is a payload rejection; this
+			 * class's own InvalidArgumentExceptions are all outbound
+			 * (validate_request, reject_misshapen_wire_values, the
+			 * replay-guard override) and never run under this try. On
+			 * the mislabeled-JSON fallback the rewritten rejection is
+			 * the non-marker family JsonFallbackResult nulls out, so
+			 * that transport keeps its stream-typed error (glm14-2).
 			 */
 			if ( $e instanceof FixedMessageResponseException ) {
 				throw $e;

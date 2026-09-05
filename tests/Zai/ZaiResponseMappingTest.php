@@ -136,6 +136,64 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAUserRoleChoiceMessageFailsAsAMalformedPayloadOnEveryTransport()
+    {
+        /*
+         * glm19-2: the vendor parent's parser builds a Candidate from each
+         * choice message, and a USER-role message makes its constructor
+         * throw InvalidArgumentException ('Message must be a model
+         * message.') — a throw family disjoint from the ResponseException
+         * the malformed-body rewrite caught, so the SDK-internal message
+         * escaped to the boundary (zai_invalid_request 400) while the
+         * byte-equivalent corruption on the zai_anthropic twin yields its
+         * typed 502-class role rejection. The rewrite covers both families
+         * on every transport that funnels through parseNonStreamBody():
+         * the unlabeled JSON body, the SSE-aggregated stream (the
+         * aggregator stores delta.role verbatim by design), and the
+         * mislabeled-JSON fallback (where the rewritten rejection is the
+         * non-marker family JsonFallbackResult nulls out, keeping the
+         * stream-typed error — glm14-2's header-promised-a-stream
+         * contract).
+         */
+        $body = '{"id":"chatcmpl-userrole","choices":[{"message":{"role":"user","content":"hi"},"finish_reason":"stop"}]}';
+
+        $json = array('Content-Type' => 'application/json');
+        $this->queueSdkResponse(200, $json, $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A user-role choice message must not surface as a request rejection.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('chat-completions payload was malformed', $e->getMessage());
+            $this->assertStringNotContainsString('model message', $e->getMessage(), 'The SDK-internal message must not escape.');
+        }
+
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-userrole","choices":[{"index":0,"delta":{"role":"user","content":"hi"},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A user-role delta must not surface as a request rejection.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('chat-completions payload was malformed', $e->getMessage());
+        }
+
+        // The mislabeled-JSON fallback: a stream header over the JSON body.
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A user-role message under a stream header must not surface as a request rejection.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('No usable chat.completion.chunk event was received.', $e->getMessage());
+        }
+    }
+
     public function testParsesReasoningContentAsThoughtPart()
     {
         $this->queueSdkResponse(200, array(), wp_json_encode(array(
