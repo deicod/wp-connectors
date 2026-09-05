@@ -1059,6 +1059,19 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		AdvertisedUsageGuard::reject_unsupported( $config, $prompt, self::PROVIDER_LABEL );
 
 		/*
+		 * glm18-3 (parity with the zai_anthropic twin's validate_request
+		 * guard): the SDK's setMaxTokens() is a bare assignment, so a
+		 * zero/negative value rode "max_tokens" verbatim to the
+		 * spec-faithful endpoint's generic misattributed upstream 400
+		 * instead of a typed pre-transport rejection naming the member.
+		 */
+		if ( null !== $config->getMaxTokens() && 1 > $config->getMaxTokens() ) {
+			throw new InvalidArgumentException(
+				'The zai provider requires maxTokens to be a positive number.'
+			);
+		}
+
+		/*
 		 * GLM6 #5: every caller-authored WIRE value the SDK parent's
 		 * request mapping ships verbatim is encodability-guarded before
 		 * transport — the GLM3 #4/GLM4 #1 guards existed on the

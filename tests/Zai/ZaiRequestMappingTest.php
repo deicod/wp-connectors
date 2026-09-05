@@ -412,6 +412,24 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
+    public function testNonPositiveMaxTokensIsRejectedBeforeTransport()
+    {
+        /*
+         * glm18-3 (cross-surface parity, the zai_anthropic twin's guard):
+         * the SDK's setMaxTokens() is a bare assignment, so maxTokens 0
+         * (or negative) rode "max_tokens" verbatim to the endpoint's
+         * generic misattributed 400. Typed pre-transport rejection now.
+         */
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array('maxTokens' => 0)),
+            'maxTokens'
+        );
+        $this->assertRejectedBeforeTransport(
+            ModelConfig::fromArray(array('maxTokens' => -5)),
+            'maxTokens'
+        );
+    }
+
     public function testImageOutputModalityIsRejectedBeforeTransport()
     {
         $config = ModelConfig::fromArray(array());
