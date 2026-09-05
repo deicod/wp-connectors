@@ -351,11 +351,30 @@ final class ToolArgsReplayGuard {
 		/*
 		 * The point index counts from the digit string's start; strip the
 		 * same leading zeros so the length counts SIGNIFICANT integer
-		 * digits. A saturated exponent cast can push the arithmetic past
-		 * the int range (PHP widens to float), so renormalize before any
-		 * string use — both saturation directions land outside (0, 309].
+		 * digits. glm20-1: the exponent is BOUNDED before any cast — the
+		 * old (int) arithmetic saturated in the wrong direction ((int) of
+		 * an out-of-range digit string lands at PHP_INT_MAX, the length
+		 * sum then widens to float, and the (int) re-cast of that
+		 * out-of-range float lands at PHP_INT_MIN), so a POSITIVE giant
+		 * exponent (1e9223372036854775808) fell into the "<= 0" exit as
+		 * "not lossy" — the exact inversion of the verdict the > 309
+		 * ceiling and the INF belt below exist to return. Both clamped
+		 * directions (±9999) sit far outside (0, 309] and keep the sum
+		 * inside the int range for any real token length.
 		 */
-		$integer_length = (int) ( \strlen( $parts[1] ) + (int) ( $parts[3] ?? '0' ) - ( \strlen( $digits ) - \strlen( $significant ) ) );
+		$exponent  = $parts[3] ?? '0';
+		$magnitude = \ltrim( $exponent, '+-0' );
+
+		if ( '' === $magnitude ) {
+			// Zero in padded spellings ('-0', '+00'): no shift either way.
+			$magnitude = '0';
+		}
+
+		if ( \strlen( $magnitude ) > 3 ) {
+			$magnitude = '9999';
+		}
+
+		$integer_length = \strlen( $parts[1] ) + (int) ( ( '-' === $exponent[0] ? '-' : '' ) . $magnitude ) - ( \strlen( $digits ) - \strlen( $significant ) );
 
 		if ( $integer_length <= 0 ) {
 			// |value| < 1: fractional by construction.

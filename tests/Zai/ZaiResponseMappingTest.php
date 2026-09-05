@@ -446,6 +446,14 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             'exponent spelling below int range (2^53+1)' => '{"v":9007199254740993e0}',
             'integral inexact big float' => '{"v":1.5e25}',
             /*
+             * glm20-1: a SATURATING exponent giant. At the wire level this
+             * rejects through the encode oracle (the INF decode cannot
+             * encode) before the float-form scan ever runs — the shield
+             * that kept the helper's inverted verdict latent; the
+             * helper-level pin below drives the rule directly.
+             */
+            'saturating exponent giant (encode oracle shield)' => '{"v":1e9223372036854775808}',
+            /*
              * GLM12 verifier round: an escape-dense string value (~20k
              * escapes) used to exhaust the PCRE recursion limit in the
              * string stripper, and the engine failure FAILED OPEN —
@@ -485,6 +493,56 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             preg_match('/wire_arguments_are_replayable\(\s*\$block\[\'json\'\],\s*\$decoded\s*\)/', $aggregator_source),
             'The Anthropic streamed tool block must pass its pre-decoded tree to the guard.'
         );
+    }
+
+    public function testGiantExponentFloatTokensAreLossyOnTheFloatFormRule()
+    {
+        /*
+         * glm20-1 regression: float_literal_is_lossy_integer() computed
+         * its integer-digit count with (int) casts that saturate in the
+         * wrong direction — (int)'9223372036854775808' clamps to
+         * PHP_INT_MAX, the length sum widens to float, and the (int)
+         * re-cast of that out-of-range float lands at PHP_INT_MIN — so a
+         * POSITIVE giant exponent (INF, lossy by every other branch's
+         * verdict) fell into the "<= 0" fractional exit as "not lossy"
+         * and the INF belt was unreachable for exactly that class. The
+         * wire oracle shields production (json_encode of the INF decode
+         * fails first), so the pin drives the private helper directly
+         * through reflection — no production surface widened (the
+         * aggregator_state() pattern, glm19-11).
+         */
+        $guard  = 'Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard';
+        $method = new \ReflectionMethod($guard, 'float_literal_is_lossy_integer');
+        if (PHP_VERSION_ID < 80100) {
+            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
+            $method->setAccessible(true);
+        }
+
+        $lossy = array(
+            'positive saturating exponent' => '1e9223372036854775808',
+            'negative saturating exponent' => '-1e9223372036854775808',
+            'padded saturating exponent' => '1e0009223372036854775808',
+            'four-digit exponent (above the 309 ceiling)' => '1e1000',
+            'exact-inexact pair stays judged' => '1.5e25',
+        );
+        foreach ($lossy as $label => $token) {
+            $this->assertTrue((bool) $method->invoke(null, $token), "[{$label}] must be lossy.");
+        }
+
+        $stable = array(
+            /*
+             * The NEGATIVE saturation direction keeps its "<= 0" exit —
+             * underflow to 0.0 is the pinned fractional exemption
+             * (glm19-1), and the bounded arithmetic must not disturb it.
+             */
+            'negative saturating exponent is fractional' => '1e-9223372036854775808',
+            'plus-signed padded small exponent' => '1e+009',
+            'padded small exponent' => '1.5e021',
+            'exact 2^53 float form' => '9.223372036854775808e18',
+        );
+        foreach ($stable as $label => $token) {
+            $this->assertFalse((bool) $method->invoke(null, $token), "[{$label}] must stay stable.");
+        }
     }
 
     public function testPreDecodedToolCallArgumentsWithInfAreRejectedTyped()
