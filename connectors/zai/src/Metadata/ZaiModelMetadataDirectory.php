@@ -273,13 +273,15 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		}
 
 		/*
-		 * map_from_ids()' semantics exactly (the ONE build rule now):
-		 * chat models only, keyed by ID. The sort is irrelevant to the
-		 * map form; the stash's own build already sorted it.
+		 * map_from_ids()' semantics exactly (glm21-13: the ONE build
+		 * rule — the filter+key predicate rides the shared
+		 * ZaiDiscoveryCache::id_maps_to_metadata(), the hand-copy having
+		 * already diverged by dropping the stringiness guard): chat
+		 * models only, keyed by ID.
 		 */
 		$map = array();
 		foreach ( $built as $metadata ) {
-			if ( ZaiModelCatalog::is_chat_model( $metadata->getId() ) ) {
+			if ( ZaiDiscoveryCache::id_maps_to_metadata( $metadata->getId() ) ) {
 				$map[ $metadata->getId() ] = $metadata;
 			}
 		}
@@ -296,10 +298,15 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		}
 
 		/*
-		 * The map keeps the stash's newest-first order (the parse's own
-		 * usort) — exactly what map_from_ids()' uasort produces, which
-		 * array_values() of the memo iterates downstream.
+		 * glm21-13: the canonical newest-first order (the same
+		 * comparator constant map_from_ids() applies) instead of the
+		 * stash's presumed one — the prebuilt map carries the rebuild's
+		 * semantics STRUCTURALLY now (glm15-22's contract), not by
+		 * vendor-coincidence: a rule change in the one comparator
+		 * reaches both builders.
 		 */
+		\uasort( $map, array( ZaiModelCatalog::class, 'sort_callback' ) );
+
 		return $map;
 	}
 

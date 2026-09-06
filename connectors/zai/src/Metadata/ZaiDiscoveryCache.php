@@ -226,6 +226,29 @@ final class ZaiDiscoveryCache {
 	}
 
 	/**
+	 * Whether one discovered model ID belongs in the metadata map
+	 * (glm21-13).
+	 *
+	 * The map's build rule — chat-capable models with non-empty string
+	 * IDs only — was stated twice: map_from_ids() and the zai
+	 * directory's take_discovery_built_map() hand-copy of it (the
+	 * cold-discovery prebuilt seed), which had already diverged by
+	 * dropping the stringiness guard. One predicate serves both
+	 * builders; what each keys (metadata_for() construction vs the
+	 * stash's already-built object) stays per-caller, and so does the
+	 * newest-first sort (one comparator constant,
+	 * ZaiModelCatalog::sort_callback).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $id One resolved or built model ID.
+	 * @return bool True when the ID maps to metadata.
+	 */
+	public static function id_maps_to_metadata( $id ): bool {
+		return \is_string( $id ) && '' !== $id && ZaiModelCatalog::is_chat_model( $id );
+	}
+
+	/**
 	 * Builds the sorted metadata map for a list of model IDs.
 	 *
 	 * IDs without known chat support are dropped, so a transient warmed by
@@ -239,7 +262,7 @@ final class ZaiDiscoveryCache {
 	public static function map_from_ids( array $ids ): array {
 		$models = array();
 		foreach ( $ids as $id ) {
-			if ( \is_string( $id ) && '' !== $id && ZaiModelCatalog::is_chat_model( $id ) ) {
+			if ( self::id_maps_to_metadata( $id ) ) {
 				$models[ $id ] = ZaiModelCatalog::metadata_for( $id );
 			}
 		}

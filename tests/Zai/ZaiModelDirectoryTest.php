@@ -497,9 +497,14 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             'The cold path seeds the map memo with the parse-built metadata.'
         );
         $this->assertStringContainsString(
-            'ZaiModelCatalog::is_chat_model( $metadata->getId() )',
+            'ZaiDiscoveryCache::id_maps_to_metadata( $metadata->getId() )',
             $source,
-            'The seed applies the one chat-filter build rule the cache rebuild applies.'
+            'The seed rides the ONE shared filter+key predicate the cache rebuild rides (glm21-13 — the hand-copy had already diverged by dropping the stringiness guard).'
+        );
+        $this->assertStringContainsString(
+            "\\uasort( \$map, array( ZaiModelCatalog::class, 'sort_callback' ) )",
+            $source,
+            'The seed applies the one canonical newest-first comparator, not the stash\'s presumed order (glm21-13).'
         );
     }
 
