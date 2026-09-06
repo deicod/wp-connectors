@@ -358,9 +358,22 @@ final class ToolArgsReplayGuard {
 		 * out-of-range float lands at PHP_INT_MIN), so a POSITIVE giant
 		 * exponent (1e9223372036854775808) fell into the "<= 0" exit as
 		 * "not lossy" — the exact inversion of the verdict the > 309
-		 * ceiling and the INF belt below exist to return. Both clamped
-		 * directions (±9999) sit far outside (0, 309] and keep the sum
-		 * inside the int range for any real token length.
+		 * ceiling and the INF belt below exist to return.
+		 *
+		 * glm20-13 (verifier round on glm20-1): the bound is the INT-SAFE
+		 * magnitude width, never a small one — (int) is exact through
+		 * 18-digit magnitudes and saturates only at 19, so the first
+		 * clamp (> 3 digits → 9999) corrupted the digit-shift arithmetic
+		 * for every token whose mantissa padding CANCELS a genuine
+		 * exponent in [1000, 10^18): '0.<1000 zeros>1e1000' (exactly 0.1)
+		 * and the exact dyadic spelling of 2^100 flipped accept→reject at
+		 * the live wire entry point, and '1<1050 zeros>e-1000' (1e50,
+		 * integral-but-inexact) flipped reject→accept — reopening the
+		 * glm19-1 hole for the |exp| >= 1000 class. Only 19+-digit
+		 * magnitudes clamp (to 18 nines, itself int-exact): both clamped
+		 * directions sit far outside (0, 309] for any physically-possible
+		 * mantissa length (the string itself bounds the padding far below
+		 * the clamp), and the sum stays inside the int range.
 		 */
 		$exponent  = $parts[3] ?? '0';
 		$magnitude = \ltrim( $exponent, '+-0' );
@@ -370,8 +383,8 @@ final class ToolArgsReplayGuard {
 			$magnitude = '0';
 		}
 
-		if ( \strlen( $magnitude ) > 3 ) {
-			$magnitude = '9999';
+		if ( \strlen( $magnitude ) > 18 ) {
+			$magnitude = '999999999999999999';
 		}
 
 		$integer_length = \strlen( $parts[1] ) + (int) ( ( '-' === $exponent[0] ? '-' : '' ) . $magnitude ) - ( \strlen( $digits ) - \strlen( $significant ) );

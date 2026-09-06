@@ -416,6 +416,17 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             'digits in a string' => '{"note":"99999999999999999999999"}',
             'digits in a key' => '{"99999999999999999999":"x"}',
             'empty string' => '',
+            /*
+             * glm20-13: the accept-direction twin of the cancellation
+             * class — the padding cancels the exponent to a FINITE,
+             * EXACTLY-REPRESENTABLE double, and the raw-wire precise
+             * rule must accept it (0.1 exactly; and the dyadic spelling
+             * of 2^100 the verifier reproduced). The first clamp's
+             * corrupted shift computed ~9090 integer digits and
+             * rejected these as precision loss.
+             */
+            'padded exact fraction via a cancelling exponent (glm20-13)' => '{"v":0.' . str_repeat('0', 1000) . '1e1000}',
+            'padded exact dyadic 2^100 spelling (glm20-13)' => '{"v":0.' . str_repeat('0', 969) . '1267650600228229401496703205376e1000}',
         );
         foreach ($exact as $label => $json) {
             $this->assertTrue($guard::wire_arguments_are_replayable($json), "[{$label}] must replay.");
@@ -453,6 +464,18 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
              * helper-level pin below drives the rule directly.
              */
             'saturating exponent giant (encode oracle shield)' => '{"v":1e9223372036854775808}',
+            /*
+             * glm20-13 (verifier round on glm20-1): the |exp| >= 1000
+             * CANCELLATION class the first, over-broad clamp (> 3 digits
+             * → 9999) corrupted — a mantissa whose zero padding cancels a
+             * genuine exponent keeps exact arithmetic. '1' + 1050 zeros
+             * + e-1000 is 1e50, integral-but-INEXACT (the %.0f expansion
+             * of the double is not 10^50): the first clamp drove it into
+             * the fractional exit and the raw-wire channel ACCEPTED a
+             * genuinely lossy literal while the decoded walker rejected
+             * it — the exact glm19-1 hole reopened.
+             */
+            'padded inexact big integer via a cancelling exponent (glm20-13)' => '{"v":1' . str_repeat('0', 1050) . 'e-1000}',
             /*
              * GLM12 verifier round: an escape-dense string value (~20k
              * escapes) used to exhaust the PCRE recursion limit in the
@@ -524,6 +547,13 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             'padded saturating exponent' => '1e0009223372036854775808',
             'four-digit exponent (above the 309 ceiling)' => '1e1000',
             'exact-inexact pair stays judged' => '1.5e25',
+            /*
+             * glm20-13: cancellation arithmetic stays EXACT through the
+             * whole int-safe exponent range — '1' + 2000 zeros + e-1000
+             * is 10^1001 (INF), lossy by the ceiling, and the first
+             * clamp's collapsed shift drove it into the fractional exit.
+             */
+            'padded INF value via a cancelling negative exponent (glm20-13)' => '1' . str_repeat('0', 2000) . 'e-1000',
         );
         foreach ($lossy as $label => $token) {
             $this->assertTrue((bool) $method->invoke(null, $token), "[{$label}] must be lossy.");
@@ -539,6 +569,12 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
             'plus-signed padded small exponent' => '1e+009',
             'padded small exponent' => '1.5e021',
             'exact 2^53 float form' => '9.223372036854775808e18',
+            /*
+             * glm20-13: the accept-direction cancellation class — exactly
+             * 0.1 and exactly 2^100 through padded float spellings.
+             */
+            'padded exact 0.1 (glm20-13)' => '0.' . str_repeat('0', 1000) . '1e1000',
+            'padded exact 2^100 (glm20-13)' => '0.' . str_repeat('0', 969) . '1267650600228229401496703205376e1000',
         );
         foreach ($stable as $label => $token) {
             $this->assertFalse((bool) $method->invoke(null, $token), "[{$label}] must stay stable.");
