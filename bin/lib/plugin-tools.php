@@ -137,6 +137,52 @@ function wp_connectors_mask_string_contents($code)
 }
 
 /**
+ * The one per-file tokenizer provider for the conventions checks (glm25-8).
+ *
+ * The self-containment analyzer and the unused-import scanner each
+ * walk connectors/*.php in the same process, and each used to run
+ * strip_comments() + mask_string_contents() over every file it
+ * visited — two full token_get_all passes per check, four per file
+ * per gate run, with the tokenize being the scanners' dominant CPU
+ * cost. This provider computes the (source, code, masked) triple ONCE
+ * per file CONTENT and serves both checks: the cache key carries the
+ * content's md5, so a rewritten file re-tokenizes (no mtime
+ * granularity, no order dependence — the glm15-6 memoization
+ * boundary), and same-content re-reads anywhere in the process reuse
+ * the entry. Returns null for an unreadable file; every caller OWNS
+ * that return (the unused-import scan counts it loudly, the
+ * self-containment driver keeps the empty-analysis tolerance the old
+ * (string) cast gave it).
+ *
+ * @param string $path Absolute file path.
+ * @return array{source: string, code: string, masked: string}|null The
+ *         raw source, its comment-stripped view, and the string-masked
+ *         view of that (same lengths), or null when unreadable.
+ */
+function wp_connectors_file_code_views($path)
+{
+    /** @var array<string, array{source: string, code: string, masked: string}> $views */
+    static $views = array();
+
+    $source = @file_get_contents($path);
+    if (false === $source) {
+        return null;
+    }
+
+    $key = $path . "\0" . md5($source);
+    if (!isset($views[$key])) {
+        $code = wp_connectors_strip_comments($source);
+        $views[$key] = array(
+            'source' => $source,
+            'code' => $code,
+            'masked' => wp_connectors_mask_string_contents($code),
+        );
+    }
+
+    return $views[$key];
+}
+
+/**
  * Finds ALL root-level files carrying a Plugin Name header (sorted by name).
  *
  * Exactly one of these may exist (docs/CONVENTIONS.md, rule 1): more than
@@ -1330,7 +1376,15 @@ function wp_connectors_self_containment_violations($pluginDir)
             continue;
         }
         $path = $file->getPathname();
-        $code = wp_connectors_strip_comments((string) file_get_contents($path));
+        /*
+         * glm25-8: the file's views come from the ONE shared tokenizer
+         * provider — the unused-import scan over the same file in this
+         * process reuses the entry instead of re-tokenizing (the
+         * unreadable tolerance below is the old (string) cast's: an
+         * empty analysis, never a fatal).
+         */
+        $views = wp_connectors_file_code_views($path);
+        $code = null !== $views ? $views['code'] : '';
         $relative = str_replace($pluginDir . '/', '', $path);
 
         /*
@@ -1347,7 +1401,7 @@ function wp_connectors_self_containment_violations($pluginDir)
          * per-segment × per-assignment fan-out used to re-mask O(8×)
          * on files like uninstall.php).
          */
-        $masked = wp_connectors_mask_string_contents($code);
+        $masked = null !== $views ? $views['masked'] : '';
 
         if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $masked, $includes, PREG_OFFSET_CAPTURE)) {
             foreach ($includes[0] as $include_match) {

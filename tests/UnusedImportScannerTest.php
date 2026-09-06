@@ -352,4 +352,53 @@ FIXTURE
             'The comment line keeps its terminator, so the following use statement keeps its ^ anchor on every supported PHP version.'
         );
     }
+
+    public function testTheSharedViewProviderServesBothChecksPerContent(): void
+    {
+        /*
+         * glm25-8: the conventions gate tokenizes every connectors/*.php
+         * file once, not once per check — the self-containment driver and
+         * this scanner both read their (source, code, masked) views from
+         * wp_connectors_file_code_views(). The provider's memo is keyed
+         * by CONTENT (path + md5), so a rewritten fixture re-tokenizes:
+         * no mtime granularity, and no order dependence for suites that
+         * rewrite within one process (the glm15-6 memoization boundary).
+         */
+        $path = $this->root . '/provider.php';
+        $source = "<?php\n// comment\n\$x = 'string';\n";
+        file_put_contents($path, $source);
+
+        $views = wp_connectors_file_code_views($path);
+        $this->assertIsArray($views, 'A readable file yields the view triple.');
+        $this->assertSame($source, $views['source'], 'The raw source rides along for statement slicing.');
+        $this->assertSame(strlen($source), strlen($views['code']), 'The comment-stripped view is length-preserving.');
+        $this->assertSame(strlen($source), strlen($views['masked']), 'The string-masked view is length-preserving.');
+        $this->assertStringNotContainsString('comment', $views['code'], 'Comments are blanked in the code view.');
+        $this->assertStringNotContainsString('string', $views['masked'], 'String contents are blanked in the masked view.');
+        $this->assertStringContainsString("\$x", $views['masked'], 'Real code keeps its bytes in the masked view.');
+
+        // Same content, same path: the served entry is the memoized one.
+        $this->assertSame($views, wp_connectors_file_code_views($path), 'Same content reuses the memoized triple.');
+
+        // A REWRITE re-tokenizes — the md5 half of the key.
+        file_put_contents($path, "<?php\nuse Vendor\Package\Widget;\n");
+        $rewritten = wp_connectors_file_code_views($path);
+        $this->assertSame("<?php\nuse Vendor\Package\Widget;\n", $rewritten['source'], 'A rewritten file never serves the stale view.');
+
+        // An unreadable file is null; the callers own that return.
+        $dangling = $this->root . '/dangling.php';
+        symlink('/nonexistent/target/for/wp-connectors-tests', $dangling);
+        $this->assertNull(wp_connectors_file_code_views($dangling), 'The unreadable return is null, owned by the callers.');
+
+        /*
+         * Source pin: both consumers route through the one provider and
+         * neither computes its own strip+mask pair anymore.
+         */
+        $gate = (string) file_get_contents(dirname(__DIR__) . '/bin/check-conventions.php');
+        $this->assertStringContainsString('$views = wp_connectors_file_code_views(', $gate, 'The unused-import scan reads the shared views.');
+        $this->assertSame(0, preg_match_all('/=\s*wp_connectors_mask_string_contents\(/', $gate), 'The scan computes no mask of its own.');
+
+        $tools = (string) file_get_contents(dirname(__DIR__) . '/bin/lib/plugin-tools.php');
+        $this->assertStringContainsString('$views = wp_connectors_file_code_views($path);', $tools, 'The self-containment driver reads the shared views.');
+    }
 }

@@ -132,13 +132,14 @@ function wp_connectors_unused_import_violations(string $root): int
         }
 
         /*
-         * The warning is suppressed because the false return is OWNED
-         * below (glm17-10): the FAIL line is the loud channel in the
-         * CLI run, and the raw warning would only double it there —
-         * and surface as a test error in suites that load this file.
+         * glm25-8: the file's views come from the ONE shared tokenizer
+         * provider — the self-containment analyzer over the same file
+         * in this process already paid for the tokenization (two
+         * token_get_all passes per file per check, four per gate run,
+         * with the tokenize the scanners' dominant cost).
          */
-        $source = @file_get_contents($file->getPathname());
-        if (false === $source) {
+        $views = wp_connectors_file_code_views($file->getPathname());
+        if (null === $views) {
             /*
              * Loud, never silently compliant: the (string) cast used
              * to turn a read failure into '' — an unreadable file was
@@ -154,6 +155,7 @@ function wp_connectors_unused_import_violations(string $root): int
             ++$violations;
             continue;
         }
+        $source = $views['source'];
 
         /*
          * glm17-8: imports are FOUND on the token-masked view, never the
@@ -170,9 +172,7 @@ function wp_connectors_unused_import_violations(string $root): int
          * the view), so the statement bytes are sliced from $source
          * below, never taken from the match text.
          */
-        $code_view = wp_connectors_mask_string_contents(
-            wp_connectors_strip_comments($source)
-        );
+        $code_view = $views['masked'];
 
         $matches = array();
         preg_match_all(
