@@ -310,6 +310,39 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertCount(2, $this->sdkHttpAttempts());
     }
 
+    public function testACorruptDiscoveryRowIsAMissNotAnEmptyCatalog()
+    {
+        /*
+         * glm23-7 (review round 23, finding 7): is_array() alone
+         * validated the 12h discovery transient — a corrupt or foreign
+         * array row (an out-of-band write; no in-repo writer can
+         * produce it) served verbatim, id_maps_to_metadata() filtered
+         * every entry out, and the provider reported an EMPTY catalog
+         * with no probe attempt for the full DISCOVERY_TTL, where the
+         * designed absent-row path probes and falls back. A sound row
+         * is NON-EMPTY and all strings (both surfaces' discovery
+         * rejects the empty list, glm13-2); anything else is a miss.
+         */
+        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
+
+        $cache_id = PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl');
+
+        set_transient($cache_id, array(0));
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+
+        $directory = $this->directory();
+        $this->assertSame(array('glm-5.3'), $this->idList($directory->listModelMetadata()), 'A corrupt array row is a cache miss: the probe runs.');
+        $this->assertCount(1, $this->sdkHttpAttempts(), 'The corrupt row triggered discovery.');
+
+        set_transient($cache_id, array('glm-5.3', false));
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.2')));
+
+        $this->assertSame(array('glm-5.2'), $this->idList($directory->listModelMetadata()), 'A foreign non-string entry is a cache miss: the probe runs.');
+        $this->assertCount(2, $this->sdkHttpAttempts(), 'The foreign row triggered discovery too.');
+    }
+
     public function testTransientInvalidationBypassesTheSdkCacheLayerToo()
     {
         $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');

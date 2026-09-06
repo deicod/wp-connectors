@@ -123,7 +123,21 @@ final class ZaiDiscoveryCache {
 	 */
 	public static function cached_ids( string $cache_id, string $plan, callable $discover ): array {
 		$cached_ids = get_transient( $cache_id );
-		if ( \is_array( $cached_ids ) ) {
+
+		/*
+		 * glm23-7 (review round 23, finding 7): the 12h row must be a
+		 * NON-EMPTY list of string IDs — both surfaces' discovery
+		 * rejects an empty data list (glm13-2), so array() (or a
+		 * foreign non-string entry) under the transient is an
+		 * out-of-band or corrupt write: is_array() alone served it
+		 * verbatim, id_maps_to_metadata() filtered every entry out,
+		 * and the provider reported an EMPTY catalog for the full
+		 * DISCOVERY_TTL with no probe attempt, where the designed
+		 * absent-row path would probe and fall back. A corrupt row is
+		 * a cache MISS now — the negative-marker and plan-fallback
+		 * logic below runs exactly as for an absent row.
+		 */
+		if ( \is_array( $cached_ids ) && self::is_sound_id_row( $cached_ids ) ) {
 			return $cached_ids;
 		}
 
@@ -153,6 +167,35 @@ final class ZaiDiscoveryCache {
 		set_transient( $cache_id, $ids, self::DISCOVERY_TTL );
 
 		return $ids;
+	}
+
+	/**
+	 * Whether a cached transient row is a sound ID list: NON-EMPTY and
+	 * every entry a string (glm23-7).
+	 *
+	 * Both surfaces' discovery rejects an empty data list (glm13-2), so
+	 * a legitimate discovery never caches one — the empty array (or any
+	 * non-string entry) under the transient can only be an out-of-band
+	 * or corrupt write, and serving it would report an empty catalog
+	 * for the full DISCOVERY_TTL.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $row The transient's stored value.
+	 * @return bool True when the row is a discovery-shaped ID list.
+	 */
+	private static function is_sound_id_row( array $row ): bool {
+		if ( array() === $row ) {
+			return false;
+		}
+
+		foreach ( $row as $id ) {
+			if ( ! \is_string( $id ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
