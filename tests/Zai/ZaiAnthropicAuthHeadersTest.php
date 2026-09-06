@@ -275,17 +275,9 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
 
     public function testTheWrapFunnelFailsClosedOnForeignAuthTypes()
     {
-        $foreign = new class implements WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface {
-            public function authenticateRequest(SdkRequest $request): SdkRequest
-            {
-                return $request;
-            }
-
-            public static function getJsonSchema(): array
-            {
-                return array();
-            }
-        };
+        // glm22-10: the harness-owned identity-passthrough double (was
+        // an inline anonymous class spelling the same contract).
+        $foreign = new OpaqueAuthentication();
 
         /*
          * GLM3 #9: the refusal is the binding-failure RuntimeException

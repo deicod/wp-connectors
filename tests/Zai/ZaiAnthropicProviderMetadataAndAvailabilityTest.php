@@ -391,23 +391,14 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
 
     /**
      * A foreign (non-Api-key) request authentication — the opaque wiring
-     * only third-party setRequestAuthentication() callers can produce.
+     * only third-party setRequestAuthentication() callers can produce
+     * (glm22-10: one-line delegate to the harness-owned double).
      *
      * @return \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface
      */
     private function opaqueAuthentication()
     {
-        return new class implements \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface {
-            public function authenticateRequest(WordPress\AiClient\Providers\Http\DTO\Request $request): WordPress\AiClient\Providers\Http\DTO\Request
-            {
-                return $request;
-            }
-
-            public static function getJsonSchema(): array
-            {
-                return array();
-            }
-        };
+        return new OpaqueAuthentication();
     }
 
     public function testAZaiValidatedStateCanNeverEstablishAnthropicStatus()
@@ -553,20 +544,10 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         $key = FakeSecrets::apiKey();
         $availability = $this->availability($key);
 
-        // Not the gate's concern: null and foreign wiring.
+        // Not the gate's concern: null and foreign wiring (glm22-10: the
+        // harness-owned identity-passthrough double).
         $this->assertNull($availability->generation_refusal_for_wired_authentication(null));
-        $foreign = new class implements RequestAuthenticationInterface {
-            public function authenticateRequest(WordPress\AiClient\Providers\Http\DTO\Request $request): WordPress\AiClient\Providers\Http\DTO\Request
-            {
-                return $request;
-            }
-
-            public static function getJsonSchema(): array
-            {
-                return array();
-            }
-        };
-        $this->assertNull($availability->generation_refusal_for_wired_authentication($foreign));
+        $this->assertNull($availability->generation_refusal_for_wired_authentication(new OpaqueAuthentication()));
 
         // Clean state: an ApiKey instance passes the gate.
         $this->assertNull($availability->generation_refusal_for_wired_authentication(new ApiKeyRequestAuthentication($key)));

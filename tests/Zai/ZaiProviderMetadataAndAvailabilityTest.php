@@ -364,23 +364,14 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
 
     /**
      * A foreign (non-Api-key) request authentication — the opaque wiring
-     * only third-party setRequestAuthentication() callers can produce.
+     * only third-party setRequestAuthentication() callers can produce
+     * (glm22-10: one-line delegate to the harness-owned double).
      *
      * @return \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface
      */
     private function opaqueAuthentication()
     {
-        return new class implements \WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface {
-            public function authenticateRequest(WordPress\AiClient\Providers\Http\DTO\Request $request): WordPress\AiClient\Providers\Http\DTO\Request
-            {
-                return $request;
-            }
-
-            public static function getJsonSchema(): array
-            {
-                return array();
-            }
-        };
+        return new OpaqueAuthentication();
     }
 
     public function testADatabaseOnlyValidKeyConnectsThroughAnUnwiredProbe()

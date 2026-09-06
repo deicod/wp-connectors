@@ -1652,23 +1652,14 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
     }
 
     /**
-     * A foreign (non-API-key) authentication wiring for the GLM3 #9 tests.
+     * A foreign (non-API-key) authentication wiring for the GLM3 #9 tests
+     * (glm22-10: one-line delegate to the harness-owned double).
      *
      * @return RequestAuthenticationInterface
      */
     private function foreignAuthentication()
     {
-        return new class implements RequestAuthenticationInterface {
-            public function authenticateRequest(SdkRequest $request): SdkRequest
-            {
-                return $request;
-            }
-
-            public static function getJsonSchema(): array
-            {
-                return array();
-            }
-        };
+        return new OpaqueAuthentication();
     }
 
     public function testAForeignWiringWithInvalidOptionsYieldsTheOptionRejection()
