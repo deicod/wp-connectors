@@ -29,6 +29,7 @@ namespace Deicod\WpConnectors\Zai\Models;
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
+use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
@@ -95,6 +96,67 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @var array|null
 	 */
 	private $generation_prompt = null;
+
+	/**
+	 * Encodability verdicts for historical tool results, keyed by DTO
+	 * identity (glm22-3, the zai port of the twin's glm21-4).
+	 *
+	 * The tool-result response is the ONE value whose encodability guard
+	 * cannot ride the whole-payload net (the glm13-11 exception: the SDK
+	 * parent's message mapping json_encodes it and STRING-CASTS the
+	 * failure, laundering an unencodable result into "content": false
+	 * before the net could see it), so validate_request()'s walk proves
+	 * it eagerly on EVERY request — and a K-turn tool loop replays the
+	 * full conversation each request, re-encoding all K-1 prior results
+	 * (often multi-KB scraped/JSON payloads) and discarding the string:
+	 * O(K²) guard encodes on the hot path. The vendor parent's own
+	 * per-request shipping encode is structural and stays; this memo
+	 * removes the GUARD's half. The verdict is a pure function of the
+	 * immutable vendor FunctionResponse DTO (getters only), so it
+	 * memoizes by identity on the SplObjectStorage the 7.4 floor allows
+	 * (the tool_schema_memo precedent, glm16-6); rejections never
+	 * memoize (must_encode throws before any entry lands), and the
+	 * first-run proof is byte-identical. The build-set sweep below
+	 * bounds the pin at the previous and current build's tool parts —
+	 * the caller's own conversation array pins those DTOs anyway, and a
+	 * rehydrated (toArray()/fromArray()) conversation carries fresh
+	 * instances every request and misses BY DESIGN: any value-key would
+	 * have to serialize the value first — the very cost the memo exists
+	 * to skip (the twin's glm21-4/glm21-17 discipline, ported whole).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var \SplObjectStorage|null
+	 */
+	private $tool_result_encode_memo = null;
+
+	/**
+	 * The tool DTOs the CURRENT request build has mapped — the build set
+	 * the tool-loop memos are pruned to (glm22-3; the twin's glm21-4/
+	 * glm21-17 sweep, ported).
+	 *
+	 * Re-armed (null) at every params build and noted at each tool DTO
+	 * the walk visits (this surface's mapping is the SDK parent's, which
+	 * maps exactly those DTOs); once the build's params are prepared,
+	 * prune_tool_loop_memos() detaches every memo entry whose DTO this
+	 * build did NOT map. The bound is thereby structural — after every
+	 * completed tool-bearing build the memos hold at most THAT build's
+	 * tool parts (during a build, at most the previous and the current
+	 * build's), the glm16-6 "at most the current set" discipline. This
+	 * closes the rotating-tail shape — builds sharing one tool DTO
+	 * while replacing later ones would otherwise accumulate every
+	 * superseded entry. A tool-less build contributes nothing and prunes
+	 * nothing (the set stays null): an interleaved plain generation does
+	 * not shed a tool loop's entries, and the last tool-bearing build's
+	 * bound stands. A build that throws mid-walk never prunes: released
+	 * or stale entries only ever cost a re-derivation — entries are pure
+	 * derivations of their DTOs, never wrong for them.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var \SplObjectStorage|null
+	 */
+	private $tool_loop_build_dto = null;
 
 	/**
 	 * Builds the request against the CURRENT plan/region endpoint.
@@ -293,9 +355,20 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		// assembled-params encodability net fails at createRequest().
 		$this->generation_prompt = $prompt;
 
+		/*
+		 * glm22-3: the build's tool-DTO set is re-armed here (the walk
+		 * notes every tool DTO it visits — exactly the set the parent's
+		 * mapping maps) and the memos are pruned to it once the params
+		 * are prepared — see $tool_loop_build_dto and
+		 * prune_tool_loop_memos().
+		 */
+		$this->tool_loop_build_dto = null;
+
 		$this->validate_request( $prompt );
 
 		$params = parent::prepareGenerateTextParams( $prompt );
+
+		$this->prune_tool_loop_memos();
 
 		/*
 		 * GLM12 #4 (parity with the zai_anthropic twin's GLM1 #4): an
@@ -1296,6 +1369,10 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		foreach ( $prompt as $message ) {
 			foreach ( $message->getParts() as $part ) {
 				if ( $part->getType()->isFunctionResponse() && null !== $part->getFunctionResponse() ) {
+					// glm22-3: into the build's tool-DTO set (see
+					// $tool_loop_build_dto).
+					$this->note_tool_loop_dto( $part->getFunctionResponse() );
+
 					/*
 					 * GLM9 #4: the id ships as "tool_call_id" verbatim
 					 * (the SDK parent's message mapping copies it
@@ -1322,9 +1399,13 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 					 * encodes fine — the R18 'content': false corruption
 					 * class). Its encodability guard stays eager here,
 					 * PRE-mapping, the one value whose check cannot wait
-					 * for the net.
+					 * for the net. glm22-3: the eager proof memoizes its
+					 * verdict by DTO identity (prove_tool_result_encodable)
+					 * — a K-turn loop replays the full conversation every
+					 * request, and the un-memoized walk re-encoded all
+					 * K-1 prior results per build, O(K²).
 					 */
-					JsonEncodeGuard::must_encode( $part->getFunctionResponse()->getResponse(), 'a tool result', self::PROVIDER_LABEL );
+					$this->prove_tool_result_encodable( $part->getFunctionResponse() );
 					continue;
 				}
 
@@ -1345,6 +1426,101 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				}
 			}
 		}
+	}
+
+	/**
+	 * Notes one tool DTO the current build maps, into the build set the
+	 * tool-loop memos are pruned to (glm22-3, the twin's glm21-4/glm21-17 —
+	 * see $tool_loop_build_dto).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param object $tool_dto The FunctionCall/FunctionResponse being mapped.
+	 * @return void
+	 */
+	private function note_tool_loop_dto( object $tool_dto ): void {
+		if ( null === $this->tool_loop_build_dto ) {
+			$this->tool_loop_build_dto = new \SplObjectStorage();
+		}
+
+		$this->tool_loop_build_dto->offsetSet( $tool_dto, true );
+	}
+
+	/**
+	 * Detaches every tool-loop memo entry whose DTO the completed build
+	 * did not map (glm22-3, the twin's glm21-17 sweep, ported whole).
+	 *
+	 * Runs once per completed request build (prepareGenerateTextParams,
+	 * after the params are prepared): the memos may hold at most the
+	 * PREVIOUS and the CURRENT build's tool parts, so the rotating-tail
+	 * shape — builds keeping one tool DTO while replacing later ones —
+	 * never accumulates every superseded entry. Entries are pure
+	 * derivations of their DTOs, so a detach only ever costs a
+	 * re-derivation on a later build.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 */
+	private function prune_tool_loop_memos(): void {
+		$build_set = $this->tool_loop_build_dto;
+
+		if ( null !== $build_set ) {
+			foreach ( array( $this->tool_result_encode_memo ) as $storage ) {
+				if ( null === $storage ) {
+					continue;
+				}
+
+				$detached = array();
+				foreach ( $storage as $dto ) {
+					if ( ! $build_set->offsetExists( $dto ) ) {
+						$detached[] = $dto;
+					}
+				}
+
+				foreach ( $detached as $dto ) {
+					$storage->offsetUnset( $dto );
+				}
+			}
+		}
+
+		$this->tool_loop_build_dto = null;
+	}
+
+	/**
+	 * Proves one tool result's response value encodable, memoizing the
+	 * verdict by DTO identity (glm22-3, the zai port of the twin's
+	 * glm21-4).
+	 *
+	 * Same contract as the JsonEncodeGuard::must_encode() call it wraps
+	 * — byte-identical first-run proof (the eager glm13-11 exception),
+	 * the same typed rejection on an unencodable value — minus the
+	 * repeat: a conversation replaying the same DTO instances (the
+	 * in-memory tool-loop shape) reads the verdict instead of
+	 * re-encoding every historical result on every request build. The
+	 * vendor parent's own shipping encode of the response is structural
+	 * and untouched. Rejections never memoize (the glm16-6 discipline):
+	 * the guard throws before any entry lands, so an unencodable DTO
+	 * re-proves and re-rejects identically on every build.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param FunctionResponse $function_response The tool result being mapped.
+	 * @return void
+	 * @throws InvalidArgumentException When the response value cannot encode.
+	 */
+	private function prove_tool_result_encodable( FunctionResponse $function_response ): void {
+		if ( null !== $this->tool_result_encode_memo && $this->tool_result_encode_memo->offsetExists( $function_response ) ) {
+			return;
+		}
+
+		JsonEncodeGuard::must_encode( $function_response->getResponse(), 'a tool result', self::PROVIDER_LABEL );
+
+		if ( null === $this->tool_result_encode_memo ) {
+			$this->tool_result_encode_memo = new \SplObjectStorage();
+		}
+
+		$this->tool_result_encode_memo->offsetSet( $function_response, true );
 	}
 
 	/**

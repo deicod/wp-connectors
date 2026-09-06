@@ -687,6 +687,96 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testAReplayedToolResultProvesEncodableOnceAndAConversationSwitchReleases()
+    {
+        /*
+         * glm22-3 (the zai port of the twin's glm21-4/glm21-17 pin):
+         * the tool-result encodability proof is the one eager guard the
+         * whole-payload net cannot carry (the glm13-11 exception — the
+         * SDK parent string-casts its failed encode into "content":
+         * false), and a K-turn loop replays the full conversation every
+         * request: without the identity memo the walk re-proved every
+         * historical result per build, O(K²) guard encodes. The oracle
+         * is a static guard with no observable seam, so the pin reads
+         * the private memo field through the harness reflection helper
+         * (the aggregator_state() channel, glm19-11): the DTO carries
+         * its verdict after the first build, keeps it across a
+         * replayed build (whose wire body stays byte-identical), and a
+         * completed build mapping a DIFFERENT conversation (fresh DTO
+         * instances — the rehydration shape) releases the old entries.
+         * The vendor parent's own per-request shipping encode is
+         * structural and untouched by the memo.
+         */
+        $result = new FunctionResponse('c1', 'get_weather', array('temp_c' => 21));
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('c1', 'get_weather', array('city' => 'Oslo'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart($result))),
+        );
+
+        $model = $this->model();
+        $memo  = function () use ( $model ) {
+            return $this->aggregator_state($model, 'tool_result_encode_memo');
+        };
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+        $model->generateTextResult($prompt);
+
+        $storage = $memo();
+        $this->assertInstanceOf(\SplObjectStorage::class, $storage, 'The first tool-bearing build runs the proof and memoizes the verdict.');
+        $this->assertTrue($storage->offsetExists($result), 'The tool result carries its encodability verdict.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+        $model->generateTextResult($prompt);
+
+        $this->assertTrue($memo()->offsetExists($result), 'The replayed build keeps the verdict (same DTO instances).');
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertSame($attempts[0]['body'], $attempts[1]['body'], 'The memoized build sends the byte-identical wire body.');
+
+        // A different conversation (fresh DTO instances — the
+        // rehydration shape): its completed build releases the previous
+        // conversation's entries and memoizes only its own result.
+        $fresh_result = new FunctionResponse('d1', 'get_time', array('hour' => 14));
+
+        $fresh_prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('again'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('d1', 'get_time', array('zone' => 'CET'))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart($fresh_result))),
+        );
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+        $model->generateTextResult($fresh_prompt);
+
+        $after_switch = $memo();
+        $this->assertInstanceOf(\SplObjectStorage::class, $after_switch);
+        $this->assertFalse($after_switch->offsetExists($result), 'A conversation switch released the previous conversation\'s verdict.');
+        $this->assertTrue($after_switch->offsetExists($fresh_result), 'The fresh conversation memoizes its own result.');
+
+        // Rejections never memoize (the glm16-6 discipline): an
+        // unencodable response re-proves and re-rejects identically on
+        // every build, and the storage never holds it.
+        $unencodable = new FunctionResponse('bad', 'boom', array('v' => INF));
+
+        $unencodable_prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('x'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('bad', 'boom', array('q' => 1))))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart($unencodable))),
+        );
+
+        for ( $i = 0; $i < 2; $i++ ) {
+            try {
+                $model->generateTextResult($unencodable_prompt);
+                $this->fail('An unencodable tool result must be rejected before transport.');
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('could not JSON-encode a tool result', $e->getMessage());
+            }
+        }
+
+        $this->assertFalse($memo()->offsetExists($unencodable), 'A rejected tool result never lands in the memo.');
+    }
+
     /*
      * GLM6 #5: wire-value encodability guards (the GLM3 #4/GLM4 #1
      * oracle, ported from the zai_anthropic surface).
