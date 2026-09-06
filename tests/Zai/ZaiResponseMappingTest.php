@@ -2568,7 +2568,10 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
      */
     private function corePromptBuilder()
     {
-        return $this->bootedCorePromptBuilder('zai');
+        // glm23-12: the provider class parameterizes the registry-derived
+        // boot; the models body is this suite's one protocol-specific
+        // fact.
+        return $this->bootedCorePromptBuilder(ZaiProvider::class, HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
     }
 
     public function testCoreBuilderPathReturnsGeneratedTextOnSuccess()

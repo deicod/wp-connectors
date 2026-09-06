@@ -571,7 +571,8 @@ abstract class WpConnectorsTestCase extends TestCase
     /**
      * Boots one surface's provider into the registry, settles its
      * availability verdict, and returns the core prompt builder
-     * (glm22-7).
+     * (glm22-7; glm23-12: registry-derived, parameterized by provider
+     * class).
      *
      * The 15-line boot sequence was a full copy in both surface mapping
      * suites, differing only in five surface substitutions — the
@@ -579,65 +580,65 @@ abstract class WpConnectorsTestCase extends TestCase
      * priming, the settle-before-generation assert, the skip-first core
      * lookup) had to be edited in both suites, and a missed edit left
      * one suite green while silently testing a differently-booted
-     * provider. The harness owns the other half already
-     * (corePromptBuilderClass(), glm15-18); one surface-parameterized
-     * boot now, the per-suite corePromptBuilder() helpers one-line
-     * delegates.
+     * provider. glm22-7 extracted the sequence but HARD-CODED the
+     * surface set (a slug allowlist plus is_zai ternaries restating the
+     * availability/provider/prime/body pairings ZaiSurfaces and
+     * Plugin::PROVIDER_CLASSES own), so a third surface could not boot
+     * through this path at all and a pairing typo inside the ternaries
+     * silently booted the wrong surface (review round 23, finding 12).
      *
-     * @param string $provider_slug The provider slug ('zai' or
-     *                              'zai_anthropic').
+     * Every surface fact now derives from the ZaiSurfaces registry by
+     * PROVIDER_ID (glm23-11's identity rule): the endpoint the prime
+     * targets, the settings KEY_OPTION the key row stores (the
+     * availability classes' SDK-free mirror), the slug the registry
+     * wires — a third surface registered in ZaiSurfaces boots with no
+     * harness edit, and the ONE protocol-specific fact (the discovery
+     * models body — OpenAI-style versus Anthropic-style) is the
+     * caller's parameter. glm23-10's one-key discipline and the
+     * skip-first core lookup stand.
+     *
+     * @param string $provider_class The surface's SDK provider class
+     *                               (ZaiProvider or ZaiAnthropicProvider).
+     * @param string $models_body    The discovery /models response body the
+     *                               settle consumes (the one
+     *                               protocol-specific fact).
      * @return WP_AI_Client_Prompt_Builder The settled builder.
      */
-    protected function bootedCorePromptBuilder(string $provider_slug)
+    protected function bootedCorePromptBuilder(string $provider_class, string $models_body)
     {
-        if ( ! \in_array( $provider_slug, array( 'zai', 'zai_anthropic' ), true ) ) {
-            throw new \RuntimeException( "Unknown provider slug '{$provider_slug}'." );
-        }
-
         // Skip-first: the core lookup may mark the test skipped, before
         // any option or registry mutation.
         $class = $this->corePromptBuilderClass();
 
-        $is_zai = 'zai' === $provider_slug;
+        $surface = $this->zaiSurfaceRowForProvider($provider_class);
 
-        if ( $is_zai ) {
-            $this->primeZaiDiscoveryTransient();
-        } else {
-            $this->primeZaiAnthropicDiscoveryTransient();
+        if (null === $surface) {
+            throw new \RuntimeException("No registered zai surface for provider '{$provider_class}'.");
         }
 
-        $availability_class = $is_zai
-            ? \Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::class
-            : \Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::class;
-        $provider_class = $is_zai
-            ? \Deicod\WpConnectors\Zai\Provider\ZaiProvider::class
-            : \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::class;
+        $this->primeZaiSurfaceDiscoveryTransient($surface['endpoint']);
 
         /*
-         * glm23-10: ONE key for both halves — the old two fresh
-         * FakeSecrets::apiKey() draws stored a key row that matched no
-         * credential that ever flew, so any later database-key path
-         * (unwiring the registry auth, consulting a second unwired
-         * availability instance) read an unsettled binding and probed
-         * an unmocked credential, silently diverging from the settled
-         * state this helper promises.
+         * glm23-10: ONE key for both halves — the stored row and the
+         * wired registry credential must be the same key or any later
+         * database-key path reads an unsettled binding. The row rides
+         * the SETTINGS class's SDK-free KEY_OPTION (the availability
+         * classes' mirror of the same constant, pinned equal by the
+         * consistency tests).
          */
         $key = FakeSecrets::apiKey();
-        update_option( $availability_class::KEY_OPTION, $key );
-        \Deicod\WpConnectors\Zai\Plugin::register( AiClient::defaultRegistry() );
+        update_option($surface['settings']::KEY_OPTION, $key);
+        \Deicod\WpConnectors\Zai\Plugin::register(AiClient::defaultRegistry());
         AiClient::defaultRegistry()->setProviderRequestAuthentication(
-            $provider_slug,
-            new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication( $key )
+            $provider_class::PROVIDER_ID,
+            new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication($key)
         );
 
-        $models_body = $is_zai
-            ? HttpResponseFactory::openAiModelsBody( array( 'glm-5.3' ) )
-            : HttpResponseFactory::anthropicModelsBody( array( 'glm-5.3' ) );
-        $this->queueSdkResponse( 200, array(), $models_body );
+        $this->queueSdkResponse(200, array(), $models_body);
 
-        $this->assertTrue( $provider_class::availability()->isConfigured(), 'Availability must settle before generation.' );
+        $this->assertTrue($provider_class::availability()->isConfigured(), 'Availability must settle before generation.');
 
-        return new $class( AiClient::defaultRegistry(), 'Hello' );
+        return new $class(AiClient::defaultRegistry(), 'Hello');
     }
 
     /*
