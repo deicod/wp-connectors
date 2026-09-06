@@ -650,6 +650,43 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testPrecisionLossToolArgumentsInsidePlainObjectsAreRejectedBeforeTransport()
+    {
+        /*
+         * glm22-1: the conservative walker recursed only into arrays and
+         * stdClass, so a caller-built PLAIN value object carrying an
+         * out-of-range integral float passed the outbound guard clean and
+         * shipped to the wire byte-identical to its rejected array twin
+         * ('{"count":9.3e+18}') — the glm12-8 replay-poisoning contract
+         * held on every channel except the one a caller's value object
+         * rides. The walker now recurses into every object's public
+         * members, exactly the set json_encode() serializes.
+         */
+        $this->primeZaiDiscoveryTransient();
+        $model = ZaiProvider::model('glm-5.3');
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+
+        $args = new class {
+            /** @var float */
+            public $count = 9.3e18;
+        };
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_obj', 'get_weather', $args)))),
+        );
+
+        try {
+            $model->generateTextResult($prompt);
+            $this->fail('A precision-loss tool argument inside a plain object must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not replay tool call arguments', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     /*
      * GLM6 #5: wire-value encodability guards (the GLM3 #4/GLM4 #1
      * oracle, ported from the zai_anthropic surface).
@@ -1268,6 +1305,44 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":9223372036854775809}')), 'The boundary-window collapse (…809 → the 2^63 double) must reject decoded.');
         $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":9223372036854775808}')), 'The exact 2^63 double rejects decoded (undecidable from its lossy window).');
         $this->assertFalse($guard::is_replayable_decoded(json_decode('{"v":-9223372036854775809}')), 'The negative boundary window must reject decoded.');
+    }
+
+    public function testTheConservativeWalkerRecursesIntoEveryObject()
+    {
+        /*
+         * glm22-1 unit pin: has_out_of_range_integer_float() treats
+         * EVERY object like its stdClass branch — the outbound replay
+         * sites of both surfaces hand is_replayable() the raw caller
+         * DTO args, and a plain value object encoded to the identical
+         * wire bytes ('{"count":9.3e+18}') its array/stdClass twins
+         * reject on. The public-members recursion is exactly the set
+         * json_encode() serializes, so a PRIVATE lossy member that
+         * never ships also never rejects.
+         */
+        $guard = 'Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard';
+
+        $lossy = new class {
+            /** @var float */
+            public $count = 9.3e18;
+        };
+
+        $this->assertFalse($guard::is_replayable(array('count' => 9.3e18)), 'The array twin rejects (GLM6 #8).');
+        $this->assertFalse($guard::is_replayable(json_decode('{"count":9.3e18}')), 'The stdClass twin rejects.');
+        $this->assertFalse($guard::is_replayable($lossy), 'A plain object carrying the same lossy float must reject too (glm22-1).');
+
+        $clean = new class {
+            /** @var float */
+            public $temp_c = 21.5;
+        };
+
+        $this->assertTrue($guard::is_replayable($clean), 'An ordinary float inside a plain object replays.');
+
+        $hidden = new class {
+            /** @var float */
+            private $count = 9.3e18;
+        };
+
+        $this->assertTrue($guard::is_replayable($hidden), 'A private lossy member never ships (json_encode skips it), so it never rejects.');
     }
 
     public function testUnencodableToolCallIdentitiesAreRejectedBeforeTransport()

@@ -1080,6 +1080,35 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertNoHttpRequests();
     }
 
+    public function testPrecisionLossToolArgumentsInsidePlainObjectsAreRejectedBeforeTransport()
+    {
+        /*
+         * glm22-1: the twin of the GLM6 #8 pin one shape over — a plain
+         * (non-stdClass) object passed the object shape gate and the
+         * walker's stdClass-only recursion declared it clean, shipping
+         * the identical bytes ('{"count":9.3e+18}') its array twin
+         * rejects on.
+         */
+        $args = new class {
+            /** @var float */
+            public $count = 9.3e18;
+        };
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_obj', 'get_weather', $args)))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail('A precision-loss tool argument inside a plain object must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('could not replay tool call arguments', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testOrdinaryFloatToolArgumentsStillShip()
     {
         // GLM6 #8 guard: only genuinely replay-breaking values reject —

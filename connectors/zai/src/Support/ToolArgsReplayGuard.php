@@ -77,7 +77,10 @@ final class ToolArgsReplayGuard {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param mixed $value The decoded arguments tree (arrays, stdClass, scalars).
+	 * @param mixed $value The arguments tree — decode products and
+	 *                     caller-built trees alike (arrays, objects,
+	 *                     scalars; glm22-1: the walker recurses into
+	 *                     every object, not stdClass only).
 	 * @return bool True when the value replays losslessly.
 	 */
 	public static function is_replayable( $value ): bool {
@@ -436,7 +439,9 @@ final class ToolArgsReplayGuard {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param mixed $value The decoded arguments tree.
+	 * @param mixed $value The arguments tree — decode products and
+	 *                     caller-built trees alike (glm22-1: recursion
+	 *                     covers every object's public members).
 	 * @return bool True when a precision-loss float was found.
 	 */
 	private static function has_out_of_range_integer_float( $value ): bool {
@@ -469,7 +474,19 @@ final class ToolArgsReplayGuard {
 			return false;
 		}
 
-		if ( $value instanceof \stdClass ) {
+		if ( \is_object( $value ) ) {
+			/*
+			 * glm22-1: EVERY object, not just stdClass. The outbound
+			 * replay sites hand is_replayable() CALLER-built trees, and a
+			 * plain value object carrying a lossy big float encoded to
+			 * the identical wire bytes its array/stdClass twins reject on
+			 * ('{"count":9.3e+18}') while this stdClass-only recursion
+			 * fell through to the clean return below. get_object_vars()
+			 * from this unbound scope sees exactly the PUBLIC members —
+			 * the same set json_encode() serializes — so a
+			 * private/protected lossy float that never ships also never
+			 * rejects (the walker judges the wire, not the class).
+			 */
 			foreach ( \get_object_vars( $value ) as $member ) {
 				if ( self::has_out_of_range_integer_float( $member ) ) {
 					return true;
