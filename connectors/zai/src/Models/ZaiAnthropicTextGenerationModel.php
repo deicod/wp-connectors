@@ -285,6 +285,53 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private $tool_loop_anchor_noted = false;
 
 	/**
+	 * The encoded outputSchema string for the CURRENT config's schema
+	 * (glm21-7).
+	 *
+	 * The outputSchema is a config member that never changes across a
+	 * structured-output agent loop, but json_output_guidance()
+	 * re-encoded the whole (often multi-KB) schema into the system
+	 * prompt on every request build — one redundant whole-schema
+	 * json_encode plus sprintf per HTTP request for identical bytes on
+	 * the request-build hot path. The memo holds the ENCODED STRING
+	 * only: the translated guidance sentence is rebuilt per call (the
+	 * instruction's pin — translations are not the memo's business).
+	 * Rejections never memoize (the guard throws before any entry
+	 * lands). The reset set is the tool_schema_memo's (glm16-6/16):
+	 * a config identity change — the vendor base's final setConfig()
+	 * can replace a live instance's config — or an in-place schema
+	 * change through the vendor ModelConfig's public
+	 * setOutputSchema(), detected by the strict value compare below.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string|null
+	 */
+	private $output_schema_encode_memo = null;
+
+	/**
+	 * The config whose schema the memo holds (glm21-7; the memo's
+	 * identity-based reset trigger — see $output_schema_encode_memo).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var \WordPress\AiClient\Providers\Models\DTO\ModelConfig|null
+	 */
+	private $output_schema_encode_memo_config = null;
+
+	/**
+	 * The schema value the memo was built for (glm21-7; the memo's
+	 * value-compare reset trigger, compared strictly on every build —
+	 * the vendor ModelConfig is MUTABLE, so one config object mutated
+	 * in place never changes identity while its schema does).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array|null
+	 */
+	private $output_schema_encode_memo_schema = null;
+
+	/**
 	 * The RAW wired authentication — the SDK parent's getter, unwrapped
 	 * (glm15-8: the protocol wrap lives once on the
 	 * SpeaksAnthropicMessagesProtocol trait).
@@ -705,8 +752,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * wp_json_encode() lossily rescues invalid UTF-8 and never
 			 * returns false for a string in production, so a guard on it
 			 * was dead code outside the test stub.
+			 *
+			 * glm21-7: the encoding rides the config-identity +
+			 * value-compare memo (encoded_output_schema()) — first-run
+			 * bytes identical, repetition skipped for an unchanged
+			 * schema.
 			 */
-			$encoded_schema = JsonEncodeGuard::encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
+			$encoded_schema = $this->encoded_output_schema( $output_schema );
 
 			$guidance .= "\n" . sprintf(
 				/* translators: %s: a JSON Schema document (compact JSON). */
@@ -716,6 +768,39 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		return $guidance;
+	}
+
+	/**
+	 * The JSON encoding of the configured outputSchema, memoized per
+	 * config identity and schema value (glm21-7).
+	 *
+	 * Same contract as the JsonEncodeGuard::encode() call it wraps —
+	 * byte-identical first-run encoding, the same typed rejection on an
+	 * unencodable schema — minus the repeat: the compare pair (config
+	 * identity, strict schema value) re-encodes only when either half
+	 * changed, covering BOTH reconfiguration idioms the way the
+	 * tool-schema memo's pair does (glm16-16). Rejections never
+	 * memoize: the guard throws before any field lands, so an
+	 * unencodable schema re-proves and re-rejects identically on every
+	 * build.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $output_schema The configured output schema.
+	 * @return string The JSON encoding of the schema.
+	 */
+	private function encoded_output_schema( array $output_schema ): string {
+		$config = $this->getConfig();
+
+		if ( null === $this->output_schema_encode_memo
+			|| $config !== $this->output_schema_encode_memo_config
+			|| $output_schema !== $this->output_schema_encode_memo_schema ) {
+			$this->output_schema_encode_memo        = JsonEncodeGuard::encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
+			$this->output_schema_encode_memo_config = $config;
+			$this->output_schema_encode_memo_schema = $output_schema;
+		}
+
+		return $this->output_schema_encode_memo;
 	}
 
 	/**

@@ -3404,4 +3404,68 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             'A rejected call never lands in the verdict memo.'
         );
     }
+
+    public function testTheConfiguredOutputSchemaEncodesOnceUntilTheSchemaChanges()
+    {
+        /*
+         * glm21-7: the outputSchema is a config member that never
+         * changes across a structured-output agent loop, but every
+         * request build re-encoded the whole schema into the system
+         * guidance for identical bytes. The memo (the tool_schema_memo
+         * compare pattern) encodes it once: a counting JsonSerializable
+         * nested in the schema proves the second build rides the memo,
+         * an in-place setOutputSchema() resets it through the value
+         * compare, and a setConfig() replacement resets it through the
+         * config-identity compare. Only the encoded STRING is
+         * memoized — the translated guidance sentence is rebuilt per
+         * call by design.
+         */
+        $counting = new class implements \JsonSerializable {
+            public $encodes = 0;
+
+            #[\ReturnTypeWillChange]
+            public function jsonSerialize()
+            {
+                ++$this->encodes;
+
+                return array( 'type' => 'string' );
+            }
+        };
+
+        $config = ModelConfig::fromArray(array(
+            'outputMimeType' => 'application/json',
+            'outputSchema'   => array( 'type' => 'object', 'properties' => array( 'x' => $counting ) ),
+        ));
+
+        $model  = $this->model($config);
+        $prompt = array( new Message(MessageRoleEnum::user(), array( new MessagePart('hi') )) );
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $this->assertSame(1, $counting->encodes, 'The unchanged schema encodes once; the second build rides the memo.');
+
+        // In-place schema mutation (the vendor ModelConfig's public
+        // setter): the strict value compare resets the memo.
+        $config->setOutputSchema(array( 'type' => 'object', 'properties' => array( 'y' => $counting ) ));
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $this->assertSame(2, $counting->encodes, 'setOutputSchema() resets the memo through the value compare.');
+
+        // setConfig() replacement: the config-identity compare resets.
+        $model->setConfig(ModelConfig::fromArray(array(
+            'outputMimeType' => 'application/json',
+            'outputSchema'   => array( 'type' => 'object', 'properties' => array( 'z' => $counting ) ),
+        )));
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $this->assertSame(3, $counting->encodes, 'A setConfig() replacement resets the memo through the identity compare.');
+    }
 }
