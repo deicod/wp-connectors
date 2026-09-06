@@ -274,9 +274,12 @@ final class SseFrameBuffer {
 					 * content), and a ws-prefixed 'event: error' with an
 					 * undecodable payload was swallowed with no flag.
 					 * Sniff-accepted bodies parse identically now.
+					 * glm25-5: no own state transition here — the fall-
+					 * through settles at the one unconditional
+					 * assignment below (the AFTER_BOM branch above is
+					 * the only path that may return still-undecided).
 					 */
-					$this->buffer       = $rest;
-					$this->prefix_state = self::PREFIX_SETTLED;
+					$this->buffer = $rest;
 				}
 			} else {
 				// PREFIX_AFTER_BOM: the whitespace run behind the BOM.
