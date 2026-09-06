@@ -357,6 +357,49 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         $this->assertSame( array(), $remaining, 'Every derivable probe-miss marker of both surfaces must be deleted through the single owner: ' . wp_json_encode( $remaining ) );
     }
 
+    public function testTheClassFreeLiteralsMatchTheSettingsOwners()
+    {
+        /*
+         * glm23-13 (review round 23, finding 13): the class-free option
+         * deletions and the broken-install probe-prefix fallback literals
+         * hand-enumerate both surfaces' option names — justified (they
+         * must run with no plugin class loaded), but previously
+         * UNPINNED: a rename of a settings owner constant (the drift
+         * this repo's own comments record happening twice, GLM8
+         * #11/GLM9 #8) leaves every uninstall run deleting names
+         * nothing stores, and this suite's own plants/assertions spell
+         * the same literals, so it stays green under the rename. The
+         * pin derives the expected literal set from ZaiSurfaces and the
+         * settings owners' constants and asserts the uninstall SOURCE
+         * carries each — no runtime derivation, the file stays
+         * class-free; a rename breaks HERE first.
+         */
+        $source = (string) file_get_contents( dirname( __DIR__, 2 ) . '/connectors/zai/uninstall.php' );
+
+        foreach ( \Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES as $surface ) {
+            $settings = $surface['settings'];
+
+            foreach ( array(
+                $settings::OPTION_PLAN,
+                $settings::OPTION_REGION,
+                $settings::STATE_OPTION,
+                $settings::REGION_PENDING_OPTION,
+            ) as $option_name ) {
+                $this->assertStringContainsString(
+                    "delete_option( '" . $option_name . "' )",
+                    $source,
+                    "{$settings}: the class-free sweep deletes the owner constant's value ({$option_name})."
+                );
+            }
+
+            $this->assertStringContainsString(
+                "'_transient_" . $settings::probe_miss_transient_prefix() . "'",
+                $source,
+                "{$settings}: the broken-install fallback literal equals '_transient_' . probe_miss_transient_prefix()."
+            );
+        }
+    }
+
     public function testTheCredentialCollectionRidesTheSettingsOwnerLadder()
     {
         /*
