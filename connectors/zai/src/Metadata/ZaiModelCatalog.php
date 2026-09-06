@@ -122,7 +122,23 @@ final class ZaiModelCatalog {
 	 * @return bool True when the ID has known chat support.
 	 */
 	public static function is_chat_model( string $model_id ): bool {
-		return \in_array( $model_id, self::verified_chat_ids(), true );
+		/*
+		 * glm26-12: once-built flipped lookup — the merged id list is
+		 * constant data, and the per-ID loops (the parser's chat filter,
+		 * the discovery map rebuild, the seed filter) call this once per
+		 * model ID per discovery parse, each re-merging the three
+		 * constant sets plus a linear scan. The static local builds the
+		 * flipped set on the first call; isset() answers every later
+		 * one. The membership RULE is unchanged (verified evidence
+		 * only), and verified_chat_ids() keeps serving the list shape.
+		 */
+		static $chat_id_set = null;
+
+		if ( null === $chat_id_set ) {
+			$chat_id_set = array_fill_keys( self::verified_chat_ids(), true );
+		}
+
+		return isset( $chat_id_set[ $model_id ] );
 	}
 
 	/**
