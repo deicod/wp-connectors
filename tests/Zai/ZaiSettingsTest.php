@@ -780,6 +780,34 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('value="cn" selected=\'selected\'', $regionField);
     }
 
+    public function testTheEnumRendererResolvesLabelOverridesOnTheChild()
+    {
+        /*
+         * glm23-4 (review round 23, finding 4): render_enum_field()'s
+         * label call rode self:: (early binding) while every other
+         * extension point on the same lines rode static:: — a child
+         * override of plan_label()/region_label() (both public static,
+         * non-final) was silently bypassed in the dropdown the child
+         * registered, the exact trap the base docblock's "methods each
+         * concrete child overrides" contract sets. The renderer
+         * resolves the label on the CHILD now.
+         */
+        ob_start();
+        ZaiSettingsTestOverridingLabelSettings::render_plan_field();
+        $planField = (string) ob_get_clean();
+
+        $this->assertStringContainsString('OverridePlan-coding', $planField, 'The overriding plan labels ride the child-registered dropdown.');
+        $this->assertStringContainsString('OverridePlan-general', $planField);
+        $this->assertStringNotContainsString('Coding Plan (subscription', $planField, 'The base labels do not ride through an overriding child.');
+
+        ob_start();
+        ZaiSettingsTestOverridingLabelSettings::render_region_field();
+        $regionField = (string) ob_get_clean();
+
+        $this->assertStringContainsString('OverrideRegion-intl', $regionField, 'The overriding region labels ride the child-registered dropdown.');
+        $this->assertStringContainsString('OverrideRegion-cn', $regionField);
+    }
+
     public function testSectionDescriptionExplainsAccountAndBillingDistinction()
     {
         ob_start();
@@ -923,4 +951,57 @@ final class ZaiSettingsTestBrokenOwnerSettings extends AbstractPlanRegionSetting
     public const CACHE_SCOPE = 'zai_settings_test';
 
     public const ENDPOINT_CLASS = PlanRegionSettings::class;
+}
+
+/**
+ * A settings child OVERRIDING the translating label methods (glm23-4):
+ * the shared enum renderer must resolve them on the CHILD (static::
+ * late binding) — the pre-fix self:: early binding silently rendered
+ * the base class's labels through a child-registered dropdown.
+ */
+final class ZaiSettingsTestOverridingLabelSettings extends AbstractPlanRegionSettings
+{
+    public const OPTION_PLAN = 'zai_settings_test_override_plan';
+
+    public const OPTION_REGION = 'zai_settings_test_override_region';
+
+    public const SECTION_ID = 'zai_settings_test_override';
+
+    public const PROVIDER_LABEL = 'settings override test';
+
+    public const STATE_OPTION = 'zai_settings_test_override_key_state';
+
+    public const REGION_PENDING_OPTION = 'zai_settings_test_override_region_pending';
+
+    public const KEY_OPTION = 'zai_settings_test_override_api_key';
+
+    public const KEY_ENV_NAME = 'ZAI_SETTINGS_TEST_OVERRIDE_API_KEY';
+
+    public const CACHE_PREFIX = 'zai_settings_test_override_models_';
+
+    public const CACHE_SCOPE = 'zai_settings_test_override';
+
+    public const ENDPOINT_CLASS = PlanRegionSettings::class;
+
+    /**
+     * The override under test — a distinctly-typed label.
+     *
+     * @param string $plan The plan value.
+     * @return string The overriding label.
+     */
+    public static function plan_label( string $plan ): string
+    {
+        return 'OverridePlan-' . $plan;
+    }
+
+    /**
+     * The override under test — a distinctly-typed label.
+     *
+     * @param string $region The region value.
+     * @return string The overriding label.
+     */
+    public static function region_label( string $region ): string
+    {
+        return 'OverrideRegion-' . $region;
+    }
 }

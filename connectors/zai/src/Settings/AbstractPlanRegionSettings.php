@@ -316,11 +316,20 @@ abstract class AbstractPlanRegionSettings {
 	private static function render_enum_field( string $option, array $values, string $current, string $label_method ): void {
 		echo '<select name="' . esc_attr( $option ) . '" id="' . esc_attr( $option ) . '">';
 		foreach ( $values as $value ) {
+			/*
+			 * glm23-4: static:: late binding — every other extension
+			 * point on these lines (static::OPTION_PLAN,
+			 * static::get_plan()) resolves on the CHILD, and both label
+			 * methods are public static non-final: a child override was
+			 * silently bypassed by self::'s early binding (review round
+			 * 23, finding 4), the exact trap the class docblock's
+			 * "methods each concrete child overrides" contract sets.
+			 */
 			printf(
-				'<option value="%1$s"%2$s>%3$s</option>',
+				'<option value="%1$s"%2$s">%3$s</option>',
 				esc_attr( $value ),
 				selected( $value, $current, false ),
-				esc_html( self::{$label_method}( $value ) )
+				esc_html( static::{$label_method}( $value ) )
 			);
 		}
 		echo '</select>';
