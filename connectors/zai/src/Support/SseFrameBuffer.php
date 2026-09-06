@@ -120,9 +120,10 @@ final class SseFrameBuffer {
 	 * The stream-start prefix state (GLM8 #2).
 	 *
 	 * The prefix rule — strip one leading run of LEADING_WHITESPACE, then
-	 * a UTF-8 BOM, then the whitespace after it, ONLY when a BOM is
-	 * actually present — applies exactly once, at stream start. While the
-	 * state is undecided (a whitespace-only buffer may still extend into
+	 * a UTF-8 BOM when present, then the whitespace after it (glm21-1:
+	 * the plain run strips even when no BOM follows) — applies exactly
+	 * once, at stream start. While the state is undecided (a
+	 * whitespace-only buffer may still extend into
 	 * a BOM, and a BOM may be split across chunks) NO frame splitting
 	 * runs either: the decision changes the first frame's bytes, so
 	 * splitting before it is settled would emit frames the strip would
@@ -139,8 +140,8 @@ final class SseFrameBuffer {
 
 	/**
 	 * Strips the one stream-start prefix both layers recognize (GLM8 #2):
-	 * leading whitespace, a UTF-8 BOM, then the whitespace after it —
-	 * applied only when a BOM is actually present.
+	 * a leading run of LEADING_WHITESPACE, then a UTF-8 BOM when present,
+	 * then the whitespace after it.
 	 *
 	 * ONE canonical composition serves BOTH layers: EventStreamSniff
 	 * routes bodies through this method, and feed() implements the
@@ -152,16 +153,30 @@ final class SseFrameBuffer {
 	 * field, was silently dropped, and surfaced corrupted content as a
 	 * success.
 	 *
-	 * A body WITHOUT a BOM is returned UNCHANGED, leading whitespace and
-	 * all: the plain-ws prefix is deliberately not stripped here. Such a
-	 * stream still routes to the SSE aggregator (the sniff's own ltrim
-	 * tolerance) and still drops its whitespace-prefixed first frame —
-	 * the spec-correct, master-identical behavior.
+	 * glm21-1: the plain leading-whitespace run strips even when NO BOM
+	 * follows it. GLM8 #2 deliberately returned a BOM-less body
+	 * unchanged — "the ws-prefixed first frame is the spec-correct
+	 * dropped frame" — while the sniff ltrimmed the same run privately
+	 * and routed the body to the SSE aggregator, whose first frame then
+	 * matched no column-0 field and dropped silently: a whitespace-
+	 * prefixed lone 'data: [DONE]' lost the OpenAI sentinel (its
+	 * post-sentinel frames then merged as pre-sentinel content,
+	 * mutating a completed generation), and a whitespace-prefixed
+	 * 'event: error' frame with an undecodable payload was swallowed
+	 * whole on the Anthropic surface — no error flag, no malformed
+	 * flag, silently lost corruption detection. What the sniff accepts,
+	 * the framing now parses; the strip stays stream-start only, so
+	 * mid-stream whitespace keeps its spec-strict unknown-field meaning.
+	 * For the JSON callers (JsonBodyDecoder,
+	 * ZaiModelListParser::decode_models_body()) the widening is inert
+	 * for the JSON-whitespace bytes json_decode already skips and
+	 * extends the same gateway-prefix tolerance to the remaining
+	 * charlist bytes (NUL, vertical tab).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $body The raw response body.
-	 * @return string The body with its BOM-adjacent prefix removed.
+	 * @return string The body with its stream-start prefix removed.
 	 */
 	public static function strip_stream_prefix( string $body ): string {
 		$rest = ltrim( $body, self::LEADING_WHITESPACE );
@@ -170,7 +185,7 @@ final class SseFrameBuffer {
 			return ltrim( substr( $rest, \strlen( self::UTF8_BOM ) ), self::LEADING_WHITESPACE );
 		}
 
-		return $body;
+		return $rest;
 	}
 
 	/**
@@ -242,11 +257,21 @@ final class SseFrameBuffer {
 					}
 				} else {
 					/*
-					 * No BOM behind the leading whitespace: the buffer
-					 * stands as received — the whitespace-prefixed first
-					 * frame is the spec-correct DROPPED frame both
-					 * surfaces have always produced (master-identical).
+					 * No BOM behind the leading whitespace: glm21-1
+					 * strips the plain whitespace run TOO — the sniff
+					 * routes such a body on the same first
+					 * non-whitespace bytes (the one strip_stream_prefix()
+					 * composition), but this buffer used to keep the
+					 * run, so the first frame's leading 'data:'/'event:'
+					 * line matched no column-0 field and the frame
+					 * dropped silently: a ws-prefixed lone 'data:
+					 * [DONE]' lost the OpenAI sentinel (its
+					 * post-sentinel frames then merged as pre-sentinel
+					 * content), and a ws-prefixed 'event: error' with an
+					 * undecodable payload was swallowed with no flag.
+					 * Sniff-accepted bodies parse identically now.
 					 */
+					$this->buffer       = $rest;
 					$this->prefix_state = self::PREFIX_SETTLED;
 				}
 			} else {

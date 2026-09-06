@@ -12,6 +12,7 @@
 
 declare( strict_types=1 );
 
+use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\SseFrameBuffer;
 
@@ -339,18 +340,22 @@ final class SseFrameBufferTest extends WpConnectorsTestCase
         $this->assertSame('data: a', SseFrameBuffer::strip_stream_prefix($bom . ' ' . 'data: a'));
         $this->assertSame('data: a', SseFrameBuffer::strip_stream_prefix(" \r\n\t\x0B\0" . $bom . "\n\r data: a"));
 
-        // No BOM: the body comes back UNCHANGED, leading whitespace and
-        // all (the plain-ws prefix is the spec-correct dropped frame).
-        $this->assertSame(' data: a', SseFrameBuffer::strip_stream_prefix(' data: a'));
-        $this->assertSame("\n\ndata: a", SseFrameBuffer::strip_stream_prefix("\n\ndata: a"));
+        // glm21-1: no BOM — the plain leading-whitespace run strips too
+        // (the sniff's leniency and the framing's recognition share the
+        // one rule; a sniff-accepted ws-prefixed body parsed with its
+        // first frame DROPPED before).
+        $this->assertSame('data: a', SseFrameBuffer::strip_stream_prefix(' data: a'));
+        $this->assertSame('data: a', SseFrameBuffer::strip_stream_prefix("\n\ndata: a"));
+        $this->assertSame('data: a', SseFrameBuffer::strip_stream_prefix(" \r\n\t\x0B\0data: a"));
 
         // A BOM after the first field byte is content, not a prefix.
         $this->assertSame('data: ' . $bom . 'x', SseFrameBuffer::strip_stream_prefix('data: ' . $bom . 'x'));
 
         // Degenerate tails: a bare BOM prefixes nothing; a partial BOM
-        // at end-of-body is not a prefix decision and stays put.
+        // at end-of-body is not a prefix decision and stays put (the
+        // leading whitespace around it still strips, glm21-1).
         $this->assertSame('', SseFrameBuffer::strip_stream_prefix(' ' . $bom));
-        $this->assertSame(" \xEFdata: a", SseFrameBuffer::strip_stream_prefix(" \xEFdata: a"));
+        $this->assertSame("\xEFdata: a", SseFrameBuffer::strip_stream_prefix(" \xEFdata: a"));
     }
 
     public function testWhitespaceAroundALeadingBomIsStrippedLikeTheBomAlone()
@@ -377,28 +382,111 @@ final class SseFrameBufferTest extends WpConnectorsTestCase
         }
     }
 
-    public function testPlainLeadingWhitespaceStillDropsItsFirstFrame()
+    public function testPlainLeadingWhitespaceKeepsItsFirstFrame()
     {
         /*
-         * GLM8 #2 guard: whitespace WITHOUT a BOM strips nothing — the
-         * ws-prefixed first frame is the spec-correct DROPPED frame
-         * (unknown field name), byte-identical to master. Only the
-         * BOM-adjacent prefix changed.
+         * glm21-1 supersedes the GLM8 #2 guard pin: whitespace WITHOUT
+         * a BOM used to strip nothing, so the ws-prefixed first frame
+         * was the spec-correct DROPPED frame — while the sniff ltrimmed
+         * the same run and ROUTED the body to the SSE aggregator. One
+         * leading space at stream start silently lost the first delta
+         * (empirically reproduced). The canonical rule strips the plain
+         * run now; the first frame comes out byte-identical to an
+         * unprefixed stream, and the first delta merges.
          */
         $buffer = new SseFrameBuffer();
         $buffer->feed(' data: first' . "\n\n" . 'data: second' . "\n\n");
         $buffer->finish();
 
-        $this->assertSame(' data: first', $buffer->pull(), 'A plain-ws first frame stays a frame.');
+        $this->assertSame('data: first', $buffer->pull(), 'The ws-prefixed first frame parses intact.');
         $this->assertSame('data: second', $buffer->pull());
         $this->assertNull($buffer->pull());
 
         $aggregator = new SseAggregator();
-        $aggregator->feed(' data: {"id":"c1","choices":[{"index":0,"delta":{"content":"gone"},"finish_reason":null}]}' . "\n\n");
-        $aggregator->feed('data: {"id":"c1","choices":[{"index":0,"delta":{"content":" kept"},"finish_reason":"stop"}]}' . "\n\n");
+        $aggregator->feed(' data: {"id":"c1","choices":[{"index":0,"delta":{"content":"first"},"finish_reason":null}]}' . "\n\n");
+        $aggregator->feed('data: {"id":"c1","choices":[{"index":0,"delta":{"content":" second"},"finish_reason":"stop"}]}' . "\n\n");
         $aggregator->finish();
 
-        $this->assertSame(' kept', $aggregator->aggregated()['choices'][0]['message']['content'], 'The ws-prefixed first delta is still dropped, master-identical.');
+        $this->assertSame('first second', $aggregator->aggregated()['choices'][0]['message']['content'], 'The ws-prefixed first delta merges like any other.');
+    }
+
+    public function testAWhitespacePrefixedLeadingDoneSentinelStillTerminates()
+    {
+        /*
+         * glm21-1 empirical repro (the finding's sentinel shape): a
+         * stream whose first frame is the sentinel, one leading space
+         * prepended by a gateway. The sniff accepted the body, but the
+         * buffer kept the space, the ws-prefixed 'data: [DONE]' matched
+         * no column-0 field, and the sentinel was lost — the appending
+         * gateway's post-sentinel frame then merged as PRE-sentinel
+         * content, reporting the trailing delta as the generation's
+         * own content. With the strip, the sentinel terminates and the
+         * trailing frame opens no content turn (aggregated() has no
+         * pre-sentinel event to offer).
+         */
+        $aggregator = new SseAggregator();
+        $aggregator->feed(' data: [DONE]' . "\n\n");
+        $aggregator->feed('data: {"id":"c1","choices":[{"index":0,"delta":{"content":"LATE"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}' . "\n\n");
+        $aggregator->finish();
+
+        $this->assertNull($aggregator->aggregated(), 'A recognized leading sentinel leaves no pre-sentinel content to merge.');
+    }
+
+    public function testAWhitespacePrefixedAnthropicStreamParsesIdenticallyToTheCleanOne()
+    {
+        /*
+         * glm21-1: the leading space stripped, the ws-prefixed
+         * Anthropic stream must aggregate byte-identically to its
+         * unprefixed twin — including the event: DECLARATION the
+         * ws-prefixed first frame used to lose (the data.type member
+         * kept the stream aggregating, but the declaration-agreement
+         * and corruption channels keyed on event_name went blind).
+         */
+        $events = array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_ws","role":"assistant","usage":{"input_tokens":3,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Intact."}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        );
+
+        $clean = new AnthropicSseAggregator();
+        $clean->feed(implode("\n\n", $events));
+        $clean->finish();
+
+        $prefixed = new AnthropicSseAggregator();
+        $prefixed->feed(' ' . implode("\n\n", $events));
+        $prefixed->finish();
+
+        $this->assertSame($clean->aggregated(), $prefixed->aggregated(), 'One leading space must not change the aggregated payload.');
+        $this->assertFalse($prefixed->has_malformed_event());
+    }
+
+    public function testAWhitespacePrefixedErrorDeclarationStillFlagsTheError()
+    {
+        /*
+         * glm21-1 empirical repro (the Anthropic damage shape): the
+         * ws-prefixed first frame lost its 'event:' DECLARATION, and a
+         * declared-error frame with an undecodable payload — whose
+         * corruption verdict keys on the event_name the field parser
+         * no longer recognized — was swallowed whole: has_error()
+         * false, has_malformed_event() false, silently lost
+         * corruption detection on a stream the sniff accepted.
+         */
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed(' event: error' . "\n" . 'data: {not json' . "\n\n");
+        $aggregator->finish();
+        $aggregator->aggregated();
+
+        $this->assertTrue($aggregator->has_error(), 'The ws-prefixed error declaration must still flag the error.');
     }
 
     /**

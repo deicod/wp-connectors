@@ -2,8 +2,9 @@
 /**
  * Shared vendor-body decode (code-review GLM10 #11).
  *
- * The getData()-mirroring decode block — the BOM strip (the shared
- * stream-prefix rule), the associative decode, the raw object-ness
+ * The getData()-mirroring decode block — the stream-prefix strip (the
+ * shared SseFrameBuffer rule; glm21-1 made the plain leading-whitespace
+ * half live alongside the BOM half), the associative decode, the raw object-ness
  * decode, and the vendor null-for-empty/failure/non-array
  * normalization — was hand-rolled twice with already-diverged
  * mechanics: the zai model's json_last_error dance plus empty-body
@@ -34,7 +35,10 @@ final class JsonBodyDecoder {
 
 	/**
 	 * Decodes a raw vendor body into the associative and raw views, after
-	 * the canonical BOM-strip (a deliberate no-op on BOM-less bodies).
+	 * the canonical stream-prefix strip (leading whitespace and any
+	 * BOM-adjacent prefix — glm21-1 made the plain-whitespace half strip
+	 * BOM-less bodies too, inert for the JSON-whitespace bytes
+	 * json_decode already skips).
 	 *
 	 * The vendor Response::getData() contract for the associative view:
 	 * null for an empty body, a decode failure, or a non-array

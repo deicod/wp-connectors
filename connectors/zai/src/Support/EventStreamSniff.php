@@ -66,15 +66,14 @@ final class EventStreamSniff {
 		 * corrupted content as success (a regression master failed
 		 * loudly). The layers cannot drift again — one composition.
 		 *
-		 * The ltrim below keeps the GLM6 #11 leading-whitespace tolerance
-		 * for bodies WITHOUT a BOM (PHP's default charlist: space, tab,
-		 * newline, CR, NUL, vertical tab — no parseable JSON body starts
-		 * with those bytes, so the wider set cannot misroute): such a
-		 * stream still routes to SSE and still drops its
-		 * whitespace-prefixed first frame, spec-correct and
-		 * master-identical.
+		 * glm21-1: the canonical rule strips the PLAIN leading-
+		 * whitespace run too (the GLM6 #11 tolerance this sniff used to
+		 * add through its own ltrim), so the private ltrim is gone —
+		 * it WAS the asymmetry: a sniff-accepted ws-prefixed body
+		 * dropped its first frame below. What the sniff accepts, the
+		 * framing parses, byte for byte.
 		 */
-		$sniff = ltrim( SseFrameBuffer::strip_stream_prefix( $body ) );
+		$sniff = SseFrameBuffer::strip_stream_prefix( $body );
 
 		return 0 === strpos( $sniff, 'event:' )
 			|| 0 === strpos( $sniff, 'data:' )

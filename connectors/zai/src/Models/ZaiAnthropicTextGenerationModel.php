@@ -1723,9 +1723,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * non-streaming generation died as 'Missing the "content" key': a
 	 * typed rejection of a valid completion one layer short of where this
 	 * branch's own BOM hardening stops. The canonical prefix strip
-	 * (strip_stream_prefix(), deliberately a no-op on BOM-less bodies)
-	 * runs before BOTH decodes here, so the associative parse and the
-	 * raw object-ness oracle always read the same cleaned body.
+	 * (strip_stream_prefix(), stripping the leading whitespace and any
+	 * BOM since glm21-1) runs before BOTH decodes here, so the
+	 * associative parse and the raw object-ness oracle always read the
+	 * same cleaned body.
 	 *
 	 * GLM10 #11: the decode block itself — the strip, the associative
 	 * view, the raw object-ness view, the vendor null normalization —

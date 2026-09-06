@@ -35,6 +35,23 @@ final class JsonBodyDecoderTest extends WpConnectorsTestCase
         $this->assertSame(1, $raw->a->b);
     }
 
+    public function testAPlainLeadingWhitespacePrefixIsStrippedBeforeBothDecodes()
+    {
+        /*
+         * glm21-1: the canonical stream-prefix rule strips the plain
+         * leading-whitespace run even without a BOM. For the
+         * JSON-whitespace bytes (space, tab, newline, CR) json_decode
+         * already skipped them; this pins the widened half — NUL and
+         * vertical tab decode now too, the same gateway-prefix
+         * tolerance the SSE framing grants.
+         */
+        list($data, $raw) = JsonBodyDecoder::decode(" \x0B\0" . '{"a":{"b":1}}');
+
+        $this->assertSame(array('a' => array('b' => 1)), $data, 'The associative view reads the cleaned body.');
+        $this->assertInstanceOf(\stdClass::class, $raw, 'The raw view reads the same cleaned body.');
+        $this->assertSame(1, $raw->a->b);
+    }
+
     /**
      * @dataProvider provideUndecodableOrNonArrayRoots
      */
