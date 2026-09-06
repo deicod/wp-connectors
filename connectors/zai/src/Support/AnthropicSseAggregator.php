@@ -554,7 +554,16 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 
 			case 'tool_use':
 				$input = $block['input'];
-				if ( $block['has_json'] ) {
+
+				/*
+				 * glm24-4: derived, not stored — the accumulated string
+				 * itself is the one source of truth ('' means no
+				 * fragment arrived). The former hand-synced 'has_json'
+				 * mirror was the GLM10 #7 drift class: a fragment source
+				 * appending to 'json' without touching it would silently
+				 * change which input the block ships.
+				 */
+				if ( '' !== $block['json'] ) {
 					// The accumulated input_json_delta fragments MUST decode
 					// to a JSON OBJECT ({} is legitimate). A decode failure
 					// or a non-object value means the stream was truncated or
@@ -1698,7 +1707,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			'name'     => null !== $raw_block && isset( $raw_block->name ) && \is_string( $raw_block->name ) ? $raw_block->name : null,
 			'input'    => $input,
 			'json'     => '',
-			'has_json' => false,
 		);
 	}
 
@@ -1829,9 +1837,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				}
 
 				$this->blocks[ $index ]['json'] .= $delta->partial_json;
-				if ( '' !== $delta->partial_json ) {
-					$this->blocks[ $index ]['has_json'] = true;
-				}
 
 				return;
 		}

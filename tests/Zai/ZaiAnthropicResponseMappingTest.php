@@ -5903,7 +5903,8 @@ $body = ''
     public function testAnEmptyStringPartialJsonDeltaStaysANoOp()
     {
         // The legitimate empty-string fragment keeps its no-op semantics:
-        // it does not set has_json, and the start input stands.
+        // it leaves the accumulated JSON empty (glm24-4's derived
+        // non-empty check), and the start input stands.
         $body = ''
             . 'event: message_start' . "\n"
             . 'data: {"type":"message_start","message":{"id":"msg_ep","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
