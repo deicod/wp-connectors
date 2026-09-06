@@ -326,4 +326,58 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
             $this->assertSame(0, preg_match('/UsageValidator::(failure_reason|message_for_reason)\(/', $source), "{$label} composes no usage rejection inline.");
         }
     }
+
+    public function testEveryDirectoryGatesThroughItsOwnSurfacesAvailability()
+    {
+        /*
+         * glm26-8 (the glm24-1 pairing discipline at the directory
+         * layer): each directory hard-instantiated its concrete
+         * availability class inline at every credential-gate site — a
+         * copy-paste edit missing the buried 'new' wires one surface's
+         * refusals and verdicts onto ANOTHER provider's availability
+         * (another surface's STATE_OPTION store and region-pending
+         * flag). One availability() hook states the pairing once (the
+         * models' credential_gate_availability() shape); this pin holds
+         * the hook's product to the REGISTRY ROW through the
+         * availability's own settings_class() — the pairing swap fails
+         * behaviorally, not just textually.
+         */
+        foreach (array(
+            'the zai directory' => array(
+                'settings' => \Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::class,
+                'directory' => \Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory::class,
+                'instantiation' => 'new ZaiProviderAvailability(',
+            ),
+            'the zai_anthropic directory' => array(
+                'settings' => \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::class,
+                'directory' => \Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory::class,
+                'instantiation' => 'new ZaiAnthropicProviderAvailability(',
+            ),
+        ) as $label => $owner) {
+            $hook = new \ReflectionMethod($owner['directory'], 'availability');
+            if (PHP_VERSION_ID < 80100) {
+                // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
+                $hook->setAccessible(true);
+            }
+            $availability = $hook->invoke(new $owner['directory']());
+
+            $settings_class = new \ReflectionMethod($availability, 'settings_class');
+            if (PHP_VERSION_ID < 80100) {
+                $settings_class->setAccessible(true);
+            }
+
+            $this->assertSame(
+                $owner['settings'],
+                $settings_class->invoke(null),
+                "{$label} consults its own surface's availability layer."
+            );
+
+            $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Metadata/' . \basename(\str_replace('\\', '/', $owner['directory'])) . '.php');
+            $this->assertSame(
+                1,
+                substr_count($source, $owner['instantiation']),
+                "{$label} states its concrete availability instantiation exactly once, inside the hook."
+            );
+        }
+    }
 }

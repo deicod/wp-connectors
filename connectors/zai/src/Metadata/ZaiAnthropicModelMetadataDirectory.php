@@ -59,6 +59,7 @@ use WordPress\AiClient\Providers\Http\Traits\WithHttpTransporterTrait;
 use WordPress\AiClient\Providers\Http\Traits\WithRequestAuthenticationTrait;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
+use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
@@ -221,6 +222,27 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	}
 
 	/**
+	 * The availability layer this directory's credential gate and verdict
+	 * recorders consult (glm26-8).
+	 *
+	 * The concrete availability class was hard-instantiated inline in
+	 * discover_model_ids() — the pairing drift glm24-1 removed from the
+	 * live probe, then unpinned at the directory layer: a copy-paste edit
+	 * that misses the buried 'new' wires this surface's refusals and
+	 * verdicts onto ANOTHER provider's availability (another surface's
+	 * STATE_OPTION store and region-pending flag). One hook states the
+	 * pairing once — the models' credential_gate_availability() shape
+	 * (glm14-6) — and the lockstep test pins it to the registry row.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return AbstractZaiProviderAvailability
+	 */
+	protected function availability(): AbstractZaiProviderAvailability {
+		return new ZaiAnthropicProviderAvailability();
+	}
+
+	/**
 	 * Discovers chat-capable model IDs from the endpoint's /v1/models route.
 	 *
 	 * Both common list shapes carry data[].id entries, so the parser accepts
@@ -247,7 +269,7 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		 * judged by, or to the rejection wording/channel, lands at
 		 * every site or none — never three-and-two places to miss one.
 		 */
-		$availability = new ZaiAnthropicProviderAvailability();
+		$availability = $this->availability();
 		$auth_reader  = function () {
 			/*
 			 * glm26-4 (glm16-1 alignment): the reader answers WHICH

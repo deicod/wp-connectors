@@ -37,6 +37,7 @@ use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\OpenAiCompatibleImplementation\AbstractOpenAiCompatibleModelMetadataDirectory;
+use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
@@ -308,6 +309,28 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	}
 
 	/**
+	 * The availability layer this directory's credential gate and verdict
+	 * recorder consult (glm26-8).
+	 *
+	 * The concrete availability class was hard-instantiated inline at each
+	 * credential-gate site (the discovery refusal and the 401/403
+	 * recorder) — the pairing drift glm24-1 removed from the live probe,
+	 * then unpinned at the directory layer: a copy-paste edit that misses
+	 * the buried 'new' wires this surface's refusals and verdicts onto
+	 * ANOTHER provider's availability (another surface's STATE_OPTION
+	 * store and region-pending flag). One hook states the pairing once —
+	 * the models' credential_gate_availability() shape (glm14-6) — and
+	 * the lockstep test pins it to the registry row.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return AbstractZaiProviderAvailability
+	 */
+	protected function availability(): AbstractZaiProviderAvailability {
+		return new ZaiProviderAvailability();
+	}
+
+	/**
 	 * Makes this surface's discovery attempt through the SDK parent.
 	 *
 	 * Runs inside the shared cache's try: every failure shape — a
@@ -340,7 +363,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		 * as the 60s negative marker (GLM1 #6), so a later definitive
 		 * verdict can discover again.
 		 */
-		( new ZaiProviderAvailability() )->refuse_discovery(
+		$this->availability()->refuse_discovery(
 			function () {
 				return $this->getRequestAuthentication();
 			}
@@ -421,7 +444,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		 */
 		$endpoint = $this->discovery_endpoint ?? ZaiEndpoint::for_current_settings();
 
-		( new ZaiProviderAvailability() )->record_rejection_for_status(
+		$this->availability()->record_rejection_for_status(
 			$status,
 			function () {
 				return $this->getRequestAuthentication();
