@@ -140,7 +140,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
                 $this->fail('Uncarriable credential material must be refused before the header is built.');
             } catch (RuntimeException $e) {
                 $this->assertSame(
-                    'The zai_anthropic provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.',
+                    'The ' . ZaiAnthropicProviderAvailability::REFUSAL_LABEL . ' provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.',
                     $e->getMessage()
                 );
                 $this->assertStringNotContainsString($uncarriable, $e->getMessage(), 'The key never appears in the rejection.');
@@ -286,7 +286,13 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
          * zai_invalid_request, the caller-input channel.
          */
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('API-key authentication');
+        /*
+         * glm24-10: the FULL message rides the owner chain — the old
+         * substring pin ('API-key authentication') held under any
+         * phrasing; this one ties the wrap() refusal text to the
+         * REFUSAL_LABEL the folded message interpolates.
+         */
+        $this->expectExceptionMessage('The ' . ZaiAnthropicProviderAvailability::REFUSAL_LABEL . ' provider requires an API-key authentication instance.');
         ZaiAnthropicRequestAuthentication::wrap($foreign);
     }
 
@@ -449,16 +455,30 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         /*
          * glm24-3 (closing the glm19-5/6 deferral): the two rejection
          * messages in ZaiAnthropicRequestAuthentication were the last
-         * literals hardcoding the 'zai_anthropic' slug while every
-         * other rejection rode the REFUSAL_LABEL chain — a CACHE_SCOPE
-         * rename would have left ErrorMapper's admin-facing 500 text
-         * naming a provider id that exists nowhere else. The messages
+         * literals hardcoding the surface slug while every other
+         * rejection rode the REFUSAL_LABEL chain — a CACHE_SCOPE rename
+         * would have left ErrorMapper's admin-facing 500 text naming a
+         * provider id that exists nowhere else. The messages
          * interpolate PROVIDER_LABEL now (byte-identical output, pinned
-         * above); this source pin forbids the quoted-literal shape from
-         * returning.
+         * above).
+         *
+         * glm24-10 (verifier round): the first form of this pin matched
+         * only a STANDALONE quoted slug — a verbatim revert of the fold
+         * keeps the slug mid-string inside the quoted sentence and
+         * scored 0 matches (empirically confirmed against the
+         * pre-round source). The pin now names BOTH shapes: the
+         * positive half requires the label-interpolating sprintf idiom
+         * at every rejection site, and the negative halves forbid the
+         * standalone slug literal AND the reverted sentence prefix.
          */
         $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Authentication/ZaiAnthropicRequestAuthentication.php');
 
-        $this->assertSame(0, preg_match('/[\'"]zai_anthropic[\'"]/', $source), 'Every rejection message rides the REFUSAL_LABEL chain, not a quoted slug literal.');
+        $this->assertSame(
+            2,
+            substr_count($source, "sprintf( 'The %s provider"),
+            'Both rejection messages interpolate the surface label — the verbatim revert fails here (it scores 0).'
+        );
+        $this->assertSame(0, preg_match('/The zai_anthropic provider/', $source), 'No rejection message embeds the surface slug mid-string.');
+        $this->assertSame(0, preg_match('/[\'"]zai_anthropic[\'"]/', $source), 'No standalone quoted slug literal either.');
     }
 }
