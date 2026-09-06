@@ -331,6 +331,83 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         }
     }
 
+    public function testAnOutOfOrderContentBlockStopInvalidatesTheStream()
+    {
+        /*
+         * glm26-2: the block lifecycle is serialized on the wire — block
+         * N+1's start sits wholly after block N's stop — so a stop for a
+         * higher index while a lower one is still open is the same
+         * corrupt stream the start-side rules reject (R17 #2 contiguity,
+         * R7 #4 duplicate). Before the non-LIFO check, a corrupting proxy
+         * interleaving two lifecycles aggregated a protocol-impossible
+         * completion with NO malformed flag (round 26 finding 2: stop
+         * handler recorded 1 then 0, the closed-lifecycle loop is
+         * order-insensitive, and the model returned a successful
+         * generation).
+         */
+        $stream = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_interleave","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"first"}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":"second"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"!"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An interleaved block lifecycle must fail the stream, not aggregate a completion.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
+    public function testASerializedMultiBlockStreamStillAggregates()
+    {
+        /*
+         * glm26-2 control: the non-LIFO rejection must not over-reject —
+         * the serialized two-block lifecycle (0's stop before 1's start)
+         * is the protocol's own shape and keeps aggregating, both blocks
+         * in order.
+         */
+        $stream = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_serial","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"first"}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"!"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":"second"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $parts = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts();
+
+        $this->assertCount(2, $parts, 'The serialized lifecycle aggregates both blocks.');
+        $this->assertSame('first!', $parts[0]->getText());
+        $this->assertSame('second', $parts[1]->getText());
+    }
+
     public function testTheContentMemberRuleLivesInOneMap()
     {
         /*

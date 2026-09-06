@@ -626,10 +626,17 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		}
 
 		/*
-		 * Unknown block types (server tool use, search results, future
-		 * additions) are dropped rather than mis-mapped — the streamed half
+		 * Every other block type is dropped rather than mis-mapped. The
+		 * three provider-internal types (redacted_thinking,
+		 * server_tool_use, web_search_tool_result) are the streamed half
 		 * of the KNOWN LIMITATION documented at the model's
-		 * parse_content_block() drop site (code-review #15).
+		 * parse_content_block() drop site (code-review #15) — the twin
+		 * drops those identically. A type unknown to BOTH paths diverges
+		 * by transport (glm26-2's doc fix, the glm19-13 class): this
+		 * streamed path keeps the drop for forward compatibility while
+		 * the non-streaming parse REJECTS the block — a documented
+		 * divergence under the same #15 vendor-quirk rationale (neither
+		 * shape is triggerable via this connector's own requests).
 		 */
 		return null;
 	}
@@ -1164,6 +1171,27 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					$this->malformed_event = true;
 
 					return;
+				}
+
+				/*
+				 * glm26-2: the block lifecycle is SERIALIZED — block
+				 * N+1's start sits wholly after block N's stop — so a
+				 * stop for N while any lower index is still open is the
+				 * same corrupt stream its start-side twins reject (R17
+				 * #2 contiguity, R7 #4 duplicate): a corrupting proxy
+				 * interleaving two lifecycles (start 0, start 1, stop 1,
+				 * delta 0, stop 0) aggregated a protocol-impossible
+				 * completion with no malformed flag. Starts are
+				 * contiguous (R17 #2), so every index below N exists;
+				 * the check is the non-LIFO stop order, rejected without
+				 * recording the stop.
+				 */
+				for ( $open_below = 0; $open_below < $index; $open_below++ ) {
+					if ( ! isset( $this->stopped_indexes[ $open_below ] ) ) {
+						$this->malformed_event = true;
+
+						return;
+					}
 				}
 
 				$this->stopped_indexes[ $index ] = true;
