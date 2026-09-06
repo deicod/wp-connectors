@@ -52,11 +52,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
      */
     private function directory(?string $key = null): ZaiModelMetadataDirectory
     {
-        $directory = new ZaiModelMetadataDirectory();
-        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication(null === $key ? FakeSecrets::apiKey() : $key));
-
-        return $directory;
+        return $this->wiredZaiSdkInstance(ZaiModelMetadataDirectory::class, $key);
     }
 
     /*

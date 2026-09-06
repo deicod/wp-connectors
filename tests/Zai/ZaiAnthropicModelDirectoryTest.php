@@ -34,11 +34,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
      */
     private function directory(?string $key = null): ZaiAnthropicModelMetadataDirectory
     {
-        $directory = new ZaiAnthropicModelMetadataDirectory();
-        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key ?? FakeSecrets::apiKey()));
-
-        return $directory;
+        return $this->wiredZaiSdkInstance(ZaiAnthropicModelMetadataDirectory::class, $key);
     }
 
     /*

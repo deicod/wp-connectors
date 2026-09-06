@@ -35,11 +35,7 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
      */
     private function availability(string $key): ZaiProviderAvailability
     {
-        $instance = new ZaiProviderAvailability();
-        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $instance->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
-
-        return $instance;
+        return $this->wiredZaiSdkInstance(ZaiProviderAvailability::class, $key);
     }
 
     /**

@@ -361,6 +361,41 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
+     * A wired instance of one zai SDK-provider class (glm22-12).
+     *
+     * The same 3-statement wiring (construct, bind the registry's
+     * harness transporter, authenticate) the availability and model-
+     * directory fixtures spell per suite — availability() in both
+     * ProviderMetadataAndAvailability suites and directory() in both
+     * ModelDirectory suites differed only in the constructed class, so
+     * a wiring-step change had to land four places and a missed edit
+     * silently left one suite probing with a differently-wired instance
+     * while staying green. One class-parameterized helper now (the
+     * selectEndpoint() shape); the per-suite fixtures are one-line
+     * delegates.
+     *
+     * @param string      $provider_class The class to instantiate
+     *                                    (ZaiProviderAvailability,
+     *                                    ZaiAnthropicProviderAvailability,
+     *                                    ZaiModelMetadataDirectory, or
+     *                                    ZaiAnthropicModelMetadataDirectory).
+     * @param string|null $key            Exact API key to authenticate with,
+     *                                    or null for a fresh per-call
+     *                                    fixture key.
+     * @return object The wired instance.
+     */
+    protected function wiredZaiSdkInstance(string $provider_class, ?string $key = null)
+    {
+        $instance = new $provider_class();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $instance->setRequestAuthentication(new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication(
+            null === $key ? FakeSecrets::apiKey() : $key
+        ));
+
+        return $instance;
+    }
+
+    /**
      * Reads a private SSE aggregator state field (glm19-11).
      *
      * The aggregators' observability getters (is_done()/event_count()/
