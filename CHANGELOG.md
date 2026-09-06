@@ -6,6 +6,105 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM23 round)
+
+All 15 findings of review round 23 (high, ledger-filtered), one commit
+each, plus a two-lens verifier pass (independent security + correctness
+agents over the full diff — zero confirmed findings; the security lens
+refuted 12 candidate classes, the correctness lens attacked the SSE
+window with a 30-case battery and the stubs against WP 6.8 core):
+
+- A data-less content-block declaration is a CUT frame, not noise
+  (glm23-1): a content_block_delta frame whose data: line an
+  intermediary cut left NO downstream trace (deltas carry no lifecycle
+  marker) — the verifier-reproduced silent-truncation hole in the Codex
+  R4 #3 invariant. The verdict is a ONE-FRAME completion window, not an
+  immediate flag: the split wire form (declaration and data-only
+  carrier as consecutive frames — the GLM1 #14 bare-event tolerance the
+  suite's fixtures pin) reunites and is judged as if the declaration
+  rode its carrier's frame, inheriting every downstream corruption
+  rule; a declaration whose next frame is anything else, or still
+  pending at finish(), classifies through the one flag_corrupt_event()
+  site (the GLM12 #15 pin grows to six).
+- The dropped outputSchema embeds guidance on zai, from one shared
+  builder (glm23-2): a configured schema under a non-JSON mime flew
+  with NO constraint on the zai surface (the SDK parent drops
+  response_format outside application/json; the Codex R1 #4 remedy
+  existed on the twin only). The guidance sentences and the glm21-7/16
+  memoized schema encode ride the new Support\JsonOutputGuidance owner;
+  the zai surface embeds through a prepareMessagesParam() override
+  scoped exactly to the dropped case the glm14-1 guard scopes. The
+  finding's leave-the-mime-unset shape is unreachable through the
+  public setters (the vendor setOutputSchema() auto-promotes a null
+  mime to application/json); the constructible dropped case names a
+  non-JSON mime explicitly. Byte-identical parity pinned cross-surface.
+- A register_argc_argv=0 probe run walks the usage path, not a fatal
+  (glm23-3): the argv pre-scan and getopt()'s false return both
+  normalize, so the unpopulated-argv run stops at the key lookup with
+  its named exit-2 diagnostic instead of a strict-types TypeError
+  fatal (empirically unset in docker php:7.4-cli/8.3-cli; builds newer
+  than the platform ceiling always populate argv). The two guard reads
+  ride count-pinned phpstan ignores with the docker evidence recorded.
+- The enum renderer resolves label overrides on the child (glm23-4):
+  render_enum_field()'s label call rode self:: (early binding) while
+  every other extension point on the same lines rode static:: — pinned
+  with an overriding-child fixture rendering both fields.
+- DEFAULT_PLAN is child-owned like every per-surface identifier
+  (glm23-5): the base's inheritable 'coding' default was the one
+  genuinely per-surface value ('coding' vs 'general') escaping the
+  GLM6 #12 child-owned-identifiers reflection pin; the base declares
+  none, both children own theirs, the pin's list covers it.
+- An undecodable zai data frame flags, restoring the channel's claim
+  (glm23-6): the aggregator docblock claimed malformed JSON events are
+  "flagged via has_malformed_event() and skipped", but the flag covered
+  index corruption only — glm19-11's counter deletion left the claim
+  describing nothing. The UNDECODABLE shape flags in both phases now
+  (the flag half of GLM7 #2's "malformed ones still counted");
+  json_last_error() keeps decodable non-array payloads at their
+  non-event skip. Two GLM7-era assertions encoding the silent skip are
+  superseded at their sites.
+- A corrupt discovery row is a cache miss, not an empty catalog
+  (glm23-7): is_array() alone validated the 12h transient — a corrupt
+  or foreign row served verbatim and reported an EMPTY catalog with no
+  probe for the full TTL. A sound row is a NON-EMPTY all-string list
+  (both surfaces' discovery rejects the empty list, glm13-2); anything
+  else reads as a miss and the probe/fallback paths run as for an
+  absent row.
+- The update_option stub short-circuits unchanged values first (glm23-8)
+  and fires the core hook order and arity (glm23-9): core returns false
+  BEFORE any autoload handling on an unchanged value (the old
+  `null === $autoload` condition let an unchanged save with an explicit
+  autoload argument rewrite the row and return true), and fires
+  generic 'update_option' first pre-write, then the specific hook with
+  THREE args, then 'updated_option' — verified against WP 6.8 core;
+  pinned with an order/arity/pre-write assertion over all three hooks.
+- Harness: bootedCorePromptBuilder() stores and wires ONE key (glm23-10
+  — two fresh FakeSecrets draws left the stored row matching no
+  credential that flies, so any later database-key path read an
+  unsettled binding); wiredZaiSurfaceModel() owns the model wiring,
+  class-parameterized with the surface row derived from the ZaiSurfaces
+  registry by PROVIDER_ID (glm23-11); bootedCorePromptBuilder() derives
+  its surface facts from the same registry — a third surface boots with
+  no harness edit, the one protocol-specific fact (the models body)
+  became the caller's parameter (glm23-12).
+- The uninstall class-free literals ride a lockstep pin (glm23-13): a
+  settings owner constant rename left every uninstall run deleting
+  names nothing stores while the suite (planting the same literals)
+  stayed green; the pin derives the expected set from ZaiSurfaces plus
+  the owners' constants and asserts the uninstall SOURCE.
+- The tool-loop memo machinery rides one Support trait (glm23-14):
+  the note/prune/replayable trio plus the three SplObjectStorage stores
+  were byte-identical between the models (the memo-rule fixes already
+  landed twice — glm21-17, glm22-3); Support\MemoizesToolLoopVerdicts
+  owns them now, the per-surface encode halves (TRUE verdict vs encoded
+  string) stay by design, and the reflection pins read the
+  trait-flattened properties unchanged.
+- The unit-interval rule's range phrase rides the call site (glm23-15):
+  reject_out_of_unit_interval() is a one-protocol rule whose message
+  hardcoded the protocol name while living in the protocol-neutral
+  shared guard; the range phrase is the caller's parameter now (the
+  PROVIDER_LABEL pattern), wire message byte-identical.
+
 ### Fixed (zai / M2 — GLM22 round)
 
 All 15 findings of review round 22 (high, ledger-filtered) plus the two
