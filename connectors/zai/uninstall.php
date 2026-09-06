@@ -151,6 +151,21 @@ function zai_connector_zai_uninstall_site() {
 	// This file is global-namespace (uninstall context), so the endpoint
 	// classes are addressed by their fully-qualified names; skipped
 	// entirely when the owner chain above could not load.
+	//
+	// glm21-3 (consciously accepted, the GLM8 #15 degradation boundary):
+	// when the chain cannot load, the 12h discovery transients
+	// (zai_connector_zai_models_<md5>, zai_connector_zai_anthropic_
+	// models_<md5>, and their '_miss' twins) SURVIVE — the
+	// broken-install fallback literals cover only the class-free options
+	// and the two key-state probe-miss prefixes (they must run with no
+	// plugin class loaded), and the wp_options LIKE enumeration further
+	// down never listed the discovery ids (they are class-derivable
+	// only; a literal formula mirror here is the exact drift class
+	// GLM8 #11/GLM9 #8 removed twice). On an object-cache install the
+	// survivors live in the external cache, invisible to any options
+	// query; on a DB install they are orphaned rows. A reinstall inside
+	// the TTL window is served the stale pre-uninstall catalog; the
+	// ledger entry records the tradeoff.
 	if ( $zai_connector_owner_ready ) {
 		/*
 		 * glm15-10: the plan/region loops ride the declared owner

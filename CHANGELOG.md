@@ -40,6 +40,19 @@ each:
   throttled to one per 60s window) is recorded in the ledger and at
   the isConfigured() branch: SPEC §3.3 wins over the empty-2xx master
   delta.
+- A broken-install uninstall leaves the discovery transients standing
+  (glm21-3, documentation only): the class-based discovery sweep is
+  gated on the eight-file owner chain (GLM8 #15 fatal-avoidance), and
+  the broken-install fallback literals cover only the class-free
+  options and the key-state probe-miss prefixes. On a broken install
+  the 12h discovery transients (zai_connector_zai_models_&lt;md5&gt;
+  and the zai_anthropic twin, plus their '_miss' markers) survive —
+  invisible to the wp_options enumeration on object-cache installs —
+  so a reinstall inside the TTL window is served the stale
+  pre-uninstall catalog. Recorded as a ledger tradeoff: the ids are
+  derivable only through the endpoint classes, and a literal formula
+  mirror in uninstall.php is the drift class GLM8 #11/GLM9 #8 removed
+  twice.
 
 ### Fixed (zai / M2 — GLM20 verifier round)
 
