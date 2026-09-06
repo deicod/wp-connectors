@@ -307,6 +307,18 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			// EXCEPT under region-switch distrust: a pending probe says
 			// nothing about the old-region credential, and configured-pending
 			// here would send it against the new endpoint indefinitely.
+			//
+			// glm21-2 (consciously accepted, ledger): the inconclusive
+			// set includes the 200-body classes glm13-2 made
+			// inconclusive (an empty data list, an incomplete has_more
+			// page, a non-JSON 2xx body) that master's status-only
+			// probe blessed as connected — so a region whose /models
+			// persistently answers one of those shapes keeps the
+			// connector not-configured and generation refused until the
+			// endpoint answers definitively or the admin intervenes
+			// (region back, or a re-saved/re-wired credential); probes
+			// throttle to one per PROBE_MISS_TTL window. SPEC §3.3 wins
+			// over that master delta.
 			if ( $region_pending ) {
 				return false;
 			}

@@ -6,6 +6,41 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM21 round)
+
+All 15 findings of review round 21 (high, ledger-filtered), one commit
+each:
+
+- The frame buffer strips the sniff's plain leading-whitespace prefix
+  (glm21-1): EventStreamSniff ltrimmed the body it routed while
+  SseFrameBuffer returned a BOM-less body unchanged, so a
+  sniff-accepted stream whose first field line carried a leading
+  space/tab matched no column-0 field and dropped its first frame
+  silently. Empirically reproduced: a whitespace-prefixed lone
+  'data: [DONE]' lost the OpenAI sentinel (the appending gateway's
+  post-sentinel frame then merged as pre-sentinel content, mutating a
+  completed generation), and a whitespace-prefixed 'event: error' with
+  an undecodable payload was swallowed whole on the Anthropic surface
+  (no error flag, no malformed flag). The one canonical prefix rule
+  strips the plain run on both layers now (the sniff's private ltrim
+  is gone); the strip stays stream-start only, so mid-stream
+  whitespace keeps its spec-strict unknown-field meaning, and the JSON
+  decode paths extend the same gateway-prefix tolerance to
+  NUL/vertical-tab prefixes. The GLM8 #2-era "ws-prefixed first frame
+  drops, master-identical" pin is consciously superseded (the GLM10 #4
+  lesson; documented at the rewritten pins and in the ledger).
+- Region-switch distrust under a persistently-inconclusive /models is
+  a consciously-accepted residual (glm21-2, documentation only): under
+  the region-pending flag an INCONCLUSIVE probe reads disconnected —
+  including the 200-body classes glm13-2 made inconclusive (an empty
+  data list, an incomplete has_more page, a non-JSON body) that
+  master's status-only probe blessed as connected. The residual cost
+  (the connector not-configured and generation refused until the
+  endpoint answers definitively or the admin intervenes; probes
+  throttled to one per 60s window) is recorded in the ledger and at
+  the isConfigured() branch: SPEC §3.3 wins over the empty-2xx master
+  delta.
+
 ### Fixed (zai / M2 — GLM20 verifier round)
 
 Independent security + correctness verification over the full glm20
