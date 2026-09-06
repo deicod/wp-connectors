@@ -161,7 +161,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
             $headers = wp_connectors_parse_plugin_headers($mainFiles[0]);
             $violations = array_merge($violations, wp_connectors_duplicate_header_violations($mainFiles[0], $slug));
             $violations = array_merge($violations, wp_connectors_header_violations($headers, $slug));
-            $violations = array_merge($violations, wp_connectors_version_constant_violations($pluginDir, $headers));
+            $violations = array_merge($violations, wp_connectors_version_constant_violations($pluginDir, $headers, $mainFiles));
             $violations = array_merge($violations, wp_connectors_autoloader_violations($pluginDir));
         }
         $violations = array_merge($violations, wp_connectors_self_containment_violations($pluginDir));

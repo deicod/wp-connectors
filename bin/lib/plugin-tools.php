@@ -183,6 +183,47 @@ function wp_connectors_file_code_views($path)
 }
 
 /**
+ * Reads (and memoizes) a plugin file's leading bytes (glm25-9).
+ *
+ * The main-file discovery, the header parser, and the duplicate-header
+ * check each read the same 8 KB head of the same main file in one run
+ * — and the version-constant check used to re-glob the whole root on
+ * top of that. The memo is guarded by stat (mtime + size, one syscall
+ * beside the read it saves): a rewritten file re-reads, and every
+ * consumer here reads only the fixed prefix, so a tail-only rewrite
+ * re-reading an identical head is also correct. A read that fails
+ * yields '' (the callers' existing (string) cast semantics: no
+ * header found).
+ *
+ * @param string $file  Absolute file path.
+ * @param int    $bytes Leading bytes to read (default 8192).
+ * @return string The head bytes, or '' when unreadable.
+ */
+function wp_connectors_plugin_file_head($file, $bytes = 8192)
+{
+    /** @var array<string, array{mtime: int|false, size: int|false, head: string}> $memo */
+    static $memo = array();
+
+    $stat = @stat($file);
+    if (false === $stat) {
+        return '';
+    }
+
+    $key = $file . "\0" . $bytes;
+    $entry = $memo[$key] ?? null;
+    if (null === $entry || $entry['mtime'] !== $stat['mtime'] || $entry['size'] !== $stat['size']) {
+        $entry = array(
+            'mtime' => $stat['mtime'],
+            'size' => $stat['size'],
+            'head' => (string) @file_get_contents($file, false, null, 0, $bytes),
+        );
+        $memo[$key] = $entry;
+    }
+
+    return $entry['head'];
+}
+
+/**
  * Finds ALL root-level files carrying a Plugin Name header (sorted by name).
  *
  * Exactly one of these may exist (docs/CONVENTIONS.md, rule 1): more than
@@ -197,7 +238,7 @@ function wp_connectors_find_main_plugin_files($pluginDir)
 {
     $mainFiles = array();
     foreach (glob(rtrim($pluginDir, '/') . '/*.php') ?: array() as $candidate) {
-        $head = (string) file_get_contents($candidate, false, null, 0, 8192);
+        $head = wp_connectors_plugin_file_head($candidate);
         if (strpos($head, 'Plugin Name:') !== false) {
             $mainFiles[] = $candidate;
         }
@@ -284,7 +325,7 @@ function wp_connectors_plugin_header_pattern()
  */
 function wp_connectors_parse_plugin_headers($file)
 {
-    $head = (string) file_get_contents($file, false, null, 0, 8192);
+    $head = wp_connectors_plugin_file_head($file);
     $headers = array();
     if (preg_match_all(wp_connectors_plugin_header_pattern(), $head, $matches, PREG_SET_ORDER)) {
         foreach ($matches as $match) {
@@ -312,7 +353,7 @@ function wp_connectors_parse_plugin_headers($file)
  */
 function wp_connectors_duplicate_header_violations($file, $slug)
 {
-    $head = (string) file_get_contents($file, false, null, 0, 8192);
+    $head = wp_connectors_plugin_file_head($file);
     $violations = array();
     $seen = array();
     if (preg_match_all(wp_connectors_plugin_header_pattern(), $head, $matches, PREG_SET_ORDER)) {
@@ -1518,15 +1559,28 @@ function wp_connectors_namespace_suffix_from_slug($slug)
 /**
  * Checks the {SLUG}_VERSION constant matches the header Version.
  *
+ * glm25-9: accepts the caller's pre-scanned main-file list (the
+ * main_file_violations() idiom — rescanned when empty) — every CLI
+ * caller already ran wp_connectors_find_main_plugin_files(), and the
+ * rescan re-globbed the whole root and re-read every root .php's
+ * head on every conventions/build/inspect run.
+ *
  * @param string               $pluginDir Absolute plugin directory.
  * @param array<string,string> $headers   Parsed headers.
+ * @param list<string>         $mainFiles Pre-scanned candidates from
+ *                                        wp_connectors_find_main_plugin_files()
+ *                                        (rescanned when empty).
  * @return list<string> Violation messages.
  */
-function wp_connectors_version_constant_violations($pluginDir, array $headers)
+function wp_connectors_version_constant_violations($pluginDir, array $headers, array $mainFiles = array())
 {
     $slug = basename(rtrim($pluginDir, '/'));
     $violations = array();
-    $mainFile = wp_connectors_find_main_plugin_file($pluginDir);
+    if ($mainFiles === array()) {
+        $mainFile = wp_connectors_find_main_plugin_file($pluginDir);
+    } else {
+        $mainFile = $mainFiles[0];
+    }
     if (null === $mainFile) {
         return array( sprintf('%s: no main plugin file found.', $slug) );
     }

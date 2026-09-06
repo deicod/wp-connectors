@@ -51,7 +51,7 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
                 wp_connectors_main_file_violations($pluginRoot, $mainFiles),
                 wp_connectors_duplicate_header_violations($mainFiles[0], $slug),
                 wp_connectors_header_violations($headers, $slug),
-                wp_connectors_version_constant_violations($pluginRoot, $headers),
+                wp_connectors_version_constant_violations($pluginRoot, $headers, $mainFiles),
                 wp_connectors_autoloader_violations($pluginRoot),
                 wp_connectors_self_containment_violations($pluginRoot)
             );
