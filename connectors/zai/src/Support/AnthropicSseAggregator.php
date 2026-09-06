@@ -1660,7 +1660,16 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 
 		$input = new \stdClass();
 
-		if ( 'tool_use' === $type && null !== $raw_block ) {
+		/*
+		 * glm24-5: no null $raw_block check here — $type is non-null at
+		 * this point, and the ternary above derives it from $raw_block,
+		 * so the null-type early return already settled null-ness; the
+		 * null-type branch is the one live null handler. The former
+		 * conjuncts (here and on the four accumulator members below)
+		 * were provably dead and advertised a null path that cannot
+		 * reach this code.
+		 */
+		if ( 'tool_use' === $type ) {
 			if ( ! \property_exists( $raw_block, 'input' ) ) {
 				// Absent member (Codex R7 #1 sibling).
 				$this->malformed_tool_input = true;
@@ -1701,10 +1710,10 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 
 		$this->blocks[ $index ] = array(
 			'type'     => $type,
-			'text'     => null !== $raw_block && isset( $raw_block->text ) && \is_string( $raw_block->text ) ? $raw_block->text : '',
-			'thinking' => null !== $raw_block && isset( $raw_block->thinking ) && \is_string( $raw_block->thinking ) ? $raw_block->thinking : '',
-			'id'       => null !== $raw_block && isset( $raw_block->id ) && \is_string( $raw_block->id ) ? $raw_block->id : null,
-			'name'     => null !== $raw_block && isset( $raw_block->name ) && \is_string( $raw_block->name ) ? $raw_block->name : null,
+			'text'     => isset( $raw_block->text ) && \is_string( $raw_block->text ) ? $raw_block->text : '',
+			'thinking' => isset( $raw_block->thinking ) && \is_string( $raw_block->thinking ) ? $raw_block->thinking : '',
+			'id'       => isset( $raw_block->id ) && \is_string( $raw_block->id ) ? $raw_block->id : null,
+			'name'     => isset( $raw_block->name ) && \is_string( $raw_block->name ) ? $raw_block->name : null,
 			'input'    => $input,
 			'json'     => '',
 		);
