@@ -118,7 +118,9 @@ final class ZaiDiscoveryCache {
 	 * the composition layer. One orchestrator serves both now; a directory
 	 * owns only what genuinely differs: HOW a discovery request is made
 	 * and parsed on its surface ($discover), and its optional prebuilt-map
-	 * seed ($prebuilt, evaluated lazily — only when the memo must build).
+	 * seed ($prebuilt — evaluated at the consult exactly as the inline
+	 * form did; the memo consumes it only when it must build, and a stash
+	 * that outlives its build is ignored by its own mismatch guard).
 	 *
 	 * The plan/region options are read and the transient re-read on every
 	 * consult BY DESIGN (the glm15-6 memoization boundary: the harness

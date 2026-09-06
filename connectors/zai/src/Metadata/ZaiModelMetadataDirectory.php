@@ -217,9 +217,11 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		 * the composition-layer drift GLM4 #10's shared cache left
 		 * standing. This surface owns what genuinely differs: the
 		 * SDK-parent discovery (discover_model_ids_via_sdk()) and the
-		 * cold-path prebuilt seed — evaluated LAZILY now, only when the
-		 * memo must build; a stash left standing by a memo hit is
-		 * already ignored by its own mismatch guard (glm15-22).
+		 * cold-path prebuilt seed — evaluated at the consult exactly as
+		 * the inline form did (the verifier round's doc fix: no
+		 * laziness was added); the memo consumes it only when it must
+		 * build, and a stash that outlives its build is ignored by its
+		 * own mismatch guard (glm15-22).
 		 */
 		return ZaiDiscoveryCache::resolved_map(
 			ZaiEndpoint::class,

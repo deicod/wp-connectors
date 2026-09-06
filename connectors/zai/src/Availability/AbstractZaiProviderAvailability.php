@@ -690,8 +690,11 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * directories' never-fatal discovery fallback) and their own wiring
 	 * choices (the zai_anthropic model reads the RAW wired instance so a
 	 * foreign wiring failure surfaces as the 500 binding error, GLM3
-	 * #9; the zai_anthropic directory reads its protocol-wrapping
-	 * override).
+	 * #9; glm26-4: the zai_anthropic directory's discovery auth-reader
+	 * judges the RAW wired instance too — its FLIGHT still rides the
+	 * one protocol-wrap funnel, but a reader through the wrap was the
+	 * call-ordering accident that held the glm14-5 poisoning one
+	 * refactor away).
 	 *
 	 * @since 0.2.0
 	 *

@@ -448,13 +448,14 @@ abstract class WpConnectorsTestCase extends TestCase
      *
      * The aggregators' observability getters (is_done()/event_count()/
      * malformed_count()) were a public API only tests called and are
-     * deleted; the DONE/EVENT-COUNT/TERMINATED state stays internal
-     * (the aggregation gates read it), so the pins that assert
-     * termination or event accounting read the field through
-     * reflection — no production surface widened.
+     * deleted; the DONE/TERMINATED state stays internal (the frame
+     * gates read it), so the pins that assert termination read the
+     * field through reflection — no production surface widened.
+     * (glm26-11 deleted the zai aggregator's EVENT-COUNT field; the
+     * former event-accounting pins ride behavioral assertions now.)
      *
      * @param object $aggregator The aggregator instance.
-     * @param string $field      The private field name ('done', 'event_count', 'terminated').
+     * @param string $field      The private field name ('done', 'terminated').
      * @return mixed The field value.
      */
     protected function aggregator_state($aggregator, string $field)
