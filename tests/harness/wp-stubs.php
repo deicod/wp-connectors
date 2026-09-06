@@ -231,8 +231,16 @@ function update_option($option, $value, $autoload = null)
 {
     $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
 
-    // Core semantics: no update (and no hooks) when the value is unchanged.
-    if ($old === $value && null === $autoload) {
+    /*
+     * Core semantics: no update (and no hooks, no write, no autoload
+     * flip) when the value is unchanged — the short-circuit runs BEFORE
+     * any autoload handling. glm23-8 (review round 23, finding 8)
+     * removed the old `null === $autoload` condition: an unchanged-value
+     * save with an explicit autoload argument used to rewrite the row,
+     * flip the recorded autoload, and return true where core returns
+     * false with no write at all.
+     */
+    if ($old === $value) {
         return false;
     }
 
@@ -255,11 +263,9 @@ function update_option($option, $value, $autoload = null)
         WpHarness::$option_autoload[ $option ] = true;
     }
 
-    if ($old !== $value) {
-        do_action("update_option_{$option}", $old, $value);
-        do_action('updated_option', $option, $old, $value);
-        do_action('update_option', $option, $old, $value);
-    }
+    do_action("update_option_{$option}", $old, $value);
+    do_action('updated_option', $option, $old, $value);
+    do_action('update_option', $option, $old, $value);
 
     return true;
 }

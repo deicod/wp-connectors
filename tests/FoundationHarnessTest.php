@@ -104,6 +104,29 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('second', get_option('wpct_probe_opt'));
     }
 
+    public function testUpdateOptionShortCircuitsUnchangedValuesBeforeAutoloadHandling()
+    {
+        /*
+         * glm23-8 (review round 23, finding 8): core returns false
+         * BEFORE any autoload handling whenever the new value equals
+         * the old — the old stub's `null === $autoload` condition let
+         * an unchanged-value save with an explicit autoload argument
+         * rewrite the row, flip the recorded autoload, and return true
+         * where production returns false with no write at all. Both
+         * arities of the call keep the short-circuit.
+         */
+        add_option('wpct_probe_autoload', 'keep', '', false);
+
+        $this->assertFalse(update_option('wpct_probe_autoload', 'keep', true), 'An unchanged value returns false regardless of the autoload argument.');
+        $this->assertSame('keep', get_option('wpct_probe_autoload'), 'No write happened.');
+        $this->assertSame(0, did_action('update_option_wpct_probe_autoload'), 'No update hooks fired.');
+        $this->assertFalse(WpHarness::$option_autoload['wpct_probe_autoload'], 'The recorded autoload did not flip.');
+
+        $this->assertFalse(update_option('wpct_probe_autoload', 'keep'), 'The null-autoload arity keeps the same short-circuit.');
+        $this->assertSame(0, did_action('update_option_wpct_probe_autoload'));
+    }
+
+
     /**
      * Request-superglobal isolation, part 1 (code-review #13): pollutes
      * $_POST/$_GET/$_REQUEST en bloc exactly the way settings tests do.
