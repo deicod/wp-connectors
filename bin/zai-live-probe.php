@@ -35,8 +35,6 @@ require_once $repo . '/tests/harness/CurlPsr18Client.php';
 require_once $repo . '/connectors/zai/src/autoload.php';
 
 use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
-use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
-use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog;
 use Deicod\WpConnectors\Zai\Plugin;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
@@ -122,14 +120,22 @@ function zai_live_probe_option( array $args, string $name, string $default ): st
  *
  * glm21-10: the settings/endpoint pairing is DERIVED from the registry
  * (the loop below); this table carries only the columns the SDK-free
- * registry may not hold — the CLI name, the provider and availability
- * classes, and the two owner-constant identity facts (GLM11 #5). A
- * declared return type (not a foldable literal): the registry may grow
- * a surface this table has no row for, and the loop's guard must stay
- * reachable — a registry surface without its facts row exits loudly
- * instead of silently probing the wrong surface.
+ * registry may not hold — the CLI name, the provider class, and the two
+ * owner-constant identity facts (GLM11 #5). A declared return type (not
+ * a foldable literal): the registry may grow a surface this table has no
+ * row for, and the loop's guard must stay reachable — a registry surface
+ * without its facts row exits loudly instead of silently probing the
+ * wrong surface.
  *
- * @return array<string, array{cli: string, provider: class-string, availability: class-string, provider_id: string, default_plan: string}>
+ * glm24-1: the availability-class column is GONE. Its only consumers
+ * read KEY_OPTION/STATE_OPTION — constants the availability layer
+ * itself aliases from the settings class (glm15-23's fixed alias
+ * direction), so the registry row's settings class already carries
+ * them. The hand-paired column was the one probe fact no lockstep pin
+ * covered: a pairing swap between rows wrote surface A's key option and
+ * deleted surface B's validation state while generation ran on A.
+ *
+ * @return array<string, array{cli: string, provider: class-string, provider_id: string, default_plan: string}>
  */
 function zai_live_probe_sdk_facts(): array
 {
@@ -137,14 +143,12 @@ function zai_live_probe_sdk_facts(): array
         PlanRegionSettings::class          => array(
             'cli'          => 'openai',
             'provider'     => ZaiProvider::class,
-            'availability' => ZaiProviderAvailability::class,
             'provider_id'  => ZaiProvider::PROVIDER_ID,
             'default_plan' => PlanRegionSettings::DEFAULT_PLAN,
         ),
         ZaiAnthropicPlanRegionSettings::class => array(
             'cli'          => 'anthropic',
             'provider'     => ZaiAnthropicProvider::class,
-            'availability' => ZaiAnthropicProviderAvailability::class,
             'provider_id'  => ZaiAnthropicProvider::PROVIDER_ID,
             'default_plan' => ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN,
         ),
@@ -209,8 +213,9 @@ if ( false === $args ) {
  * nothing reads while it still printed the chosen plan/region as
  * acceptance evidence, misleading evidence for the exact billing-surface
  * risk the plan/region whitelists exist for. Every fact now rides its
- * owner: the settings layer's OPTION_PLAN/OPTION_REGION, the
- * availability layer's KEY_OPTION/STATE_OPTION, the endpoint layer's
+ * owner: the settings layer's OPTION_PLAN/OPTION_REGION (and, since
+ * glm24-1, KEY_OPTION/STATE_OPTION — the availability layer's constants
+ * alias them), the endpoint layer's
  * discovery_transient_ids() — and (GLM11 #5) the provider layer's
  * PROVIDER_ID and the settings layer's DEFAULT_PLAN, the last two
  * hand-composed identity literals: a PROVIDER_ID rename would have
@@ -246,7 +251,6 @@ foreach ( ZaiSurfaces::SURFACES as $zai_probe_row ) {
         'settings'     => $zai_probe_row['settings'],
         'endpoint'     => $zai_probe_row['endpoint'],
         'provider'     => $zai_probe_facts['provider'],
-        'availability' => $zai_probe_facts['availability'],
         'provider_id'  => $zai_probe_facts['provider_id'],
         'default_plan' => $zai_probe_facts['default_plan'],
     );
@@ -298,7 +302,9 @@ update_option( $surface_facts['settings']::OPTION_REGION, $region );
 
 $provider_id = $surface_facts['provider_id'];
 $provider_class = $surface_facts['provider'];
-$key_option = $surface_facts['availability']::KEY_OPTION;
+// glm24-1: the settings class the registry row already carries owns these
+// option names — the availability layer's constants alias them (glm15-23).
+$key_option = $surface_facts['settings']::KEY_OPTION;
 
 zai_live_probe_report( 'date (UTC)', gmdate( 'Y-m-d H:i:s' ) );
 zai_live_probe_report( 'surface', $surface );
@@ -345,7 +351,7 @@ $exit = 0;
  * (and fail) with zero live requests for up to a minute after one
  * transient failure.
  */
-$state_option = $surface_facts['availability']::STATE_OPTION;
+$state_option = $surface_facts['settings']::STATE_OPTION;
 delete_option( $state_option );
 
 $availability = $provider_class::availability();

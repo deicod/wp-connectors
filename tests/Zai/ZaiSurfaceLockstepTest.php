@@ -148,6 +148,26 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
             'The CLI whitelist derives from the built map, not a literal.'
         );
 
+        /*
+         * glm24-1: the probe's availability-class column is GONE. The
+         * option names ride the registry row's settings class (the owner
+         * the availability layer's constants alias, glm15-23's fixed
+         * direction), so the probe states NO availability class at all —
+         * the hand pairing was the one probe fact no pin covered, and a
+         * swap between rows wrote one surface's key option while
+         * deleting the other's validation state.
+         */
+        $this->assertSame(
+            1,
+            substr_count($source, "\$surface_facts['settings']::KEY_OPTION"),
+            'The probe reads the key option through the registry row\'s settings class.'
+        );
+        $this->assertSame(
+            1,
+            substr_count($source, "\$surface_facts['settings']::STATE_OPTION"),
+            'The probe reads the state option through the registry row\'s settings class.'
+        );
+
         foreach (\Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES as $index => $surface) {
             $short_settings = substr($surface['settings'], (int) strrpos($surface['settings'], '\\') + 1);
             $short_endpoint = substr($surface['endpoint'], (int) strrpos($surface['endpoint'], '\\') + 1);
@@ -169,6 +189,21 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
                 $provider_class,
                 $source,
                 'The probe must wire every provider registration.'
+            );
+        }
+
+        foreach (\Deicod\WpConnectors\Zai\Plugin::PROVIDER_CLASSES as $provider_class) {
+            /*
+             * Word-bounded, so the AbstractZaiProviderAvailability
+             * instanceof the probe keeps is not a restatement.
+             */
+            $availability_class = get_class($provider_class::availability());
+            $short_availability = substr($availability_class, (int) strrpos($availability_class, '\\') + 1);
+
+            $this->assertSame(
+                0,
+                preg_match_all('/\b' . preg_quote($short_availability, '/') . '\b/', $source),
+                "The probe must not restate {$short_availability}: the provider's own availability() factory owns that pairing, and its option constants alias the settings class (glm24-1)."
             );
         }
 

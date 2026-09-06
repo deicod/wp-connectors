@@ -196,7 +196,14 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         $source = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/zai-live-probe.php');
 
         $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $source), 'No hand-composed plugin option names: every option rides an owner constant.');
-        foreach (array('settings', 'endpoint', 'provider', 'availability', 'provider_id', 'default_plan') as $fact) {
+        /*
+         * glm24-1: the 'availability' fact is gone from the list — the
+         * column was an unpinned hand pairing whose constants alias the
+         * settings class the row already carries, so the probe reads
+         * KEY_OPTION/STATE_OPTION through it and states no availability
+         * class at all (pinned in ZaiSurfaceLockstepTest).
+         */
+        foreach (array('settings', 'endpoint', 'provider', 'provider_id', 'default_plan') as $fact) {
             $this->assertStringContainsString("['{$fact}']", $source, "The {$fact} fact rides the per-surface table.");
         }
 
