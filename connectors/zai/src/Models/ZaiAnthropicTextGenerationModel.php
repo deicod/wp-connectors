@@ -201,15 +201,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * glm16-6); rejections never memoize (the guard throws before any
 	 * entry lands), and the first-run encode is byte-identical (the
 	 * glm16-4 encode-everything convention is preserved, not bypassed).
-	 * The conversation anchor below bounds the pin at the CURRENT
-	 * conversation's responses — the caller's own conversation array
+	 * The build-set sweep below bounds the pin at the previous and
+	 * current build's tool parts — the caller's own conversation array
 	 * pins those DTOs anyway. A rehydrated (toArray()/fromArray())
 	 * conversation carries fresh instances every request and misses BY
 	 * DESIGN: any value-key would have to serialize the value first —
 	 * the very cost the memo exists to skip — so identity is the only
-	 * sound key, and the anchor releases the previous conversation's
-	 * entries instead of pinning dead DTOs (the unbounded-per-instance
-	 * memo glm16-6 forbids).
+	 * sound key, and the sweep detaches superseded entries instead of
+	 * pinning dead DTOs (the unbounded-per-instance memo glm16-6
+	 * forbids).
 	 *
 	 * @since 0.2.0
 	 *
@@ -233,11 +233,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * deterministically above the memo site): a PASSED oracle memoizes
 	 * true; rejections never memoize (the glm16-6 discipline — an
 	 * unplayable DTO re-proves and re-rejects identically on every
-	 * build). The same conversation anchor as glm21-4 bounds the pin
+	 * build). The same build-set sweep as glm21-4 bounds the pin
 	 * (rehydrated conversations carry fresh instances every request and
 	 * miss by design — a value-key would pay the serialization the memo
-	 * exists to skip — and the anchor releases the previous
-	 * conversation's entries).
+	 * exists to skip — and the sweep detaches every superseded entry
+	 * once the build that superseded it completes).
 	 *
 	 * @since 0.2.0
 	 *
@@ -246,43 +246,33 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private $tool_call_replay_memo = null;
 
 	/**
-	 * The first tool DTO of the most recent tool-bearing request build —
-	 * the conversation anchor the tool-loop memos release on (glm21-4).
+	 * The tool DTOs the CURRENT request build has mapped — the build set
+	 * the tool-loop memos are pruned to (glm21-4; glm21-17's sweep).
 	 *
-	 * Noted at the first FunctionCall/FunctionResponse mapping of each
-	 * build (the noted flag below opens the window once per build): an
-	 * instance-identical anchor means the same conversation is replaying
-	 * (a tool loop holding its Message objects), so the memos keep their
-	 * entries and hit; a different anchor means a new, rehydrated, or
-	 * head-trimmed conversation, so every entry is released BEFORE the
-	 * changing build's own mappings can add theirs — the note sits at
-	 * the top of the mapping branch. The pin is thereby bounded at one
-	 * conversation's tool parts — the glm16-6 "at most the current set"
-	 * discipline for a memo whose owning set (the conversation) is not
-	 * observable from the config the way the declaration list is. Text-
-	 * only builds note nothing, so an interleaved plain generation does
-	 * not shed a tool loop's entries; a release only ever costs a
-	 * re-derivation — entries are pure, never wrong.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var object|null
-	 */
-	private $tool_loop_anchor = null;
-
-	/**
-	 * Whether the CURRENT request build has noted its conversation
-	 * anchor yet (glm21-4).
-	 *
-	 * Re-armed (false) at every params build; the first tool mapping of
-	 * the build latches it, so later tool DTOs change nothing (the
-	 * anchor's job is identity-stability across builds, not coverage).
+	 * Re-armed (null) at every params build and noted at each
+	 * FunctionCall/FunctionResponse mapping; once the build's messages
+	 * are prepared, prune_tool_loop_memos() detaches every memo entry
+	 * whose DTO this build did NOT map. The bound is thereby structural
+	 * — after every completed tool-bearing build the memos hold at most
+	 * THAT build's tool parts (during a build, at most the previous and
+	 * the current build's), the glm16-6 "at most the current set"
+	 * discipline for memos whose owning set (the conversation) is not
+	 * observable from the config the way the declaration list is. This
+	 * closes the rotating-tail hole the first (anchor-based) form had —
+	 * builds sharing one first tool DTO while replacing later ones
+	 * accumulated every superseded entry (verifier-reproduced). A
+	 * tool-less build contributes nothing and prunes nothing (the set
+	 * stays null): an interleaved plain generation does not shed a tool
+	 * loop's entries, and the last tool-bearing build's bound stands.
+	 * A build that throws mid-mapping never prunes: released or stale
+	 * entries only ever cost a re-derivation — entries are pure
+	 * derivations of their DTOs, never wrong for them.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @var bool
+	 * @var \SplObjectStorage|null
 	 */
-	private $tool_loop_anchor_noted = false;
+	private $tool_loop_build_dto = null;
 
 	/**
 	 * The encoded outputSchema string for the CURRENT config's schema
@@ -615,18 +605,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$config = $this->getConfig();
 
 		/*
-		 * glm21-4: the build's conversation-anchor window opens — the
-		 * FIRST tool DTO message_part_block() maps is compared against
-		 * the previous tool-bearing build's anchor (see
-		 * note_tool_loop_anchor() and $tool_loop_anchor).
+		 * glm21-4/glm21-17: the build's tool-DTO set is re-armed here
+		 * (message_part_block() notes every tool DTO it maps) and the
+		 * memos are pruned to it once the messages are prepared — see
+		 * $tool_loop_build_dto and prune_tool_loop_memos().
 		 */
-		$this->tool_loop_anchor_noted = false;
+		$this->tool_loop_build_dto = null;
 
 		$params = array(
 			'model'      => $this->metadata()->getId(),
 			'max_tokens' => $this->effective_max_tokens(),
 			'messages'   => $this->prepare_messages_param( $prompt ),
 		);
+
+		$this->prune_tool_loop_memos();
 
 		$system_instruction = $config->getSystemInstruction();
 		$json_guidance      = $this->json_output_guidance();
@@ -1669,9 +1661,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		if ( $part->getType()->isFunctionCall() ) {
 			$function_call = $part->getFunctionCall();
 
-			// glm21-4: the build's conversation anchor (see
-			// $tool_loop_anchor) — first tool DTO mapped wins.
-			$this->note_tool_loop_anchor( $function_call );
+			// glm21-4/glm21-17: into the build's tool-DTO set (see
+			// $tool_loop_build_dto).
+			$this->note_tool_loop_dto( $function_call );
 
 			/*
 			 * Codex R9 #3: the Messages protocol requires NON-EMPTY tool
@@ -1791,9 +1783,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		if ( $part->getType()->isFunctionResponse() ) {
 			$function_response = $part->getFunctionResponse();
 
-			// glm21-4: the build's conversation anchor (see
-			// $tool_loop_anchor) — first tool DTO mapped wins.
-			$this->note_tool_loop_anchor( $function_response );
+			// glm21-4/glm21-17: into the build's tool-DTO set (see
+			// $tool_loop_build_dto).
+			$this->note_tool_loop_dto( $function_response );
 
 			/*
 			 * The tool_use id answers the call and is a wire string like
@@ -1855,35 +1847,63 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
-	 * Notes the conversation anchor with the first tool DTO a build
-	 * maps, releasing the tool-loop memos when the conversation changed
-	 * (glm21-4).
-	 *
-	 * The first note of the build compares against the previous
-	 * tool-bearing build's anchor and releases the memos on a
-	 * difference — here, at the top of the mapping branch, BEFORE this
-	 * build's encodes/oracles can add entries, so only the dead
-	 * conversation's entries are dropped; the anchor then becomes this
-	 * build's first tool DTO (the commit IS the note — no build-end
-	 * copy that a mid-build throw would strand). Later tool DTOs of the
-	 * same build change nothing.
+	 * Notes one tool DTO the current build maps, into the build set the
+	 * tool-loop memos are pruned to (glm21-4/glm21-17 — see
+	 * $tool_loop_build_dto).
 	 *
 	 * @since 0.2.0
 	 *
 	 * @param object $tool_dto The FunctionCall/FunctionResponse being mapped.
 	 * @return void
 	 */
-	private function note_tool_loop_anchor( object $tool_dto ): void {
-		if ( $this->tool_loop_anchor_noted ) {
-			return;
+	private function note_tool_loop_dto( object $tool_dto ): void {
+		if ( null === $this->tool_loop_build_dto ) {
+			$this->tool_loop_build_dto = new \SplObjectStorage();
 		}
 
-		$this->tool_loop_anchor_noted = true;
+		$this->tool_loop_build_dto->offsetSet( $tool_dto, true );
+	}
 
-		if ( $tool_dto !== $this->tool_loop_anchor ) {
-			$this->tool_loop_anchor = $tool_dto;
-			$this->release_tool_loop_memos();
+	/**
+	 * Detaches every tool-loop memo entry whose DTO the completed build
+	 * did not map (glm21-17).
+	 *
+	 * Runs once per completed request build (prepareGenerateTextParams,
+	 * after the messages are prepared): the memos may hold at most the
+	 * PREVIOUS and the CURRENT build's tool parts, so the rotating-tail
+	 * shape — builds keeping one call DTO while replacing later
+	 * response DTOs — no longer accumulates every superseded entry (the
+	 * verifier-reproduced hole in the anchor-based release glm21-4
+	 * shipped). Entries are pure derivations of their DTOs, so a
+	 * detach only ever costs a re-derivation on a later build.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 */
+	private function prune_tool_loop_memos(): void {
+		$build_set = $this->tool_loop_build_dto;
+
+		if ( null !== $build_set ) {
+			foreach ( array( $this->tool_result_encode_memo, $this->tool_call_replay_memo ) as $storage ) {
+				if ( null === $storage ) {
+					continue;
+				}
+
+				$detached = array();
+				foreach ( $storage as $dto ) {
+					if ( ! $build_set->offsetExists( $dto ) ) {
+						$detached[] = $dto;
+					}
+				}
+
+				foreach ( $detached as $dto ) {
+					$storage->offsetUnset( $dto );
+				}
+			}
 		}
+
+		$this->tool_loop_build_dto = null;
 	}
 
 	/**
@@ -1953,24 +1973,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$this->tool_call_replay_memo->offsetSet( $function_call, true );
 
 		return true;
-	}
-
-	/**
-	 * Releases the tool-loop memos (glm21-4).
-	 *
-	 * The conversation anchor changed at the params build: every entry
-	 * belongs to a conversation this build no longer replays. Null (not
-	 * a fresh storage) is the honest state — the next tool-bearing
-	 * mapping re-initializes lazily, exactly like the tool-schema memo's
-	 * release idiom (glm17-1).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return void
-	 */
-	private function release_tool_loop_memos(): void {
-		$this->tool_result_encode_memo = null;
-		$this->tool_call_replay_memo   = null;
 	}
 
 	/**

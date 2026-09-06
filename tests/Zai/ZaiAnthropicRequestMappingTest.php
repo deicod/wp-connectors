@@ -3265,11 +3265,12 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
          * that never change. The identity-keyed memo encodes each DTO
          * once: a counting subclass proves the second build never calls
          * getResponse() (the memo hit) while the wire stays
-         * byte-identical. The conversation anchor bounds the pin: a
-         * build whose first tool DTO is a DIFFERENT instance (a new
+         * byte-identical. The build-set sweep bounds the pin (glm21-17):
+         * a build that maps DIFFERENT DTO instances (a new
          * conversation, or the toArray()/fromArray() rehydration shape
-         * — fresh instances every request) releases the memo, so the
-         * original conversation re-encodes if it ever returns.
+         * — fresh instances every request) detaches the old entries at
+         * its completion, so the original conversation re-encodes if it
+         * ever returns.
          */
         $counting = new class('c1', 'get_weather', array( 'temp_c' => 21 )) extends FunctionResponse {
             public $reads = 0;
@@ -3325,15 +3326,15 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
          * glm21-5: caller-built (unstamped) FunctionCalls re-ran the
          * full ToolArgsReplayGuard oracle on every request for all
          * history — O(K²) serializations over a conversation. The
-         * verdict memo rides glm21-4's conversation anchor; the oracle
+         * verdict memo rides glm21-4's build-set sweep; the oracle
          * is a static guard with no observable seam, so the pin reads
          * the private memo field through the harness reflection helper
          * (the aggregator_state() channel, glm19-11): the DTO carries
          * its verdict after the first build, keeps it across a
-         * replayed build, loses it on a conversation switch, and a
-         * REJECTED call never lands in the memo (the glm16-6
+         * replayed build, loses it when a later build stops mapping it,
+         * and a REJECTED call never lands in the memo (the glm16-6
          * discipline — the second identical rejection below re-proves
-         * on a still-empty storage).
+         * on a still-unserved storage).
          */
         $call = new FunctionCall('k1', 'get_weather', array( 'city' => 'Oslo' ));
 
@@ -3521,5 +3522,52 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         $this->assertIsString($system);
         $this->assertStringContainsString('"y":', $system, 'An in-place nested-object mutation reaches the wire (no memo to serve it stale).');
         $this->assertSame(3, $counting->encodes);
+    }
+
+    public function testARotatingToolResultTailDoesNotAccumulateMemoEntries()
+    {
+        /*
+         * glm21-17 (verifier-round repro): builds that keep the SAME
+         * first tool DTO while replacing later ones (a retry loop
+         * rotating results — the anchor never changed, so the
+         * anchor-based release never fired) accumulated every
+         * superseded entry in the strong-keyed memos: the
+         * unbounded-per-instance shape glm16-6 forbids. The build-set
+         * sweep detaches every entry the completed build did not map,
+         * so after each rotation the encode memo holds exactly the
+         * CURRENT response's entry while the persistent call keeps its
+         * replay verdict.
+         */
+        $call       = new FunctionCall('rot', 'ping', array());
+        $prompt_head = array(
+            new Message(MessageRoleEnum::user(), array( new MessagePart('go') )),
+            new Message(MessageRoleEnum::model(), array( new MessagePart($call) )),
+        );
+
+        $model = $this->model();
+
+        $encode_memo = function () use ( $model ) {
+            return $this->aggregator_state($model, 'tool_result_encode_memo');
+        };
+        $replay_memo = function () use ( $model ) {
+            return $this->aggregator_state($model, 'tool_call_replay_memo');
+        };
+
+        for ( $i = 1; $i <= 5; $i++ ) {
+            $prompt = array_merge($prompt_head, array(
+                new Message(MessageRoleEnum::user(), array( new MessagePart(new FunctionResponse('rot', 'ping', array( 'try' => $i ))) )),
+            ));
+
+            $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+            $model->generateTextResult($prompt);
+
+            $storage = $encode_memo();
+            $this->assertInstanceOf(\SplObjectStorage::class, $storage, "Rotation {$i}: the encode memo exists.");
+            $this->assertSame(1, $storage->count(), "Rotation {$i}: only the current response's entry survives the sweep.");
+
+            $verdicts = $replay_memo();
+            $this->assertInstanceOf(\SplObjectStorage::class, $verdicts, "Rotation {$i}: the replay memo exists.");
+            $this->assertTrue($verdicts->offsetExists($call), "Rotation {$i}: the persistent call keeps its replay verdict.");
+        }
     }
 }
