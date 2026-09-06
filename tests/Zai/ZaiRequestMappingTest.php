@@ -36,19 +36,15 @@ use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
 final class ZaiRequestMappingTest extends WpConnectorsTestCase
 {
     /**
-     * Model instance wired to the harness transport with a fixture key.
+     * Model instance wired to the harness transport with a fixture key
+     * (glm22-8: one-line delegate to the harness's wiredZaiModel()).
      *
      * @param ModelConfig|null $config Optional model configuration.
      * @return \Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel
      */
     private function model(?ModelConfig $config = null)
     {
-        $this->primeZaiDiscoveryTransient();
-        $model = ZaiProvider::model('glm-5.3', $config);
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
-
-        return $model;
+        return $this->wiredZaiModel(null, $config);
     }
 
     /*
@@ -583,13 +579,11 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
          * object-ness too — the vendor mapping serializes the args with
          * json_encode(), which encodes nested stdClass as JSON objects.
          */
-        $this->primeZaiAnthropicDiscoveryTransient();
+        // glm22-8: the harness wiring helper (was an inline copy of the
+        // same three statements).
+        $anthropicModel = $this->wiredZaiAnthropicModel();
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'),
             '{"id":"msg_x","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_x","name":"search","input":{"filter":{},"tags":{"0":"x"},"q":"lit"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}');
-
-        $anthropicModel = \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3');
-        $anthropicModel->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $anthropicModel->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
 
         $call = $anthropicModel->generateTextResult(array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
@@ -630,10 +624,7 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
          * SUCCEEDED. The outbound mapper guards with the same shared
          * ToolArgsReplayGuard now, typed pre-transport.
          */
-        $this->primeZaiDiscoveryTransient();
-        $model = ZaiProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+        $model = $this->wiredZaiModel();
 
         $prompt = array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
@@ -662,10 +653,7 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
          * rides. The walker now recurses into every object's public
          * members, exactly the set json_encode() serializes.
          */
-        $this->primeZaiDiscoveryTransient();
-        $model = ZaiProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+        $model = $this->wiredZaiModel();
 
         $args = new class {
             /** @var float */
@@ -1662,11 +1650,8 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
          * region-pending credential against the newly selected endpoint —
          * exactly the cross-region disclosure the gate exists to block.
          */
-        $this->primeZaiDiscoveryTransient();
         $key = FakeSecrets::apiKey();
-        $model = ZaiProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+        $model = $this->wiredZaiModel($key);
 
         update_option(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::REGION_PENDING_OPTION, array(
             'region' => \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->region(),
@@ -1691,11 +1676,8 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         // refuses generation on this surface too. (GLM5 #11: the wired
         // model key is a save-time candidate, so its binding normalizes
         // to the 'database' identity at construction.)
-        $this->primeZaiDiscoveryTransient();
         $key = FakeSecrets::apiKey();
-        $model = ZaiProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+        $model = $this->wiredZaiModel($key);
 
         $binding = hash('sha256', 'database|' . \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings()->cache_key() . '|' . $key);
         update_option(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::STATE_OPTION, array(

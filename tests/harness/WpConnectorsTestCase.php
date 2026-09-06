@@ -321,6 +321,40 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
+     * A zai (OpenAI-surface) model wired for one harness-recorded request
+     * (glm22-8, the symmetric twin of glm20-11's wiredZaiAnthropicModel()).
+     *
+     * glm20-11's consolidation landed on the zai_anthropic surface only:
+     * the zai suites kept three private model() helpers spelling the same
+     * 4-statement wiring plus five inline copies, so a wiring change —
+     * a registry step, FakeSecrets key handling, a transporter swap, or a
+     * glm15-1-class prime-first extension — had to land eight places, and
+     * a missed edit silently left one suite driving a differently-wired
+     * model while staying green. One helper now; the per-suite model()
+     * helpers are one-line delegates (the glm20-11 shape).
+     *
+     * @param string|null      $key    Exact API key to authenticate with, or
+     *                                 null for a fresh per-call fixture key
+     *                                 (FakeSecrets::apiKey() is random per
+     *                                 call — pass a captured value when a
+     *                                 test binds flags/verdicts to the key).
+     * @param ModelConfig|null $config Optional model configuration.
+     * @return \Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel
+     */
+    protected function wiredZaiModel(?string $key = null, ?ModelConfig $config = null)
+    {
+        $this->primeZaiDiscoveryTransient();
+
+        $model = \Deicod\WpConnectors\Zai\Provider\ZaiProvider::model('glm-5.3', $config);
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication(
+            null === $key ? FakeSecrets::apiKey() : $key
+        ));
+
+        return $model;
+    }
+
+    /**
      * Reads a private SSE aggregator state field (glm19-11).
      *
      * The aggregators' observability getters (is_done()/event_count()/

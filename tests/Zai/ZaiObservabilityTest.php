@@ -31,18 +31,14 @@ use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
 final class ZaiObservabilityTest extends WpConnectorsTestCase
 {
     /**
-     * Wired model instance.
+     * Wired model instance (glm22-8: one-line delegate to the harness's
+     * wiredZaiModel()).
      *
      * @return \Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel
      */
     private function model()
     {
-        $this->primeZaiDiscoveryTransient();
-        $model = ZaiProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
-
-        return $model;
+        return $this->wiredZaiModel();
     }
 
     public function testTheLiveProbeCatchesThrowableNotException()

@@ -32,18 +32,14 @@ use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 final class ZaiResponseMappingTest extends WpConnectorsTestCase
 {
     /**
-     * Wired model instance.
+     * Wired model instance (glm22-8: one-line delegate to the harness's
+     * wiredZaiModel()).
      *
      * @return \Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel
      */
     private function model()
     {
-        $this->primeZaiDiscoveryTransient();
-        $model = ZaiProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
-
-        return $model;
+        return $this->wiredZaiModel();
     }
 
     /**
@@ -2317,10 +2313,7 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $key = FakeSecrets::apiKey();
         update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
 
-        $this->primeZaiDiscoveryTransient();
-        $model = ZaiProvider::model('glm-5.3');
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
+        $model = $this->wiredZaiModel($key);
 
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
 
