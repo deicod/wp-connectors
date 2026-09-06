@@ -235,7 +235,18 @@ final class ToolArgsReplayGuard {
 			return self::is_replayable_decoded( $decoded );
 		}
 
-		$matches = preg_match_all( '/(?<![\d.eE-])-?\d+(?![\d.eE-])/', $without_strings, $literals );
+		/*
+		 * glm22-2: '+' joins the adjacency guard class. JSON's only '+'
+		 * is the positive exponent sign, so a digit run preceded by '+'
+		 * is always the EXPONENT of a float token — the plain scan read
+		 * '0e+9223372036854775809' as the standalone integer …809 and
+		 * rejected an exact zero (the decoded double is 0.0) as
+		 * precision loss while its e- and unsigned twins replayed; the
+		 * float-form scan below judges the whole token. The trailing
+		 * class gains '+' for symmetry (a '+' after a digit run cannot
+		 * occur in decodable JSON).
+		 */
+		$matches = preg_match_all( '/(?<![\d.eE+-])-?\d+(?![\d.eE+-])/', $without_strings, $literals );
 
 		if ( false === $matches ) {
 			// Engine failure on the scan itself: fail closed, exactly
@@ -277,7 +288,7 @@ final class ToolArgsReplayGuard {
 
 		/*
 		 * glm19-1: float-form tokens (an exponent or fraction part) are
-		 * their own literal class. The e/E/./- adjacency guards above
+		 * their own literal class. The e/E/./+/- adjacency guards above
 		 * keep the PLAIN-integer scan from matching inside a float token,
 		 * but they also made every float token invisible to the rule: an
 		 * exponent spelling of a lossy beyond-int integer

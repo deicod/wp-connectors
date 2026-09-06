@@ -1135,6 +1135,20 @@ final class ZaiAnthropicResponseMappingTest extends WpConnectorsTestCase
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
             $this->assertStringContainsString('malformed input JSON', $e->getMessage());
         }
+
+        /*
+         * glm22-2: the positive-signed spelling of the same exact zero —
+         * the plain scan's '+' omission matched the exponent's digit run
+         * standalone and flagged the block like a lossy literal, the e-
+         * and unsigned twins replaying.
+         */
+        $signed = str_replace('100000000000000000000', '0e+9223372036854775809', str_replace('msg_ex', 'msg_se', $exact));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $signed);
+
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+
+        $this->assertSame(0.0, $call->getArgs()['scale'], 'A positive-signed zero exponent replays (the exponent digits belong to the float token, glm22-2).');
     }
 
     public function testPreDecodedToolInputBoundaryWindowRejects()

@@ -340,6 +340,16 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-big2","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_big2","type":"function","function":{"name":"f","arguments":"{\"boundary\":9223372036854775808}"}}]},"finish_reason":"tool_calls"}]}');
         $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
         $this->assertSame(9.223372036854775808E18, $call->getArgs()['boundary'], '2^63 is exactly representable and replays.');
+
+        /*
+         * glm22-2: the positive-signed spelling of an exact zero — the
+         * plain scan's '+' omission matched the exponent's digit run
+         * standalone and typed-rejected the whole generation, the e-
+         * and unsigned twins replaying.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-big3","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_big3","type":"function","function":{"name":"f","arguments":"{\"z\":0e+9223372036854775809}"}}]},"finish_reason":"tool_calls"}]}');
+        $call = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts()[0]->getFunctionCall();
+        $this->assertSame(0.0, $call->getArgs()['z'], 'A positive-signed zero exponent is an exact zero, not a standalone beyond-int literal (glm22-2).');
     }
 
     public function testLossyBigIntegersStillRejectTyped()
@@ -427,6 +437,15 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
              */
             'padded exact fraction via a cancelling exponent (glm20-13)' => '{"v":0.' . str_repeat('0', 1000) . '1e1000}',
             'padded exact dyadic 2^100 spelling (glm20-13)' => '{"v":0.' . str_repeat('0', 969) . '1267650600228229401496703205376e1000}',
+            /*
+             * glm22-2: a POSITIVE-signed exponent's digit run belongs to
+             * the float token, not a standalone integer literal — the
+             * plain scan's adjacency guard omitted '+', so 0e+…809
+             * (decodes to exactly 0.0, replays stably) rejected as
+             * precision loss while its e- and unsigned twins accepted.
+             */
+            'positive-signed zero exponent (glm22-2)' => '{"v":0e+9223372036854775809}',
+            'positive-signed zero exponent, fraction form (glm22-2)' => '{"v":0.0E+9223372036854775809}',
         );
         foreach ($exact as $label => $json) {
             $this->assertTrue($guard::wire_arguments_are_replayable($json), "[{$label}] must replay.");
