@@ -909,4 +909,33 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame('https://open.bigmodel.cn/api/anthropic/v1/models', end(WpHarness::$sdk_http_attempts)['url']);
         $this->assertTrue($registry->hasProvider('zai_anthropic'), 'Registry state must be untouched.');
     }
+    public function testTheDiscoveryCredentialRejectionIsStatedOnce()
+    {
+        /*
+         * glm21-14 (source pin): the auth-reader closure was spelled
+         * three times and the byte-identical five-line rejection throw
+         * twice inside discover_model_ids(); one reader local and one
+         * reject_discovered_credential() helper serve all five sites —
+         * a change to the credential a rejecting request is judged by,
+         * or to the rejection wording/channel, lands at every site or
+         * none.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php');
+
+        $this->assertSame(
+            1,
+            substr_count($source, 'return $this->getRequestAuthentication();'),
+            'One auth-reader closure serves the refuser and both recorders.'
+        );
+        $this->assertSame(
+            1,
+            substr_count($source, "'Discovery failed: the credential was rejected for this endpoint.'"),
+            'The rejection message is stated once, in the helper.'
+        );
+        $this->assertSame(
+            2,
+            substr_count($source, '$this->reject_discovered_credential();'),
+            'Both rejection branches (the 401/403 status and the 200 envelope) ride the helper.'
+        );
+    }
 }

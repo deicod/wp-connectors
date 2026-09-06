@@ -241,6 +241,20 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 */
 	private function discover_model_ids( ZaiAnthropicEndpoint $endpoint ): array {
 		/*
+		 * glm21-14: the auth-reader closure (which credential the
+		 * rejecting request flew with) was spelled three times and the
+		 * fixed five-line rejection throw twice inside this one method;
+		 * one reader local and one rejection helper serve all five
+		 * sites, so a change to the credential a rejecting request is
+		 * judged by, or to the rejection wording/channel, lands at
+		 * every site or none — never three-and-two places to miss one.
+		 */
+		$availability = new ZaiAnthropicProviderAvailability();
+		$auth_reader  = function () {
+			return $this->getRequestAuthentication();
+		};
+
+		/*
 		 * R20 (inline 3907008518): an env/constant credential that survives
 		 * an intl/cn switch is region-pending (or carries a definitive
 		 * invalid verdict) and must not be reused against the other region —
@@ -255,11 +269,7 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		 * cached at most as the 60s negative marker (GLM1 #6), so a later
 		 * definitive verdict can discover again.
 		 */
-		( new ZaiAnthropicProviderAvailability() )->refuse_discovery(
-			function () {
-				return $this->getRequestAuthentication();
-			}
-		);
+		$availability->refuse_discovery( $auth_reader );
 
 		$request = new Request( HttpMethodEnum::GET(), $endpoint->models_url() );
 		$request = $this->getRequestAuthentication()->authenticateRequest( $request );
@@ -288,19 +298,13 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 			 * and the zai twin hand-copied (and once landed one side
 			 * only, GLM7 #12/glm9-5) is gone.
 			 */
-			( new ZaiAnthropicProviderAvailability() )->record_rejection_for_status(
+			$availability->record_rejection_for_status(
 				$status,
-				function () {
-					return $this->getRequestAuthentication();
-				},
+				$auth_reader,
 				$endpoint->cache_key()
 			);
 
-			throw ResponseException::fromInvalidData(
-				ZaiAnthropicProviderAvailability::REFUSAL_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the class-owned constant (GLM10 #9).
-				'data',
-				'Discovery failed: the credential was rejected for this endpoint.'
-			);
+			$this->reject_discovered_credential();
 		}
 
 		if ( ! $response->isSuccessful() ) {
@@ -324,18 +328,8 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		 */
 		$raw = ZaiModelListParser::decode_models_body( $response );
 
-		if ( ( new ZaiAnthropicProviderAvailability() )->record_rejection_body_verdict(
-			$raw,
-			function () {
-				return $this->getRequestAuthentication();
-			},
-			$endpoint->cache_key()
-		) ) {
-			throw ResponseException::fromInvalidData(
-				ZaiAnthropicProviderAvailability::REFUSAL_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the class-owned constant (GLM10 #9).
-				'data',
-				'Discovery failed: the credential was rejected for this endpoint.'
-			);
+		if ( $availability->record_rejection_body_verdict( $raw, $auth_reader, $endpoint->cache_key() ) ) {
+			$this->reject_discovered_credential();
 		}
 
 		/*
@@ -348,5 +342,28 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		 * tree rides the parser's split entry (the one decode above).
 		 */
 		return ZaiModelListParser::parse_decoded_chat_ids( $raw, $endpoint->plan(), ZaiAnthropicProviderAvailability::REFUSAL_LABEL );
+	}
+
+	/**
+	 * Throws the fixed rejection for a credential the discovery route
+	 * definitively rejected (glm21-14).
+	 *
+	 * The 401/403 branch and the 200-envelope branch (glm18-4) threw the
+	 * byte-identical five-line ResponseException twice; one helper owns
+	 * it, so the wording and the channel (fromInvalidData under this
+	 * surface's REFUSAL_LABEL, distinguishable from a malformed body in
+	 * the live probe's discovery report) are stated once.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 * @throws ResponseException Always — the credential rejection.
+	 */
+	private function reject_discovered_credential(): void {
+		throw ResponseException::fromInvalidData(
+			ZaiAnthropicProviderAvailability::REFUSAL_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design; the label is the class-owned constant (GLM10 #9).
+			'data',
+			'Discovery failed: the credential was rejected for this endpoint.'
+		);
 	}
 }
