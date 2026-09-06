@@ -29,6 +29,7 @@ use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
+use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 
 /**
  * Bearer + protocol-version authentication for zai_anthropic.
@@ -45,6 +46,24 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 	 * @var string
 	 */
 	public const ANTHROPIC_VERSION = '2023-06-01';
+
+	/**
+	 * The surface identity interpolated into this class's rejection
+	 * messages.
+	 *
+	 * Since glm24-3 these messages ride the label chain, closing the
+	 * glm19-5/6 deferral: they were the last same-shape literals still
+	 * hardcoding the surface slug while every other rejection
+	 * rode the label chain — ErrorMapper passes RuntimeException
+	 * messages verbatim into the admin-facing 500 WP_Error, so a
+	 * CACHE_SCOPE rename would have left these diagnostics naming a
+	 * provider id that exists nowhere else.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	private const PROVIDER_LABEL = ZaiAnthropicProviderAvailability::REFUSAL_LABEL;
 
 	/**
 	 * Authenticates the request with Bearer auth and the version header.
@@ -106,7 +125,7 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 
 		if ( 1 === preg_match( '/[\x00-\x1F\x7F]/', $key ) || false !== strpos( $key, ',' ) ) {
 			throw new RuntimeException(
-				'The zai_anthropic provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.'
+				sprintf( 'The %s provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			);
 		}
 	}
@@ -195,7 +214,7 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 		}
 
 		throw new RuntimeException(
-			'The zai_anthropic provider requires an API-key authentication instance.'
+			sprintf( 'The %s provider requires an API-key authentication instance.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 		);
 	}
 }

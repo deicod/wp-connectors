@@ -443,4 +443,22 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
             'The persisted state must contain a binding hash, never the key.'
         );
     }
+
+    public function testNoRejectionMessageHardcodesTheSurfaceSlug()
+    {
+        /*
+         * glm24-3 (closing the glm19-5/6 deferral): the two rejection
+         * messages in ZaiAnthropicRequestAuthentication were the last
+         * literals hardcoding the 'zai_anthropic' slug while every
+         * other rejection rode the REFUSAL_LABEL chain — a CACHE_SCOPE
+         * rename would have left ErrorMapper's admin-facing 500 text
+         * naming a provider id that exists nowhere else. The messages
+         * interpolate PROVIDER_LABEL now (byte-identical output, pinned
+         * above); this source pin forbids the quoted-literal shape from
+         * returning.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Authentication/ZaiAnthropicRequestAuthentication.php');
+
+        $this->assertSame(0, preg_match('/[\'"]zai_anthropic[\'"]/', $source), 'Every rejection message rides the REFUSAL_LABEL chain, not a quoted slug literal.');
+    }
 }
