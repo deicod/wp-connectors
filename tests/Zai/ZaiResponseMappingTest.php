@@ -1683,7 +1683,13 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $aggregated = $aggregator->aggregated();
         $this->assertSame('stop', $aggregated['choices'][0]['finish_reason'], 'A trailing finish reason must complete a choice that lacks one.');
         $this->assertSame(16, $aggregated['usage']['total_tokens'], 'A trailing usage member must fill the payload when none merged pre-sentinel.');
-        $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'), 'Trailing frames must not count as content events.');
+        /*
+         * glm26-11 supersession: the former event_count reflection pin
+         * (trailing frames must not count as content events) is implied
+         * by the assertions around it — the trailing frames ride ONLY
+         * the gap-fill, and the field itself is deleted (its gate
+         * disjunct was subsumed by the choices emptiness).
+         */
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
 
@@ -1878,7 +1884,11 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $this->assertSame('Only', $aggregated['choices'][0]['message']['content'], 'Post-sentinel content must not merge.');
         $this->assertArrayNotHasKey(1, $aggregated['choices'], 'A trailing unknown index must not open a new choice turn.');
         $this->assertSame('stop', $aggregated['choices'][0]['finish_reason'], 'A trailing finish reason must not replace a present one.');
-        $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'), 'Neither the malformed post-sentinel frame nor the unknown-index trailing frame counts as a content event.');
+        /*
+         * glm26-11 supersession: the event_count reflection pin was
+         * implied by these assertions (neither trailing frame opened a
+         * choice turn or merged content) — the field is deleted.
+         */
         /*
          * glm23-6 restored the flag half of GLM7 #2's "malformed ones
          * still counted": the trailing `data: not json` frame flags in
@@ -2229,7 +2239,12 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $aggregator->finish();
 
         $this->assertTrue($this->aggregator_state($aggregator, 'done'));
-        $this->assertSame(3, $this->aggregator_state($aggregator, 'event_count'));
+        /*
+         * glm26-11 supersession: the former event_count === 3 pin (all
+         * three well-formed frames merged despite the malformed one) is
+         * implied by the 'ABC' content assertion below — the field is
+         * deleted.
+         */
         $this->assertCount(1, $aggregator->aggregated()['choices'], 'The malformed frame opens no second choice turn.');
 
         $aggregated = $aggregator->aggregated();
@@ -2345,7 +2360,11 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $aggregator->feed('data: {"id":"chatcmpl-f2","choices":[{"index":0,"delta":{"role":"assistant","content":"CR tail."},"finish_reason":"stop"}]}' . "\r");
         $aggregator->finish();
 
-        $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'));
+        /*
+         * glm26-11 supersession: the event_count === 1 pin was implied
+         * by the content assertion beside it (the CR-held frame was
+         * consumed and merged) — the field is deleted.
+         */
         $this->assertSame('CR tail.', $aggregator->aggregated()['choices'][0]['message']['content']);
     }
 

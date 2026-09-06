@@ -44,23 +44,6 @@ namespace Deicod\WpConnectors\Zai\Support;
 final class SseAggregator extends AbstractSseAggregator {
 
 	/**
-	 * Well-formed pre-sentinel data events consumed (GLM10 #13).
-	 *
-	 * A plain counter, not the decoded-frame list this class used to
-	 * retain: every frame merges into the accumulators below at FEED
-	 * time (the Anthropic twin's pattern), so peak memory no longer
-	 * holds every decoded frame of the stream simultaneously — decoded
-	 * PHP arrays run ~2-5x the JSON text, plausibly tens of MB on long
-	 * multi-thousand-chunk answers. Trailing frames never count: they
-	 * carry no content into the completed generation.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var int
-	 */
-	private $event_count = 0;
-
-	/**
 	 * The first string id any well-formed event declared, or null.
 	 *
 	 * @since 0.2.0
@@ -201,9 +184,17 @@ final class SseAggregator extends AbstractSseAggregator {
 	 * glm19-11: the observability getters (is_done(), event_count(),
 	 * malformed_count()) were a public API only tests called — deleted
 	 * with the $malformed dead-store counter they existed to expose.
-	 * The $done and $event_count fields stay (the aggregated() gates
-	 * read them); tests that need to pin termination or event
-	 * accounting read the field through the harness reflection helper.
+	 * The $done field stays (the frame gates read it); tests that need
+	 * to pin termination read the field through the harness reflection
+	 * helper. glm26-11 consciously superseded the $event_count half of
+	 * this note: its only production reader — aggregated()'s first gate
+	 * disjunct — was logically subsumed by the choices-emptiness
+	 * disjunct beside it (choices are written exclusively inside
+	 * merge_event(), which runs only after the increment), so the
+	 * field, its increment, and the disjunct are gone; the four
+	 * reflection pins that counted the field were superseded by the
+	 * behavioral assertions around them (their information — which
+	 * frames merged — was already implied).
 	 */
 
 	/**
@@ -240,7 +231,15 @@ final class SseAggregator extends AbstractSseAggregator {
 	 * @return array<string, mixed>|null Null when no usable event was consumed.
 	 */
 	public function aggregated(): ?array {
-		if ( 0 === $this->event_count || array() === $this->choices ) {
+		/*
+		 * glm26-11: the gate is the choices emptiness alone — the former
+		 * '0 === $this->event_count ||' disjunct was subsumed (choices
+		 * are written exclusively inside merge_event(), which runs only
+		 * after the deleted counter's increment, so zero events always
+		 * meant zero choices; an event that merges no choices kept the
+		 * second disjunct authoritative either way).
+		 */
+		if ( array() === $this->choices ) {
 			return null;
 		}
 
@@ -577,11 +576,10 @@ final class SseAggregator extends AbstractSseAggregator {
 
 		/*
 		 * GLM10 #13: the decoded event merges into the accumulators
-		 * immediately — nothing retains it — and the counter replaces
-		 * the decoded-frame list (the field's accounting is unchanged;
-		 * its glm19-11-deleted public getter is gone).
+		 * immediately — nothing retains it (glm26-11 deleted the counter
+		 * that used to stand here; aggregated()'s gate reads the choices
+		 * emptiness the merging itself produces).
 		 */
-		++$this->event_count;
 		$this->merge_event( $decoded, $data );
 	}
 
