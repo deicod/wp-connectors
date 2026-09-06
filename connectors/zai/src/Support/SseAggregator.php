@@ -16,8 +16,10 @@
  * narrowed by GLM7 #2), comment lines (`:`), ignorable
  * `event:`/`id:`/`retry:` fields, malformed JSON events (flagged via
  * has_malformed_event() and skipped — never fatal in the aggregator
- * itself; glm19-11 removed the malformed-frame counter, the flag is the
- * record), and — via the shared SseFrameBuffer — split
+ * itself; glm19-11 removed the malformed-frame counter, and glm23-6
+ * extended the flag to the UNDECODABLE data frame itself, the channel's
+ * original claim, in both the pre- and post-sentinel phases), and — via
+ * the shared SseFrameBuffer — split
  * frames (chunks may end mid-frame), CR/LF/CRLF line terminators mixed
  * freely, and a final unterminated frame.
  *
@@ -527,8 +529,27 @@ final class SseAggregator extends AbstractSseAggregator {
 		$decoded = json_decode( $data, true );
 
 		if ( ! \is_array( $decoded ) ) {
-			// A malformed frame is skipped (glm19-11 deleted the dead
-			// $malformed counter that used to tally it).
+			/*
+			 * glm23-6 (review round 23, finding 6): a data: line that
+			 * is not valid JSON is a cut or corrupt frame, not skippable
+			 * noise. GLM7 #2's post-sentinel policy always counted
+			 * malformed frames ("still parsed, malformed ones still
+			 * counted"); glm19-11 deleted the counter but the class
+			 * docblock's flag claim kept describing it, and nothing
+			 * backed it — the flag covered index corruption only, so a
+			 * gateway-mangled frame's text silently vanished from a
+			 * stream that still reported success while the Anthropic
+			 * twin rejects the identical corruption typed. The
+			 * UNDECODABLE shape flags in BOTH phases now;
+			 * json_last_error() distinguishes it from decodable
+			 * non-array payloads (a scalar `data: null` is not malformed
+			 * JSON and keeps its skip — the same non-event tolerance
+			 * merge_event() applies to an object without choices).
+			 */
+			if ( \JSON_ERROR_NONE !== \json_last_error() ) {
+				$this->malformed_event = true;
+			}
+
 			return;
 		}
 

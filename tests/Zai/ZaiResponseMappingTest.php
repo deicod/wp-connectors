@@ -1818,7 +1818,15 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $this->assertArrayNotHasKey(1, $aggregated['choices'], 'A trailing unknown index must not open a new choice turn.');
         $this->assertSame('stop', $aggregated['choices'][0]['finish_reason'], 'A trailing finish reason must not replace a present one.');
         $this->assertSame(1, $this->aggregator_state($aggregator, 'event_count'), 'Neither the malformed post-sentinel frame nor the unknown-index trailing frame counts as a content event.');
-        $this->assertFalse($aggregator->has_malformed_event(), 'Well-formed trailing frames are not corruption.');
+        /*
+         * glm23-6 restored the flag half of GLM7 #2's "malformed ones
+         * still counted": the trailing `data: not json` frame flags in
+         * the malformed-event channel (glm19-11's counter deletion had
+         * left the corruption observable nowhere). The well-formed
+         * unknown-index trailing frame above contributes no flag of
+         * its own — the flag names the UNDECODABLE frame alone here.
+         */
+        $this->assertTrue($aggregator->has_malformed_event(), 'An undecodable post-sentinel frame flags corruption (glm23-6).');
     }
 
     public function testAStreamPrefixedWithAUtf8BomStillAggregates()
@@ -2038,6 +2046,60 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         );
     }
 
+    public function testAnUndecodableDataFrameFailsTheGenerationTyped()
+    {
+        /*
+         * glm23-6 (review round 23, finding 6): a gateway-mangled frame
+         * (truncated mid-JSON) silently vanished from a stream that
+         * still reported success — the aggregator docblock's "flagged
+         * via has_malformed_event()" claim described the counter
+         * glm19-11 deleted, and the flag itself covered index
+         * corruption only, while the Anthropic twin rejects the
+         * identical corruption typed. The undecodable frame flags in
+         * both phases now; a DECODABLE non-array payload (a scalar
+         * `data: null`) is not malformed JSON and keeps its skip.
+         */
+        $stream = ''
+            . 'data: {"id":"chatcmpl-g6","choices":[{"index":0,"delta":{"role":"assistant","content":" Hel"},"finish_reason":null}]}' . "\n\n"
+            . 'data: {"id":"chatcmpl-g6","choices":[{"index":0,"delta":{"content":" WOR' . "\n\n"
+            . 'data: {"id":"chatcmpl-g6","choices":[{"index":0,"delta":{"content":"ld."},"finish_reason":"stop"}]}' . "\n\n"
+            . 'data: [DONE]' . "\n\n";
+
+        $aggregator = new SseAggregator();
+        $aggregator->feed($stream);
+        $aggregator->finish();
+        $aggregator->aggregated();
+
+        $this->assertTrue($aggregator->has_malformed_event(), 'An undecodable data frame must flag the stream.');
+        $this->assertSame(
+            ' Helld.',
+            $aggregator->aggregated()['choices'][0]['message']['content'],
+            'The neighbors still merge; the model rejects on the flag before the payload is used.'
+        );
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream with an undecodable frame must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('malformed chunk event', $e->getMessage());
+            $this->assertStringNotContainsString('WOR', $e->getMessage(), 'Raw event payloads must not be echoed.');
+        }
+
+        $scalar_stream = ''
+            . 'data: {"id":"chatcmpl-g6b","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}' . "\n\n"
+            . 'data: null' . "\n\n"
+            . 'data: [DONE]' . "\n\n";
+
+        $scalar = new SseAggregator();
+        $scalar->feed($scalar_stream);
+        $scalar->finish();
+        $scalar->aggregated();
+
+        $this->assertFalse($scalar->has_malformed_event(), 'A decodable scalar payload keeps its non-event skip.');
+    }
+
     /**
      * @dataProvider provideUnusableToolCallIndexes
      */
@@ -2112,6 +2174,14 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $aggregated = $aggregator->aggregated();
         $this->assertSame('ABC', $aggregated['choices'][0]['message']['content']);
         $this->assertSame('stop', $aggregated['choices'][0]['finish_reason']);
+        /*
+         * glm23-6: the aggregation tolerates the malformed frame (its
+         * neighbors still merge) AND flags it — the frame is skipped
+         * from the merge but never silently: the corruption is
+         * observable in the malformed-event channel the model turns
+         * into its typed stream rejection.
+         */
+        $this->assertTrue($aggregator->has_malformed_event(), 'The undecodable frame flags while its neighbors merge.');
     }
 
     public function testStreamWithoutUsableEventsFailsSafely()
