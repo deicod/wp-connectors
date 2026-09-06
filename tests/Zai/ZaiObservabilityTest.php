@@ -508,6 +508,15 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
          * Codex R6 #6 silent-disappearance class (a registry reorder
          * would strand the checkbox on the old section with no test
          * failing); the pin holds the DERIVATION, not a class name.
+         *
+         * glm21-19 (verifier round): the behavioral half alone is
+         * vacuous while the first registry row IS PlanRegionSettings —
+         * it passes byte-identically on the pre-glm21-12 hardcode. The
+         * source half pins the drift vector out of existence: no
+         * hardcoded page/section pair in DebugSettings, and the
+         * derivation statement present — a reorder that strands the
+         * field now fails here even though the behavioral half still
+         * passes.
          */
         WpHarness::$settings_fields = array();
 
@@ -519,6 +528,19 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
             array( $owner::PAGE_SLUG => array( $owner::SECTION_ID => array( \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED ) ) ),
             WpHarness::$settings_fields,
             "The debug field registers on the registry-first surface's page section (currently {$owner})."
+        );
+
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Settings/DebugSettings.php');
+
+        $this->assertSame(
+            0,
+            preg_match('/PlanRegionSettings::(PAGE_SLUG|SECTION_ID)/', $source),
+            'No hardcoded page/section pair in DebugSettings — the owner derives from the registry (the Codex R6 #6 class).'
+        );
+        $this->assertStringContainsString(
+            'ZaiSurfaces::settings_classes()[0]',
+            $source,
+            'The page owner is derived from the one cross-file owner.'
         );
     }
 }

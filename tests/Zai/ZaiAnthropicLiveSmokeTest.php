@@ -87,22 +87,4 @@ final class ZaiAnthropicLiveSmokeTest extends WpConnectorsTestCase
         // The key must never appear in any state the plugin persisted.
         $this->assertOptionNotPlaintext(ZaiAnthropicProviderAvailability::STATE_OPTION, $key);
     }
-
-    public function testTheSmokeOptionsAndProviderIdRideTheirOwnerConstants()
-    {
-        /*
-         * glm21-15 (source pin, the GLM10 #15 class the live probe was
-         * fixed in): the opt-in live test hand-stringed the surface's
-         * plan/region option names and provider id where owner
-         * constants exist — after a rename the test would write options
-         * nothing reads and probe the default plan/region while
-         * reporting the env-selected ones as evidence (and billing the
-         * wrong surface). Runs without the opt-in key: the pin is
-         * about the source shape, not live behavior.
-         */
-        $source = (string) file_get_contents(__FILE__);
-
-        $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $source), 'Every plugin option name rides an owner constant.');
-        $this->assertSame(0, preg_match('/[\'"]zai_anthropic[\'"]/', $source), 'The provider id rides its owner constant.');
-    }
 }

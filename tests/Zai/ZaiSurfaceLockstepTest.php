@@ -178,4 +178,27 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
             'Exactly one probe facts row per owner surface.'
         );
     }
+
+    public function testTheLiveSmokeTestRidesTheOwnerConstants()
+    {
+        /*
+         * glm21-15/glm21-18 (source pin, the GLM10 #15 class the live
+         * probe was fixed in): the opt-in zai_anthropic live smoke test
+         * hand-stringed the surface's plan/region option names and
+         * provider id where owner constants exist — after a rename the
+         * test would write options nothing reads and probe the default
+         * plan/region while reporting the env-selected ones as
+         * acceptance evidence (and billing the wrong surface). The pin
+         * lives HERE, not in the smoke suite: its class setUp() skips
+         * every test without the opt-in key, so an in-suite pin would
+         * be dead in every offline composer check run (the
+         * verifier-round catch).
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/tests/Zai/ZaiAnthropicLiveSmokeTest.php');
+
+        $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $source), 'Every plugin option name in the smoke test rides an owner constant.');
+        $this->assertSame(0, preg_match('/[\'"]zai_anthropic[\'"]/', $source), 'The provider id rides its owner constant.');
+        $this->assertStringContainsString('ZaiAnthropicPlanRegionSettings::OPTION_PLAN', $source, 'The plan option rides its owner constant.');
+        $this->assertStringContainsString('ZaiAnthropicProvider::PROVIDER_ID', $source, 'The provider id is wired through the owner constant.');
+    }
 }
