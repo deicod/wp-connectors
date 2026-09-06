@@ -2126,19 +2126,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 */
 		$usage_data = array();
 		if ( \array_key_exists( 'usage', $data ) ) {
-			$raw_usage = null !== $raw && \property_exists( $raw, 'usage' ) ? $raw->usage : null;
-			$reason    = UsageValidator::failure_reason(
+			/*
+			 * glm26-7: the rejection composition rides
+			 * UsageValidator::reject() — the throw this block hand-composed
+			 * (and the zai model's reject_bad_usage() re-composed
+			 * token-identically modulo member list, lenient flag, and
+			 * label) lives with the rules and messages it applies. The
+			 * argument shape is the inlined form's, verbatim.
+			 */
+			UsageValidator::reject(
 				\is_array( $data['usage'] ) ? $data['usage'] : null,
-				$raw_usage
+				null !== $raw && \property_exists( $raw, 'usage' ) ? $raw->usage : null,
+				self::PROVIDER_LABEL
 			);
-
-			if ( null !== $reason ) {
-				throw ResponseException::fromInvalidData(
-					self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
-					'usage',
-					UsageValidator::message_for_reason( $reason ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
-				);
-			}
 
 			$usage_data = $data['usage'];
 		}

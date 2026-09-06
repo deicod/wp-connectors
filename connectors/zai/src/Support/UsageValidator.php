@@ -24,6 +24,8 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Support;
 
+use WordPress\AiClient\Providers\Http\Exception\ResponseException;
+
 /**
  * Validates and totals usage members for both wire protocols.
  *
@@ -190,6 +192,45 @@ final class UsageValidator {
 		return self::REASON_NOT_OBJECT === $reason
 			? 'The usage member must be a JSON object.'
 			: 'Token counts must be non-negative integers.';
+	}
+
+	/**
+	 * Validates a usage member and throws the one typed rejection when it
+	 * is malformed (glm26-7).
+	 *
+	 * The rejection composition — failure_reason(), then the
+	 * ResponseException::fromInvalidData throw under the surface's label
+	 * with message_for_reason()'s wording — was hand-composed in the
+	 * Anthropic model's parse block and again (token-identical modulo
+	 * member list, lenient flag, and label) in the zai model's
+	 * reject_bad_usage(): a change to the rejection channel or wording
+	 * had to land in both parse paths and could drift so the same
+	 * malformed usage payload rejects differently per surface. The
+	 * composition lives here, one owner with the rules and messages
+	 * already; the models keep only their genuinely varying arguments.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed    $usage          The associatively decoded usage member.
+	 * @param mixed    $raw_usage      The same member from a non-associative
+	 *                                 decode, or null when unavailable.
+	 * @param string   $provider_label The consuming surface's PROVIDER_LABEL.
+	 * @param string[] $members        The protocol's known token members.
+	 * @param bool     $lenient        The legacy zai surface's master
+	 *                                 semantics (GLM7 #8).
+	 * @return void
+	 * @throws ResponseException When the usage member is malformed.
+	 */
+	public static function reject( $usage, $raw_usage, string $provider_label, array $members = self::ANTHROPIC_MEMBERS, bool $lenient = false ): void {
+		$reason = self::failure_reason( $usage, $raw_usage, $members, $lenient );
+
+		if ( null !== $reason ) {
+			throw ResponseException::fromInvalidData(
+				$provider_label, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+				'usage',
+				self::message_for_reason( $reason ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+			);
+		}
 	}
 
 	/**

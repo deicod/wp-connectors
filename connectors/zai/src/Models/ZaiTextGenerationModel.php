@@ -717,15 +717,13 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @throws ResponseException When the usage member is malformed.
 	 */
 	private static function reject_bad_usage( $usage, $raw_usage ): void {
-		$reason = UsageValidator::failure_reason( $usage, $raw_usage, UsageValidator::OPENAI_MEMBERS, true );
-
-		if ( null !== $reason ) {
-			throw ResponseException::fromInvalidData(
-				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
-				'usage',
-				UsageValidator::message_for_reason( $reason ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
-			);
-		}
+		/*
+		 * glm26-7: the throw composition rides UsageValidator::reject()
+		 * — this surface's genuinely varying arguments only (the OpenAI
+		 * member list, the GLM7 #8 lenient mode); a wording or channel
+		 * change now lands with the rules, never on one surface.
+		 */
+		UsageValidator::reject( $usage, $raw_usage, self::PROVIDER_LABEL, UsageValidator::OPENAI_MEMBERS, true );
 	}
 
 	/**

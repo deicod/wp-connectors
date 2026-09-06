@@ -304,4 +304,26 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
             $this->assertSame(0, preg_match('/ZaiDiscoveryCache::(cached_ids|memoized_map)\(\s*\$/', $source), "{$label} spells no consult skeleton inline (statement shape; docblock mentions excluded).");
         }
     }
+
+    public function testBothModelsRideTheOneUsageRejectionComposition()
+    {
+        /*
+         * glm26-7 (source pin): the usage-rejection throw composition
+         * (failure_reason -> ResponseException::fromInvalidData under
+         * the surface label with message_for_reason) is stated ONCE, on
+         * UsageValidator::reject(); each model passes only its genuinely
+         * varying arguments. A model re-composing the throw inline is
+         * the drift that made the same malformed usage payload able to
+         * reject differently per surface (round 26 finding 10).
+         */
+        foreach (array(
+            'the zai model' => 'src/Models/ZaiTextGenerationModel.php',
+            'the zai_anthropic model' => 'src/Models/ZaiAnthropicTextGenerationModel.php',
+        ) as $label => $relative) {
+            $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/' . $relative);
+
+            $this->assertStringContainsString('UsageValidator::reject(', $source, "{$label} rides the shared rejection composition.");
+            $this->assertSame(0, preg_match('/UsageValidator::(failure_reason|message_for_reason)\(/', $source), "{$label} composes no usage rejection inline.");
+        }
+    }
 }
