@@ -160,15 +160,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	private $blocks = array();
 
 	/**
-	 * Indexes whose content_block_stop was received (Codex R8 #1).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var array<int, true>
-	 */
-	private $stopped_indexes = array();
-
-	/**
 	 * Whether the message_start event was received (Codex R8 #3).
 	 *
 	 * @since 0.2.0
@@ -1167,7 +1158,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 * (nothing legitimate is being closed). Record the closed
 				 * state so later deltas for the index are rejected too.
 				 */
-				if ( ! isset( $this->blocks[ $index ] ) || isset( $this->stopped_indexes[ $index ] ) ) {
+				if ( ! isset( $this->blocks[ $index ] ) || $this->blocks[ $index ]['stopped'] ) {
 					$this->malformed_event = true;
 
 					return;
@@ -1187,14 +1178,14 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 * recording the stop.
 				 */
 				for ( $open_below = 0; $open_below < $index; $open_below++ ) {
-					if ( ! isset( $this->stopped_indexes[ $open_below ] ) ) {
+					if ( ! $this->blocks[ $open_below ]['stopped'] ) {
 						$this->malformed_event = true;
 
 						return;
 					}
 				}
 
-				$this->stopped_indexes[ $index ] = true;
+				$this->blocks[ $index ]['stopped'] = true;
 
 				return;
 
@@ -1237,7 +1228,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 * keeps its existing behavior.
 				 */
 				foreach ( $this->blocks as $open_index => $_open_block ) {
-					if ( ! isset( $this->stopped_indexes[ $open_index ] ) ) {
+					if ( ! $_open_block['stopped'] ) {
 						$this->malformed_event = true;
 
 						return;
@@ -1744,6 +1735,19 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			'name'     => isset( $raw_block->name ) && \is_string( $raw_block->name ) ? $raw_block->name : null,
 			'input'    => $input,
 			'json'     => '',
+
+			/*
+			 * glm26-9: the closed-lifecycle state lives on the block
+			 * accumulator itself — the $stopped_indexes parallel map was
+			 * keyed by exactly the block indexes already in $blocks
+			 * (parity enforced only by convention), the GLM10 #7
+			 * hand-synced-mirror shape this class removed for
+			 * $block_order: two identically-keyed structures kept in
+			 * sync across four sites, where a future writer recording a
+			 * stop without a block leaves them disagreeing about which
+			 * blocks are closed.
+			 */
+			'stopped'  => false,
 		);
 	}
 
@@ -1764,9 +1768,12 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		/*
 		 * Codex R8 #1: a delta for an index whose content_block_stop was
 		 * already received appends to a closed block — the completion then
-		 * carried post-stop modifications. Reject it.
+		 * carried post-stop modifications. Reject it. glm26-9: the closed
+		 * state reads the block's own 'stopped' member, so the guard
+		 * subsumes into the started-ness it already depended on (a stop
+		 * only ever records on an existing block — stopped ⊆ started).
 		 */
-		if ( isset( $this->stopped_indexes[ $index ] ) ) {
+		if ( isset( $this->blocks[ $index ] ) && $this->blocks[ $index ]['stopped'] ) {
 			$this->malformed_event = true;
 
 			return;
