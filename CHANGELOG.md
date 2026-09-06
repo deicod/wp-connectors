@@ -53,6 +53,135 @@ each:
   derivable only through the endpoint classes, and a literal formula
   mirror in uninstall.php is the drift class GLM8 #11/GLM9 #8 removed
   twice.
+- Historical tool-result responses encode once per conversation
+  (glm21-4): every request build re-ran JsonEncodeGuard::encode() on
+  each historical tool result's response value, so a K-turn tool loop
+  replaying the full conversation paid O(K^2) cumulative encodes of
+  unchanging values (often large scraped/JSON payloads). The vendor
+  FunctionResponse DTO is immutable, so the encoding is a pure
+  function of the DTO: an identity-keyed SplObjectStorage memo (the
+  tool_schema_memo precedent) encodes each DTO once — byte-identical
+  first-run wire content, rejections never memoizing. [The memo's
+  release bound is the completed build's mapped tool-DTO set since
+  glm21-17 — see the verifier round below.]
+- Caller-built tool calls run the replay oracle once per conversation
+  (glm21-5): unstamped FunctionCalls (every rehydrated
+  toArray()/fromArray() conversation included — the GLM12 #12 stamp
+  does not survive the vendor round trip) re-ran the full
+  ToolArgsReplayGuard oracle on every request for all history. An
+  identity-keyed verdict memo runs the full oracle on first sight and
+  serves the repeat; rejections never memoize (pinned with glm19-1's
+  1e23 REJECT class across two consecutive builds).
+- temperature and top_p ride one shared unit-interval rule
+  (glm21-6): the NAN/closed-interval [0,1] guards were copy twins
+  differing only in getter and member name — a bound tweak edited on
+  one member only would validate the two members of one request
+  against different ranges. RequestShapeGuard's label- and
+  member-parameterized rule serves both call sites with byte-identical
+  messages.
+- The configured outputSchema encodes once per schema value
+  (glm21-7): the schema is a config member that never changes across a
+  structured-output agent loop, but every request build re-encoded the
+  whole schema into the system guidance for identical bytes. The
+  tool_schema_memo compare pattern (config identity + value compare)
+  memoizes the encoded STRING only — the translated guidance sentence
+  stays per-call. [Refined by glm21-16: the memo serves OBJECT-FREE
+  graphs only — see the verifier round below.]
+- One shared outbound replay rejection serves both surfaces (glm21-8):
+  the stamp skip, the serializing oracle, and the typed pre-transport
+  rejection were near-verbatim twins with wording already drifted
+  ('tool call arguments' vs 'tool arguments'). One block on
+  ToolArgsReplayGuard (label-parameterized, with an optional oracle
+  callable so the zai_anthropic verdict memo interposes without
+  forking); the anthropic wording joins the zai surface's more precise
+  'tool call arguments' (three pins updated).
+- The absent-total derivation rides the validator's member sum
+  (glm21-9): derive_absent_total_tokens() hand-rolled the
+  overflow-checked prompt+completion sum that UsageValidator owns —
+  an overflow-rule change could reach one copy only. sum_members() is
+  public and the derivation rides it; no behavior change.
+- The live probe derives its surface pairing from the registry
+  (glm21-10): the probe's map restated the SDK-free settings/endpoint
+  pairings ZaiSurfaces owns and hardcoded the CLI whitelist, while the
+  lockstep test only substring-pinned class names — a pairing swap
+  between rows kept every assertion green. The map is built from
+  ZaiSurfaces::SURFACES (the probe keeps only its SDK-dependent facts,
+  keyed by settings class; a registry surface without a facts row
+  exits loudly), the whitelist and default derive from the built map,
+  and the lockstep pin is upgraded to the full-pairing form (the
+  endpoint classes leave the probe source entirely).
+- Both aggregators judge stream indexes by one value predicate
+  (glm21-11): sound_index() hand-copied raw_block_index()'s
+  non-negative-int-or-corruption rule — an index-rule change on one
+  aggregator would give the two protocols different corruption
+  verdicts for the same malformed shape. Support\StreamIndex::sound()
+  owns the value rule; each aggregator keeps its container fetch.
+- The debug field's page owner derives from the surface registry
+  (glm21-12): the hardcoded PlanRegionSettings PAGE_SLUG/SECTION_ID
+  pair restated 'the first surface owns the shared page' — a registry
+  reorder would strand the checkbox on the old section (the Codex R6
+  #6 silent-disappearance class, no test failing). The owner derives
+  from ZaiSurfaces::settings_classes()[0], like zai.php's boot().
+- The discovery map's filter+key rule lives in one predicate
+  (glm21-13): take_discovery_built_map() hand-copied map_from_ids()'
+  build rule, already diverged (no stringiness guard; the stash's own
+  sort presumed). ZaiDiscoveryCache::id_maps_to_metadata() owns the
+  rule; the seed applies the canonical newest-first comparator itself
+  (glm15-22's contract now structural, not vendor-coincidence).
+- One auth-reader local and one rejection helper serve the discovery
+  sites (glm21-14): the identical closure was spelled three times and
+  the byte-identical five-line rejection throw twice inside
+  discover_model_ids() — a missed edit would make the 401/403 branch
+  and the 200-envelope branch record verdicts under different
+  credentials or report the same failure differently.
+- The live smoke test rides the owner constants (glm21-15): the
+  opt-in zai_anthropic test hand-stringed the surface's plan/region
+  option names and provider id where owner constants exist (the
+  GLM10 #15 class the live probe was fixed in) — after a rename it
+  would write options nothing reads and report the wrong surface as
+  acceptance evidence.
+
+### Fixed (zai / M2 — GLM21 verifier round)
+
+Independent security + correctness verification over the full glm21
+diff (6 verifier lenses — security, the SSE prefix change, the memo
+lifecycle, behavior parity, test honesty, ledger/convention
+discipline; each candidate adversarially refuted; 7 raw candidates, 4
+CONFIRMED and fixed here, 3 refuted):
+
+- The outputSchema memo serves OBJECT-FREE graphs only (glm21-16,
+  verifier round on glm21-7): the strict value compare judges nested
+  OBJECT elements by identity, so an in-place mutation of a nested
+  schema object left the old and new schemas ===-equal forever — the
+  memo served the pre-mutation encoding with no reset, ever, silently
+  instructing structured-output generations against the stale schema
+  (reproduced end to end). schema_is_strict_comparable() gates the
+  memo: object-free graphs (the realistic decoded-JSON shape) memoize
+  as before; object-carrying, absurdly deep, or reference-cyclic
+  graphs skip it and encode every build (the pre-glm21-7 behavior,
+  correct for every shape). A serialize()-signature compare was tried
+  and rejected — serialize() fatals on anonymous-class and closure
+  members that json_encode accepts, trading staleness for a new
+  rejection class.
+- The tool-loop memos are pruned to the completed build's set
+  (glm21-17, verifier round on glm21-4/5): the anchor-based release
+  never fired for the rotating-tail shape — builds keeping the SAME
+  first tool DTO while replacing later ones — so every superseded
+  response DTO stayed strongly keyed (five sequential conversations on
+  one call pinned five entries while each held one; reproduced) — the
+  unbounded-per-instance shape glm16-6 forbids. The anchor is replaced
+  by a build-set sweep: every tool DTO a build maps is noted, and once
+  the messages are prepared the memos are pruned to it. The bound is
+  structural — at most the previous and current build's tool parts,
+  whatever the conversation shape.
+- The two verifier-caught pins run and bite (glm21-18/19): the
+  glm21-15 source pin lived inside the opt-in smoke suite whose setUp
+  skips everything without the live key — dead in every offline check
+  run; it moved to ZaiSurfaceLockstepTest. The glm21-12 behavioral pin
+  was vacuous while the first registry row IS PlanRegionSettings (it
+  passes on the pre-fix hardcode); it gained its source half — no
+  hardcoded page/section pair in DebugSettings, the derivation
+  statement present.
 
 ### Fixed (zai / M2 — GLM20 verifier round)
 
