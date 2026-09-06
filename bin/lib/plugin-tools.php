@@ -721,19 +721,21 @@ function wp_connectors_write_visibility_spans($masked, $offset)
  * caller's argument wins at runtime). Any unrecognized shape refuses
  * the proof, restoring the flagged default.
  *
- * @param string $code     Comment-stripped source of the file.
+ * @param string $masked   String-masked view of the file (same length as
+ *                         the comment-stripped source; offsets
+ *                         interchangeable).
  * @param string $variable Variable token, including the leading '$'.
  * @param int    $offset   Byte offset the include starts at.
  * @return bool True when only whole-array literal writes are visible to the include.
  */
-function wp_connectors_array_writes_recognized($code, $variable, $offset)
+function wp_connectors_array_writes_recognized($masked, $variable, $offset)
 {
     /*
      * glm15-2: the write-shape scan runs on the string-masked copy, so
      * '$map[...]', 'function ...(' or '$map = scalar;' text inside a
      * quoted string or heredoc body can neither refuse a legitimate
-     * map-literal proof nor launder one (same length as $code, so the
-     * offsets are interchangeable).
+     * map-literal proof nor launder one (same length as the source, so
+     * the offsets are interchangeable).
      *
      * glm18-7: the scanned region is every region whose writes the
      * include can read — the pre-include prefix plus any loop construct
@@ -741,8 +743,11 @@ function wp_connectors_array_writes_recognized($code, $variable, $offset)
      * still executes before the include's next iteration). Regions are
      * concatenated; a seam can only splice unrelated fragments into a
      * false match, which refuses the proof — the safe direction.
+     *
+     * glm24-6: the view arrives computed — the per-file driver masks
+     * once and every analysis below rides that one view (this helper
+     * used to re-tokenize the whole file on every consult).
      */
-    $masked = wp_connectors_mask_string_contents($code);
     $before = '';
     foreach (wp_connectors_write_visibility_spans($masked, $offset) as $span) {
         $before .= (string) substr($masked, $span[0], $span[1] - $span[0] + 1);
@@ -840,11 +845,14 @@ function wp_connectors_array_writes_recognized($code, $variable, $offset)
  * collected: a variable include through them stays flagged.
  *
  * @param string $code     Comment-stripped source of the file.
+ * @param string $masked   String-masked view of the same file (same
+ *                         length as $code; computed once per file by
+ *                         the driver since glm24-6).
  * @param string $variable Variable token, including the leading '$'.
  * @param int    $offset   Byte offset the include starts at.
  * @return list<string> Assignment statements (each ends with ';').
  */
-function wp_connectors_same_file_assignments($code, $variable, $offset)
+function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
 {
     /*
      * glm15-2: assignment POSITIONS are matched on the string-masked
@@ -860,8 +868,7 @@ function wp_connectors_same_file_assignments($code, $variable, $offset)
      * iteration, so visibility rides the write-visibility spans (the
      * pre-include prefix plus every spanning loop construct).
      */
-    $masked = wp_connectors_mask_string_contents($code);
-    $spans  = wp_connectors_write_visibility_spans($masked, $offset);
+    $spans = wp_connectors_write_visibility_spans($masked, $offset);
     $visible = static function (int $at) use ($spans): bool {
         foreach ($spans as $span) {
             if ($at >= $span[0] && $at <= $span[1]) {
@@ -928,7 +935,7 @@ function wp_connectors_same_file_assignments($code, $variable, $offset)
             }
             $source = trim($parts[1]);
             if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $source)
-                && ! wp_connectors_array_writes_recognized($code, $source, $offset)) {
+                && ! wp_connectors_array_writes_recognized($masked, $source, $offset)) {
                 /*
                  * Verifier round on GLM10 #14: the map can be written in
                  * forms this analysis cannot model ($map[] appends,
@@ -1009,9 +1016,11 @@ function wp_connectors_is_psr4_autoloader_shape($file, $statement, array $segmen
  * @param string $statement The include statement (starts at the keyword).
  * @param int    $offset   Byte offset of the statement within $code.
  * @param string $pluginDir Absolute plugin directory.
+ * @param string $masked   String-masked view of $code (same length;
+ *                         computed once per file by the driver, glm24-6).
  * @return list<string> Violation reasons (empty when provably in-root).
  */
-function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset, $pluginDir)
+function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset, $pluginDir, $masked)
 {
     $segments = wp_connectors_include_runtime_segments($statement);
     if ($segments === array()) {
@@ -1035,7 +1044,7 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
             $reasons[] = 'combines the anchor with unresolvable runtime segments';
             continue;
         }
-        $assignments = wp_connectors_same_file_assignments($code, $segment, $offset);
+        $assignments = wp_connectors_same_file_assignments($code, $masked, $segment, $offset);
         if ($assignments === array()) {
             $reasons[] = sprintf('depends on %s with no resolvable same-file assignment', $segment);
             continue;
@@ -1077,14 +1086,16 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
  * @param string $include   The include statement (starts at the keyword).
  * @param int    $offset    Byte offset of the statement within $code.
  * @param string $pluginDir Absolute plugin directory.
+ * @param string $masked    String-masked view of $code (same length;
+ *                          computed once per file by the driver, glm24-6).
  * @return list<string> Violation reasons (empty when provably in-root).
  */
-function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $pluginDir)
+function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $pluginDir, $masked)
 {
     $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($include)), " \t\n\r();");
 
     if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $argument)) {
-        $assignments = wp_connectors_same_file_assignments($code, $argument, $offset);
+        $assignments = wp_connectors_same_file_assignments($code, $masked, $argument, $offset);
         if ($assignments === array()) {
             return array( sprintf('variable %s has no resolvable same-file assignment', $argument) );
         }
@@ -1105,15 +1116,15 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
              * literal falls through to the not-anchored rejection.
              */
             if (preg_match('/^(?:array\s*\(|\[)/i', $expression)
-                && wp_connectors_array_writes_recognized($code, $argument, $offset)) {
-                foreach (wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir) as $reason) {
+                && wp_connectors_array_writes_recognized($masked, $argument, $offset)) {
+                foreach (wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir, $masked) as $reason) {
                     $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
                 }
                 continue;
             }
 
             if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $expression)) {
-                $inner_assignments = wp_connectors_same_file_assignments($code, $expression, $offset);
+                $inner_assignments = wp_connectors_same_file_assignments($code, $masked, $expression, $offset);
                 if ($inner_assignments === array()) {
                     $reasons[] = sprintf('variable %s depends on %s with no resolvable same-file assignment', $argument, $expression);
                     continue;
@@ -1121,8 +1132,8 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
                 foreach ($inner_assignments as $inner_assignment) {
                     $inner_expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($inner_assignment)), ';');
                     if (preg_match('/^(?:array\s*\(|\[)/i', $inner_expression)
-                        && wp_connectors_array_writes_recognized($code, $expression, $offset)) {
-                        foreach (wp_connectors_array_literal_value_reasons($file, $code, $inner_expression, $offset, $pluginDir) as $reason) {
+                        && wp_connectors_array_writes_recognized($masked, $expression, $offset)) {
+                        foreach (wp_connectors_array_literal_value_reasons($file, $code, $inner_expression, $offset, $pluginDir, $masked) as $reason) {
                             $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
                         }
                         continue;
@@ -1134,7 +1145,7 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
                     // runtime segments — the same per-segment proof the
                     // direct case applies, or a trailing `$x` would ride
                     // an anchored literal unnoticed.
-                    foreach (wp_connectors_runtime_segment_reasons($file, $code, $inner_expression, $offset, $pluginDir) as $reason) {
+                    foreach (wp_connectors_runtime_segment_reasons($file, $code, $inner_expression, $offset, $pluginDir, $masked) as $reason) {
                         $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
                     }
                 }
@@ -1147,7 +1158,7 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
             // An assignment may itself mix the anchor with runtime segments
             // (`$path = __DIR__ . '/' . $x;`) — it must pass the same
             // per-segment proof, not just the literal one.
-            foreach (wp_connectors_runtime_segment_reasons($file, $code, $expression, $offset, $pluginDir) as $reason) {
+            foreach (wp_connectors_runtime_segment_reasons($file, $code, $expression, $offset, $pluginDir, $masked) as $reason) {
                 $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
             }
         }
@@ -1204,9 +1215,11 @@ function wp_connectors_blank_quoted_strings($expression)
  * @param string $expression The array() / [] literal.
  * @param int    $offset     Byte offset the include starts at.
  * @param string $pluginDir  Absolute plugin directory.
+ * @param string $masked     String-masked view of $code (same length;
+ *                           computed once per file by the driver, glm24-6).
  * @return list<string> Violation reasons (empty when every value is provably in-root).
  */
-function wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir)
+function wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir, $masked)
 {
     $inner = (string) preg_replace('/^(?:array\s*\(|\[)\s*/i', '', trim($expression));
     $inner = (string) preg_replace('/\s*\)?\]?\s*$/', '', $inner);
@@ -1278,7 +1291,7 @@ function wp_connectors_array_literal_value_reasons($file, $code, $expression, $o
          * through a map + foreach launders what a direct include is
          * flagged for.
          */
-        foreach (wp_connectors_runtime_segment_reasons($file, $code, $value, $offset, $pluginDir) as $reason) {
+        foreach (wp_connectors_runtime_segment_reasons($file, $code, $value, $offset, $pluginDir, $masked) as $reason) {
             $reasons[] = sprintf('includes a map value (%s) that %s', $value, $reason);
         }
     }
@@ -1326,6 +1339,13 @@ function wp_connectors_self_containment_violations($pluginDir)
          * '$x = ...;' written inside a quoted string or heredoc is never
          * analyzed as a statement — matched offsets slice the REAL
          * statement (literals intact) out of $code.
+         *
+         * glm24-6: this is the ONE mask pass for the file — every
+         * analysis below (the assignment collector, the write-shape
+         * check, and their callers) receives the view instead of
+         * re-tokenizing the whole file per consult (the per-include ×
+         * per-segment × per-assignment fan-out used to re-mask O(8×)
+         * on files like uninstall.php).
          */
         $masked = wp_connectors_mask_string_contents($code);
 
@@ -1348,14 +1368,14 @@ function wp_connectors_self_containment_violations($pluginDir)
                     // and hide the variable parts of the same statement:
                     // `require __DIR__ . '/' . $dependency;` is analyzed
                     // segment by segment like any other hidden target.
-                    foreach (wp_connectors_runtime_segment_reasons($path, $code, $include[0], $include[1], $pluginDir) as $reason) {
+                    foreach (wp_connectors_runtime_segment_reasons($path, $code, $include[0], $include[1], $pluginDir, $masked) as $reason) {
                         $violations[] = sprintf('%s: %s includes a target not provably inside the plugin dir (%s): %s', $slug, $relative, $reason, trim($include[0]));
                     }
                 } else {
                     // No quoted literal: the target is hidden behind a variable
                     // or a runtime expression the scanner cannot see. Strict
                     // allow — only targets provably inside the plugin root pass.
-                    foreach (wp_connectors_hidden_include_reasons($path, $code, $include[0], $include[1], $pluginDir) as $reason) {
+                    foreach (wp_connectors_hidden_include_reasons($path, $code, $include[0], $include[1], $pluginDir, $masked) as $reason) {
                         $violations[] = sprintf('%s: %s includes a target not provably inside the plugin dir (%s): %s', $slug, $relative, $reason, trim($include[0]));
                     }
                 }
