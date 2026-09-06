@@ -6706,6 +6706,17 @@ $body = ''
     {
         $builder = $this->corePromptBuilder();
 
+        /*
+         * glm23-10: the stored DB key row and the wired registry
+         * credential are ONE key — two fresh FakeSecrets draws left the
+         * stored row never matching any credential that flies, so any
+         * later database-key path read an unsettled binding.
+         */
+        $stored = (string) get_option(\Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::KEY_OPTION, '');
+        $wired = \WordPress\AiClient\AiClient::defaultRegistry()->getProviderRequestAuthentication('zai_anthropic');
+        $this->assertNotSame('', $stored, 'The boot stores its key.');
+        $this->assertSame($stored, $wired->getApiKey(), 'The stored row and the flying credential are the same key.');
+
         $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('Via core.'));
 
         $text = $builder->using_provider('zai_anthropic')->generate_text();

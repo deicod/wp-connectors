@@ -565,11 +565,21 @@ abstract class WpConnectorsTestCase extends TestCase
             ? \Deicod\WpConnectors\Zai\Provider\ZaiProvider::class
             : \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::class;
 
-        update_option( $availability_class::KEY_OPTION, FakeSecrets::apiKey() );
+        /*
+         * glm23-10: ONE key for both halves — the old two fresh
+         * FakeSecrets::apiKey() draws stored a key row that matched no
+         * credential that ever flew, so any later database-key path
+         * (unwiring the registry auth, consulting a second unwired
+         * availability instance) read an unsettled binding and probed
+         * an unmocked credential, silently diverging from the settled
+         * state this helper promises.
+         */
+        $key = FakeSecrets::apiKey();
+        update_option( $availability_class::KEY_OPTION, $key );
         \Deicod\WpConnectors\Zai\Plugin::register( AiClient::defaultRegistry() );
         AiClient::defaultRegistry()->setProviderRequestAuthentication(
             $provider_slug,
-            new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication( FakeSecrets::apiKey() )
+            new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication( $key )
         );
 
         $models_body = $is_zai
