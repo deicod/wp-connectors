@@ -47,6 +47,7 @@ use WordPress\AiClient\Results\DTO\Candidate;
 use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use WordPress\AiClient\Results\DTO\TokenUsage;
 use WordPress\AiClient\Results\Enums\FinishReasonEnum;
+use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
@@ -183,6 +184,76 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @var array|null
 	 */
 	private $tool_schema_memo_declarations = null;
+
+	/**
+	 * Encoded historical tool-result response values, keyed by DTO
+	 * identity (glm21-4).
+	 *
+	 * The vendor FunctionResponse DTO is immutable (private
+	 * constructor-assigned properties, getters only), so the
+	 * JsonEncodeGuard encoding of its response value is a PURE function
+	 * of the DTO: a K-turn tool loop that replays the conversation every
+	 * request re-encoded every prior tool result (often large scraped or
+	 * JSON payloads) on every request build — O(K²) cumulative encodes
+	 * of values that never change. SplObjectStorage is the identity-keyed
+	 * store on the PHP 7.4 floor (the tool_schema_memo precedent,
+	 * glm16-6); rejections never memoize (the guard throws before any
+	 * entry lands), and the first-run encode is byte-identical (the
+	 * glm16-4 encode-everything convention is preserved, not bypassed).
+	 * The conversation anchor below bounds the pin at the CURRENT
+	 * conversation's responses — the caller's own conversation array
+	 * pins those DTOs anyway. A rehydrated (toArray()/fromArray())
+	 * conversation carries fresh instances every request and misses BY
+	 * DESIGN: any value-key would have to serialize the value first —
+	 * the very cost the memo exists to skip — so identity is the only
+	 * sound key, and the anchor releases the previous conversation's
+	 * entries instead of pinning dead DTOs (the unbounded-per-instance
+	 * memo glm16-6 forbids).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var \SplObjectStorage|null
+	 */
+	private $tool_result_encode_memo = null;
+
+	/**
+	 * The first tool DTO of the most recent tool-bearing request build —
+	 * the conversation anchor the tool-loop memos release on (glm21-4).
+	 *
+	 * Noted at the first FunctionCall/FunctionResponse mapping of each
+	 * build (the noted flag below opens the window once per build): an
+	 * instance-identical anchor means the same conversation is replaying
+	 * (a tool loop holding its Message objects), so the memos keep their
+	 * entries and hit; a different anchor means a new, rehydrated, or
+	 * head-trimmed conversation, so every entry is released BEFORE the
+	 * changing build's own mappings can add theirs — the note sits at
+	 * the top of the mapping branch. The pin is thereby bounded at one
+	 * conversation's tool parts — the glm16-6 "at most the current set"
+	 * discipline for a memo whose owning set (the conversation) is not
+	 * observable from the config the way the declaration list is. Text-
+	 * only builds note nothing, so an interleaved plain generation does
+	 * not shed a tool loop's entries; a release only ever costs a
+	 * re-derivation — entries are pure, never wrong.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var object|null
+	 */
+	private $tool_loop_anchor = null;
+
+	/**
+	 * Whether the CURRENT request build has noted its conversation
+	 * anchor yet (glm21-4).
+	 *
+	 * Re-armed (false) at every params build; the first tool mapping of
+	 * the build latches it, so later tool DTOs change nothing (the
+	 * anchor's job is identity-stability across builds, not coverage).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $tool_loop_anchor_noted = false;
 
 	/**
 	 * The RAW wired authentication — the SDK parent's getter, unwrapped
@@ -453,6 +524,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$this->generation_prompt = $prompt;
 
 		$config = $this->getConfig();
+
+		/*
+		 * glm21-4: the build's conversation-anchor window opens — the
+		 * FIRST tool DTO message_part_block() maps is compared against
+		 * the previous tool-bearing build's anchor (see
+		 * note_tool_loop_anchor() and $tool_loop_anchor).
+		 */
+		$this->tool_loop_anchor_noted = false;
 
 		$params = array(
 			'model'      => $this->metadata()->getId(),
@@ -1397,6 +1476,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		if ( $part->getType()->isFunctionCall() ) {
 			$function_call = $part->getFunctionCall();
 
+			// glm21-4: the build's conversation anchor (see
+			// $tool_loop_anchor) — first tool DTO mapped wins.
+			$this->note_tool_loop_anchor( $function_call );
+
 			/*
 			 * Codex R9 #3: the Messages protocol requires NON-EMPTY tool
 			 * ids and names — an empty string passes the null-only guard
@@ -1504,6 +1587,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		if ( $part->getType()->isFunctionResponse() ) {
 			$function_response = $part->getFunctionResponse();
 
+			// glm21-4: the build's conversation anchor (see
+			// $tool_loop_anchor) — first tool DTO mapped wins.
+			$this->note_tool_loop_anchor( $function_response );
+
 			/*
 			 * The tool_use id answers the call and is a wire string like
 			 * the rest (GLM6 #9: encodability-guarded, not just
@@ -1542,8 +1629,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * differently on the two surfaces. One convention, both
 			 * surfaces, every response type; pinned by
 			 * testScalarToolResultsShipJsonEncodedLikeTheOpenAITwin.
+			 *
+			 * glm21-4: the encoding rides the identity-keyed memo helper
+			 * (encoded_tool_result_response()) — the first-run encode is
+			 * byte-identical, and a conversation replaying the same DTO
+			 * instances skips the re-encode of every historical result.
 			 */
-			$encoded = JsonEncodeGuard::encode( $function_response->getResponse(), 'a tool result', self::PROVIDER_LABEL );
+			$encoded = $this->encoded_tool_result_response( $function_response );
 
 			return array(
 				'type'        => 'tool_result',
@@ -1556,6 +1648,88 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		// validate_request() — no GLM model on this surface has verified
 		// image/file support yet (record 0006 note 4).
 		return null;
+	}
+
+	/**
+	 * Notes the conversation anchor with the first tool DTO a build
+	 * maps, releasing the tool-loop memos when the conversation changed
+	 * (glm21-4).
+	 *
+	 * The first note of the build compares against the previous
+	 * tool-bearing build's anchor and releases the memos on a
+	 * difference — here, at the top of the mapping branch, BEFORE this
+	 * build's encodes/oracles can add entries, so only the dead
+	 * conversation's entries are dropped; the anchor then becomes this
+	 * build's first tool DTO (the commit IS the note — no build-end
+	 * copy that a mid-build throw would strand). Later tool DTOs of the
+	 * same build change nothing.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param object $tool_dto The FunctionCall/FunctionResponse being mapped.
+	 * @return void
+	 */
+	private function note_tool_loop_anchor( object $tool_dto ): void {
+		if ( $this->tool_loop_anchor_noted ) {
+			return;
+		}
+
+		$this->tool_loop_anchor_noted = true;
+
+		if ( $tool_dto !== $this->tool_loop_anchor ) {
+			$this->tool_loop_anchor = $tool_dto;
+			$this->release_tool_loop_memos();
+		}
+	}
+
+	/**
+	 * The JSON encoding of one tool result's response value, memoized by
+	 * DTO identity (glm21-4).
+	 *
+	 * Same contract as the JsonEncodeGuard::encode() call it wraps —
+	 * byte-identical first-run encoding (the glm16-4 convention), the
+	 * same typed rejection on an unencodable value — minus the repeat:
+	 * a conversation replaying the same DTO instances (the in-memory
+	 * tool-loop shape) reads the memo instead of re-encoding every
+	 * historical result on every request build. Rejections never
+	 * memoize (the glm16-6 discipline): the guard throws before any
+	 * entry lands, so an unencodable DTO re-proves and re-rejects
+	 * identically on every build.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param FunctionResponse $function_response The tool result being mapped.
+	 * @return string The JSON encoding of the response value.
+	 */
+	private function encoded_tool_result_response( FunctionResponse $function_response ): string {
+		if ( null === $this->tool_result_encode_memo ) {
+			$this->tool_result_encode_memo = new \SplObjectStorage();
+		} elseif ( $this->tool_result_encode_memo->offsetExists( $function_response ) ) {
+			return $this->tool_result_encode_memo->offsetGet( $function_response );
+		}
+
+		$encoded = JsonEncodeGuard::encode( $function_response->getResponse(), 'a tool result', self::PROVIDER_LABEL );
+
+		$this->tool_result_encode_memo->offsetSet( $function_response, $encoded );
+
+		return $encoded;
+	}
+
+	/**
+	 * Releases the tool-loop memos (glm21-4).
+	 *
+	 * The conversation anchor changed at the params build: every entry
+	 * belongs to a conversation this build no longer replays. Null (not
+	 * a fresh storage) is the honest state — the next tool-bearing
+	 * mapping re-initializes lazily, exactly like the tool-schema memo's
+	 * release idiom (glm17-1).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 */
+	private function release_tool_loop_memos(): void {
+		$this->tool_result_encode_memo = null;
 	}
 
 	/**

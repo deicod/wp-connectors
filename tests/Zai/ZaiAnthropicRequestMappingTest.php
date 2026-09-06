@@ -3255,4 +3255,67 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
 
         $this->assertNoHttpRequests();
     }
+
+    public function testAReplayedToolResultEncodesOnceAndAConversationSwitchReleases()
+    {
+        /*
+         * glm21-4: a K-turn tool loop replays the same FunctionResponse
+         * DTO instances every request, and every build re-encoded every
+         * historical tool result — O(K²) cumulative encodes of values
+         * that never change. The identity-keyed memo encodes each DTO
+         * once: a counting subclass proves the second build never calls
+         * getResponse() (the memo hit) while the wire stays
+         * byte-identical. The conversation anchor bounds the pin: a
+         * build whose first tool DTO is a DIFFERENT instance (a new
+         * conversation, or the toArray()/fromArray() rehydration shape
+         * — fresh instances every request) releases the memo, so the
+         * original conversation re-encodes if it ever returns.
+         */
+        $counting = new class('c1', 'get_weather', array( 'temp_c' => 21 )) extends FunctionResponse {
+            public $reads = 0;
+
+            public function getResponse()
+            {
+                ++$this->reads;
+
+                return parent::getResponse();
+            }
+        };
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array( new MessagePart('go') )),
+            new Message(MessageRoleEnum::model(), array( new MessagePart(new FunctionCall('c1', 'get_weather', array( 'city' => 'Oslo' ))) )),
+            new Message(MessageRoleEnum::user(), array( new MessagePart($counting) )),
+        );
+
+        $model = $this->model();
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $attempts = $this->sdkHttpAttempts();
+
+        $this->assertSame(1, $counting->reads, 'The replayed tool result encodes once; the second build rides the identity memo.');
+        $this->assertSame($attempts[0]['body'], $attempts[1]['body'], 'The memoized build sends the byte-identical wire body.');
+
+        // A different conversation (fresh DTO instances — the
+        // rehydration shape) releases the memo via the anchor compare.
+        $fresh_prompt = array(
+            new Message(MessageRoleEnum::user(), array( new MessagePart('again') )),
+            new Message(MessageRoleEnum::model(), array( new MessagePart(new FunctionCall('d1', 'get_time', array( 'zone' => 'CET' ))) )),
+            new Message(MessageRoleEnum::user(), array( new MessagePart(new FunctionResponse('d1', 'get_time', array( 'hour' => 14 ))) )),
+        );
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($fresh_prompt);
+
+        // The original conversation returns: its entries were released
+        // by the switch, so its result re-encodes (reads climbs to 2).
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $this->assertSame(2, $counting->reads, 'A conversation switch released the memo; the returning conversation re-encodes.');
+    }
 }
