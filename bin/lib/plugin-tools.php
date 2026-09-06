@@ -1161,6 +1161,32 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
 }
 
 /**
+ * Length-preserving string blanking of one expression's quoted literals
+ * (glm22-15).
+ *
+ * Both passes of the array-literal walk (the whole-literal element split
+ * and the per-element value split) judge commas and arrows on the SAME
+ * blanked view: quoted contents become runs of 'x' between preserved
+ * quote bytes, so cut positions computed on the blanked copy slice the
+ * ORIGINAL. Deliberately NOT wp_connectors_mask_string_contents() — that
+ * is the token-aware shared masker with different semantics; this helper
+ * only ever judges delimiter structure, never code.
+ *
+ * @param string $expression The expression whose quoted literals to blank.
+ * @return string The blanked copy (same byte length).
+ */
+function wp_connectors_blank_quoted_strings($expression)
+{
+    return (string) preg_replace_callback(
+        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/s',
+        static function ($match) {
+            return '\'' . str_repeat('x', max(0, strlen($match[0]) - 2)) . '\'';
+        },
+        $expression
+    );
+}
+
+/**
  * Reasons an array() literal's element VALUES cannot be proven in-root
  * (GLM10 #14).
  *
@@ -1186,14 +1212,9 @@ function wp_connectors_array_literal_value_reasons($file, $code, $expression, $o
     $inner = (string) preg_replace('/\s*\)?\]?\s*$/', '', $inner);
 
     // Blank string contents WITHOUT changing the byte length, so comma
-    // cut positions computed on the blanked copy slice the ORIGINAL.
-    $blanked = (string) preg_replace_callback(
-        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/s',
-        static function ($match) {
-            return '\'' . str_repeat('x', max(0, strlen($match[0]) - 2)) . '\'';
-        },
-        $inner
-    );
+    // cut positions computed on the blanked copy slice the ORIGINAL
+    // (glm22-15: the one shared blanking helper).
+    $blanked = wp_connectors_blank_quoted_strings($inner);
 
     $elements = array();
     $cut = -1;
@@ -1224,14 +1245,9 @@ function wp_connectors_array_literal_value_reasons($file, $code, $expression, $o
         }
 
         // The VALUE side of a top-level `=>` (the arrow inside a nested
-        // structure sits below depth zero and never splits this element).
-        $element_blank = (string) preg_replace_callback(
-            '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/s',
-            static function ($match) {
-                return '\'' . str_repeat('x', max(0, strlen($match[0]) - 2)) . '\'';
-            },
-            $element
-        );
+        // structure sits below depth zero and never splits this element)
+        // — judged on the same shared blanked view (glm22-15).
+        $element_blank = wp_connectors_blank_quoted_strings($element);
         $depth = 0;
         $value = $element;
         $length = strlen($element_blank);
