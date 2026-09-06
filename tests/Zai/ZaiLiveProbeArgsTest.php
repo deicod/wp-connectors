@@ -149,6 +149,37 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         $this->assertStringContainsString("\\is_string( \$home )", $source, 'The HOME fallback is guarded by a string check.');
     }
 
+    public function testARegisterArgcArgvDisabledRunWalksTheUsagePathNotAFatal()
+    {
+        /*
+         * glm23-3 (review round 23, finding 3): the argv pre-scan read
+         * the global unguarded, so under register_argc_argv=0 (a valid
+         * php.ini setting on the supported range — empirically unset in
+         * docker php:8.3-cli and php:7.4-cli; PHP builds newer than the
+         * composer platform ceiling always populate argv in the CLI
+         * SAPI, where this pin asserts the same outcome vacuously) the
+         * strict-types array_search() fataled with exit 255 before ANY
+         * diagnostic, violating the file's own GLM7 #14 rule that even
+         * Errors must surface as named FAILED steps. The guarded
+         * pre-scan and the getopt() false normalization walk the usage
+         * path: every option at its default, stopping at the key lookup
+         * with its named diagnostic.
+         */
+        $repo = dirname(__DIR__, 2);
+
+        $command = 'env -i HOME=/nonexistent-zai-probe-home '
+            . escapeshellarg(PHP_BINARY) . ' -d register_argc_argv=0 '
+            . escapeshellarg($repo . '/bin/zai-live-probe.php')
+            . ' 2>&1';
+        exec($command, $outputLines, $exitCode);
+        $output = implode("\n", $outputLines);
+
+        $this->assertSame(2, $exitCode, "The argc_argv=0 run must exit at the key lookup, got {$exitCode}: {$output}");
+        $this->assertStringContainsString('no key found', $output, 'The unpopulated-argv run walks the usage path to the named diagnostic.');
+        $this->assertStringNotContainsString('Fatal error', $output);
+        $this->assertStringNotContainsString('TypeError', $output);
+    }
+
     public function testThePerSurfaceFactsRideTheOwnerConstants()
     {
         /*

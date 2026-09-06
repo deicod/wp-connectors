@@ -165,8 +165,19 @@ function zai_live_probe_sdk_facts(): array
  * whose following token is absent or itself option-led can only ever
  * mean a missing value (none of this probe's values starts with '--').
  */
+/*
+ * glm23-3 (review round 23, finding 3): register_argc_argv=0 (a valid
+ * php.ini setting — the CLI SAPI defaults it on, a hardened ini or a
+ * -d flag turns it off) leaves $argv UNDEFINED and getopt() returning
+ * false, so the pre-scan's strict array_search() fataled with a
+ * TypeError before any diagnostic — violating this file's own GLM7 #14
+ * rule that even Errors must surface as named FAILED steps. An absent
+ * argv means no arguments to scan: the empty-array normalization walks
+ * the usage path (every option at its default, stopping at the key
+ * lookup with its named diagnostic).
+ */
 global $argv;
-$zai_probe_argv = $argv;
+$zai_probe_argv = isset( $argv ) && \is_array( $argv ) ? $argv : array();
 
 foreach ( array( 'surface', 'plan', 'region' ) as $zai_probe_option_name ) {
     $zai_probe_position = array_search( '--' . $zai_probe_option_name, $zai_probe_argv, true );
@@ -182,6 +193,11 @@ foreach ( array( 'surface', 'plan', 'region' ) as $zai_probe_option_name ) {
 }
 
 $args = getopt( '', array( 'surface:', 'plan:', 'region:' ) );
+if ( false === $args ) {
+	// glm23-3: the same register_argc_argv=0 shape — getopt() reads the
+	// argv that is not there. No options parsed; the defaults below.
+	$args = array();
+}
 
 /*
  * GLM10 #15: ONE per-surface fact table, chosen after the surface

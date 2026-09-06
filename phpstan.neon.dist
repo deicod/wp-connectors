@@ -59,3 +59,20 @@ parameters:
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Endpoints/AbstractZaiEndpoint.php
 			count: 9
+		# glm23-3: the live probe's argv guard reads $argv unguarded by
+		# design — PHPStan's model types the CLI superglobal as an
+		# always-present non-empty list, which holds only on PHP builds
+		# newer than the composer platform ceiling; on the supported
+		# 7.4-8.3 range register_argc_argv=0 empirically leaves $argv
+		# UNSET (docker php:7.4-cli/8.3-cli), where the unguarded strict
+		# array_search() fataled before any diagnostic (review round 23,
+		# finding 3). The is_array() half of the guard is the same
+		# story; both are pinned to their exact counts.
+		-
+			identifier: isset.variable
+			path: bin/zai-live-probe.php
+			count: 1
+		-
+			identifier: function.alreadyNarrowedType
+			path: bin/zai-live-probe.php
+			count: 1
