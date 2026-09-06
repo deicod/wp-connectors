@@ -1518,25 +1518,10 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
     }
 
     /**
-     * The constants a class declares ITSELF (inherited ones excluded).
-     *
-     * @param string $class Class name.
-     * @return list<string> Declared constant names.
-     */
-    private static function declared_constants(string $class): array
-    {
-        $names = array();
-        foreach ((new \ReflectionClass($class))->getReflectionConstants() as $constant) {
-            if ($constant->getDeclaringClass()->getName() === $class) {
-                $names[] = $constant->getName();
-            }
-        }
-
-        return $names;
-    }
-
-    /**
      * Which of the given names a class declares itself.
+     *
+     * glm25-11: the walk itself is the harness's declared_constants()
+     * now (every base-vs-child constant pin rides the one helper).
      *
      * @param string        $class Class name.
      * @param list<string>  $names Constant names to probe.

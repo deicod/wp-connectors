@@ -469,6 +469,33 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
+     * The constants a class declares ITSELF, inherited ones excluded
+     * (glm25-11).
+     *
+     * The base-vs-child constant lockstep pins (identifier ownership on
+     * the provider, availability, endpoint, and settings bases) each
+     * hand-rolled this reflection walk inline — four unowned copies
+     * meant a change to the declaring-class rule had to land in five
+     * places, and a suite that missed the edit silently weakened
+     * exactly the pin catching constant drift. One harness helper
+     * (the aggregator_state() precedent) serves every walk.
+     *
+     * @param string $class Class name.
+     * @return list<string> Declared constant names.
+     */
+    protected static function declared_constants(string $class): array
+    {
+        $names = array();
+        foreach ((new \ReflectionClass($class))->getReflectionConstants() as $constant) {
+            if ($constant->getDeclaringClass()->getName() === $class) {
+                $names[] = $constant->getName();
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * Recorded wp_remote_* attempts.
      *
      * @return list<array{method: string, url: string, args: array}>

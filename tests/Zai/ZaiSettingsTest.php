@@ -878,22 +878,12 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
             'ENDPOINT_CLASS',
         );
 
-        $base = array();
-        foreach ((new \ReflectionClass(AbstractPlanRegionSettings::class))->getReflectionConstants() as $constant) {
-            if ($constant->getDeclaringClass()->getName() === AbstractPlanRegionSettings::class) {
-                $base[] = $constant->getName();
-            }
-        }
+        $base = self::declared_constants(AbstractPlanRegionSettings::class);
 
         $this->assertSame(array(), array_values(array_intersect($identifiers, $base)), 'The settings base must not carry provider identifiers.');
 
         foreach (array(PlanRegionSettings::class, ZaiAnthropicPlanRegionSettings::class) as $settings) {
-            $declared = array();
-            foreach ((new \ReflectionClass($settings))->getReflectionConstants() as $constant) {
-                if ($constant->getDeclaringClass()->getName() === $settings) {
-                    $declared[] = $constant->getName();
-                }
-            }
+            $declared = self::declared_constants($settings);
 
             $this->assertSame(array(), array_values(array_diff($identifiers, $declared)), "{$settings} must declare every identifier constant.");
         }

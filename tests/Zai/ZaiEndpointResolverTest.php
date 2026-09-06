@@ -397,22 +397,12 @@ PHP;
             'UNKNOWN_ENDPOINT_LABEL',
         );
 
-        $base = array();
-        foreach ((new \ReflectionClass(AbstractZaiEndpoint::class))->getReflectionConstants() as $constant) {
-            if ($constant->getDeclaringClass()->getName() === AbstractZaiEndpoint::class) {
-                $base[] = $constant->getName();
-            }
-        }
+        $base = self::declared_constants(AbstractZaiEndpoint::class);
 
         $this->assertSame(array(), array_values(array_intersect($identifiers, $base)), 'The endpoint base must not carry surface identifiers.');
 
         foreach (array(ZaiEndpoint::class, ZaiAnthropicEndpoint::class) as $endpoint_class) {
-            $declared = array();
-            foreach ((new \ReflectionClass($endpoint_class))->getReflectionConstants() as $constant) {
-                if ($constant->getDeclaringClass()->getName() === $endpoint_class) {
-                    $declared[] = $constant->getName();
-                }
-            }
+            $declared = self::declared_constants($endpoint_class);
 
             $this->assertSame(array(), array_values(array_diff($identifiers, $declared)), "{$endpoint_class} must declare every identifier constant.");
             $this->assertTrue(is_subclass_of($endpoint_class, AbstractZaiEndpoint::class), "{$endpoint_class} rides the shared base.");
