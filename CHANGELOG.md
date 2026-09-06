@@ -6,6 +6,88 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM25 round)
+
+All 11 findings of code-review round 25 (high, ledger-filtered; the
+25th round on this branch — zero correctness findings again, all
+cleanup/drift-risk), one commit each, plus a two-lens verifier pass
+(independent security + correctness agents over the full diff; 1
+confirmed finding — the round's own glm25-9 stat-guarded head memo
+served a stale head on same-second same-size rewrites, security-lens
+repro 30/30, excised as glm25-12 — with every other production
+change holding byte-identical behavior under the verifiers'
+differentials: a 22,757-sequence SSE prefix-machine differential, a
+60,000-case fuzz of the same, a two-tree discovery-seed write
+differential, a refusal-gate decision matrix including the empty
+ApiKey key, byte-compared tokenizer views over 62 real files and 12
+hostile fixtures, and mutation-tested pins catching every revert
+shape they name):
+
+- The discovery seed stores its row through the cache owner
+  (glm25-1): the availability base's probe seed hand-synced its own
+  set_transient() for the 12h positive discovery row, a second writer
+  of a row ZaiDiscoveryCache owns while the row contract had already
+  evolved once on the reader side (glm23-7). ZaiDiscoveryCache::
+  store_ids() is the one positive-row store (the discovery flow's own
+  write routes through it), and a tree-scan pin holds that every
+  set_transient() under connectors/zai/src outside the owner is the
+  availability base's single probe-miss marker write.
+- The refusal gate and message builder go private (glm25-2): the
+  predicate's public default-null path resolved an effective_key()-
+  based verdict bypassing the wrapper's ApiKey-shape skip (the GLM3 #9
+  gate-divergence class) and had no production caller. Tests ride the
+  production paths now — gate decisions through the wrapper with
+  explicit credentials, the fixed wording through the refuse_
+  generation() throw both model surfaces ride — plus a new pin that
+  foreign wiring skips the THROWING wrapper too.
+- The generation-prompt stash rides one shared trait (glm25-3):
+  Support\StashesGenerationPrompt owns the encodability attribution
+  walk's stash (the MemoizesToolLoopVerdicts precedent for the
+  parents-differ shape); each suite pins the composition, the absent
+  hand-synced declaration, and the assignment at the params build.
+- The Messages non-streaming parse collapses to one hop (glm25-4):
+  the parse_message_body()/parse_body_string() chain stranded after
+  glm15-7/glm16-8 moved the JSON fallback to the shared owners; the
+  decode inlines at the sniff else-branch (the zai twin's shape), and
+  the glm15-7 one-decode pin's per-surface substring is superseded at
+  its site to name each surface's own decode plus the shared
+  JsonFallbackResult funnel both fallbacks ride.
+- The no-BOM branch drops its dead settle assignment (glm25-5) in
+  SseFrameBuffer::feed(): zero statements stood between it and the
+  unconditional settle; the comment states the shared transition.
+- The live-smoke lockstep pin covers both twins (glm25-6): the zai
+  smoke test still hand-stringed its option literals and provider id
+  where the pin scanned only the Anthropic twin — offline check
+  green, then the next live run writing options nothing reads. Both
+  files ride owner constants; the pin loops both with per-surface
+  owners.
+- The endpoint test rides the settings constants (glm25-7), matching
+  its Anthropic twin — a renamed option now fails at the write, not
+  on a URL mismatch naming nothing about the stale literals.
+- One tokenizer provider serves both conventions checks (glm25-8):
+  the self-containment analyzer and the unused-import scanner each
+  tokenized every connectors/*.php file (two full token_get_all
+  passes per check, four per gate run). wp_connectors_file_code_
+  views() computes the (source, code, masked) triple once per file
+  CONTENT (path + md5 key — sound under rewrite by design, no mtime
+  granularity), with the unreadable return caller-owned as before.
+- The version check rides the caller's main-file scan (glm25-9):
+  version_constant_violations() accepts the pre-scanned $mainFiles
+  (the main_file_violations() idiom, rescan-when-empty fallback), and
+  the 8 KB head reads ride one uncached owner,
+  wp_connectors_plugin_file_head() — deliberately unmemoized after
+  the verifier round (glm25-12): the stat-guarded memo first added
+  here served a stale head for same-second same-size rewrites while
+  saving only page-cached reads.
+- Every Anthropic /models success body rides the factory (glm25-10):
+  four hand-rolled minimal bodies replaced by HttpResponseFactory::
+  anthropicModelsBody() — the glm15-20 drift class, closed on this
+  surface.
+- The declared-constants walk is one harness helper (glm25-11):
+  WpConnectorsTestCase::declared_constants() (the aggregator_state()
+  precedent) replaces five hand-rolled copies backing the base-vs-
+  child constant lockstep pins.
+
 ### Fixed (zai / M2 — GLM24 round)
 
 All 9 findings of code-review round 24 (high, ledger-filtered; zero
