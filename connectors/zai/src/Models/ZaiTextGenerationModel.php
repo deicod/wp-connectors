@@ -50,6 +50,7 @@ use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonFallbackResult;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
 use Deicod\WpConnectors\Zai\Support\JsonOutputGuidance;
+use Deicod\WpConnectors\Zai\Support\MemoizesToolLoopVerdicts;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
 use Deicod\WpConnectors\Zai\Support\RequestShapeGuard;
@@ -68,6 +69,7 @@ use Deicod\WpConnectors\Zai\Support\UsageValidator;
 final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGenerationModel {
 	use ThrowsSafeHttpErrors;
 	use SafeGenerationBoundary;
+	use MemoizesToolLoopVerdicts;
 
 	/**
 	 * The per-surface provider label interpolated into every guard and
@@ -98,94 +100,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @var array|null
 	 */
 	private $generation_prompt = null;
-
-	/**
-	 * Encodability verdicts for historical tool results, keyed by DTO
-	 * identity (glm22-3, the zai port of the twin's glm21-4).
-	 *
-	 * The tool-result response is the ONE value whose encodability guard
-	 * cannot ride the whole-payload net (the glm13-11 exception: the SDK
-	 * parent's message mapping json_encodes it and STRING-CASTS the
-	 * failure, laundering an unencodable result into "content": false
-	 * before the net could see it), so validate_request()'s walk proves
-	 * it eagerly on EVERY request — and a K-turn tool loop replays the
-	 * full conversation each request, re-encoding all K-1 prior results
-	 * (often multi-KB scraped/JSON payloads) and discarding the string:
-	 * O(K²) guard encodes on the hot path. The vendor parent's own
-	 * per-request shipping encode is structural and stays; this memo
-	 * removes the GUARD's half. The verdict is a pure function of the
-	 * immutable vendor FunctionResponse DTO (getters only), so it
-	 * memoizes by identity on the SplObjectStorage the 7.4 floor allows
-	 * (the tool_schema_memo precedent, glm16-6); rejections never
-	 * memoize (must_encode throws before any entry lands), and the
-	 * first-run proof is byte-identical. The build-set sweep below
-	 * bounds the pin at the previous and current build's tool parts —
-	 * the caller's own conversation array pins those DTOs anyway, and a
-	 * rehydrated (toArray()/fromArray()) conversation carries fresh
-	 * instances every request and misses BY DESIGN: any value-key would
-	 * have to serialize the value first — the very cost the memo exists
-	 * to skip (the twin's glm21-4/glm21-17 discipline, ported whole).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var \SplObjectStorage|null
-	 */
-	private $tool_result_encode_memo = null;
-
-	/**
-	 * Replay verdicts for caller-built tool calls, keyed by DTO identity
-	 * (glm22-4, the zai port of the twin's glm21-5).
-	 *
-	 * The GLM12 #12 stamp skips inbound-accepted calls at the instanceof
-	 * check; CALLER-built plain SDK instances (and every rehydrated
-	 * toArray()/fromArray() conversation — the stamp does not survive
-	 * the vendor round trip) kept re-running the full
-	 * ToolArgsReplayGuard oracle (encode + decode + re-encode + walker,
-	 * ~3 whole-argument serializations per historical call) on every
-	 * request for all history: O(K²) over a conversation. The vendor
-	 * FunctionCall DTO is immutable (getters only), so the verdict is a
-	 * pure function of the DTO: a PASSED oracle memoizes true;
-	 * rejections never memoize (the glm16-6 discipline — an unplayable
-	 * DTO re-proves and re-rejects identically on every build). The
-	 * same build-set sweep as glm22-3 bounds the pin (rehydrated
-	 * conversations carry fresh instances every request and miss by
-	 * design — a value-key would pay the serialization the memo exists
-	 * to skip — and the sweep detaches every superseded entry once the
-	 * build that superseded it completes).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var \SplObjectStorage|null
-	 */
-	private $tool_call_replay_memo = null;
-
-	/**
-	 * The tool DTOs the CURRENT request build has mapped — the build set
-	 * the tool-loop memos are pruned to (glm22-3; the twin's glm21-4/
-	 * glm21-17 sweep, ported).
-	 *
-	 * Re-armed (null) at every params build and noted at each tool DTO
-	 * the walk visits (this surface's mapping is the SDK parent's, which
-	 * maps exactly those DTOs); once the build's params are prepared,
-	 * prune_tool_loop_memos() detaches every memo entry whose DTO this
-	 * build did NOT map. The bound is thereby structural — after every
-	 * completed tool-bearing build the memos hold at most THAT build's
-	 * tool parts (during a build, at most the previous and the current
-	 * build's), the glm16-6 "at most the current set" discipline. This
-	 * closes the rotating-tail shape — builds sharing one tool DTO
-	 * while replacing later ones would otherwise accumulate every
-	 * superseded entry. A tool-less build contributes nothing and prunes
-	 * nothing (the set stays null): an interleaved plain generation does
-	 * not shed a tool loop's entries, and the last tool-bearing build's
-	 * bound stands. A build that throws mid-walk never prunes: released
-	 * or stale entries only ever cost a re-derivation — entries are pure
-	 * derivations of their DTOs, never wrong for them.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var \SplObjectStorage|null
-	 */
-	private $tool_loop_build_dto = null;
 
 	/**
 	 * Builds the request against the CURRENT plan/region endpoint.
@@ -1558,65 +1472,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
-	 * Notes one tool DTO the current build maps, into the build set the
-	 * tool-loop memos are pruned to (glm22-3, the twin's glm21-4/glm21-17 —
-	 * see $tool_loop_build_dto).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param object $tool_dto The FunctionCall/FunctionResponse being mapped.
-	 * @return void
-	 */
-	private function note_tool_loop_dto( object $tool_dto ): void {
-		if ( null === $this->tool_loop_build_dto ) {
-			$this->tool_loop_build_dto = new \SplObjectStorage();
-		}
-
-		$this->tool_loop_build_dto->offsetSet( $tool_dto, true );
-	}
-
-	/**
-	 * Detaches every tool-loop memo entry whose DTO the completed build
-	 * did not map (glm22-3, the twin's glm21-17 sweep, ported whole).
-	 *
-	 * Runs once per completed request build (prepareGenerateTextParams,
-	 * after the params are prepared): the memos may hold at most the
-	 * PREVIOUS and the CURRENT build's tool parts, so the rotating-tail
-	 * shape — builds keeping one tool DTO while replacing later ones —
-	 * never accumulates every superseded entry. Entries are pure
-	 * derivations of their DTOs, so a detach only ever costs a
-	 * re-derivation on a later build.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return void
-	 */
-	private function prune_tool_loop_memos(): void {
-		$build_set = $this->tool_loop_build_dto;
-
-		if ( null !== $build_set ) {
-			foreach ( array( $this->tool_result_encode_memo, $this->tool_call_replay_memo ) as $storage ) {
-				if ( null === $storage ) {
-					continue;
-				}
-
-				$detached = array();
-				foreach ( $storage as $dto ) {
-					if ( ! $build_set->offsetExists( $dto ) ) {
-						$detached[] = $dto;
-					}
-				}
-
-				foreach ( $detached as $dto ) {
-					$storage->offsetUnset( $dto );
-				}
-			}
-		}
-
-		$this->tool_loop_build_dto = null;
-	}
-
-	/**
 	 * Proves one tool result's response value encodable, memoizing the
 	 * verdict by DTO identity (glm22-3, the zai port of the twin's
 	 * glm21-4).
@@ -1650,42 +1505,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		}
 
 		$this->tool_result_encode_memo->offsetSet( $function_response, true );
-	}
-
-	/**
-	 * The replay verdict for one caller-built tool call, memoized by DTO
-	 * identity (glm22-4, the zai port of the twin's glm21-5).
-	 *
-	 * Same contract as the ToolArgsReplayGuard::is_replayable() call it
-	 * wraps — identical verdicts, identical typed rejection at the call
-	 * site — minus the repeat: a conversation replaying the same DTO
-	 * instances reads the verdict instead of re-running the
-	 * encode/decode/re-encode/walker oracle for every historical call
-	 * on every request build. Rejections return false WITHOUT
-	 * memoizing, so an unplayable DTO re-proves on every build.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param FunctionCall $function_call The caller-built call being mapped.
-	 * @param mixed        $args          Its raw DTO arguments.
-	 * @return bool True when the arguments replay losslessly.
-	 */
-	private function replayable_tool_call( FunctionCall $function_call, $args ): bool {
-		if ( null !== $this->tool_call_replay_memo && $this->tool_call_replay_memo->offsetExists( $function_call ) ) {
-			return true;
-		}
-
-		if ( ! ToolArgsReplayGuard::is_replayable( $args ) ) {
-			return false;
-		}
-
-		if ( null === $this->tool_call_replay_memo ) {
-			$this->tool_call_replay_memo = new \SplObjectStorage();
-		}
-
-		$this->tool_call_replay_memo->offsetSet( $function_call, true );
-
-		return true;
 	}
 
 	/**
