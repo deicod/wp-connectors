@@ -127,6 +127,42 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
 
+    public function testUpdateOptionHookOrderAndArityMatchCore()
+    {
+        /*
+         * glm23-9 (review round 23, finding 9): core fires the GENERIC
+         * 'update_option' hook FIRST and pre-write with ($option,
+         * $old_value, $value); then the specific
+         * update_option_{$option} hook with THREE args ($old_value,
+         * $value, $option); then 'updated_option'. The old stub fired
+         * the specific hook first with two args and the generic LAST,
+         * so code under test hooking the generic to observe
+         * pre-invalidation state ran on the wrong side of the plugin's
+         * per-option handlers, and a 3-arg specific registration
+         * reading $option died on a missing argument.
+         */
+        update_option('wpct_probe_order', 'first');
+
+        $calls = array();
+        add_action('update_option', static function (...$args) use (&$calls) {
+            $calls[] = array('generic', $args, get_option('wpct_probe_order'));
+        }, 10, 3);
+        add_action('update_option_wpct_probe_order', static function (...$args) use (&$calls) {
+            $calls[] = array('specific', $args, get_option('wpct_probe_order'));
+        }, 10, 3);
+        add_action('updated_option', static function (...$args) use (&$calls) {
+            $calls[] = array('updated', $args, get_option('wpct_probe_order'));
+        }, 10, 3);
+
+        update_option('wpct_probe_order', 'second');
+
+        $this->assertSame(array(
+            array('generic', array('wpct_probe_order', 'first', 'second'), 'first'),
+            array('specific', array('first', 'second', 'wpct_probe_order'), 'second'),
+            array('updated', array('wpct_probe_order', 'first', 'second'), 'second'),
+        ), $calls);
+    }
+
     /**
      * Request-superglobal isolation, part 1 (code-review #13): pollutes
      * $_POST/$_GET/$_REQUEST en bloc exactly the way settings tests do.

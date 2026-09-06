@@ -256,6 +256,17 @@ function update_option($option, $value, $autoload = null)
         return add_option($option, $value, '', $autoload);
     }
 
+    /*
+     * Core semantics (glm23-9, review round 23, finding 9): the GENERIC
+     * 'update_option' hook fires FIRST and pre-write with ($option,
+     * $old_value, $value); the write follows; then the specific
+     * update_option_{$option} hook with THREE args ($old_value, $value,
+     * $option); then 'updated_option' with ($option, $old_value,
+     * $value). The old stub fired the specific hook first with two
+     * args and the generic LAST.
+     */
+    do_action('update_option', $option, $old, $value);
+
     WpHarness::$options[ $option ] = $value;
     if (null !== $autoload) {
         WpHarness::$option_autoload[ $option ] = (bool) $autoload;
@@ -263,9 +274,8 @@ function update_option($option, $value, $autoload = null)
         WpHarness::$option_autoload[ $option ] = true;
     }
 
-    do_action("update_option_{$option}", $old, $value);
+    do_action("update_option_{$option}", $old, $value, $option);
     do_action('updated_option', $option, $old, $value);
-    do_action('update_option', $option, $old, $value);
 
     return true;
 }
