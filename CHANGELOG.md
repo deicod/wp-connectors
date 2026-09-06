@@ -6,6 +6,132 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM20 verifier round)
+
+Independent security + correctness verification over the full glm20
+diff (8 verifier lenses — security/fail-open gates, guard arithmetic,
+stream precedence, walk-order preservation, harness parity, scanner
+regressions, the owner rewire, ledger/pin discipline; each candidate
+adversarially refuted; 2 raw candidates converging on ONE defect,
+CONFIRMED and fixed here):
+
+- The float-form exponent bound is the INT-SAFE magnitude width
+  (glm20-13, verifier round on glm20-1): clamping every >3-digit
+  exponent magnitude to 9999 over-broadened the saturation fix — the
+  old (int) cast was exact through 18-digit magnitudes, so the clamp
+  corrupted the digit-shift arithmetic for tokens whose mantissa
+  padding cancels a genuine exponent in [1000, 10^18). Three live
+  flips, reproduced old-vs-new by two independent refuters: the padded
+  exact spellings of 0.1 and 2^100/2^300 flipped accept→reject at the
+  wire entry point (violating glm19-1's pinned exact-accept contract),
+  the padded inexact `1<1050 zeros>e-1000` (= 1e50) flipped
+  reject→accept (reopening the raw-wire-vs-decoded divergence glm19-1
+  closed), and the helper's INF belt became unreachable for the padded
+  negative-exponent INF class. Only 19+-digit magnitudes clamp now, to
+  18 nines (itself int-exact) — verdict-exact for every
+  physically-possible token. All repros pinned at both the helper
+  (reflection) and the live wire entry point.
+
+### Fixed (zai / M2 — GLM20 round)
+
+All 12 findings of review round 20 (high, ledger-filtered), one commit
+each:
+
+- Giant-exponent float tokens are bounded before any int cast
+  (glm20-1): float_literal_is_lossy_integer()'s (int) arithmetic
+  saturated in the wrong direction for a saturating exponent —
+  (int)'9223372036854775808' clamps to PHP_INT_MAX, the length sum
+  widens to float, and the (int) re-cast lands at PHP_INT_MIN — so a
+  positive giant exponent exited "not lossy" through the "<= 0"
+  fractional branch and the INF belt was unreachable for exactly that
+  class (latent: the wire oracle's json_encode rejects the INF decode
+  first). The exponent string is bounded before any cast; the header
+  comment's wrong "both saturation directions land outside (0, 309]"
+  claim is corrected. [Refined by glm20-13 — see the verifier round
+  above.]
+- The tool-args stream diagnosis outranks the generic frame error
+  (glm20-2): the malformed-event and malformed-tool-input flags latch
+  independently on one stream; the event-first order permanently
+  masked the actionable "malformed input JSON" diagnosis behind
+  "malformed event frame". The GLM8 #5 JSON fallback is unaffected
+  (its live scenario produces no tool blocks).
+- The unused-import scanner recognizes group-use declarations
+  (glm20-3): the single-class pattern stopped at the '{', so every
+  import inside a `use Foo\{A, B as C};` group was invisible to the
+  gate. Openings are matched on the same token-masked view; members
+  are unrolled from the MASKED statement bytes, so a comma inside a
+  blanked comment cannot hide a member (the fail-open shape the
+  fixture pins); nested and function/const groups recurse; an
+  unterminated group stays neutral (@lint owns unparseable files).
+- The (zai, zai_anthropic) surface set rides one cross-file owner
+  (glm20-4): the pair was hand-enumerated in four lockstep lists
+  (Plugin::PROVIDER_CLASSES, zai.php, uninstall.php, the live probe) —
+  the drift class the repo's own comments record happening twice.
+  Support\ZaiSurfaces (SDK-free, slug-less: slugs stay the settings
+  layer's CACHE_SCOPE per glm15-23) is derived by zai.php and
+  uninstall.php (the constant read guarded so the broken-install
+  fatal-avoidance path keeps holding) and pinned to the provider
+  registrations and the probe by the new ZaiSurfaceLockstepTest.
+  Superseded pins documented at the pins: glm16-14's per-file registry
+  (the surface classes now appear zero times in uninstall.php) and
+  glm15-13's literal list; the class-free literals stay separate by
+  design.
+- The aggregator headers stop claiming a deleted counter (glm20-5):
+  both file headers and one inline comment still said malformed frames
+  are "counted" — the exact glm19-13 class, missed at the headers
+  (glm19-11 deleted the counters; the flag is the record).
+- One shared usage validator serves both usage-carrying frames
+  (glm20-6): the message_start and message_delta blocks in
+  AnthropicSseAggregator carried the validate-before-cast usage rule as
+  near-verbatim copies — a usage-rule edit could land on one frame
+  type only and the same stream's verdict silently diverge by which
+  frame carried it. One validated_usage_view() helper serves both,
+  source-pinned to exactly one failure_reason() call site.
+- reject_unsupported() probes the ModelConfig object, not toArray()
+  (glm20-7): ten scalar probes no longer pay the whole-config sparse
+  serialization (the nested schema rebuild for tool-heavy
+  conversations) on every request of both surfaces; the getter's null
+  is exactly the sparse array's absent key, and the camelCase getter
+  name is derived — no parallel key→getter map. The unit test's
+  array-only falsy flavors are gone with their input class (the DTO's
+  typed setters cannot hold them).
+- Identity and stop-sequence encodability join the attribution walk
+  (glm20-8): the eager JsonEncodeGuard composites re-encoded strings
+  that ride the assembled params the net already encodes once — ~2K
+  redundant json_encode calls per request for a K-call tool loop. The
+  SHAPE halves stay eager with byte-identical messages; two
+  EncodabilityNet segments carry the encodability attributions,
+  composed per surface at the old eager positions so every glm16-7
+  order pin holds (two new per-surface pins). The glm13-11 tool-result
+  RESPONSE exception stays pre-mapping, untouched. One fixture
+  superseded at the pin: the mismatched-id isolation trick now names
+  the eager pairing rejection — the more actionable diagnosis.
+- wpdb::prepare() substitutes bound values verbatim (glm20-9,
+  harness): preg_replace() processes $n backreference tokens inside
+  replacements even with no capture groups, so a bound value carrying
+  '$1' was silently consumed where core substitutes verbatim. Only '$'
+  is escaped — the addslashes/replace backslash collapse get_col()'s
+  LIKE-to-regex conversion relies on is unchanged.
+- One delimiter-parameterized matcher serves the brace and paren walks
+  (glm20-10, bin tooling): the two copies had already diverged
+  (EOF vs false on unbalanced input). The shared walk answers 'closed
+  here' or false; each named wrapper states its own unbalanced policy
+  at one documented place (the visibility spans' EOF
+  over-approximation; the honest false), and a source pin holds the
+  depth loop to exactly one.
+- One harness helper owns the zai_anthropic model wiring (glm20-11):
+  the 4-statement wiring (prime the discovery transient, resolve,
+  bind the transporter, authenticate) was copy-pasted five times
+  across the suites; a wiring change had to land five places and a
+  missed edit silently left one suite testing a differently-wired
+  model. WpConnectorsTestCase::wiredZaiAnthropicModel() serves all
+  five; the per-suite helpers stay as one-line delegates.
+- current_time('mysql') honors gmt and the site offset (glm20-12,
+  harness): the stub returned UTC unconditionally while the timestamp
+  branch honored the offset — core renders local time for the non-gmt
+  form, so the harness could never exercise local-time mysql
+  timestamps (latent: no plugin caller uses the mysql form).
+
 ### Fixed (zai / M2 — GLM19 verifier round)
 
 Independent security + correctness verification over the full glm19
