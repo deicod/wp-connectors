@@ -1018,7 +1018,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	protected function prepare_messages_param( array $messages ): array {
 		$prepared          = array();
 		$outstanding_tools = array();
-		$awaiting_answer   = false;
 		$previous_role     = null;
 		$turn_text_seen    = false;
 		$seen_tool_ids     = array();
@@ -1044,13 +1043,27 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * was text. Reset here, at the same boundary.
 			 */
 			if ( $role !== $previous_role ) {
-				$this->advance_answer_window( $awaiting_answer, $outstanding_tools, $previous_role );
+				/*
+				 * glm26-10: the answer-window judgment derives from the
+				 * outstanding-IDs map itself — the $awaiting_answer mirror
+				 * (with $opens_tools and advance_answer_window()'s by-ref
+				 * parameter, the file's only one) restated a structural
+				 * invariant: a non-empty outstanding map implies an open
+				 * window (every opener sets it, and the only boundary
+				 * that clears it already requires an empty map or
+				 * throws), while an EMPTY map at a user-ended boundary
+				 * is a no-op either way. The old expiry for a NON-user
+				 * incoming role was already provably dead (GLM5 #19 —
+				 * message_role_string() produces only 'user'/'assistant'
+				 * and this runs only on role change).
+				 */
+				if ( 'user' === $previous_role && array() !== $outstanding_tools ) {
+					$this->reject_partially_answered_tool_turn();
+				}
 
 				$previous_role  = $role;
 				$turn_text_seen = false;
 			}
-
-			$opens_tools = false;
 
 			foreach ( $blocks as $block ) {
 				if ( 'tool_use' === $block['type'] ) {
@@ -1080,7 +1093,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 					// A new tool_use opens its ID for exactly one answer.
 					$outstanding_tools[ $block['id'] ] = true;
-					$opens_tools                       = true;
 				} elseif ( 'tool_result' === $block['type'] ) {
 					if ( ! isset( $outstanding_tools[ $block['tool_use_id'] ] ) ) {
 						throw new InvalidArgumentException(
@@ -1091,10 +1103,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 					// Each tool_use ID may be answered exactly once.
 					unset( $outstanding_tools[ $block['tool_use_id'] ] );
 				}
-			}
-
-			if ( $opens_tools ) {
-				$awaiting_answer = true;
 			}
 
 			$last     = \count( $prepared ) - 1;
@@ -1152,7 +1160,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * answering user turn BEFORE replaying the conversation, never
 		 * send the unanswered trailing turn back to the wire.
 		 */
-		if ( $awaiting_answer && array() !== $outstanding_tools ) {
+		if ( array() !== $outstanding_tools ) {
 			if ( 'user' === $previous_role ) {
 				$this->reject_partially_answered_tool_turn();
 			}
@@ -1203,50 +1211,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		}
 
 		return $text_seen;
-	}
-
-	/**
-	 * Advances the tool-answer window across a coalesced-turn boundary.
-	 *
-	 * Called when the incoming turn's role differs from the previous
-	 * turn's — i.e., exactly once per WIRE turn (adjacent same-role SDK
-	 * messages coalesce; Codex R11 #1). A window opened by an assistant
-	 * tool turn is judged here:
-	 *
-	 * - previous turn 'assistant': the answering USER turn BEGINS — the
-	 *   outstanding IDs stay answerable (the user turn's own results
-	 *   consume them as its messages are processed). The old expiry for a
-	 *   NON-user incoming role was provably dead (GLM5 #19):
-	 *   message_role_string() only ever produces 'user' or 'assistant',
-	 *   and this method runs only on role CHANGE, so an assistant turn
-	 *   can only ever be followed by a user turn here — the R9 stale
-	 *   semantics are carried entirely by the unmatched-result rejection
-	 *   on the consuming side.
-	 * - previous turn 'user': the answering coalesced turn has ENDED —
-	 *   every ID must have been answered (R10 #1 partial rule, evaluated
-	 *   only now that the split messages have merged, per R11 #1).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param bool        $awaiting_answer   Whether a tool-answer window is open (by ref).
-	 * @param array       $outstanding_tools Outstanding tool-use IDs.
-	 * @param string|null $previous_role     Role of the coalesced turn that just ended.
-	 * @return void
-	 * @throws InvalidArgumentException When a completed user turn left IDs unanswered.
-	 */
-	private function advance_answer_window( bool &$awaiting_answer, array $outstanding_tools, $previous_role ): void {
-		if ( ! $awaiting_answer ) {
-			return;
-		}
-
-		if ( 'user' === $previous_role ) {
-			// The answering coalesced user turn has ended.
-			if ( array() !== $outstanding_tools ) {
-				$this->reject_partially_answered_tool_turn();
-			}
-
-			$awaiting_answer = false;
-		}
 	}
 
 	/**
