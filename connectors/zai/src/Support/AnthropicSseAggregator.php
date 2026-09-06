@@ -210,6 +210,40 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	);
 
 	/**
+	 * The content-block lifecycle event names (glm23-1).
+	 *
+	 * A data-less frame DECLARING one of these names is corruption
+	 * evidence the GLM8 #1 data-less rationale does not cover: that
+	 * rationale ("a lost lifecycle event is caught by the aggregated()
+	 * absence guards") holds only for the message_start/message_delta/
+	 * message_stop trio — a content_block_delta frame whose data: line an
+	 * intermediary cut leaves NO downstream trace (deltas carry no
+	 * lifecycle marker; empirically reproduced as a successful completion
+	 * with the chunk silently missing and both flags false), a lost
+	 * content_block_start can silently drop a whole block when no later
+	 * frame references its index, and a lost content_block_stop is
+	 * otherwise caught only indirectly, by the closed-lifecycle guard at
+	 * message_delta.
+	 *
+	 * The verdict is a ONE-FRAME completion window, not an immediate
+	 * flag: a producer that separates an event declaration from its
+	 * payload (the bare-`event:` wire robustness GLM1 #14 documents —
+	 * absent from live captures, tolerated by the aggregator's
+	 * payload-type dispatch) delivers the data-only carrier as the very
+	 * next frame, and that pair must keep parsing. See
+	 * $pending_content_declaration.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	const CONTENT_BLOCK_EVENTS = array(
+		'content_block_start',
+		'content_block_delta',
+		'content_block_stop',
+	);
+
+	/**
 	 * Whether an error event was received.
 	 *
 	 * @since 0.2.0
@@ -261,6 +295,26 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	private $malformed_event = false;
 
 	/**
+	 * A data-less CONTENT-BLOCK declaration awaiting its data-only
+	 * carrier (glm23-1), or null when the previous frame was not one.
+	 *
+	 * The one-frame completion window separates a CUT frame from a SPLIT
+	 * one: on the physical wire an event's declaration and payload ride
+	 * ONE frame, so a declaration followed by anything but its data-only
+	 * carrier (the bare-`event:` wire robustness of GLM1 #14) is a
+	 * declaration whose data: line was cut — corruption. When the carrier
+	 * DOES follow, the pair is reunited: the carrier is judged as if the
+	 * declaration rode its own frame, so every downstream rule (decode,
+	 * declaration agreement, object-ness, dispatch) applies to the split
+	 * form identically.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string|null
+	 */
+	private $pending_content_declaration = null;
+
+	/**
 	 * Whether an error event was received.
 	 *
 	 * @since 0.2.0
@@ -279,6 +333,29 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 * tests that need to pin termination read the field through the
 	 * harness reflection helper.
 	 */
+
+	/**
+	 * Marks the stream complete, then settles any still-pending content
+	 * declaration (glm23-1).
+	 *
+	 * The base flush consumes the final unterminated frame — which may
+	 * itself open (or complete) the glm23-1 completion window — so the
+	 * EOF verdict runs AFTER it: a content declaration still awaiting
+	 * its data-only carrier when the stream ends is a cut frame, the
+	 * same corruption class the one-frame window flags mid-stream.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return void
+	 */
+	public function finish(): void {
+		parent::finish();
+
+		if ( null !== $this->pending_content_declaration ) {
+			$this->flag_corrupt_event( $this->pending_content_declaration );
+			$this->pending_content_declaration = null;
+		}
+	}
 
 	/**
 	 * Whether a tool_use block's streamed input JSON was unusable.
@@ -568,6 +645,31 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		$fields     = SseFieldParser::parse( $frame );
 		$event_name = $fields['event'];
 
+		/*
+		 * glm23-1: settle the previous frame's pending CONTENT
+		 * declaration BEFORE this frame is judged. On the physical wire
+		 * the declaration and its payload ride one frame; a declaration
+		 * whose very next frame is not its data-only carrier (the split
+		 * form's carrier) is a declaration whose data: line was cut —
+		 * the same corruption class as its undecodable/non-object
+		 * siblings (Codex R4 #3), and previously SILENT: the verifier
+		 * repro aggregated a successful completion with the dropped
+		 * delta's chunk missing and both flags false. When the carrier
+		 * does follow, the pair reunites — the carrier is judged as if
+		 * the declaration rode its own frame, so the split form keeps
+		 * parsing while inheriting every downstream corruption rule.
+		 */
+		if ( null !== $this->pending_content_declaration ) {
+			$declared                          = $this->pending_content_declaration;
+			$this->pending_content_declaration = null;
+
+			if ( null === $fields['data'] || null !== $event_name ) {
+				$this->flag_corrupt_event( $declared );
+			} else {
+				$event_name = $declared;
+			}
+		}
+
 		if ( null === $fields['data'] ) {
 			/*
 			 * GLM8 #1: a data-less frame is not invisible. An `event:
@@ -579,14 +681,20 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 * payload's condition cannot un-declare it) — flagged
 			 * malformed like them, or a complete stream
 			 * followed by the bare declaration aggregated as a SUCCESS.
-			 * Every OTHER data-less declaration keeps its ignorable
-			 * status: a lost lifecycle event (message_start,
-			 * message_delta, message_stop) is caught by the
-			 * aggregated() absence guards in the same channel, and
-			 * unknown names are forward-compatible noise.
+			 * The remaining ignorable classes are the LIFECYCLE events
+			 * (message_start, message_delta, message_stop — a lost one
+			 * is caught by the aggregated() absence guards in the same
+			 * channel) and unknown names (forward-compatible noise).
+			 *
+			 * glm23-1: a data-less CONTENT-BLOCK declaration opens its
+			 * one-frame completion window instead (see
+			 * $pending_content_declaration) — its verdict is settled by
+			 * the next frame or by finish(), never silently dropped.
 			 */
 			if ( 'error' === $event_name ) {
 				$this->error = true;
+			} elseif ( \is_string( $event_name ) && \in_array( $event_name, self::CONTENT_BLOCK_EVENTS, true ) ) {
+				$this->pending_content_declaration = $event_name;
 			}
 
 			return;

@@ -1213,13 +1213,17 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * flag_corrupt_event() helper owns the rule now; the pins hold
          * the mechanism — every corruption branch rides the helper, and
          * the hand-copied flag pair may not come back.
+         *
+         * glm23-1 added two sites: the one-frame completion window's
+         * mid-stream settle and its finish() EOF settle — both classify
+         * through the same helper.
          */
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
         );
 
         $this->assertSame(
-            4,
+            6,
             preg_match_all('/->flag_corrupt_event\(/', $source),
             'Every corruption branch rides the one classification helper.'
         );
@@ -3225,7 +3229,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     public function testABareNonErrorDeclarationWithoutADataLineStaysIgnorable()
     {
         /*
-         * GLM8 #1 guard: only the error DECLARATION changes verdict. A
+         * GLM8 #1 guard: the ERROR declaration changes verdict directly
+         * (glm23-1 extended the same to the content_block_* trio). A
          * trailing unknown-named frame with no data line stays benign
          * noise (the completed generation stands), and a lost lifecycle
          * declaration (the message_delta frame reduced to its event:
@@ -3264,6 +3269,135 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $this->assertFalse($aggregator->has_error(), 'A bare non-error declaration never sets the error flag.');
         $this->assertTrue($aggregator->has_malformed_event(), 'A lost lifecycle declaration fails through the absence guards.');
         $this->assertFalse($aggregator->has_malformed_tool_input(), 'A data-less lifecycle declaration is not a tool-input problem.');
+    }
+
+    public function testDataLessContentBlockDeclarationsInvalidateTheStream()
+    {
+        /*
+         * glm23-1: the GLM8 #1 ignorable classes are the LIFECYCLE events
+         * (caught by the aggregated() absence guards) and unknown names —
+         * a data-less CONTENT-BLOCK declaration is neither. A
+         * content_block_delta frame whose data: line an intermediary cut
+         * left NO downstream trace (deltas carry no lifecycle marker):
+         * the verifier repro aggregated a successful completion missing
+         * the dropped chunk with has_malformed_event() false and
+         * has_error() false, while the byte-identical frame with
+         * truncated (undecodable) data flags malformed. The verdict is a
+         * one-frame completion window: the SPLIT form (declaration and
+         * data-only carrier as consecutive frames — the wire robustness
+         * GLM1 #14 documents) keeps parsing; anything else is a cut
+         * frame.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_g23a","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_malformed_event(), 'A content declaration whose next frame is not its data-only carrier must flag the stream corrupt.');
+        $this->assertFalse($aggregator->has_error(), 'A content declaration is protocol corruption, not an error event.');
+        $this->assertFalse($aggregator->has_malformed_tool_input(), 'A data-less content declaration is not a tool-input problem.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream with a cut content declaration must fail the generation.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+
+        /*
+         * EOF settles an unsettled window: a stream ending directly
+         * after the cut declaration flags at finish() — the pre-fix
+         * behavior silently completed the generation.
+         */
+        $eof_cut = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_g23b","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n\n";
+
+        $eof = new AnthropicSseAggregator();
+        $eof->feed($eof_cut);
+        $eof->finish();
+
+        $this->assertTrue($eof->has_malformed_event(), 'A content declaration still awaiting its carrier at stream end must flag the stream corrupt.');
+
+        /*
+         * The split form keeps parsing: the data-only carrier as the
+         * VERY NEXT frame completes the window, and the reunited pair
+         * inherits every corruption rule — including the undecodable
+         * payload its data-only half previously escaped (a bare
+         * declaration followed by a truncated carrier was the same
+         * silent loss, from the other half of the pair).
+         */
+        $split = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_g23c","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Split."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $reunited = new AnthropicSseAggregator();
+        $reunited->feed($split);
+        $reunited->finish();
+
+        $this->assertFalse($reunited->has_malformed_event(), 'The split form (declaration + data-only carrier as consecutive frames) keeps parsing.');
+        $this->assertSame('Split.', $reunited->aggregated()['content'][0]['text']);
+
+        $split_cut = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_g23d","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_de' . "\n\n";
+
+        $cut_carrier = new AnthropicSseAggregator();
+        $cut_carrier->feed($split_cut);
+        $cut_carrier->finish();
+
+        $this->assertTrue($cut_carrier->has_malformed_event(), 'A reunited pair whose carrier payload is undecodable flags like the joined form.');
+
+        /*
+         * The start and stop siblings flag identically: a data-less
+         * content_block_start can silently drop a whole block when no
+         * later frame references its index, and a data-less
+         * content_block_stop is otherwise caught only indirectly (the
+         * closed-lifecycle guard at message_delta).
+         */
+        foreach ( array( 'content_block_start', 'content_block_stop' ) as $cut_event ) {
+            $cut = ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_g23e","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: ' . $cut_event . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: {"type":"message_stop"}' . "\n\n";
+
+            $sibling = new AnthropicSseAggregator();
+            $sibling->feed($cut);
+            $sibling->finish();
+
+            $this->assertTrue($sibling->has_malformed_event(), 'A data-less ' . $cut_event . ' declaration must flag the stream corrupt.');
+        }
     }
 
     public function testATrailingUndecodableDeclaredContentEventStillInvalidates()
