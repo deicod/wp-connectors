@@ -606,20 +606,23 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * stored verdict that definitively rejected this exact key+endpoint
 	 * binding, refuses generation.
 	 *
+	 * glm25-2: PRIVATE behind its always-narrowed wrapper
+	 * (generation_refusal_for_wired_authentication()) — the former
+	 * public default-null path resolved an effective_key()-based
+	 * verdict that bypassed the wrapper's ApiKey-shape skip (the
+	 * GLM3 #9 gate-divergence class) and had no production caller;
+	 * consumers and tests ride the wrapper.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @param ApiKeyRequestAuthentication|null $authentication The model's
-	 *                                                        own auth when
-	 *                                                        available (the
-	 *                                                        exact credential
-	 *                                                        about to
-	 *                                                        authenticate);
-	 *                                                        null falls back
-	 *                                                        to effective_key().
+	 * @param ApiKeyRequestAuthentication $authentication The consumer's
+	 *                                                   exact credential
+	 *                                                   (the instance the
+	 *                                                   wrapper narrowed).
 	 * @return string|null 'region_pending' or 'invalid_verdict' when
 	 *                     generation must be refused, null when allowed.
 	 */
-	public function generation_refusal_reason( ?ApiKeyRequestAuthentication $authentication = null ): ?string {
+	private function generation_refusal_reason( ApiKeyRequestAuthentication $authentication ): ?string {
 		$effective = $this->effective_for_authentication( $authentication );
 
 		if ( '' === $effective['key'] ) {
@@ -685,7 +688,9 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *
 	 * Both model surfaces built these strings inline, one provider label
 	 * apart; one builder keeps the wording from drifting between the
-	 * surfaces the way the gate itself did.
+	 * surfaces the way the gate itself did. glm25-2: PRIVATE — its only
+	 * caller is refuse_generation(), so the wording is observed through
+	 * the throw both model surfaces ride, not a public static surface.
 	 *
 	 * @since 0.2.0
 	 *
@@ -693,7 +698,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @param string $reason         Refusal reason from the gate.
 	 * @return string The fixed, safe message.
 	 */
-	public static function refusal_message( string $provider_label, string $reason ): string {
+	private static function refusal_message( string $provider_label, string $reason ): string {
 		return 'region_pending' === $reason
 			? sprintf( 'The %s provider refuses generation: the active environment credential is pending revalidation after a region switch.', $provider_label )
 			: sprintf( 'The %s provider refuses generation: the active credential was rejected for the selected endpoint.', $provider_label );

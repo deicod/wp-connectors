@@ -13,6 +13,7 @@
 declare( strict_types=1 );
 
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
@@ -1342,7 +1343,7 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $this->assertFalse($instance->isConfigured(), 'The definitive rejection persists.');
         $this->assertSame(
             'invalid_verdict',
-            $instance->generation_refusal_reason(),
+            $instance->generation_refusal_for_wired_authentication(new ApiKeyRequestAuthentication($key)),
             'Sanity pin: the FRESH invalid verdict refuses generation.'
         );
 
@@ -1351,7 +1352,7 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $state['checked_at'] = 1700000000 + HOUR_IN_SECONDS;
         update_option(ZaiProviderAvailability::STATE_OPTION, $state, false);
 
-        $this->assertNull($instance->generation_refusal_reason(), 'An unageable (future checked_at) invalid verdict must refuse nothing.');
+        $this->assertNull($instance->generation_refusal_for_wired_authentication(new ApiKeyRequestAuthentication($key)), 'An unageable (future checked_at) invalid verdict must refuse nothing.');
 
         $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
         $this->assertTrue($instance->isConfigured(), 'The unageable state must be re-probed, not answered from state.');
@@ -1421,7 +1422,7 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $stored = new ZaiProviderAvailability();
         $stored->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
 
-        $this->assertSame('invalid_verdict', $stored->generation_refusal_reason(), 'The invalid verdict must refuse the identical stored credential.');
+        $this->assertSame('invalid_verdict', $stored->generation_refusal_for_wired_authentication(new ApiKeyRequestAuthentication($key)), 'The invalid verdict must refuse the identical stored credential.');
         $this->assertFalse($stored->isConfigured(), 'The stored verdict must hold across the transition.');
         $this->assertCount(1, $this->sdkHttpAttempts(), 'No fresh probe may ride the stored verdict.');
     }
@@ -1452,10 +1453,30 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
         $attempts = count($this->sdkHttpAttempts());
         $this->assertSame(
             'invalid_verdict',
-            $wired->generation_refusal_reason(new ApiKeyRequestAuthentication($key)),
+            $wired->generation_refusal_for_wired_authentication(new ApiKeyRequestAuthentication($key)),
             'The recorded verdict must refuse the same wired credential.'
         );
         $this->assertSame($attempts, count($this->sdkHttpAttempts()), 'The refusal answers from state, no fresh probe.');
+
+        /*
+         * glm25-2: refusal_message() is private behind refuse_generation()
+         * now, so the surface's fixed invalid-verdict wording is pinned
+         * through the SAME throw both model surfaces ride (its zai_
+         * anthropic region-pending twin lives in the anthropic suite).
+         */
+        $refused = null;
+        try {
+            $wired->refuse_generation(static function () use ($key) {
+                return new ApiKeyRequestAuthentication($key);
+            });
+        } catch (InvalidArgumentException $e) {
+            $refused = $e->getMessage();
+        }
+        $this->assertSame(
+            'The zai provider refuses generation: the active credential was rejected for the selected endpoint.',
+            $refused,
+            'The gate wrapper throws the builder\'s fixed invalid-verdict wording for this surface.'
+        );
     }
     public function testIdentifierConstantsAreChildOwnedNotInheritedDefaults()
     {

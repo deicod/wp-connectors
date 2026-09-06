@@ -13,6 +13,7 @@
 declare( strict_types=1 );
 
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
@@ -559,18 +560,42 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
 
         $wired = new ApiKeyRequestAuthentication($key);
         $this->assertSame('region_pending', $availability->generation_refusal_for_wired_authentication($wired));
-        $this->assertSame(
-            'region_pending',
-            $availability->generation_refusal_reason($wired),
-            'The shared predicate must decide exactly as the state readers do.'
-        );
+
+        /*
+         * glm25-2: the predicate and its message builder are private
+         * behind the wrappers now (the public default-null path had no
+         * production caller), so the fixed wording is pinned through
+         * the SAME throw both model surfaces ride — refuse_generation()
+         * building it from this surface's REFUSAL_LABEL. The zai
+         * surface's invalid-verdict wording is pinned the same way in
+         * its own suite (ZaiProviderMetadataAndAvailabilityTest).
+         */
+        $refused = null;
+        try {
+            $availability->refuse_generation(static function () use ($wired) {
+                return $wired;
+            });
+        } catch (InvalidArgumentException $e) {
+            $refused = $e->getMessage();
+        }
         $this->assertSame(
             'The zai_anthropic provider refuses generation: the active environment credential is pending revalidation after a region switch.',
-            ZaiAnthropicProviderAvailability::refusal_message('zai_anthropic', 'region_pending')
+            $refused,
+            'The gate wrapper throws the builder\'s fixed region-pending wording for this surface.'
         );
-        $this->assertSame(
-            'The zai provider refuses generation: the active credential was rejected for the selected endpoint.',
-            ZaiProviderAvailability::refusal_message('zai', 'invalid_verdict')
+
+        /*
+         * The same foreign-wiring skip through the THROWING wrapper
+         * (glm14-5's opaque refusal): the region-pending state stands,
+         * but refuse_generation() must return quietly — execution
+         * reaching the flag assertion proves no throw rode the skip.
+         */
+        $availability->refuse_generation(static function () {
+            return new OpaqueAuthentication();
+        });
+        $this->assertNotFalse(
+            get_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION),
+            'The foreign-wired refusal call skips the gate without throwing.'
         );
     }
 }
