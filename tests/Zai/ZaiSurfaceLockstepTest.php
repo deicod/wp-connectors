@@ -242,7 +242,7 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
         );
     }
 
-    public function testTheLiveSmokeTestRidesTheOwnerConstants()
+    public function testTheLiveSmokeTestsRideTheOwnerConstants()
     {
         /*
          * glm21-15/glm21-18 (source pin, the GLM10 #15 class the live
@@ -256,12 +256,30 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
          * every test without the opt-in key, so an in-suite pin would
          * be dead in every offline composer check run (the
          * verifier-round catch).
+         *
+         * glm25-6: the scan covers BOTH live-smoke twins now — the zai
+         * twin's hand-stringed literals were the identical uncovered
+         * shape on the other surface (composer check green offline,
+         * then the next live run writing options nothing reads).
          */
-        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/tests/Zai/ZaiAnthropicLiveSmokeTest.php');
+        foreach (array(
+            'zai' => array(
+                'file' => dirname(__DIR__, 2) . '/tests/Zai/ZaiLiveSmokeTest.php',
+                'settings' => 'PlanRegionSettings',
+                'provider' => 'ZaiProvider',
+            ),
+            'zai_anthropic' => array(
+                'file' => dirname(__DIR__, 2) . '/tests/Zai/ZaiAnthropicLiveSmokeTest.php',
+                'settings' => 'ZaiAnthropicPlanRegionSettings',
+                'provider' => 'ZaiAnthropicProvider',
+            ),
+        ) as $surface => $owner) {
+            $source = (string) file_get_contents($owner['file']);
 
-        $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $source), 'Every plugin option name in the smoke test rides an owner constant.');
-        $this->assertSame(0, preg_match('/[\'"]zai_anthropic[\'"]/', $source), 'The provider id rides its owner constant.');
-        $this->assertStringContainsString('ZaiAnthropicPlanRegionSettings::OPTION_PLAN', $source, 'The plan option rides its owner constant.');
-        $this->assertStringContainsString('ZaiAnthropicProvider::PROVIDER_ID', $source, 'The provider id is wired through the owner constant.');
+            $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $source), "Every plugin option name in the {$surface} smoke test rides an owner constant.");
+            $this->assertSame(0, preg_match('/[\'"]' . preg_quote($surface, '/') . '[\'"]/', $source), "The {$surface} provider id rides its owner constant.");
+            $this->assertStringContainsString($owner['settings'] . '::OPTION_PLAN', $source, "The {$surface} plan option rides its owner constant.");
+            $this->assertStringContainsString($owner['provider'] . '::PROVIDER_ID', $source, "The {$surface} provider id is wired through the owner constant.");
+        }
     }
 }
