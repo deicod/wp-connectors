@@ -214,7 +214,7 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
         $instance = $this->availability($key);
 
-        $this->queueSdkResponse(200, array(), '{"data":[{"id":"glm-5.3","display_name":"GLM 5.3","type":"model"}]}');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
         $this->assertTrue($instance->isConfigured());
 
         // Within the TTL the persisted verdict answers; no second probe.
@@ -236,7 +236,7 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         $key = FakeSecrets::apiKey();
         $instance = $this->availability($key);
 
-        $this->queueSdkResponse(200, array(), '{"data":[{"id":"glm-5.3","type":"model"}]}');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
         $this->assertTrue($instance->isConfigured());
 
         $attempts = $this->sdkHttpAttempts();
@@ -476,7 +476,7 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
         $instance = $this->availability($key);
 
-        $this->queueSdkResponse(200, array(), '{"data":[{"id":"glm-5.3","type":"model"}]}');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
         $this->assertTrue($instance->isConfigured());
         $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $this->sdkHttpAttempts()[0]['url']);
 

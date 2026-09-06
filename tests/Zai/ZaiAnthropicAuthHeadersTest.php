@@ -356,7 +356,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         $availability->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $availability->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
 
-        $this->queueSdkResponse(200, array(), '{"data":[{"id":"glm-5.3","type":"model"}]}');
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
         $this->assertTrue($availability->isConfigured());
 
         $attempts = $this->sdkHttpAttempts();
