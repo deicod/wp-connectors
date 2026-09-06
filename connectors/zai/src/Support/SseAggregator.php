@@ -407,20 +407,23 @@ final class SseAggregator extends AbstractSseAggregator {
 	 * pre- and post-sentinel frames different corruption verdicts for
 	 * the same payload shape.
 	 *
+	 * glm21-11: the VALUE half of the rule rides the one shared
+	 * StreamIndex predicate with the Anthropic twin's
+	 * raw_block_index() — the container fetch (an array entry's
+	 * isset()) stays here, the index rule itself cannot drift per
+	 * protocol anymore.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param mixed $entry One decoded choices[] / tool_calls[] element.
 	 * @return int|null The non-negative index, or null when unsound.
 	 */
 	private static function sound_index( $entry ): ?int {
-		if ( ! \is_array( $entry )
-			|| ! isset( $entry['index'] )
-			|| ! \is_int( $entry['index'] )
-			|| $entry['index'] < 0 ) {
+		if ( ! \is_array( $entry ) || ! isset( $entry['index'] ) ) {
 			return null;
 		}
 
-		return $entry['index'];
+		return StreamIndex::sound( $entry['index'] );
 	}
 
 	/**

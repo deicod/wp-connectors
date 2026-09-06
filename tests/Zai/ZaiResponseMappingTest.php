@@ -1111,6 +1111,13 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
          * verdicts for the same payload shape. One sound_index()
          * predicate carries the rule; the malformed-index behavioral
          * pins above (GLM7 #1) hold the verdicts.
+         *
+         * glm21-11: the VALUE rule moved up to the one shared
+         * StreamIndex::sound() predicate BOTH aggregators judge by
+         * (sound_index()'s is_int statement is gone — the container
+         * fetch stays per-surface); the is_int rule is stated exactly
+         * once in the owner, and each aggregator references it exactly
+         * once, from its index predicate.
          */
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Support/SseAggregator.php'
@@ -1123,8 +1130,31 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
         );
         $this->assertSame(
             1,
-            preg_match_all('/! \\\\is_int\(\s*\$entry\[\'index\'\]\s*\)/', $source),
-            'The is_int index rule is stated exactly once: inside sound_index().'
+            preg_match_all('/StreamIndex::sound\(/', $source),
+            'The value rule rides the one shared predicate, stated once per aggregator.'
+        );
+        $this->assertSame(
+            0,
+            preg_match_all('/is_int\(\s*\$entry\[\'index\'\]\s*\)/', $source),
+            'The is_int index rule is no longer stated in the aggregator: it lives in StreamIndex.'
+        );
+
+        $twin = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
+        );
+        $owner = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/StreamIndex.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match_all('/StreamIndex::sound\(/', $twin),
+            'The Anthropic twin rides the same shared predicate from its index predicate.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/\\\\is_int\(\s*\$index\s*\)/', $owner),
+            'The is_int index rule is stated exactly once: inside StreamIndex::sound().'
         );
     }
 

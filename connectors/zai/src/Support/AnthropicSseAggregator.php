@@ -1370,6 +1370,12 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 * still succeeded. Returns null when the index is absent or not a
 	 * non-negative integer; callers flag the stream malformed.
 	 *
+	 * glm21-11: the VALUE half of the rule rides the one shared
+	 * StreamIndex predicate with the OpenAI twin's
+	 * sound_index() — the container fetch (a stdClass property's
+	 * property_exists()) stays here, the index rule itself cannot drift
+	 * per protocol anymore.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param mixed $raw Non-associative decode of the event payload.
@@ -1380,9 +1386,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			return null;
 		}
 
-		$index = $raw->index;
-
-		return \is_int( $index ) && $index >= 0 ? $index : null;
+		return StreamIndex::sound( $raw->index );
 	}
 
 	/**
