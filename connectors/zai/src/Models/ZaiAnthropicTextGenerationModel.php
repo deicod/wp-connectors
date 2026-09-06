@@ -1891,8 +1891,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * distinction: only a JSON array decodes to a PHP list. The
 		 * oracle-less (aggregated stream) payload needs no probe — its
 		 * content is constructed as a PHP list by the aggregator.
+		 *
+		 * glm24-7: property_exists FIRST, the shape the usage/input probes
+		 * below already use — the former ('! is_array( $raw_body->content
+		 * ?? null )' before the existence check) was truth-table-identical
+		 * but read as though a missing member could reach the array
+		 * judgment, and the ?? null existed only to keep that inverted
+		 * order safe.
 		 */
-		if ( null !== $raw_body && ! \is_array( $raw_body->content ?? null ) && \property_exists( $raw_body, 'content' ) ) {
+		if ( null !== $raw_body && \property_exists( $raw_body, 'content' ) && ! \is_array( $raw_body->content ) ) {
 			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'The message content must be a JSON array.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
@@ -1903,9 +1910,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * associative decode of the same body preserves the distinction
 		 * ({} is stdClass, [] is an array) and is handed to each content
 		 * block alongside the associative value.
+		 *
+		 * glm24-7: no $raw_content_ok mirror — a non-null $raw IMPLIES its
+		 * content member is a present array here (the associative check at
+		 * the top proved the member exists in the same payload's other
+		 * decode, and the object-ness probe above proved it is an array),
+		 * so the per-part probe below needs only the null check.
 		 */
-		$raw            = $raw_body;
-		$raw_content_ok = null !== $raw && isset( $raw->content ) && \is_array( $raw->content );
+		$raw = $raw_body;
 
 		/*
 		 * Verifier residual on Codex R5 + Codex R6 #1: a Messages response
@@ -1942,7 +1954,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'Every content entry must be an object.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 			}
 
-			$raw_part = $raw_content_ok && isset( $raw->content[ $index ] ) && \is_object( $raw->content[ $index ] )
+			$raw_part = null !== $raw && isset( $raw->content[ $index ] ) && \is_object( $raw->content[ $index ] )
 				? $raw->content[ $index ]
 				: null;
 
