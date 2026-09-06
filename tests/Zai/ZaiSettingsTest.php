@@ -856,9 +856,16 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
          * (undefined constant), never silently read and write the zai
          * provider's options under runtime-dead base defaults. Only
          * genuinely shared structure stays in the base.
+         *
+         * glm23-5: DEFAULT_PLAN joins the list — the one per-surface
+         * identifier whose value genuinely differs ('coding' vs
+         * 'general'); it used to ride the base as an inheritable
+         * 'coding' default, so a forgetting child silently defaulted
+         * to the zai surface's plan (review round 23, finding 5).
          */
         $identifiers = array(
             'OPTION_PLAN',
+            'DEFAULT_PLAN',
             'OPTION_REGION',
             'SECTION_ID',
             'PROVIDER_LABEL',
@@ -900,6 +907,8 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
  */
 final class ZaiSettingsTestMissingOwnerSettings extends AbstractPlanRegionSettings
 {
+    public const DEFAULT_PLAN = 'general';
+
     public const OPTION_PLAN = 'zai_settings_test_plan';
 
     public const OPTION_REGION = 'zai_settings_test_region';
@@ -930,6 +939,8 @@ final class ZaiSettingsTestMissingOwnerSettings extends AbstractPlanRegionSettin
  */
 final class ZaiSettingsTestBrokenOwnerSettings extends AbstractPlanRegionSettings
 {
+    public const DEFAULT_PLAN = 'general';
+
     public const OPTION_PLAN = 'zai_settings_test_plan';
 
     public const OPTION_REGION = 'zai_settings_test_region';
@@ -961,6 +972,8 @@ final class ZaiSettingsTestBrokenOwnerSettings extends AbstractPlanRegionSetting
  */
 final class ZaiSettingsTestOverridingLabelSettings extends AbstractPlanRegionSettings
 {
+    public const DEFAULT_PLAN = 'general';
+
     public const OPTION_PLAN = 'zai_settings_test_override_plan';
 
     public const OPTION_REGION = 'zai_settings_test_override_region';

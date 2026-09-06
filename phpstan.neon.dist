@@ -36,7 +36,10 @@ parameters:
 			# glm15-16: -2 (each enum field wrapper passes its option
 			# constant once into the shared renderer where two inline
 			# attribute reads used to spell it).
-			count: 26
+			# glm23-5: +5 (DEFAULT_PLAN joins the child-owned set — the
+			# base no longer declares it, so its five static:: reads
+			# resolve on the children, same loud-failure design).
+			count: 31
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Availability/AbstractZaiProviderAvailability.php

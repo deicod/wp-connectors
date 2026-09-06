@@ -93,19 +93,6 @@ abstract class AbstractPlanRegionSettings {
 	const REGIONS = array( 'intl', 'cn' );
 
 	/**
-	 * Default plan.
-	 *
-	 * Overridden per provider child where live evidence demands it: the
-	 * zai_anthropic provider defaults to 'general' (record 0007 — the
-	 * coding-surface Messages routes cannot generate as of 2026-08-31).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	const DEFAULT_PLAN = 'coding';
-
-	/**
 	 * Default region.
 	 *
 	 * @since 0.2.0

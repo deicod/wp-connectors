@@ -38,6 +38,25 @@ final class PlanRegionSettings extends AbstractPlanRegionSettings {
 	const OPTION_PLAN = 'zai_connector_zai_plan';
 
 	/**
+	 * Default plan: CODING, this surface's subscription default.
+	 *
+	 * GLM23-5 (review round 23, finding 5): child-OWNED like every other
+	 * per-surface identifier — the base used to carry 'coding' as an
+	 * inheritable default, so a future settings child that forgot the
+	 * declaration silently registered its plan option with the zai
+	 * surface's default (on an Anthropic-style surface that default is
+	 * the documented non-generating plan, record 0007), exactly the
+	 * silent-inheritance class the GLM6 #12 child-owned layout exists
+	 * to prevent; the base declares none and the reflection pin covers
+	 * it. The value 'coding' is this surface's subscription default.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	const DEFAULT_PLAN = 'coding';
+
+	/**
 	 * Option name: this provider's account region (international or China).
 	 *
 	 * @since 0.1.0
