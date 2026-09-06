@@ -55,3 +55,5 @@ require_once __DIR__ . '/harness/FakeSecrets.php';
 require_once __DIR__ . '/harness/HttpResponseFactory.php';
 require_once __DIR__ . '/harness/SimpleArrayCache.php';
 require_once __DIR__ . '/harness/OpaqueAuthentication.php';
+require_once __DIR__ . '/harness/AbstractZaiSurfaceRequestMappingTestCase.php';
+require_once __DIR__ . '/harness/AbstractZaiSurfaceResponseMappingTestCase.php';

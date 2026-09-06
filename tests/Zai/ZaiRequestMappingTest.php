@@ -33,7 +33,7 @@ use Deicod\WpConnectors\Zai\Metadata\ZaiModelListParser;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Metadata\ZaiAnthropicModelMetadataDirectory;
 
-final class ZaiRequestMappingTest extends WpConnectorsTestCase
+final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCase
 {
     /**
      * Model instance wired to the harness transport with a fixture key
@@ -42,7 +42,7 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
      * @param ModelConfig|null $config Optional model configuration.
      * @return \Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel
      */
-    private function model(?ModelConfig $config = null)
+    protected function model(?ModelConfig $config = null)
     {
         return $this->wiredZaiModel(null, $config);
     }
@@ -353,98 +353,6 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
      * Pre-transport rejection of unsupported option/model combinations.
      */
 
-    public function testImageInputIsRejectedBeforeTransport()
-    {
-        $prompt = array(
-            new Message(MessageRoleEnum::user(), array(
-                new MessagePart(new File('https://fixture.test/pic.png', 'image/png')),
-            )),
-        );
-
-        $e = null;
-        try {
-            $this->model()->generateTextResult($prompt);
-            $this->fail('An image part must be rejected.');
-        } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('text input', $e->getMessage());
-        }
-
-        $this->assertNoHttpRequests();
-    }
-
-    public function testCandidateCountIsRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('candidateCount' => 2)),
-            'candidateCount'
-        );
-    }
-
-    public function testSamplingPenaltiesAreRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('presencePenalty' => 0.5)),
-            'presence penalty'
-        );
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('frequencyPenalty' => 0.5)),
-            'frequency penalty'
-        );
-    }
-
-    public function testTopKIsRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('topK' => 40)),
-            'top-k'
-        );
-    }
-
-    public function testLogprobsAreRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('logprobs' => true)),
-            'logprobs'
-        );
-    }
-
-    public function testNonPositiveMaxTokensIsRejectedBeforeTransport()
-    {
-        /*
-         * glm18-3 (cross-surface parity, the zai_anthropic twin's guard):
-         * the SDK's setMaxTokens() is a bare assignment, so maxTokens 0
-         * (or negative) rode "max_tokens" verbatim to the endpoint's
-         * generic misattributed 400. Typed pre-transport rejection now.
-         */
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('maxTokens' => 0)),
-            'maxTokens'
-        );
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('maxTokens' => -5)),
-            'maxTokens'
-        );
-    }
-
-    public function testImageOutputModalityIsRejectedBeforeTransport()
-    {
-        $config = ModelConfig::fromArray(array());
-        $config->setOutputModalities(array(
-            WordPress\AiClient\Messages\Enums\ModalityEnum::text(),
-            WordPress\AiClient\Messages\Enums\ModalityEnum::image(),
-        ));
-
-        $this->assertRejectedBeforeTransport($config, 'text output modalities');
-    }
-
-    public function testUnsupportedOutputMimeTypeIsRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('outputMimeType' => 'image/png')),
-            'outputMimeType'
-        );
-    }
-
     public function testAListRootedOutputSchemaIsRejectedBeforeTransport()
     {
         /*
@@ -471,14 +379,6 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
             )),
             'output schema to be a JSON object'
         );
-    }
-
-    public function testCustomOptionsAreRejectedBeforeTransport()
-    {
-        $config = ModelConfig::fromArray(array());
-        $config->setCustomOption('thinking', array('type' => 'enabled'));
-
-        $this->assertRejectedBeforeTransport($config, 'custom options');
     }
 
     public function testTextOnlyOutputModalitiesAreAccepted()

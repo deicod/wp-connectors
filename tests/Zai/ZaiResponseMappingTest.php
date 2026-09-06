@@ -29,7 +29,7 @@ use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 
-final class ZaiResponseMappingTest extends WpConnectorsTestCase
+final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTestCase
 {
     /**
      * Wired model instance (glm22-8: one-line delegate to the harness's
@@ -37,7 +37,7 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
      *
      * @return \Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel
      */
-    private function model()
+    protected function model()
     {
         return $this->wiredZaiModel();
     }
@@ -45,7 +45,7 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
     /**
      * @return list<Message>
      */
-    private function prompt()
+    protected function prompt()
     {
         return array(new Message(
             WordPress\AiClient\Messages\Enums\MessageRoleEnum::user(),
@@ -2259,19 +2259,6 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
     /**
      * @return array<string, list<mixed>>
      */
-    public function provideErrorStatuses()
-    {
-        return array(
-            '401' => array(401, ClientException::class),
-            '403' => array(403, ClientException::class),
-            '429' => array(429, ClientException::class),
-            '418' => array(418, ClientException::class),
-            '500' => array(500, ServerException::class),
-            '503' => array(503, ServerException::class),
-            '307' => array(307, WordPress\AiClient\Providers\Http\Exception\RedirectException::class),
-        );
-    }
-
     public function testErrorMessagesAreActionable()
     {
         $cases = array(
@@ -2414,29 +2401,6 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
     /**
      * @return array<string, list<mixed>>
      */
-    public function provideBoundaryErrorCodes()
-    {
-        return array(
-            '401' => array(401, ErrorMapper::CODE_UNAUTHORIZED),
-            '403' => array(403, ErrorMapper::CODE_FORBIDDEN),
-            '429' => array(429, ErrorMapper::CODE_RATE_LIMITED),
-            '418' => array(418, ErrorMapper::CODE_CLIENT_ERROR),
-            '500' => array(500, ErrorMapper::CODE_UPSTREAM_ERROR),
-            '503' => array(503, ErrorMapper::CODE_UPSTREAM_ERROR),
-            '307' => array(307, ErrorMapper::CODE_REDIRECT_ERROR),
-        );
-    }
-
-    public function testGenerateTextMapsTransportFailuresToTypedWpErrors()
-    {
-        $this->allowUnmockedHttp = true;
-
-        $error = $this->model()->generate_text($this->prompt());
-
-        $this->assertWPError($error, ErrorMapper::CODE_TRANSPORT_ERROR);
-        $this->assertRedacted($error->get_error_message(), FakeSecrets::apiKey());
-    }
-
     public function testUnboundDirectModelSurfacesTheBindingHintNotAGenericError()
     {
         $this->primeZaiDiscoveryTransient();
@@ -2583,12 +2547,4 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
     /**
      * @return array<string, list<mixed>>
      */
-    public function provideCoreBuilderErrorCases()
-    {
-        return array(
-            '401' => array(401, 'prompt_client_error'),
-            '429' => array(429, 'prompt_client_error'),
-            '503' => array(503, 'prompt_upstream_server_error'),
-        );
-    }
 }

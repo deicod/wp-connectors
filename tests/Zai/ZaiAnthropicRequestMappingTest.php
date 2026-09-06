@@ -31,7 +31,7 @@ use Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 
-final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
+final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCase
 {
     /**
      * Model instance wired to the harness transport with an EXACT key.
@@ -57,7 +57,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
      * @param ModelConfig|null $config Optional model configuration.
      * @return ZaiAnthropicTextGenerationModel
      */
-    private function model(?ModelConfig $config = null)
+    protected function model(?ModelConfig $config = null)
     {
         return $this->wiredZaiAnthropicModel(null, $config);
     }
@@ -2906,101 +2906,12 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
      * Pre-transport rejection: unsupported option/model combinations.
      */
 
-    public function testImageInputIsRejectedBeforeTransport()
-    {
-        $prompt = array(
-            new Message(MessageRoleEnum::user(), array(
-                new MessagePart(new File('https://fixture.test/pic.png', 'image/png')),
-            )),
-        );
-
-        try {
-            $this->model()->generateTextResult($prompt);
-            $this->fail('An image part must be rejected.');
-        } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('text input', $e->getMessage());
-        }
-
-        $this->assertNoHttpRequests();
-    }
-
-    public function testCandidateCountIsRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('candidateCount' => 2)),
-            'candidateCount'
-        );
-    }
-
-    public function testSamplingPenaltiesAreRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('presencePenalty' => 0.5)),
-            'presence penalty'
-        );
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('frequencyPenalty' => 0.5)),
-            'frequency penalty'
-        );
-    }
-
-    public function testTopKIsRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('topK' => 40)),
-            'top-k'
-        );
-    }
-
-    public function testLogprobsAreRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('logprobs' => true)),
-            'logprobs'
-        );
-    }
-
     public function testWebSearchIsRejectedBeforeTransport()
     {
         $config = ModelConfig::fromArray(array());
         $config->setWebSearch(new WordPress\AiClient\Tools\DTO\WebSearch());
 
         $this->assertRejectedBeforeTransport($config, 'web search');
-    }
-
-    public function testImageOutputModalityIsRejectedBeforeTransport()
-    {
-        $config = ModelConfig::fromArray(array());
-        $config->setOutputModalities(array(
-            WordPress\AiClient\Messages\Enums\ModalityEnum::text(),
-            WordPress\AiClient\Messages\Enums\ModalityEnum::image(),
-        ));
-
-        $this->assertRejectedBeforeTransport($config, 'text output modalities');
-    }
-
-    public function testUnsupportedOutputMimeTypeIsRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('outputMimeType' => 'image/png')),
-            'outputMimeType'
-        );
-    }
-
-    public function testCustomOptionsAreRejectedBeforeTransport()
-    {
-        $config = ModelConfig::fromArray(array());
-        $config->setCustomOption('thinking', array('type' => 'enabled'));
-
-        $this->assertRejectedBeforeTransport($config, 'custom options');
-    }
-
-    public function testNonPositiveMaxTokensIsRejectedBeforeTransport()
-    {
-        $this->assertRejectedBeforeTransport(
-            ModelConfig::fromArray(array('maxTokens' => 0)),
-            'maxTokens'
-        );
     }
 
     /*
