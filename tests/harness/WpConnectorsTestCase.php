@@ -520,6 +520,68 @@ abstract class WpConnectorsTestCase extends TestCase
         return 'WP_AI_Client_Prompt_Builder';
     }
 
+    /**
+     * Boots one surface's provider into the registry, settles its
+     * availability verdict, and returns the core prompt builder
+     * (glm22-7).
+     *
+     * The 15-line boot sequence was a full copy in both surface mapping
+     * suites, differing only in five surface substitutions — the
+     * discipline the sequence embeds (the glm15-1 static-directory-cache
+     * priming, the settle-before-generation assert, the skip-first core
+     * lookup) had to be edited in both suites, and a missed edit left
+     * one suite green while silently testing a differently-booted
+     * provider. The harness owns the other half already
+     * (corePromptBuilderClass(), glm15-18); one surface-parameterized
+     * boot now, the per-suite corePromptBuilder() helpers one-line
+     * delegates.
+     *
+     * @param string $provider_slug The provider slug ('zai' or
+     *                              'zai_anthropic').
+     * @return WP_AI_Client_Prompt_Builder The settled builder.
+     */
+    protected function bootedCorePromptBuilder(string $provider_slug)
+    {
+        if ( ! \in_array( $provider_slug, array( 'zai', 'zai_anthropic' ), true ) ) {
+            throw new \RuntimeException( "Unknown provider slug '{$provider_slug}'." );
+        }
+
+        // Skip-first: the core lookup may mark the test skipped, before
+        // any option or registry mutation.
+        $class = $this->corePromptBuilderClass();
+
+        $is_zai = 'zai' === $provider_slug;
+
+        if ( $is_zai ) {
+            $this->primeZaiDiscoveryTransient();
+        } else {
+            $this->primeZaiAnthropicDiscoveryTransient();
+        }
+
+        $availability_class = $is_zai
+            ? \Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::class
+            : \Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::class;
+        $provider_class = $is_zai
+            ? \Deicod\WpConnectors\Zai\Provider\ZaiProvider::class
+            : \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::class;
+
+        update_option( $availability_class::KEY_OPTION, FakeSecrets::apiKey() );
+        \Deicod\WpConnectors\Zai\Plugin::register( AiClient::defaultRegistry() );
+        AiClient::defaultRegistry()->setProviderRequestAuthentication(
+            $provider_slug,
+            new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication( FakeSecrets::apiKey() )
+        );
+
+        $models_body = $is_zai
+            ? HttpResponseFactory::openAiModelsBody( array( 'glm-5.3' ) )
+            : HttpResponseFactory::anthropicModelsBody( array( 'glm-5.3' ) );
+        $this->queueSdkResponse( 200, array(), $models_body );
+
+        $this->assertTrue( $provider_class::availability()->isConfigured(), 'Availability must settle before generation.' );
+
+        return new $class( AiClient::defaultRegistry(), 'Hello' );
+    }
+
     /*
      * ---------------------------------------------------------------
      * Secret-handling assertions.

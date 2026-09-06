@@ -2527,27 +2527,14 @@ final class ZaiResponseMappingTest extends WpConnectorsTestCase
 
     /**
      * Boots the provider into the registry and settles the availability
-     * verdict (the SDK's model resolution probes isConfigured() first, which
-     * would otherwise consume the queued generation response).
+     * verdict (glm22-7: one-line delegate to the harness's
+     * bootedCorePromptBuilder()).
      *
      * @return WP_AI_Client_Prompt_Builder
      */
     private function corePromptBuilder()
     {
-        $class = $this->corePromptBuilderClass();
-
-        $this->primeZaiDiscoveryTransient();
-        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, FakeSecrets::apiKey());
-        \Deicod\WpConnectors\Zai\Plugin::register(AiClient::defaultRegistry());
-        AiClient::defaultRegistry()->setProviderRequestAuthentication(
-            'zai',
-            new ApiKeyRequestAuthentication(FakeSecrets::apiKey())
-        );
-
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
-        $this->assertTrue(ZaiProvider::availability()->isConfigured(), 'Availability must settle before generation.');
-
-        return new $class(AiClient::defaultRegistry(), 'Hello');
+        return $this->bootedCorePromptBuilder('zai');
     }
 
     public function testCoreBuilderPathReturnsGeneratedTextOnSuccess()
