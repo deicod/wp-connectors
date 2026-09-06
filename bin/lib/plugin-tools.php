@@ -183,17 +183,22 @@ function wp_connectors_file_code_views($path)
 }
 
 /**
- * Reads (and memoizes) a plugin file's leading bytes (glm25-9).
+ * Reads a plugin file's leading bytes (glm25-9, glm25-12).
  *
  * The main-file discovery, the header parser, and the duplicate-header
  * check each read the same 8 KB head of the same main file in one run
- * — and the version-constant check used to re-glob the whole root on
- * top of that. The memo is guarded by stat (mtime + size, one syscall
- * beside the read it saves): a rewritten file re-reads, and every
- * consumer here reads only the fixed prefix, so a tail-only rewrite
- * re-reading an identical head is also correct. A read that fails
- * yields '' (the callers' existing (string) cast semantics: no
- * header found).
+ * — one owner for the read expression instead of three hand-rolled
+ * copies. Deliberately NOT memoized: the stat-guarded memo this round
+ * first added (mtime + size) served a STALE head for a same-path,
+ * same-size rewrite inside one mtime second — verifier-reproduced
+ * 30/30 on back-to-back rewrites — while saving only page-cached
+ * 8 KB reads. No current consumer rewrites mid-run (the CLIs scan
+ * static trees; the test fixtures are fresh per test), but a memo
+ * whose correctness depends on that is a hazard class with no
+ * benefit; the plain read is correct by construction (unlike the
+ * glm25-8 code-views memo, whose content-keyed md5 makes it sound
+ * under rewrite by design). A read that fails yields '' (the
+ * callers' existing (string) cast semantics: no header found).
  *
  * @param string $file  Absolute file path.
  * @param int    $bytes Leading bytes to read (default 8192).
@@ -201,26 +206,7 @@ function wp_connectors_file_code_views($path)
  */
 function wp_connectors_plugin_file_head($file, $bytes = 8192)
 {
-    /** @var array<string, array{mtime: int|false, size: int|false, head: string}> $memo */
-    static $memo = array();
-
-    $stat = @stat($file);
-    if (false === $stat) {
-        return '';
-    }
-
-    $key = $file . "\0" . $bytes;
-    $entry = $memo[$key] ?? null;
-    if (null === $entry || $entry['mtime'] !== $stat['mtime'] || $entry['size'] !== $stat['size']) {
-        $entry = array(
-            'mtime' => $stat['mtime'],
-            'size' => $stat['size'],
-            'head' => (string) @file_get_contents($file, false, null, 0, $bytes),
-        );
-        $memo[$key] = $entry;
-    }
-
-    return $entry['head'];
+    return (string) @file_get_contents($file, false, null, 0, $bytes);
 }
 
 /**
