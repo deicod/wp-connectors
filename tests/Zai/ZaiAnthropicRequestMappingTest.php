@@ -1048,7 +1048,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
              * (single serialization), so its message carries both
              * failure modes.
              */
-            $this->assertStringContainsString('could not replay tool arguments', $e->getMessage());
+            $this->assertStringContainsString('could not replay tool call arguments', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();
@@ -1074,7 +1074,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             $this->model()->generateTextResult($prompt);
             $this->fail('A precision-loss tool argument must be rejected before transport.');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('could not replay tool arguments', $e->getMessage());
+            $this->assertStringContainsString('could not replay tool call arguments', $e->getMessage());
         }
 
         $this->assertNoHttpRequests();
@@ -3394,7 +3394,7 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
                 $model->generateTextResult($lossy_prompt);
                 $this->fail('A lossy-arguments tool call must reject before transport.');
             } catch ( InvalidArgumentException $e ) {
-                $this->assertStringContainsString('could not replay tool arguments', $e->getMessage());
+                $this->assertStringContainsString('could not replay tool call arguments', $e->getMessage());
             }
         }
 

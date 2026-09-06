@@ -1037,14 +1037,12 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * below would reject), keeping the parse and replay verdicts in
 		 * agreement instead of re-serializing the tree on every request
 		 * of the conversation. First-seen CALLER-built calls (plain SDK
-		 * instances) keep the full oracle.
+		 * instances) keep the full oracle. glm21-8: the block rides the
+		 * ONE shared ToolArgsReplayGuard::reject_unreplayable_call()
+		 * with the zai_anthropic twin (message, channel, and stamp
+		 * contract unified).
 		 */
-		if ( ! $function_call instanceof ReplayValidatedFunctionCall
-			&& ! ToolArgsReplayGuard::is_replayable( $function_call->getArgs() ) ) {
-			throw new InvalidArgumentException(
-				sprintf( 'The %s provider could not replay tool call arguments (an unencodable or precision-loss value was given).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-			);
-		}
+		ToolArgsReplayGuard::reject_unreplayable_call( $function_call, $function_call->getArgs(), self::PROVIDER_LABEL );
 
 		return $data;
 	}

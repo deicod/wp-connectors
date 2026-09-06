@@ -43,6 +43,8 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Support;
 
+use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+
 /**
  * Rejects decoded tool arguments that cannot replay onto the wire.
  *
@@ -476,5 +478,50 @@ final class ToolArgsReplayGuard {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Rejects one OUTBOUND tool call whose arguments cannot replay onto
+	 * the wire — the one shared outbound replay block (glm21-8).
+	 *
+	 * The stamp skip (GLM12 #12: an inbound-accepted
+	 * ReplayValidatedFunctionCall proved its arguments at parse time and
+	 * the immutable DTO carries the verdict), the serializing oracle,
+	 * and the typed pre-transport rejection were a near-verbatim twin on
+	 * both model surfaces with wording that had already drifted
+	 * ('could not replay tool call arguments' versus 'could not replay
+	 * tool arguments') — a stamp-contract or rejection-channel change
+	 * could land on one surface only, and the same caller-built
+	 * arguments would replay on one surface while rejected on the
+	 * other. One block now, label-parameterized (the glm19-5
+	 * direction); the zai_anthropic wording is unified onto the zai
+	 * surface's 'tool call arguments' (the more precise phrase, pinned
+	 * both ways before). The optional $oracle callable lets a surface
+	 * interpose a memo over the verdict (the zai_anthropic surface's
+	 * glm21-5 replay-verdict memo) without forking the block.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param object        $function_call  The outbound FunctionCall DTO.
+	 * @param mixed         $value          The arguments the surface judges.
+	 * @param string        $provider_label Provider name for the message.
+	 * @param callable|null $oracle         Optional replayability prover
+	 *                                      over $value (defaults to the
+	 *                                      guard's serializing oracle).
+	 * @return void
+	 * @throws InvalidArgumentException When an unstamped call's arguments
+	 *                                  cannot replay.
+	 */
+	public static function reject_unreplayable_call( $function_call, $value, string $provider_label, ?callable $oracle = null ): void {
+		if ( $function_call instanceof ReplayValidatedFunctionCall ) {
+			return;
+		}
+
+		$replayable = null === $oracle ? self::is_replayable( $value ) : $oracle( $value );
+
+		if ( ! $replayable ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new InvalidArgumentException( sprintf( 'The %s provider could not replay tool call arguments (an unencodable or precision-loss value was given).', $provider_label ) );
+		}
 	}
 }

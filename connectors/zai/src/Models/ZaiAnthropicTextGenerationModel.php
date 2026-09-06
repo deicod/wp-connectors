@@ -1683,18 +1683,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * conversation. First-seen CALLER-built calls (plain SDK
 			 * instances) keep the full oracle.
 			 *
-			 * glm21-5: the caller-built oracle run rides the identity-
-			 * keyed verdict memo (replayable_tool_call()) — first run
-			 * full, repetition removed; the rejection below (message
-			 * and channel) is unchanged, and the pinned first-bad-wins
+			 * glm21-5/glm21-8: the block rides the ONE shared
+			 * ToolArgsReplayGuard::reject_unreplayable_call() with the
+			 * zai twin (message, channel, and stamp contract unified —
+			 * this surface's wording joins the twin's 'tool call
+			 * arguments'), with the glm21-5 identity-keyed verdict memo
+			 * (replayable_tool_call()) interposed as the oracle: first
+			 * run full, repetition removed; the pinned first-bad-wins
 			 * order above is untouched.
 			 */
-			if ( ! $function_call instanceof ReplayValidatedFunctionCall
-				&& ! $this->replayable_tool_call( $function_call, $input ) ) {
-				throw new InvalidArgumentException(
-					sprintf( 'The %s provider could not replay tool arguments (an unencodable or precision-loss value was given).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-				);
-			}
+			ToolArgsReplayGuard::reject_unreplayable_call(
+				$function_call,
+				$input,
+				self::PROVIDER_LABEL,
+				function ( $args ) use ( $function_call ): bool {
+					return $this->replayable_tool_call( $function_call, $args );
+				}
+			);
 
 			return array(
 				'type'  => 'tool_use',
