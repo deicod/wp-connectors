@@ -238,12 +238,11 @@ function zai_connector_zai_uninstall_site() {
 			 * (GLM5 #11, GLM9 #8). The database rung stays local: it is
 			 * core-owned option state, not ladder resolution, and the key
 			 * option is deliberately still readable at uninstall time.
+			 * glm24-9: array_values() collects the rungs — the former
+			 * foreach-append only discarded the source labels, exactly
+			 * what array_values() discards.
 			 */
-			$zai_connector_current_keys = array();
-
-			foreach ( $zai_connector_settings_class::env_constant_ladder() as $zai_connector_ladder_key ) {
-				$zai_connector_current_keys[] = $zai_connector_ladder_key;
-			}
+			$zai_connector_current_keys = array_values( $zai_connector_settings_class::env_constant_ladder() );
 
 			$zai_connector_stored_value = get_option( $zai_connector_settings_class::KEY_OPTION, '' );
 			if ( \is_string( $zai_connector_stored_value ) && '' !== $zai_connector_stored_value ) {
