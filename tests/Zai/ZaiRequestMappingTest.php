@@ -777,6 +777,88 @@ final class ZaiRequestMappingTest extends WpConnectorsTestCase
         $this->assertFalse($memo()->offsetExists($unencodable), 'A rejected tool result never lands in the memo.');
     }
 
+    public function testCallerBuiltToolCallsMemoizeTheReplayVerdictUntilTheConversationSwitches()
+    {
+        /*
+         * glm22-4 (the zai port of the twin's glm21-5 pin): caller-built
+         * (unstamped) FunctionCalls re-ran the full ToolArgsReplayGuard
+         * oracle on every request for all history — O(K²)
+         * serializations over a conversation. The verdict memo rides
+         * glm22-3's build-set sweep through the $oracle hook glm21-8
+         * added for it; the oracle is a static guard with no observable
+         * seam, so the pin reads the private memo field through the
+         * harness reflection helper (the aggregator_state() channel,
+         * glm19-11): the DTO carries its verdict after the first build,
+         * keeps it across a replayed build, loses it when a later build
+         * stops mapping it, and a REJECTED call never lands in the memo
+         * (the glm16-6 discipline — the second identical rejection
+         * below re-proves on a still-unserved storage).
+         */
+        $call = new FunctionCall('k1', 'get_weather', array('city' => 'Oslo'));
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart($call))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('k1', 'get_weather', array('temp_c' => 5))))),
+        );
+
+        $model = $this->model();
+        $memo  = function () use ( $model ) {
+            return $this->aggregator_state($model, 'tool_call_replay_memo');
+        };
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+        $model->generateTextResult($prompt);
+
+        $storage = $memo();
+        $this->assertInstanceOf(\SplObjectStorage::class, $storage, 'The first caller-built build runs the oracle and memoizes the verdict.');
+        $this->assertTrue($storage->offsetExists($call), 'The call carries its replay verdict.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+        $model->generateTextResult($prompt);
+        $this->assertTrue($memo()->offsetExists($call), 'The replayed build keeps the verdict (same DTO instances).');
+
+        // A conversation switch releases the previous conversation's
+        // verdicts at the fresh build's completion; the fresh
+        // conversation memoizes only its own call.
+        $fresh_call = new FunctionCall('z1', 'ping', array());
+
+        $fresh_prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('again'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart($fresh_call))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('z1', 'ping', array('ok' => 1))))),
+        );
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::openAiChatCompletionBody('ok', 'glm-5.3'));
+        $model->generateTextResult($fresh_prompt);
+
+        $after_switch = $memo();
+        $this->assertInstanceOf(\SplObjectStorage::class, $after_switch);
+        $this->assertFalse($after_switch->offsetExists($call), 'A conversation switch released the previous conversation\'s verdicts.');
+        $this->assertTrue($after_switch->offsetExists($fresh_call), 'The fresh conversation memoizes its own call.');
+
+        // Rejections never memoize: an integral-but-inexact big float
+        // (1e23, glm19-1's REJECT class) rejects on every build, and
+        // the storage stays empty of it.
+        $lossy = new FunctionCall('bad', 'boom', array('n' => 1e23));
+
+        $lossy_prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('x'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart($lossy))),
+        );
+
+        for ( $i = 0; $i < 2; $i++ ) {
+            try {
+                $model->generateTextResult($lossy_prompt);
+                $this->fail('A lossy-arguments tool call must reject before transport.');
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('could not replay tool call arguments', $e->getMessage());
+            }
+        }
+
+        $this->assertFalse($memo()->offsetExists($lossy), 'A rejected tool call never lands in the memo.');
+    }
+
     /*
      * GLM6 #5: wire-value encodability guards (the GLM3 #4/GLM4 #1
      * oracle, ported from the zai_anthropic surface).

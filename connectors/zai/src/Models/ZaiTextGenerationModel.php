@@ -29,6 +29,7 @@ namespace Deicod\WpConnectors\Zai\Models;
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
+use WordPress\AiClient\Tools\DTO\FunctionCall;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\Request;
@@ -129,6 +130,33 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @var \SplObjectStorage|null
 	 */
 	private $tool_result_encode_memo = null;
+
+	/**
+	 * Replay verdicts for caller-built tool calls, keyed by DTO identity
+	 * (glm22-4, the zai port of the twin's glm21-5).
+	 *
+	 * The GLM12 #12 stamp skips inbound-accepted calls at the instanceof
+	 * check; CALLER-built plain SDK instances (and every rehydrated
+	 * toArray()/fromArray() conversation — the stamp does not survive
+	 * the vendor round trip) kept re-running the full
+	 * ToolArgsReplayGuard oracle (encode + decode + re-encode + walker,
+	 * ~3 whole-argument serializations per historical call) on every
+	 * request for all history: O(K²) over a conversation. The vendor
+	 * FunctionCall DTO is immutable (getters only), so the verdict is a
+	 * pure function of the DTO: a PASSED oracle memoizes true;
+	 * rejections never memoize (the glm16-6 discipline — an unplayable
+	 * DTO re-proves and re-rejects identically on every build). The
+	 * same build-set sweep as glm22-3 bounds the pin (rehydrated
+	 * conversations carry fresh instances every request and miss by
+	 * design — a value-key would pay the serialization the memo exists
+	 * to skip — and the sweep detaches every superseded entry once the
+	 * build that superseded it completes).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var \SplObjectStorage|null
+	 */
+	private $tool_call_replay_memo = null;
 
 	/**
 	 * The tool DTOs the CURRENT request build has mapped — the build set
@@ -1116,9 +1144,21 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * instances) keep the full oracle. glm21-8: the block rides the
 		 * ONE shared ToolArgsReplayGuard::reject_unreplayable_call()
 		 * with the zai_anthropic twin (message, channel, and stamp
-		 * contract unified).
+		 * contract unified). glm22-4: the glm21-5 identity-keyed verdict
+		 * memo interposes as the oracle (the $oracle hook glm21-8 added
+		 * for exactly this — the twin has passed one since glm21; this
+		 * surface re-ran the full serializing oracle on every unstamped
+		 * historical call, every request): first run full, repeats
+		 * served.
 		 */
-		ToolArgsReplayGuard::reject_unreplayable_call( $function_call, $function_call->getArgs(), self::PROVIDER_LABEL );
+		ToolArgsReplayGuard::reject_unreplayable_call(
+			$function_call,
+			$function_call->getArgs(),
+			self::PROVIDER_LABEL,
+			function ( $args ) use ( $function_call ): bool {
+				return $this->replayable_tool_call( $function_call, $args );
+			}
+		);
 
 		return $data;
 	}
@@ -1410,6 +1450,10 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				}
 
 				if ( $part->getType()->isFunctionCall() && null !== $part->getFunctionCall() ) {
+					// glm22-4: into the build's tool-DTO set (see
+					// $tool_loop_build_dto).
+					$this->note_tool_loop_dto( $part->getFunctionCall() );
+
 					/*
 					 * The id and name ride the wire verbatim inside the
 					 * tool_calls member; the ARGUMENTS are guarded by the
@@ -1466,7 +1510,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		$build_set = $this->tool_loop_build_dto;
 
 		if ( null !== $build_set ) {
-			foreach ( array( $this->tool_result_encode_memo ) as $storage ) {
+			foreach ( array( $this->tool_result_encode_memo, $this->tool_call_replay_memo ) as $storage ) {
 				if ( null === $storage ) {
 					continue;
 				}
@@ -1521,6 +1565,42 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		}
 
 		$this->tool_result_encode_memo->offsetSet( $function_response, true );
+	}
+
+	/**
+	 * The replay verdict for one caller-built tool call, memoized by DTO
+	 * identity (glm22-4, the zai port of the twin's glm21-5).
+	 *
+	 * Same contract as the ToolArgsReplayGuard::is_replayable() call it
+	 * wraps — identical verdicts, identical typed rejection at the call
+	 * site — minus the repeat: a conversation replaying the same DTO
+	 * instances reads the verdict instead of re-running the
+	 * encode/decode/re-encode/walker oracle for every historical call
+	 * on every request build. Rejections return false WITHOUT
+	 * memoizing, so an unplayable DTO re-proves on every build.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param FunctionCall $function_call The caller-built call being mapped.
+	 * @param mixed        $args          Its raw DTO arguments.
+	 * @return bool True when the arguments replay losslessly.
+	 */
+	private function replayable_tool_call( FunctionCall $function_call, $args ): bool {
+		if ( null !== $this->tool_call_replay_memo && $this->tool_call_replay_memo->offsetExists( $function_call ) ) {
+			return true;
+		}
+
+		if ( ! ToolArgsReplayGuard::is_replayable( $args ) ) {
+			return false;
+		}
+
+		if ( null === $this->tool_call_replay_memo ) {
+			$this->tool_call_replay_memo = new \SplObjectStorage();
+		}
+
+		$this->tool_call_replay_memo->offsetSet( $function_call, true );
+
+		return true;
 	}
 
 	/**
