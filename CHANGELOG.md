@@ -6,6 +6,76 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM22 round)
+
+All 15 findings of review round 22 (high, ledger-filtered) plus the two
+verifier-round confirmations, one commit each:
+
+- The conservative walker recurses into every object and judges the
+  DECODED WIRE FORM (glm22-1 + glm22-16): has_out_of_range_integer_float()
+  recursed only into arrays and stdClass, so a caller-built plain value
+  object carrying an out-of-range integral float shipped to the wire
+  byte-identical to its rejected array/stdClass twins
+  ('{"count":9.3e+18}') on both surfaces' outbound replay channels —
+  the glm12-8 poisoning class (empirically reproduced end-to-end). The
+  verifier round then demonstrated that no property-graph walk is exact
+  for every encodable class: a JsonSerializable's cyclic property graph
+  fatals the walk uncatchably while its clean serializer output encodes
+  fine, and an ArrayObject's dynamic property never ships yet rejected
+  while its STORAGE ships ('{"x":9.3e+18}') yet passed. The walk judges
+  the decode of the oracle's own phase-one encoding — literally the
+  values that ride the wire — with a cycle-guarded misuse backstop for
+  direct object handoffs; decode products and plain arrays/stdClass
+  keep identical verdicts.
+- '+' joins the plain-integer scan's adjacency guard class (glm22-2):
+  JSON's only '+' is the positive exponent sign, so the digit run after
+  'e+' is always the exponent of a float token — the plain scan read
+  0e+9223372036854775809 as the standalone integer …809 and rejected an
+  exact zero (decodes to 0.0, re-encodes stably) as precision loss
+  while its e- and unsigned twins replayed, typed-rejecting a valid
+  generation on the zai inbound parse hook and flagging the Anthropic
+  streamed tool block as malformed input JSON. Pinned at the rule, on
+  the zai inbound channel, and on the streamed channel.
+- The zai surface memoizes the tool-result encodability verdict
+  (glm22-3) and interposes the replay-verdict memo through the $oracle
+  hook (glm22-4): the glm21-4/glm21-5 identity-keyed memos and the
+  glm21-17 build-set sweep, ported whole from the zai_anthropic twin —
+  a K-turn tool loop replaying the full conversation every request paid
+  O(K²) guard encodes and O(K²) oracle serializations it no longer pays
+  (the vendor parent's own shipping encode is structural and stays).
+- Both endpoints derive CANONICAL_BASE_URL from their MATRIX cell
+  (glm22-5, value-identical, PHP 7.4-legal constant expression) — the
+  second literal could drift from a MATRIX migration with no failing
+  test.
+- The protocol-independent mapping members ride shared surface bases
+  (glm22-6): the transport-failure test, three data providers, and
+  nine config-option rejection wrappers were byte-identical copies
+  across the suites pinning the SHARED guard layer; one harness-owned
+  abstract base per suite pair executes one copy per surface. The
+  drifted maxTokens pins (0 and -5 zai-side, 0 only Anthropic-side)
+  unified: BOTH values now execute on BOTH surfaces — coverage strictly
+  grew (test count unchanged, assertions up).
+- corePromptBuilder() consolidates on the harness's
+  bootedCorePromptBuilder($slug) (glm22-7, skip-first ordering
+  preserved); wiredZaiModel() ports the glm20-11 wiring consolidation
+  to the zai surface (glm22-8, six inline copies rewired; the two
+  deliberately-unbound factory calls stay); the discovery-priming twins
+  parameterize onto one helper with one-line delegates (glm22-9, the
+  glm15-12 composition pin is exactly one now); the opaque
+  identity-passthrough auth double is one harness-owned class
+  (glm22-10, was five anonymous spellings under three names); the
+  model-directory fixture folds into directory(?string $key)
+  (glm22-11); the availability/directory wiring rides one
+  class-parameterized wiredZaiSdkInstance() (glm22-12).
+- Fixed-length strncmp replaces the strpos prefix probes in the SSE
+  sniff and the BOM tests (glm22-13; byte-identical verdicts, fuzzed
+  at 60k×6 locally and 3M pairs by the verifier — ~6 whole-body scans
+  per non-streaming response parse removed); the redundant
+  content_block_start pre-check defers to start_block()'s own rejection
+  (glm22-14, observationally identical across every member state); the
+  array-literal walk's duplicated blanking closure is one named helper
+  (glm22-15, deliberately not the token-aware masker).
+
 ### Fixed (zai / M2 — GLM21 round)
 
 All 15 findings of review round 21 (high, ledger-filtered), one commit
