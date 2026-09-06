@@ -6,6 +6,79 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM24 round)
+
+All 9 findings of code-review round 24 (high, ledger-filtered; zero
+correctness findings — all drift-risk/maintenance), one commit each,
+plus a two-lens verifier pass (independent security + correctness
+agents over the full diff; 1 confirmed finding — the round's own new
+slug pin was vacuous against the verbatim revert it named, fixed as
+glm24-10 — while every production change held byte-identical behavior
+under the verifiers' differentials: a 200k-sequence fuzz on the
+has_json derivation, a 13-shape truth table on the content probe, and
+byte-identical scanner violation lists on hostile fixtures and the
+real tree):
+
+- The live probe states no availability class (glm24-1): the facts
+  table's 'availability' column was the one probe fact no lockstep pin
+  covered — a pairing swap wrote surface A's key option and deleted
+  surface B's validation state while generation ran on A. The column
+  is gone: KEY_OPTION/STATE_OPTION are constants the availability
+  layer itself aliases from the settings class the registry row
+  already carries, so the probe reads both through
+  $surface_facts['settings']:: and ZaiSurfaceLockstepTest pins the two
+  derivation statements plus a word-bounded zero-restatement scan
+  (per provider, through its own availability() factory).
+- Both card names alias the settings layer's PROVIDER_LABEL (glm24-2):
+  ZaiAnthropicProvider::PROVIDER_NAME and the zai twin's
+  provider_display_name() were hand-mirrored literals with each side's
+  tests pinning only their own copy — a one-sided rename left the
+  Connectors card and the settings header naming one connector two
+  ways (the per-side-pin vacuity glm21-18 documented). Both surfaces
+  ride the constant-expression alias now (the PROVIDER_ID/CACHE_SCOPE
+  pattern), pinned through provider_metadata_args() on both surfaces.
+- The auth rejection messages ride the REFUSAL_LABEL chain (glm24-3),
+  closing the glm19-5/6 "next label pass" deferral: the uncarriable-
+  credential and wrap() refusal messages interpolate a private
+  PROVIDER_LABEL (byte-identical output), so a CACHE_SCOPE rename no
+  longer strands ErrorMapper's admin-facing 500 text naming a provider
+  id that exists nowhere else. The verifier round (glm24-10) hardened
+  the pin to name the verbatim-revert shape — the positive
+  sprintf-idiom count plus the mid-string sentence-prefix and
+  standalone-slug prohibitions — and both behavioral pins ride
+  REFUSAL_LABEL-derived expectations.
+- The tool-input presence flag derives from the accumulated JSON
+  (glm24-4): the per-block 'has_json' boolean duplicated ('' !== json)
+  on every reachable state (closed write set: an '' init plus one
+  string-gated append; fuzz-verified), the GLM10 #7 hand-synced-mirror
+  drift class. The read site derives; the stored field is gone.
+- start_block() drops its five dead null-raw_block conjuncts
+  (glm24-5): $type derives from $raw_block and the null-type early
+  return settles null-ness, so the tool_use branch and the four
+  accumulator member reads could never see a null raw block — the
+  conjuncts advertised a null path that cannot reach them.
+- The self-containment analysis rides one masked view per file
+  (glm24-6): the write-shape and assignment helpers re-tokenized the
+  whole file through the string masker on every consult although the
+  per-file driver had computed the identical view; the driver's one
+  pass is threaded down through the collector, runtime-segment,
+  hidden-include, and array-literal helpers. Measured on connectors/
+  zai: 63 mask passes / 861 KB → 55 / 742 KB per scan, identical
+  verdicts.
+- The decoded-message content probe states its order plainly
+  (glm24-7): property_exists first (truth-table-identical over a
+  13-shape battery — the ?? null existed only to keep the inverted
+  order safe), and no $raw_content_ok mirror — a non-null raw decode
+  implies a present-array content member past the entry gates.
+- effective_key() states its first-rung resolution directly (glm24-8):
+  array_key_first() over the owner-ordered non-empty ladder replaces a
+  foreach that returned unconditionally on its first iteration — a
+  loop silhouette implying rung iteration mattered on a
+  credential-resolution path.
+- The uninstall ladder collection rides array_values() (glm24-9): the
+  foreach-append only discarded the source labels the owner keyed the
+  rungs by; the glm13-15 one-occurrence pin keeps holding.
+
 ### Fixed (zai / M2 — GLM23 round)
 
 All 15 findings of review round 23 (high, ledger-filtered), one commit
