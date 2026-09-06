@@ -60,6 +60,7 @@ use Deicod\WpConnectors\Zai\Support\EncodabilityNet;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonFallbackResult;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
+use Deicod\WpConnectors\Zai\Support\JsonOutputGuidance;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
 use Deicod\WpConnectors\Zai\Support\RequestShapeGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
@@ -275,64 +276,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private $tool_loop_build_dto = null;
 
 	/**
-	 * The encoded outputSchema string for the CURRENT config's schema
-	 * (glm21-7).
+	 * The shared JSON-output guidance builder (glm23-2), or null before
+	 * the first guidance build.
 	 *
-	 * The outputSchema is a config member that never changes across a
-	 * structured-output agent loop, but json_output_guidance()
-	 * re-encoded the whole (often multi-KB) schema into the system
-	 * prompt on every request build — one redundant whole-schema
-	 * json_encode plus sprintf per HTTP request for identical bytes on
-	 * the request-build hot path. The memo holds the ENCODED STRING
-	 * only, and only for OBJECT-FREE schema graphs (glm21-16): the
-	 * translated guidance sentence is rebuilt per call (the
-	 * instruction's pin — translations are not the memo's business),
-	 * and an object-carrying graph skips the memo entirely (see
-	 * $output_schema_encode_memo_schema). Rejections never memoize
-	 * (the guard throws before any entry lands). The reset set is the
-	 * tool_schema_memo's (glm16-6/16): a config identity change — the
-	 * vendor base's final setConfig() can replace a live instance's
-	 * config — or an in-place schema change through the vendor
-	 * ModelConfig's public setOutputSchema(), detected by the strict
-	 * value compare below.
+	 * The json_output_guidance() sentences and the glm21-7/16 memoized
+	 * schema encode ride the one Support\JsonOutputGuidance owner now
+	 * (both surfaces' guidance bytes and memo discipline are one owner
+	 * — the zai surface embeds the same guidance in the DROPPED case
+	 * its glm14-1 guard scopes, which was review round 23's finding 2:
+	 * a schema under a non-JSON mime flew unconstrained on zai while
+	 * the identical config constrained on this surface). The instance
+	 * carries the memo state; the lazy null keeps unwired instances
+	 * allocation-free.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @var string|null
+	 * @var JsonOutputGuidance|null
 	 */
-	private $output_schema_encode_memo = null;
-
-	/**
-	 * The config whose schema the memo holds (glm21-7; the memo's
-	 * identity-based reset trigger — see $output_schema_encode_memo).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var \WordPress\AiClient\Providers\Models\DTO\ModelConfig|null
-	 */
-	private $output_schema_encode_memo_config = null;
-
-	/**
-	 * The schema value the memo was built for — the memo's value-compare
-	 * reset trigger, compared STRICTLY on every build (glm21-7).
-	 *
-	 * The vendor ModelConfig is MUTABLE (a public setOutputSchema()),
-	 * so one config object mutated in place never changes identity
-	 * while its schema does; the strict value compare catches every
-	 * change to an OBJECT-FREE graph (arrays are values). A graph
-	 * carrying OBJECTS is NOT strictly comparable — PHP judges nested
-	 * objects by identity, so an in-place mutation of one left the old
-	 * and new schemas ===-equal FOREVER and the memo served the
-	 * pre-mutation encoding (verifier-reproduced end to end; glm21-16)
-	 * — so object-carrying schemas never memoize at all
-	 * (schema_is_strict_comparable() gates the memo; they encode every
-	 * build, the pre-glm21-7 behavior).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var array|null
-	 */
-	private $output_schema_encode_memo_schema = null;
+	private $json_output_guidance_builder = null;
 
 	/**
 	 * The RAW wired authentication — the SDK parent's getter, unwrapped
@@ -705,7 +666,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * The outputSchema option is advertised independently of
 	 * outputMimeType, so EITHER signal requests guidance: a schema without
 	 * the MIME option must not be silently discarded into an unconstrained
-	 * request (Codex R1 finding 4).
+	 * request (Codex R1 finding 4). glm23-2: the sentences and the
+	 * memoized schema encode ride the one shared JsonOutputGuidance
+	 * builder ($json_output_guidance_builder) — the guidance bytes and
+	 * the glm21-7/16 memo discipline are one owner across both surfaces
+	 * now.
 	 *
 	 * @since 0.2.0
 	 *
@@ -724,154 +689,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			return '';
 		}
 
-		$guidance = __( 'Respond with a single JSON value only — no markdown fences, no commentary, no surrounding text.', 'zai' );
-
-		if ( \is_array( $output_schema ) ) {
-			/*
-			 * glm18-6 (parity with the zai twin's glm13-8 rule): the SDK
-			 * setter accepts any array, so a LIST-root schema (['a','b'],
-			 * or []) encodes fine and previously embedded into the system
-			 * prompt as the meaningless pseudo-instruction 'JSON Schema:
-			 * ["a","b"]' — the model produced effectively unconstrained
-			 * output and the caller got a 200 with an unconstrained
-			 * payload instead of the twin's typed pre-transport
-			 * rejection. A JSON list is never a valid schema root; the
-			 * shape rule surfaces before the encodability check,
-			 * matching the twin's shape-before-encode ordering.
-			 * glm19-5: the rule lives on the shared RequestShapeGuard.
-			 */
-			RequestShapeGuard::reject_list_root_output_schema( $output_schema, self::PROVIDER_LABEL );
-
-			/*
-			 * R19 (inline 3906739372): a constructible but unencodable
-			 * outputSchema — NAN, invalid UTF-8, a recursive structure — makes
-			 * the encode return false, which the string cast silently
-			 * turned into '': the guidance ended in "JSON Schema: " and the
-			 * model produced unconstrained output even though the caller
-			 * requested a schema. Rejected before transport in the same
-			 * channel as the R18 tool-result encoding failure.
-			 *
-			 * GLM4 #1: the oracle is the RAW json_encode() — the same
-			 * primitive the GLM3 #4 wire-string guards use (GLM5 #16:
-			 * single-sourced on the shared JsonEncodeGuard). Core's
-			 * wp_json_encode() lossily rescues invalid UTF-8 and never
-			 * returns false for a string in production, so a guard on it
-			 * was dead code outside the test stub.
-			 *
-			 * glm21-7: the encoding rides the config-identity +
-			 * value-compare memo (encoded_output_schema()) — first-run
-			 * bytes identical, repetition skipped for an unchanged
-			 * schema.
-			 */
-			$encoded_schema = $this->encoded_output_schema( $output_schema );
-
-			$guidance .= "\n" . sprintf(
-				/* translators: %s: a JSON Schema document (compact JSON). */
-				__( 'The JSON value must conform to this JSON Schema: %s', 'zai' ),
-				$encoded_schema
-			);
+		if ( ! \is_array( $output_schema ) ) {
+			return JsonOutputGuidance::base_guidance();
 		}
 
-		return $guidance;
-	}
-
-	/**
-	 * The JSON encoding of the configured outputSchema, memoized per
-	 * config identity and schema value (glm21-7).
-	 *
-	 * Same contract as the JsonEncodeGuard::encode() call it wraps —
-	 * byte-identical first-run encoding, the same typed rejection on an
-	 * unencodable schema — minus the repeat, for OBJECT-FREE schema
-	 * graphs only (glm21-16): the compare pair (config identity, strict
-	 * schema value) re-encodes when either half changed, covering BOTH
-	 * reconfiguration idioms the way the tool-schema memo's pair does
-	 * (glm16-16). A graph carrying objects is not strictly comparable
-	 * (nested objects compare by identity, so an in-place mutation is
-	 * invisible to the reset — the verifier-reproduced staleness) and
-	 * skips the memo entirely, encoding every build: the pre-glm21-7
-	 * behavior, correct for every schema shape. Rejections never
-	 * memoize: the guard throws before any field lands, so an
-	 * unencodable schema re-proves and re-rejects identically on every
-	 * build.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param array $output_schema The configured output schema.
-	 * @return string The JSON encoding of the schema.
-	 */
-	private function encoded_output_schema( array $output_schema ): string {
-		$config              = $this->getConfig();
-		$strictly_comparable = self::schema_is_strict_comparable( $output_schema );
-
-		if ( $strictly_comparable
-			&& null !== $this->output_schema_encode_memo
-			&& $config === $this->output_schema_encode_memo_config
-			&& $output_schema === $this->output_schema_encode_memo_schema ) {
-			return $this->output_schema_encode_memo;
+		if ( null === $this->json_output_guidance_builder ) {
+			$this->json_output_guidance_builder = new JsonOutputGuidance();
 		}
 
-		/*
-		 * Any previous entry describes a different config or schema
-		 * value — or this schema never memoizes: clear first, so the
-		 * field states the truth (no active memo) even when the encode
-		 * below rejects and never lands a new one.
-		 */
-		$this->output_schema_encode_memo        = null;
-		$this->output_schema_encode_memo_config = null;
-		$this->output_schema_encode_memo_schema = null;
-
-		$encoded = JsonEncodeGuard::encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
-
-		if ( $strictly_comparable ) {
-			$this->output_schema_encode_memo        = $encoded;
-			$this->output_schema_encode_memo_config = $config;
-			$this->output_schema_encode_memo_schema = $output_schema;
-		}
-
-		return $encoded;
-	}
-
-	/**
-	 * Whether the schema's value graph is safely comparable by PHP's
-	 * STRICT array comparison (glm21-16).
-	 *
-	 * An object-free graph is: arrays are values, so every mutation —
-	 * through setOutputSchema() or a direct edit of the caller's
-	 * array — changes the compared value. A graph carrying OBJECT
-	 * members is not (objects compare by identity, hiding in-place
-	 * mutation), and neither is an absurdly deep or reference-cyclic
-	 * one (the walk is depth-bounded so it cannot hang where the guard's
-	 * own encode would reject the schema typed anyway): both read as
-	 * NOT comparable and skip the memo.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param mixed $value One schema member (or the schema root).
-	 * @param int   $depth Walk depth (bounded; internal).
-	 * @return bool True when strict comparison decides every change.
-	 */
-	private static function schema_is_strict_comparable( $value, int $depth = 0 ): bool {
-		if ( \is_object( $value ) ) {
-			return false;
-		}
-
-		if ( ! \is_array( $value ) ) {
-			return true;
-		}
-
-		if ( $depth >= 64 ) {
-			// Too deep to walk cheaply (or cyclic through references):
-			// conservatively not comparable — no memo, just encode.
-			return false;
-		}
-
-		foreach ( $value as $member ) {
-			if ( ! self::schema_is_strict_comparable( $member, $depth + 1 ) ) {
-				return false;
-			}
-		}
-
-		return true;
+		return $this->json_output_guidance_builder->schema_guidance( $output_schema, $config, self::PROVIDER_LABEL );
 	}
 
 	/**

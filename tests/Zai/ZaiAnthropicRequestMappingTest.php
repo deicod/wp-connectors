@@ -3366,7 +3366,11 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
         $prompt = array( new Message(MessageRoleEnum::user(), array( new MessagePart('hi') )) );
 
         $memo = function () use ( $model ) {
-            return $this->aggregator_state($model, 'output_schema_encode_memo');
+            // glm23-2: the memo state rides the shared JsonOutputGuidance
+            // builder the model owns — read the builder, then its field.
+            $builder = $this->aggregator_state($model, 'json_output_guidance_builder');
+
+            return null === $builder ? null : $this->aggregator_state($builder, 'encode_memo');
         };
 
         $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));

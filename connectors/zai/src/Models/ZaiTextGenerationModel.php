@@ -49,6 +49,7 @@ use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonFallbackResult;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
+use Deicod\WpConnectors\Zai\Support\JsonOutputGuidance;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
 use Deicod\WpConnectors\Zai\Support\RequestShapeGuard;
@@ -420,6 +421,90 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		}
 
 		return $params;
+	}
+
+	/**
+	 * The shared JSON-output guidance builder (glm23-2), or null before
+	 * the first dropped-case guidance build.
+	 *
+	 * See the twin's $json_output_guidance_builder — the sentences and
+	 * the glm21-7/16 memoized schema encode ride the one
+	 * Support\JsonOutputGuidance owner; this surface embeds the guidance
+	 * only in the DROPPED case (the config's schema under a non-JSON
+	 * mime), which with_dropped_schema_guidance() scopes.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var JsonOutputGuidance|null
+	 */
+	private $json_output_guidance_builder = null;
+
+	/**
+	 * Prepares the messages parameter, embedding the dropped-case JSON
+	 * guidance into the system instruction (glm23-2).
+	 *
+	 * The vendor parent reads the system instruction straight from the
+	 * config and hands it here — the one late-binding seam this
+	 * surface's mapping (the parent's own) offers for the Codex R1 #4
+	 * remedy. A configured outputSchema under a NON-JSON mime is the
+	 * dropped case the glm14-1 guard scopes (the parent forwards
+	 * response_format only under application/json): the schema never
+	 * reaches the assembled params, so without this embed the request
+	 * flew unconstrained — an HTTP 200 of prose where the identical
+	 * config on the zai_anthropic twin produced schema-constrained
+	 * output via its json_output_guidance() (review round 23, finding
+	 * 2). The embed rides the one shared JsonOutputGuidance builder,
+	 * byte-identical to the twin's guidance; under the JSON mime the
+	 * parent's native response_format.json_schema constrains the output
+	 * and NO guidance is added (the vendor-native request shape stands).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array       $messages           Prompt messages (list of Message).
+	 * @param string|null $system_instruction The configured system instruction.
+	 * @return list<array<string, mixed>> The prepared messages parameter.
+	 */
+	protected function prepareMessagesParam( array $messages, ?string $system_instruction = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK-mandated override name; the parameter renames snake_case (PHP imposes no signature-name contract).
+		return parent::prepareMessagesParam(
+			$messages,
+			$this->with_dropped_schema_guidance( $system_instruction )
+		);
+	}
+
+	/**
+	 * Appends the dropped-case JSON-output guidance to a system
+	 * instruction, or returns it unchanged (glm23-2).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string|null $system_instruction The configured system instruction.
+	 * @return string|null The instruction with guidance appended when the
+	 *                     dropped case applies.
+	 */
+	private function with_dropped_schema_guidance( ?string $system_instruction ): ?string {
+		$config = $this->getConfig();
+
+		$output_schema = $config->getOutputSchema();
+
+		if ( ! \is_array( $output_schema ) || 'application/json' === $config->getOutputMimeType() ) {
+			return $system_instruction;
+		}
+
+		/*
+		 * validate_request() already rejected a list-root schema and —
+		 * exactly in this dropped case — proved the schema encodable
+		 * (glm13-8/glm14-1); the shared builder re-checks the shape
+		 * idempotently and serves the memoized encoding (glm21-7/16).
+		 */
+		if ( null === $this->json_output_guidance_builder ) {
+			$this->json_output_guidance_builder = new JsonOutputGuidance();
+		}
+
+		$guidance = $this->json_output_guidance_builder->schema_guidance( $output_schema, $config, self::PROVIDER_LABEL );
+
+		return \is_string( $system_instruction ) && '' !== $system_instruction
+			? $system_instruction . "\n\n" . $guidance
+			: $guidance;
 	}
 
 	/**

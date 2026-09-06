@@ -270,6 +270,137 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
         $this->assertMatchesSnapshot('structured-output', $url, $body);
     }
 
+    public function testADroppedOutputSchemaEmbedsGuidanceIntoTheSystemInstruction()
+    {
+        /*
+         * glm23-2 (review round 23, finding 2): the SDK parent drops
+         * response_format under a non-JSON mime, so a configured schema
+         * with a non-JSON mime used to fly with NO constraint at all —
+         * an HTTP 200 of unconstrained prose while the identical config
+         * on the zai_anthropic twin produced schema-constrained output
+         * via its json_output_guidance() (the Codex R1 #4 remedy, never
+         * ported). The zai surface embeds the same guidance into its
+         * system instruction now — the one shared JsonOutputGuidance
+         * builder serves both surfaces — scoped exactly to the dropped
+         * case the glm14-1 guard scopes.
+         *
+         * The constructible dropped case names a non-JSON mime
+         * EXPLICITLY (text/plain is the AdvertisedUsageGuard's other
+         * whitelisted value): the vendor ModelConfig's setOutputSchema()
+         * auto-promotes a NULL mime to application/json, so the finding's
+         * leave-it-unset shape cannot exist through the public setters.
+         */
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Capital of France?')))),
+            $this->model(ModelConfig::fromArray(array(
+                'outputMimeType' => 'text/plain',
+                'outputSchema'   => array(
+                    'type'       => 'object',
+                    'properties' => array('answer' => array('type' => 'string')),
+                    'required'   => array('answer'),
+                ),
+            )))
+        );
+
+        $this->assertArrayNotHasKey('response_format', $body, 'The vendor parent drops response_format under the non-JSON mime.');
+        $this->assertSame('system', $body['messages'][0]['role'], 'The guidance rides a system message.');
+        $guidance = $body['messages'][0]['content'][0]['text'];
+        $this->assertStringContainsString('Respond with a single JSON value only', $guidance);
+        $this->assertStringContainsString('"required":["answer"]', $guidance, 'The encoded schema embeds into the guidance.');
+
+        return $guidance;
+    }
+
+    /**
+     * @depends testADroppedOutputSchemaEmbedsGuidanceIntoTheSystemInstruction
+     *
+     * @param string $guidance The guidance embedded by the dropped-case build.
+     */
+    public function testADroppedSchemaGuidanceMergesBehindAConfiguredSystemInstruction( $guidance )
+    {
+        // glm23-2: the merge shape is the twin's — instruction, blank
+        // line pair, guidance.
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Capital of France?')))),
+            $this->model(ModelConfig::fromArray(array(
+                'systemInstruction' => 'You are terse.',
+                'outputMimeType'    => 'text/plain',
+                'outputSchema'      => array(
+                    'type'       => 'object',
+                    'properties' => array('answer' => array('type' => 'string')),
+                    'required'   => array('answer'),
+                ),
+            )))
+        );
+
+        $this->assertSame(
+            'You are terse.' . "\n\n" . $guidance,
+            $body['messages'][0]['content'][0]['text'],
+            'A configured instruction merges ahead of the guidance.'
+        );
+    }
+
+    /**
+     * @depends testADroppedOutputSchemaEmbedsGuidanceIntoTheSystemInstruction
+     *
+     * @param string $guidance The guidance embedded by the dropped-case build.
+     */
+    public function testTheJsonMimeKeepsTheNativeResponseFormatAndAddsNoGuidance( $guidance )
+    {
+        /*
+         * glm23-2: under the JSON mime the parent's native
+         * response_format.json_schema constrains the output and no
+         * guidance is added — the vendor-native request shape stands;
+         * the embed is the DROPPED case's remedy.
+         */
+        list($url, $body) = $this->captureRequest(
+            array(new Message(MessageRoleEnum::user(), array(new MessagePart('Capital of France?')))),
+            $this->model(ModelConfig::fromArray(array(
+                'outputMimeType' => 'application/json',
+                'outputSchema'   => array(
+                    'type'       => 'object',
+                    'properties' => array('answer' => array('type' => 'string')),
+                    'required'   => array('answer'),
+                ),
+            )))
+        );
+
+        $this->assertArrayHasKey('response_format', $body);
+        $this->assertNotContains('system', array_column($body['messages'], 'role'), 'Under the JSON mime no guidance system message is added.');
+    }
+
+    /**
+     * @depends testADroppedOutputSchemaEmbedsGuidanceIntoTheSystemInstruction
+     *
+     * @param string $guidance The guidance embedded by the dropped-case build.
+     */
+    public function testTheDroppedSchemaGuidanceIsByteIdenticalOnBothSurfaces( $guidance )
+    {
+        /*
+         * glm23-2 parity: the zai_anthropic twin builds the
+         * byte-identical guidance for an identical schema — both
+         * surfaces' guidance bytes come from the one shared
+         * JsonOutputGuidance builder. Two hand-rolled captures: the
+         * harness resets attempt records per TEST, not per capture.
+         */
+        $prompt = array(new Message(MessageRoleEnum::user(), array(new MessagePart('Twin?'))));
+        $schema = array(
+            'type'       => 'object',
+            'properties' => array('answer' => array('type' => 'string')),
+            'required'   => array('answer'),
+        );
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $this->wiredZaiAnthropicModel(null, ModelConfig::fromArray(array('outputSchema' => $schema)))
+            ->generateTextResult($prompt);
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertCount(1, $attempts, 'The twin capture makes exactly one transport attempt.');
+
+        $twin_body = (array) json_decode((string) $attempts[0]['body'], true);
+        $this->assertSame($guidance, $twin_body['system'], 'Both surfaces embed the byte-identical guidance for the identical schema.');
+    }
+
     public function testToolRoundTripRequestSnapshot()
     {
         $config = ModelConfig::fromArray(array(
