@@ -669,6 +669,62 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->assertCount(1, WpHarness::$sdk_http_attempts, 'The authenticated discovery request left exactly once.');
     }
 
+    public function testOpaqueWiringOnTheDirectoryFliesNothingRecordsNothingAndServesTheFallback()
+    {
+        /*
+         * glm26-4 (glm16-1 alignment, glm14-5 discipline made
+         * structural): the discovery auth-READER judges the RAW wired
+         * instance — the probe and both models' channel. With a foreign
+         * (non-Api-key) wiring the flight still throws at the protocol
+         * wrap funnel, so nothing flies, no verdict persists for a
+         * credential the binding cannot name, and the plan fallback
+         * serves — the reader must never launder the opaque instance
+         * into the wrap's RuntimeException, which the recorders'
+         * unwired catch would have misread as NO wiring.
+         */
+        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
+        $key = FakeSecrets::apiKey();
+        update_option(\Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        $directory = $this->directory($key);
+        $directory->setRequestAuthentication(new OpaqueAuthentication());
+
+        // A doomed rejection would be served to whatever flew; none may.
+        $this->queueSdkResponse(403, array(), '{"type":"error","error":{"type":"forbidden"}}');
+
+        $models = $directory->listModelMetadata();
+
+        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'Opaque wiring serves the static plan catalog.');
+        $this->assertSame(array(), WpHarness::$sdk_http_attempts, 'Nothing flies under opaque wiring.');
+        $this->assertFalse(
+            get_option(\Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::STATE_OPTION, false),
+            'No verdict may be recorded for a credential the binding cannot name.'
+        );
+    }
+
+    public function testTheDiscoveryAuthReaderRidesTheRawHook()
+    {
+        /*
+         * glm26-4 source pin (the glm24-10 lesson: pin the shape that
+         * catches the verbatim revert): the discovery auth-reader answers
+         * which credential a rejecting request flew with through the RAW
+         * hook — a revert to the protocol-wrapping getter is the
+         * call-ordering accident that held the glm14-5 poisoning one
+         * refactor away. The complement of the glm21-14 pin: no site in
+         * this file returns the wrap getter (the flight site CALLS it,
+         * never returns it).
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php'
+        );
+
+        $this->assertSame(
+            0,
+            substr_count($source, 'return $this->getRequestAuthentication();'),
+            'No reader in this file returns the protocol-wrapping getter.'
+        );
+    }
+
     public function testMalformedDiscoveryResponsesFallBack()
     {
         $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
@@ -915,13 +971,19 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
          * a change to the credential a rejecting request is judged by,
          * or to the rejection wording/channel, lands at every site or
          * none.
+         *
+         * glm26-4 supersession: the one closure's return now reads the
+         * RAW wired instance (the glm16-1 channel the probe and both
+         * models use) — the wrap-getter spelling this pin used to count
+         * was the call-ordering accident that held the glm14-5
+         * cross-credential poisoning one refactor away.
          */
         $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php');
 
         $this->assertSame(
             1,
-            substr_count($source, 'return $this->getRequestAuthentication();'),
-            'One auth-reader closure serves the refuser and both recorders.'
+            substr_count($source, 'return $this->raw_request_authentication();'),
+            'One auth-reader closure serves the refuser and both recorders, reading the RAW wired instance.'
         );
         $this->assertSame(
             1,

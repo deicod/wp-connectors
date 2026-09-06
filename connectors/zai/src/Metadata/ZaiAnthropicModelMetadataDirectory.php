@@ -251,7 +251,24 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 		 */
 		$availability = new ZaiAnthropicProviderAvailability();
 		$auth_reader  = function () {
-			return $this->getRequestAuthentication();
+			/*
+			 * glm26-4 (glm16-1 alignment): the reader answers WHICH
+			 * credential the rejecting request flew with, and judges the
+			 * RAW wired instance — like the probe and both models, not
+			 * through the protocol wrap. The wrap reader held only by
+			 * call-ordering accident: a foreign wiring became wrap()'s
+			 * RuntimeException inside record_rejection_via_reader()'s
+			 * unwired catch, resolving the ladder/database credential —
+			 * the exact glm14-5 cross-credential poisoning the ledger
+			 * forbids (a later refactor authenticating through the
+			 * reader, or a tolerant wrap, would have fired it). Today
+			 * the flight at the wrap funnel below still throws first,
+			 * so behavior is byte-identical; the discipline is
+			 * structural now. The FLIGHT credential keeps riding the
+			 * getRequestAuthentication() funnel (glm16-1: the one
+			 * protocol-wrap funnel every request authenticates through).
+			 */
+			return $this->raw_request_authentication();
 		};
 
 		/*
