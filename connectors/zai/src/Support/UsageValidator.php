@@ -255,13 +255,23 @@ final class UsageValidator {
 	/**
 	 * Adds the named validated members without ever promoting to float.
 	 *
+	 * Public since glm21-9: the zai surface's derive_absent_total_tokens()
+	 * hand-rolled the identical overflow-checked member sum for its
+	 * prompt+completion derivation (its own comment conceded "the way
+	 * the shared validator's totals are"), so an overflow-rule change
+	 * (the glm18-1 boundary-fix class) could land here without reaching
+	 * that second copy, silently disagreeing with the validator's own
+	 * totals for the same usage object. Absent members count 0; an
+	 * explicit null (the lenient absent→0 tolerance) casts to 0 the
+	 * same way.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param array<string, mixed> $usage   Validated usage member.
 	 * @param string[]             $members Members to sum.
 	 * @return int|null The sum, or null when it exceeds PHP_INT_MAX.
 	 */
-	private static function sum_members( array $usage, array $members ): ?int {
+	public static function sum_members( array $usage, array $members ): ?int {
 		$total = 0;
 
 		foreach ( $members as $member ) {

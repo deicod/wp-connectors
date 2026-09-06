@@ -788,18 +788,21 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		/*
 		 * Post-validation (lenient), each known member is a non-negative
-		 * int or an explicit null (which counts as absent → 0). The sum
-		 * is overflow-checked the way the shared validator's totals are
-		 * (GLM4 #5's rule): no intermediate may promote to float.
+		 * int or an explicit null (which counts as absent → 0). glm21-9:
+		 * the sum rides the shared validator's overflow-checked
+		 * sum_members() — GLM4 #5's rule from its one source, so an
+		 * overflow-rule change reaches this derivation too: no
+		 * intermediate may promote to float, and an overflowing sum
+		 * stays absent (0, master parity) rather than introducing a
+		 * rejection this surface never had.
 		 */
-		$prompt     = \is_int( $usage['prompt_tokens'] ?? null ) ? $usage['prompt_tokens'] : 0;
-		$completion = \is_int( $usage['completion_tokens'] ?? null ) ? $usage['completion_tokens'] : 0;
+		$total = UsageValidator::sum_members( $usage, array( 'prompt_tokens', 'completion_tokens' ) );
 
-		if ( $prompt > PHP_INT_MAX - $completion ) {
+		if ( null === $total ) {
 			return $data;
 		}
 
-		$usage['total_tokens'] = $prompt + $completion;
+		$usage['total_tokens'] = $total;
 		$data['usage']         = $usage;
 
 		return $data;
