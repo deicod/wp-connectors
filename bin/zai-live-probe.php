@@ -37,8 +37,6 @@ require_once $repo . '/connectors/zai/src/autoload.php';
 use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
-use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
-use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog;
 use Deicod\WpConnectors\Zai\Plugin;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
@@ -46,6 +44,7 @@ use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
+use Deicod\WpConnectors\Zai\Support\ZaiSurfaces;
 use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
@@ -118,6 +117,40 @@ function zai_live_probe_option( array $args, string $name, string $default ): st
     return \is_string( $args[ $name ] ) ? $args[ $name ] : '';
 }
 
+/**
+ * The SDK-dependent per-surface probe facts, keyed by settings class.
+ *
+ * glm21-10: the settings/endpoint pairing is DERIVED from the registry
+ * (the loop below); this table carries only the columns the SDK-free
+ * registry may not hold — the CLI name, the provider and availability
+ * classes, and the two owner-constant identity facts (GLM11 #5). A
+ * declared return type (not a foldable literal): the registry may grow
+ * a surface this table has no row for, and the loop's guard must stay
+ * reachable — a registry surface without its facts row exits loudly
+ * instead of silently probing the wrong surface.
+ *
+ * @return array<string, array{cli: string, provider: class-string, availability: class-string, provider_id: string, default_plan: string}>
+ */
+function zai_live_probe_sdk_facts(): array
+{
+    return array(
+        PlanRegionSettings::class          => array(
+            'cli'          => 'openai',
+            'provider'     => ZaiProvider::class,
+            'availability' => ZaiProviderAvailability::class,
+            'provider_id'  => ZaiProvider::PROVIDER_ID,
+            'default_plan' => PlanRegionSettings::DEFAULT_PLAN,
+        ),
+        ZaiAnthropicPlanRegionSettings::class => array(
+            'cli'          => 'anthropic',
+            'provider'     => ZaiAnthropicProvider::class,
+            'availability' => ZaiAnthropicProviderAvailability::class,
+            'provider_id'  => ZaiAnthropicProvider::PROVIDER_ID,
+            'default_plan' => ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN,
+        ),
+    );
+}
+
 /*
  * GLM8 #7: getopt's OPTIONAL-value '::' declarations (this probe's old
  * form) capture only the '--option=value' syntax — the conventional
@@ -149,11 +182,6 @@ foreach ( array( 'surface', 'plan', 'region' ) as $zai_probe_option_name ) {
 }
 
 $args = getopt( '', array( 'surface:', 'plan:', 'region:' ) );
-$surface = zai_live_probe_option( $args, 'surface', 'openai' );
-if ( ! in_array( $surface, array( 'openai', 'anthropic' ), true ) ) {
-    fwrite( STDERR, "live-probe: --surface must be openai or anthropic\n" );
-    exit( 2 );
-}
 
 /*
  * GLM10 #15: ONE per-surface fact table, chosen after the surface
@@ -174,25 +202,45 @@ if ( ! in_array( $surface, array( 'openai', 'anthropic' ), true ) ) {
  * setProviderRequestAuthentication()/getProviderModel() to the stale
  * one, failing with a diagnostic that never points at the stale
  * literal.
+ *
+ * glm21-10: the settings/endpoint PAIRING is DERIVED from the one
+ * cross-file owner registry — zai_live_probe_sdk_facts() holds only the
+ * SDK-dependent columns the SDK-free registry may not carry (glm20-4's
+ * split), keyed by the registry row's settings class. A pairing swap in
+ * the registry reaches the probe with the same edit, and a third
+ * surface without its facts row fails loudly below instead of silently
+ * writing surface A's plan/region options while wiring surface B's
+ * provider — the misleading-evidence class the file's own Codex R7 #2
+ * comment warns about. The CLI whitelist and the default surface derive
+ * from the built map's keys (registration order: the first registry row
+ * is the default, as 'openai' was).
  */
-$zai_probe_surfaces = array(
-    'openai' => array(
-        'settings'     => PlanRegionSettings::class,
-        'endpoint'     => ZaiEndpoint::class,
-        'provider'     => ZaiProvider::class,
-        'availability' => ZaiProviderAvailability::class,
-        'provider_id'  => ZaiProvider::PROVIDER_ID,
-        'default_plan' => PlanRegionSettings::DEFAULT_PLAN,
-    ),
-    'anthropic' => array(
-        'settings'     => ZaiAnthropicPlanRegionSettings::class,
-        'endpoint'     => ZaiAnthropicEndpoint::class,
-        'provider'     => ZaiAnthropicProvider::class,
-        'availability' => ZaiAnthropicProviderAvailability::class,
-        'provider_id'  => ZaiAnthropicProvider::PROVIDER_ID,
-        'default_plan' => ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN,
-    ),
-);
+$zai_probe_sdk_facts = zai_live_probe_sdk_facts();
+
+$zai_probe_surfaces = array();
+foreach ( ZaiSurfaces::SURFACES as $zai_probe_row ) {
+    $zai_probe_facts = $zai_probe_sdk_facts[ $zai_probe_row['settings'] ] ?? null;
+
+    if ( null === $zai_probe_facts ) {
+        fwrite( STDERR, 'live-probe: no SDK facts for surface ' . $zai_probe_row['settings'] . " (add its row to zai_live_probe_sdk_facts() in bin/zai-live-probe.php)\n" );
+        exit( 3 );
+    }
+
+    $zai_probe_surfaces[ $zai_probe_facts['cli'] ] = array(
+        'settings'     => $zai_probe_row['settings'],
+        'endpoint'     => $zai_probe_row['endpoint'],
+        'provider'     => $zai_probe_facts['provider'],
+        'availability' => $zai_probe_facts['availability'],
+        'provider_id'  => $zai_probe_facts['provider_id'],
+        'default_plan' => $zai_probe_facts['default_plan'],
+    );
+}
+
+$surface = zai_live_probe_option( $args, 'surface', (string) array_key_first( $zai_probe_surfaces ) );
+if ( ! isset( $zai_probe_surfaces[ $surface ] ) ) {
+    fwrite( STDERR, 'live-probe: --surface must be ' . implode( ' or ', array_keys( $zai_probe_surfaces ) ) . "\n" );
+    exit( 2 );
+}
 
 $surface_facts = $zai_probe_surfaces[ $surface ];
 

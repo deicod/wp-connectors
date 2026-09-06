@@ -109,28 +109,58 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
         );
     }
 
-    public function testTheLiveProbeCoversEveryOwnerSurfaceAndProviderRegistration()
+    public function testTheLiveProbeDerivesItsSurfacePairingFromTheOwner()
     {
         /*
-         * The probe's per-surface wiring map carries SDK-dependent
-         * columns (provider, availability, provider_id, default_plan)
-         * the SDK-free owner may not hold, so its map stays — pinned:
-         * every settings/endpoint class the registry names and every
-         * provider registration must appear in the probe source, and
-         * the map must carry exactly one row per surface.
+         * glm21-10: the probe's settings/endpoint pairing is DERIVED
+         * from ZaiSurfaces::SURFACES now, so a pairing swap between
+         * registry rows reaches the probe with the same edit. What
+         * stays in the probe is the SDK-dependent facts table the
+         * SDK-free owner may not hold (glm15-23's fixed alias
+         * direction), keyed by the registry row's settings class — the
+         * full-pairing pin: the derivation statements present, every
+         * registry settings class keyed exactly once, NO endpoint class
+         * restated, the CLI whitelist derived from the built map's keys,
+         * and one facts row per surface. The old form only
+         * substring-pinned the class names, so a pairing swap between
+         * rows kept every assertion green (round 21 finding 10).
          */
         $source = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/zai-live-probe.php');
 
+        $this->assertSame(
+            1,
+            substr_count($source, 'ZaiSurfaces::SURFACES'),
+            'The probe derives its surface rows from the one cross-file owner.'
+        );
+        $this->assertSame(
+            1,
+            substr_count($source, "\$zai_probe_sdk_facts[ \$zai_probe_row['settings'] ]"),
+            'The probe facts table is keyed by the registry row\'s settings class.'
+        );
+        $this->assertSame(
+            1,
+            substr_count($source, "\$zai_probe_row['endpoint']"),
+            'The probe map rows take their endpoint class from the registry row.'
+        );
+        $this->assertSame(
+            0,
+            substr_count($source, "array( 'openai', 'anthropic' )"),
+            'The CLI whitelist derives from the built map, not a literal.'
+        );
+
         foreach (\Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES as $index => $surface) {
-            $this->assertStringContainsString(
-                $surface['settings'],
-                $source,
-                "Surface row [{$index}]: the probe must wire its settings class."
+            $short_settings = substr($surface['settings'], (int) strrpos($surface['settings'], '\\') + 1);
+            $short_endpoint = substr($surface['endpoint'], (int) strrpos($surface['endpoint'], '\\') + 1);
+
+            $this->assertSame(
+                1,
+                preg_match_all('/\b' . preg_quote($short_settings, '/') . '::class/', $source),
+                "Surface row [{$index}]: the probe facts table keys its SDK columns by the registry settings class."
             );
-            $this->assertStringContainsString(
-                $surface['endpoint'],
+            $this->assertStringNotContainsString(
+                $short_endpoint,
                 $source,
-                "Surface row [{$index}]: the probe must wire its endpoint class."
+                "Surface row [{$index}]: the endpoint pairing must not be restated in the probe (the drift vector glm21-10 removed)."
             );
         }
 
@@ -144,8 +174,8 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
 
         $this->assertSame(
             count(\Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES),
-            preg_match_all("/'provider_id'\s*=>/", $source),
-            'Exactly one probe surface row per owner surface.'
+            preg_match_all("/'cli'\s*=>/", $source),
+            'Exactly one probe facts row per owner surface.'
         );
     }
 }
