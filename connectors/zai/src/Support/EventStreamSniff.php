@@ -75,10 +75,17 @@ final class EventStreamSniff {
 		 */
 		$sniff = SseFrameBuffer::strip_stream_prefix( $body );
 
-		return 0 === strpos( $sniff, 'event:' )
-			|| 0 === strpos( $sniff, 'data:' )
-			|| 0 === strpos( $sniff, 'id:' )
-			|| 0 === strpos( $sniff, 'retry:' )
-			|| 0 === strpos( $sniff, ':' );
+		/*
+		 * glm22-13: strncmp, not strpos — each absent-needle strpos probe
+		 * scans the WHOLE body (the needles never occur in a JSON body),
+		 * ~6 full passes per non-streaming response parse on both
+		 * surfaces; a fixed-length prefix compare is O(needle) and
+		 * byte-identical in verdict (fuzz-verified over the probe set).
+		 */
+		return 0 === strncmp( $sniff, 'event:', 6 )
+			|| 0 === strncmp( $sniff, 'data:', 5 )
+			|| 0 === strncmp( $sniff, 'id:', 3 )
+			|| 0 === strncmp( $sniff, 'retry:', 6 )
+			|| 0 === strncmp( $sniff, ':', 1 );
 	}
 }

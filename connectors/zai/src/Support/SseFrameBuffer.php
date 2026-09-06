@@ -181,7 +181,9 @@ final class SseFrameBuffer {
 	public static function strip_stream_prefix( string $body ): string {
 		$rest = ltrim( $body, self::LEADING_WHITESPACE );
 
-		if ( 0 === strpos( $rest, self::UTF8_BOM ) ) {
+		// glm22-13: fixed-length prefix compare — strpos scanned the
+		// whole body whenever no BOM rode byte 0.
+		if ( 0 === strncmp( $rest, self::UTF8_BOM, \strlen( self::UTF8_BOM ) ) ) {
 			return ltrim( substr( $rest, \strlen( self::UTF8_BOM ) ), self::LEADING_WHITESPACE );
 		}
 
@@ -244,7 +246,9 @@ final class SseFrameBuffer {
 					return;
 				}
 
-				if ( 0 === strpos( $rest, self::UTF8_BOM ) ) {
+				// glm22-13: fixed-length prefix compare — the probe twin
+				// of the strip_stream_prefix() BOM test above.
+				if ( 0 === strncmp( $rest, self::UTF8_BOM, \strlen( self::UTF8_BOM ) ) ) {
 					// BOM confirmed: strip through it and keep stripping
 					// the whitespace after it until a field byte arrives
 					// (one unbounded run — the strip_stream_prefix() rule).
