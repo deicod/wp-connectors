@@ -84,13 +84,17 @@ final class ZaiAnthropicEndpoint extends AbstractZaiEndpoint {
 	 * Required by the SDK's AbstractApiProvider::baseUrl(), which stays fixed
 	 * regardless of the active plan/region (SPEC §3.3) and is per-surface:
 	 * this is the Anthropic surface's canonical value, distinct from the
-	 * OpenAI surface's ZaiEndpoint::CANONICAL_BASE_URL.
+	 * OpenAI surface's ZaiEndpoint::CANONICAL_BASE_URL. glm22-5: derived
+	 * from the MATRIX cell it names (a constant expression, legal on the
+	 * composer-pinned PHP 7.4 floor) — the second literal could drift
+	 * from a MATRIX migration with no failing test, the same "can never
+	 * drift" alias discipline the CACHE_SCOPE constant rides.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @var string
 	 */
-	const CANONICAL_BASE_URL = 'https://api.z.ai/api/anthropic';
+	const CANONICAL_BASE_URL = self::MATRIX['general']['intl'];
 
 	/**
 	 * The model-list route this surface serves at the base URL.
