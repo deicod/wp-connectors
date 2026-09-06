@@ -1294,9 +1294,23 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
             'validate_request() runs only the typed identity/shape walk.'
         );
         $this->assertStringContainsString(
-            '$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );',
+            '$this->guard_wire_values( $this->stashed_generation_prompt() );',
             $source,
             'The per-member encodability walk runs only as the attribution pass on net failure.'
+        );
+
+        /*
+         * glm25-3 (source pin): the prompt stash is trait-owned — the
+         * drift risk was a stash-discipline change landing on one
+         * surface only, silently degrading the other's multi-bad
+         * attribution to the generic member description.
+         */
+        $this->assertStringContainsString('use StashesGenerationPrompt;', $source, 'The model composes the one shared stash trait.');
+        $this->assertStringNotContainsString('private $generation_prompt', $source, 'The stash property is declared by the trait, not hand-synced per surface.');
+        $this->assertStringContainsString(
+            '$this->generation_prompt = $prompt;',
+            $source,
+            'The stash assignment stays at the params build — the earliest point the surface sees the prompt.'
         );
     }
 

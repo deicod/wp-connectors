@@ -192,9 +192,22 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
             'The request-build net rides the shared owner (glm16-7).'
         );
         $this->assertStringContainsString(
-            '$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );',
+            '$this->guard_wire_values( $this->stashed_generation_prompt() );',
             $source,
             'The per-member encodability walk runs only as the attribution pass on net failure.'
+        );
+
+        /*
+         * glm25-3 (source pin): the prompt stash is trait-owned — the
+         * twin's pin holds the same three statements, so a
+         * stash-discipline change cannot land on one surface only.
+         */
+        $this->assertStringContainsString('use StashesGenerationPrompt;', $source, 'The model composes the one shared stash trait.');
+        $this->assertStringNotContainsString('private $generation_prompt', $source, 'The stash property is declared by the trait, not hand-synced per surface.');
+        $this->assertStringContainsString(
+            '$this->generation_prompt = $prompt;',
+            $source,
+            'The stash assignment stays at the params build — the earliest point the surface sees the prompt.'
         );
         $this->assertSame(
             0,

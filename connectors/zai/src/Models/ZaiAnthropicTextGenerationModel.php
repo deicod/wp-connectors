@@ -69,6 +69,7 @@ use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonShape;
 use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
+use Deicod\WpConnectors\Zai\Support\StashesGenerationPrompt;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
@@ -83,6 +84,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	use SafeGenerationBoundary;
 	use SpeaksAnthropicMessagesProtocol;
 	use MemoizesToolLoopVerdicts;
+	use StashesGenerationPrompt;
 
 	/**
 	 * Default maximum number of tokens for one generation.
@@ -113,18 +115,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @var string
 	 */
 	private const PROVIDER_LABEL = ZaiAnthropicProviderAvailability::REFUSAL_LABEL;
-
-	/**
-	 * The prompt the CURRENT in-flight request was prepared from —
-	 * captured in prepareGenerateTextParams() (glm15-5) so the
-	 * encodability attribution walk can name the first bad member when
-	 * the request-build whole-payload net fails.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var array|null
-	 */
-	private $generation_prompt = null;
 
 	/**
 	 * Normalized input schemas for the CURRENT config's tool
@@ -401,7 +391,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			$params,
 			self::PROVIDER_LABEL,
 			function () {
-				$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );
+				$this->guard_wire_values( $this->stashed_generation_prompt() );
 			}
 		);
 	}
@@ -473,8 +463,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	protected function prepareGenerateTextParams( array $prompt ): array {
 		$this->validate_request( $prompt );
 
-		// glm15-5: the attribution walk reads this prompt if the
-		// request-build encodability net fails.
+		// glm15-5/glm25-3: the attribution walk reads this prompt if the
+		// request-build encodability net fails — the stash rides the
+		// shared StashesGenerationPrompt trait.
 		$this->generation_prompt = $prompt;
 
 		$config = $this->getConfig();

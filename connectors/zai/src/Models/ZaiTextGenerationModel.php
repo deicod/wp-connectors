@@ -57,6 +57,7 @@ use Deicod\WpConnectors\Zai\Support\RequestShapeGuard;
 use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
+use Deicod\WpConnectors\Zai\Support\StashesGenerationPrompt;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
@@ -70,6 +71,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	use ThrowsSafeHttpErrors;
 	use SafeGenerationBoundary;
 	use MemoizesToolLoopVerdicts;
+	use StashesGenerationPrompt;
 
 	/**
 	 * The per-surface provider label interpolated into every guard and
@@ -88,18 +90,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @var string
 	 */
 	private const PROVIDER_LABEL = ZaiProviderAvailability::REFUSAL_LABEL;
-
-	/**
-	 * The prompt the CURRENT in-flight request was prepared from —
-	 * captured in prepareGenerateTextParams() (glm13-11) so the
-	 * encodability attribution walk can name the first bad member when
-	 * the createRequest() chokepoint's whole-payload net fails.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var array|null
-	 */
-	private $generation_prompt = null;
 
 	/**
 	 * Builds the request against the CURRENT plan/region endpoint.
@@ -234,7 +224,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			$data,
 			self::PROVIDER_LABEL,
 			function () {
-				$this->guard_wire_values( \is_array( $this->generation_prompt ) ? $this->generation_prompt : array() );
+				$this->guard_wire_values( $this->stashed_generation_prompt() );
 			}
 		);
 
@@ -294,8 +284,9 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	protected function prepareGenerateTextParams( array $prompt ): array {
 		$this->refuse_refused_credentials();
 
-		// glm13-11: the attribution walk reads this prompt if the
-		// assembled-params encodability net fails at createRequest().
+		// glm13-11/glm25-3: the attribution walk reads this prompt if the
+		// assembled-params encodability net fails at createRequest() —
+		// the stash rides the shared StashesGenerationPrompt trait.
 		$this->generation_prompt = $prompt;
 
 		/*
