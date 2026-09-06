@@ -3318,4 +3318,90 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
 
         $this->assertSame(2, $counting->reads, 'A conversation switch released the memo; the returning conversation re-encodes.');
     }
+
+    public function testCallerBuiltToolCallsMemoizeTheReplayVerdictUntilTheConversationSwitches()
+    {
+        /*
+         * glm21-5: caller-built (unstamped) FunctionCalls re-ran the
+         * full ToolArgsReplayGuard oracle on every request for all
+         * history — O(K²) serializations over a conversation. The
+         * verdict memo rides glm21-4's conversation anchor; the oracle
+         * is a static guard with no observable seam, so the pin reads
+         * the private memo field through the harness reflection helper
+         * (the aggregator_state() channel, glm19-11): the DTO carries
+         * its verdict after the first build, keeps it across a
+         * replayed build, loses it on a conversation switch, and a
+         * REJECTED call never lands in the memo (the glm16-6
+         * discipline — the second identical rejection below re-proves
+         * on a still-empty storage).
+         */
+        $call = new FunctionCall('k1', 'get_weather', array( 'city' => 'Oslo' ));
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array( new MessagePart('go') )),
+            new Message(MessageRoleEnum::model(), array( new MessagePart($call) )),
+            new Message(MessageRoleEnum::user(), array( new MessagePart(new FunctionResponse('k1', 'get_weather', array( 'temp_c' => 5 ))) )),
+        );
+
+        $model = $this->model();
+        $memo  = function () use ( $model ) {
+            return $this->aggregator_state($model, 'tool_call_replay_memo');
+        };
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $storage = $memo();
+        $this->assertInstanceOf(\SplObjectStorage::class, $storage, 'The first caller-built build runs the oracle and memoizes the verdict.');
+        $this->assertTrue($storage->offsetExists($call), 'The call carries its replay verdict.');
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+        $this->assertTrue($memo()->offsetExists($call), 'The replayed build keeps the verdict (conversation anchor identical).');
+
+        // A conversation switch releases the PREVIOUS conversation's
+        // verdicts at note time (before the fresh build's own mappings
+        // can add entries); the fresh conversation memoizes only its
+        // own call.
+        $fresh_call = new FunctionCall('z1', 'ping', array());
+
+        $fresh_prompt = array(
+            new Message(MessageRoleEnum::user(), array( new MessagePart('again') )),
+            new Message(MessageRoleEnum::model(), array( new MessagePart($fresh_call) )),
+            new Message(MessageRoleEnum::user(), array( new MessagePart(new FunctionResponse('z1', 'ping', array( 'ok' => 1 ))) )),
+        );
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($fresh_prompt);
+
+        $after_switch = $memo();
+        $this->assertInstanceOf(\SplObjectStorage::class, $after_switch);
+        $this->assertFalse($after_switch->offsetExists($call), 'A conversation switch released the previous conversation\'s verdicts.');
+        $this->assertTrue($after_switch->offsetExists($fresh_call), 'The fresh conversation memoizes its own call.');
+
+        // Rejections never memoize: an integral-but-inexact big float
+        // (1e23, glm19-1's REJECT class) rejects on every build, and
+        // the storage stays empty of it.
+        $lossy = new FunctionCall('bad', 'boom', array( 'n' => 1e23 ));
+
+        $lossy_prompt = array(
+            new Message(MessageRoleEnum::user(), array( new MessagePart('x') )),
+            new Message(MessageRoleEnum::model(), array( new MessagePart($lossy) )),
+        );
+
+        for ( $i = 0; $i < 2; $i++ ) {
+            try {
+                $model->generateTextResult($lossy_prompt);
+                $this->fail('A lossy-arguments tool call must reject before transport.');
+            } catch ( InvalidArgumentException $e ) {
+                $this->assertStringContainsString('could not replay tool arguments', $e->getMessage());
+            }
+        }
+
+        $after = $memo();
+        $this->assertTrue(
+            null === $after || ! $after->offsetExists($lossy),
+            'A rejected call never lands in the verdict memo.'
+        );
+    }
 }

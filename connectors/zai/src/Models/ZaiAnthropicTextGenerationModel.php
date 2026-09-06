@@ -47,6 +47,7 @@ use WordPress\AiClient\Results\DTO\Candidate;
 use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use WordPress\AiClient\Results\DTO\TokenUsage;
 use WordPress\AiClient\Results\Enums\FinishReasonEnum;
+use WordPress\AiClient\Tools\DTO\FunctionCall;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
@@ -215,6 +216,34 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @var \SplObjectStorage|null
 	 */
 	private $tool_result_encode_memo = null;
+
+	/**
+	 * Replay verdicts for caller-built tool calls, keyed by DTO identity
+	 * (glm21-5).
+	 *
+	 * The GLM12 #12 stamp skips inbound-accepted calls at the instanceof
+	 * check; CALLER-built plain SDK instances (and every rehydrated
+	 * toArray()/fromArray() conversation — the stamp does not survive
+	 * the vendor round trip) kept re-running the full
+	 * ToolArgsReplayGuard oracle (encode + decode + re-encode + walker,
+	 * ~3 whole-argument serializations per historical call) on every
+	 * request for all history: O(K²) over a conversation. The vendor
+	 * FunctionCall DTO is immutable (getters only), so the verdict is a
+	 * pure function of the DTO (its normalized input is derived
+	 * deterministically above the memo site): a PASSED oracle memoizes
+	 * true; rejections never memoize (the glm16-6 discipline — an
+	 * unplayable DTO re-proves and re-rejects identically on every
+	 * build). The same conversation anchor as glm21-4 bounds the pin
+	 * (rehydrated conversations carry fresh instances every request and
+	 * miss by design — a value-key would pay the serialization the memo
+	 * exists to skip — and the anchor releases the previous
+	 * conversation's entries).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var \SplObjectStorage|null
+	 */
+	private $tool_call_replay_memo = null;
 
 	/**
 	 * The first tool DTO of the most recent tool-bearing request build —
@@ -1568,9 +1597,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * skips it instead of re-running on every request of the
 			 * conversation. First-seen CALLER-built calls (plain SDK
 			 * instances) keep the full oracle.
+			 *
+			 * glm21-5: the caller-built oracle run rides the identity-
+			 * keyed verdict memo (replayable_tool_call()) — first run
+			 * full, repetition removed; the rejection below (message
+			 * and channel) is unchanged, and the pinned first-bad-wins
+			 * order above is untouched.
 			 */
 			if ( ! $function_call instanceof ReplayValidatedFunctionCall
-				&& ! ToolArgsReplayGuard::is_replayable( $input ) ) {
+				&& ! $this->replayable_tool_call( $function_call, $input ) ) {
 				throw new InvalidArgumentException(
 					sprintf( 'The %s provider could not replay tool arguments (an unencodable or precision-loss value was given).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 				);
@@ -1716,6 +1751,42 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
+	 * The replay verdict for one caller-built tool call, memoized by DTO
+	 * identity (glm21-5).
+	 *
+	 * Same contract as the ToolArgsReplayGuard::is_replayable() call it
+	 * wraps — identical verdicts, identical typed rejection at the call
+	 * site — minus the repeat: a conversation replaying the same DTO
+	 * instances reads the verdict instead of re-running the
+	 * encode/decode/re-encode/walker oracle for every historical call
+	 * on every request build. Rejections return false WITHOUT
+	 * memoizing, so an unplayable DTO re-proves on every build.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param FunctionCall $function_call The caller-built call being mapped.
+	 * @param mixed        $input         Its normalized tool arguments.
+	 * @return bool True when the arguments replay losslessly.
+	 */
+	private function replayable_tool_call( FunctionCall $function_call, $input ): bool {
+		if ( null !== $this->tool_call_replay_memo && $this->tool_call_replay_memo->offsetExists( $function_call ) ) {
+			return true;
+		}
+
+		if ( ! ToolArgsReplayGuard::is_replayable( $input ) ) {
+			return false;
+		}
+
+		if ( null === $this->tool_call_replay_memo ) {
+			$this->tool_call_replay_memo = new \SplObjectStorage();
+		}
+
+		$this->tool_call_replay_memo->offsetSet( $function_call, true );
+
+		return true;
+	}
+
+	/**
 	 * Releases the tool-loop memos (glm21-4).
 	 *
 	 * The conversation anchor changed at the params build: every entry
@@ -1730,6 +1801,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 */
 	private function release_tool_loop_memos(): void {
 		$this->tool_result_encode_memo = null;
+		$this->tool_call_replay_memo   = null;
 	}
 
 	/**
