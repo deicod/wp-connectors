@@ -93,11 +93,62 @@ final class ZaiDiscoveryCache {
 	 * the same per-endpoint semantics but thrashed whenever both
 	 * directories were consulted alternately.
 	 *
+	 * glm26-6: the entry also keeps the FILTERED id list itself, so a
+	 * consult over unchanged content proves it by a strict list compare
+	 * instead of re-deriving the digest — the compare sees the fresh
+	 * content every consult, so the memo stays content-keyed under any
+	 * transient mutation.
+	 *
 	 * @since 0.2.0
 	 *
-	 * @var array<string, array{digest: string, map: array<string, ModelMetadata>}>
+	 * @var array<string, array{ids: list<string>, digest: string, map: array<string, ModelMetadata>}>
 	 */
 	private static $memoized_maps = array();
+
+	/**
+	 * Resolves the metadata map for one endpoint class's CURRENT settings:
+	 * the whole consult skeleton both directories spelled inline (glm26-6).
+	 *
+	 * The skeleton — endpoint resolve → discovery cache id → cached_ids() (the transient
+	 * read, negative marker, discovery, fallback) → memoized_map() was
+	 * re-stated in ZaiModelMetadataDirectory::sendListModelsRequest() and
+	 * ZaiAnthropicModelMetadataDirectory::models_map(), so a caching-rule
+	 * change could land on one surface only and the two silently diverge —
+	 * the drift pattern this class exists to stop, surviving GLM4 #10 at
+	 * the composition layer. One orchestrator serves both now; a directory
+	 * owns only what genuinely differs: HOW a discovery request is made
+	 * and parsed on its surface ($discover), and its optional prebuilt-map
+	 * seed ($prebuilt, evaluated lazily — only when the memo must build).
+	 *
+	 * The plan/region options are read and the transient re-read on every
+	 * consult BY DESIGN (the glm15-6 memoization boundary: the harness
+	 * resets options and transients without firing hooks, so a
+	 * cache-id-keyed read skip is the order-dependence class glm15-1
+	 * purged); what a consult stops re-paying is the map rebuild AND its
+	 * digest derivation while the content is unchanged.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string        $endpoint_class The endpoint class resolving the current settings
+	 *                                                                   (class-string<AbstractZaiEndpoint>).
+	 * @param callable      $discover Makes the discovery request for the resolved endpoint instance; returns the discovered model IDs (list of string) or throws.
+	 * @param callable|null $prebuilt Builds the memo's map from the resolved IDs — the cold-discovery seed (callable(array): array<string, ModelMetadata>|null) — or null when the surface has none.
+	 * @return array<string, ModelMetadata> Map of model ID to metadata.
+	 */
+	public static function resolved_map( string $endpoint_class, callable $discover, ?callable $prebuilt = null ): array {
+		$endpoint = $endpoint_class::for_current_settings();
+		$cache_id = $endpoint_class::discovery_cache_id( $endpoint->plan(), $endpoint->region() );
+
+		$ids = self::cached_ids(
+			$cache_id,
+			$endpoint->plan(),
+			function () use ( $endpoint, $discover ): array {
+				return $discover( $endpoint );
+			}
+		);
+
+		return self::memoized_map( $cache_id, $ids, null === $prebuilt ? null : $prebuilt( $ids ) );
+	}
 
 	/**
 	 * Resolves the model IDs for one endpoint: cached discovery,
@@ -277,13 +328,20 @@ final class ZaiDiscoveryCache {
 			}
 		}
 
-		$digest = md5( implode( "\n", $string_ids ) );
-
+		/*
+		 * glm26-6: unchanged content is proven by the STRICT list compare
+		 * against the entry's stored list — the digest (still the entry's
+		 * identity, unchanged in shape) is derived only when the compare
+		 * fails. The compare reads the freshly filtered list every call,
+		 * so the memo stays exactly as content-keyed as before under any
+		 * transient mutation, cross-process write, or TTL expiry.
+		 */
 		$memo = self::$memoized_maps[ $cache_id ] ?? null;
 
-		if ( null === $memo || $memo['digest'] !== $digest ) {
+		if ( null === $memo || $memo['ids'] !== $string_ids ) {
 			$memo = array(
-				'digest' => $digest,
+				'ids'    => $string_ids,
+				'digest' => md5( implode( "\n", $string_ids ) ),
 				'map'    => null !== $prebuilt ? $prebuilt : self::map_from_ids( $ids ),
 			);
 

@@ -208,30 +208,27 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 *                           this method).
 	 */
 	protected function sendListModelsRequest(): array {
-		$endpoint = ZaiEndpoint::for_current_settings();
-		$cache_id = ZaiEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() );
-
-		$ids = ZaiDiscoveryCache::cached_ids(
-			$cache_id,
-			$endpoint->plan(),
-			function () use ( $endpoint ): array {
+		/*
+		 * glm26-6: the consult skeleton (endpoint resolve → discovery
+		 * cache id → cached_ids → memoized_map) rides the shared
+		 * ZaiDiscoveryCache::resolved_map() orchestrator — the zai
+		 * surface's hand-spelled copy of the twin's models_map() flow,
+		 * the composition-layer drift GLM4 #10's shared cache left
+		 * standing. This surface owns what genuinely differs: the
+		 * SDK-parent discovery (discover_model_ids_via_sdk()) and the
+		 * cold-path prebuilt seed — evaluated LAZILY now, only when the
+		 * memo must build; a stash left standing by a memo hit is
+		 * already ignored by its own mismatch guard (glm15-22).
+		 */
+		return ZaiDiscoveryCache::resolved_map(
+			ZaiEndpoint::class,
+			function ( ZaiEndpoint $endpoint ): array {
 				return $this->discover_model_ids_via_sdk( $endpoint );
+			},
+			function ( array $ids ): ?array {
+				return $this->take_discovery_built_map( $ids );
 			}
 		);
-
-		/*
-		 * GLM9 #10: the per-content map memo lives once in the shared
-		 * ZaiDiscoveryCache (memoized_map()) — this surface's GLM8 #9
-		 * fields were a verbatim copy of the twin's GLM7 #13 pair, the
-		 * drift pattern the shared cache class exists to stop.
-		 *
-		 * glm15-22: on a COLD discovery the vendor parent's parse has
-		 * already built the full metadata list (the stash
-		 * parseResponseToModelMetadataList() left behind) — it rides
-		 * along as the memo's prebuilt map instead of being discarded
-		 * for the IDs alone and rebuilt identically by map_from_ids().
-		 */
-		return ZaiDiscoveryCache::memoized_map( $cache_id, $ids, $this->take_discovery_built_map( $ids ) );
 	}
 
 	/**

@@ -318,10 +318,18 @@ PHP;
                 preg_match('/md5\(\s*\$endpoint->cache_key\(\)\s*\)/', $source),
                 "[{$label}] No private md5-over-cache-key composition."
             );
+            /*
+             * glm26-6 supersession: the two directories compose no cache
+             * id at all anymore (the shared resolved_map() orchestrator
+             * composes it), so the must-call-owner assertion accepts the
+             * orchestrator ride; the directories' ride is pinned in
+             * ZaiSurfaceLockstepTest (both call resolved_map, neither
+             * spells cached_ids/memoized_map inline).
+             */
             $this->assertSame(
                 1,
-                preg_match('/discovery_transient_ids\(|discovery_cache_id\(/', $source),
-                "[{$label}] The consumer must call the endpoint layer's owner."
+                preg_match('/discovery_transient_ids\(|discovery_cache_id\(|resolved_map\(/', $source),
+                "[{$label}] The consumer must call the endpoint layer's owner (the orchestrator for the directories)."
             );
         }
 

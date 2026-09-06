@@ -282,4 +282,26 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
             $this->assertStringContainsString($owner['provider'] . '::PROVIDER_ID', $source, "The {$surface} provider id is wired through the owner constant.");
         }
     }
+    public function testBothDirectoriesRideTheOneDiscoveryConsultOrchestrator()
+    {
+        /*
+         * glm26-6 (source pin): the metadata-consult skeleton (endpoint
+         * resolve -> discovery cache id -> cached_ids -> memoized_map) is
+         * stated ONCE, on ZaiDiscoveryCache::resolved_map(); each
+         * directory composes it with its own discovery closure. A
+         * directory re-spelling the skeleton inline is the
+         * composition-layer drift GLM4 #10's shared cache left standing
+         * (round 26 finding 9: a caching-rule change could land on one
+         * surface only and the two silently diverge).
+         */
+        foreach (array(
+            'the zai directory' => 'src/Metadata/ZaiModelMetadataDirectory.php',
+            'the zai_anthropic directory' => 'src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
+        ) as $label => $relative) {
+            $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/' . $relative);
+
+            $this->assertStringContainsString('ZaiDiscoveryCache::resolved_map(', $source, "{$label} rides the shared orchestrator.");
+            $this->assertSame(0, preg_match('/ZaiDiscoveryCache::(cached_ids|memoized_map)\(\s*\$/', $source), "{$label} spells no consult skeleton inline (statement shape; docblock mentions excluded).");
+        }
+    }
 }

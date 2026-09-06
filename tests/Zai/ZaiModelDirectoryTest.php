@@ -509,8 +509,20 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             $source,
             'The parse-side build is stashed for the cold-path memo seed.'
         );
+        /*
+         * glm26-6 supersession: the seed call rides the shared
+         * resolved_map() orchestrator now — the memoized_map() call this
+         * pin used to match lived in the hand-spelled consult skeleton
+         * both directories carried. The seed closure is still stated
+         * exactly once, at the orchestrator's $prebuilt argument.
+         */
         $this->assertStringContainsString(
-            'memoized_map( $cache_id, $ids, $this->take_discovery_built_map( $ids ) )',
+            'function ( array $ids ): ?array {',
+            $source,
+            'The cold-path seed is the orchestrator\'s prebuilt closure.'
+        );
+        $this->assertStringContainsString(
+            'return $this->take_discovery_built_map( $ids );',
             $source,
             'The cold path seeds the map memo with the parse-built metadata.'
         );

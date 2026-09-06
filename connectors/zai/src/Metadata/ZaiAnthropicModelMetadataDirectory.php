@@ -202,24 +202,22 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 * @return array<string, ModelMetadata> Map of model ID to metadata.
 	 */
 	private function models_map(): array {
-		$endpoint = ZaiAnthropicEndpoint::for_current_settings();
-		$cache_id = ZaiAnthropicEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() );
-
-		$ids = ZaiDiscoveryCache::cached_ids(
-			$cache_id,
-			$endpoint->plan(),
-			function () use ( $endpoint ): array {
+		/*
+		 * glm26-6: the consult skeleton (endpoint resolve → discovery
+		 * cache id → cached_ids → memoized_map) rides the shared
+		 * ZaiDiscoveryCache::resolved_map() orchestrator — the
+		 * hand-spelled skeleton was this surface's copy of the zai
+		 * directory's sendListModelsRequest() flow, the composition-layer
+		 * drift GLM4 #10's shared cache left standing. This surface owns
+		 * only what genuinely differs: HOW a discovery request is made
+		 * and parsed here (discover_model_ids()).
+		 */
+		return ZaiDiscoveryCache::resolved_map(
+			ZaiAnthropicEndpoint::class,
+			function ( ZaiAnthropicEndpoint $endpoint ): array {
 				return $this->discover_model_ids( $endpoint );
 			}
 		);
-
-		/*
-		 * GLM9 #10: the per-content map memo lives once in the shared
-		 * ZaiDiscoveryCache (memoized_map()) — this surface's GLM7 #13
-		 * fields and the zai surface's GLM8 #9 copy were verbatim twins,
-		 * the drift pattern the shared cache class exists to stop.
-		 */
-		return ZaiDiscoveryCache::memoized_map( $cache_id, $ids );
 	}
 
 	/**
