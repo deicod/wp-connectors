@@ -38,15 +38,23 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
     );
 
     /**
-     * Fresh directory wired to the harness transporter with a fixture key.
+     * Fresh directory wired to the harness transporter.
      *
+     * glm22-11: the former directoryWithKey() twin folded in — the
+     * Anthropic twin suite's parameterized form.
+     *
+     * @param string|null $key Exact API key to authenticate with, or null
+     *                         for a fresh per-call fixture key
+     *                         (FakeSecrets::apiKey() is random per call —
+     *                         pass a captured value when a test binds
+     *                         flags/verdicts to the key).
      * @return ZaiModelMetadataDirectory
      */
-    private function directory(): ZaiModelMetadataDirectory
+    private function directory(?string $key = null): ZaiModelMetadataDirectory
     {
         $directory = new ZaiModelMetadataDirectory();
         $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication(FakeSecrets::apiKey()));
+        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication(null === $key ? FakeSecrets::apiKey() : $key));
 
         return $directory;
     }
@@ -119,25 +127,6 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
      * Discovery.
      */
 
-    /**
-     * Fresh directory wired to the harness transporter with an EXACT key.
-     *
-     * For credential-state tests that bind flags/verdicts to a specific key
-     * (FakeSecrets::apiKey() is random per call, so the directory must carry
-     * the captured value).
-     *
-     * @param string $key The exact API key the directory authenticates with.
-     * @return ZaiModelMetadataDirectory
-     */
-    private function directoryWithKey(string $key): ZaiModelMetadataDirectory
-    {
-        $directory = new ZaiModelMetadataDirectory();
-        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
-
-        return $directory;
-    }
-
     public function testDiscoveryHitsTheSelectedEndpointAndCaches()
     {
         $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
@@ -186,7 +175,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             'fingerprint' => hash('sha256', $key),
         ));
 
-        $models = $this->directoryWithKey($key)->listModelMetadata();
+        $models = $this->directory($key)->listModelMetadata();
 
         $this->assertSame(
             ZaiModelCatalog::ids_for_plan('coding'),
@@ -212,7 +201,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             'clock' => 'utc',
         ));
 
-        $models = $this->directoryWithKey($key)->listModelMetadata();
+        $models = $this->directory($key)->listModelMetadata();
 
         $this->assertSame(
             ZaiModelCatalog::ids_for_plan('coding'),
@@ -595,10 +584,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         // Wired with the SAME key the option stores, so the recorded
         // verdict's binding (source 'database') matches the one the
         // later isConfigured() consult computes.
-        $directory = new ZaiModelMetadataDirectory();
-        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
-        $models = $directory->listModelMetadata();
+        $models = $this->directory($key)->listModelMetadata();
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), "{$label}: the fallback still serves.");
         $this->assertCount(1, $this->sdkHttpAttempts(), "{$label}: exactly one discovery attempt.");
@@ -674,10 +660,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
         $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
 
-        $directory = new ZaiModelMetadataDirectory();
-        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
-        $models = $directory->listModelMetadata();
+        $models = $this->directory($key)->listModelMetadata();
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models), 'The fallback still serves.');
         $this->assertSame('https://api.z.ai/api/coding/paas/v4/models', $this->sdkHttpAttempts()[0]['url'], 'The discovery request itself hit intl.');
@@ -715,10 +698,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         update_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, $key);
         $this->queueSdkResponse(404, array(), '{"error":{"message":"no route"}}');
 
-        $directory = new ZaiModelMetadataDirectory();
-        $directory->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $directory->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
-        $models = $directory->listModelMetadata();
+        $models = $this->directory($key)->listModelMetadata();
 
         $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models));
         $this->assertFalse(
