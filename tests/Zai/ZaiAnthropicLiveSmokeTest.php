@@ -21,6 +21,8 @@ use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\HttpTransporter;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
+use Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings;
+use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 
 final class ZaiAnthropicLiveSmokeTest extends WpConnectorsTestCase
 {
@@ -44,18 +46,22 @@ final class ZaiAnthropicLiveSmokeTest extends WpConnectorsTestCase
         $key = (string) getenv('WP_CONNECTORS_TEST_ZAI_API_KEY');
         // Default GENERAL: record 0007 proved the coding-surface Messages
         // routes cannot generate, so the provider's own default is general.
-        $plan = (string) (getenv('WP_CONNECTORS_TEST_ZAI_PLAN') ?: 'general');
-        $region = (string) (getenv('WP_CONNECTORS_TEST_ZAI_REGION') ?: 'intl');
+        // glm21-15: the option names, defaults, and provider id ride their
+        // owner constants (the GLM10 #15 class the live probe was fixed in)
+        // — after a rename this test writes options the plugin reads and
+        // probes the surface it reports as evidence.
+        $plan = (string) (getenv('WP_CONNECTORS_TEST_ZAI_PLAN') ?: ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN);
+        $region = (string) (getenv('WP_CONNECTORS_TEST_ZAI_REGION') ?: AbstractPlanRegionSettings::DEFAULT_REGION);
 
-        update_option('zai_connector_zai_anthropic_plan', $plan);
-        update_option('zai_connector_zai_anthropic_region', $region);
+        update_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, $plan);
+        update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, $region);
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
 
         $registry = AiClient::defaultRegistry();
         $registry->setHttpTransporter(new HttpTransporter(new CurlPsr18Client()));
 
         \Deicod\WpConnectors\Zai\Plugin::register($registry);
-        $registry->setProviderRequestAuthentication('zai_anthropic', new ApiKeyRequestAuthentication($key));
+        $registry->setProviderRequestAuthentication(ZaiAnthropicProvider::PROVIDER_ID, new ApiKeyRequestAuthentication($key));
 
         // Availability: authenticated /v1/models probe against the live
         // Anthropic-surface endpoint (this also settles the O1 question for
@@ -71,7 +77,7 @@ final class ZaiAnthropicLiveSmokeTest extends WpConnectorsTestCase
         $this->assertNotEmpty($models);
 
         // Inference: one real Messages generation through the plugin model.
-        $model = $registry->getProviderModel('zai_anthropic', $models[0]->getId());
+        $model = $registry->getProviderModel(ZaiAnthropicProvider::PROVIDER_ID, $models[0]->getId());
         $result = $model->generateTextResult(array(
             new Message(MessageRoleEnum::user(), array(new MessagePart('Reply with the single word: ok'))),
         ));
@@ -80,5 +86,23 @@ final class ZaiAnthropicLiveSmokeTest extends WpConnectorsTestCase
 
         // The key must never appear in any state the plugin persisted.
         $this->assertOptionNotPlaintext(ZaiAnthropicProviderAvailability::STATE_OPTION, $key);
+    }
+
+    public function testTheSmokeOptionsAndProviderIdRideTheirOwnerConstants()
+    {
+        /*
+         * glm21-15 (source pin, the GLM10 #15 class the live probe was
+         * fixed in): the opt-in live test hand-stringed the surface's
+         * plan/region option names and provider id where owner
+         * constants exist — after a rename the test would write options
+         * nothing reads and probe the default plan/region while
+         * reporting the env-selected ones as evidence (and billing the
+         * wrong surface). Runs without the opt-in key: the pin is
+         * about the source shape, not live behavior.
+         */
+        $source = (string) file_get_contents(__FILE__);
+
+        $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $source), 'Every plugin option name rides an owner constant.');
+        $this->assertSame(0, preg_match('/[\'"]zai_anthropic[\'"]/', $source), 'The provider id rides its owner constant.');
     }
 }
