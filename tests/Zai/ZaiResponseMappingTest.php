@@ -1198,8 +1198,28 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
                 preg_match_all('/is_object\(\s*json_decode\(\s*SseFrameBuffer::strip_stream_prefix/', $source),
                 "The {$surface} fallback must gate on the shared decode's raw view, not a hand-rolled oracle."
             );
-            $this->assertStringContainsString('JsonBodyDecoder::decode( $body )', $source, "The {$surface} fallback decodes the body once.");
+            $this->assertStringContainsString('JsonFallbackResult::parse(', $source, "The {$surface} fallback rides the shared one-decode scaffold (glm16-8).");
         }
+
+        /*
+         * glm25-4: each surface's own non-streaming decode site — the
+         * zai twin's body string, and the zai_anthropic inline over
+         * the Response body (the collapsed parse_message_body()/
+         * parse_body_string() chain's one surviving hop; the former
+         * per-surface 'JsonBodyDecoder::decode( $body )' substring pin
+         * named the deleted wrapper's parameter, not the twin's own
+         * decode).
+         */
+        $this->assertStringContainsString(
+            'JsonBodyDecoder::decode( $body )',
+            (string) file_get_contents(__DIR__ . '/../../connectors/zai/src/Models/ZaiTextGenerationModel.php'),
+            'The zai non-streaming path decodes the body once.'
+        );
+        $this->assertStringContainsString(
+            'JsonBodyDecoder::decode( (string) $response->getBody() )',
+            (string) file_get_contents(__DIR__ . '/../../connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php'),
+            'The zai_anthropic non-streaming path decodes the body once.'
+        );
     }
 
     public function testTheNonStreamingPathDecodesTheBodyOnceAndHandsOffPreDecoded()

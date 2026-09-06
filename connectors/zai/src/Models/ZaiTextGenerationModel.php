@@ -489,7 +489,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			 * GLM10 #11: the decode block itself — the strip, the
 			 * associative view, the raw object-ness view, the vendor
 			 * null normalization — rides the one shared JsonBodyDecoder
-			 * with the zai_anthropic twin's parse_body_string(); the
+			 * with the zai_anthropic twin's non-streaming decode; the
 			 * GLM7 #9 one-decode-per-flavor contract is unchanged, and a
 			 * body with no decodable payload keeps the ORIGINAL Response
 			 * so the parent's own missing-data rejection fires unchanged.

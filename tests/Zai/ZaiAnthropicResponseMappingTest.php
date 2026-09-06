@@ -4335,7 +4335,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         /*
          * Codex R15 #1: the aggregator previously cast the streamed
-         * output_tokens before parse_message_body()'s strict validator
+         * output_tokens before the Messages parser's strict validator
          * could see the original type — numeric strings, floats, bools,
          * negatives, and list-shaped usage all became plausible counts
          * (a list silently became zero).

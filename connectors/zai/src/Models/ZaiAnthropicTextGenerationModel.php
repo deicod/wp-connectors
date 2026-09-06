@@ -1651,7 +1651,34 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * 'data:' leader) can never drift from this one again.
 		 */
 		if ( ! EventStreamSniff::matches( $body, $response->getHeaderAsString( 'Content-Type' ) ) ) {
-			return $this->parse_message_body( $response );
+			/*
+			 * GLM8 #3: a UTF-8 BOM prepended to an otherwise-valid JSON
+			 * Messages body — the same gateway/CDN threat class the SSE
+			 * side strips through the shared SseFrameBuffer — made the
+			 * vendor Response::getData() decode fail (JSON_ERROR_SYNTAX)
+			 * and the whole non-streaming generation die as 'Missing the
+			 * "content" key': a typed rejection of a valid completion one
+			 * layer short of where this branch's own BOM hardening stops.
+			 * The canonical prefix strip (strip_stream_prefix(), stripping
+			 * the leading whitespace and any BOM since glm21-1) runs
+			 * before BOTH decodes here, so the associative parse and the
+			 * raw object-ness oracle always read the same cleaned body.
+			 *
+			 * GLM10 #11: the decode block itself — the strip, the
+			 * associative view, the raw object-ness view, the vendor
+			 * null normalization — rides the one shared JsonBodyDecoder
+			 * with the zai model's non-streaming decode; the
+			 * (array|null, stdClass|null) contract is the helper's.
+			 *
+			 * glm25-4: the former parse_message_body()/
+			 * parse_body_string() two-hop chain collapsed to this one
+			 * inline (the zai twin's shape) once glm15-7/glm16-8 moved
+			 * the JSON fallback to the shared owners and stranded the
+			 * chain's second caller.
+			 */
+			list( $data, $raw ) = JsonBodyDecoder::decode( (string) $response->getBody() );
+
+			return $this->parse_decoded_message( $data, $raw );
 		}
 
 		$aggregator = new AnthropicSseAggregator();
@@ -1753,63 +1780,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
-	 * Runs the non-streaming Messages parser over a JSON response.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param Response $response The Messages response.
-	 * @return GenerativeAiResult The parsed result.
-	 * @throws ResponseException When the payload is malformed.
-	 */
-	private function parse_message_body( Response $response ): GenerativeAiResult {
-		return $this->parse_body_string( (string) $response->getBody() );
-	}
-
-	/**
-	 * Runs the non-streaming Messages parser over a raw body string.
-	 *
-	 * GLM8 #3: a UTF-8 BOM prepended to an otherwise-valid JSON Messages
-	 * body — the same gateway/CDN threat class the SSE side strips
-	 * through the shared SseFrameBuffer — made the vendor
-	 * Response::getData() decode fail (JSON_ERROR_SYNTAX) and the whole
-	 * non-streaming generation died as 'Missing the "content" key': a
-	 * typed rejection of a valid completion one layer short of where this
-	 * branch's own BOM hardening stops. The canonical prefix strip
-	 * (strip_stream_prefix(), stripping the leading whitespace and any
-	 * BOM since glm21-1) runs before BOTH decodes here, so the
-	 * associative parse and the raw object-ness oracle always read the
-	 * same cleaned body.
-	 *
-	 * GLM10 #11: the decode block itself — the strip, the associative
-	 * view, the raw object-ness view, the vendor null normalization —
-	 * rides the one shared JsonBodyDecoder with the zai model's
-	 * non-streaming decode; the (array|null, stdClass|null) contract is
-	 * the helper's.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param string $body The raw response body.
-	 * @return GenerativeAiResult The parsed result.
-	 * @throws ResponseException When the payload is malformed.
-	 */
-	private function parse_body_string( string $body ): GenerativeAiResult {
-		list( $data, $raw ) = JsonBodyDecoder::decode( $body );
-
-		return $this->parse_decoded_message( $data, $raw );
-	}
-
-	/**
 	 * The JSON fallback for a body the Content-Type mislabeled as a
 	 * stream (GLM8 #5), or null when the body is no Messages payload.
 	 *
 	 * GLM15-7: ONE strip and ONE pair of decodes serve both the
 	 * object-root gate and the parse — the hand-rolled
 	 * is_object(json_decode(strip_stream_prefix(...))) pre-flight used
-	 * to strip and decode the same body two more times inside
-	 * parse_body_string()'s JsonBodyDecoder (three json_decodes and two
-	 * prefix strips of one potentially large body). The decoder's raw
-	 * view IS the object-root oracle (stdClass only), so the gate rides
-	 * it and the parse consumes the already-decoded pair.
+	 * to strip and decode the same body two more times inside the
+	 * non-streaming decode's JsonBodyDecoder (three json_decodes and
+	 * two prefix strips of one potentially large body). The decoder's
+	 * raw view IS the object-root oracle (stdClass only), so the gate
+	 * rides it and the parse consumes the already-decoded pair.
 	 *
 	 * Runs only AFTER SSE aggregation failed (the caller's
 	 * malformed-event channel), so a genuinely-decodable stream never
