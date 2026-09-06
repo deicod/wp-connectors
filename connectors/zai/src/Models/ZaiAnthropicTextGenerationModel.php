@@ -2836,20 +2836,14 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * as a raw JsonException in the transport's whole-request encode
 		 * instead of this typed rejection. is_nan() is checked explicitly
 		 * (INF already fails the > 1 bound; -INF the < 0 one).
+		 *
+		 * glm21-6: the two copy-twin guards ride the shared
+		 * RequestShapeGuard's label- and member-parameterized unit-
+		 * interval rule now (byte-identical messages) — a bound tweak
+		 * can no longer land on one member only.
 		 */
-		$temperature = $config->getTemperature();
-		if ( null !== $temperature && ( \is_nan( $temperature ) || $temperature < 0 || $temperature > 1 ) ) {
-			throw new InvalidArgumentException(
-				sprintf( 'The %s provider requires temperature between 0 and 1 (the Anthropic Messages protocol range).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-			);
-		}
-
-		$top_p = $config->getTopP();
-		if ( null !== $top_p && ( \is_nan( $top_p ) || $top_p < 0 || $top_p > 1 ) ) {
-			throw new InvalidArgumentException(
-				sprintf( 'The %s provider requires top_p between 0 and 1 (the Anthropic Messages protocol range).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-			);
-		}
+		RequestShapeGuard::reject_out_of_unit_interval( $config->getTemperature(), 'temperature', self::PROVIDER_LABEL );
+		RequestShapeGuard::reject_out_of_unit_interval( $config->getTopP(), 'top_p', self::PROVIDER_LABEL );
 
 		$this->validate_message_order( $prompt );
 	}

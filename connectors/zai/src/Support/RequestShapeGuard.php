@@ -150,4 +150,38 @@ final class RequestShapeGuard {
 			throw new InvalidArgumentException( sprintf( 'The %s provider requires maxTokens to be a positive number.', $provider_label ) );
 		}
 	}
+
+	/**
+	 * Rejects a configured unit-interval member outside the CLOSED
+	 * interval 0..1, or NAN (glm21-6).
+	 *
+	 * The Messages protocol bounds temperature and top_p to [0, 1] —
+	 * values the SDK and the OpenAI-compatible surface accept
+	 * (temperature up to 2.0) are protocol violations on the Anthropic
+	 * surface that surfaced only as the upstream 400's generic
+	 * misattributed message. Explicit comparisons keep 0.0 legal
+	 * (it is falsy), and NAN is checked by name because it compares
+	 * false against BOTH bounds (INF already fails the > 1 test, -INF
+	 * the < 0 one); the unencodable float otherwise detonates as a raw
+	 * JsonException in the transport's whole-request encode. The rule
+	 * was a copy twin at the two Messages call sites before this class
+	 * took it — a bound tweak edited on one member only would validate
+	 * temperature and top_p against different ranges in one request.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param float|null $value          The configured member value.
+	 * @param string     $member         The member name for the message
+	 *                                   ('temperature', 'top_p').
+	 * @param string     $provider_label Provider name for the message.
+	 * @return void
+	 * @throws InvalidArgumentException When the value is set and NAN or
+	 *                                  outside [0, 1].
+	 */
+	public static function reject_out_of_unit_interval( $value, string $member, string $provider_label ): void {
+		if ( null !== $value && ( \is_nan( $value ) || $value < 0 || $value > 1 ) ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new InvalidArgumentException( sprintf( 'The %s provider requires %s between 0 and 1 (the Anthropic Messages protocol range).', $provider_label, $member ) );
+		}
+	}
 }
