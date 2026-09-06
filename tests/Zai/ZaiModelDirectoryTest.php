@@ -526,6 +526,59 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         );
     }
 
+    public function testThePositiveDiscoveryRowHasOneWriterFamily()
+    {
+        /*
+         * glm25-1 (source pin): the availability base's probe seed used
+         * to hand-sync its own set_transient() for the 12h positive
+         * discovery row — a second writer of a row ZaiDiscoveryCache
+         * owns, while the row contract had already evolved once on the
+         * READER side (glm23-7 is_sound_id_row). Every set_transient()
+         * under connectors/zai/src outside ZaiDiscoveryCache.php must
+         * be the availability base's ONE probe-miss marker write; the
+         * seed routes through the owner's store_ids().
+         */
+        $src_root = dirname(__DIR__, 2) . '/connectors/zai/src';
+
+        $files = array();
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($src_root, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            if ($file->isFile() && 'php' === $file->getExtension()) {
+                $files[] = $file->getPathname();
+            }
+        }
+        sort($files);
+        $this->assertNotEmpty($files, 'The source scan must find the zai src tree.');
+
+        foreach ($files as $path) {
+            $source = (string) file_get_contents($path);
+            $count = substr_count($source, 'set_transient(');
+
+            if ('ZaiDiscoveryCache.php' === basename($path)) {
+                // The owner: the negative-marker write and the one
+                // positive-row store statement.
+                $this->assertSame(2, $count, 'ZaiDiscoveryCache owns both discovery-row writes (the miss marker and store_ids()).');
+                continue;
+            }
+
+            if ('AbstractZaiProviderAvailability.php' === basename($path)) {
+                // The probe-miss marker only — the discovery seed must
+                // ride the owner's store API.
+                $this->assertSame(1, $count, 'The availability base writes only its own probe-miss marker; discovery rows go through ZaiDiscoveryCache.');
+                $this->assertStringContainsString(
+                    'ZaiDiscoveryCache::store_ids(',
+                    $source,
+                    'The probe seed stores the discovery row through the cache owner (glm25-1).'
+                );
+                continue;
+            }
+
+            $this->assertSame(0, $count, "{$path} must not write WordPress transients — the discovery rows have one writer family (ZaiDiscoveryCache).");
+        }
+    }
+
     public function testBothDirectoriesMemoizeThroughTheOneSharedOwner()
     {
         /*

@@ -1322,8 +1322,11 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * discovery validation — the has_more rejection, the chat filter, the
 	 * plan intersection — and the resulting ID list is stored under the
 	 * SAME endpoint-scoped transient id and TTL the directories' own
-	 * discovery flow writes, so every consumer (cache reads, settings
-	 * invalidation, uninstall sweeps) sees one coherent cache.
+	 * discovery flow writes, through the cache's ONE store API
+	 * (ZaiDiscoveryCache::store_ids(), glm25-1 — the availability base
+	 * is not a second writer of the row), so every consumer (cache
+	 * reads, settings invalidation, uninstall sweeps) sees one coherent
+	 * cache.
 	 *
 	 * Seeding is strictly opportunistic: a catalog-reason parser failure
 	 * (an incomplete page, no in-plan chat ID) leaves discovery to its own
@@ -1349,10 +1352,9 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			return;
 		}
 
-		set_transient(
+		ZaiDiscoveryCache::store_ids(
 			static::endpoint_class()::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
-			$ids,
-			ZaiDiscoveryCache::DISCOVERY_TTL
+			$ids
 		);
 	}
 

@@ -164,9 +164,34 @@ final class ZaiDiscoveryCache {
 			return ZaiModelCatalog::ids_for_plan( $plan );
 		}
 
-		set_transient( $cache_id, $ids, self::DISCOVERY_TTL );
+		self::store_ids( $cache_id, $ids );
 
 		return $ids;
+	}
+
+	/**
+	 * Stores a discovered ID list as the positive discovery row
+	 * (glm25-1).
+	 *
+	 * The 12h positive row's WRITE side has one owner: this class. The
+	 * availability base's probe seed (seed_discovery_from_probe())
+	 * used to hand-sync its own transient write against the row
+	 * cached_ids() writes — a second writer the row's read side
+	 * (is_sound_id_row, glm23-7) had no way to keep honest, so a
+	 * writer-side contract change (row shape, TTL policy) could land
+	 * on the discovery flow only and leave the seed caching a row the
+	 * directories treat as a corrupt miss. Both write sites — the
+	 * discovery flow's own store and the probe seed — route through
+	 * this one method now.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $cache_id Endpoint-scoped transient key.
+	 * @param array  $ids      The discovered model IDs (list of string).
+	 * @return void
+	 */
+	public static function store_ids( string $cache_id, array $ids ): void {
+		set_transient( $cache_id, $ids, self::DISCOVERY_TTL );
 	}
 
 	/**
