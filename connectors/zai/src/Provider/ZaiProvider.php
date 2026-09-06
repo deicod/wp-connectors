@@ -73,12 +73,17 @@ final class ZaiProvider extends AbstractZaiProvider {
 	/**
 	 * The provider's card display name.
 	 *
+	 * Since glm24-2 the name ALIASES the settings layer's PROVIDER_LABEL
+	 * (the constant the settings section header renders) — the same
+	 * derivation ZaiAnthropicProvider::PROVIDER_NAME rides, so a card
+	 * rename and a settings rename are one edit on every surface.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return string Display name.
 	 */
 	protected static function provider_display_name(): string {
-		return 'z.ai';
+		return PlanRegionSettings::PROVIDER_LABEL;
 	}
 
 	/**

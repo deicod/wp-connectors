@@ -50,11 +50,18 @@ final class ZaiAnthropicProvider extends AbstractZaiProvider {
 	 * Card display name: distinguishes this provider's Connectors card from
 	 * the zai provider's card on the same screen.
 	 *
+	 * Since glm24-2 the name ALIASES the settings layer's PROVIDER_LABEL
+	 * (the constant the settings section header renders) exactly the way
+	 * PROVIDER_ID aliases CACHE_SCOPE — the literal was hand-mirrored in
+	 * the two owner classes with each side's tests pinning only its own
+	 * copy, so a rename could leave the card and the settings page
+	 * naming one connector two ways.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @var string
 	 */
-	public const PROVIDER_NAME = 'z.ai (Anthropic API)';
+	public const PROVIDER_NAME = ZaiAnthropicPlanRegionSettings::PROVIDER_LABEL;
 
 	/**
 	 * The canonical base URL: international region, general plan.

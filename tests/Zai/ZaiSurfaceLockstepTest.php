@@ -109,6 +109,34 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
         );
     }
 
+    public function testProviderCardNamesAliasTheSettingsLayerLabels()
+    {
+        /*
+         * glm24-2: the Connectors-card display names were hand-mirrored
+         * literals (ZaiAnthropicProvider::PROVIDER_NAME, the zai
+         * provider_display_name() return) with no tie to the settings
+         * layer's PROVIDER_LABEL the settings section header renders —
+         * each side's tests pinned only their own copy, so the card and
+         * the settings page could name one connector two ways after a
+         * one-sided rename (the per-side-pin vacuity glm21-18
+         * documented). Both surfaces alias the settings label now, the
+         * PROVIDER_ID/CACHE_SCOPE pattern; the pin reads the card name
+         * through the public metadata args (index 1 is
+         * provider_display_name()), so a re-inlined divergent literal
+         * fails on either surface.
+         */
+        $surfaces = \Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES;
+        $provider_classes = \Deicod\WpConnectors\Zai\Plugin::PROVIDER_CLASSES;
+
+        foreach ($surfaces as $index => $surface) {
+            $this->assertSame(
+                $surface['settings']::PROVIDER_LABEL,
+                $provider_classes[$index]::provider_metadata_args()[1],
+                "Surface [{$index}]: the Connectors card name aliases the settings layer's PROVIDER_LABEL."
+            );
+        }
+    }
+
     public function testTheLiveProbeDerivesItsSurfacePairingFromTheOwner()
     {
         /*
