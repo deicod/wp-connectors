@@ -6,6 +6,108 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM26 round)
+
+All 12 ledger-filtered findings of code-review round 26 (high; the
+26th round on this branch — one genuine user-facing availability bug,
+one protocol-strictness gap, one parity gap, one latent refactor
+hazard, and eight dedup/simplification items), one commit each, plus a
+two-lens verifier pass (independent security + correctness agents over
+the full diff; ZERO confirmed behavioral findings — two doc-drift
+items fixed as glm26-13 — with every equivalence claim holding under
+their differentials: a 46,656-sequence stop-rule differential, 642,235
+exhaustive plus 200,000 random answer-window histories, a 20,000-id
+chat-membership fuzz, A→B→A cache-content sequences with mid-process
+plan/region retargets, binding-poisoning repros for every wiring
+shape, and byte-identity checks over both surfaces' usage rejections).
+Three review findings were dropped as ledger-covered re-flags
+(glm21-2, GLM3 #14-tenant, GLM1 #15's drop tolerance):
+
+- Uncarriable credential material is a definitive INVALID verdict
+  (glm26-1, the round's one user-facing bug): a z.ai Anthropic key
+  pasted with a trailing newline or comma threw the glm16-13
+  pre-transport rejection inside the probe, and the probe's blanket
+  catch(Throwable) converted it to INCONCLUSIVE — isConfigured() kept
+  answering true through key-save validation (the card showed
+  connected), every generation then 500'd with no persisted verdict.
+  The rejection now rides UncarriableCredentialException, a marker
+  subclass (the FixedMessageResponseException pattern: identical
+  message, family, and ErrorMapper 500 mapping), and the probe
+  catches it narrowly: nothing flew, the verdict names exactly the
+  credential that could not (the glm13-1/glm14-5 one-credential-
+  flies-AND-binds discipline), region distrust settles, and the
+  refusal gate answers before the pre-transport throw. The glm16-13
+  rejection itself is untouched.
+- An out-of-order content_block_stop flags the Anthropic stream
+  malformed (glm26-2): the wire serializes block lifecycles, so a
+  stop for N while a lower index is still open (a corrupting proxy's
+  interleave) is the same corruption class its start-side twins
+  reject — previously it aggregated a protocol-impossible completion
+  with no malformed flag. Pinned both ways (the interleave repro
+  fails typed; the serialized control still aggregates); the
+  aggregator's drop comment also stops overclaiming model-parse
+  parity for unknown block types (the glm19-13 class).
+- A non-string streamed delta.role flags the zai stream malformed
+  (glm26-3, GLM9 #2 parity with the Anthropic twin): the vendor
+  parent coerces any non-'user' role into a model message, so the
+  corrupt chunk completed as a clean generation. An explicit null
+  keeps the historical absent-semantics skip.
+- The zai_anthropic directory's discovery auth-reader rides the raw
+  hook (glm26-4, glm16-1 alignment): the wrap reader held the
+  glm14-5 cross-credential-poisoning discipline only by
+  call-ordering accident. Byte-identical today (the flight keeps the
+  one wrap funnel); the discipline is structural, pinned by a
+  superseded glm21-14 pin, a wrap-return prohibition, and a new
+  opaque-wiring behavioral test.
+- The region-pending settle rule lives in one helper (glm26-5): the
+  three hand-copied settle sites (isConfigured's fresh-verdict and
+  post-probe branches, record_definitive_verdict's current-endpoint
+  guard) ride settle_region_pending(); the phpstan classConstant
+  count drops 13→11 exactly by the two consolidated reads.
+- One discovery-consult orchestrator serves both directories
+  (glm26-6): ZaiDiscoveryCache::resolved_map() owns the endpoint
+  resolve → cache id → cached_ids → memoized_map skeleton both spelled
+  inline — GLM4 #10's 'one orchestration' claim is now true at the
+  composition layer too. The map memo keeps the filtered id list and
+  proves unchanged content by a strict list compare instead of
+  re-deriving the digest (still content-keyed under any transient
+  mutation); the option and transient reads stay per-consult by the
+  glm15-6 boundary. The prebuilt seed stays eagerly evaluated
+  (verifier-corrected comment); the GLM8 #11 owner-call pin and the
+  glm15-22 seed pin are superseded at their sites.
+- UsageValidator::reject() owns the usage-rejection throw (glm26-7):
+  the composition hand-copied in the Anthropic parse block and the
+  zai model's reject_bad_usage() lives beside the rules and messages
+  it applies; both models pass only their varying arguments, and a
+  lockstep pin forbids any inline recomposition.
+- Directories state their availability pairing through one hook
+  (glm26-8): the buried inline 'new' at three gate sites was the
+  glm24-1 pairing-swap class; a protected availability() hook (the
+  models' credential_gate_availability() shape) plus a behavioral
+  lockstep pin tying each hook's product to the registry row's
+  settings class.
+- The closed-lifecycle state lives on the Anthropic block accumulator
+  (glm26-9): the $stopped_indexes parallel map (the GLM10 #7
+  hand-synced-mirror shape) collapses into a per-block 'stopped'
+  member across all four sync sites.
+- The answer-window verdicts derive from the outstanding-IDs map
+  (glm26-10): the $awaiting_answer mirror, the $opens_tools flag, and
+  the file's only by-ref parameter are gone — identical verdicts on
+  every reachable state (verifier-exhausted).
+- The zai aggregated() gate reads the choices emptiness alone
+  (glm26-11): $event_count's only production reader was subsumed by
+  the choices disjunct beside it; the field, its increment, and the
+  disjunct are deleted, consciously superseding glm19-11's
+  load-bearing-fields note (GLM10 #4 lesson) — the four reflection
+  pins that counted the field are superseded by the behavioral
+  assertions that implied them.
+- is_chat_model() answers from a once-built flipped set (glm26-12):
+  the per-ID loops stop re-merging the three constant catalogs per
+  call; the membership rule is unchanged.
+
+Suite: 1188 tests / 29636 assertions (baseline 1179/29603), green in
+default AND --order-by=random order.
+
 ### Fixed (zai / M2 — GLM25 round)
 
 All 11 findings of code-review round 25 (high, ledger-filtered; the
