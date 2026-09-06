@@ -379,8 +379,24 @@ final class SseAggregator extends AbstractSseAggregator {
 			return $choice;
 		}
 
-		if ( isset( $delta['delta']['role'] ) && ! isset( $choice['message']['role'] ) ) {
-			$choice['message']['role'] = $delta['delta']['role'];
+		/*
+		 * glm26-3: a PRESENT non-string role member is corruption — the
+		 * same verdict the Anthropic twin's non-string declaration rule
+		 * (GLM9 #2) gives the shape. This was the one delta member merged
+		 * with isset() alone: a gateway-mangled {"role":["assistant"]}
+		 * merged the array verbatim, the vendor parent's parse coerces any
+		 * non-'user' role into a model message, and the corrupt chunk
+		 * completed as a clean generation. Flagged now, and the member is
+		 * not merged. An explicit null keeps the historical skip: isset()
+		 * reads it as absent, matching the member's absent semantics on
+		 * this wire.
+		 */
+		if ( isset( $delta['delta']['role'] ) ) {
+			if ( ! \is_string( $delta['delta']['role'] ) ) {
+				$this->malformed_event = true;
+			} elseif ( ! isset( $choice['message']['role'] ) ) {
+				$choice['message']['role'] = $delta['delta']['role'];
+			}
 		}
 
 		foreach ( array( 'content', 'reasoning_content' ) as $text_field ) {

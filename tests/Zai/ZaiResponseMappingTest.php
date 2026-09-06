@@ -190,6 +190,47 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         }
     }
 
+    public function testANonStringStreamedRoleMemberFailsTheStreamAsMalformed()
+    {
+        /*
+         * glm26-3 (GLM9 #2 parity with the Anthropic twin): the streamed
+         * delta's role member was the one delta member merged with
+         * isset() alone — a gateway-mangled {"role":["assistant"]} merged
+         * the array verbatim, the vendor parent's parse coerces any
+         * non-'user' role into a model message, and the corrupt chunk
+         * completed as a clean generation (round 26 finding 3). The
+         * malformed-event channel owns the shape now. An explicit null
+         * keeps the skip: isset() reads it as absent, the member's
+         * absent semantics on this wire.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-rolearr","choices":[{"index":0,"delta":{"role":["assistant"],"content":"hi"},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-string streamed role member must fail the stream.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('malformed chunk event', $e->getMessage());
+        }
+
+        // Control: the explicit-null spelling keeps its absent semantics —
+        // the stream completes (the content member carries the answer).
+        $null_role = implode("\n\n", array(
+            'data: {"id":"chatcmpl-rolenull","choices":[{"index":0,"delta":{"role":null,"content":"answer"},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $null_role);
+
+        $this->assertSame('answer', $this->model()->generateTextResult($this->prompt())->toText());
+    }
+
     public function testParsesReasoningContentAsThoughtPart()
     {
         $this->queueSdkResponse(200, array(), wp_json_encode(array(
