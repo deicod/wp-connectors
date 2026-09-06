@@ -79,8 +79,9 @@ final class ToolArgsReplayGuard {
 	 *
 	 * @param mixed $value The arguments tree — decode products and
 	 *                     caller-built trees alike (arrays, objects,
-	 *                     scalars; glm22-1: the walker recurses into
-	 *                     every object, not stdClass only).
+	 *                     scalars; glm22-1/glm22-16: the out-of-range
+	 *                     walk judges the DECODED wire form, exact for
+	 *                     every encodable class).
 	 * @return bool True when the value replays losslessly.
 	 */
 	public static function is_replayable( $value ): bool {
@@ -113,7 +114,25 @@ final class ToolArgsReplayGuard {
 			return false;
 		}
 
-		return ! self::has_out_of_range_integer_float( $value );
+		/*
+		 * glm22-16 (verifier round): the out-of-range walk judges the
+		 * DECODED WIRE FORM, not the caller's original tree. json_encode()
+		 * serializes different member sets per class — public props for a
+		 * plain object, jsonSerialize()'s output for a JsonSerializable,
+		 * the internal STORAGE for an ArrayObject/ArrayIterator — so a
+		 * property-graph walk both falsely rejects members that never
+		 * ship (an ArrayObject dynamic property) and falsely accepts
+		 * members that do (its storage; empirically confirmed both ways).
+		 * The decode of the oracle's own phase-one encoding IS the set of
+		 * values that ride the wire, so the walk over $decoded is exact
+		 * for every encodable class at once — decode products and plain
+		 * arrays/stdClass keep their identical verdicts (the shortest-
+		 * roundtrip float spelling decodes back to the same double), and
+		 * the walker's exotic-object branches below survive only as the
+		 * misuse backstop for callers handing the walker an object
+		 * directly (the fast path's contract is decode products).
+		 */
+		return ! self::has_out_of_range_integer_float( $decoded );
 	}
 
 	/**
@@ -450,12 +469,17 @@ final class ToolArgsReplayGuard {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param mixed $value The arguments tree — decode products and
-	 *                     caller-built trees alike (glm22-1: recursion
-	 *                     covers every object's public members).
+	 * @param mixed                  $value   The arguments tree — decode products and
+	 *                                       caller-built trees alike (glm22-1/glm22-16:
+	 *                                       recursion covers every object — a
+	 *                                       JsonSerializable's jsonSerialize() output,
+	 *                                       every other object's public members — under a
+	 *                                       cycle guard).
+	 * @param \SplObjectStorage|null $visited Objects already walked (the cycle
+	 *                                     guard; null on the top-level call).
 	 * @return bool True when a precision-loss float was found.
 	 */
-	private static function has_out_of_range_integer_float( $value ): bool {
+	private static function has_out_of_range_integer_float( $value, ?\SplObjectStorage $visited = null ): bool {
 		if ( \is_float( $value ) ) {
 			/*
 			 * INF/NAN already failed the encode above, so this branch sees
@@ -477,7 +501,7 @@ final class ToolArgsReplayGuard {
 
 		if ( \is_array( $value ) ) {
 			foreach ( $value as $member ) {
-				if ( self::has_out_of_range_integer_float( $member ) ) {
+				if ( self::has_out_of_range_integer_float( $member, $visited ) ) {
 					return true;
 				}
 			}
@@ -492,17 +516,43 @@ final class ToolArgsReplayGuard {
 			 * plain value object carrying a lossy big float encoded to
 			 * the identical wire bytes its array/stdClass twins reject on
 			 * ('{"count":9.3e+18}') while this stdClass-only recursion
-			 * fell through to the clean return below. get_object_vars()
-			 * from this unbound scope sees exactly the PUBLIC members —
-			 * the same set json_encode() serializes — so a
-			 * private/protected lossy float that never ships also never
+			 * fell through to the clean return below.
+			 *
+			 * glm22-16 (verifier round): the PRODUCTION walk target is
+			 * the DECODED WIRE FORM (see is_replayable()) — json_encode's
+			 * member set differs per class (public props,
+			 * jsonSerialize()'s output, ArrayObject STORAGE), so no
+			 * property-graph walk can be exact — and these branches are
+			 * the misuse backstop for a caller handing the WALKER an
+			 * object directly (the fast path's contract is decode
+			 * products, where objects are stdClass only): a JsonSerializable
+			 * is judged by its jsonSerialize() output (the graph can be
+			 * CYCLIC while the encoding is clean — a self-referencing
+			 * public prop behind a serializer returning
+			 * array('ok' => true) — and walking it fatals on memory
+			 * exhaustion, uncatchable, where pre-glm22-1 the stdClass-only
+			 * skip let the request ship), every other object by its
+			 * public members. The visited set is the cycle guard: a seen
+			 * object is skipped, so the walk always terminates, including
+			 * the serializer halves a re-invocation can diverge
+			 * (jsonSerialize() is user code). get_object_vars() from this
+			 * unbound scope sees exactly the PUBLIC members — a
+			 * private/protected lossy float never ships and never
 			 * rejects (the walker judges the wire, not the class).
 			 */
-			foreach ( \get_object_vars( $value ) as $member ) {
-				if ( self::has_out_of_range_integer_float( $member ) ) {
-					return true;
-				}
+			if ( null === $visited ) {
+				$visited = new \SplObjectStorage();
+			} elseif ( $visited->offsetExists( $value ) ) {
+				return false;
 			}
+
+			$visited->offsetSet( $value, true );
+
+			$members = $value instanceof \JsonSerializable
+				? $value->jsonSerialize()
+				: \get_object_vars( $value );
+
+			return self::has_out_of_range_integer_float( $members, $visited );
 		}
 
 		return false;

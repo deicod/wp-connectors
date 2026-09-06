@@ -1405,6 +1405,93 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
         $this->assertTrue($guard::is_replayable($hidden), 'A private lossy member never ships (json_encode skips it), so it never rejects.');
     }
 
+    public function testCyclicJsonSerializableArgumentsWalkTheWireFormNotThePropertyGraph()
+    {
+        /*
+         * glm22-16 (verifier round on glm22-1): a JsonSerializable's
+         * encoded form is jsonSerialize()'s OUTPUT, not its property
+         * graph — the graph can be cyclic while the encoding is clean,
+         * and glm22-1's all-objects property walk recursed it forever
+         * (an uncatchable memory-exhaustion fatal, empirically
+         * reproduced through the real model method on PHP 8.5 and the
+         * 7.4 floor, where pre-glm22-1 the request shipped). The walker
+         * judges the wire form now, under a cycle guard: the cyclic
+         * serializer replays, a lossy float hidden in a decoupled
+         * property never ships and never rejects, and the serializer's
+         * OUTPUT is judged exactly like the bytes it produces.
+         */
+        $guard = 'Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard';
+
+        $cyclic = new class implements \JsonSerializable {
+            /**
+             * @var self|null
+             */
+            public $self;
+
+            public function __construct()
+            {
+                $this->self = $this;
+            }
+
+            public function jsonSerialize(): array
+            {
+                return array('ok' => true);
+            }
+        };
+
+        $hiding = new class implements \JsonSerializable {
+            /**
+             * @var float
+             */
+            public $count = 9.3e18;
+
+            public function jsonSerialize(): array
+            {
+                return array('ok' => true);
+            }
+        };
+
+        $returning = new class implements \JsonSerializable {
+            public function jsonSerialize(): array
+            {
+                return array('n' => 9.3e18);
+            }
+        };
+
+        $this->assertTrue($guard::is_replayable($cyclic), 'A cyclic property graph behind a clean serializer replays (the walk terminates on the cycle guard).');
+        $this->assertTrue($guard::is_replayable($hiding), 'A lossy float in a property the serializer never ships is none of the wire\'s business.');
+        $this->assertFalse($guard::is_replayable($returning), 'A lossy float the serializer RETURNS rides the wire and rejects like its array twin.');
+
+        /*
+         * The ArrayObject halves of the same divergence (verifier round,
+         * empirically confirmed both ways): json_encode serializes the
+         * STORAGE, not the dynamic properties — a lossy dynamic prop
+         * encodes to '{}' yet the property-graph walk rejected it (a
+         * new false reject), while a lossy STORAGE member encodes to
+         * '{"x":9.3e+18}' yet get_object_vars() from an unbound scope
+         * sees none of it (the false accept glm22-1 claimed closed).
+         * The decoded-wire-form walk is exact for both.
+         */
+        $storage_only = new \ArrayObject();
+        $storage_only['x'] = 9.3e18;
+
+        $this->assertFalse($guard::is_replayable($storage_only), 'A lossy float in the STORAGE an ArrayObject encodes rides the wire and rejects.');
+        $this->assertFalse($guard::is_replayable(new \ArrayObject(array('y' => 9.3e18))), 'A storage-carried lossy float passed as the constructor seed rejects too.');
+        $this->assertTrue($guard::is_replayable(new \ArrayObject()), 'An empty-storage ArrayObject with no lossy member anywhere replays.');
+
+        // End-to-end: the cyclic object's request ships its serialized
+        // form (pre-glm22-1 behavior restored, now without the fatal).
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_c', 'search', $cyclic)))),
+            new Message(MessageRoleEnum::user(), array(new MessagePart(new FunctionResponse('call_c', 'search', array('ok' => 1))))),
+        );
+
+        list(, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame('{"ok":true}', $body['messages'][1]['tool_calls'][0]['function']['arguments'], 'The cyclic serializer\'s OUTPUT rides the wire verbatim.');
+    }
+
     public function testUnencodableToolCallIdentitiesAreRejectedBeforeTransport()
     {
         // The id and name ride the tool_calls member verbatim; both are
