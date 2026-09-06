@@ -326,19 +326,21 @@ PHP;
         }
 
         /*
-         * glm15-12: the test harness's two priming helpers ride the
-         * owner too — the hand-composed CACHE_PREFIX . md5(cache_key())
-         * mirror was the last private composition; a composition change
-         * would have silently stranded ~31 priming call sites against
-         * ids the directories no longer read. Both methods call the
-         * owner; no private md5-over-cache-key composition remains.
+         * glm15-12: the test harness's priming rides the owner too — the
+         * hand-composed CACHE_PREFIX . md5(cache_key()) mirror was the
+         * last private composition; a composition change would have
+         * silently stranded ~31 priming call sites against ids the
+         * directories no longer read. glm22-9: the two byte-identical
+         * twin helpers became one parameterized helper plus one-line
+         * delegates, so exactly ONE composition remains (the
+         * delegates forward without re-composing).
          */
         $harness = (string) file_get_contents(__DIR__ . '/../harness/WpConnectorsTestCase.php');
 
         $this->assertSame(
-            2,
+            1,
             preg_match_all('/discovery_cache_id\(\s*\$endpoint->plan\(\),\s*\$endpoint->region\(\)\s*\)/', $harness),
-            'Both priming helpers compose the transient id through the endpoint layer owner.'
+            'The one parameterized priming helper composes the transient id through the endpoint layer owner.'
         );
         $this->assertSame(
             0,

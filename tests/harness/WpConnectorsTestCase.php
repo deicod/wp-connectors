@@ -233,12 +233,14 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
-     * Primes the z.ai discovery transient for the CURRENT endpoint.
+     * Primes one surface's discovery transient for the CURRENT endpoint
+     * (glm22-9: the two byte-identical surface twins parameterized — the
+     * selectEndpoint() shape).
      *
      * The plugin transient is the sole discovery cache (the SDK layer is
-     * bypassed), so every ZaiProvider::model() lookup re-checks discovery.
-     * Tests that only mock the chat/completions transport call this first,
-     * so no unexpected /models attempt disturbs their recorded requests.
+     * bypassed), so every model lookup re-checks discovery. Tests that
+     * only mock the generation transport call this first, so no
+     * unexpected /models attempt disturbs their recorded requests.
      *
      * glm15-12: the transient id rides the endpoint layer's one owner
      * (discovery_cache_id()) — the hand-composed CACHE_PREFIX . md5()
@@ -247,40 +249,44 @@ abstract class WpConnectorsTestCase extends TestCase
      * the primed transients must stop matching what the directories
      * read in the same edit, not ~31 call sites later.
      *
-     * @param list<string> $ids Model IDs to advertise (default glm-5.3).
+     * @param string       $endpoint_class The endpoint class (ZaiEndpoint::class
+     *                                     or ZaiAnthropicEndpoint::class).
+     * @param list<string> $ids            Model IDs to advertise (default glm-5.3).
      * @return void
      */
-    protected function primeZaiDiscoveryTransient(array $ids = array( 'glm-5.3' ))
+    protected function primeZaiSurfaceDiscoveryTransient(string $endpoint_class, array $ids = array( 'glm-5.3' ))
     {
-        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::for_current_settings();
+        $endpoint = $endpoint_class::for_current_settings();
 
         set_transient(
-            \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
+            $endpoint_class::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
             $ids,
             \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::DISCOVERY_TTL
         );
     }
 
     /**
-     * Primes the zai_anthropic discovery transient for the CURRENT endpoint.
+     * Primes the z.ai discovery transient for the CURRENT endpoint
+     * (glm22-9: one-line delegate to the parameterized helper).
      *
-     * Same purpose as primeZaiDiscoveryTransient() for the second provider:
-     * tests that only mock the /v1/messages transport call this first, so no
-     * unexpected /v1/models attempt disturbs their recorded requests. The
-     * transient id rides the endpoint layer's one owner too (glm15-12).
+     * @param list<string> $ids Model IDs to advertise (default glm-5.3).
+     * @return void
+     */
+    protected function primeZaiDiscoveryTransient(array $ids = array( 'glm-5.3' ))
+    {
+        $this->primeZaiSurfaceDiscoveryTransient( \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class, $ids );
+    }
+
+    /**
+     * Primes the zai_anthropic discovery transient for the CURRENT
+     * endpoint (glm22-9: one-line delegate to the parameterized helper).
      *
      * @param list<string> $ids Model IDs to advertise (default glm-5.3).
      * @return void
      */
     protected function primeZaiAnthropicDiscoveryTransient(array $ids = array( 'glm-5.3' ))
     {
-        $endpoint = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings();
-
-        set_transient(
-            \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::discovery_cache_id( $endpoint->plan(), $endpoint->region() ),
-            $ids,
-            \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::DISCOVERY_TTL
-        );
+        $this->primeZaiSurfaceDiscoveryTransient( \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class, $ids );
     }
 
     /**
