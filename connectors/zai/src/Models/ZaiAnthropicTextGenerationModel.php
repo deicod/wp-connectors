@@ -2657,8 +2657,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * interval rule now (byte-identical messages) — a bound tweak
 		 * can no longer land on one member only.
 		 */
-		RequestShapeGuard::reject_out_of_unit_interval( $config->getTemperature(), 'temperature', self::PROVIDER_LABEL );
-		RequestShapeGuard::reject_out_of_unit_interval( $config->getTopP(), 'top_p', self::PROVIDER_LABEL );
+		// glm23-15: the Messages-only range phrase rides the call site — the
+		// shared guard stays protocol-neutral.
+		RequestShapeGuard::reject_out_of_unit_interval( $config->getTemperature(), 'temperature', self::PROVIDER_LABEL, 'the Anthropic Messages protocol range' );
+		RequestShapeGuard::reject_out_of_unit_interval( $config->getTopP(), 'top_p', self::PROVIDER_LABEL, 'the Anthropic Messages protocol range' );
 
 		$this->validate_message_order( $prompt );
 	}

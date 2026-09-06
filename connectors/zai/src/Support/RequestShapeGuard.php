@@ -168,20 +168,32 @@ final class RequestShapeGuard {
 	 * took it — a bound tweak edited on one member only would validate
 	 * temperature and top_p against different ranges in one request.
 	 *
+	 * glm23-15 (review round 23, finding 15): the [0, 1] BOUND and its
+	 * message naming are ONE-PROTOCOL facts — the Anthropic Messages
+	 * range — while this guard's contract is protocol-neutral rules for
+	 * both surfaces. The range phrase is the caller's parameter now
+	 * (the PROVIDER_LABEL pattern), so a future zai/OpenAI-surface
+	 * caller cannot reach for this helper and reject legal values with
+	 * a message naming the wrong protocol: the Messages-only rule stays
+	 * correct only where its caller says Messages.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param float|null $value          The configured member value.
 	 * @param string     $member         The member name for the message
 	 *                                   ('temperature', 'top_p').
 	 * @param string     $provider_label Provider name for the message.
+	 * @param string     $range_phrase   The bound's owner for the message
+	 *                                   (e.g. 'the Anthropic Messages
+	 *                                   protocol range').
 	 * @return void
 	 * @throws InvalidArgumentException When the value is set and NAN or
 	 *                                  outside [0, 1].
 	 */
-	public static function reject_out_of_unit_interval( $value, string $member, string $provider_label ): void {
+	public static function reject_out_of_unit_interval( $value, string $member, string $provider_label, string $range_phrase ): void {
 		if ( null !== $value && ( \is_nan( $value ) || $value < 0 || $value > 1 ) ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-			throw new InvalidArgumentException( sprintf( 'The %s provider requires %s between 0 and 1 (the Anthropic Messages protocol range).', $provider_label, $member ) );
+			throw new InvalidArgumentException( sprintf( 'The %s provider requires %s between 0 and 1 (%s).', $provider_label, $member, $range_phrase ) );
 		}
 	}
 }
