@@ -112,11 +112,19 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 	 * shape (the probe treats it exactly like unwired; a generation
 	 * request flies 'Bearer ' as before).
 	 *
+	 * glm26-1: the throw rides the UncarriableCredentialException MARKER
+	 * subclass — the same RuntimeException family and the identical
+	 * message (every consumer sees byte-identical behavior; ErrorMapper's
+	 * 500 mapping is instanceof-based) — so the availability probe can
+	 * recognize THIS rejection as definitive evidence about the
+	 * credential (nothing else throws the type). The rejection itself is
+	 * untouched.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $key The credential material about to ride the header.
 	 * @return void
-	 * @throws RuntimeException When the key cannot ride an Authorization value.
+	 * @throws UncarriableCredentialException When the key cannot ride an Authorization value.
 	 */
 	private static function reject_uncarriable_credential( string $key ): void {
 		if ( '' === $key ) {
@@ -124,7 +132,7 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 		}
 
 		if ( 1 === preg_match( '/[\x00-\x1F\x7F]/', $key ) || false !== strpos( $key, ',' ) ) {
-			throw new RuntimeException(
+			throw new UncarriableCredentialException(
 				sprintf( 'The %s provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			);
 		}

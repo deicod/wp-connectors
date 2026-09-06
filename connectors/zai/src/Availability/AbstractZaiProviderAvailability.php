@@ -9,7 +9,10 @@
  * database/runtime) and the endpoint identity (provider+plan+region). Only
  * a definitive credential rejection (401/403, or a 2xx body whose failure
  * envelope rejects the credential — GLM12 #1: the Anthropic /v1/models
- * route answers 200 for any or no credential) reports not-connected;
+ * route answers 200 for any or no credential — or glm26-1: credential
+ * material the Authorization header cannot carry, rejected pre-transport
+ * with nothing flown, the verdict naming exactly that material) reports
+ * not-connected;
  * INCONCLUSIVE probes (route unavailable, network error, 429, 5xx) report
  * configured-pending instead, so core's key-save validation never blocks a
  * key for an endpoint whose probe route is unavailable (expected for the
@@ -59,6 +62,7 @@ use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use WordPress\AiClient\Providers\Http\Exception\ResponseException;
 use WordPress\AiClient\Providers\Http\Traits\WithHttpTransporterTrait;
 use WordPress\AiClient\Providers\Http\Traits\WithRequestAuthenticationTrait;
+use Deicod\WpConnectors\Zai\Authentication\UncarriableCredentialException;
 use Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint;
 use Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelListParser;
@@ -1155,10 +1159,12 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @since 0.2.0
 	 *
 	 * @return bool|null True (valid), false (credential rejected: 401/403,
-	 *                   or a 2xx body that rejects the credential), or null
-	 *                   when the probe was inconclusive (transport error,
-	 *                   3xx, 429, other 4xx, 5xx, or a 2xx body that says
-	 *                   nothing definitive) — which says nothing about the
+	 *                   a 2xx body that rejects the credential, or —
+	 *                   glm26-1 — uncarriable credential material rejected
+	 *                   pre-transport), or null when the probe was
+	 *                   inconclusive (transport error, 3xx, 429, other
+	 *                   4xx, 5xx, or a 2xx body that says nothing
+	 *                   definitive) — which says nothing about the
 	 *                   credential and must not block key saving.
 	 */
 	private function probe(): ?bool {
@@ -1269,6 +1275,23 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 
 			$request  = $authentication->authenticateRequest( $request );
 			$response = $this->getHttpTransporter()->send( $request );
+		} catch ( UncarriableCredentialException $uncarriable ) {
+			/*
+			 * glm26-1: the credential MATERIAL cannot ride this surface's
+			 * Authorization header (glm16-13), so no request can ever
+			 * authenticate with it — definitive evidence about the
+			 * credential itself, not a transport failure. The verdict
+			 * names exactly the credential this probe was about to fly
+			 * (the wired Api-key, or the effective key the fallback
+			 * carries), so the glm13-1/glm14-5 one-credential-flies-
+			 * AND-binds discipline holds: nothing else flew, and the
+			 * named material IS the rejection. isConfigured() persists
+			 * the invalid verdict (core's key-save validation then
+			 * refuses the key instead of saving it as connected) and
+			 * the generation refusal gate answers before the
+			 * pre-transport throw ever fires.
+			 */
+			return false;
 		} catch ( Throwable $e ) {
 			// Transport failure: transient, never persisted.
 			return null;

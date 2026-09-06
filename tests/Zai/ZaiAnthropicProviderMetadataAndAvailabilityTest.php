@@ -398,6 +398,67 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         return new OpaqueAuthentication();
     }
 
+    public function testUncarriableCredentialMaterialSavesAsADefinitiveInvalidVerdict()
+    {
+        /*
+         * glm26-1 (round 26 finding 1): a key pasted with a trailing
+         * newline — no settings-layer sanitization exists for key
+         * material — threw the glm16-13 pre-transport rejection inside
+         * the probe, and the probe's blanket catch(Throwable) converted
+         * it to INCONCLUSIVE: isConfigured() stayed true through key-save
+         * validation, the card showed connected, and every generation
+         * 500'd with no persisted verdict. The marker subclass makes the
+         * rejection definitive INVALID evidence about the credential
+         * itself: nothing flies (the material cannot ride the header on
+         * ANY request), the verdict names exactly the credential the
+         * probe was about to fly, region-switch distrust settles the way
+         * every definitive answer does, and the refusal gate answers
+         * BEFORE the pre-transport throw ever fires.
+         */
+        $key = "pasted-key\n";
+        $instance = $this->availability($key);
+
+        $region = \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::for_current_settings()->region();
+        update_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, array(
+            'region' => $region,
+            'fingerprint' => hash('sha256', $key),
+        ));
+
+        $this->assertFalse(
+            $instance->isConfigured(),
+            'Uncarriable credential material must report not-connected — the honest state, not configured-pending.'
+        );
+
+        $this->assertNoHttpRequests();
+
+        $state = get_option(ZaiAnthropicProviderAvailability::STATE_OPTION);
+        $this->assertIsArray($state);
+        $this->assertSame('invalid', $state['valid'], 'The definitive invalid verdict persists for exactly this material.');
+        $this->assertOptionNotPlaintext(
+            ZaiAnthropicProviderAvailability::STATE_OPTION,
+            $key,
+            'The persisted state contains the binding hash, never the key — uncarriable or not.'
+        );
+
+        $this->assertFalse(
+            get_option(ZaiAnthropicPlanRegionSettings::REGION_PENDING_OPTION, false),
+            'A definitive answer about the riding credential settles the region-switch distrust either way.'
+        );
+
+        // The refusal gate now answers for this credential before any
+        // pre-transport throw: the typed refusal instead of the 500.
+        $this->assertSame(
+            'invalid_verdict',
+            $instance->generation_refusal_for_wired_authentication(new ApiKeyRequestAuthentication($key)),
+            'Generation is refused through the gate, not left to the binding-error 500.'
+        );
+
+        // Within the STATE_TTL the persisted verdict serves: still false,
+        // still no transport attempt.
+        $this->assertFalse($instance->isConfigured());
+        $this->assertNoHttpRequests();
+    }
+
     public function testAZaiValidatedStateCanNeverEstablishAnthropicStatus()
     {
         $key = FakeSecrets::apiKey();

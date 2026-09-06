@@ -167,22 +167,28 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         }
         $this->assertNoHttpRequests();
 
-        // The probe's fallback path validates the same way: a comma DB
-        // key is inconclusive — nothing flown, nothing persisted.
+        // The probe's fallback path rejects the same way (glm26-1,
+        // superseding this block's former inconclusive pin): a comma DB
+        // key is DEFINITIVELY invalid — nothing flown, and the invalid
+        // verdict persists bound to exactly that key, so the card stops
+        // reporting connected for a credential whose every generation
+        // would 500. The full-chain regression (refusal gate, region
+        // distrust) lives in the availability suite.
         putenv('ZAI_ANTHROPIC_API_KEY');
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'db-part-one,db-part-two');
 
         $instance = new ZaiAnthropicProviderAvailability();
         $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
 
-        $this->assertTrue(
+        $this->assertFalse(
             $instance->isConfigured(),
-            'Uncarriable credential material stays configured-pending — never a verdict, never flown.'
+            'Uncarriable credential material is a definitive invalid verdict — never configured-pending.'
         );
         $this->assertNoHttpRequests();
-        $this->assertFalse(
-            get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false),
-            'No verdict may persist for a credential that never flew.'
+        $this->assertSame(
+            'invalid',
+            get_option(ZaiAnthropicProviderAvailability::STATE_OPTION)['valid'],
+            'The verdict persists for exactly the material that cannot fly.'
         );
     }
 
