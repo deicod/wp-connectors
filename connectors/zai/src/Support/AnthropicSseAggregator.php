@@ -965,17 +965,12 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					: null;
 
 				/*
-				 * Verifier sweep on Codex R4: a content_block_start whose
-				 * content_block member is absent or not an object is a
-				 * corrupt declared event — defaulting to an empty text
-				 * block would let a garbage tool-block start silently
-				 * swallow the block's deltas (the tool call vanishes while
-				 * the stream reports success). Flag it.
+				 * glm22-14: an absent or non-object content_block member
+				 * needs no pre-check here — start_block()'s null-type
+				 * branch flags the identical malformed_event before any
+				 * block is created (the position checks above it are
+				 * glm13-5's rejection order, unchanged).
 				 */
-				if ( ! \property_exists( $raw, 'content_block' ) || ! \is_object( $raw->content_block ) ) {
-					$this->malformed_event = true;
-				}
-
 				$this->start_block( $index, $raw_block );
 				return;
 
@@ -1461,7 +1456,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 * @param \stdClass|null $raw_block The content_block payload (the
 	 *                                  object-tree decode), or null when
 	 *                                  the member was absent/non-object
-	 *                                  (already flagged by the caller).
+	 *                                  (the null-type branch flags it).
 	 * @return void
 	 */
 	private function start_block( int $index, ?\stdClass $raw_block ): void {
@@ -1515,7 +1510,12 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * Codex R8 #4: the block type is REQUIRED and must be a string —
 		 * a missing or non-string type silently became a text block, and a
 		 * following text_delta then succeeded on the fabricated block. No
-		 * default: flag the stream malformed.
+		 * default: flag the stream malformed. glm22-14: a null $raw_block
+		 * (the member absent or not an object — the Codex R4 verifier
+		 * sweep's corrupt declared event, whose consume_frame pre-check
+		 * this branch makes redundant) lands here too: defaulting to an
+		 * empty text block would let a garbage tool-block start silently
+		 * swallow the block's deltas.
 		 */
 		$type = null !== $raw_block && isset( $raw_block->type ) && \is_string( $raw_block->type ) ? $raw_block->type : null;
 
