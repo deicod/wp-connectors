@@ -281,12 +281,10 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			$fresh = self::state_is_fresh( $state );
 
 			if ( $fresh ) {
-				if ( $region_pending ) {
-					// A fresh verdict for this exact binding IS the definitive
-					// answer the distrust waits for (defensively: persisting
-					// one already clears the flag).
-					delete_option( static::REGION_PENDING_OPTION );
-				}
+				// A fresh verdict for this exact binding IS the definitive
+				// answer the distrust waits for (defensively: persisting
+				// one already clears the flag).
+				$this->settle_region_pending( $region_pending );
 
 				return self::VERDICT_VALID === ( $state['valid'] ?? null );
 			}
@@ -332,11 +330,9 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 
 		$this->persist_state( $binding, $verdict );
 
-		if ( $region_pending ) {
-			// Definitive answer about the riding credential (valid or
-			// rejected): the distrust is resolved either way.
-			delete_option( static::REGION_PENDING_OPTION );
-		}
+		// Definitive answer about the riding credential (valid or
+		// rejected): the distrust is resolved either way.
+		$this->settle_region_pending( $region_pending );
 
 		return $verdict;
 	}
@@ -559,6 +555,33 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 
 		return $endpoint_class::for_current_settings()->region() === $region
 			&& hash_equals( $fingerprint, hash( 'sha256', $key ) );
+	}
+
+	/**
+	 * Settles the region-switch distrust when this consult's precomputed
+	 * pending state says a definitive answer arrived (glm26-5).
+	 *
+	 * The settle rule — a definitive result about the riding credential
+	 * resolves the distrust EITHER way (a fresh matching verdict, a
+	 * verdict the probe just persisted, or a verdict another component
+	 * recorded for the CURRENT endpoint) — was hand-copied at three
+	 * sites (isConfigured()'s fresh-verdict branch, its post-probe
+	 * branch, and record_definitive_verdict()'s current-endpoint
+	 * guard): the class's own GLM4 #9/GLM9 #11 extraction discipline
+	 * applies — a future edit to when distrust resolves must land on
+	 * the one helper or nowhere, never two-of-three, where a missed
+	 * copy leaves a validated credential permanently refused as
+	 * region_pending ('pending revalidation after a region switch').
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param bool $region_pending The consult's region_switch_pending() result.
+	 * @return void
+	 */
+	private function settle_region_pending( bool $region_pending ): void {
+		if ( $region_pending ) {
+			delete_option( static::REGION_PENDING_OPTION );
+		}
 	}
 
 	/**
@@ -949,9 +972,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		$endpoint_class = static::endpoint_class();
 
 		if ( null === $endpoint_cache_key || $endpoint_cache_key === $endpoint_class::for_current_settings()->cache_key() ) {
-			if ( $this->region_switch_pending( $effective['key'] ) ) {
-				delete_option( static::REGION_PENDING_OPTION );
-			}
+			$this->settle_region_pending( $this->region_switch_pending( $effective['key'] ) );
 		}
 	}
 

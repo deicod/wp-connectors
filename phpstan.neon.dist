@@ -47,7 +47,11 @@ parameters:
 			# static::REFUSAL_LABEL like refuse_generation()'s already did).
 			# GLM12 #2: +1 (the discovery seed names the parser rejection
 			# through static::REFUSAL_LABEL too).
-			count: 13
+			# glm26-5: -2 (the three hand-copied region-pending settle
+			# sites ride one settle_region_pending() helper now, so the
+			# static::REGION_PENDING_OPTION read is stated once, not
+			# three times).
+			count: 11
 		-
 			identifier: classConstant.notFound
 			path: connectors/zai/src/Provider/AbstractZaiProvider.php
