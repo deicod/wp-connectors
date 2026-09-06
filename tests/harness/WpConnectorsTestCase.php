@@ -290,20 +290,92 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
-     * A zai_anthropic model wired for one harness-recorded request
-     * (glm20-11).
+     * A zai-surface generation model wired for one harness-recorded
+     * request, parameterized by provider class (glm23-11).
      *
-     * The one 4-statement wiring every zai_anthropic suite needs: prime
-     * the discovery transient (glm15-1: the vendor parent caches the
+     * The one 4-statement wiring every zai suite needs: prime the
+     * discovery transient (glm15-1: the vendor parent caches the
      * directory statically per class, so an unwired cached instance
      * throws pre-transport under randomized order — the old accidental
      * pass), resolve the model, bind the registry's harness
      * transporter, and authenticate with an ApiKeyRequestAuthentication.
-     * The wiring was copy-pasted five times across the suites (four
-     * private model() helpers plus one inline); a wiring change — a
-     * registry step, FakeSecrets key handling, a transporter swap — had
-     * to land five places, and a missed edit silently left one suite
-     * testing a differently-wired model while staying green.
+     *
+     * wiredZaiAnthropicModel() (glm20-11) and wiredZaiModel() (glm22-8)
+     * each spelled this wiring as mirrored bodies differing only in the
+     * provider class and the discovery-prime delegate — in this very
+     * file, whose own docblocks document consolidating exactly this
+     * wiring-drift class, and whose primeZaiSurfaceDiscoveryTransient()
+     * had already parameterized the one genuinely divergent step. One
+     * class-parameterized helper now (the glm22-9/12 shape): the
+     * provider's surface row — and with it the endpoint the prime
+     * targets — derives from the ZaiSurfaces registry by PROVIDER_ID
+     * (the lockstep pin's identity: a provider's PROVIDER_ID is its
+     * surface's settings CACHE_SCOPE), so a wiring change lands once
+     * and a third surface needs no new helper.
+     *
+     * @param string           $provider_class The surface's SDK provider
+     *                                        class (ZaiProvider or
+     *                                        ZaiAnthropicProvider).
+     * @param string|null      $key            Exact API key to authenticate
+     *                                        with, or null for a fresh
+     *                                        per-call fixture key
+     *                                        (FakeSecrets::apiKey() is
+     *                                        random per call — pass a
+     *                                        captured value when a test
+     *                                        binds flags/verdicts to the
+     *                                        key).
+     * @param ModelConfig|null $config         Optional model configuration.
+     * @return object The wired model.
+     */
+    protected function wiredZaiSurfaceModel(string $provider_class, ?string $key = null, ?ModelConfig $config = null)
+    {
+        $surface = $this->zaiSurfaceRowForProvider($provider_class);
+
+        if (null === $surface) {
+            throw new \RuntimeException("No registered zai surface for provider '{$provider_class}'.");
+        }
+
+        $this->primeZaiSurfaceDiscoveryTransient($surface['endpoint']);
+
+        $model = $provider_class::model('glm-5.3', $config);
+        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $model->setRequestAuthentication(new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication(
+            null === $key ? FakeSecrets::apiKey() : $key
+        ));
+
+        return $model;
+    }
+
+    /**
+     * The ZaiSurfaces registry row for one SDK provider class, or null
+     * when the provider's id matches no surface (glm23-11).
+     *
+     * The registry fixes the pairing direction (glm20-4): SDK-dependent
+     * facts alias the SDK-free owners, never the reverse — so the row
+     * is FOUND by identity (the provider's PROVIDER_ID === the row's
+     * settings CACHE_SCOPE, the lockstep pin's rule), never restated
+     * here.
+     *
+     * @param string $provider_class The SDK provider class.
+     * @return array{settings: class-string, endpoint: class-string}|null
+     */
+    private function zaiSurfaceRowForProvider(string $provider_class)
+    {
+        $slug = $provider_class::PROVIDER_ID;
+
+        foreach (\Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES as $surface) {
+            if ($surface['settings']::CACHE_SCOPE === $slug) {
+                return $surface;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A zai_anthropic model wired for one harness-recorded request
+     * (glm20-11; glm23-11: one-line delegate to the class-parameterized
+     * wiredZaiSurfaceModel()).
      *
      * @param string|null      $key    Exact API key to authenticate with, or
      *                                 null for a fresh per-call fixture key
@@ -315,29 +387,13 @@ abstract class WpConnectorsTestCase extends TestCase
      */
     protected function wiredZaiAnthropicModel(?string $key = null, ?ModelConfig $config = null)
     {
-        $this->primeZaiAnthropicDiscoveryTransient();
-
-        $model = \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3', $config);
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication(
-            null === $key ? FakeSecrets::apiKey() : $key
-        ));
-
-        return $model;
+        return $this->wiredZaiSurfaceModel(\Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::class, $key, $config);
     }
 
     /**
      * A zai (OpenAI-surface) model wired for one harness-recorded request
-     * (glm22-8, the symmetric twin of glm20-11's wiredZaiAnthropicModel()).
-     *
-     * glm20-11's consolidation landed on the zai_anthropic surface only:
-     * the zai suites kept three private model() helpers spelling the same
-     * 4-statement wiring plus five inline copies, so a wiring change —
-     * a registry step, FakeSecrets key handling, a transporter swap, or a
-     * glm15-1-class prime-first extension — had to land eight places, and
-     * a missed edit silently left one suite driving a differently-wired
-     * model while staying green. One helper now; the per-suite model()
-     * helpers are one-line delegates (the glm20-11 shape).
+     * (glm22-8; glm23-11: one-line delegate to the class-parameterized
+     * wiredZaiSurfaceModel()).
      *
      * @param string|null      $key    Exact API key to authenticate with, or
      *                                 null for a fresh per-call fixture key
@@ -349,15 +405,7 @@ abstract class WpConnectorsTestCase extends TestCase
      */
     protected function wiredZaiModel(?string $key = null, ?ModelConfig $config = null)
     {
-        $this->primeZaiDiscoveryTransient();
-
-        $model = \Deicod\WpConnectors\Zai\Provider\ZaiProvider::model('glm-5.3', $config);
-        $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
-        $model->setRequestAuthentication(new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication(
-            null === $key ? FakeSecrets::apiKey() : $key
-        ));
-
-        return $model;
+        return $this->wiredZaiSurfaceModel(\Deicod\WpConnectors\Zai\Provider\ZaiProvider::class, $key, $config);
     }
 
     /**
