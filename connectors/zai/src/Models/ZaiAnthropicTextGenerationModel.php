@@ -294,14 +294,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * prompt on every request build — one redundant whole-schema
 	 * json_encode plus sprintf per HTTP request for identical bytes on
 	 * the request-build hot path. The memo holds the ENCODED STRING
-	 * only: the translated guidance sentence is rebuilt per call (the
-	 * instruction's pin — translations are not the memo's business).
-	 * Rejections never memoize (the guard throws before any entry
-	 * lands). The reset set is the tool_schema_memo's (glm16-6/16):
-	 * a config identity change — the vendor base's final setConfig()
-	 * can replace a live instance's config — or an in-place schema
-	 * change through the vendor ModelConfig's public
-	 * setOutputSchema(), detected by the strict value compare below.
+	 * only, and only for OBJECT-FREE schema graphs (glm21-16): the
+	 * translated guidance sentence is rebuilt per call (the
+	 * instruction's pin — translations are not the memo's business),
+	 * and an object-carrying graph skips the memo entirely (see
+	 * $output_schema_encode_memo_schema). Rejections never memoize
+	 * (the guard throws before any entry lands). The reset set is the
+	 * tool_schema_memo's (glm16-6/16): a config identity change — the
+	 * vendor base's final setConfig() can replace a live instance's
+	 * config — or an in-place schema change through the vendor
+	 * ModelConfig's public setOutputSchema(), detected by the strict
+	 * value compare below.
 	 *
 	 * @since 0.2.0
 	 *
@@ -320,10 +323,20 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private $output_schema_encode_memo_config = null;
 
 	/**
-	 * The schema value the memo was built for (glm21-7; the memo's
-	 * value-compare reset trigger, compared strictly on every build —
-	 * the vendor ModelConfig is MUTABLE, so one config object mutated
-	 * in place never changes identity while its schema does).
+	 * The schema value the memo was built for — the memo's value-compare
+	 * reset trigger, compared STRICTLY on every build (glm21-7).
+	 *
+	 * The vendor ModelConfig is MUTABLE (a public setOutputSchema()),
+	 * so one config object mutated in place never changes identity
+	 * while its schema does; the strict value compare catches every
+	 * change to an OBJECT-FREE graph (arrays are values). A graph
+	 * carrying OBJECTS is NOT strictly comparable — PHP judges nested
+	 * objects by identity, so an in-place mutation of one left the old
+	 * and new schemas ===-equal FOREVER and the memo served the
+	 * pre-mutation encoding (verifier-reproduced end to end; glm21-16)
+	 * — so object-carrying schemas never memoize at all
+	 * (schema_is_strict_comparable() gates the memo; they encode every
+	 * build, the pre-glm21-7 behavior).
 	 *
 	 * @since 0.2.0
 	 *
@@ -776,10 +789,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *
 	 * Same contract as the JsonEncodeGuard::encode() call it wraps —
 	 * byte-identical first-run encoding, the same typed rejection on an
-	 * unencodable schema — minus the repeat: the compare pair (config
-	 * identity, strict schema value) re-encodes only when either half
-	 * changed, covering BOTH reconfiguration idioms the way the
-	 * tool-schema memo's pair does (glm16-16). Rejections never
+	 * unencodable schema — minus the repeat, for OBJECT-FREE schema
+	 * graphs only (glm21-16): the compare pair (config identity, strict
+	 * schema value) re-encodes when either half changed, covering BOTH
+	 * reconfiguration idioms the way the tool-schema memo's pair does
+	 * (glm16-16). A graph carrying objects is not strictly comparable
+	 * (nested objects compare by identity, so an in-place mutation is
+	 * invisible to the reset — the verifier-reproduced staleness) and
+	 * skips the memo entirely, encoding every build: the pre-glm21-7
+	 * behavior, correct for every schema shape. Rejections never
 	 * memoize: the guard throws before any field lands, so an
 	 * unencodable schema re-proves and re-rejects identically on every
 	 * build.
@@ -790,17 +808,78 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @return string The JSON encoding of the schema.
 	 */
 	private function encoded_output_schema( array $output_schema ): string {
-		$config = $this->getConfig();
+		$config              = $this->getConfig();
+		$strictly_comparable = self::schema_is_strict_comparable( $output_schema );
 
-		if ( null === $this->output_schema_encode_memo
-			|| $config !== $this->output_schema_encode_memo_config
-			|| $output_schema !== $this->output_schema_encode_memo_schema ) {
-			$this->output_schema_encode_memo        = JsonEncodeGuard::encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
+		if ( $strictly_comparable
+			&& null !== $this->output_schema_encode_memo
+			&& $config === $this->output_schema_encode_memo_config
+			&& $output_schema === $this->output_schema_encode_memo_schema ) {
+			return $this->output_schema_encode_memo;
+		}
+
+		/*
+		 * Any previous entry describes a different config or schema
+		 * value — or this schema never memoizes: clear first, so the
+		 * field states the truth (no active memo) even when the encode
+		 * below rejects and never lands a new one.
+		 */
+		$this->output_schema_encode_memo        = null;
+		$this->output_schema_encode_memo_config = null;
+		$this->output_schema_encode_memo_schema = null;
+
+		$encoded = JsonEncodeGuard::encode( $output_schema, 'the configured output schema', self::PROVIDER_LABEL );
+
+		if ( $strictly_comparable ) {
+			$this->output_schema_encode_memo        = $encoded;
 			$this->output_schema_encode_memo_config = $config;
 			$this->output_schema_encode_memo_schema = $output_schema;
 		}
 
-		return $this->output_schema_encode_memo;
+		return $encoded;
+	}
+
+	/**
+	 * Whether the schema's value graph is safely comparable by PHP's
+	 * STRICT array comparison (glm21-16).
+	 *
+	 * An object-free graph is: arrays are values, so every mutation —
+	 * through setOutputSchema() or a direct edit of the caller's
+	 * array — changes the compared value. A graph carrying OBJECT
+	 * members is not (objects compare by identity, hiding in-place
+	 * mutation), and neither is an absurdly deep or reference-cyclic
+	 * one (the walk is depth-bounded so it cannot hang where the guard's
+	 * own encode would reject the schema typed anyway): both read as
+	 * NOT comparable and skip the memo.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $value One schema member (or the schema root).
+	 * @param int   $depth Walk depth (bounded; internal).
+	 * @return bool True when strict comparison decides every change.
+	 */
+	private static function schema_is_strict_comparable( $value, int $depth = 0 ): bool {
+		if ( \is_object( $value ) ) {
+			return false;
+		}
+
+		if ( ! \is_array( $value ) ) {
+			return true;
+		}
+
+		if ( $depth >= 64 ) {
+			// Too deep to walk cheaply (or cyclic through references):
+			// conservatively not comparable — no memo, just encode.
+			return false;
+		}
+
+		foreach ( $value as $member ) {
+			if ( ! self::schema_is_strict_comparable( $member, $depth + 1 ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**

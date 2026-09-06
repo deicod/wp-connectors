@@ -3405,20 +3405,81 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
         );
     }
 
-    public function testTheConfiguredOutputSchemaEncodesOnceUntilTheSchemaChanges()
+    public function testTheConfiguredOutputSchemaEncodesOncePerComparableSchemaValue()
     {
         /*
-         * glm21-7: the outputSchema is a config member that never
-         * changes across a structured-output agent loop, but every
-         * request build re-encoded the whole schema into the system
-         * guidance for identical bytes. The memo (the tool_schema_memo
-         * compare pattern) encodes it once: a counting JsonSerializable
-         * nested in the schema proves the second build rides the memo,
-         * an in-place setOutputSchema() resets it through the value
-         * compare, and a setConfig() replacement resets it through the
-         * config-identity compare. Only the encoded STRING is
-         * memoized — the translated guidance sentence is rebuilt per
-         * call by design.
+         * glm21-7/glm21-16: the outputSchema is a config member that
+         * never changes across a structured-output agent loop, but
+         * every request build re-encoded the whole schema into the
+         * system guidance for identical bytes. The memo (the
+         * tool_schema_memo compare pattern) now serves OBJECT-FREE
+         * graphs only: PHP's strict array compare judges nested
+         * objects by identity, so an in-place mutation of a nested
+         * schema object was invisible to the reset and the memo served
+         * the pre-mutation encoding forever (verifier-reproduced).
+         *
+         * The two halves pin both behaviors: the PURE-ARRAY half
+         * tracks the memo field (set on first build, kept across a
+         * replayed build with a byte-identical wire body, reset by a
+         * value change and a setConfig() replacement); the
+         * OBJECT-CARRYING half — a counting JsonSerializable, the only
+         * encode seam — proves such graphs SKIP the memo (a fresh
+         * encode every build, the memo field null) and that an in-place
+         * nested-object mutation reaches the wire.
+         */
+        $model  = $this->model(ModelConfig::fromArray(array(
+            'outputMimeType' => 'application/json',
+            'outputSchema'   => array( 'type' => 'object', 'properties' => array( 'x' => array( 'type' => 'string' ) ) ),
+        )));
+        $prompt = array( new Message(MessageRoleEnum::user(), array( new MessagePart('hi') )) );
+
+        $memo = function () use ( $model ) {
+            return $this->aggregator_state($model, 'output_schema_encode_memo');
+        };
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $first = $memo();
+        $this->assertIsString($first, 'An object-free schema memoizes its encoding.');
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $attempts = $this->sdkHttpAttempts();
+        $this->assertSame($attempts[0]['body'], $attempts[1]['body'], 'The memoized build sends the byte-identical wire body.');
+        $this->assertSame($first, $memo(), 'The replayed build keeps the memo entry (config and schema value unchanged).');
+
+        // A pure-array value change (the vendor ModelConfig's public
+        // setter): the strict value compare resets the memo.
+        $model->getConfig()->setOutputSchema(array( 'type' => 'object', 'properties' => array( 'y' => array( 'type' => 'number' ) ) ));
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $second = $memo();
+        $this->assertIsString($second);
+        $this->assertNotSame($first, $second, 'A schema value change resets the memo through the strict compare.');
+
+        // A setConfig() replacement: the config-identity compare resets.
+        $model->setConfig(ModelConfig::fromArray(array(
+            'outputMimeType' => 'application/json',
+            'outputSchema'   => array( 'type' => 'object', 'properties' => array( 'z' => array( 'type' => 'boolean' ) ) ),
+        )));
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $third = $memo();
+        $this->assertIsString($third);
+        $this->assertNotSame($second, $third, 'A setConfig() replacement resets the memo through the identity compare.');
+
+        /*
+         * The object-carrying half: a counting JsonSerializable nested
+         * in a stdClass (any object member disables strict
+         * comparability) — no memo, a fresh encode every build, and
+         * the verifier's in-place mutation scenario reaches the wire
+         * because there is no memo to serve a stale encoding.
          */
         $counting = new class implements \JsonSerializable {
             public $encodes = 0;
@@ -3432,40 +3493,33 @@ final class ZaiAnthropicRequestMappingTest extends WpConnectorsTestCase
             }
         };
 
-        $config = ModelConfig::fromArray(array(
-            'outputMimeType' => 'application/json',
-            'outputSchema'   => array( 'type' => 'object', 'properties' => array( 'x' => $counting ) ),
-        ));
+        $props    = new \stdClass();
+        $props->x = $counting;
 
-        $model  = $this->model($config);
-        $prompt = array( new Message(MessageRoleEnum::user(), array( new MessagePart('hi') )) );
-
-        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
-        $model->generateTextResult($prompt);
-
-        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
-        $model->generateTextResult($prompt);
-
-        $this->assertSame(1, $counting->encodes, 'The unchanged schema encodes once; the second build rides the memo.');
-
-        // In-place schema mutation (the vendor ModelConfig's public
-        // setter): the strict value compare resets the memo.
-        $config->setOutputSchema(array( 'type' => 'object', 'properties' => array( 'y' => $counting ) ));
-
-        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
-        $model->generateTextResult($prompt);
-
-        $this->assertSame(2, $counting->encodes, 'setOutputSchema() resets the memo through the value compare.');
-
-        // setConfig() replacement: the config-identity compare resets.
         $model->setConfig(ModelConfig::fromArray(array(
             'outputMimeType' => 'application/json',
-            'outputSchema'   => array( 'type' => 'object', 'properties' => array( 'z' => $counting ) ),
+            'outputSchema'   => array( 'type' => 'object', 'properties' => $props ),
         )));
 
         $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
         $model->generateTextResult($prompt);
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
 
-        $this->assertSame(3, $counting->encodes, 'A setConfig() replacement resets the memo through the identity compare.');
+        $this->assertNull($memo(), 'An object-carrying schema never memoizes.');
+        $this->assertSame(2, $counting->encodes, 'Every build encodes an object-carrying schema (the pre-glm21-7 behavior).');
+
+        // The verifier's repro: in-place nested-object mutation, no
+        // setOutputSchema() re-call — the mutation reaches the wire.
+        $props->y = array( 'type' => 'number' );
+
+        $this->queueSdkResponse(200, array( 'Content-Type' => 'application/json' ), HttpResponseFactory::anthropicMessagesBody('ok'));
+        $model->generateTextResult($prompt);
+
+        $after_mutation = $this->sdkHttpAttempts();
+        $system         = ((array) json_decode((string) end($after_mutation)['body'], true))['system'];
+        $this->assertIsString($system);
+        $this->assertStringContainsString('"y":', $system, 'An in-place nested-object mutation reaches the wire (no memo to serve it stale).');
+        $this->assertSame(3, $counting->encodes);
     }
 }
