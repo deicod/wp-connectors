@@ -367,9 +367,21 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 
 		$settings_class = static::settings_class();
 
-		foreach ( $settings_class::env_constant_ladder() as $source => $value ) {
+		/*
+		 * glm24-8: the ladder is the owner-ordered list of NON-EMPTY
+		 * rungs, so the first-rung-wins resolution is one key fetch —
+		 * the former foreach returned unconditionally on its first
+		 * iteration, a loop silhouette that implied rung iteration
+		 * mattered (key_source()'s genuine search loop below is the
+		 * contrast case). An empty ladder falls through to the database
+		 * branch exactly as before.
+		 */
+		$ladder = $settings_class::env_constant_ladder();
+		$source = array_key_first( $ladder );
+
+		if ( null !== $source ) {
 			return array(
-				'key'    => $value,
+				'key'    => $ladder[ $source ],
 				'source' => $source,
 			);
 		}
