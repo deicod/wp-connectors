@@ -469,8 +469,12 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
 
     public function testRequestTargetsTheConfiguredPlanRegionEndpoint()
     {
-        update_option('zai_connector_zai_plan', 'general');
-        update_option('zai_connector_zai_region', 'cn');
+        // glm25-7: the option names ride the settings owner's constants
+        // (the Anthropic twin's idiom) — a renamed option must fail HERE,
+        // not write a dead row the plugin never reads while the endpoint
+        // falls back to coding+intl.
+        update_option(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::OPTION_PLAN, 'general');
+        update_option(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::OPTION_REGION, 'cn');
 
         list($url) = $this->captureRequest(
             array(new Message(MessageRoleEnum::user(), array(new MessagePart('hi')))),
