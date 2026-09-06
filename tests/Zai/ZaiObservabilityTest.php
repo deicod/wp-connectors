@@ -498,4 +498,27 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
             );
         }
     }
+
+    public function testTheDebugFieldRegistersUnderTheRegistrysFirstSurfaceSection()
+    {
+        /*
+         * glm21-12: the debug field's page/section pair derives from
+         * ZaiSurfaces::settings_classes()[0] — the same owner zai.php's
+         * boot() derives. The hardcoded PlanRegionSettings pair was the
+         * Codex R6 #6 silent-disappearance class (a registry reorder
+         * would strand the checkbox on the old section with no test
+         * failing); the pin holds the DERIVATION, not a class name.
+         */
+        WpHarness::$settings_fields = array();
+
+        DebugSettings::register_fields();
+
+        $owner = \Deicod\WpConnectors\Zai\Support\ZaiSurfaces::settings_classes()[0];
+
+        $this->assertSame(
+            array( $owner::PAGE_SLUG => array( $owner::SECTION_ID => array( \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED ) ) ),
+            WpHarness::$settings_fields,
+            "The debug field registers on the registry-first surface's page section (currently {$owner})."
+        );
+    }
 }

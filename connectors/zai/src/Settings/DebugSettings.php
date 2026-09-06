@@ -16,6 +16,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Settings;
 
 use Deicod\WpConnectors\Zai\Support\DebugLogger;
+use Deicod\WpConnectors\Zai\Support\ZaiSurfaces;
 
 /**
  * Debug settings store and Settings API wiring.
@@ -48,29 +49,38 @@ final class DebugSettings {
 	}
 
 	/**
-	 * Adds the debug field to the zai provider's settings section.
+	 * Adds the debug field to the shared settings page's owning section.
 	 *
-	 * Hooked on `admin_menu` after PlanRegionSettings::register_page().
+	 * Hooked on `admin_menu` after the owner's register_page().
 	 *
 	 * Codex R6 #6: the field was attached to the OPTION_GROUP section id
 	 * ('zai_connector') — valid before the SDK-free settings refactor
 	 * registered sections under per-provider SECTION_IDs. do_settings_sections()
 	 * renders only fields of REGISTERED sections, so the debug checkbox
 	 * silently disappeared from Settings → z.ai. It now attaches to the
-	 * section actually registered for the page (the zai provider's — one
-	 * shared debug toggle for the whole plugin, exactly the M1 UX).
+	 * section actually registered for the page (one shared debug toggle
+	 * for the whole plugin, exactly the M1 UX).
+	 *
+	 * glm21-12: the page owner DERIVES from the surface registry's
+	 * first row — the same owner zai.php's boot() derives — instead of
+	 * restating the PlanRegionSettings pair: a registry reorder or
+	 * page-owner move retargeted the bootstrap automatically while the
+	 * hardcoded pair stranded the debug field on the old section (the
+	 * Codex R6 #6 silent-disappearance class, no test failing).
 	 *
 	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
 	public static function register_fields(): void {
+		$page_owner = ZaiSurfaces::settings_classes()[0];
+
 		add_settings_field(
 			DebugLogger::OPTION_ENABLED,
 			esc_html__( 'Debug logging', 'zai' ),
 			array( __CLASS__, 'render_enabled_field' ),
-			PlanRegionSettings::PAGE_SLUG,
-			PlanRegionSettings::SECTION_ID
+			$page_owner::PAGE_SLUG,
+			$page_owner::SECTION_ID
 		);
 	}
 
