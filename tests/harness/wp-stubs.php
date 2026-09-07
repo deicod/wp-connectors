@@ -400,7 +400,8 @@ if (!class_exists('wpdb')) {
         }
 
         /**
-         * Substitutes %s/%d placeholders (single-argument shapes only).
+         * Substitutes %s/%d placeholders left-to-right in ONE pass over
+         * the original query (glm34-7).
          *
          * @param string $query Query with placeholders.
          * @param mixed  ...$args Values to substitute.
@@ -408,33 +409,50 @@ if (!class_exists('wpdb')) {
          */
         public function prepare($query, ...$args)
         {
-            foreach ($args as $arg) {
-                if (is_int($arg) || is_float($arg)) {
-                    $replacement = (string) $arg;
-                } else {
-                    $replacement = "'" . addslashes((string) $arg) . "'";
-                }
+            $prepared = '';
+            $length = strlen($query);
+            $arg_count = count($args);
+            $next_arg = 0;
+            for ($i = 0; $i < $length; $i++) {
                 /*
-                 * glm20-9: only '$' is escaped in the replacement —
-                 * preg_replace() processes backreference tokens inside
-                 * replacement strings ($1-$9 splice a capture, $0 the
-                 * whole match, \1 the octal form) even when the pattern
-                 * HAS no capture groups, so a bound value carrying '$1'
-                 * was silently consumed ('_transient_x$1probe%' became
-                 * '_transient_xprobe%'), diverging from core
-                 * wpdb::prepare(), which substitutes verbatim (all
-                 * three shapes verified on the engine). The backslash
-                 * is deliberately NOT escaped: addslashes() doubles
-                 * every backslash, and the replacement processing's
-                 * \\ -> \ collapse is what get_col() below already
-                 * relies on — escaping it would double every backslash
-                 * in the harness's SQL and break the LIKE-to-regex
-                 * conversion.
+                 * glm34-7: one pass over the ORIGINAL bytes — the
+                 * former sequential preg_replace() loop re-scanned the
+                 * already-substituted query each iteration, so a bound
+                 * value carrying a literal '%s'/'%d' was re-read as a
+                 * placeholder and consumed the NEXT argument's slot
+                 * (prepare('a = %s AND b = %s', 'lit%s', 7) yielded
+                 * "a = 'lit7' AND b = %s"), where core substitutes each
+                 * placeholder exactly once, left-to-right over the
+                 * original string.
                  */
-                $query = (string) preg_replace('/%s|%d/', addcslashes($replacement, '$'), $query, 1);
+                if ('%' === $query[$i] && $i + 1 < $length && ('s' === $query[$i + 1] || 'd' === $query[$i + 1]) && $next_arg < $arg_count) {
+                    $arg = $args[$next_arg++];
+                    if (is_int($arg) || is_float($arg)) {
+                        $prepared .= (string) $arg;
+                    } else {
+                        /*
+                         * glm20-9's net encoding, spelled directly: the
+                         * value lands with its quotes escaped and every
+                         * other byte VERBATIM — backslashes and '$'
+                         * tokens included (the former addslashes +
+                         * preg_replace replacement-processing round
+                         * trip produced exactly this: its \\ collapse
+                         * un-doubled addslashes's backslashes and its
+                         * escaped \$ kept dollars literal), so
+                         * get_col()'s LIKE-to-regex walk below still
+                         * reads a backslash in the captured literal as
+                         * an esc_like() escape.
+                         */
+                        $prepared .= "'" . addcslashes((string) $arg, "'\"") . "'";
+                    }
+                    $i++;
+                    continue;
+                }
+
+                $prepared .= $query[$i];
             }
 
-            return $query;
+            return $prepared;
         }
 
         /**
@@ -462,12 +480,13 @@ if (!class_exists('wpdb')) {
 
             /*
              * SQL LIKE (with esc_like() backslash escapes) to regex. No
-             * stripslashes() here: prepare()'s preg_replace replacement
-             * processing already collapsed addslashes()' doubled
-             * backslashes to singles, so a backslash in the captured
-             * literal is ALWAYS an esc_like() escape marking the next
-             * character literal (verifier round on GLM2 #7 — stripping
-             * them turned the escaped underscores back into wildcards).
+             * stripslashes() here: prepare() binds values with
+             * backslashes verbatim (glm34-7's direct encoding — the
+             * same net result the former addslashes/preg_replace round
+             * trip produced), so a backslash in the captured literal is
+             * ALWAYS an esc_like() escape marking the next character
+             * literal (verifier round on GLM2 #7 — stripping them
+             * turned the escaped underscores back into wildcards).
              */
             $like = $matches[1];
             $regex = '';

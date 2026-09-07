@@ -66,6 +66,24 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
             $GLOBALS['wpdb']->prepare($like, 'a\b'),
             'The addslashes/replace backslash round trip keeps producing a single backslash.'
         );
+
+        /*
+         * glm34-7: placeholders substitute ONCE, left-to-right over the
+         * original query — the former sequential preg_replace() loop
+         * re-scanned the already-substituted string, so a bound value
+         * carrying a literal '%s' consumed the next argument's slot
+         * ('a = %s AND b = %s', 'lit%s', 7) yielded "a = 'lit7' AND
+         * b = %s"), misbinding arguments the real wpdb never re-reads.
+         */
+        $this->assertSame(
+            "SELECT option_name FROM wp_options WHERE option_name LIKE 'lit%s' AND other = 7",
+            $GLOBALS['wpdb']->prepare(
+                'SELECT option_name FROM wp_options WHERE option_name LIKE %s AND other = %d',
+                'lit%s',
+                7
+            ),
+            'A placeholder-like token inside a bound value never consumes the next argument slot.'
+        );
     }
 
     public function testSanitizeKeyMirrorsCoreScalarSemantics()
