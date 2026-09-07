@@ -77,7 +77,10 @@ final class JsonEncodeGuard {
 	 * Rejects unencodable values typed, discarding the encoding.
 	 *
 	 * For call sites that only guard (the value travels to the wire
-	 * untouched inside the request params).
+	 * untouched inside the request params). glm32-2: rides encode() —
+	 * the one raw oracle — with the returned encoding discarded, so the
+	 * exception type and message stay byte-identical to the encoding
+	 * call sites' by construction.
 	 *
 	 * @since 0.2.0
 	 *
@@ -90,9 +93,7 @@ final class JsonEncodeGuard {
 	 * @throws InvalidArgumentException When the value cannot encode.
 	 */
 	public static function must_encode( $value, string $subject, string $provider_label ): void {
-		if ( false === json_encode( $value ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: core's wp_json_encode() lossily rescues invalid UTF-8 (GLM3 #4 verifier round).
-			throw new InvalidArgumentException( self::message( $provider_label, $subject ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
-		}
+		self::encode( $value, $subject, $provider_label );
 	}
 
 	/**
