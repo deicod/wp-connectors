@@ -2805,6 +2805,53 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $this->assertCount(1, $this->sdkHttpAttempts(), 'The refused generation must not re-transmit the credential.');
     }
 
+    public function testEveryNon2xxStatusFamilyMapsToItsVendorExceptionClass()
+    {
+        /*
+         * glm30-3: the status-to-exception mapping mirrors the vendor
+         * ResponseUtil this override replaces — 3xx Redirect, 4xx Client,
+         * 5xx Server, and EVERY other non-2xx status RuntimeException
+         * ('invalid HTTP status code'). The old <400 fall-through
+         * mislabeled a final 1xx informational as RedirectException
+         * ('unexpected redirect (100)'), which ErrorMapper bucketed as
+         * zai_redirect_error. The Response DTO admits 100-599, so 1xx
+         * rows are representable even though no real transport yields a
+         * final 1xx. No 401/403 rows: those record the definitive
+         * rejection (glm13-6) and would refuse the LATER rows'
+         * generations pre-transport.
+         */
+        $cases = array(
+            array(100, \WordPress\AiClient\Common\Exception\RuntimeException::class),
+            array(101, \WordPress\AiClient\Common\Exception\RuntimeException::class),
+            array(301, \WordPress\AiClient\Providers\Http\Exception\RedirectException::class),
+            array(307, \WordPress\AiClient\Providers\Http\Exception\RedirectException::class),
+            array(400, ClientException::class),
+            array(422, ClientException::class),
+            array(500, ServerException::class),
+            array(599, ServerException::class),
+        );
+
+        foreach ($cases as $case) {
+            list($status, $expected) = $case;
+            $this->queueSdkResponse($status, array(), HttpResponseFactory::openAiErrorBody('x'));
+
+            $thrown = null;
+            try {
+                $this->model()->generateTextResult($this->prompt());
+            } catch (\Throwable $e) {
+                $thrown = $e;
+            }
+
+            $this->assertNotNull($thrown, "[{$status}] A non-2xx status must throw.");
+            $this->assertInstanceOf($expected, $thrown, "[{$status}] The status maps to its vendor exception class.");
+
+            if ($status < 200) {
+                $this->assertStringContainsString('invalid HTTP status code', $thrown->getMessage(), "[{$status}] The invalid-status message names its class, not a redirect.");
+                $this->assertStringNotContainsString('redirect', $thrown->getMessage(), "[{$status}] A 1xx informational is never a redirect.");
+            }
+        }
+    }
+
     public function testNoRetriesAreAttemptedOn429()
     {
         $this->queueSdkResponse(429, array(), HttpResponseFactory::openAiErrorBody('slow down'));

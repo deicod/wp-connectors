@@ -14,6 +14,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Support;
 
+use WordPress\AiClient\Common\Exception\RuntimeException;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Exception\ClientException;
 use WordPress\AiClient\Providers\Http\Exception\RedirectException;
@@ -71,6 +72,7 @@ trait ThrowsSafeHttpErrors {
 	 * @throws ClientException   For 4xx responses.
 	 * @throws ServerException   For 5xx responses.
 	 * @throws RedirectException For 3xx responses.
+	 * @throws RuntimeException  For any other non-2xx status (glm30-3: a final 1xx informational among them), mirroring the vendor ResponseUtil's class mapping.
 	 */
 	protected function throwIfNotSuccessful( Response $response ): void { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
 		if ( $response->isSuccessful() ) {
@@ -95,14 +97,36 @@ trait ThrowsSafeHttpErrors {
 			$this->record_generation_route_rejection( $status );
 		}
 
-		if ( $status >= 500 ) {
+		if ( $status >= 500 && $status < 600 ) {
 			throw new ServerException( ErrorMapper::safe_http_message( $status, static::HTTP_API_LABEL ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
-		if ( $status >= 400 ) {
+		if ( $status >= 400 && $status < 500 ) {
 			throw new ClientException( ErrorMapper::safe_http_message( $status, static::HTTP_API_LABEL ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
-		throw new RedirectException( ErrorMapper::safe_http_message( $status, static::HTTP_API_LABEL ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+		if ( $status >= 300 && $status < 400 ) {
+			throw new RedirectException( ErrorMapper::safe_http_message( $status, static::HTTP_API_LABEL ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+		}
+
+		/*
+		 * glm30-3: every other non-2xx status — a FINAL 1xx informational
+		 * (the Response DTO permits 100-599, so one is representable even
+		 * though no real transport yields it as final), or anything else
+		 * outside the three vendor families — is NOT a redirect. The vendor
+		 * ResponseUtil this override replaces buckets that class into
+		 * RuntimeException ('invalid status code'); the old <400
+		 * fall-through mislabeled it RedirectException, which ErrorMapper
+		 * bucketed as zai_redirect_error. The SDK's RuntimeException family
+		 * keeps the precise, status-only message on the zai_error mapping.
+		 */
+		$invalid_status_message = sprintf(
+			/* translators: 1: API display name, 2: HTTP status code. */
+			__( 'The %1$s returned an invalid HTTP status code (%2$d).', 'zai' ),
+			static::HTTP_API_LABEL,
+			$status
+		);
+
+		throw new RuntimeException( $invalid_status_message, absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 	}
 }
