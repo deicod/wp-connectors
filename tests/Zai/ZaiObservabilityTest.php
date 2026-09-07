@@ -370,8 +370,17 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
     {
         $links = Plugin::action_links(array('<a href="x">Deactivate</a>'));
 
+        /*
+         * glm31-7: the link names the REGISTRY OWNER's page slug, not a
+         * hand-named settings class — the value assertion below would
+         * keep passing on a stranded literal while the page moved
+         * (boot() and DebugSettings follow the registry), so the pin
+         * reads the owner the same way the production code does.
+         */
+        $owner = \Deicod\WpConnectors\Zai\Support\ZaiSurfaces::settings_classes()[0];
+
         $this->assertCount(2, $links);
-        $this->assertStringContainsString('options-general.php?page=zai-connector', $links[0]);
+        $this->assertStringContainsString('options-general.php?page=' . $owner::PAGE_SLUG, $links[0]);
         $this->assertStringContainsString('Settings', $links[0]);
     }
 

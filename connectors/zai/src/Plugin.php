@@ -126,9 +126,22 @@ final class Plugin {
 	 * @return array Links with Settings prepended.
 	 */
 	public static function action_links( array $links ): array {
+		/*
+		 * glm31-7: the page owner derives from the ONE cross-file owner
+		 * registry — the same derivation zai.php's boot() (the FIRST
+		 * surface registers the shared page) and
+		 * DebugSettings::register_fields() ride. The hand-named
+		 * PlanRegionSettings was the last settings-page reference
+		 * outside the registry's reach: a page move (registry reorder,
+		 * a future surface owning the page) would have stranded this
+		 * link on a dead admin URL with no failing test — the exact
+		 * silent-strand drift class the registry exists to eliminate.
+		 */
+		$page_owner = Support\ZaiSurfaces::settings_classes()[0];
+
 		array_unshift(
 			$links,
-			'<a href="' . esc_url( admin_url( 'options-general.php?page=' . Settings\PlanRegionSettings::PAGE_SLUG ) ) . '">' . esc_html__( 'Settings', 'zai' ) . '</a>'
+			'<a href="' . esc_url( admin_url( 'options-general.php?page=' . $page_owner::PAGE_SLUG ) ) . '">' . esc_html__( 'Settings', 'zai' ) . '</a>'
 		);
 
 		return $links;
