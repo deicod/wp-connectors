@@ -74,6 +74,7 @@ use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
 use Deicod\WpConnectors\Zai\Support\StashesGenerationPrompt;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
+use Deicod\WpConnectors\Zai\Support\TranslatableMessageParts;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 
 /**
@@ -140,6 +141,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @var string
 	 */
 	private const HTTP_API_LABEL = ZaiAnthropicPlanRegionSettings::PROVIDER_LABEL;
+
+	/**
+	 * This surface's pinned empty-text translation policy (glm28-4,
+	 * parameterized by glm30-4's shared owner).
+	 *
+	 * The Messages mapper's block rule DROPS an empty-string text part
+	 * (message_part_block() emits no block for it), so an empty-text
+	 * part is NOT a translatable part here and a turn carrying only one
+	 * rejects at parse time — unlike the zai twin, whose
+	 * OpenAI-compatible mapper emits a wire text entry for it.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private const EMPTY_TEXT_TRANSLATES = false;
 
 	/**
 	 * Normalized input schemas for the CURRENT config's tool
@@ -1975,7 +1992,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * their precedence (same ordering rule as the consistency check
 		 * below).
 		 */
-		if ( array() !== $parts && ! self::message_has_translatable_part( $parts ) ) {
+		if ( array() !== $parts && ! TranslatableMessageParts::has_translatable_part( $parts, self::EMPTY_TEXT_TRANSLATES ) ) {
 			throw ResponseException::fromInvalidData(
 				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'content',
@@ -2401,35 +2418,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
-	 * Whether a parsed part list carries a part the OUTBOUND mapper would
-	 * translate into a Messages content block (GLM3 #1).
-	 *
-	 * Mirrors message_part_block()'s keep/drop decisions exactly — a text
-	 * part on the default channel with NON-EMPTY text, a function call, or
-	 * a function response — so the inbound parser can enforce the same
-	 * contract it will be held to on replay: a turn that would map to zero
-	 * wire blocks cannot join the conversation history.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param array $parts The parsed parts of one turn (list of MessagePart).
-	 * @return bool True when at least one part is translatable.
-	 */
-	private static function message_has_translatable_part( array $parts ): bool {
-		foreach ( $parts as $part ) {
-			if ( $part->getType()->isFunctionCall() || $part->getType()->isFunctionResponse() ) {
-				return true;
-			}
-
-			if ( $part->getType()->isText() && ! $part->getChannel()->isThought() && '' !== (string) $part->getText() ) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/**
+	 * Whether a decoded JSON value has an OBJECT shape (Codex R2 #1, R3 #1).   /**
 	 * Whether a decoded JSON value has an OBJECT shape (Codex R2 #1, R3 #1).
 	 *
 	 * The response body is decoded associatively, so JSON objects and JSON

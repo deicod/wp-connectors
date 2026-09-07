@@ -59,6 +59,7 @@ use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
 use Deicod\WpConnectors\Zai\Support\ThrowsSafeHttpErrors;
 use Deicod\WpConnectors\Zai\Support\SseAggregator;
 use Deicod\WpConnectors\Zai\Support\StashesGenerationPrompt;
+use Deicod\WpConnectors\Zai\Support\TranslatableMessageParts;
 use Deicod\WpConnectors\Zai\Support\ToolArgsObjectNess;
 use Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
@@ -114,6 +115,22 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @var string
 	 */
 	private const HTTP_API_LABEL = PlanRegionSettings::PROVIDER_LABEL . ' API';
+
+	/**
+	 * This surface's pinned empty-text translation policy (glm28-4,
+	 * parameterized by glm30-4's shared owner).
+	 *
+	 * The OpenAI-compatible mapper emits a wire text entry for EVERY
+	 * non-thought text part — an empty string included — so an
+	 * empty-text part is a translatable part here and a turn carrying
+	 * only one parses successfully (pinned in the response-mapping
+	 * suite), unlike the zai_anthropic twin's empty-text drop.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private const EMPTY_TEXT_TRANSLATES = true;
 
 	/**
 	 * Builds the request against the CURRENT plan/region endpoint.
@@ -840,7 +857,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		foreach ( $result->getCandidates() as $candidate ) {
 			$parts = $candidate->getMessage()->getParts();
 
-			if ( array() !== $parts && self::message_has_translatable_part( $parts ) ) {
+			if ( array() !== $parts && TranslatableMessageParts::has_translatable_part( $parts, self::EMPTY_TEXT_TRANSLATES ) ) {
 				continue;
 			}
 
@@ -854,41 +871,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		}
 
 		return $result;
-	}
-
-	/**
-	 * Whether a parsed part list carries a part the OUTBOUND mapper would
-	 * translate into a wire member (glm28-4).
-	 *
-	 * Mirrors the vendor OpenAI-compatible prepareMessagesParam()'s
-	 * keep/drop decisions exactly — thought-channel text parts map to
-	 * null and drop; every NON-thought text part maps (an empty string
-	 * included — it becomes a wire text entry, unlike the zai_anthropic
-	 * twin's empty-text drop its own rule mirrors); function calls map to
-	 * tool_calls; the single function response maps to the tool message —
-	 * so the inbound parser can enforce the same contract it will be
-	 * held to on replay: a turn that would map to zero wire members
-	 * cannot join the conversation history.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param array $parts The parsed parts of one turn (list of MessagePart).
-	 * @return bool True when at least one part is translatable.
-	 */
-	private static function message_has_translatable_part( array $parts ): bool {
-		foreach ( $parts as $part ) {
-			$type = $part->getType();
-
-			if ( $type->isFunctionCall() || $type->isFunctionResponse() ) {
-				return true;
-			}
-
-			if ( $type->isText() && ! $part->getChannel()->isThought() ) {
-				return true;
-			}
-		}
-
-		return false;
 	}
 
 	/**
