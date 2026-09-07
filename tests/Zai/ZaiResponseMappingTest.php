@@ -194,6 +194,109 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $this->assertSame('', $parts[0]->getText());
     }
 
+    /*
+     * glm28-2 (round-28 finding 2, extends glm26-3): a PRESENT
+     * wrong-typed member is corruption on this surface — the Anthropic
+     * twin flags the identical shapes, and before this round the zai
+     * guards silently skipped the fragment (part of the answer or a
+     * tool call vanishing from a stream that still reported success).
+     * Absent/null members keep the absent-semantics skip (GLM7 #8 /
+     * glm23-6's object-without-choices tolerance).
+     */
+
+    public function testPresentButWrongTypeStreamMembersFlagInsteadOfSilentlyDropping()
+    {
+        $valid_first = 'data: {"id":"c","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"},"finish_reason":null}]}';
+        $valid_last = 'data: {"id":"c","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":"stop"}]}';
+
+        $corrupt = array(
+            'non-string content' => 'data: {"id":"c","choices":[{"index":0,"delta":{"content":123},"finish_reason":null}]}',
+            'non-string reasoning_content' => 'data: {"id":"c","choices":[{"index":0,"delta":{"reasoning_content":4.5},"finish_reason":null}]}',
+            'non-array tool_calls' => 'data: {"id":"c","choices":[{"index":0,"delta":{"tool_calls":"x"},"finish_reason":null}]}',
+            'non-array delta' => 'data: {"id":"c","choices":[{"index":0,"delta":"x","finish_reason":null}]}',
+            'non-array choices' => 'data: {"id":"c","choices":5}',
+            'non-string tool-call id' => 'data: {"id":"c","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":123,"function":{"name":"get_weather","arguments":"{}"}}]},"finish_reason":null}]}',
+            'non-array tool-call function' => 'data: {"id":"c","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":"x"}]},"finish_reason":null}]}',
+            'non-string tool-call function name' => 'data: {"id":"c","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":456,"arguments":"{}"}}]},"finish_reason":null}]}',
+            'non-string tool-call arguments' => 'data: {"id":"c","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"get_weather","arguments":123}}]},"finish_reason":null}]}',
+        );
+
+        foreach ( $corrupt as $label => $frame ) {
+            $aggregator = new SseAggregator();
+            $aggregator->feed( $valid_first . "\n\n" . $frame . "\n\n" . $valid_last . "\n\n" . 'data: [DONE]' . "\n\n" );
+            $aggregator->finish();
+
+            $this->assertTrue(
+                $aggregator->has_malformed_event(),
+                "[{$label}] a present wrong-typed member must flag corruption (glm28-2)."
+            );
+            $this->assertSame(
+                'Hello',
+                $aggregator->aggregated()['choices'][0]['message']['content'],
+                "[{$label}] the valid neighbors still merge."
+            );
+        }
+
+        /*
+         * Post-sentinel parity: the same present wrong-typed choices
+         * member flags after [DONE] too (the glm15-14 one-predicate
+         * rationale — per-phase verdicts must not diverge).
+         */
+        $trailing = new SseAggregator();
+        $trailing->feed( $valid_first . "\n\n" . $valid_last . "\n\n" . 'data: [DONE]' . "\n\n" . 'data: {"choices":5}' . "\n\n" );
+        $trailing->finish();
+
+        $this->assertTrue( $trailing->has_malformed_event(), 'A trailing non-array choices member flags like its pre-sentinel twin.' );
+    }
+
+    public function testAbsentOrNullStreamMembersKeepTheirSilentSkip()
+    {
+        $frames = array(
+            'terminal frame without delta' => 'data: {"id":"c","choices":[{"index":0,"finish_reason":"stop"}]}',
+            'null content member' => 'data: {"id":"c","choices":[{"index":0,"delta":{"content":null},"finish_reason":null}]}',
+            'null choices member (usage frame)' => 'data: {"id":"c","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"choices":null}',
+            'empty string content fragment' => 'data: {"id":"c","choices":[{"index":0,"delta":{"content":""},"finish_reason":null}]}',
+        );
+
+        foreach ( $frames as $label => $frame ) {
+            $aggregator = new SseAggregator();
+            $aggregator->feed( 'data: {"id":"c","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}' . "\n\n" . $frame . "\n\n" . 'data: [DONE]' . "\n\n" );
+            $aggregator->finish();
+
+            $this->assertFalse(
+                $aggregator->has_malformed_event(),
+                "[{$label}] absent/null semantics keep the historical skip (glm28-2 boundary)."
+            );
+        }
+    }
+
+    public function testACorruptArgumentsFragmentRejectsInsteadOfFabricatingANoArgumentCall()
+    {
+        /*
+         * The round-28 verifier's harmful shape: "arguments":123 as the
+         * stream's ONLY arguments fragment used to fabricate a
+         * successful no-argument call whose inputs the model never
+         * produced (glm6-15 covers legitimate EMPTY-STRING arguments,
+         * not a laundered corrupt fragment).
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-fab","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-fab","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"get_weather","arguments":123}}]},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-fab","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A corrupt arguments fragment must reject, not fabricate a no-argument call.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('malformed chunk event', $e->getMessage());
+        }
+    }
+
     public function testABomPrefixedJsonBodyStillParses()
     {
         /*

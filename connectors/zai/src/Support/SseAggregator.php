@@ -374,7 +374,21 @@ final class SseAggregator extends AbstractSseAggregator {
 			$choice['finish_reason'] = $delta['finish_reason'];
 		}
 
-		if ( ! isset( $delta['delta'] ) || ! \is_array( $delta['delta'] ) ) {
+		/*
+		 * glm28-2 (round-28 finding 2, extends glm26-3): a PRESENT
+		 * non-array delta member object is corruption — "delta":"x"
+		 * used to silently drop the whole fragment while the stream
+		 * completed clean. An absent member (or an explicit null, which
+		 * isset() reads as absent) keeps its silent skip: the member's
+		 * absent semantics on this wire.
+		 */
+		if ( ! isset( $delta['delta'] ) ) {
+			return $choice;
+		}
+
+		if ( ! \is_array( $delta['delta'] ) ) {
+			$this->malformed_event = true;
+
 			return $choice;
 		}
 
@@ -389,6 +403,16 @@ final class SseAggregator extends AbstractSseAggregator {
 		 * not merged. An explicit null keeps the historical skip: isset()
 		 * reads it as absent, matching the member's absent semantics on
 		 * this wire.
+		 *
+		 * glm28-2 extends the same present-but-wrong-type rule to the
+		 * siblings below (content, reasoning_content, tool_calls): a
+		 * gateway-mangled {"content":123} used to skip the fragment
+		 * silently — part of the answer vanished from a stream that
+		 * still reported success, the exact silent-loss class glm23-6
+		 * and glm26-3 were landed to close, and the shape the Anthropic
+		 * twin flags through has_string_content_member(). The ''-string
+		 * content fragment keeps its silent skip (an empty fragment
+		 * merges nothing by construction).
 		 */
 		if ( isset( $delta['delta']['role'] ) ) {
 			if ( ! \is_string( $delta['delta']['role'] ) ) {
@@ -399,13 +423,27 @@ final class SseAggregator extends AbstractSseAggregator {
 		}
 
 		foreach ( array( 'content', 'reasoning_content' ) as $text_field ) {
-			if ( isset( $delta['delta'][ $text_field ] ) && \is_string( $delta['delta'][ $text_field ] ) && '' !== $delta['delta'][ $text_field ] ) {
+			if ( ! isset( $delta['delta'][ $text_field ] ) ) {
+				continue;
+			}
+
+			if ( ! \is_string( $delta['delta'][ $text_field ] ) ) {
+				$this->malformed_event = true;
+
+				continue;
+			}
+
+			if ( '' !== $delta['delta'][ $text_field ] ) {
 				$choice['message'][ $text_field ] = ( $choice['message'][ $text_field ] ?? '' ) . $delta['delta'][ $text_field ];
 			}
 		}
 
-		if ( isset( $delta['delta']['tool_calls'] ) && \is_array( $delta['delta']['tool_calls'] ) ) {
-			$choice['message']['tool_calls'] = $this->merge_tool_calls( $choice['message']['tool_calls'] ?? array(), $delta['delta']['tool_calls'] );
+		if ( isset( $delta['delta']['tool_calls'] ) ) {
+			if ( ! \is_array( $delta['delta']['tool_calls'] ) ) {
+				$this->malformed_event = true;
+			} else {
+				$choice['message']['tool_calls'] = $this->merge_tool_calls( $choice['message']['tool_calls'] ?? array(), $delta['delta']['tool_calls'] );
+			}
 		}
 
 		return $choice;
@@ -482,17 +520,59 @@ final class SseAggregator extends AbstractSseAggregator {
 				);
 			}
 
-			if ( isset( $tool_delta['id'] ) && \is_string( $tool_delta['id'] ) ) {
-				$accumulated[ $index ]['id'] = $tool_delta['id'];
+			/*
+			 * glm28-2: the fragment's own members join the present-but-
+			 * wrong-type rule (glm26-3). The harmful shape the round-28
+			 * verifier reproduced: "arguments":123 as a stream's ONLY
+			 * arguments fragment silently fabricated a successful
+			 * NO-ARGUMENT call whose inputs the model never produced —
+			 * the exact fabrication the Anthropic twin's
+			 * has_malformed_tool_input() exists to stop. Corrupt id/name
+			 * members used to leave the accumulator's null for the
+			 * model's identity rejection — a coincidental downstream
+			 * catch; the corruption belongs in the malformed-event
+			 * channel. Absent/null keeps its skip (isset semantics),
+			 * and glm6-15's legitimate empty-string arguments fragment
+			 * is a STRING — it still merges.
+			 */
+			if ( isset( $tool_delta['id'] ) ) {
+				if ( \is_string( $tool_delta['id'] ) ) {
+					$accumulated[ $index ]['id'] = $tool_delta['id'];
+				} else {
+					$this->malformed_event = true;
+				}
 			}
-			if ( isset( $tool_delta['type'] ) && \is_string( $tool_delta['type'] ) ) {
-				$accumulated[ $index ]['type'] = $tool_delta['type'];
+			if ( isset( $tool_delta['type'] ) ) {
+				if ( \is_string( $tool_delta['type'] ) ) {
+					$accumulated[ $index ]['type'] = $tool_delta['type'];
+				} else {
+					$this->malformed_event = true;
+				}
 			}
-			if ( isset( $tool_delta['function']['name'] ) && \is_string( $tool_delta['function']['name'] ) ) {
-				$accumulated[ $index ]['function']['name'] = $tool_delta['function']['name'];
+
+			$function = isset( $tool_delta['function'] ) && \is_array( $tool_delta['function'] )
+				? $tool_delta['function']
+				: null;
+
+			if ( isset( $tool_delta['function'] ) && ! \is_array( $tool_delta['function'] ) ) {
+				$this->malformed_event = true;
 			}
-			if ( isset( $tool_delta['function']['arguments'] ) && \is_string( $tool_delta['function']['arguments'] ) ) {
-				$accumulated[ $index ]['function']['arguments'] .= $tool_delta['function']['arguments'];
+
+			if ( null !== $function ) {
+				if ( isset( $function['name'] ) ) {
+					if ( \is_string( $function['name'] ) ) {
+						$accumulated[ $index ]['function']['name'] = $function['name'];
+					} else {
+						$this->malformed_event = true;
+					}
+				}
+				if ( isset( $function['arguments'] ) ) {
+					if ( \is_string( $function['arguments'] ) ) {
+						$accumulated[ $index ]['function']['arguments'] .= $function['arguments'];
+					} else {
+						$this->malformed_event = true;
+					}
+				}
 			}
 		}
 
@@ -630,7 +710,20 @@ final class SseAggregator extends AbstractSseAggregator {
 			$this->raw_usage_source = $data;
 		}
 
-		if ( ! isset( $event['choices'] ) || ! \is_array( $event['choices'] ) ) {
+		/*
+		 * glm28-2: a PRESENT non-array choices member is corruption
+		 * ("choices":5) — the frame used to vanish silently, taking its
+		 * text or finish_reason with it while the stream completed
+		 * clean. An absent member (or an explicit null — the usage-frame
+		 * shape) keeps the historical non-event skip.
+		 */
+		if ( ! isset( $event['choices'] ) ) {
+			return;
+		}
+
+		if ( ! \is_array( $event['choices'] ) ) {
+			$this->malformed_event = true;
+
 			return;
 		}
 
@@ -686,7 +779,19 @@ final class SseAggregator extends AbstractSseAggregator {
 			$this->trailing_raw_usage_source = $data;
 		}
 
-		if ( ! isset( $decoded['choices'] ) || ! \is_array( $decoded['choices'] ) ) {
+		/*
+		 * glm28-2: the pre-sentinel rule verbatim — a present non-array
+		 * choices member flags identically before and after the sentinel
+		 * (the glm15-14 one-predicate rationale: the same payload shape
+		 * must not earn different corruption verdicts per phase).
+		 */
+		if ( ! isset( $decoded['choices'] ) ) {
+			return;
+		}
+
+		if ( ! \is_array( $decoded['choices'] ) ) {
+			$this->malformed_event = true;
+
 			return;
 		}
 
