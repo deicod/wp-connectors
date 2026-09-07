@@ -1074,6 +1074,98 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $this->assertNotNull($call->getArgs());
     }
 
+    /*
+     * glm29-4 (round-29 finding 4, the glm28-2 parity): a PRESENT
+     * non-string tool_use id or name in content_block_start used to
+     * null silently in the accumulator and surface only later as
+     * parse_content_block()'s generic identity rejection — the
+     * coincidental-downstream-catch channel the zai twin's own comment
+     * says corruption must not rely on. The aggregator flags it through
+     * the malformed-event channel now, like the twin.
+     */
+
+    public function testAStreamedNonStringToolUseIdFlagsAsAMalformedEvent()
+    {
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_nsi","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":5,"name":"get_weather","input":{}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-string tool_use id must reject through the stream-malformed channel.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('The message stream contained a malformed event frame.', $e->getMessage());
+            $this->assertStringNotContainsString('identity members', $e->getMessage(), 'The stream channel owns the verdict, not the parse-time catch.');
+        }
+    }
+
+    public function testAStreamedNonStringToolUseNameFlagsAsAMalformedEvent()
+    {
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_nsn","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nsn","name":["get_weather"],"input":{}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A non-string tool_use name must reject through the stream-malformed channel.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('The message stream contained a malformed event frame.', $e->getMessage());
+            $this->assertStringNotContainsString('identity members', $e->getMessage(), 'The stream channel owns the verdict, not the parse-time catch.');
+        }
+    }
+
+    public function testAStreamedNullToolUseIdKeepsItsParseTimeRejection()
+    {
+        /*
+         * The tolerance boundary: an explicit null reads as absent
+         * (isset()'s absent semantics on this wire), so the aggregator
+         * keeps its skip — the turn still rejects, through the
+         * parse-time identity channel glm18-2 established for absent
+         * members, exactly as before the round.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_nul","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":null,"name":"get_weather","input":{}}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A null tool_use id must still reject at parse time.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('identity members', $e->getMessage());
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage(), 'Absent semantics never flag the stream channel.');
+        }
+    }
+
     public function testStreamedNegativeZeroToolArgumentsStillAggregate()
     {
         // Verifier round on GLM4 #2, streamed twin of the above.

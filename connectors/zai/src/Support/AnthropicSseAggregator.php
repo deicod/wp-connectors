@@ -1690,6 +1690,27 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 */
 		if ( 'tool_use' === $type ) {
 			/*
+			 * glm29-4 (round-29 finding 4, the glm28-2 parity): a
+			 * PRESENT non-string id or name is corruption — the
+			 * accumulator ternaries below used to null it silently,
+			 * and the corruption surfaced only later as
+			 * parse_content_block()'s generic identity-members
+			 * rejection, the coincidental-downstream-catch channel
+			 * the zai twin's own comment says corruption must not
+			 * rely on (the twin's guards flag the identical shapes
+			 * through the malformed-event channel). The corrupt value
+			 * is not merged (the ternary stores null); an absent
+			 * member (or an explicit null, which isset() reads as
+			 * absent) keeps the silent skip — the member's absent
+			 * semantics on this wire.
+			 */
+			foreach ( array( 'id', 'name' ) as $identity_member ) {
+				if ( isset( $raw_block->{$identity_member} ) && ! \is_string( $raw_block->{$identity_member} ) ) {
+					$this->malformed_event = true;
+				}
+			}
+
+			/*
 			 * glm28-13: one presence check, one flag site. The absent
 			 * member and the explicit null are the two Codex R7 #1
 			 * sibling shapes the former three-check block distinguished
