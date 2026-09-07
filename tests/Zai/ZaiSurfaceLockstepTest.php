@@ -261,7 +261,23 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
          * twin's hand-stringed literals were the identical uncovered
          * shape on the other surface (composer check green offline,
          * then the next live run writing options nothing reads).
+         *
+         * glm28-11 supersedes the per-file derivation assertions: the
+         * round-trip scaffold (including every owner-constant
+         * derivation) moved to the ONE shared base
+         * (tests/harness/AbstractZaiSurfaceLiveSmokeTestCase.php), so
+         * the derivation statements live THERE once, and each concrete
+         * twin's pin reduces to naming its three owner classes (the
+         * hook values — a rename breaks the ::class spelling before any
+         * live run).
          */
+        $base = (string) file_get_contents(dirname(__DIR__, 2) . '/tests/harness/AbstractZaiSurfaceLiveSmokeTestCase.php');
+
+        $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $base), 'Every plugin option name in the shared smoke base rides an owner constant.');
+        $this->assertStringContainsString('$settings::OPTION_PLAN', $base, 'The shared base derives the plan option through the settings hook.');
+        $this->assertStringContainsString('$availability::KEY_OPTION', $base, 'The shared base derives the key option through the availability hook.');
+        $this->assertStringContainsString('$provider::PROVIDER_ID', $base, 'The shared base derives the provider id through the provider hook.');
+
         foreach (array(
             'zai' => array(
                 'file' => dirname(__DIR__, 2) . '/tests/Zai/ZaiLiveSmokeTest.php',
@@ -278,8 +294,8 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
 
             $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $source), "Every plugin option name in the {$surface} smoke test rides an owner constant.");
             $this->assertSame(0, preg_match('/[\'"]' . preg_quote($surface, '/') . '[\'"]/', $source), "The {$surface} provider id rides its owner constant.");
-            $this->assertStringContainsString($owner['settings'] . '::OPTION_PLAN', $source, "The {$surface} plan option rides its owner constant.");
-            $this->assertStringContainsString($owner['provider'] . '::PROVIDER_ID', $source, "The {$surface} provider id is wired through the owner constant.");
+            $this->assertStringContainsString($owner['settings'] . '::class', $source, "The {$surface} settings hook names the owner class.");
+            $this->assertStringContainsString($owner['provider'] . '::class', $source, "The {$surface} provider hook names the owner class.");
         }
     }
     public function testBothDirectoriesRideTheOneDiscoveryConsultOrchestrator()

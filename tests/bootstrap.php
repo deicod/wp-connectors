@@ -57,3 +57,4 @@ require_once __DIR__ . '/harness/SimpleArrayCache.php';
 require_once __DIR__ . '/harness/OpaqueAuthentication.php';
 require_once __DIR__ . '/harness/AbstractZaiSurfaceRequestMappingTestCase.php';
 require_once __DIR__ . '/harness/AbstractZaiSurfaceResponseMappingTestCase.php';
+require_once __DIR__ . '/harness/AbstractZaiSurfaceLiveSmokeTestCase.php';

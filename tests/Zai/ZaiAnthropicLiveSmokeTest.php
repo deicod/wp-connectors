@@ -6,85 +6,40 @@
  * optional WP_CONNECTORS_TEST_ZAI_PLAN / WP_CONNECTORS_TEST_ZAI_REGION
  * select the endpoint (the SAME account key works on both surfaces per
  * SPEC §3.2). Never runs under `composer check`, never prints the key, and
- * asserts only safe facts.
+ * asserts only safe facts. The round-trip skeleton rides the one shared
+ * base (glm28-11, the Abstract*MappingTestCase pattern).
+ *
+ * Default GENERAL: record 0007 proved the coding-surface Messages routes
+ * cannot generate, so the provider's own default is general.
  *
  * @package wp-connectors
  */
 
 declare( strict_types=1 );
 
-use WordPress\AiClient\AiClient;
-use WordPress\AiClient\Messages\DTO\Message;
-use WordPress\AiClient\Messages\DTO\MessagePart;
-use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
-use WordPress\AiClient\Providers\Http\HttpTransporter;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
-use Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 
-final class ZaiAnthropicLiveSmokeTest extends WpConnectorsTestCase
+final class ZaiAnthropicLiveSmokeTest extends AbstractZaiSurfaceLiveSmokeTestCase
 {
-    /**
-     * Live requests go through a real curl client, not the recording harness
-     * client, so the unmocked-attempt audit must be relaxed for this test.
-     */
-    protected $allowUnmockedHttp = true;
-
-    protected function setUp(): void
+    protected function settings_class(): string
     {
-        parent::setUp();
+        return ZaiAnthropicPlanRegionSettings::class;
+    }
 
-        if ('' === (string) getenv('WP_CONNECTORS_TEST_ZAI_API_KEY')) {
-            $this->markTestSkipped('Live z.ai test requires WP_CONNECTORS_TEST_ZAI_API_KEY (opt-in only; see docs/TESTING.md).');
-        }
+    protected function availability_class(): string
+    {
+        return ZaiAnthropicProviderAvailability::class;
+    }
+
+    protected function provider_class(): string
+    {
+        return ZaiAnthropicProvider::class;
     }
 
     public function testLiveAnthropicRoundTrip()
     {
-        $key = (string) getenv('WP_CONNECTORS_TEST_ZAI_API_KEY');
-        // Default GENERAL: record 0007 proved the coding-surface Messages
-        // routes cannot generate, so the provider's own default is general.
-        // glm21-15: the option names, defaults, and provider id ride their
-        // owner constants (the GLM10 #15 class the live probe was fixed in)
-        // — after a rename this test writes options the plugin reads and
-        // probes the surface it reports as evidence.
-        $plan = (string) (getenv('WP_CONNECTORS_TEST_ZAI_PLAN') ?: ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN);
-        $region = (string) (getenv('WP_CONNECTORS_TEST_ZAI_REGION') ?: AbstractPlanRegionSettings::DEFAULT_REGION);
-
-        update_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, $plan);
-        update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, $region);
-        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
-
-        $registry = AiClient::defaultRegistry();
-        $registry->setHttpTransporter(new HttpTransporter(new CurlPsr18Client()));
-
-        \Deicod\WpConnectors\Zai\Plugin::register($registry);
-        $registry->setProviderRequestAuthentication(ZaiAnthropicProvider::PROVIDER_ID, new ApiKeyRequestAuthentication($key));
-
-        // Availability: authenticated /v1/models probe against the live
-        // Anthropic-surface endpoint (this also settles the O1 question for
-        // the selected endpoint whenever it returns a definitive answer).
-        $this->assertTrue(
-            ZaiAnthropicProvider::availability()->isConfigured(),
-            "Live availability probe failed for {$plan}+{$region} — check the key matches the selected plan/region."
-        );
-
-        // Discovery: live /v1/models list (falls back to the static catalog
-        // on any failure, so a non-empty list is guaranteed either way).
-        $models = ZaiAnthropicProvider::modelMetadataDirectory()->listModelMetadata();
-        $this->assertNotEmpty($models);
-
-        // Inference: one real Messages generation through the plugin model.
-        $model = $registry->getProviderModel(ZaiAnthropicProvider::PROVIDER_ID, $models[0]->getId());
-        $result = $model->generateTextResult(array(
-            new Message(MessageRoleEnum::user(), array(new MessagePart('Reply with the single word: ok'))),
-        ));
-
-        $this->assertNotSame('', trim($result->toText()));
-
-        // The key must never appear in any state the plugin persisted.
-        $this->assertOptionNotPlaintext(ZaiAnthropicProviderAvailability::STATE_OPTION, $key);
+        $this->assert_live_round_trip();
     }
 }
