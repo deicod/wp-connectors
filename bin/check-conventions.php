@@ -363,7 +363,10 @@ function wp_connectors_group_use_members(string $body): array
  * 'use Vendor\Pkg\{Sub\Widget};' is referenced as Widget). Nested
  * groups recurse with the composed prefix. A member that is not a
  * plain name/alias shape (only possible in a file lint already rejects)
- * is skipped — the scanner stays neutral on unparseable input.
+ * is skipped — the scanner stays neutral on unparseable input. An
+ * optional per-member 'function '/'const ' kind prefix (the MIXED
+ * group-use syntax, glm27-2) is stripped before the parse; it never
+ * affects the short name.
  *
  * @param string $prefix The group's namespace prefix ('Vendor\Pkg').
  * @param string $body   The text between the group's braces (masked view).
@@ -382,6 +385,23 @@ function wp_connectors_group_use_imports(string $prefix, string $body): array
                 $imports[] = $nested;
             }
             continue;
+        }
+
+        /*
+         * glm27-2 (Codex R21 finding 2): a MIXED group-use declaration
+         * carries per-member kinds — use Vendor\Pkg\{function helper,
+         * const FLAG, Widget}; — and the typed members failed BOTH
+         * regexes below, silently skipping them as though invalid
+         * syntax: an unused typed member then reported no violation,
+         * defeating the unused-import check for the mixed syntax. The
+         * kind prefix never affects the SHORT name (function helper →
+         * helper; const FLAG as F → F), so it is stripped before the
+         * alias/name parse and dropped. The statement-level form
+         * (use function Vendor\{...}) is already handled where the
+         * prefix is built above the group walk.
+         */
+        if (1 === preg_match('/^(function|const)\s+/', $member, $member_kind)) {
+            $member = trim(substr($member, strlen($member_kind[0])));
         }
 
         $alias = '';

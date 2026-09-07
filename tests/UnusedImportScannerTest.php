@@ -255,6 +255,55 @@ FIXTURE
                 ,
                 1,
             ),
+            /*
+             * glm27-2 (Codex R21 finding 2): the MIXED group-use syntax
+             * carries per-member kinds — use Vendor\Pkg\{function
+             * helper, const FLAG, Widget}; — and the typed members
+             * failed both member regexes, silently skipping them as
+             * though invalid: an unused typed member reported NO
+             * violation. The kind prefix is stripped before the parse
+             * now; it never affects the short name.
+             */
+            'mixed group-use with typed members all used does not flag (glm27-2)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Pkg\{function helper, const FLAG, Widget};
+helper();
+$x = FLAG;
+$y = new Widget();
+FIXTURE
+                ,
+                0,
+            ),
+            'mixed group-use with one typed member unused flags (glm27-2)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Pkg\{function helper, const FLAG, Widget};
+helper();
+$y = new Widget();
+FIXTURE
+                ,
+                1,
+            ),
+            'mixed group-use alias on a typed member resolves (glm27-2)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Pkg\{function helper as h, const FLAG as F};
+h();
+$x = F;
+FIXTURE
+                ,
+                0,
+            ),
+            'mixed group-use unused aliased typed member flags (glm27-2)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Pkg\{function helper as h, const FLAG as F};
+h();
+FIXTURE
+                ,
+                1,
+            ),
             'group-use member mention in comment does not flag (glm20-3)' => array(
                 <<<'FIXTURE'
 <?php
