@@ -206,6 +206,13 @@ final class JsonEncodeGuard {
 	/**
 	 * The one rejection message template for every guard site.
 	 *
+	 * GLM28-20: a payload failing json_encode() solely on NESTING DEPTH
+	 * (JSON_ERROR_DEPTH, deeper than the encoder's 512-level limit)
+	 * passes every per-member guard (each member re-encodes shallower
+	 * and clean) and lands here — the template names that cause too, so
+	 * the operator is not sent hunting for a NAN or UTF-8 bug the
+	 * payload does not have.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $provider_label The consuming provider's name.
@@ -214,7 +221,7 @@ final class JsonEncodeGuard {
 	 */
 	private static function message( string $provider_label, string $subject ): string {
 		return sprintf(
-			'The %s provider could not JSON-encode %s (unencodable value such as NAN, invalid UTF-8, or a recursive structure).',
+			'The %s provider could not JSON-encode %s (unencodable value such as NAN, invalid UTF-8, or a recursive structure; or nesting deeper than the encoder\'s depth limit).',
 			$provider_label,
 			$subject
 		);

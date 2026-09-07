@@ -280,8 +280,16 @@ final class ToolArgsReplayGuard {
 			/*
 			 * Within the platform int range the decode is exact (int), so
 			 * only literals BEYOND PHP_INT_MAX need the exactness test.
-			 * The bound compare is lexical on equal-length digit strings
-			 * (numeric for same-length decimal digits).
+			 * glm28-19 (wording fix, glm19-13 class): the bound compare
+			 * is PHP's NUMERIC-STRING comparison, not a lexical one —
+			 * two digit strings compare as numbers, and at this 19-digit
+			 * boundary both operands overflow the int lane into doubles
+			 * that the engine compares exactly (verified on the 7.4
+			 * floor against zendi_smart_strcmp and empirically on 8.x:
+			 * '9223372036854775809' <= '9223372036854775807' is false).
+			 * The rule's exactness rides that engine behavior; if it ever
+			 * widens to a lossy double rounding here, the sprintf('%.0f')
+			 * oracle below is the backstop that re-decides the boundary.
 			 */
 			$bound = $negative ? '9223372036854775808' : '9223372036854775807';
 
