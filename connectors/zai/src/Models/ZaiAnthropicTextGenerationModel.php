@@ -806,11 +806,19 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * 'required' and the other list-valued keywords are deliberately
 	 * absent: an empty list is schema-valid for them.
 	 *
+	 * glm27-3 (Codex R21 finding 3): 'dependentSchemas' is the same
+	 * name-to-subschema shape — its absence left the keyword to the
+	 * fallthrough recursion, so a dependent's empty array value shipped
+	 * as JSON [] where a strict JSON Schema validator demands an object
+	 * (the exact class GLM10 #6 closed for every other subschema
+	 * position), potentially 400ing an otherwise-valid tool definition
+	 * while equivalent empties under 'properties' normalized.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @var list<string>
 	 */
-	private const SCHEMA_OBJECT_MAP_KEYS = array( 'properties', 'patternProperties', 'definitions', '$defs' );
+	private const SCHEMA_OBJECT_MAP_KEYS = array( 'properties', 'patternProperties', 'definitions', '$defs', 'dependentSchemas' );
 
 	/**
 	 * The JSON Schema keywords whose value is ONE subschema (an object,

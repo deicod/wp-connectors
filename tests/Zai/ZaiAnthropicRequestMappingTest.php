@@ -680,6 +680,58 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
         $this->assertStringNotContainsString('"required":{}', $raw, 'The list-valued required member must not become an object.');
     }
 
+    public function testDependentSchemasEntriesNormalizeAsSubschemas()
+    {
+        /*
+         * glm27-3 (Codex R21 finding 3): 'dependentSchemas' is a
+         * name-to-subschema map exactly like properties/patternProperties/
+         * definitions/$defs, but its absence from the object-map list left
+         * it to the fallthrough recursion — a dependent's empty array
+         * value shipped as JSON [] where a strict JSON Schema validator
+         * demands an object, potentially 400ing an otherwise-valid tool
+         * definition while equivalent empties under 'properties'
+         * normalized.
+         */
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('pay', 'Pays a card', array(
+                    'type' => 'object',
+                    'properties' => array(
+                        'card' => array('type' => 'string'),
+                    ),
+                    'dependentSchemas' => array(
+                        'card' => array(),
+                    ),
+                )))->toArray(),
+                (new FunctionDeclaration('nested_deps', 'Nested empties', array(
+                    'type' => 'object',
+                    'dependentSchemas' => array(
+                        'card' => array(
+                            'properties' => array(),
+                        ),
+                    ),
+                )))->toArray(),
+                (new FunctionDeclaration('non_array_deps', 'Non-array tolerance', array(
+                    'type' => 'object',
+                    'dependentSchemas' => true,
+                )))->toArray(),
+            ),
+        ));
+
+        $this->model($config)->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+
+        $raw = (string) $this->sdkHttpAttempts()[0]['body'];
+
+        $this->assertStringContainsString('"dependentSchemas":{"card":{}}', $raw, 'A dependent\'s empty schema encodes as an object, not [].');
+        $this->assertStringNotContainsString('"dependentSchemas":{"card":[]}', $raw, 'A dependent value must never encode as a list.');
+        $this->assertStringContainsString('"dependentSchemas":{"card":{"properties":{}}}', $raw, 'Nested empties inside a dependent schema normalize too.');
+        $this->assertStringContainsString('"dependentSchemas":true', $raw, 'A non-array dependentSchemas member stays untouched (the shared tolerance).');
+    }
+
     public function testDataValuedSchemaKeywordsPassThroughTheObjectMapWalkUntouched()
     {
         /*
