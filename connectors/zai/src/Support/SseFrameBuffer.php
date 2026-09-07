@@ -107,8 +107,10 @@ final class SseFrameBuffer {
 	 * draining a long stream (thousands of token-delta frames) was
 	 * quadratic in the frame count; the cursor keeps each pull
 	 * constant-time. The queue is compacted — cursor and frames both
-	 * reset — as soon as the cursor passes the last frame, so a drained
-	 * buffer retains nothing and a reused instance accepts new feeds.
+	 * reset — on the pull AFTER the cursor passes the last frame, so a
+	 * reused instance accepts new feeds (glm28-8: a buffer whose last
+	 * frame was pulled but not yet re-consulted briefly holds its
+	 * consumed frames; the next pull compacts).
 	 *
 	 * @since 0.2.0
 	 *
@@ -367,14 +369,17 @@ final class SseFrameBuffer {
 			return null;
 		}
 
+		/*
+		 * glm28-8: the former trailing 'this was the last frame'
+		 * compaction block was byte-identical to the entry check and
+		 * behaviorally redundant — after the final frame returns, the
+		 * NEXT pull() (or any null-returning drain) compacts through
+		 * the entry check above identically. One compaction site; the
+		 * only difference is that a drained-but-unpulled buffer holds
+		 * its consumed frames until the next pull (or GC).
+		 */
 		$frame = $this->frames[ $this->cursor ];
 		++$this->cursor;
-
-		if ( $this->cursor >= \count( $this->frames ) ) {
-			// This was the last frame: drop the queue immediately.
-			$this->frames = array();
-			$this->cursor = 0;
-		}
 
 		return $frame;
 	}
