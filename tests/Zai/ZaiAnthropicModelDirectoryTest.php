@@ -929,7 +929,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
 
     public function testProviderDirectoryRetargetsWithoutRegistryRebuild()
     {
-        $this->loadPlugin(__DIR__ . '/../../connectors/zai/zai.php', '\Deicod\WpConnectors\Zai\boot');
+        $this->loadZaiPlugin();
         $this->runInit();
 
         $registry = AiClient::defaultRegistry();

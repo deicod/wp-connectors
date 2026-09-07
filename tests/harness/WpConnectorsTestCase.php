@@ -206,6 +206,45 @@ abstract class WpConnectorsTestCase extends TestCase
 
     /*
      * ---------------------------------------------------------------
+     * The zai plugin boot facts (glm29-13).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * The zai plugin main file — the fact four suites copied as private
+     * constants and seven more sites inlined (glm29-13: one spelling next
+     * to the loadPlugin() owner).
+     */
+    const ZAI_PLUGIN_FILE = __DIR__ . '/../../connectors/zai/zai.php';
+
+    /**
+     * The zai plugin's boot callback (the loadPlugin() convention).
+     */
+    const ZAI_PLUGIN_BOOT = '\Deicod\WpConnectors\Zai\boot';
+
+    /**
+     * Loads the zai plugin (installs hooks) without firing init.
+     *
+     * @return void
+     */
+    protected function loadZaiPlugin()
+    {
+        $this->loadPlugin(self::ZAI_PLUGIN_FILE, self::ZAI_PLUGIN_BOOT);
+    }
+
+    /**
+     * Loads the zai plugin and fires init once.
+     *
+     * @return void
+     */
+    protected function bootZaiPluginAndInit()
+    {
+        $this->loadZaiPlugin();
+        $this->runInit();
+    }
+
+    /*
+     * ---------------------------------------------------------------
      * HTTP mocking.
      * ---------------------------------------------------------------
      */

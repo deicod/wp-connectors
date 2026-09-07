@@ -149,7 +149,7 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
      */
     private function bootProvider()
     {
-        $this->loadPlugin(__DIR__ . '/../../connectors/zai/zai.php', '\Deicod\WpConnectors\Zai\boot');
+        $this->loadZaiPlugin();
         $this->runInit();
     }
 

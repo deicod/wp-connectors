@@ -28,34 +28,11 @@ use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 
 final class ZaiAnthropicPluginScaffoldTest extends WpConnectorsTestCase
 {
-    private const PLUGIN_FILE = __DIR__ . '/../../connectors/zai/zai.php';
 
-    private const BOOT = '\Deicod\WpConnectors\Zai\boot';
-
-    /**
-     * Loads the plugin (installs hooks) without firing init.
-     *
-     * @return void
-     */
-    private function bootPlugin()
-    {
-        $this->loadPlugin(self::PLUGIN_FILE, self::BOOT);
-    }
-
-    /**
-     * Boots the plugin and fires init once.
-     *
-     * @return void
-     */
-    private function bootPluginAndInit()
-    {
-        $this->bootPlugin();
-        $this->runInit();
-    }
 
     public function testBothProvidersRegisterBeforeCoreConnectorDiscovery()
     {
-        $this->bootPluginAndInit();
+        $this->bootZaiPluginAndInit();
 
         $registeredAtPriority15 = array();
         add_action('init', static function () use (&$registeredAtPriority15) {
@@ -74,7 +51,7 @@ final class ZaiAnthropicPluginScaffoldTest extends WpConnectorsTestCase
 
     public function testTheTwoProvidersPresentDistinctCards()
     {
-        $this->bootPluginAndInit();
+        $this->bootZaiPluginAndInit();
 
         $zai = ZaiProvider::metadata();
         $anthropic = ZaiAnthropicProvider::metadata();
@@ -94,7 +71,7 @@ final class ZaiAnthropicPluginScaffoldTest extends WpConnectorsTestCase
 
     public function testDuplicateInitExecutionRegistersNeitherProviderTwice()
     {
-        $this->bootPluginAndInit();
+        $this->bootZaiPluginAndInit();
 
         $this->runInit();
         $this->runInit();
@@ -115,7 +92,7 @@ final class ZaiAnthropicPluginScaffoldTest extends WpConnectorsTestCase
 
     public function testAForeignZaiAnthropicRegistrationIsNeverSilentlyReplaced()
     {
-        $this->bootPluginAndInit();
+        $this->bootZaiPluginAndInit();
 
         // A foreign provider class already holds the zai_anthropic ID: the
         // plugin must SKIP its own registration (never overwrite the foreign
@@ -137,7 +114,7 @@ final class ZaiAnthropicPluginScaffoldTest extends WpConnectorsTestCase
 
     public function testAZaiIdCollisionStillRegistersZaiAnthropicIndependently()
     {
-        $this->bootPluginAndInit();
+        $this->bootZaiPluginAndInit();
 
         // Mirror image: a foreign class holds the zai ID. The zai
         // registration is skipped, and zai_anthropic STILL registers — one

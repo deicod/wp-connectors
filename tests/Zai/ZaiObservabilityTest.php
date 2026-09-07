@@ -241,7 +241,7 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
 
     public function testDisablingDebugClearsTheLog()
     {
-        $this->loadPlugin(__DIR__ . '/../../connectors/zai/zai.php', '\Deicod\WpConnectors\Zai\boot');
+        $this->loadZaiPlugin();
 
         update_option(DebugLogger::OPTION_ENABLED, '1');
         DebugLogger::log('GET', 'https://api.z.ai/api/paas/v4/models', 200, 1.0);
@@ -254,7 +254,7 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
 
     public function testEnablingDebugDoesNotClearTheLog()
     {
-        $this->loadPlugin(__DIR__ . '/../../connectors/zai/zai.php', '\Deicod\WpConnectors\Zai\boot');
+        $this->loadZaiPlugin();
 
         update_option(DebugLogger::OPTION_ENABLED, '1');
         DebugLogger::log('GET', 'https://api.z.ai/api/paas/v4/models', 200, 1.0);
@@ -270,7 +270,7 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         // section id, which no section registers — do_settings_sections()
         // renders only fields of registered sections, so the checkbox had
         // silently disappeared from Settings → z.ai.
-        $this->loadPlugin(__DIR__ . '/../../connectors/zai/zai.php', '\Deicod\WpConnectors\Zai\boot');
+        $this->loadZaiPlugin();
         $this->asAdministrator();
         do_action('admin_menu');
 
@@ -299,7 +299,7 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
 
     public function testDebugOptionIsRegisteredWithTheSettingsApi()
     {
-        $this->loadPlugin(__DIR__ . '/../../connectors/zai/zai.php', '\Deicod\WpConnectors\Zai\boot');
+        $this->loadZaiPlugin();
         do_action('admin_init');
 
         $setting = get_registered_settings()[DebugLogger::OPTION_ENABLED] ?? null;

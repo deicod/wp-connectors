@@ -20,19 +20,6 @@ use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 
 final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 {
-    private const PLUGIN_FILE = __DIR__ . '/../../connectors/zai/zai.php';
-
-    private const BOOT = '\Deicod\WpConnectors\Zai\boot';
-
-    /**
-     * Boots the plugin (installs hooks) without firing init.
-     *
-     * @return void
-     */
-    private function bootPlugin()
-    {
-        $this->loadPlugin(self::PLUGIN_FILE, self::BOOT);
-    }
 
     /*
      * Defaults and option identity.
@@ -43,7 +30,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
         // Live-evidence amendment (record 0007): the coding-surface Messages
         // routes cannot generate, so this provider defaults to the general
         // surface — the production-proven path for Coding-Plan keys too.
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         $this->assertSame('general', ZaiAnthropicPlanRegionSettings::get_plan());
         $this->assertSame('intl', ZaiAnthropicPlanRegionSettings::get_region());
@@ -60,7 +47,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testSettingsAreRegisteredWithTheSettingsApi()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         do_action('admin_init');
 
         $plan = get_registered_settings()[ZaiAnthropicPlanRegionSettings::OPTION_PLAN] ?? null;
@@ -114,7 +101,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testChangingTheAnthropicSelectionNeverTouchesTheZaiSelection()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, 'general');
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'cn');
@@ -127,7 +114,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testChangingTheZaiSelectionNeverTouchesTheAnthropicSelection()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option(PlanRegionSettings::OPTION_PLAN, 'general');
         update_option(PlanRegionSettings::OPTION_REGION, 'cn');
@@ -142,7 +129,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testUnauthorizedSubmissionStripsTheAnthropicKeysToo()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_PLAN, 'coding');
 
         $this->asAnonymous();
@@ -163,7 +150,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testAuthorizedUserWithValidNoncePassesTheGuard()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAdministrator();
         $this->withValidNonce('zai_connector-options');
         $_POST['option_page'] = 'zai_connector';
@@ -180,7 +167,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testRegionSwitchClearsTheAnthropicKeyStateCachesAndKey()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         // Create the region row FIRST (its creation fires the hooks in the
         // harness); seed the credential-derived state afterwards.
@@ -201,7 +188,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testRegionSwitchOnTheAnthropicProviderNeverTouchesZaiData()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         // Both providers fully configured; only the ANTHROPIC region changes.
         // Region rows first (their creation fires hooks in the harness).
@@ -228,7 +215,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testFirstPersistedAnthropicRegionChangeOnAFreshInstallRunsTheFullInvalidation()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         $this->assertFalse(get_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, false), 'Fresh install must start without a region row.');
         update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array('binding' => 'stale'));
@@ -243,7 +230,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testPlanSwitchInvalidatesStateButKeepsTheStoredKey()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array('binding' => 'stale'));
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'plan-shared-key');
@@ -260,7 +247,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testFirstPersistedAnthropicPlanChangeOnAFreshInstallInvalidates()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         // No plan row yet: the first save travels through add_option(),
         // firing add_option_{plan} instead of the update hook — the
@@ -287,7 +274,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testSameValueRewritesInvalidateNothing()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array('binding' => 'keepme'));
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'keepme-too');
@@ -301,7 +288,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testRegionSwitchMarksAnEnvCredentialPendingValidationForTheNewRegion()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $envKey = FakeSecrets::apiKey();
 
         try {
@@ -340,7 +327,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
         // default — saving the displayed default is NOT a region switch,
         // and must not delete a valid credential whose effective endpoint
         // never changed.
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, $corrupt);
         update_option(ZaiAnthropicProviderAvailability::STATE_OPTION, array('binding' => 'x'));
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'valid-intl-key');
@@ -375,7 +362,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testAGenuineRegionSwitchStillDeletesTheKey()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'intl');
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'intl-key');
 
@@ -389,7 +376,7 @@ final class ZaiAnthropicSettingsTest extends WpConnectorsTestCase
 
     public function testSavingTheSameRegionKeepsTheKey()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'cn');
         update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, 'cn-key');
 
@@ -462,7 +449,7 @@ if (get_transient('zai_connector_zai_anthropic_models_' . md5('zai_anthropic|gen
 if ($failures !== array()) { fwrite(STDERR, 'not invalidated: ' . implode('; ', $failures) . "\n"); exit(1); }
 echo "SDK_ABSENT_INVALIDATION_OK\n";
 PHP;
-        $script = sprintf($script, var_export(dirname(__DIR__, 2) . '/connectors/zai/zai.php', true));
+        $script = sprintf($script, var_export(self::ZAI_PLUGIN_FILE, true));
 
         $command = escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1';
         exec($command, $outputLines, $exitCode);
@@ -530,7 +517,7 @@ PHP;
 
     public function testBothSectionsRenderOnTheSharedPageWithDistinctLabels()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAdministrator();
         do_action('admin_menu');
 
@@ -572,7 +559,7 @@ PHP;
 
     public function testPageRenderRequiresManageOptions()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAnonymous();
 
         ob_start();

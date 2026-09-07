@@ -95,7 +95,7 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
 
     public function testTheBootstrapDerivesItsSurfaceListFromTheOwner()
     {
-        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/zai.php');
+        $source = (string) file_get_contents(self::ZAI_PLUGIN_FILE);
 
         $this->assertSame(
             1,

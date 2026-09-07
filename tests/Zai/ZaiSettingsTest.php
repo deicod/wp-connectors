@@ -17,19 +17,6 @@ use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 
 final class ZaiSettingsTest extends WpConnectorsTestCase
 {
-    private const PLUGIN_FILE = __DIR__ . '/../../connectors/zai/zai.php';
-
-    private const BOOT = '\Deicod\WpConnectors\Zai\boot';
-
-    /**
-     * Boots the plugin (installs hooks) without firing init.
-     *
-     * @return void
-     */
-    private function bootPlugin()
-    {
-        $this->loadPlugin(self::PLUGIN_FILE, self::BOOT);
-    }
 
     /*
      * Defaults.
@@ -37,7 +24,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testDefaultsAreCodingPlanAndInternationalRegion()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         $this->assertSame('coding', PlanRegionSettings::get_plan());
         $this->assertSame('intl', PlanRegionSettings::get_region());
@@ -49,7 +36,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testAllFourPlanRegionCombinationsRoundTrip()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         foreach (PlanRegionSettings::PLANS as $plan) {
             foreach (PlanRegionSettings::REGIONS as $region) {
@@ -110,7 +97,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testSettingsAreRegisteredWithTheSettingsApi()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         do_action('admin_init');
 
         $plan = get_registered_settings()[PlanRegionSettings::OPTION_PLAN] ?? null;
@@ -132,7 +119,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testUnauthorizedSubmissionIsStrippedByTheGuard()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         update_option(PlanRegionSettings::OPTION_PLAN, 'coding');
 
         $this->asAnonymous();
@@ -160,7 +147,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
          * is_scalar() semantics, so it would answer '' for the array
          * even if it did.
          */
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAnonymous();
         $_POST = array(
             'option_page' => array('zai_connector'),
@@ -186,7 +173,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
          * The emission is idempotent now: the strip still runs under every
          * guard, the notice is added exactly once.
          */
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAnonymous();
         $_POST = array(
             'option_page' => 'zai_connector',
@@ -215,7 +202,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
          */
         add_settings_error('some_other_plugin_group', 'zai_connector_unauthorized', 'unrelated notice');
 
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAnonymous();
         $_POST = array(
             'option_page' => 'zai_connector',
@@ -245,7 +232,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
          * option registered under the plugin's option group, enumerated
          * from the group registration.
          */
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAnonymous();
         $_POST = array(
             'option_page' => 'zai_connector',
@@ -408,7 +395,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testAuthorizedUserWithoutValidNonceIsLeftToCoreEnforcement()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAdministrator();
         $_POST = array(
             'option_page' => 'zai_connector',
@@ -426,7 +413,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testPlanSwitchInvalidatesStateButKeepsTheStoredKey()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option('zai_connector_zai_key_state', array('binding' => 'stale'));
         update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'plan-shared-key');
@@ -443,7 +430,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testAuthorizedUserWithValidNoncePassesTheGuard()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAdministrator();
         $this->withValidNonce('zai_connector-options');
         $_POST['option_page'] = 'zai_connector';
@@ -457,7 +444,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testGuardIgnoresForeignOptionGroups()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAnonymous();
         $_POST = array('option_page' => 'some_other_group');
 
@@ -473,7 +460,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testRegionSwitchClearsStoredKeyStateCachesAndTheStoredKey()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         // Plugin-owned credential-derived state (Task 1.4), a discovery
         // cache entry (Task 1.5), and the STORED key itself: the regions use
@@ -500,7 +487,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testFirstPersistedRegionChangeOnAFreshInstallRunsTheFullInvalidation()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         // Fresh install: no region row exists (the default is served from the
         // registration), so the first save travels through core's
@@ -536,7 +523,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
          * handler and the promised 'disable and save to clear' never
          * ran.
          */
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         delete_option(\Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED);
         update_option(\Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_LOG, array(array(
@@ -554,7 +541,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testSavingTheDefaultRegionOnAFreshInstallIsNotASwitch()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option('zai_connector_zai_key_state', array('binding' => 'keepme'));
         update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'keepme-too');
@@ -572,7 +559,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testRegionSwitchWithAPreExistingOptionRowStillInvalidates()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         // Regression: once the row exists, updates keep firing the classic
         // update_option_{$option} hook and must invalidate exactly as before.
@@ -592,7 +579,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testRegionSwitchMarksAnEnvCredentialPendingValidationForTheNewRegion()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $envKey = FakeSecrets::apiKey();
 
         try {
@@ -738,7 +725,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testRegionRewriteWithSameValueDoesNotInvalidate()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option('zai_connector_zai_key_state', array('binding' => 'keepme'));
         update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'keepme-too');
@@ -821,7 +808,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testSettingsPageIsRegisteredForAdministratorsOnly()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         $this->asAnonymous();
         do_action('admin_menu');
@@ -837,7 +824,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testPageRenderRequiresManageOptions()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAnonymous();
 
         ob_start();

@@ -16,20 +16,6 @@ use Deicod\WpConnectors\Zai\Plugin;
 
 final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
 {
-    private const PLUGIN_FILE = __DIR__ . '/../../connectors/zai/zai.php';
-
-    private const BOOT = '\Deicod\WpConnectors\Zai\boot';
-
-    /**
-     * Loads the plugin and fires init once.
-     *
-     * @return void
-     */
-    private function bootPlugin()
-    {
-        $this->loadPlugin(self::PLUGIN_FILE, self::BOOT);
-        $this->runInit();
-    }
 
     /*
      * Activation on WP 7.0 (SDK ships in core).
@@ -37,7 +23,7 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
 
     public function testRegistersProviderBeforeCoreConnectorDiscovery()
     {
-        $this->bootPlugin();
+        $this->bootZaiPluginAndInit();
 
         $registeredAtPriority15 = null;
         add_action('init', static function () use (&$registeredAtPriority15) {
@@ -52,7 +38,7 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
 
     public function testRegistersBothProvidersInMilestone2()
     {
-        $this->bootPlugin();
+        $this->bootZaiPluginAndInit();
 
         $this->assertTrue(AiClient::defaultRegistry()->hasProvider('zai'));
         $this->assertTrue(AiClient::defaultRegistry()->hasProvider('zai_anthropic'));
@@ -60,7 +46,7 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
 
     public function testRegistersWithAFreshRegistryWithoutDuplicating()
     {
-        $this->bootPlugin();
+        $this->bootZaiPluginAndInit();
 
         $fresh = new ProviderRegistry();
         Plugin::register($fresh);
@@ -81,15 +67,15 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
          * glm16-12: ZAI_VERSION is defined only by loading zai.php — the
          * PSR-4 autoloader cannot provide constants — so this test errors
          * under --order-by=random (the canonical composer test invocation
-         * since glm15-1) whenever it runs before any bootPlugin() test.
+         * since glm15-1) whenever it runs before any plugin-booting test.
          * Loading the plugin file here (the harness's require_once, no
          * boot) makes the constant deterministic under every order; the
          * subprocess twin below keeps the LOAD-TIME behavior checks
          * isolated as before.
          */
-        $this->loadPlugin(self::PLUGIN_FILE);
+        $this->loadPlugin(self::ZAI_PLUGIN_FILE);
 
-        $source = (string) file_get_contents(self::PLUGIN_FILE);
+        $source = (string) file_get_contents(self::ZAI_PLUGIN_FILE);
 
         $this->assertSame(1, preg_match('/^\s*\*?\s*Requires at least:\s*(.+)$/mi', $source, $requires));
         $this->assertSame('6.9', trim($requires[1]));
@@ -124,7 +110,7 @@ final class ZaiPluginScaffoldTest extends WpConnectorsTestCase
             . 'function add_action(...$args) {}'
             . 'function add_filter(...$args) {}'
             . 'function plugin_basename($file) { return $file; }'
-            . 'require ' . var_export(self::PLUGIN_FILE, true) . ';'
+            . 'require ' . var_export(self::ZAI_PLUGIN_FILE, true) . ';'
             . 'echo "ZAI_VERSION=" . ZAI_VERSION;'
             . '';
 
@@ -168,7 +154,7 @@ $notice = (string) ob_get_clean();
 if (strpos($notice, 'PHP AI Client SDK') === false) { fwrite(STDERR, "dependency notice missing\n"); exit(1); }
 echo "MISSING_SDK_OK\n";
 PHP;
-        $script = sprintf($script, var_export(self::PLUGIN_FILE, true));
+        $script = sprintf($script, var_export(self::ZAI_PLUGIN_FILE, true));
 
         $command = escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1';
         exec($command, $outputLines, $exitCode);
@@ -195,7 +181,7 @@ PHP;
 
     public function testDuplicateInitExecutionIsIdempotent()
     {
-        $this->bootPlugin();
+        $this->bootZaiPluginAndInit();
 
         $this->runInit();
         $this->runInit();
@@ -226,7 +212,7 @@ PHP;
          * behavioral hook coverage and the lockstep pins in
          * ZaiSurfaceLockstepTest carry the drift guard.
          */
-        $source = (string) file_get_contents(self::PLUGIN_FILE);
+        $source = (string) file_get_contents(self::ZAI_PLUGIN_FILE);
 
         $this->assertStringContainsString('$surface_settings = ZaiSurfaces::settings_classes();', $source, 'boot() derives its surface list from the one cross-file owner.');
         foreach (array('PlanRegionSettings', 'ZaiAnthropicPlanRegionSettings') as $surface) {
