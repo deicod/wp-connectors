@@ -6117,6 +6117,46 @@ $body = ''
         $this->assertSame(array('city' => 'Oslo'), $call->getArgs(), 'The start-block input stands after an empty-string fragment.');
     }
 
+    public function testFragmentsOverANonEmptyStartInputFailAsAStreamParseError()
+    {
+        /*
+         * glm31-2 (round-31 finding 2): the Messages streaming wire
+         * carries tool_use arguments as input_json_delta fragments over
+         * an EMPTY placeholder input at content_block_start
+         * (vendor-documented — platform.claude.com's streaming guide),
+         * so fragments arriving on a block whose start ALSO carried
+         * arguments is a nonconforming, ambiguous stream. The
+         * consolidation used to ship the decoded fragments and silently
+         * discard the start-carried arguments — the "silently altered
+         * tool arguments on a corrupt stream" class the class docblock
+         * says must fail as a parse error. The empty-string-fragment
+         * no-op above is the adjacent boundary and keeps the start
+         * input standing (an empty fragment accumulates nothing).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_glm312","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_glm312","name":"get_weather","input":{"a":1}}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"b\":2}"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('Fragments over a non-empty start input must fail as a stream parse error.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed input JSON', $e->getMessage());
+        }
+    }
+
     public function testANonStringPartialJsonDeltaFailsAsAStreamParseError()
     {
         // Verifier finding on Codex R3: the protocol's partial_json member

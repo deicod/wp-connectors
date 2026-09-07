@@ -555,6 +555,33 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 * change which input the block ships.
 				 */
 				if ( '' !== $block['json'] ) {
+					/*
+					 * glm31-2 (round-31 finding 2): fragments arrived on
+					 * a block whose content_block_start ALSO carried a
+					 * non-empty input. The Messages streaming wire carries
+					 * tool_use arguments as input_json_delta fragments
+					 * over an EMPTY placeholder input at
+					 * content_block_start (vendor-documented:
+					 * platform.claude.com's streaming guide shows every
+					 * tool_use content_block_start with "input":{} and
+					 * the arguments arriving as partial_json fragments),
+					 * so the both-present shape is nonconforming and
+					 * ambiguous — and the consolidation used to ship the
+					 * decoded fragments while silently discarding the
+					 * start-carried arguments, the exact "silently
+					 * altered tool arguments on a corrupt stream" class
+					 * the class docblock says must fail as a parse error
+					 * (Codex R7 #4's silent-replacement class, on the
+					 * input member). A start-carried {} placeholder and
+					 * an input-less start (already flagged at start_block)
+					 * both read empty here and stay untouched.
+					 */
+					if ( $block['input'] instanceof \stdClass && array() !== \get_object_vars( $block['input'] ) ) {
+						$this->malformed_tool_input = true;
+
+						return null;
+					}
+
 					// The accumulated input_json_delta fragments MUST decode
 					// to a JSON OBJECT ({} is legitimate). A decode failure
 					// or a non-object value means the stream was truncated or
