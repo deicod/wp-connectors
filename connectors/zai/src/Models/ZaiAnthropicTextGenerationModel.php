@@ -1871,6 +1871,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @param \stdClass|null $raw_body Non-associative decode of the same payload, or null.
 	 * @return GenerativeAiResult The parsed result.
 	 * @throws ResponseException When the payload is malformed.
+	 * @throws FixedMessageResponseException When a parsed turn carries no
+	 *                                       (translatable) part (glm34-2, the
+	 *                                       zai twin's glm28-4 parity) or a
+	 *                                       tool_use input rejects precisely
+	 *                                       (glm14-2).
 	 */
 	private function parse_decoded_message( $data, ?\stdClass $raw_body ): GenerativeAiResult {
 		if ( ! \is_array( $data ) || ! isset( $data['content'] ) || ! \is_array( $data['content'] ) ) {
@@ -2038,7 +2043,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * below).
 		 */
 		if ( array() !== $parts && ! TranslatableMessageParts::has_translatable_part( $parts, self::EMPTY_TEXT_TRANSLATES ) ) {
-			throw ResponseException::fromInvalidData(
+			/*
+			 * glm34-2 (round-34 finding 2): the marker family — the zai
+			 * twin has thrown FixedMessageResponseException for this
+			 * identical condition since glm28-4, and the plain
+			 * ResponseException here made the mislabeled-Content-Type
+			 * fallback (json_fallback_result()'s null-out catch) eat the
+			 * precise message and surface the generic stream error
+			 * instead, the exact asymmetry glm14-2's marker contract
+			 * exists to prevent.
+			 */
+			throw FixedMessageResponseException::fixed(
 				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'content',
 				'The message carried no translatable (text, tool call, or tool result) part, so it cannot be replayed into the conversation history.'
@@ -2071,7 +2086,10 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * one.
 		 */
 		if ( array() === $parts ) {
-			throw ResponseException::fromInvalidData(
+			// glm34-2: the marker family, same as the zero-translatable
+			// sibling above (the zai twin's glm28-4 guard covers both
+			// shapes with one marker throw).
+			throw FixedMessageResponseException::fixed(
 				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'content',
 				$dropped_unmapped

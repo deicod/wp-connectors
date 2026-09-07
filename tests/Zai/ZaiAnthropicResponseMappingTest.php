@@ -588,6 +588,36 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         }
     }
 
+    public function testAMislabeledThinkingOnlyBodySurfacesThePreciseNoTranslatableDiagnostic()
+    {
+        /*
+         * glm34-2 (round-34 finding 2): the zero-translatable-part (and
+         * zero-parts) rejections join the marker family — the zai twin
+         * has thrown FixedMessageResponseException for the identical
+         * condition since glm28-4, while the plain ResponseException
+         * here was nulled out by the mislabeled-Content-Type fallback's
+         * catch, surfacing the generic 'malformed event frame' for the
+         * byte-equivalent corruption the zai surface names precisely
+         * (the asymmetry glm14-2's marker contract exists to prevent).
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), (string) wp_json_encode(array(
+            'id' => 'msg_mislabeled_thinking',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => array(array('type' => 'thinking', 'thinking' => 'Only a thought.')),
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 9, 'output_tokens' => 5),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A mislabeled thinking-only body must surface the precise no-translatable diagnostic.');
+        } catch (\Deicod\WpConnectors\Zai\Support\FixedMessageResponseException $e) {
+            $this->assertStringContainsString('no translatable', $e->getMessage());
+            $this->assertStringNotContainsString('malformed event frame', $e->getMessage());
+        }
+    }
+
     public function testTheToolUseObjectShapeRidesTheSequentialKeyRule()
     {
         /*
