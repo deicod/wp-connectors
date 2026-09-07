@@ -489,6 +489,25 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		$aggregator->feed( $body );
 		$aggregator->finish();
 
+		/*
+		 * glm29-2: the error-event channel, checked FIRST (the twin's
+		 * has_error() position) — a provider-declared mid-stream
+		 * failure (data: {"error":{...}}, or an `event: error`
+		 * declaration) used to vanish through the object-without-
+		 * choices tolerance and complete the generation clean, where
+		 * the byte-equivalent frame on the twin rejects typed. The
+		 * GLM8 #5 JSON fallback below stays untouched: its live
+		 * scenario (a whole JSON body mislabeled as a stream) produces
+		 * no data: field lines, so the flag cannot be set there.
+		 */
+		if ( $aggregator->has_error() ) {
+			throw ResponseException::fromInvalidData(
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+				'stream',
+				'The chat-completions stream contained an error event.'
+			);
+		}
+
 		$aggregated = $aggregator->aggregated();
 
 		/*

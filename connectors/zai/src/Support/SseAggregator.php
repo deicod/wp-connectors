@@ -14,11 +14,16 @@
  * a finish_reason for an accumulated choice missing one, a usage member
  * when none merged; never an overwrite of data already carried, GLM5 #7
  * narrowed by GLM7 #2), comment lines (`:`), ignorable
- * `event:`/`id:`/`retry:` fields, malformed JSON events (flagged via
+ * `event:`/`id:`/`retry:` fields (an `event: error` DECLARATION
+ * excepted — glm29-2 flags it through has_error()), malformed JSON
+ * events (flagged via
  * has_malformed_event() and skipped — never fatal in the aggregator
  * itself; glm19-11 removed the malformed-frame counter, and glm23-6
  * extended the flag to the UNDECODABLE data frame itself, the channel's
- * original claim, in both the pre- and post-sentinel phases), and — via
+ * original claim, in both the pre- and post-sentinel phases), error
+ * events (an event object carrying a PRESENT error member, or the error
+ * declaration — has_error(), glm29-2: the Anthropic twin's channel at
+ * this wire's own spelling), and — via
  * the shared SseFrameBuffer — split
  * frames (chunks may end mid-frame), CR/LF/CRLF line terminators mixed
  * freely, and a final unterminated frame.
@@ -180,6 +185,27 @@ final class SseAggregator extends AbstractSseAggregator {
 	 */
 	private $malformed_event = false;
 
+	/**
+	 * Whether an error event was received (glm29-2 — the Anthropic
+	 * twin's has_error() channel, in the OpenAI wire's own spelling).
+	 *
+	 * The twin's error signal is an `event: error` DECLARATION; this
+	 * wire has no declared-event semantics (GLM7 #18), so the signal
+	 * rides the payload instead: a decodable event object carrying a
+	 * PRESENT error member (absent or null keeps the member's absent
+	 * semantics — the glm28-1 one-check idiom), pre- and post-sentinel
+	 * identically. An `event: error` declaration sets the same flag
+	 * (wire-robustness parity with the twin; bare event: lines are
+	 * absent from the live capture, GLM1 #14) — the declaration itself
+	 * is the error signal and the payload's condition cannot
+	 * un-declare it.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $error = false;
+
 	/*
 	 * glm19-11: the observability getters (is_done(), event_count(),
 	 * malformed_count()) were a public API only tests called — deleted
@@ -214,6 +240,23 @@ final class SseAggregator extends AbstractSseAggregator {
 	 */
 	public function has_malformed_event(): bool {
 		return $this->malformed_event;
+	}
+
+	/**
+	 * Whether the stream contained an error event (glm29-2).
+	 *
+	 * The model rejects the response typed with the fixed error-event
+	 * message before consulting any aggregated payload — a
+	 * provider-declared failure must not complete as a clean
+	 * generation, exactly as the Anthropic twin's has_error() channel
+	 * rejects the byte-equivalent shape.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return bool True when the stream contained an error event.
+	 */
+	public function has_error(): bool {
+		return $this->error;
 	}
 
 	/**
@@ -605,11 +648,23 @@ final class SseAggregator extends AbstractSseAggregator {
 		 *
 		 * GLM7 #18: the field parsing (comment/empty lines, data: value
 		 * joining, the ignored id:/retry:/unknown fields) rides the one
-		 * shared SseFieldParser — this surface ignores the event name
-		 * (chat.completion.chunk frames carry no declared-event
-		 * semantics), exactly as it ignored event: lines before.
+		 * shared SseFieldParser. glm29-2: the event name stopped being
+		 * ignored — but only as an ERROR declaration ('event: error'),
+		 * the one declared-event semantics this wire needs (the twin's
+		 * GLM7 #4 discipline: the declaration itself is the error
+		 * signal, and the payload's condition cannot un-declare it — a
+		 * truncated or undecodable error event still counts); every
+		 * other name keeps the historical ignore (chat.completion.chunk
+		 * frames carry no declared-event semantics).
 		 */
-		$data = SseFieldParser::parse( $frame )['data'];
+		$fields = SseFieldParser::parse( $frame );
+		$data   = $fields['data'];
+
+		if ( 'error' === $fields['event'] ) {
+			$this->error = true;
+
+			return;
+		}
 
 		if ( null === $data ) {
 			return;
@@ -678,6 +733,24 @@ final class SseAggregator extends AbstractSseAggregator {
 	private function merge_event( array $event, string $data ): void {
 		if ( null === $this->id && isset( $event['id'] ) && \is_string( $event['id'] ) ) {
 			$this->id = $event['id'];
+		}
+
+		/*
+		 * glm29-2: a PRESENT error member is an error EVENT — the
+		 * provider-declared mid-stream failure shape of this wire
+		 * (data: {"error":{...}} after content, the OpenAI convention).
+		 * It used to fall through the object-without-choices tolerance
+		 * and vanish, completing the generation clean while the twin
+		 * rejects the byte-equivalent frame typed. An absent member (or
+		 * an explicit null, which isset() reads as absent) keeps the
+		 * tolerance: the member's absent semantics on this wire. The
+		 * frame contributes no content — an error event has no
+		 * mergeable choices semantics.
+		 */
+		if ( isset( $event['error'] ) ) {
+			$this->error = true;
+
+			return;
 		}
 
 		/*
@@ -774,6 +847,20 @@ final class SseAggregator extends AbstractSseAggregator {
 	 * @return void
 	 */
 	private function consume_trailing_frame( array $decoded, string $data ): void {
+		/*
+		 * glm29-2: the pre-sentinel rule verbatim — a present error
+		 * member flags identically before and after the sentinel (the
+		 * glm15-14 one-predicate rationale: the same payload shape must
+		 * not earn different corruption verdicts per phase). An
+		 * appending gateway's trailing error frame is the failure the
+		 * provider declared, not post-terminal metadata.
+		 */
+		if ( isset( $decoded['error'] ) ) {
+			$this->error = true;
+
+			return;
+		}
+
 		if ( isset( $decoded['usage'] ) && \is_array( $decoded['usage'] ) ) {
 			$this->trailing_usage            = $decoded['usage'];
 			$this->trailing_raw_usage_source = $data;

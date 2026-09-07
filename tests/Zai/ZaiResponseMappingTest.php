@@ -171,6 +171,110 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         }
     }
 
+    /*
+     * glm29-2 (round-29 finding 2): the error-event channel. A
+     * provider-declared mid-stream failure (data: {"error":{...}}, or an
+     * `event: error` declaration) used to fall through the
+     * object-without-choices tolerance and complete the generation
+     * clean, where the Anthropic twin rejects the byte-equivalent frame
+     * typed. The tolerances glm23-6 pinned stay: a null error member
+     * and a choices-less object WITHOUT an error member keep their
+     * silent skips (the ledger's conscious-divergence record for this
+     * round).
+     */
+
+    public function testAStreamedProviderErrorFrameRejectsTyped()
+    {
+        // The finding's exact scenario: content, a completing frame with
+        // usage, then the provider's error declaration before [DONE].
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}}',
+            'data: {"error":{"type":"server_error","message":"Overloaded"}}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A provider-declared streamed error must not complete as a clean generation.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The chat-completions stream contained an error event.', $e->getMessage());
+        }
+    }
+
+    public function testAnErrorEventDeclarationRejectsEvenWithoutAPayload()
+    {
+        // The twin's GLM7 #4 discipline: the declaration itself is the
+        // error signal — an intermediary cutting the error event before
+        // its data: line cannot un-declare it.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"},"finish_reason":null}]}',
+            'event: error',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A bare error declaration must reject.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The chat-completions stream contained an error event.', $e->getMessage());
+        }
+    }
+
+    public function testAPostSentinelErrorFrameRejectsToo()
+    {
+        // Both phases (the glm15-14 one-predicate rule): an appending
+        // gateway's trailing error frame is the declared failure, not
+        // post-terminal metadata.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            'data: {"error":{"message":"late failure"}}',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A post-sentinel error frame must reject.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The chat-completions stream contained an error event.', $e->getMessage());
+        }
+    }
+
+    public function testANullErrorMemberAndAChoicesLessObjectKeepTheirSkips()
+    {
+        /*
+         * The tolerances glm23-6 pinned survive the channel: an explicit
+         * null error member reads as absent (the member's absent
+         * semantics on this wire), and a choices-less object WITHOUT an
+         * error member is not an error event — both still complete the
+         * generation clean.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"},"finish_reason":null}]}',
+            'data: {"error":null}',
+            'data: {"unknown_forward_field":{"nested":true}}',
+            'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hel', $result->toText());
+    }
+
     public function testAnEmptyStringContentCompletionStillParses()
     {
         /*
