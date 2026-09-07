@@ -1689,18 +1689,20 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * reach this code.
 		 */
 		if ( 'tool_use' === $type ) {
-			if ( ! \property_exists( $raw_block, 'input' ) ) {
-				// Absent member (Codex R7 #1 sibling).
+			/*
+			 * glm28-13: one presence check, one flag site. The absent
+			 * member and the explicit null are the two Codex R7 #1
+			 * sibling shapes the former three-check block distinguished
+			 * only to set the SAME flag twice; a present non-null value
+			 * is judged below (object → the replayable raw input; any
+			 * scalar or list → malformed streamed tool arguments).
+			 */
+			$has_input = \property_exists( $raw_block, 'input' );
+			$raw_input = $has_input ? $raw_block->input : null;
+
+			if ( ! $has_input || null === $raw_input ) {
+				// Absent member or explicit null (Codex R7 #1 sibling).
 				$this->malformed_tool_input = true;
-			}
-
-			$raw_input = \property_exists( $raw_block, 'input' ) ? $raw_block->input : null;
-
-			if ( null === $raw_input ) {
-				if ( \property_exists( $raw_block, 'input' ) ) {
-					// Explicit null (Codex R7 #1 sibling).
-					$this->malformed_tool_input = true;
-				}
 			} elseif ( \is_object( $raw_input ) ) {
 				/*
 				 * GLM1 #3 (same round trip as the accumulated-JSON path):
