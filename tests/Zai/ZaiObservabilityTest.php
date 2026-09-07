@@ -53,11 +53,21 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
          * cannot run in the offline suite, so the mechanism is pinned at
          * the source level (the GLM6 #14 precedent): every step handler
          * catches Throwable, none catches Exception.
+         *
+         * glm29-9: the step handlers moved to the round-trip runner
+         * (tests/harness/ZaiLiveRoundTrip.php) with the sequence; the
+         * pin re-targets the runner and the Exception ban covers BOTH
+         * files.
          */
-        $source = (string) file_get_contents(__DIR__ . '/../../bin/zai-live-probe.php');
+        $source = (string) file_get_contents(__DIR__ . '/../../tests/harness/ZaiLiveRoundTrip.php');
 
         $this->assertSame(2, preg_match_all('/catch \( Throwable \$e \)/', $source), 'Both step handlers must catch Throwable.');
         $this->assertSame(0, preg_match_all('/catch \( Exception/', $source), 'No step handler may catch Exception only.');
+        $this->assertSame(
+            0,
+            preg_match_all('/catch \( Exception/', (string) file_get_contents(__DIR__ . '/../../bin/zai-live-probe.php')),
+            'The probe shell may not grow an Exception-only catch either.'
+        );
     }
 
     /**

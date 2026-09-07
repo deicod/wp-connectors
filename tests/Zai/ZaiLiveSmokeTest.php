@@ -13,7 +13,6 @@
 
 declare( strict_types=1 );
 
-use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
@@ -22,11 +21,6 @@ final class ZaiLiveSmokeTest extends AbstractZaiSurfaceLiveSmokeTestCase
     protected function settings_class(): string
     {
         return PlanRegionSettings::class;
-    }
-
-    protected function availability_class(): string
-    {
-        return ZaiProviderAvailability::class;
     }
 
     protected function provider_class(): string

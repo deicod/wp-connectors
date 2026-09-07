@@ -6,6 +6,9 @@ parameters:
 		- shared
 		# Live-probe tooling referenced from bin/zai-live-probe.php.
 		- tests/harness/CurlPsr18Client.php
+		# glm29-9: the shared live acceptance round trip both the probe
+		# and the opt-in smoke tests ride.
+		- tests/harness/ZaiLiveRoundTrip.php
 	excludePaths:
 		- */vendor/*
 		- */dist/*

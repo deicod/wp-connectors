@@ -32,23 +32,15 @@ require_once $repo . '/vendor/autoload.php';
 require_once $repo . '/tests/harness/wp-stubs.php';
 require_once $repo . '/tests/harness/SdkHttpClient.php';
 require_once $repo . '/tests/harness/CurlPsr18Client.php';
+require_once $repo . '/tests/harness/ZaiLiveRoundTrip.php';
 require_once $repo . '/connectors/zai/src/autoload.php';
 
-use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
-use Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog;
-use Deicod\WpConnectors\Zai\Plugin;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
 use Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\ZaiSurfaces;
-use WordPress\AiClient\AiClient;
-use WordPress\AiClient\Messages\DTO\Message;
-use WordPress\AiClient\Messages\DTO\MessagePart;
-use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
-use WordPress\AiClient\Providers\Http\HttpTransporter;
 
 /**
  * Resolves the live key from the documented runtime sources only.
@@ -247,6 +239,11 @@ foreach ( ZaiSurfaces::SURFACES as $zai_probe_row ) {
         exit( 3 );
     }
 
+    /*
+     * glm29-9: the map mirrors every per-surface fact (the pins hold the
+     * bracket spellings); the shared round-trip runner consumes settings/
+     * provider/endpoint and re-derives PROVIDER_ID at wiring time.
+     */
     $zai_probe_surfaces[ $zai_probe_facts['cli'] ] = array(
         'settings'     => $zai_probe_row['settings'],
         'endpoint'     => $zai_probe_row['endpoint'],
@@ -297,211 +294,61 @@ if ( '' === $key ) {
     exit( 2 );
 }
 
-update_option( $surface_facts['settings']::OPTION_PLAN, $plan );
-update_option( $surface_facts['settings']::OPTION_REGION, $region );
-
-$provider_id = $surface_facts['provider_id'];
-$provider_class = $surface_facts['provider'];
-// glm24-1: the settings class the registry row already carries owns these
-// option names — the availability layer's constants alias them (glm15-23).
-$key_option = $surface_facts['settings']::KEY_OPTION;
-
 zai_live_probe_report( 'date (UTC)', gmdate( 'Y-m-d H:i:s' ) );
 zai_live_probe_report( 'surface', $surface );
 zai_live_probe_report( 'plan', $plan );
 zai_live_probe_report( 'region', $region );
 
-$endpoint = $surface_facts['endpoint']::for_current_settings();
-zai_live_probe_report( 'endpoint base', $endpoint->base_url() );
-zai_live_probe_report( 'models route', $endpoint->models_url() );
 /*
- * glm15-4: the generation-route evidence rides the endpoint layer's one
- * owner (generation_url()) — the previous instanceof ternary plus the
- * inline chat-completion route literal could print a URL the plugin never
- * requests after any vendor or plan route change (the Anthropic surface
- * already varies /messages vs /v1/messages by plan).
+ * glm29-9: the ordered acceptance steps — the option writes, the
+ * registry/provider wiring, the endpoint evidence lines, the
+ * availability probe (Codex R13 #5's state delete, GLM2 #6's miss-marker
+ * clear, R17b's definitive-verdict rule), live discovery (Codex R8 #6's
+ * transient clearing and fallback signal, GLM12 #11's evidence URL,
+ * glm29-8's named cache id), one generation (glm19-9's preferred id and
+ * fallback diagnostic, Codex R17's empty-output rule), and the
+ * state-plaintext check — ride the ONE shared runner
+ * (tests/harness/ZaiLiveRoundTrip.php) the opt-in PHPUnit smoke tests
+ * also ride. This CLI shell judges the structured outcome through exit
+ * codes; the report lines and their order are byte-identical to the
+ * pre-glm29-9 probe output.
  */
-zai_live_probe_report( 'generation route', $endpoint->generation_url() );
-
-// A REAL transporter (curl, no redirects) — this script intentionally
-// performs live network requests.
-$registry = AiClient::defaultRegistry();
-$registry->setHttpTransporter( new HttpTransporter( new CurlPsr18Client() ) );
-
-Plugin::register( $registry );
-$registry->setProviderRequestAuthentication( $provider_id, new ApiKeyRequestAuthentication( $key ) );
-update_option( $key_option, $key );
+$outcome = ZaiLiveRoundTrip::run(
+    $surface_facts['settings'],
+    $surface_facts['provider'],
+    $surface_facts['endpoint'],
+    $key,
+    $plan,
+    $region,
+    'zai_live_probe_report'
+);
 
 $exit = 0;
 
-// 1. Availability (authenticated models probe with persisted verdict).
-/*
- * Codex R13 #5: the availability verdict is persisted under the selected
- * provider's validation-state option with a five-minute TTL — a repeat
- * probe within that window would report "connected" from the cached
- * verdict without making the documented authenticated request, even if
- * the route is currently unavailable or the credential was revoked.
- * The state option is a cache of a past check (safe to clear from a
- * probe), so it is deleted first exactly like the discovery transient
- * below: this step must always exercise the live network path.
- *
- * GLM2 #6: the binding-scoped probe-MISS marker (GLM1 #6, 60s) is a
- * cache of a past INCONCLUSIVE check and equally safe to clear — left
- * in place it made this step report the cached inconclusive outcome
- * (and fail) with zero live requests for up to a minute after one
- * transient failure.
- */
-$state_option = $surface_facts['settings']::STATE_OPTION;
-delete_option( $state_option );
-
-$availability = $provider_class::availability();
-if ( $availability instanceof AbstractZaiProviderAvailability ) {
-    $availability->clear_probe_miss_marker();
-}
-
-$start = microtime( true );
-$configured = $availability->isConfigured();
-
-/*
- * R17b verifier sweep: isConfigured() answers TRUE for an INCONCLUSIVE
- * probe when no stored verdict remains (the delete above removed it) —
- * the credential is merely "not yet disproven", a save-blocking default
- * that must not masquerade as a live acceptance pass. A DEFINITIVE
- * verdict always persists fresh state, so a missing state option after
- * the call means the request itself failed (transport error, 5xx, 429,
- * 404, region distrust): report the step as inconclusive and fail it
- * instead of printing connected.
- */
-$definitive_state = get_option( $state_option );
-if ( ! is_array( $definitive_state ) ) {
-    zai_live_probe_report( 'availability', 'INCONCLUSIVE (no definitive live verdict)' );
-    $exit = 1;
-} else {
-    zai_live_probe_report( 'availability', $configured ? 'connected' : 'NOT connected' );
-}
-
-zai_live_probe_report( 'availability ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
-
 /*
  * Codex R7 #5: availability is a documented acceptance STEP — a false
- * verdict must fail the probe even when a later generation happens to
- * succeed (the two routes can apply different access policy). Do not
- * continue as if the step passed.
+ * (or inconclusive) verdict must fail the probe even when a later
+ * generation happens to succeed (the two routes can apply different
+ * access policy).
  */
-if ( ! $configured ) {
+if ( ! $outcome['availability']['definitive'] || ! $outcome['availability']['connected'] ) {
     $exit = 1;
 }
 
-/*
- * 2. Model discovery through the directory (live models route).
- *
- * Codex R8 #6: listModelMetadata() NEVER throws on discovery failure —
- * it silently returns the static fallback, so the probe used to report a
- * model count (and PASS) with no live discovery at all. Successful
- * discovery is cached in a per-endpoint transient while fallbacks never
- * are, so the transient is the fallback-used signal: it is deleted first
- * (a cache — safe to clear from a probe) and checked after the call.
- */
-// GLM8 #11: the discovery transient ids come from the endpoint layer's
-// one owner — no private prefix/md5/'_miss' composition here anymore.
-$discovery_transient_ids = $endpoint::discovery_transient_ids( $plan, $region );
-foreach ( $discovery_transient_ids as $discovery_transient_id ) {
-    delete_transient( $discovery_transient_id );
-}
-/*
- * glm29-8: the EVIDENCE transient is the named
- * discovery_cache_id(), never a positional pick out of the pair — a
- * reorder or a new marker in discovery_transient_ids() would otherwise
- * read the 60s '_miss' marker (which stores literal true) and report
- * 'live' after a FAILED discovery, the misleading-evidence class this
- * file's own GLM12 #11 comments exist to prevent. The pair list stays
- * for the delete loop only.
- */
-$discovery_cache_id = $endpoint::discovery_cache_id( $plan, $region );
-
-$start = microtime( true );
-try {
-    $models = $provider_class::modelMetadataDirectory()->listModelMetadata();
-    zai_live_probe_report( 'models discovered', count( $models ) );
-    zai_live_probe_report( 'model ids', implode( ', ', array_slice( array_map( static function ( $m ) {
-        return $m->getId();
-    }, $models ), 0, 12 ) ) );
-    zai_live_probe_report( 'discovery ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
-
-    $discovered_live = false !== get_transient( $discovery_cache_id );
-    /*
-     * GLM12 #11: the evidence names the URL this surface's discovery
-     * actually requested — $endpoint->models_url() rides the surface's
-     * MODELS_ROUTE ('v1/models' on anthropic, 'models' on openai), where
-     * the previously hardcoded Anthropic route misreported the openai
-     * surface's {base}/models request to anyone reconciling the probe
-     * output against transport logs or the endpoint matrix.
-     */
-    zai_live_probe_report( 'discovery source', $discovered_live ? 'live ' . $endpoint->models_url() : 'DISCOVERY FALLBACK (static catalog — live discovery failed or was malformed)' );
-    if ( ! $discovered_live ) {
-        $exit = 1;
-    }
-} catch ( Throwable $e ) {
-    // GLM7 #14: Throwable, not Exception — a PHP Error (a TypeError from
-    // a strict-types mismatch in the SDK/DTO layer against a live
-    // response shape) must report this step FAILED like any other
-    // failure, not crash the probe with an uncaught fatal and a stack
-    // trace outside the safe-facts contract.
-    zai_live_probe_report( 'models discovered', 'FAILED: ' . get_class( $e ) . ' ' . $e->getMessage() );
+// Codex R8 #6: fallback discovery is a failed step, never a model count.
+if ( ! $outcome['discovery']['live'] ) {
     $exit = 1;
 }
 
-// 3. One generation through the plugin model class (Messages protocol on
-// the anthropic surface; chat completion on the openai surface).
-$start = microtime( true );
-try {
-    /*
-     * glm19-9: the preferred id rides the catalog owner the probe's own
-     * header declares every fact rides — ids_for_plan()'s first entry,
-     * not a hardcoded literal (the coding and general plan heads differ,
-     * and the next catalog refresh would silently stale-date a shared
-     * literal). The fallback to the first DISCOVERED id when live
-     * metadata does not carry the preferred id now emits a diagnostic:
-     * acceptance evidence must name which model fronted the plan.
-     */
-    $model_id = ZaiModelCatalog::ids_for_plan( $plan )[0];
-    if ( isset( $models ) && array() !== $models && ! $provider_class::modelMetadataDirectory()->hasModelMetadata( $model_id ) ) {
-        $fallback_id   = $models[0]->getId();
-        $model_id      = $fallback_id;
-        zai_live_probe_report( 'model fallback', "preferred catalog id absent from discovered metadata — using {$fallback_id}" );
-    }
-    /**
-     * getProviderModel() (not the bare Provider::model()) binds the
-     * registry's transporter and auth into the instance; both surfaces'
-     * models implement the SDK's TextGenerationModelInterface.
-     *
-     * @var Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel|Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel $model
-     */
-    $model = $registry->getProviderModel( $provider_id, $model_id );
-    $result = $model->generateTextResult( array(
-        new Message( MessageRoleEnum::user(), array( new MessagePart( 'Reply with exactly: wp-connectors live probe ok' ) ) ),
-    ) );
-    zai_live_probe_report( 'model used', $model_id );
-    zai_live_probe_report( 'generated text', trim( $result->toText() ) );
+// Codex R17: empty generation output is a failed step, never a pass.
+if ( ! $outcome['generation']['ok'] ) {
+    $exit = 1;
+}
 
-    /*
-     * Codex R17 review-body finding: a successfully parsed but EMPTY
-     * answer is not an acceptance pass — the sentinel prompt has a
-     * known non-empty reply, so blank (or whitespace-only) output means
-     * the route answered nothing and the probe must fail like the other
-     * acceptance steps instead of reporting PASS over a blank value.
-     */
-    if ( '' === trim( $result->toText() ) ) {
-        zai_live_probe_report( 'generation', 'FAILED: the model returned empty output for the sentinel prompt' );
-        $exit = 1;
-    }
-
-    zai_live_probe_report( 'usage total tokens', $result->getTokenUsage()->getTotalTokens() );
-    zai_live_probe_report( 'generation ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
-} catch ( Throwable $e ) {
-    // GLM7 #14: as the discovery step above — Errors report FAILED, never
-    // an uncaught fatal.
-    zai_live_probe_report( 'generation', 'FAILED: ' . get_class( $e ) . ' ' . $e->getMessage() );
+// glm29-9: the state-plaintext rule (the PHPUnit skeleton's own check,
+// shared with the CLI now — reconciled to the stricter side).
+if ( $outcome['state_option_plaintext'] ) {
+    zai_live_probe_report( 'state option', 'FAILED: the validation state carries the key in plaintext' );
     $exit = 1;
 }
 

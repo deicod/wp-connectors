@@ -239,9 +239,16 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
          * transport logs or the endpoint matrix. The line interpolates
          * the endpoint's models_url() (the MODELS_ROUTE owner) now; the
          * pins forbid the hardcoded route in the evidence channel.
+         *
+         * glm29-9: the evidence line lives in the round-trip runner
+         * with the sequence itself; the pin re-targets the runner, and
+         * the hardcoded-route ban covers BOTH files.
          */
-        $this->assertStringContainsString("'live ' . \$endpoint->models_url()", $source, 'The discovery evidence names the surface\'s own models URL.');
-        $this->assertSame(0, preg_match('/live \/v1\/models/', $source), 'No hardcoded models route may ride the evidence line.');
+        $runner = (string) file_get_contents(dirname(__DIR__, 2) . '/tests/harness/ZaiLiveRoundTrip.php');
+
+        $this->assertStringContainsString("'live ' . \$endpoint->models_url()", $runner, 'The discovery evidence names the surface\'s own models URL.');
+        $this->assertSame(0, preg_match('/live \/v1\/models/', $runner), 'No hardcoded models route may ride the evidence line.');
+        $this->assertSame(0, preg_match('/live \/v1\/models/', $source), 'No hardcoded models route may ride the probe shell.');
 
         /*
          * glm15-4: the generation-route evidence rides the endpoint
@@ -250,10 +257,14 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
          * plugin never requests after any vendor or plan route change,
          * and the literal existed nowhere else in src, so nothing
          * failed. The pins forbid both shapes in the probe.
+         *
+         * glm29-9: the evidence line lives in the round-trip runner
+         * with the sequence itself; the owner-spelling pin re-targets
+         * the runner and the literal bans cover BOTH files.
          */
-        $this->assertStringContainsString("->generation_url()", $source, 'The generation-route evidence rides the endpoint owner.');
-        $this->assertSame(0, preg_match('/chat\/completions/', $source), 'No inline generation-route literal may ride the probe.');
-        $this->assertSame(0, preg_match('/instanceof ZaiAnthropicEndpoint \?/', $source), 'No instanceof route picking: the endpoint owns the route.');
+        $this->assertStringContainsString("->generation_url()", $runner, 'The generation-route evidence rides the endpoint owner.');
+        $this->assertSame(0, preg_match('/chat\/completions/', $source . $runner), 'No inline generation-route literal may ride the probe or runner.');
+        $this->assertSame(0, preg_match('/instanceof ZaiAnthropicEndpoint \?/', $source . $runner), 'No instanceof route picking: the endpoint owns the route.');
 
         /*
          * glm15-10: the --plan/--region whitelists ride the declared

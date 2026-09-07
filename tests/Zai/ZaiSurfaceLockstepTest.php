@@ -184,16 +184,29 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
          * the hand pairing was the one probe fact no pin covered, and a
          * swap between rows wrote one surface's key option while
          * deleting the other's validation state.
+         *
+         * glm29-9: the option-name READS moved into the round-trip
+         * runner with the sequence itself (the probe and the smoke
+         * skeleton had drifted in both directions) — the derivation
+         * pins re-target the runner, and the probe delegates through
+         * ZaiLiveRoundTrip::run().
          */
+        $runner_source = (string) file_get_contents(dirname(__DIR__, 2) . '/tests/harness/ZaiLiveRoundTrip.php');
+
         $this->assertSame(
             1,
-            substr_count($source, "\$surface_facts['settings']::KEY_OPTION"),
-            'The probe reads the key option through the registry row\'s settings class.'
+            substr_count($runner_source, '$settings::KEY_OPTION'),
+            'The runner reads the key option through the settings class.'
         );
         $this->assertSame(
             1,
-            substr_count($source, "\$surface_facts['settings']::STATE_OPTION"),
-            'The probe reads the state option through the registry row\'s settings class.'
+            substr_count($runner_source, '$settings::STATE_OPTION'),
+            'The runner reads the state option through the settings class.'
+        );
+        $this->assertStringContainsString(
+            'ZaiLiveRoundTrip::run(',
+            $source,
+            'The probe rides the one round-trip runner (glm29-9).'
         );
 
         foreach (\Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES as $index => $surface) {
@@ -267,16 +280,29 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
          * derivation) moved to the ONE shared base
          * (tests/harness/AbstractZaiSurfaceLiveSmokeTestCase.php), so
          * the derivation statements live THERE once, and each concrete
-         * twin's pin reduces to naming its three owner classes (the
+         * twin's pin reduces to naming its owner classes (the
          * hook values — a rename breaks the ::class spelling before any
          * live run).
+         *
+         * glm29-9 supersedes the LOCATION once more: the acceptance
+         * sequence (and with it every owner-constant derivation the
+         * base spelled) moved to the ONE round-trip runner
+         * (tests/harness/ZaiLiveRoundTrip.php) that BOTH the smoke base
+         * and bin/zai-live-probe.php ride — the two had hand-maintained
+         * the same sequence and drifted in both directions. The pins
+         * re-target the runner; the base's job is the hooks, the env
+         * defaults, and judging the runner's outcome.
          */
         $base = (string) file_get_contents(dirname(__DIR__, 2) . '/tests/harness/AbstractZaiSurfaceLiveSmokeTestCase.php');
+        $runner = (string) file_get_contents(dirname(__DIR__, 2) . '/tests/harness/ZaiLiveRoundTrip.php');
 
         $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $base), 'Every plugin option name in the shared smoke base rides an owner constant.');
-        $this->assertStringContainsString('$settings::OPTION_PLAN', $base, 'The shared base derives the plan option through the settings hook.');
-        $this->assertStringContainsString('$availability::KEY_OPTION', $base, 'The shared base derives the key option through the availability hook.');
-        $this->assertStringContainsString('$provider::PROVIDER_ID', $base, 'The shared base derives the provider id through the provider hook.');
+        $this->assertSame(0, preg_match('/[\'"]zai_connector_/', $runner), 'Every plugin option name in the round-trip runner rides an owner constant.');
+        $this->assertStringContainsString('ZaiLiveRoundTrip::run(', $base, 'The shared base rides the one round-trip runner (glm29-9).');
+        $this->assertStringContainsString('$settings::OPTION_PLAN', $runner, 'The runner derives the plan option through the settings class.');
+        $this->assertStringContainsString('$settings::KEY_OPTION', $runner, 'The runner derives the key option through the settings class (glm24-1: the owner the availability layer aliases).');
+        $this->assertStringContainsString('$settings::STATE_OPTION', $runner, 'The runner derives the state option through the settings class.');
+        $this->assertStringContainsString('$provider::PROVIDER_ID', $runner, 'The runner derives the provider id through the provider class.');
 
         foreach (array(
             'zai' => array(

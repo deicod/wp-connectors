@@ -1,18 +1,21 @@
 <?php
 /**
- * Shared skeleton for the OPT-IN live smoke tests (glm28-11).
+ * Shared skeleton for the OPT-IN live smoke tests (glm28-11, glm29-9).
  *
  * The two live smoke tests (ZaiLiveSmokeTest, ZaiAnthropicLiveSmokeTest)
- * rode the same ~40-line scaffold line-for-line — the skip guard, the
- * env-with-owner-constant plan/region defaults, the three option
- * writes, the transporter/registry/provider wiring, the
- * availability/discovery/generation acceptance order, and the
- * no-plaintext assertion — one surface label apart. Neither runs in CI
- * (both skip without the opt-in key), so the copies could drift
- * silently: an acceptance-step or env-name change had to land twice or
- * one probe shipped stale evidence. One parameterized base owns the
- * round trip (the Abstract*MappingTestCase pattern); each surface
- * names its owner classes and keeps its own test name.
+ * rode the same ~40-line scaffold line-for-line until glm28-11 moved it
+ * to this parameterized base (each surface names its owner classes and
+ * keeps its own test name). glm29-9 moved the round trip ITSELF one
+ * layer down: the base and bin/zai-live-probe.php had each
+ * hand-maintained the acceptance sequence and drifted in both
+ * directions (the CLI carried the state-option delete, the probe-miss
+ * clear, the definitive-verdict check, the discovery-transient
+ * clearing and live-vs-fallback evidence, and the preferred-model
+ * fallback this skeleton lacked, while the skeleton alone checked the
+ * state option for plaintext). tests/harness/ZaiLiveRoundTrip.php owns
+ * the ordered steps now, reconciled to the stricter side; this base
+ * judges its structured outcome through assertions and the CLI through
+ * exit codes.
  *
  * Skipped unless WP_CONNECTORS_TEST_ZAI_API_KEY is set (docs/TESTING.md);
  * optional WP_CONNECTORS_TEST_ZAI_PLAN / WP_CONNECTORS_TEST_ZAI_REGION
@@ -24,12 +27,6 @@
 
 declare( strict_types=1 );
 
-use WordPress\AiClient\AiClient;
-use WordPress\AiClient\Messages\DTO\Message;
-use WordPress\AiClient\Messages\DTO\MessagePart;
-use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
-use WordPress\AiClient\Providers\Http\HttpTransporter;
 use Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings;
 
 abstract class AbstractZaiSurfaceLiveSmokeTestCase extends WpConnectorsTestCase
@@ -51,13 +48,6 @@ abstract class AbstractZaiSurfaceLiveSmokeTestCase extends WpConnectorsTestCase
     abstract protected function settings_class(): string;
 
     /**
-     * The surface's availability class (the key-state options' owner).
-     *
-     * @return string
-     */
-    abstract protected function availability_class(): string;
-
-    /**
      * The surface's provider class (the provider id's owner).
      *
      * @return string
@@ -74,58 +64,71 @@ abstract class AbstractZaiSurfaceLiveSmokeTestCase extends WpConnectorsTestCase
     }
 
     /**
-     * One live round trip: option writes, wiring, the availability and
-     * discovery acceptance steps, one real generation, and the
-     * no-plaintext assertion (glm28-11).
+     * One live round trip through the shared owner, judged by assertion
+     * (glm28-11 moved the twins onto one base; glm29-9 moved the base onto
+     * the one runner the CLI probe also rides).
      *
      * @return void
      */
     protected function assert_live_round_trip(): void
     {
-        $settings     = $this->settings_class();
-        $availability = $this->availability_class();
-        $provider     = $this->provider_class();
+        $settings = $this->settings_class();
+        $provider = $this->provider_class();
 
         $key = (string) getenv('WP_CONNECTORS_TEST_ZAI_API_KEY');
         /*
-         * glm25-6: the option names, defaults, and provider id ride
-         * their owner constants (the GLM10 #15 class, the anthropic
-         * twin's glm21-15 idiom) — after a rename this test writes
-         * options the plugin reads and probes the surface it reports
-         * as evidence.
+         * glm25-6: the plan/region defaults ride their owner constants —
+         * after a rename this test selects the endpoint the plugin would.
          */
         $plan   = (string) (getenv('WP_CONNECTORS_TEST_ZAI_PLAN') ?: $settings::DEFAULT_PLAN);
         $region = (string) (getenv('WP_CONNECTORS_TEST_ZAI_REGION') ?: AbstractPlanRegionSettings::DEFAULT_REGION);
 
-        update_option($settings::OPTION_PLAN, $plan);
-        update_option($settings::OPTION_REGION, $region);
-        update_option($availability::KEY_OPTION, $key);
+        /*
+         * glm21-10's derivation: the endpoint pairing comes from the one
+         * cross-file owner registry — never restated per surface (the
+         * same scan the CLI probe's facts map performs over its rows).
+         */
+        $endpoint_class = null;
+        foreach ( Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES as $row ) {
+            if ( $row['settings'] === $settings ) {
+                $endpoint_class = $row['endpoint'];
+                break;
+            }
+        }
+        if ( null === $endpoint_class ) {
+            throw new RuntimeException( "No zai surface registered for settings class {$settings}." );
+        }
 
-        $registry = AiClient::defaultRegistry();
-        $registry->setHttpTransporter(new HttpTransporter(new CurlPsr18Client()));
-
-        \Deicod\WpConnectors\Zai\Plugin::register($registry);
-        $registry->setProviderRequestAuthentication($provider::PROVIDER_ID, new ApiKeyRequestAuthentication($key));
-
-        // Availability: the authenticated /models probe against the live endpoint.
-        $this->assertTrue(
-            $provider::availability()->isConfigured(),
-            "Live availability probe failed for {$plan}+{$region} — check the key matches the selected plan/region."
+        $outcome = ZaiLiveRoundTrip::run(
+            $settings,
+            $provider,
+            $endpoint_class,
+            $key,
+            $plan,
+            $region,
+            static function ( string $label, $value ): void {}
         );
 
-        // Discovery: the live model list.
-        $models = $provider::modelMetadataDirectory()->listModelMetadata();
-        $this->assertNotEmpty($models);
+        /*
+         * R17b: connected alone is not acceptance — an inconclusive probe
+         * (no definitive verdict persisted) must fail the test, not
+         * masquerade as a pass.
+         */
+        $this->assertTrue($outcome['availability']['definitive'], "Live availability probe was inconclusive for {$plan}+{$region} — no definitive verdict persisted.");
+        $this->assertTrue($outcome['availability']['connected'], "Live availability probe failed for {$plan}+{$region} — check the key matches the selected plan/region.");
 
-        // Inference: one real generation through the plugin model class.
-        $model  = $registry->getProviderModel($provider::PROVIDER_ID, $models[0]->getId());
-        $result = $model->generateTextResult(array(
-            new Message(MessageRoleEnum::user(), array(new MessagePart('Reply with the single word: ok'))),
-        ));
+        /*
+         * Codex R8 #6: a non-empty model list alone is not acceptance —
+         * listModelMetadata() silently serves the static fallback on
+         * discovery failure, and a fallback list is non-empty too.
+         */
+        $this->assertNotEmpty($outcome['discovery']['models'], 'Live model discovery returned no models.');
+        $this->assertTrue($outcome['discovery']['live'], 'Discovery served the static fallback — live discovery failed or was malformed.');
 
-        $this->assertNotSame('', trim($result->toText()));
+        // Codex R17: blank output is not an acceptance pass.
+        $this->assertTrue($outcome['generation']['ok'], 'The live generation returned empty output for the sentinel prompt.');
 
         // The key must never appear in any state the plugin persisted.
-        $this->assertOptionNotPlaintext($availability::STATE_OPTION, $key);
+        $this->assertFalse($outcome['state_option_plaintext'], 'The validation state option carries the live key in plaintext.');
     }
 }
