@@ -26,6 +26,18 @@ use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 abstract class WpConnectorsTestCase extends TestCase
 {
     /**
+     * The model id the harness wires every recording fixture to (glm29-10).
+     *
+     * Derived from the catalog owner (the probe's glm19-9 idiom), never a
+     * bare literal: the discovery-prime defaults and the model wiring must
+     * name the SAME id for the vendor directory lookup to resolve, and a
+     * catalog-refresh edit updating one spelling but not the other left
+     * every mapping suite failing pre-transport resolution in ways that
+     * took real debugging to trace.
+     */
+    const HARNESS_MODEL_ID = \Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog::CODING_MODELS[0];
+
+    /**
      * Set to true in tests that deliberately exercise the blocked/unmocked
      * HTTP path; otherwise unmocked attempts fail the run (failOnWarning).
      *
@@ -251,10 +263,10 @@ abstract class WpConnectorsTestCase extends TestCase
      *
      * @param string       $endpoint_class The endpoint class (ZaiEndpoint::class
      *                                     or ZaiAnthropicEndpoint::class).
-     * @param list<string> $ids            Model IDs to advertise (default glm-5.3).
+     * @param list<string> $ids            Model IDs to advertise (default the harness model id).
      * @return void
      */
-    protected function primeZaiSurfaceDiscoveryTransient(string $endpoint_class, array $ids = array( 'glm-5.3' ))
+    protected function primeZaiSurfaceDiscoveryTransient(string $endpoint_class, array $ids = array( self::HARNESS_MODEL_ID ))
     {
         $endpoint = $endpoint_class::for_current_settings();
 
@@ -269,10 +281,10 @@ abstract class WpConnectorsTestCase extends TestCase
      * Primes the z.ai discovery transient for the CURRENT endpoint
      * (glm22-9: one-line delegate to the parameterized helper).
      *
-     * @param list<string> $ids Model IDs to advertise (default glm-5.3).
+     * @param list<string> $ids Model IDs to advertise (default the harness model id).
      * @return void
      */
-    protected function primeZaiDiscoveryTransient(array $ids = array( 'glm-5.3' ))
+    protected function primeZaiDiscoveryTransient(array $ids = array( self::HARNESS_MODEL_ID ))
     {
         $this->primeZaiSurfaceDiscoveryTransient( \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class, $ids );
     }
@@ -281,10 +293,10 @@ abstract class WpConnectorsTestCase extends TestCase
      * Primes the zai_anthropic discovery transient for the CURRENT
      * endpoint (glm22-9: one-line delegate to the parameterized helper).
      *
-     * @param list<string> $ids Model IDs to advertise (default glm-5.3).
+     * @param list<string> $ids Model IDs to advertise (default the harness model id).
      * @return void
      */
-    protected function primeZaiAnthropicDiscoveryTransient(array $ids = array( 'glm-5.3' ))
+    protected function primeZaiAnthropicDiscoveryTransient(array $ids = array( self::HARNESS_MODEL_ID ))
     {
         $this->primeZaiSurfaceDiscoveryTransient( \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class, $ids );
     }
@@ -337,7 +349,7 @@ abstract class WpConnectorsTestCase extends TestCase
 
         $this->primeZaiSurfaceDiscoveryTransient($surface['endpoint']);
 
-        $model = $provider_class::model('glm-5.3', $config);
+        $model = $provider_class::model(self::HARNESS_MODEL_ID, $config);
         $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $model->setRequestAuthentication(new \WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication(
             null === $key ? FakeSecrets::apiKey() : $key
