@@ -1422,6 +1422,51 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				);
 			}
 
+			/*
+			 * glm33-2 (round-33 finding 2): the scalar rejection's
+			 * is_object() carve-out presumed every object encodes as a
+			 * JSON object — false for a JsonSerializable returning a
+			 * list or scalar (json_encode of one returning
+			 * array('Oslo') is ["Oslo"]) and for the storage-encoded
+			 * ArrayObject/ArrayIterator values: the round-33 repro
+			 * shipped "input": ["Oslo"] past both rejections AND past
+			 * the replay oracle below (the serialization is stable, no
+			 * precision loss) — the misattributed upstream 400 the
+			 * Codex R4 #4/GLM2 #2 typed rejections exist to prevent,
+			 * while this surface's own inbound parser rejects the
+			 * identical shape response-side. An object's JSON form is
+			 * knowable only through its encoding, so an OBJECT-typed
+			 * argument is judged by the SERIALIZED shape: one raw
+			 * encode whose successful output must lead with '{'. A
+			 * FAILED encode says nothing here — the replay guard below
+			 * owns unencodability with its own message (its first
+			 * branch proves it on the very same value).
+			 *
+			 * The probe runs on CALLER-built object arguments only: a
+			 * stamped ReplayValidatedFunctionCall proved its shape at
+			 * inbound acceptance (every stored input is object-shaped
+			 * by construction — the aggregator requires a stdClass
+			 * decode, the non-streaming parse requires the object
+			 * shape), so the stamp skips re-proving exactly as it
+			 * skips the replay oracle (GLM12 #12). stdClass replays
+			 * unstamped only from caller-built calls and always
+			 * encodes object-led. Residual, documented: the probe
+			 * re-runs per request build on the unstamped object-args
+			 * subset — one serialization, the same per-build cost the
+			 * glm21-5 memo already accepts where the memo cannot help
+			 * (rehydrated conversations carry fresh DTOs and miss by
+			 * design).
+			 */
+			if ( \is_object( $input ) && ! $function_call instanceof ReplayValidatedFunctionCall ) {
+				$encoded = json_encode( $input ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- the RAW oracle is required: the serialized shape is the fact being judged (GLM3 #4).
+
+				if ( false !== $encoded && '{' !== $encoded[0] ) {
+					throw new InvalidArgumentException(
+						sprintf( 'The %s provider requires tool arguments to be a JSON object (a value serializing to a non-object was given).', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+					);
+				}
+			}
+
 			if ( null === $input || '' === $input || ( \is_array( $input ) && array() === $input ) ) {
 				$input = new \stdClass();
 			}

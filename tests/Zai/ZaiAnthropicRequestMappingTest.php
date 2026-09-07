@@ -1038,6 +1038,103 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
         );
     }
 
+    /**
+     * @dataProvider provideNonObjectSerializedToolArguments
+     */
+    public function testObjectToolArgumentsSerializingToNonObjectsAreRejectedBeforeTransport($args, $label)
+    {
+        /*
+         * glm33-2 (round-33 finding 2): the scalar rejection's
+         * is_object() carve-out presumed every object encodes as a JSON
+         * object — a JsonSerializable returning a list (or scalar) and a
+         * storage-encoded ArrayObject encode to ["Oslo"]-shaped wire
+         * values, and the round-33 repro shipped that past BOTH shape
+         * rejections and past the replay oracle (stable serialization)
+         * as "input": ["Oslo"] — the misattributed upstream 400 the
+         * Codex R4 #4/GLM2 #2 family exists to prevent. Object-typed
+         * arguments are judged by their SERIALIZED shape now.
+         */
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(new MessagePart(new FunctionCall('call_o', 'pick', $args)))),
+        );
+
+        try {
+            $this->model()->generateTextResult($prompt);
+            $this->fail("Object tool arguments serializing to a non-object ({$label}) must be rejected.");
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('JSON object', $e->getMessage());
+            $this->assertStringContainsString('non-object', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
+    public function provideNonObjectSerializedToolArguments()
+    {
+        $json_list = new class implements JsonSerializable {
+            #[\ReturnTypeWillChange]
+            public function jsonSerialize()
+            {
+                return array('Oslo');
+            }
+        };
+
+        $json_scalar = new class implements JsonSerializable {
+            #[\ReturnTypeWillChange]
+            public function jsonSerialize()
+            {
+                return 'Oslo';
+            }
+        };
+
+        /*
+         * An ArrayObject is NOT in the bypass class: json_encode of an
+         * ArrayObject (sequential storage included) is object-led
+         * ('{"0":"Oslo"}'), verified — the storage-encoding concern is
+         * the glm22-16 WALKER's, never the wire shape's. The bypass is
+         * exactly a JsonSerializable returning a non-object.
+         */
+        return array(
+            'JsonSerializable returning a list' => array($json_list, 'JsonSerializable list'),
+            'JsonSerializable returning a scalar' => array($json_scalar, 'JsonSerializable scalar'),
+        );
+    }
+
+    public function testObjectToolArgumentsSerializingToObjectsStillEncode()
+    {
+        /*
+         * glm33-2 control, both directions: an object whose SERIALIZED
+         * form is a JSON object passes — a JsonSerializable returning
+         * an associative array and a plain stdClass (the common
+         * caller-built shape) both ship their members as the input.
+         */
+        $json_object = new class implements JsonSerializable {
+            #[\ReturnTypeWillChange]
+            public function jsonSerialize()
+            {
+                return array('city' => 'Oslo');
+            }
+        };
+
+        $prompt = array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+            new Message(MessageRoleEnum::model(), array(
+                new MessagePart(new FunctionCall('call_p', 'get_weather', $json_object)),
+                new MessagePart(new FunctionCall('call_q', 'ping', (object) array('ok' => true))),
+            )),
+            new Message(MessageRoleEnum::user(), array(
+                new MessagePart(new FunctionResponse('call_p', 'get_weather', array('temp_c' => 21))),
+                new MessagePart(new FunctionResponse('call_q', 'ping', array('ok' => 1))),
+            )),
+        );
+
+        list($url, $body) = $this->captureRequest($prompt, $this->model());
+
+        $this->assertSame(array('city' => 'Oslo'), $body['messages'][1]['content'][0]['input']);
+        $this->assertSame(array('ok' => true), $body['messages'][1]['content'][1]['input']);
+    }
+
     public function testAnEmptyStringArgumentMeansNoArguments()
     {
         // The empty string is an absent-arguments shape some histories
