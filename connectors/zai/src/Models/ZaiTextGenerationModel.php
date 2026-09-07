@@ -31,6 +31,7 @@ use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
+use WordPress\AiClient\Providers\Http\Collections\HeadersCollection;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
@@ -295,11 +296,27 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 			return false;
 		}
 
-		$content_type = $headers['Content-Type'] ?? '';
-
-		if ( \is_array( $content_type ) ) {
-			$content_type = $content_type[0] ?? '';
-		}
+		/*
+		 * glm33-5 (round-33 finding 5): the Content-Type resolution
+		 * rides the vendor's own HeadersCollection — the SAME object
+		 * the Request constructor builds from this very array, and the
+		 * one Request::getBody() resolves its JSON branch through
+		 * (getContentType() → getHeader(), case-insensitive). The
+		 * former exact-case $headers['Content-Type'] lookup diverged
+		 * for a caller spelling the header 'content-type' (legal
+		 * HTTP): the mirror answered false, the assembled array rode
+		 * as $data instead of the encoded string, and the vendor
+		 * re-encoded the whole payload at send time through the
+		 * JSON_THROW_ON_ERROR path the glm14-4 ride deleted — the
+		 * "no consumer reads getData()" invariant silently depended on
+		 * header spelling. Both the case rule and any future
+		 * resolution change in the vendor collection now serve the
+		 * mirror by construction (the desync the review's C2 named);
+		 * the multi-value shape keeps Request::getContentType()'s own
+		 * first-value pick.
+		 */
+		$values       = ( new HeadersCollection( $headers ) )->get( 'Content-Type' );
+		$content_type = null === $values ? '' : ( $values[0] ?? '' );
 
 		return false !== stripos( (string) $content_type, 'application/json' );
 	}

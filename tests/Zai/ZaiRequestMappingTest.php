@@ -19,6 +19,7 @@ use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Files\DTO\File;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
+use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use WordPress\AiClient\Providers\Models\DTO\ModelConfig;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
 use WordPress\AiClient\Tools\DTO\FunctionDeclaration;
@@ -194,6 +195,57 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
         $this->assertSame('glm-5.3', $decoded['model']);
         $this->assertSame('user', $decoded['messages'][0]['role']);
         $this->assertSame(array(array('type' => 'text', 'text' => 'Say hi.')), $decoded['messages'][0]['content']);
+    }
+
+    public function testALowercaseContentTypeHeaderStillRidesThePreEncodedBody()
+    {
+        /*
+         * glm33-5 (round-33 finding 5): Request::getBody() resolves
+         * Content-Type case-insensitively (HeadersCollection ->
+         * getContentType()), but carries_json_body()'s mirror read the
+         * exact-case $headers['Content-Type'] key — a caller spelling
+         * the header 'content-type' (legal HTTP) made the mirror
+         * answer false: the assembled array rode as $data and the
+         * vendor re-encoded the whole payload at send time through
+         * the JSON_THROW_ON_ERROR path the glm14-4 ride deleted, and
+         * getData() went non-null on a request the pinned invariant
+         * says carries the pre-encoded string. The mirror resolves
+         * through the vendor's own HeadersCollection now — the same
+         * resolution object the Request constructor builds from this
+         * very array — so the ride and getBody()'s JSON branch cannot
+         * desync on spelling (or on any future vendor resolution
+         * change) by construction. The model class is final, so the
+         * private static mirror is pinned through reflection (the
+         * glm19-11 idiom); the ride itself is pinned behaviorally by
+         * testTheGenerationRequestRidesTheNetsPreEncodedBody().
+         */
+        $mirror = new \ReflectionMethod(ZaiTextGenerationModel::class, 'carries_json_body');
+        if (PHP_VERSION_ID < 80100) {
+            // Required on PHP <= 8.0; a silent no-op since 8.1 (the
+            // harness's openPrivateProperty idiom).
+            $mirror->setAccessible(true);
+        }
+
+        $this->assertTrue(
+            $mirror->invoke(null, HttpMethodEnum::POST(), array('content-type' => 'application/json')),
+            'A lowercase Content-Type spelling must ride the pre-encoded body (glm33-5).'
+        );
+        $this->assertTrue(
+            $mirror->invoke(null, HttpMethodEnum::POST(), array('CONTENT-TYPE' => 'application/json')),
+            'An uppercase Content-Type spelling rides identically.'
+        );
+        $this->assertTrue(
+            $mirror->invoke(null, HttpMethodEnum::POST(), array('Content-Type' => array('application/json', 'application/json'))),
+            'A multi-value header rides on its first value, exactly like Request::getContentType().'
+        );
+        $this->assertFalse(
+            $mirror->invoke(null, HttpMethodEnum::POST(), array('Content-Type' => 'text/plain')),
+            'A non-JSON Content-Type keeps the array ride.'
+        );
+        $this->assertFalse(
+            $mirror->invoke(null, HttpMethodEnum::GET(), array('content-type' => 'application/json')),
+            'A body-less method never carries a JSON body.'
+        );
     }
 
     public function testConversationRequestSnapshot()
