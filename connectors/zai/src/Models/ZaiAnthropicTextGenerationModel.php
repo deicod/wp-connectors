@@ -411,9 +411,18 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * request, preserving the precise first-bad-wins messages ('a
 	 * message text part', 'the system instruction', 'a declared tool
 	 * function name', ...) without the second O(payload) serialization
-	 * the happy path used to pay. The segment ORDER matches the mapping
-	 * order (messages, then system, then tool declarations), so a
-	 * multi-bad payload names the member the old eager walk named. A
+	 * the happy path used to pay. The segment ORDER matches the OLD
+	 * EAGER positions, not the wire mapping order — glm20-8 composed
+	 * identities and stop sequences at the positions the pre-round
+	 * eager guards ran (identities, stop, then this walk's glm15-5
+	 * tail: text, system, declarations), so a multi-bad payload keeps
+	 * naming the member that walk named even where the orders differ
+	 * (stop_sequences MAPS after system; the identities and text
+	 * segments guard per-kind blocks, not per-message interleaved —
+	 * the zai twin's docblock states the same old-eager-order contract
+	 * for its stop-first composition). glm34-4: this docblock's former
+	 * 'matches the mapping order' phrasing was the glm19-13 doc-drift
+	 * class — a stated contract the composition never satisfied. A
 	 * member this walk does not know falls back to the caller's generic
 	 * description. The sampling options are deliberately NOT composed
 	 * here — see EncodabilityNet::guard_sampling_options() for why the
@@ -431,11 +440,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		/*
 		 * glm20-8: the prompt's tool identities and the stop-sequence
-		 * entries join the composition — their encodability halves left
-		 * the mapping-time eager guards for this walk (the values ride
-		 * the assembled params the net already encodes once), composed
-		 * at the positions the mapping order gave them: the identities
-		 * guard during message mapping, the stop sequences after it.
+		 * entries joined the composition here, at the positions the old
+		 * eager guards ran — identities first, then stop sequences,
+		 * both ahead of the text segment. That is the old eager order,
+		 * not the wire mapping order; the full contract statement and
+		 * the glm34-4 correction live in the docblock above.
 		 */
 		EncodabilityNet::guard_prompt_tool_identities( $prompt, self::PROVIDER_LABEL, 'a tool result tool_use id' );
 		EncodabilityNet::guard_stop_sequences( $config, self::PROVIDER_LABEL );
@@ -541,8 +550,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * replaced had already drifted once. glm20-8: the SHAPE half
 			 * stays eager here; the entries' encodability rides the net's
 			 * attribution walk (EncodabilityNet::guard_stop_sequences(),
-			 * composed after the identity segments this surface's mapping
-			 * order gives them).
+			 * composed after the identity segments at the old eager
+			 * position — ahead of the text segment, not at stop_sequences'
+			 * later mapping position; see guard_wire_values(), glm34-4).
 			 */
 			JsonEncodeGuard::reject_misshapen_stop_sequences( $stop_sequences, self::PROVIDER_LABEL );
 
