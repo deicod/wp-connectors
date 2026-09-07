@@ -244,6 +244,13 @@ final class ZaiModelCatalog {
 	 * (e.g. glm-5.3 before glm-5.3-flash), then variants alphabetically.
 	 * Non-GLM IDs sort after all GLM IDs.
 	 *
+	 * glm34-11: the comparison reads memoized per-ID keys (sort_key()) —
+	 * usort invokes this O(N log N) times per catalog build, and every
+	 * invocation used to re-run the two extraction regexes on both IDs;
+	 * the static-local memo (the glm26-12 flipped-set idiom) computes
+	 * each ID's key once. The RULE is unchanged: same versions, same
+	 * base-before-variant tie-break, same strcmp.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param ModelMetadata $a First model.
@@ -254,8 +261,8 @@ final class ZaiModelCatalog {
 		$a_id = $a->getId();
 		$b_id = $b->getId();
 
-		$a_version = self::glm_version( $a_id );
-		$b_version = self::glm_version( $b_id );
+		$a_version = self::sort_key( $a_id )[0];
+		$b_version = self::sort_key( $b_id )[0];
 
 		if ( null === $a_version || null === $b_version ) {
 			// Non-GLM models after GLM models; otherwise alphabetical.
@@ -270,8 +277,8 @@ final class ZaiModelCatalog {
 			return version_compare( $b_version, $a_version );
 		}
 
-		$a_variant = self::glm_variant( $a_id );
-		$b_variant = self::glm_variant( $b_id );
+		$a_variant = self::sort_key( $a_id )[1];
+		$b_variant = self::sort_key( $b_id )[1];
 
 		// Base model first.
 		if ( '' === $a_variant && '' !== $b_variant ) {
@@ -282,6 +289,24 @@ final class ZaiModelCatalog {
 		}
 
 		return strcmp( $a_variant, $b_variant );
+	}
+
+	/**
+	 * The memoized [version, variant] sort key for one model ID (glm34-11).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $model_id Model ID.
+	 * @return array{0: string|null, 1: string} Version (null for non-GLM) and variant.
+	 */
+	private static function sort_key( string $model_id ): array {
+		static $keys = array();
+
+		if ( ! isset( $keys[ $model_id ] ) ) {
+			$keys[ $model_id ] = array( self::glm_version( $model_id ), self::glm_variant( $model_id ) );
+		}
+
+		return $keys[ $model_id ];
 	}
 
 	/**
