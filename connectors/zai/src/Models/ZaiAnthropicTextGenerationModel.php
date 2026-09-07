@@ -2418,7 +2418,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	}
 
 	/**
-	 * Whether a decoded JSON value has an OBJECT shape (Codex R2 #1, R3 #1).   /**
 	 * Whether a decoded JSON value has an OBJECT shape (Codex R2 #1, R3 #1).
 	 *
 	 * The response body is decoded associatively, so JSON objects and JSON
