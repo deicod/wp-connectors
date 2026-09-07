@@ -734,12 +734,14 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @param Response $response The chat.completion response.
 	 * @return GenerativeAiResult The parsed result.
 	 * @throws ResponseException With a fixed message when the payload is malformed.
+	 * @throws FixedMessageResponseException When a parsed turn carries no
+	 *                                       translatable part (glm28-4).
 	 * @throws InvalidArgumentException Never surfaces: caught with the
 	 *                                  ResponseException and rewritten (glm19-2).
 	 */
 	private function parseNonStreamBody( Response $response ): GenerativeAiResult {
 		try {
-			return parent::parseResponseToGenerativeAiResult( $response );
+			$result = parent::parseResponseToGenerativeAiResult( $response );
 		} catch ( ResponseException | InvalidArgumentException $e ) {
 			/*
 			 * glm13-7: this plugin's own fixed-message rejections pass
@@ -784,6 +786,81 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 				'The chat-completions payload was malformed.'
 			);
 		}
+
+		/*
+		 * glm28-4 (round-28 finding 4, the GLM3 #1/GLM5 #4 parity the
+		 * zai_anthropic twin has enforced since those rounds): a
+		 * generated turn with ZERO parts — a role-only delta stream, a
+		 * message with no content member — parsed as a successful
+		 * generation whose empty assistant Message then replayed as
+		 * {"role":"assistant","content":[]} (the vendor mapper emits the
+		 * empty content list verbatim; thought-only parts map to null and
+		 * collapse to the same shape), poisoning every later request of
+		 * the conversation instead of failing typed at parse time. The
+		 * glm18-2 discipline — the exact turn the OUTBOUND mapper cannot
+		 * carry rejects at parse, the same place the twin rejects its
+		 * counterpart. One guard here covers all three transports: the
+		 * non-streaming decode, the streamed consolidation, and the
+		 * mislabeled-JSON fallback all ride this funnel (glm15-11), and
+		 * the marker family keeps the fallback's typed channel (glm14-2).
+		 * Tolerances untouched: an empty-string text part maps to a wire
+		 * text entry on this surface (unlike the twin's empty-text drop),
+		 * so {"content":""} still parses; glm6-15's empty-arguments tool
+		 * calls are translatable parts; usage semantics are upstream of
+		 * this guard (GLM7 #8).
+		 */
+		foreach ( $result->getCandidates() as $candidate ) {
+			$parts = $candidate->getMessage()->getParts();
+
+			if ( array() !== $parts && self::message_has_translatable_part( $parts ) ) {
+				continue;
+			}
+
+			throw FixedMessageResponseException::fixed(
+				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+				'message',
+				array() === $parts
+					? 'The message contained no content parts.'
+					: 'The message carried no translatable (text, tool call, or tool result) part, so it cannot be replayed into the conversation history.'
+			);
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Whether a parsed part list carries a part the OUTBOUND mapper would
+	 * translate into a wire member (glm28-4).
+	 *
+	 * Mirrors the vendor OpenAI-compatible prepareMessagesParam()'s
+	 * keep/drop decisions exactly — thought-channel text parts map to
+	 * null and drop; every NON-thought text part maps (an empty string
+	 * included — it becomes a wire text entry, unlike the zai_anthropic
+	 * twin's empty-text drop its own rule mirrors); function calls map to
+	 * tool_calls; the single function response maps to the tool message —
+	 * so the inbound parser can enforce the same contract it will be
+	 * held to on replay: a turn that would map to zero wire members
+	 * cannot join the conversation history.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $parts The parsed parts of one turn (list of MessagePart).
+	 * @return bool True when at least one part is translatable.
+	 */
+	private static function message_has_translatable_part( array $parts ): bool {
+		foreach ( $parts as $part ) {
+			$type = $part->getType();
+
+			if ( $type->isFunctionCall() || $type->isFunctionResponse() ) {
+				return true;
+			}
+
+			if ( $type->isText() && ! $part->getChannel()->isThought() ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

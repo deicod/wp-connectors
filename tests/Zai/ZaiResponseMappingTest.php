@@ -79,6 +79,121 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $this->assertSame(10, $result->getTokenUsage()->getTotalTokens());
     }
 
+    /*
+     * glm28-4 (round-28 finding 4): the GLM3 #1/GLM5 #4 parity the
+     * zai_anthropic twin has enforced since those rounds. A generated
+     * turn the OUTBOUND mapper cannot carry (zero parts, or only parts
+     * that map to nothing) used to parse as a successful generation
+     * whose empty assistant Message replayed as
+     * {"role":"assistant","content":[]} — poisoning every later request
+     * of the conversation instead of failing typed at parse time.
+     */
+
+    public function testARoleOnlyStreamedCompletionRejectsInsteadOfPoisoningTheHistory()
+    {
+        /*
+         * The round-28 verifier's exact repro: the role member is what
+         * makes the consolidated message associative, defeating the
+         * vendor's own empty-message check — the precise surviving
+         * shape.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-empty","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-empty","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A role-only completion must reject, not join the history as an empty turn.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('contained no content parts', $e->getMessage());
+        }
+    }
+
+    public function testAContentlessChoiceMessageRejectsOnEveryTransport()
+    {
+        $body = wp_json_encode(array(
+            'id' => 'chatcmpl-contentless',
+            'choices' => array(array(
+                'index' => 0,
+                'message' => array('role' => 'assistant'),
+                'finish_reason' => 'stop',
+            )),
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A contentless choice message must reject.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('contained no content parts', $e->getMessage());
+        }
+
+        /*
+         * The mislabeled-JSON fallback rides the same funnel, and the
+         * marker family keeps its typed channel there (glm14-2) — the
+         * empty-turn rejection is a definitive payload verdict, not a
+         * maybe-stream case.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A contentless choice message must reject through the fallback too.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('contained no content parts', $e->getMessage());
+        }
+    }
+
+    public function testAThoughtOnlyTurnRejectsAsUnreplayable()
+    {
+        // The OpenAI mapper drops thought-channel parts on replay, so a
+        // thought-only turn collapses to the same empty content list.
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-thought","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"thinking"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-thought","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            '',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A thought-only turn must reject as unreplayable.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('carried no translatable', $e->getMessage());
+        }
+    }
+
+    public function testAnEmptyStringContentCompletionStillParses()
+    {
+        /*
+         * The tolerance boundary: an empty-string text part maps to a
+         * wire text entry on this surface (unlike the twin's empty-text
+         * drop, which its own rule mirrors), so it is translatable and
+         * stays a successful parse.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), wp_json_encode(array(
+            'id' => 'chatcmpl-emptystring',
+            'choices' => array(array(
+                'index' => 0,
+                'message' => array('role' => 'assistant', 'content' => ''),
+                'finish_reason' => 'stop',
+            )),
+        )));
+
+        $parts = $this->model()->generateTextResult($this->prompt())->toMessage()->getParts();
+
+        $this->assertCount(1, $parts, 'An empty-string content completion keeps its one text part.');
+        $this->assertSame('', $parts[0]->getText());
+    }
+
     public function testABomPrefixedJsonBodyStillParses()
     {
         /*
