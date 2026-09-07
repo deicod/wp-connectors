@@ -1268,6 +1268,123 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $this->assertSame(0, $result->getTokenUsage()->getTotalTokens(), 'The merged empty-list usage keeps master zero semantics despite the later null member.');
     }
 
+    public function testAStreamedScalarUsageMemberAsTheOnlyUsageDeclarationIsRejectedTyped()
+    {
+        /*
+         * glm31-1: a present non-array usage member used to skip the
+         * merge silently, so a stream whose ONLY usage declaration was
+         * corrupt completed "successfully" with zeroed accounting while
+         * the byte-equivalent non-streaming body rejects typed through
+         * the validator's object rule (lenient mode rescues null, never
+         * a scalar) — the glm18-4 cross-channel divergence class. The
+         * member is remembered now and flags the stream malformed when
+         * no valid usage member resolves it.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-cu","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-cu","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":"unavailable"}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A streamed scalar usage member as the only usage declaration must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('malformed chunk event', $e->getMessage());
+        }
+    }
+
+    public function testATrailingScalarUsageMemberAsTheOnlyUsageDeclarationIsRejectedTyped()
+    {
+        /*
+         * glm31-1 (post-sentinel half): the same verdict for the same
+         * shape in the trailing phase (the glm15-14 one-predicate rule).
+         * A valid pre-sentinel member would resolve it; none did.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-cu2","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-cu2","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-cu2","usage":"unavailable"}',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A trailing scalar usage member as the only usage declaration must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('malformed chunk event', $e->getMessage());
+        }
+    }
+
+    public function testAScalarUsageMemberSupersededByALaterValidOneStillSucceeds()
+    {
+        /*
+         * glm31-1: the resolution rule cuts both ways. GLM6 #3 pinned
+         * valid-then-corrupt (the late corrupt member is noise); this is
+         * corrupt-then-valid, where the later valid member carries the
+         * stream's accounting and the earlier corrupt one is the noise.
+         * Any valid member in the stream resolves the pending one.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-cu3","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-cu3","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":"unavailable"}',
+            'data: {"id":"chatcmpl-cu3","usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(5, $result->getTokenUsage()->getTotalTokens(), 'The later valid usage member carries the accounting.');
+    }
+
+    public function testAScalarUsageMemberIsResolvedByATrailingValidUsageMember()
+    {
+        /*
+         * glm31-1: the gap-fill takes part in the resolution — a corrupt
+         * pre-sentinel declaration followed by an appending gateway's
+         * valid post-[DONE] usage member ships the valid counts, not a
+         * rejection (GLM7 #2's completion semantics own the trailing
+         * member; the evaluation runs after the gap-fill by design).
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-cu4","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-cu4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":"unavailable"}',
+            'data: [DONE]',
+            'data: {"id":"chatcmpl-cu4","usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi', $result->toText());
+        $this->assertSame(5, $result->getTokenUsage()->getTotalTokens(), 'The trailing valid usage member resolves the pending corrupt one.');
+    }
+
+    public function testNonStreamingScalarUsageMemberIsRejectedTyped()
+    {
+        /*
+         * glm31-1 (non-streamed half): the byte-equivalent verdict the
+         * streamed rule is pinned against — the validator's object rule
+         * in lenient mode rescues exactly null, never a scalar.
+         */
+        $this->queueSdkResponse(200, array(), '{"id":"chatcmpl-u3","choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":"unavailable"}');
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A scalar usage member must be rejected typed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage());
+        }
+    }
+
     public function testAStreamedUnencodableNonUsageMemberIsRejectedTypedNotMasked()
     {
         /*

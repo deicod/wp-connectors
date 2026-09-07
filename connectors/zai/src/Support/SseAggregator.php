@@ -151,6 +151,33 @@ final class SseAggregator extends AbstractSseAggregator {
 	private $trailing_raw_usage_source = null;
 
 	/**
+	 * Whether a PRESENT non-array usage member was seen on any frame,
+	 * pre- or post-sentinel identically (glm31-1).
+	 *
+	 * The member itself never merges — the isset-AND-is_array capture
+	 * rule is unchanged (GLM6 #3's oracle contract: the oracle always
+	 * describes the frame the consolidated payload carries) — and it
+	 * does not flag alone. GLM6 #3 pinned that a late "usage":"corrupt"
+	 * member must not reject a generation whose valid usage already
+	 * merged: there the corrupt member is superseding noise. What no
+	 * round adjudicated is the member as the stream's ONLY usage
+	 * declaration — there the usage data vanished silently and the
+	 * generation completed with zeroed accounting while the
+	 * byte-equivalent non-streaming body rejects typed through the
+	 * validator's object rule (lenient mode rescues null, never a
+	 * scalar — the glm18-4 cross-channel divergence class). aggregated()
+	 * resolves the flag at end of stream: malformed_event rises only
+	 * when NO valid usage member merged in either phase (the post-DONE
+	 * gap-fill included), so the GLM6 #3 shape keeps succeeding and the
+	 * corrupt-only shape fails typed like its non-streamed twin.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var bool
+	 */
+	private $non_array_usage_pending = false;
+
+	/**
 	 * Finish reasons declared by POST-sentinel frames, keyed by choice
 	 * index, last declaration per index wins (GLM7 #2).
 	 *
@@ -334,6 +361,21 @@ final class SseAggregator extends AbstractSseAggregator {
 			$this->usage            = $this->trailing_usage;
 			$this->raw_usage_source = $this->trailing_raw_usage_source;
 			$this->raw_usage        = null;
+		}
+
+		/*
+		 * glm31-1: a present non-array usage member flags ONLY when the
+		 * payload ends up carrying no valid usage — after the gap-fill,
+		 * a null $usage means no member of either phase merged. A valid
+		 * member anywhere in the stream resolves the pending corrupt one
+		 * (GLM6 #3's pinned shape: the late corrupt member is noise, the
+		 * generation completes); a corrupt-only declaration is the
+		 * silent-zeroing shape whose non-streaming byte-equivalent the
+		 * shared validator rejects typed (glm18-4's cross-channel
+		 * parity, closed on this member).
+		 */
+		if ( $this->non_array_usage_pending && null === $this->usage ) {
+			$this->malformed_event = true;
 		}
 
 		// Reindex the merged tool calls ONCE, here: while merging, the
@@ -778,9 +820,21 @@ final class SseAggregator extends AbstractSseAggregator {
 		 * gateways that emit "usage":{} on every chunk, for an oracle
 		 * the next frame's merge discarded.
 		 */
-		if ( isset( $event['usage'] ) && \is_array( $event['usage'] ) ) {
-			$this->usage            = $event['usage'];
-			$this->raw_usage_source = $data;
+		if ( isset( $event['usage'] ) ) {
+			if ( \is_array( $event['usage'] ) ) {
+				$this->usage            = $event['usage'];
+				$this->raw_usage_source = $data;
+			} else {
+				/*
+				 * glm31-1: the capture rule is untouched (present AND an
+				 * array — GLM6 #3); a present non-array member is
+				 * remembered for aggregated()'s end-of-stream verdict
+				 * instead of vanishing. Absent/null members never reach
+				 * here: isset() reads null as absent (GLM7 #8's absent
+				 * semantics on this wire).
+				 */
+				$this->non_array_usage_pending = true;
+			}
 		}
 
 		/*
@@ -861,9 +915,22 @@ final class SseAggregator extends AbstractSseAggregator {
 			return;
 		}
 
-		if ( isset( $decoded['usage'] ) && \is_array( $decoded['usage'] ) ) {
-			$this->trailing_usage            = $decoded['usage'];
-			$this->trailing_raw_usage_source = $data;
+		if ( isset( $decoded['usage'] ) ) {
+			if ( \is_array( $decoded['usage'] ) ) {
+				$this->trailing_usage            = $decoded['usage'];
+				$this->trailing_raw_usage_source = $data;
+			} else {
+				/*
+				 * glm31-1: the trailing twin of the pre-sentinel rule
+				 * (the glm15-14 one-predicate rationale — the same
+				 * payload shape earns the same verdict in both phases).
+				 * Judged once at end of stream: a trailing corrupt
+				 * member whose stream already carries valid usage stays
+				 * GLM6 #3's superseding noise; a corrupt-only
+				 * declaration is the silent-zeroing shape.
+				 */
+				$this->non_array_usage_pending = true;
+			}
 		}
 
 		/*
