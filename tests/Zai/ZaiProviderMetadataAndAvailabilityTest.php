@@ -1500,7 +1500,6 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
                 'STATE_OPTION',
                 'REGION_PENDING_OPTION',
                 'KEY_OPTION',
-                'KEY_ENV_NAME',
                 'REFUSAL_LABEL',
             )),
             'The availability base must not carry the zai provider identifiers.'
@@ -1510,10 +1509,18 @@ final class ZaiProviderMetadataAndAvailabilityTest extends WpConnectorsTestCase
             $this->assertContains('PROVIDER_ID', self::declared_constants($provider), "{$provider} must declare its connector ID.");
         }
 
-        $identifiers = array('STATE_OPTION', 'REGION_PENDING_OPTION', 'KEY_OPTION', 'KEY_ENV_NAME', 'REFUSAL_LABEL');
+        $identifiers = array('STATE_OPTION', 'REGION_PENDING_OPTION', 'KEY_OPTION', 'REFUSAL_LABEL');
         foreach (array(ZaiProviderAvailability::class, ZaiAnthropicProviderAvailability::class) as $availability) {
             $missing = array_diff($identifiers, self::declared_constants($availability));
             $this->assertSame(array(), $missing, "{$availability} must declare every identifier constant.");
+
+            /*
+             * glm31-6: KEY_ENV_NAME is the ONE identifier the availability
+             * layer never read (env/constant resolution is the settings
+             * layer's ladder) — the production-dead mirrors are deleted
+             * (glm19-10's direction) and this pin holds them deleted.
+             */
+            $this->assertNotContains('KEY_ENV_NAME', self::declared_constants($availability), "{$availability} must not re-declare the settings layer's env-constant name.");
         }
     }
 

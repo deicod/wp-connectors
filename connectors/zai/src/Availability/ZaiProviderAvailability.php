@@ -61,15 +61,6 @@ final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 	public const KEY_OPTION = PlanRegionSettings::KEY_OPTION;
 
 	/**
-	 * Environment variable / constant name core advertises for the key.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
-	 */
-	public const KEY_ENV_NAME = PlanRegionSettings::KEY_ENV_NAME;
-
-	/**
 	 * This provider's label in the shared refusal wording (GLM5 #17).
 	 *
 	 * GLM6 #12: declared here since the base stopped carrying the zai

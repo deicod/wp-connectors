@@ -487,7 +487,14 @@ PHP;
             $this->assertSame($settings::STATE_OPTION, $availability::STATE_OPTION);
             $this->assertSame($settings::REGION_PENDING_OPTION, $availability::REGION_PENDING_OPTION);
             $this->assertSame($settings::KEY_OPTION, $availability::KEY_OPTION);
-            $this->assertSame($settings::KEY_ENV_NAME, $availability::KEY_ENV_NAME);
+            /*
+             * glm31-6: KEY_ENV_NAME had no availability-layer reader (env
+             * and constant resolution is the settings layer's own code,
+             * AbstractPlanRegionSettings' ladder) — the mirror constant
+             * is deleted (the glm19-10 direction) and the settings class
+             * is the one owner.
+             */
+            $this->assertFalse(\defined("{$availability}::KEY_ENV_NAME"), 'The availability classes must not mirror the settings layer\'s env-constant name.');
             /*
              * glm19-10: the directories' CACHE_PREFIX aliases were
              * production-dead mirrors (every composition goes through

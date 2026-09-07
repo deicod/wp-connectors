@@ -70,15 +70,6 @@ final class ZaiAnthropicProviderAvailability extends AbstractZaiProviderAvailabi
 	public const KEY_OPTION = ZaiAnthropicPlanRegionSettings::KEY_OPTION;
 
 	/**
-	 * Environment variable / constant name core advertises for the key.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var string
-	 */
-	public const KEY_ENV_NAME = ZaiAnthropicPlanRegionSettings::KEY_ENV_NAME;
-
-	/**
 	 * This provider's label in the shared refusal wording (GLM5 #17).
 	 *
 	 * @since 0.2.0
