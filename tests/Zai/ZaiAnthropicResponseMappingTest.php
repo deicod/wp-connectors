@@ -245,6 +245,54 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         }
     }
 
+    public function testAnExplicitNullContentMemberRejectsThroughTheInvalidDataChannel()
+    {
+        /*
+         * glm34-3 (round-34 finding 3): the content member's presence
+         * probe was the file's last isset() holdout — an explicitly-
+         * present "content": null misrouted through fromMissingData
+         * ('Missing the "content" key') while every sibling envelope
+         * member (type, stop_reason, usage) sends an explicitly-null
+         * value through the invalid-data channel (the same
+         * isset/array_key_exists conflation the file's own GLM8 #4
+         * comment calls a bug on stop_reason). The split names the
+         * non-array PRESENT value with the raw-oracle probe's own
+         * reason string; the genuinely-ABSENT member keeps
+         * fromMissingData.
+         */
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_null_content',
+            'type' => 'message',
+            'role' => 'assistant',
+            'content' => null,
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 4, 'output_tokens' => 2),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An explicit null content member must reject typed.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('must be a JSON array', $e->getMessage());
+            $this->assertStringNotContainsString('Missing', $e->getMessage());
+        }
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+            'id' => 'msg_absent_content',
+            'type' => 'message',
+            'role' => 'assistant',
+            'stop_reason' => 'end_turn',
+            'usage' => array('input_tokens' => 4, 'output_tokens' => 2),
+        )));
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('An absent content member must still fail as missing data.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('Missing', $e->getMessage());
+        }
+    }
+
     public function testAStreamedExplicitNullStopReasonAggregatesAsANaturalStop()
     {
         /*

@@ -1878,8 +1878,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 *                                       (glm14-2).
 	 */
 	private function parse_decoded_message( $data, ?\stdClass $raw_body ): GenerativeAiResult {
-		if ( ! \is_array( $data ) || ! isset( $data['content'] ) || ! \is_array( $data['content'] ) ) {
+		/*
+		 * glm34-3 (round-34 finding 3): presence is judged with
+		 * array_key_exists semantics — the isset() probe collapsed an
+		 * explicitly-present "content": null onto the ABSENT member and
+		 * misrouted it through fromMissingData, while every sibling
+		 * envelope member (type, stop_reason, usage) sends an
+		 * explicitly-null value through the invalid-data channel. The
+		 * split names the non-array PRESENT value with the same reason
+		 * string the raw-oracle probe below uses, on every transport
+		 * (the streamed path passes no raw oracle — its entry check is
+		 * this one). The genuinely-ABSENT member keeps fromMissingData.
+		 */
+		if ( ! \is_array( $data ) || ! \array_key_exists( 'content', $data ) ) {
 			throw ResponseException::fromMissingData( self::PROVIDER_LABEL, 'content' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
+		}
+
+		if ( ! \is_array( $data['content'] ) ) {
+			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'The message content must be a JSON array.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		/*
