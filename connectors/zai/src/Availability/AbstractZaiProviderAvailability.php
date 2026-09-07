@@ -359,10 +359,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		}
 
 		if ( $authentication instanceof ApiKeyRequestAuthentication && '' !== $authentication->getApiKey() ) {
-			return array(
-				'key'    => $authentication->getApiKey(),
-				'source' => $this->key_source( $authentication->getApiKey() ),
-			);
+			return $this->wired_credential( $authentication );
 		}
 
 		$settings_class = static::settings_class();
@@ -512,6 +509,28 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			return $this->effective_key();
 		}
 
+		return $this->wired_credential( $authentication );
+	}
+
+	/**
+	 * The credential pair a NON-EMPTY wired ApiKey represents (glm30-6).
+	 *
+	 * The pair construction — the wired key plus its derived source —
+	 * was spelled inline in effective_key() and again in
+	 * effective_for_authentication() (the GLM9 #14 extraction left the
+	 * mapping itself duplicated): a change to the pair's shape (a new
+	 * member, a different source derivation) had to land in both, and
+	 * the gate and the verdict recorder reading divergent copies is the
+	 * GLM5 #11 divergence class. One owner; the empty/null paths stay
+	 * with their callers (effective_key()'s ladder and
+	 * effective_for_authentication()'s fallback deliberately differ).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param ApiKeyRequestAuthentication $authentication The wired credential (non-empty key).
+	 * @return array{key: string, source: string} The credential and its source.
+	 */
+	private function wired_credential( ApiKeyRequestAuthentication $authentication ): array {
 		return array(
 			'key'    => $authentication->getApiKey(),
 			'source' => $this->key_source( $authentication->getApiKey() ),
