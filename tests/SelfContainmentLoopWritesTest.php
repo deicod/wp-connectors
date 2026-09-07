@@ -233,4 +233,38 @@ final class SelfContainmentLoopWritesTest extends TestCase
         $this->assertNotEmpty($violations, 'An element write inside the loop must refuse the map-literal proof.');
         $this->assertStringContainsString('require $file', implode("\n", $violations));
     }
+
+    public function testTheOneDepthZeroSplitWalkServesEverySplitFamily(): void
+    {
+        /*
+         * glm28-10: the four hand-rolled depth-zero split loops (the
+         * group-use member split, the runtime-segment dot split, and
+         * the map-literal comma and '=>' splits) ride ONE parameterized
+         * span walk — the glm20-10 matcher precedent applied to the
+         * split family. The pin holds the walk's own contracts: nested
+         * delimiters shield a cut, the two-byte '=>' predicate advances
+         * past both bytes, and the tail span is always present.
+         */
+        $comma_cut = static function (string $view, int $i): int {
+            return ',' === $view[ $i ] ? 1 : 0;
+        };
+        $arrow_cut = static function (string $view, int $i): int {
+            return $i + 1 < \strlen($view) && '=' === $view[ $i ] && '>' === $view[ $i + 1 ] ? 2 : 0;
+        };
+
+        $spans = wp_connectors_depth_zero_spans('a, [b, c], d', '([', ')]', $comma_cut);
+        $this->assertSame(array(array(0, 1), array(2, 9), array(10, 12)), $spans, 'A comma inside brackets sits below depth zero.');
+
+        $this->assertSame(
+            array(array(0, 0), array(2, 7)),
+            wp_connectors_depth_zero_spans('=> tail', '([', ')]', $arrow_cut),
+            'A two-byte cut at offset zero yields the empty head span and the post-arrow tail.'
+        );
+
+        $this->assertSame(
+            array(array(0, 3)),
+            wp_connectors_depth_zero_spans('a=b', '([', ')]', $arrow_cut),
+            'No cut: the single span is the whole view (the tail span).'
+        );
+    }
 }

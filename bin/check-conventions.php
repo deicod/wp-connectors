@@ -343,26 +343,18 @@ function wp_connectors_unused_import_violations(string $root): int
  */
 function wp_connectors_group_use_members(string $body): array
 {
+    /*
+     * glm28-10: the member split rides the ONE depth-zero span walk
+     * (bin/lib/plugin-tools.php) with this scanner's '{}' depth class
+     * — the hand-rolled loop was structurally identical to the three
+     * plugin-tools splits. Empty members (a trailing comma) drop.
+     */
     $members = array();
-    $depth = 0;
-    $current = '';
-    $length = strlen($body);
-    for ($i = 0; $i < $length; ++$i) {
-        $char = $body[$i];
-        if ('{' === $char) {
-            ++$depth;
-        } elseif ('}' === $char) {
-            --$depth;
-        }
-
-        if (',' === $char && 0 === $depth) {
-            $members[] = trim($current);
-            $current = '';
-            continue;
-        }
-        $current .= $char;
+    foreach (wp_connectors_depth_zero_spans($body, '{', '}', static function (string $view, int $i): int {
+        return ',' === $view[$i] ? 1 : 0;
+    }) as list($span_start, $span_end)) {
+        $members[] = trim((string) substr($body, $span_start, $span_end - $span_start));
     }
-    $members[] = trim($current);
 
     return array_values(array_filter($members, static function ($member): bool {
         return '' !== $member;

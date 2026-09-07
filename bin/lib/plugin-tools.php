@@ -508,25 +508,13 @@ function wp_connectors_include_runtime_segments($statement)
     $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($statement)), " \t\n\r();");
     $blanked = (string) preg_replace('/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/', "''", $argument);
 
+    // glm28-10: the dot split rides the ONE depth-zero span walk.
     $segments = array();
-    $current = '';
-    $depth = 0;
-    $length = strlen($blanked);
-    for ($i = 0; $i < $length; ++$i) {
-        $char = $blanked[ $i ];
-        if ($char === '(' || $char === '[') {
-            ++$depth;
-        } elseif ($char === ')' || $char === ']') {
-            --$depth;
-        }
-        if ($char === '.' && $depth === 0) {
-            $segments[] = $current;
-            $current = '';
-            continue;
-        }
-        $current .= $char;
+    foreach (wp_connectors_depth_zero_spans($blanked, '([', ')]', static function ($view, $i) {
+        return '.' === $view[ $i ] ? 1 : 0;
+    }) as list($span_start, $span_end)) {
+        $segments[] = (string) substr($blanked, $span_start, $span_end - $span_start);
     }
-    $segments[] = $current;
 
     $runtime = array();
     foreach ($segments as $segment) {
@@ -538,6 +526,65 @@ function wp_connectors_include_runtime_segments($statement)
     }
 
     return $runtime;
+}
+
+/**
+ * The byte spans between depth-zero cut positions (glm28-10: the ONE
+ * depth-zero SPLIT walk — the wp_connectors_matching_delimiter_end()
+ * precedent applied to the split family).
+ *
+ * Four hand-rolled copies of this loop lived across the tree (the
+ * group-use member split on '{}'-depth commas in check-conventions.php,
+ * the runtime-segment split on '()'/[]'-depth dots, and the map-literal
+ * comma and '=>' splits here) — structurally parallel walks a
+ * depth-semantics fix (an unbalanced-input rule, a new delimiter class)
+ * had to land in four places at once, the exact drift class glm20-10
+ * closed for the matcher family. One parameterized walk now; every
+ * split rides it with its own opens/closes classes and cut predicate.
+ *
+ * The walk judges $view (a masked/blanked same-length copy at every
+ * call site) and returns [start, end) spans of it — valid byte ranges
+ * in ANY same-length string, so a caller may slice the ORIGINAL bytes
+ * at the same offsets (the glm17-15 length invariant). The predicate
+ * returns the cut's BYTE LENGTH (0 = no cut at $i), so a two-byte
+ * '=>' cut advances past both bytes; spans EXCLUDE the cut bytes and
+ * the final span (the tail) is always present, empty or not — callers
+ * state their own empty-element policy.
+ *
+ * @param string   $view   The view the walk judges (masked/blanked).
+ * @param string   $opens  Every byte that opens a nesting level ('{', '([').
+ * @param string   $closes Every byte that closes one, in $opens order.
+ * @param callable $cuts   function ( string $view, int $i ): int — the cut's
+ *                         byte length at $i, or 0 when $i is no cut.
+ * @return array<int, array{0: int, 1: int}> The [start, end) spans.
+ */
+function wp_connectors_depth_zero_spans($view, $opens, $closes, $cuts)
+{
+    $spans = array();
+    $start = 0;
+    $depth = 0;
+    $length = strlen($view);
+    for ($i = 0; $i < $length; ++$i) {
+        $char = $view[ $i ];
+        if (false !== strpos($opens, $char)) {
+            ++$depth;
+        } elseif (false !== strpos($closes, $char)) {
+            --$depth;
+        }
+        if (0 !== $depth) {
+            continue;
+        }
+
+        $cut = (int) $cuts($view, $i);
+        if ($cut > 0) {
+            $spans[] = array($start, $i);
+            $start = $i + $cut;
+            $i += $cut - 1;
+        }
+    }
+    $spans[] = array($start, $length);
+
+    return $spans;
 }
 
 /**
@@ -1299,28 +1346,15 @@ function wp_connectors_array_literal_value_reasons($file, $code, $expression, $o
 
     // Blank string contents WITHOUT changing the byte length, so comma
     // cut positions computed on the blanked copy slice the ORIGINAL
-    // (glm22-15: the one shared blanking helper).
+    // (glm22-15: the one shared blanking helper; glm28-10: the split
+    // rides the ONE depth-zero span walk).
     $blanked = wp_connectors_blank_quoted_strings($inner);
 
     $elements = array();
-    $cut = -1;
-    $depth = 0;
-    $length = strlen($blanked);
-    for ($i = 0; $i < $length; ++$i) {
-        $char = $blanked[ $i ];
-        if ($char === '(' || $char === '[') {
-            ++$depth;
-        } elseif ($char === ')' || $char === ']') {
-            --$depth;
-        }
-        if ($char === ',' && $depth === 0) {
-            $elements[] = trim((string) substr($inner, $cut + 1, $i - $cut - 1));
-            $cut = $i;
-        }
-    }
-    $tail = trim((string) substr($inner, $cut + 1));
-    if ('' !== $tail) {
-        $elements[] = $tail;
+    foreach (wp_connectors_depth_zero_spans($blanked, '([', ')]', static function ($view, $i) {
+        return ',' === $view[ $i ] ? 1 : 0;
+    }) as list($span_start, $span_end)) {
+        $elements[] = trim((string) substr($inner, $span_start, $span_end - $span_start));
     }
 
     $reasons = array();
@@ -1330,24 +1364,20 @@ function wp_connectors_array_literal_value_reasons($file, $code, $expression, $o
             continue;
         }
 
-        // The VALUE side of a top-level `=>` (the arrow inside a nested
-        // structure sits below depth zero and never splits this element)
-        // — judged on the same shared blanked view (glm22-15).
+        /*
+         * The VALUE side of a top-level `=>` (the arrow inside a nested
+         * structure sits below depth zero and never splits this element)
+         * — judged on the same shared blanked view (glm22-15; glm28-10:
+         * the FIRST depth-zero cut of the ONE span walk, its two-byte
+         * predicate advancing past the '>' of '=>').
+         */
         $element_blank = wp_connectors_blank_quoted_strings($element);
-        $depth = 0;
+        $arrow_spans = wp_connectors_depth_zero_spans($element_blank, '([', ')]', static function ($view, $i) {
+            return $i + 1 < strlen($view) && '=' === $view[ $i ] && '>' === $view[ $i + 1 ] ? 2 : 0;
+        });
         $value = $element;
-        $length = strlen($element_blank);
-        for ($i = 0; $i < $length - 1; ++$i) {
-            $char = $element_blank[ $i ];
-            if ($char === '(' || $char === '[') {
-                ++$depth;
-            } elseif ($char === ')' || $char === ']') {
-                --$depth;
-            }
-            if (0 === $depth && '=' === $char && '>' === $element_blank[ $i + 1 ]) {
-                $value = trim((string) substr($element, $i + 2));
-                break;
-            }
+        if (count($arrow_spans) > 1) {
+            $value = trim((string) substr($element, $arrow_spans[0][1] + 2));
         }
 
         ++$values;
