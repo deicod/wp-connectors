@@ -1198,103 +1198,18 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			$request        = new Request( HttpMethodEnum::GET(), $endpoint->models_url() );
 
 			/*
-			 * GLM5 #10: the SDK registry wires provider credentials from
-			 * env/constant ONLY, so a DATABASE-only key rode an UNWIRED
-			 * probe: getRequestAuthentication() threw the binding
-			 * RuntimeException, the catch below counted the probe
-			 * inconclusive, and isConfigured() reported connected
-			 * (configured-pending) FOREVER without a single validation
-			 * request — defeating this class's own 'nonempty-but-invalid
-			 * key must report not-connected' contract. When no auth is
-			 * wired, the probe authenticates with the EFFECTIVE key (the
-			 * same resolution effective_key() performs) through the
-			 * surface's fallback authentication, so the database-only key
-			 * actually validates against the endpoint.
-			 *
-			 * glm13-1: an EMPTY wired credential authenticates nothing. The
-			 * SDK registry wires env/constant values verbatim — an empty
-			 * ZAI_API_KEY in wp-config/.env yields
-			 * ApiKeyRequestAuthentication('') (getenv() returns the empty
-			 * string, not false) — while the verdict binding
-			 * (effective_for_authentication()) skips an empty wired key and
-			 * names the ladder-resolved credential instead. Authenticating
-			 * with the empty key would fly ONE credential (the empty
-			 * Bearer) and persist the 401 it earns under a DIFFERENT
-			 * (possibly valid) key's binding — clearing a working
-			 * credential. An empty wired credential is treated exactly
-			 * like none: the probe authenticates with the EFFECTIVE key,
-			 * so one credential flies and the same credential binds.
+			 * glm28-12: the ~70-line credential-resolution ladder this
+			 * try carried inline (three try-nested branches plus the
+			 * effective-key fallback) lives in
+			 * resolve_probe_authentication() now — probe() is a flat
+			 * read-then-verdict method; every wiring rule's rationale
+			 * rides the helper. Null means the probe answers
+			 * inconclusive with nothing flown.
 			 */
-			$authentication = null;
-
-			try {
-				/*
-				 * glm16-1: the wiring rules judge the RAW wired instance
-				 * (raw_request_authentication()). Reading through
-				 * $this->getRequestAuthentication() instead — as this
-				 * probe did — launders a foreign wiring on the
-				 * zai_anthropic surface into the protocol wrap's
-				 * RuntimeException, which the unwired catch below
-				 * misread as NO wiring: the fallback flew the effective
-				 * key a caller never wired and its rejection persisted
-				 * under that key's binding. Through the RAW accessor the
-				 * catch's throw means exactly one thing — nothing is
-				 * wired.
-				 */
-				$wired = $this->raw_request_authentication();
-
-				if ( $wired instanceof ApiKeyRequestAuthentication && '' === $wired->getApiKey() ) {
-					/*
-					 * glm13-1: an empty wired key authenticates nothing —
-					 * treated exactly like none (the comment above).
-					 */
-					$authentication = null;
-				} elseif ( ! $wired instanceof ApiKeyRequestAuthentication ) {
-					/*
-					 * glm14-5: an OPAQUE wired credential (a non-Api-key
-					 * RequestAuthentication) cannot be named by the
-					 * verdict binding this class builds — the binding
-					 * rides effective_key(), which ignores non-Api-key
-					 * wiring and resolves the ladder/database credential.
-					 * Flying the opaque credential would let its answer
-					 * validate or reject one credential while
-					 * isConfigured() persists the verdict under a
-					 * DIFFERENT key's binding — the same cross-credential
-					 * poisoning class glm13-1's empty-wire rule refuses.
-					 * The SDK registry type-gates its wirings to
-					 * ApiKeyRequestAuthentication, so only third-party
-					 * code calling setRequestAuthentication() directly
-					 * can produce this shape. One credential flies AND
-					 * binds, or no verdict persists: inconclusive,
-					 * nothing flown.
-					 */
-					return null;
-				} else {
-					/*
-					 * glm16-1: the FLIGHT credential goes back through
-					 * the surface's own getRequestAuthentication() — the
-					 * one protocol-wrap funnel (glm15-8) — so the wired
-					 * Api-key flies with this surface's headers exactly
-					 * as its generation requests do. The funnel cannot
-					 * throw here: the raw instance just passed the
-					 * Api-key shape check the wrap() itself applies.
-					 */
-					$authentication = $this->getRequestAuthentication();
-				}
-			} catch ( Throwable $unwired ) {
-				$authentication = null;
-			}
+			$authentication = $this->resolve_probe_authentication();
 
 			if ( null === $authentication ) {
-				$effective = $this->effective_key();
-
-				if ( '' === $effective['key'] ) {
-					// Nothing to authenticate with: as inconclusive as
-					// before the fallback existed.
-					return null;
-				}
-
-				$authentication = static::fallback_authentication( $effective['key'] );
+				return null;
 			}
 
 			$request  = $authentication->authenticateRequest( $request );
@@ -1362,6 +1277,93 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 
 		// 3xx, 429, other 4xx, 5xx: inconclusive for the credential.
 		return null;
+	}
+
+	/**
+	 * Resolves the authentication the probe's /models request flies
+	 * (glm28-12 — the credential-resolution ladder extracted from
+	 * probe() unchanged).
+	 *
+	 * Three outcomes, one per wiring rule the ladder has accumulated:
+	 *
+	 * - The WIRED Api-key instance, read back through the surface's own
+	 *   getRequestAuthentication() — the one protocol-wrap funnel
+	 *   (glm15-8) — so the wired key flies with this surface's headers
+	 *   exactly as its generation requests do (glm16-1).
+	 * - The FALLBACK instance carrying the ladder-resolved EFFECTIVE key
+	 *   (GLM5 #10: the SDK registry wires provider credentials from
+	 *   env/constant ONLY, so a DATABASE-only key rode an UNWIRED probe
+	 *   and isConfigured() reported connected (configured-pending)
+	 *   FOREVER without a single validation request — the fallback
+	 *   makes the database-only key actually validate against the
+	 *   endpoint).
+	 * - Null: the probe answers INCONCLUSIVE with nothing flown — an
+	 *   OPAQUE wired credential the verdict binding cannot name
+	 *   (glm14-5: the binding rides effective_key(), which ignores
+	 *   non-Api-key wiring; one credential flies AND binds, or no
+	 *   verdict persists), or no credential at all (nothing wired and
+	 *   the effective key empty).
+	 *
+	 * An EMPTY wired credential is treated exactly like none (glm13-1):
+	 * the SDK registry wires env/constant values verbatim — an empty
+	 * ZAI_API_KEY yields ApiKeyRequestAuthentication('') — while the
+	 * verdict binding skips an empty wired key and names the
+	 * ladder-resolved credential instead; authenticating with the empty
+	 * key would fly ONE credential and persist the 401 it earns under a
+	 * DIFFERENT (possibly valid) key's binding, clearing a working
+	 * credential.
+	 *
+	 * The UncarriableCredentialException this surface's wrap family can
+	 * throw fires at AUTHENTICATE time (reject_uncarriable_credential()
+	 * rides authenticateRequest(), not the getters), so it never meets
+	 * the inner catch — the only Throwable the unwired catch sees is
+	 * the raw accessor's nothing-is-wired RuntimeException (glm16-1:
+	 * the rules judge the RAW wired instance, never the wrap funnel,
+	 * whose foreign-wiring throw would launder as no wiring).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return RequestAuthenticationInterface|null The flight credential, or null.
+	 */
+	private function resolve_probe_authentication(): ?RequestAuthenticationInterface {
+		$authentication = null;
+
+		try {
+			$wired = $this->raw_request_authentication();
+
+			if ( $wired instanceof ApiKeyRequestAuthentication && '' === $wired->getApiKey() ) {
+				// glm13-1: an empty wired key authenticates nothing —
+				// treated exactly like none (see the docblock).
+				$authentication = null;
+			} elseif ( ! $wired instanceof ApiKeyRequestAuthentication ) {
+				// glm14-5: the opaque-wiring refusal — inconclusive,
+				// nothing flown (see the docblock).
+				return null;
+			} else {
+				// glm16-1: the FLIGHT credential goes back through the
+				// one protocol-wrap funnel; the funnel cannot throw here
+				// (the raw instance just passed the Api-key shape check
+				// the wrap() itself applies — the uncarriable rejection
+				// rides authenticateRequest(), later, in probe()'s try).
+				$authentication = $this->getRequestAuthentication();
+			}
+		} catch ( Throwable $unwired ) {
+			$authentication = null;
+		}
+
+		if ( null === $authentication ) {
+			$effective = $this->effective_key();
+
+			if ( '' === $effective['key'] ) {
+				// Nothing to authenticate with: as inconclusive as
+				// before the fallback existed.
+				return null;
+			}
+
+			$authentication = static::fallback_authentication( $effective['key'] );
+		}
+
+		return $authentication;
 	}
 
 	/**
