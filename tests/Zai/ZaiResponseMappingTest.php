@@ -2825,8 +2825,9 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         // an account state that "wait and retry" can never fix. The safe
         // (redacted, status-only) catalog text must guide both shapes and
         // name both region portals, without echoing the upstream body.
-        $message = ErrorMapper::safe_http_message(429);
+        $message = ErrorMapper::safe_http_message(429, 'z.ai API');
 
+        $this->assertStringContainsString('The z.ai API rejected the request (429)', $message, 'The OpenAI surface names itself by its card name (glm30-2).');
         $this->assertStringContainsString('rate limiting', $message, 'The temporary-rate-limit reading must stay.');
         $this->assertStringContainsString('plan/balance mismatch', $message);
         $this->assertStringContainsString('Coding Plan', $message);
@@ -2908,7 +2909,7 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
 
         foreach ($cases as $case) {
             list($exception, $expectedCode, $expectedStatus) = $case;
-            $error = ErrorMapper::to_wp_error($exception);
+            $error = ErrorMapper::to_wp_error($exception, 'z.ai API');
             $this->assertWPError($error, $expectedCode);
             $this->assertSame($expectedStatus, $error->get_error_data()['status']);
         }
@@ -2917,7 +2918,7 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
     public function testErrorMapperRedactsUpstreamSecrets()
     {
         $secret = FakeSecrets::apiKey();
-        $error = ErrorMapper::to_wp_error(new ClientException('Bearer ' . $secret . ' is invalid', 401));
+        $error = ErrorMapper::to_wp_error(new ClientException('Bearer ' . $secret . ' is invalid', 401), 'z.ai API');
 
         $this->assertWPError($error, ErrorMapper::CODE_UNAUTHORIZED);
         $this->assertRedacted($error->get_error_message(), $secret);
@@ -2925,14 +2926,14 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
 
     public function testErrorMapperCoversTransportAndParseFailures()
     {
-        $transport = ErrorMapper::to_wp_error(new NetworkException('Network error occurred while sending request to https://api.z.ai/api/paas/v4/chat/completions: connection refused'));
+        $transport = ErrorMapper::to_wp_error(new NetworkException('Network error occurred while sending request to https://api.z.ai/api/paas/v4/chat/completions: connection refused'), 'z.ai API');
         $this->assertWPError($transport, ErrorMapper::CODE_TRANSPORT_ERROR);
         $this->assertStringContainsString('connection refused', $transport->get_error_message());
 
-        $parse = ErrorMapper::to_wp_error(WordPress\AiClient\Providers\Http\Exception\ResponseException::fromMissingData('z.ai', 'choices'));
+        $parse = ErrorMapper::to_wp_error(WordPress\AiClient\Providers\Http\Exception\ResponseException::fromMissingData('z.ai', 'choices'), 'z.ai API');
         $this->assertWPError($parse, ErrorMapper::CODE_INVALID_RESPONSE);
 
-        $invalid = ErrorMapper::to_wp_error(new WordPress\AiClient\Common\Exception\InvalidArgumentException('The z.ai provider does not support top-k.'));
+        $invalid = ErrorMapper::to_wp_error(new WordPress\AiClient\Common\Exception\InvalidArgumentException('The z.ai provider does not support top-k.'), 'z.ai API');
         $this->assertWPError($invalid, ErrorMapper::CODE_INVALID_REQUEST);
         $this->assertStringContainsString('top-k', $invalid->get_error_message());
     }
@@ -3027,7 +3028,7 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $this->assertSame($status, $data['status'], 'Core must derive the REST status from the exception code.');
         $this->assertArrayHasKey('exception_class', $data, 'Core records the exception class in the error data.');
         $this->assertSame(
-            ErrorMapper::safe_http_message($status),
+            ErrorMapper::safe_http_message($status, 'z.ai API'),
             $result->get_error_message(),
             'The verbatim-passed message must be exactly the zai-safe catalog text.'
         );

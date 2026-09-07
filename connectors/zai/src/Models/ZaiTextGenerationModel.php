@@ -41,6 +41,7 @@ use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
@@ -91,6 +92,28 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * @var string
 	 */
 	private const PROVIDER_LABEL = ZaiProviderAvailability::REFUSAL_LABEL;
+
+	/**
+	 * The API identity the HTTP-error catalog names this surface by
+	 * (glm30-2).
+	 *
+	 * The card-name chain (glm24-2's direction): the settings layer's
+	 * PROVIDER_LABEL plus the ' API' suffix the HTTP catalog's sentences
+	 * assume — 'z.ai API', byte-identical to the wording the catalog
+	 * hardcoded before the identity became a parameter. The parse-layer
+	 * identity above stays the slug; the HTTP catalog names the CARD,
+	 * because "which of the two connectors holds the wrong key?" is
+	 * matched against the Connectors screen, where the card name lives.
+	 *
+	 * Read by the ThrowsSafeHttpErrors and SafeGenerationBoundary traits
+	 * this model composes (static:: resolves there); a composer without
+	 * the constant fatals loudly on first use (the GLM6 #12 discipline).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	private const HTTP_API_LABEL = PlanRegionSettings::PROVIDER_LABEL . ' API';
 
 	/**
 	 * Builds the request against the CURRENT plan/region endpoint.

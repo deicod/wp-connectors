@@ -6721,8 +6721,9 @@ $body = ''
     {
         // z.ai 429 is also code 1113 (plan/balance mismatch, record 0006):
         // the one redacted catalog message must guide both surfaces.
-        $message = ErrorMapper::safe_http_message(429);
+        $message = ErrorMapper::safe_http_message(429, 'z.ai (Anthropic API)');
 
+        $this->assertStringContainsString('The z.ai (Anthropic API) rejected the request (429)', $message, 'The Anthropic surface names itself by its card name (glm30-2), never the bare z.ai identity.');
         $this->assertStringContainsString('rate limiting', $message);
         $this->assertStringContainsString('plan/balance mismatch', $message);
     }
@@ -6936,7 +6937,7 @@ $body = ''
         $this->assertSame($status, $data['status'], 'Core must derive the REST status from the exception code.');
         $this->assertArrayHasKey('exception_class', $data, 'Core records the exception class in the error data.');
         $this->assertSame(
-            ErrorMapper::safe_http_message($status),
+            ErrorMapper::safe_http_message($status, 'z.ai (Anthropic API)'),
             $result->get_error_message(),
             'The verbatim-passed message must be exactly the shared safe-catalog text.'
         );

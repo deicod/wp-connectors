@@ -51,6 +51,7 @@ use WordPress\AiClient\Tools\DTO\FunctionCall;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
+use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
@@ -117,6 +118,28 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @var string
 	 */
 	private const PROVIDER_LABEL = ZaiAnthropicProviderAvailability::REFUSAL_LABEL;
+
+	/**
+	 * The API identity the HTTP-error catalog names this surface by
+	 * (glm30-2).
+	 *
+	 * The card-name chain (glm24-2's direction): the settings layer's
+	 * PROVIDER_LABEL — 'z.ai (Anthropic API)' — verbatim, WITHOUT the
+	 * ' API' suffix the OpenAI twin appends, because this card name
+	 * already carries its '(Anthropic API)' suffix and appending again
+	 * would duplicate it. Before the identity became a parameter the
+	 * shared catalog hardcoded 'z.ai API' here too, so a 401 with both
+	 * cards configured never named which surface rejected the key.
+	 *
+	 * Read by the ThrowsSafeHttpErrors and SafeGenerationBoundary traits
+	 * this model composes (static:: resolves there); a composer without
+	 * the constant fatals loudly on first use (the GLM6 #12 discipline).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	private const HTTP_API_LABEL = ZaiAnthropicPlanRegionSettings::PROVIDER_LABEL;
 
 	/**
 	 * Normalized input schemas for the CURRENT config's tool

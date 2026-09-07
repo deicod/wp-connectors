@@ -1392,6 +1392,11 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
             'zai_anthropic' => Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3', ModelConfig::fromArray(array('topK' => 5))),
         );
 
+        $api_labels = array(
+            'zai' => 'z.ai API',
+            'zai_anthropic' => 'z.ai (Anthropic API)',
+        );
+
         foreach ($surfaces as $label => $model) {
             try {
                 $model->generateTextResult(array(
@@ -1399,7 +1404,7 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
                 ));
                 $this->fail("[{$label}] An unbound instance must fail the transporter binding.");
             } catch (\WordPress\AiClient\Common\Exception\RuntimeException $e) {
-                $error = Deicod\WpConnectors\Zai\Support\ErrorMapper::to_wp_error($e);
+                $error = Deicod\WpConnectors\Zai\Support\ErrorMapper::to_wp_error($e, $api_labels[$label]);
                 $this->assertWPError($error, Deicod\WpConnectors\Zai\Support\ErrorMapper::CODE_ERROR);
                 $this->assertSame(
                     500,

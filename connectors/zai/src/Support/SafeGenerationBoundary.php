@@ -174,7 +174,7 @@ trait SafeGenerationBoundary {
 		try {
 			return $this->generateTextResult( $prompt );
 		} catch ( \Throwable $e ) {
-			return ErrorMapper::to_wp_error( $e );
+			return ErrorMapper::to_wp_error( $e, static::HTTP_API_LABEL );
 		}
 	}
 

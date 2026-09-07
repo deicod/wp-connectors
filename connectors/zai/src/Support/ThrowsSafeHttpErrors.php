@@ -23,6 +23,10 @@ use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 /**
  * Throws SAFE, typed SDK exceptions for non-2xx responses.
  *
+ * Composers declare the HTTP_API_LABEL constant — the card-name-chain API
+ * identity the shared catalog names the surface by (glm30-2); a composer
+ * without it fatals loudly on first use (the GLM6 #12 discipline).
+ *
  * @since 0.2.0
  */
 trait ThrowsSafeHttpErrors {
@@ -92,13 +96,13 @@ trait ThrowsSafeHttpErrors {
 		}
 
 		if ( $status >= 500 ) {
-			throw new ServerException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new ServerException( ErrorMapper::safe_http_message( $status, static::HTTP_API_LABEL ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
 		if ( $status >= 400 ) {
-			throw new ClientException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new ClientException( ErrorMapper::safe_http_message( $status, static::HTTP_API_LABEL ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
-		throw new RedirectException( ErrorMapper::safe_http_message( $status ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+		throw new RedirectException( ErrorMapper::safe_http_message( $status, static::HTTP_API_LABEL ), absint( $status ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 	}
 }

@@ -157,16 +157,24 @@ final class ErrorMapper {
 	 * WP_Error VERBATIM — no filter exists on that path) and this mapper's
 	 * typed WP_Error output. Never includes upstream body content.
 	 *
+	 * glm30-2: the identity is the CALLER's — each surface names itself by
+	 * its card name (the glm24-2 chain: the settings layer's
+	 * PROVIDER_LABEL), so an operator staring at "which of the two cards
+	 * holds the wrong key?" can tell. 'z.ai API' keeps the OpenAI
+	 * surface's messages byte-identical to the old hardcoded wording.
+	 *
 	 * @since 0.1.0
 	 *
-	 * @param int $status HTTP status code (any non-2xx).
+	 * @param int    $status    HTTP status code (any non-2xx).
+	 * @param string $api_label API display name ('z.ai API' / 'z.ai (Anthropic API)').
 	 * @return string Translated, redacted, actionable message.
 	 */
-	public static function safe_http_message( int $status ): string {
+	public static function safe_http_message( int $status, string $api_label ): string {
 		if ( $status >= 500 ) {
 			return sprintf(
-				/* translators: %d: HTTP status code. */
-				__( 'The z.ai API reported a server error (%d). This is usually temporary; try again shortly.', 'zai' ),
+				/* translators: 1: API display name, 2: HTTP status code. */
+				__( 'The %1$s reported a server error (%2$d). This is usually temporary; try again shortly.', 'zai' ),
+				$api_label,
 				$status
 			);
 		}
@@ -174,26 +182,40 @@ final class ErrorMapper {
 		if ( $status >= 400 ) {
 			switch ( $status ) {
 				case 401:
-					return __( 'The z.ai API rejected the API key (401). Check the key on the Connectors screen — international and China keys are not interchangeable.', 'zai' );
+					return sprintf(
+						/* translators: %s: API display name. */
+						__( 'The %s rejected the API key (401). Check the key on the Connectors screen — international and China keys are not interchangeable.', 'zai' ),
+						$api_label
+					);
 				case 403:
-					return __( 'The z.ai API refused the request (403). The key may not have access to this model or plan.', 'zai' );
+					return sprintf(
+						/* translators: %s: API display name. */
+						__( 'The %s refused the request (403). The key may not have access to this model or plan.', 'zai' ),
+						$api_label
+					);
 				case 429:
 					// 429 is also z.ai code 1113: a Coding-Plan key against the
 					// General endpoint without pay-as-you-go balance (record
 					// 0006) — an account state that waiting can never fix.
-					return __( 'The z.ai API rejected the request (429). This is either temporary rate limiting — wait a moment and try again — or a plan/balance mismatch: check that the selected plan (Coding Plan or General API) matches the key, and that the account has balance or an active subscription at its region portal (z.ai internationally, open.bigmodel.cn in China).', 'zai' );
+					return sprintf(
+						/* translators: %s: API display name. */
+						__( 'The %s rejected the request (429). This is either temporary rate limiting — wait a moment and try again — or a plan/balance mismatch: check that the selected plan (Coding Plan or General API) matches the key, and that the account has balance or an active subscription at its region portal (z.ai internationally, open.bigmodel.cn in China).', 'zai' ),
+						$api_label
+					);
 				default:
 					return sprintf(
-						/* translators: %d: HTTP status code. */
-						__( 'The z.ai API rejected the request (%d). Check the prompt and model selection.', 'zai' ),
+						/* translators: 1: API display name, 2: HTTP status code. */
+						__( 'The %1$s rejected the request (%2$d). Check the prompt and model selection.', 'zai' ),
+						$api_label,
 						$status
 					);
 			}
 		}
 
 		return sprintf(
-			/* translators: %d: HTTP status code. */
-			__( 'The z.ai API returned an unexpected redirect (%d). No request was retried.', 'zai' ),
+			/* translators: 1: API display name, 2: HTTP status code. */
+			__( 'The %1$s returned an unexpected redirect (%2$d). No request was retried.', 'zai' ),
+			$api_label,
 			$status
 		);
 	}
@@ -204,17 +226,18 @@ final class ErrorMapper {
 	 * @since 0.1.0
 	 *
 	 * @param Throwable $exception The caught exception.
+	 * @param string    $api_label API display name ('z.ai API' / 'z.ai (Anthropic API)') for the catalog messages (glm30-2).
 	 * @return \WP_Error Typed error; message never contains upstream bodies.
 	 */
-	public static function to_wp_error( Throwable $exception ): \WP_Error {
+	public static function to_wp_error( Throwable $exception, string $api_label ): \WP_Error {
 		if ( $exception instanceof ClientException ) {
-			return self::client_error( $exception );
+			return self::client_error( $exception, $api_label );
 		}
 
 		if ( $exception instanceof ServerException ) {
 			return new \WP_Error(
 				self::CODE_UPSTREAM_ERROR,
-				self::safe_http_message( self::status_of( $exception ) ),
+				self::safe_http_message( self::status_of( $exception ), $api_label ),
 				array( 'status' => self::status_of( $exception ) )
 			);
 		}
@@ -222,7 +245,7 @@ final class ErrorMapper {
 		if ( $exception instanceof RedirectException ) {
 			return new \WP_Error(
 				self::CODE_REDIRECT_ERROR,
-				self::safe_http_message( self::status_of( $exception ) ),
+				self::safe_http_message( self::status_of( $exception ), $api_label ),
 				array( 'status' => self::status_of( $exception ) )
 			);
 		}
@@ -298,7 +321,11 @@ final class ErrorMapper {
 
 		return new \WP_Error(
 			self::CODE_ERROR,
-			__( 'The z.ai request failed.', 'zai' ),
+			sprintf(
+				/* translators: %s: API display name. */
+				__( 'The %s request failed.', 'zai' ),
+				$api_label
+			),
 			array( 'status' => 500 )
 		);
 	}
@@ -309,9 +336,10 @@ final class ErrorMapper {
 	 * @since 0.1.0
 	 *
 	 * @param ClientException $exception The 4xx exception.
+	 * @param string          $api_label API display name for the catalog message (glm30-2).
 	 * @return \WP_Error Typed error.
 	 */
-	private static function client_error( ClientException $exception ): \WP_Error {
+	private static function client_error( ClientException $exception, string $api_label ): \WP_Error {
 		$status = self::status_of( $exception );
 
 		$code = self::CODE_CLIENT_ERROR;
@@ -325,7 +353,7 @@ final class ErrorMapper {
 
 		return new \WP_Error(
 			$code,
-			self::safe_http_message( $status ),
+			self::safe_http_message( $status, $api_label ),
 			array( 'status' => $status )
 		);
 	}
