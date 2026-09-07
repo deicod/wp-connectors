@@ -1424,13 +1424,17 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * glm23-1 added two sites: the one-frame completion window's
          * mid-stream settle and its finish() EOF settle — both classify
          * through the same helper.
+         *
+         * glm33-1 added the seventh: the undeclared TYPELESS carrier
+         * gate before dispatch_event() (a frame declaring nothing —
+         * the helper's null mapping to the malformed-event channel).
          */
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
         );
 
         $this->assertSame(
-            6,
+            7,
             preg_match_all('/->flag_corrupt_event\(/', $source),
             'Every corruption branch rides the one classification helper.'
         );
@@ -3605,6 +3609,149 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
 
             $this->assertTrue($sibling->has_malformed_event(), 'A data-less ' . $cut_event . ' declaration must flag the stream corrupt.');
         }
+    }
+
+    public function testATypelessDataOnlyCarrierFrameInvalidatesTheStream()
+    {
+        /*
+         * glm33-1 (round-33 finding 1): the data-only carrier whose
+         * declaration was cut AND whose payload carries no top-level
+         * type member — the typeless-payload variant of the glm21-1
+         * damage shape, whose adjudication presumed the type member
+         * present — derived '' and fell through dispatch_event() as an
+         * unknown type: the round-33 repro aggregated a SUCCESSFUL
+         * completion with the carrier's chunk silently missing and
+         * every flag false. Every documented Messages streaming event
+         * carries a type member, so an undeclared object-or-list
+         * payload names nothing dispatchable and now flags through the
+         * one classifier (the malformed-event channel — a frame
+         * declaring nothing).
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_g33a","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello "}}' . "\n\n"
+            // The declaration for this delta was cut; the carrier is
+            // data-only and TYPELESS (its type lives only in the
+            // nested delta object).
+            . 'data: {"index":0,"delta":{"type":"text_delta","text":"World"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_malformed_event(), 'A typeless data-only carrier must flag the stream corrupt, not drop silently.');
+        $this->assertFalse($aggregator->has_error(), 'An undeclared typeless carrier is corruption, not an error event.');
+        $this->assertFalse($aggregator->has_malformed_tool_input(), 'An undeclared typeless carrier is not a tool-input problem.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream with a typeless data-only carrier must fail the generation, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+            $this->assertStringNotContainsString('World', $e->getMessage());
+        }
+
+        /*
+         * The control is the glm21-1 presumption itself: the SAME cut
+         * declaration with the type member PRESENT on the carrier
+         * dispatches by payload type and keeps parsing (the GLM1 #14
+         * tolerance) — the fix narrows to the typeless variant only.
+         */
+        $typed = str_replace(
+            'data: {"index":0,"delta"',
+            'data: {"type":"content_block_delta","index":0,"delta"',
+            $body
+        );
+
+        $carrier = new AnthropicSseAggregator();
+        $carrier->feed($typed);
+        $carrier->finish();
+
+        $this->assertFalse($carrier->has_malformed_event(), 'A typed data-only carrier (payload-type dispatch) keeps parsing.');
+        $this->assertSame('Hello World', $carrier->aggregated()['content'][0]['text']);
+
+        /*
+         * The undeclared LIST carrier is the sibling shape the same
+         * check closes: the "dropped chunk inside [\"lost\"]" class the
+         * verifier sweep named for declared frames, arriving with no
+         * declaration to flag through.
+         */
+        $list = str_replace(
+            'data: {"index":0,"delta":{"type":"text_delta","text":"World"}}',
+            'data: ["lost chunk"]',
+            $body
+        );
+
+        $undeclared_list = new AnthropicSseAggregator();
+        $undeclared_list->feed($list);
+        $undeclared_list->finish();
+
+        $this->assertTrue($undeclared_list->has_malformed_event(), 'An undeclared list carrier must flag the stream corrupt.');
+    }
+
+    public function testUndeclaredTypelessFramesKeepTheirTolerances()
+    {
+        /*
+         * glm33-1 boundary pins, both directions: an undeclared SCALAR
+         * payload keeps its drop (it cannot be an event carrier —
+         * every Messages event payload is an object; the zai twin pins
+         * the same decodable-scalar skip on its own wire, glm23-6),
+         * and a typeless object frame AFTER the terminal keeps the
+         * trailing-noise tolerance (handle_trailing_event() already
+         * ignores unknown trailing names; a completed generation
+         * cannot lose content to it).
+         */
+        $scalar = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_g33b","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'data: null' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Kept."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $scalar_stream = new AnthropicSseAggregator();
+        $scalar_stream->feed($scalar);
+        $scalar_stream->finish();
+
+        $this->assertFalse($scalar_stream->has_malformed_event(), 'An undeclared scalar payload keeps its non-event skip.');
+        $this->assertSame('Kept.', $scalar_stream->aggregated()['content'][0]['text']);
+
+        $trailing = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_g33c","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Done."}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n"
+            . 'data: {"telemetry":true}' . "\n\n";
+
+        $trailing_stream = new AnthropicSseAggregator();
+        $trailing_stream->feed($trailing);
+        $trailing_stream->finish();
+
+        $this->assertFalse($trailing_stream->has_malformed_event(), 'A typeless object frame after the terminal keeps the trailing-noise tolerance.');
+        $this->assertSame('Done.', $trailing_stream->aggregated()['content'][0]['text']);
     }
 
     public function testATrailingUndecodableDeclaredContentEventStillInvalidates()

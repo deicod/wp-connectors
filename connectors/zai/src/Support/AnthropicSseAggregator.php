@@ -917,6 +917,44 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			return;
 		}
 
+		/*
+		 * glm33-1 (round-33 finding 1): a frame that names NO event at
+		 * all — no event: field, no pending glm23-1 declaration to
+		 * reunite with, and no type member on its decodable payload
+		 * ($type derives '') — used to fall through dispatch_event()
+		 * as an unknown type and drop SILENTLY. The round-33 repro: a
+		 * producer whose content_block_delta declaration was cut (the
+		 * data-only carrier arriving alone — the other half of the
+		 * glm23-1 split) and whose payload carries no top-level type
+		 * member completed with the chunk silently missing and every
+		 * flag false, the exact silent-loss class glm23-1 closed for
+		 * cut DECLARATIONS. glm21-1's adjudication presumed the type
+		 * member present (a column-0 data: line still carried it past
+		 * the lost event: field); the typeless variant is the gap.
+		 *
+		 * Every documented Messages streaming event carries a type
+		 * member naming the event, so an undeclared OBJECT-or-LIST
+		 * payload names nothing this aggregator could dispatch on —
+		 * unknowable content, and dropping it is the same silent-loss
+		 * shape every sibling corruption branch rejects. Flag it
+		 * through the one classifier (GLM12 #15: a frame declaring
+		 * nothing takes the malformed-event channel). Scalar payloads
+		 * keep their drop: they cannot be an event carrier (deltas and
+		 * lifecycle payloads are objects), and the zai twin pins the
+		 * decodable-scalar skip on its own wire (glm23-6). A frame
+		 * DECLARING an unknown name — or carrying an unknown STRING
+		 * type member — keeps the forward-compatible ignore below
+		 * (GLM7 #18/GLM1 #14); so does a typeless frame after the
+		 * terminal: the trailing policy (handle_trailing_event())
+		 * already tolerates unknown trailing noise, and a completed
+		 * generation cannot lose content to it.
+		 */
+		if ( ! $this->terminated && null === $event_name && '' === $type ) {
+			$this->flag_corrupt_event( null );
+
+			return;
+		}
+
 		$this->dispatch_event( $type, $raw );
 	}
 
