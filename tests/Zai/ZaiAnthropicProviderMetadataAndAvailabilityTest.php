@@ -477,7 +477,7 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
 
         // The anthropic endpoint rejects the credential.
         $instance = $this->availability($key);
-        $this->queueSdkResponse(401, array(), '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}');
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('invalid x-api-key', 'authentication_error'));
 
         $this->assertFalse(
             $instance->isConfigured(),
@@ -526,7 +526,7 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
 
         // z.ai 429 is also code 1113 (plan/balance mismatch, record 0006):
         // inconclusive for the credential.
-        $this->queueSdkResponse(429, array(), '{"type":"error","error":{"type":"rate_limit_error","message":"Insufficient balance"}}');
+        $this->queueSdkResponse(429, array(), HttpResponseFactory::anthropicErrorBody('Insufficient balance', 'rate_limit_error'));
         $this->assertTrue($instance->isConfigured(), 'An inconclusive probe must not report not-connected.');
         $this->assertFalse(get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false), 'A 429 must not persist a verdict.');
     }
@@ -543,7 +543,7 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
 
         update_option(ZaiAnthropicPlanRegionSettings::OPTION_REGION, 'cn');
 
-        $this->queueSdkResponse(401, array(), '{"type":"error","error":{"type":"authentication_error","message":"wrong region"}}');
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('wrong region', 'authentication_error'));
         $this->assertFalse($instance->isConfigured(), 'An international key must not count as connected on the China endpoint.');
         $this->assertSame(
             'https://open.bigmodel.cn/api/anthropic/v1/models',

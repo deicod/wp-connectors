@@ -408,10 +408,8 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
     public function testUpstreamErrorBodiesEchoingTheKeyStayRedacted()
     {
         $key = FakeSecrets::apiKey();
-        $body = (string) wp_json_encode(array(
-            'type' => 'error',
-            'error' => array('type' => 'authentication_error', 'message' => 'invalid api key ' . $key),
-        ));
+        // glm29-11: the error envelope rides the factory builder.
+        $body = HttpResponseFactory::anthropicErrorBody('invalid api key ' . $key, 'authentication_error');
         $this->queueSdkResponse(401, array('Content-Type' => 'application/json'), $body);
 
         $error = $this->model($key)->generate_text($this->prompt());
@@ -446,7 +444,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         $availability->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $availability->setRequestAuthentication(new ApiKeyRequestAuthentication($key));
 
-        $this->queueSdkResponse(401, array(), '{"type":"error","error":{"type":"authentication_error","message":"nope"}}');
+        $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('nope', 'authentication_error'));
         $this->assertFalse($availability->isConfigured());
 
         $this->assertOptionNotPlaintext(

@@ -70,7 +70,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         // No cached transient: discovery is attempted; its failure (here a
         // 404 — the unprobed route shape) must leave the plan fallback.
         $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
-        $this->queueSdkResponse(404, array(), '{"type":"error","error":{"type":"not_found_error","message":"no route"}}');
+        $this->queueSdkResponse(404, array(), HttpResponseFactory::anthropicErrorBody('no route', 'not_found_error'));
 
         $models = $this->directory()->listModelMetadata();
 
@@ -525,7 +525,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
         $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
         $key = FakeSecrets::apiKey();
         update_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
-        $this->queueSdkResponse(404, array(), '{"type":"error","error":{"type":"not_found_error","message":"no route"}}');
+        $this->queueSdkResponse(404, array(), HttpResponseFactory::anthropicErrorBody('no route', 'not_found_error'));
 
         $models = $this->directory($key)->listModelMetadata();
 
@@ -540,7 +540,7 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     {
         $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'general', 'cn');
 
-        $this->queueSdkResponse(404, array(), '{"type":"error","error":{"type":"not_found_error","message":"not found"}}');
+        $this->queueSdkResponse(404, array(), HttpResponseFactory::anthropicErrorBody('not found', 'not_found_error'));
 
         $models = $this->directory()->listModelMetadata();
 
