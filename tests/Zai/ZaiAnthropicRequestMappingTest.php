@@ -1841,7 +1841,7 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
          */
         $config = ModelConfig::fromArray(array('candidateCount' => 2));
         $this->primeZaiAnthropicDiscoveryTransient();
-        $model = ZaiAnthropicProvider::model('glm-5.3', $config);
+        $model = ZaiAnthropicProvider::model(self::HARNESS_MODEL_ID, $config);
         $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         // Deliberately NO setRequestAuthentication(): the model is unbound.
 
@@ -1882,7 +1882,7 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
          */
         $config = ModelConfig::fromArray(array('candidateCount' => 2));
         $this->primeZaiAnthropicDiscoveryTransient();
-        $model = ZaiAnthropicProvider::model('glm-5.3', $config);
+        $model = ZaiAnthropicProvider::model(self::HARNESS_MODEL_ID, $config);
         $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $model->setRequestAuthentication($this->foreignAuthentication());
 
@@ -1908,7 +1908,7 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
          * InvalidArgumentException produced before.
          */
         $this->primeZaiAnthropicDiscoveryTransient();
-        $model = ZaiAnthropicProvider::model('glm-5.3');
+        $model = ZaiAnthropicProvider::model(self::HARNESS_MODEL_ID);
         $model->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
         $model->setRequestAuthentication($this->foreignAuthentication());
 

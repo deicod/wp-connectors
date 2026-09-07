@@ -1440,8 +1440,8 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
         $this->primeZaiAnthropicDiscoveryTransient();
 
         $surfaces = array(
-            'zai' => ZaiProvider::model('glm-5.3', ModelConfig::fromArray(array('topK' => 5))),
-            'zai_anthropic' => Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3', ModelConfig::fromArray(array('topK' => 5))),
+            'zai' => ZaiProvider::model(self::HARNESS_MODEL_ID, ModelConfig::fromArray(array('topK' => 5))),
+            'zai_anthropic' => Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model(self::HARNESS_MODEL_ID, ModelConfig::fromArray(array('topK' => 5))),
         );
 
         $api_labels = array(

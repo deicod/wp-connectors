@@ -3077,7 +3077,7 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         // ProviderRegistry::getProviderModel() binds them. Direct generation
         // on the unbound model must report the SDK's clear binding hint
         // instead of the generic catch-all message.
-        $model = ZaiProvider::model('glm-5.3');
+        $model = ZaiProvider::model(self::HARNESS_MODEL_ID);
 
         $error = $model->generate_text($this->prompt());
 

@@ -7388,7 +7388,7 @@ $body = ''
 
         // Bare factory call: no transporter and no request auth — only
         // ProviderRegistry::getProviderModel() binds them.
-        $model = ZaiAnthropicProvider::model('glm-5.3');
+        $model = ZaiAnthropicProvider::model(self::HARNESS_MODEL_ID);
 
         $error = $model->generate_text($this->prompt());
 

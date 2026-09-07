@@ -483,7 +483,7 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
          */
         $zai_model = $this->model();
         $this->primeZaiAnthropicDiscoveryTransient();
-        $anthropic_model = \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model('glm-5.3');
+        $anthropic_model = \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::model(self::HARNESS_MODEL_ID);
 
         foreach (array(
             'zai' => array($zai_model, 'Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability'),

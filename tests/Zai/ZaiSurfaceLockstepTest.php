@@ -422,4 +422,39 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
             );
         }
     }
+
+    public function testNoTestWiresACatalogModelIdLiteralThroughTheFactory()
+    {
+        /*
+         * glm34-9 (round-34 finding 9): the seven wiring sites that
+         * spelled 'glm-5.3' beside a primeZai*DiscoveryTransient() call
+         * (whose default id IS HARNESS_MODEL_ID, the catalog-derived
+         * constant of glm29-10) were the catalog-refresh desync waiting
+         * to re-open the documented glm29-10 incident — the prime would
+         * serve the new head id while the request asked for the stale
+         * literal, and every mapping suite fails in ways that take real
+         * debugging to trace. Every factory wiring now rides the
+         * constant (or a registry-derived class reference); this sweep
+         * keeps a catalog id literal from creeping back into a
+         * ::model(...) call. Fixtures that LIST ids (models bodies,
+         * discovery seeds) are not wiring and stay free to name ids.
+         */
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(dirname(__DIR__, 2) . '/tests', \FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ( $iterator as $file ) {
+            if ( 'php' !== $file->getExtension() ) {
+                continue;
+            }
+
+            $source = (string) file_get_contents($file->getPathname());
+            $wired  = array();
+            if ( 1 === preg_match("/::model\('glm-[^']*'/", $source, $wired) ) {
+                $this->fail("{$file->getPathname()} wires a catalog id literal ({$wired[0]}) through the model factory — ride self::HARNESS_MODEL_ID instead (glm34-9).");
+            }
+        }
+
+        $this->addToAssertionCount(1);
+    }
 }
