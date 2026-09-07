@@ -41,6 +41,11 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         return $this->wiredZaiAnthropicModel();
     }
 
+    protected function model_with_key( string $key )
+    {
+        return $this->wiredZaiAnthropicModel($key);
+    }
+
     /**
      * @return list<Message>
      */

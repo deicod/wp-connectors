@@ -33,6 +33,20 @@ abstract class AbstractZaiSurfaceResponseMappingTestCase extends WpConnectorsTes
     abstract protected function model();
 
     /**
+     * The wired surface model authenticated with THIS exact key (glm29-7).
+     *
+     * FakeSecrets::apiKey() draws a FRESH random key per call, so a
+     * redaction pin that wires with one draw and asserts against
+     * another compares the message against a secret that was never on
+     * the wire — vacuous. Each concrete suite delegates to its wiring
+     * helper with the caller's key.
+     *
+     * @param string $key The exact fixture key to wire.
+     * @return object The wired model.
+     */
+    abstract protected function model_with_key( string $key );
+
+    /**
      * The one-message prompt (provided by each concrete suite).
      *
      * @return list<\WordPress\AiClient\Messages\DTO\Message>
@@ -85,11 +99,30 @@ abstract class AbstractZaiSurfaceResponseMappingTestCase extends WpConnectorsTes
 
     public function testGenerateTextMapsTransportFailuresToTypedWpErrors()
     {
+        /*
+         * glm29-7: the pin used to assert against a FRESH
+         * FakeSecrets::apiKey() draw while the model was wired with a
+         * different random key — the leak-detection assertion never saw
+         * the secret actually on the wire, so an ErrorMapper that
+         * embedded it passed green (empirically confirmed by the round's
+         * verifier with a hex-fragment leak). ONE draw wires AND
+         * asserts now, and the canary below proves the assertion
+         * detects exactly this key instance when it IS present.
+         */
+        $key = FakeSecrets::apiKey();
+
+        try {
+            $this->assertRedacted('canary prefix ' . $key . ' suffix', $key);
+            $this->fail('assertRedacted must flag a message carrying the wired key — the pin would be vacuous.');
+        } catch ( \PHPUnit\Framework\AssertionFailedError $e ) {
+            // The canary: the redaction assertion really sees THIS key.
+        }
+
         $this->allowUnmockedHttp = true;
 
-        $error = $this->model()->generate_text($this->prompt());
+        $error = $this->model_with_key( $key )->generate_text($this->prompt());
 
         $this->assertWPError($error, ErrorMapper::CODE_TRANSPORT_ERROR);
-        $this->assertRedacted($error->get_error_message(), FakeSecrets::apiKey());
+        $this->assertRedacted($error->get_error_message(), $key);
     }
 }

@@ -42,6 +42,11 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         return $this->wiredZaiModel();
     }
 
+    protected function model_with_key( string $key )
+    {
+        return $this->wiredZaiModel($key);
+    }
+
     /**
      * @return list<Message>
      */
