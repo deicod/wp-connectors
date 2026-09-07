@@ -106,20 +106,40 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
                 $zip->close();
 
                 foreach (array(
-                    'zai/src/Provider/ZaiProvider.php',
-                    'zai/src/Provider/ZaiAnthropicProvider.php',
-                    'zai/src/Models/ZaiTextGenerationModel.php',
-                    'zai/src/Models/ZaiAnthropicTextGenerationModel.php',
-                    'zai/src/Metadata/ZaiModelMetadataDirectory.php',
-                    'zai/src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
-                    'zai/src/Authentication/ZaiAnthropicRequestAuthentication.php',
-                    'zai/src/Support/AnthropicSseAggregator.php',
                     'zai/assets/zai.svg',
                     'zai/uninstall.php',
                     'zai/LICENSE',
                 ) as $required) {
                     $this->assertContains($required, $names, "The artifact must ship {$required}.");
                 }
+
+                /*
+                 * glm31-8: EVERY connectors/zai/src file ships — the
+                 * former hand-picked per-surface class list passed a
+                 * third surface's silently-missing classes (and any
+                 * renamed/dropped source file outside the eight named
+                 * ones), the checklist-in-code drift class
+                 * ZaiSurfaceLockstepTest eliminated for the runtime
+                 * listings. The sweep covers the providers, models,
+                 * metadata directories, authenticator, and aggregator
+                 * the old list named by construction, and a packaging
+                 * regression on ANY source file fails here.
+                 */
+                $sourceRoot = realpath(__DIR__ . '/../connectors/zai/src');
+                $sourceIterator = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator($sourceRoot, FilesystemIterator::SKIP_DOTS)
+                );
+                $sourceCount = 0;
+                foreach ($sourceIterator as $sourceFile) {
+                    $zipEntry = 'zai/src/' . str_replace(
+                        DIRECTORY_SEPARATOR,
+                        '/',
+                        substr($sourceFile->getPathname(), strlen($sourceRoot) + 1)
+                    );
+                    ++$sourceCount;
+                    $this->assertContains($zipEntry, $names, "The artifact must ship every source file (missing {$zipEntry}).");
+                }
+                $this->assertGreaterThan(0, $sourceCount, 'The source sweep must see the real tree, not an empty root.');
 
                 // Exactly the two expected root PHP files: the one plugin
                 // header file (the second provider is a registered class inside
