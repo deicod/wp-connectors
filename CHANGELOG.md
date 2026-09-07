@@ -6,6 +6,74 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM33 round, /code-review max)
+
+The 33rd review round (the fork's relayed board after the round-32
+loop: one PLAUSIBLE correctness finding, one latent mirror finding, two
+vendor-contingent adjudications, one header-spelling cleanup; the eight
+label-only survivors were never relayed with detail and are recorded as
+not-adjudicated — see round 33 in docs/review/REFUTATION_LEDGER.md).
+Three fixes, one commit each; two conscious accepts, ledgered:
+
+- An undeclared TYPELESS payload carrier flags, never silently drops
+  (glm33-1): a data-only frame whose event: declaration was cut AND
+  whose payload carries no top-level type member derived '' and fell
+  through dispatch_event() as an unknown type — the stream completed
+  successfully with the carrier's chunk silently missing and every flag
+  false (empirically reproduced first; glm21-1's adjudication presumed
+  the type member present, and the typeless variant was the gap). The
+  gate flags through the one classifier (GLM12 #15's null →
+  malformed-event channel), the same silent-loss verdict glm23-1 gives
+  cut declarations; every tolerance is pinned both directions
+  (undeclared scalars, typeless trailing frames, typed carriers, the
+  split-form reunion). The GLM12 #15 call-site count pin superseded to
+  7 at its site (the GLM10 #4 lesson).
+- Object-typed tool arguments are judged by their serialized shape
+  (glm33-2): the scalar rejection's is_object() carve-out presumed
+  every object encodes as a JSON object — false for a JsonSerializable
+  returning a list/scalar, which shipped "input": ["Oslo"] past both
+  shape rejections and the replay oracle (stable serialization): the
+  misattributed-upstream-400 class. An OBJECT-typed argument now
+  rejects typed when a successful raw encode does not lead with '{'
+  (stamped calls skip — inbound acceptance proved the shape); a FAILED
+  encode stays silent under the replay guard's own message. ArrayObject
+  is verified NOT in the bypass class (encodes object-led on 8.5 and
+  7.4 — the storage-encoding concern is the glm22-16 walker's, never
+  the wire shape's).
+- carries_json_body() resolves Content-Type through the vendor's
+  HeadersCollection (glm33-5): the glm14-4 mirror read the exact-case
+  $headers['Content-Type'] key while Request::getBody() resolves
+  case-insensitively, so a 'content-type' spelling (legal HTTP) made
+  the assembled array ride as $data with the vendor re-encoding the
+  payload at send time through the path the ride deleted. The mirror
+  builds the SAME collection the Request constructor builds from the
+  same array, closing the spelling divergence and the SDK-bump desync
+  by delegation; pinned across lowercase/uppercase/multi-value
+  spellings plus the non-JSON and body-less-method negatives.
+
+Consciously accepted, no code change (ledger round 33): the tool-id
+uniqueness scope divergence (glm33-3 — outbound whole-conversation vs
+parse per-response; no documented vendor guarantee, a real
+Anthropic-compat layer shipped the reuse shape, parse-side
+conversation scope is structurally impossible, and the outbound
+rejection is loud and typed) and the unknown stop_reason hard-reject
+(glm33-4 — founding design with vendor-parent parity: the SDK's own
+OpenAI parse throws on unknown finish_reason; mapping unknown values to
+stop() would fabricate a natural-stop claim).
+
+Verifier pass (two independent lenses, correctness + security, over the
+full round diff): ZERO confirmed defects — every equivalence claim and
+both adjudications held empirically (a 43-sequence curated battery plus
+a 30,000-interleaving seeded fuzz with zero unexplained divergences for
+glm33-1, a 24-case reflection battery through the real
+message_part_block() for glm33-2, a 16-shape mirror differential against
+the real vendor Request for glm33-5 with end-to-end createRequest()
+rides, mutation tests proving all three gates' pins fail on deletion,
+and a comma-bearing Content-Type fidelity check showing the post-round
+mirror matches the vendor where the pre-round mirror lied). Full suite
+green in default and random order (1254 tests, 29926 assertions, 2
+skipped — the live-key gates).
+
 ### Fixed (zai / M2 — GLM32 round, /code-review max)
 
 The 32nd review round (10 finder angles, 20 candidates, per-candidate
