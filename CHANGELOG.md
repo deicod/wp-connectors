@@ -13,7 +13,14 @@ refuted directly by the refutation ledger; the review caller dropped a
 12th — the ledger's own deferred `$ships_forwarded_values` item, no new
 evidence) left 10 verified findings: 9 fixed one commit per item, 1
 consciously accepted (the DebugLogger concurrency shape, pre-existing
-and out of charter) and recorded in the ledger (round 31).
+and out of charter) and recorded in the ledger (round 31). Verifier
+pass (two independent lenses, correctness + security, over the full
+round diff): ZERO confirmed defects — every fix's equivalence claim
+held empirically (a 19-interleaving usage battery, a 17-shape
+tool-input battery, a 300-shape CLI fuzz with a canary key, a
+200k-case array_is_list differential including PHP 7.4 in docker, the
+walk guard proven fail-closed against a hiding attack, and a whole-diff
+sweep finding no new runtime channel of any kind).
 
 - A corrupt-only streamed usage declaration flags the stream (glm31-1):
   a present non-array `usage` member on a streamed frame skipped the
