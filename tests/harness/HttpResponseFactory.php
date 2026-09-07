@@ -195,4 +195,70 @@ final class HttpResponseFactory
     {
         return (string) wp_json_encode(array( 'code' => (int) $code, 'msg' => $msg, 'success' => false ));
     }
+
+    /*
+     * Anthropic SSE stream builders (glm34-10): the envelope framing
+     * (event:/data: line pair, the blank-line separator) and the
+     * canonical lifecycle boilerplate were hand-spelled ~330 times
+     * across the streamed fixtures — every envelope convention change
+     * meant re-editing hundreds of inline strings, and a one-copy typo
+     * silently produced a fixture different from what neighboring
+     * tests purport to test. These builders emit BYTE-IDENTICAL frames
+     * to the hand-spelled canonical forms (member order included);
+     * deliberately-malformed fixtures (cut lines, split declarations,
+     * garbled payloads) stay hand-spelled — their malformation IS the
+     * fixture.
+     */
+
+    /**
+     * The canonical message_start frame.
+     *
+     * @param string $messageId Stream message id.
+     * @param int    $inputTokens Start-side input usage.
+     * @param int    $outputTokens Start-side output usage.
+     * @return string Frame bytes.
+     */
+    public static function anthropicStreamStart($messageId, $inputTokens = 1, $outputTokens = 1)
+    {
+        return 'event: message_start' . "\n"
+            . 'data: ' . wp_json_encode(array(
+                'type' => 'message_start',
+                'message' => array(
+                    'id' => $messageId,
+                    'content' => array(),
+                    'usage' => array( 'input_tokens' => (int) $inputTokens, 'output_tokens' => (int) $outputTokens ),
+                ),
+            )) . "\n\n";
+    }
+
+    /**
+     * The canonical content_block_stop frame.
+     *
+     * @param int $index Block index.
+     * @return string Frame bytes.
+     */
+    public static function anthropicBlockStop($index)
+    {
+        return 'event: content_block_stop' . "\n"
+            . 'data: ' . wp_json_encode(array( 'type' => 'content_block_stop', 'index' => (int) $index )) . "\n\n";
+    }
+
+    /**
+     * The canonical message_delta + message_stop tail that ends a stream.
+     *
+     * @param string $stopReason Final stop reason.
+     * @param int    $outputTokens Delta-side output usage.
+     * @return string Frame bytes.
+     */
+    public static function anthropicStreamEnd($stopReason = 'end_turn', $outputTokens = 2)
+    {
+        return 'event: message_delta' . "\n"
+            . 'data: ' . wp_json_encode(array(
+                'type' => 'message_delta',
+                'delta' => array( 'stop_reason' => $stopReason ),
+                'usage' => array( 'output_tokens' => (int) $outputTokens ),
+            )) . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+    }
 }

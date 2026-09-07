@@ -68,19 +68,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
      */
     private function streamWithDelta(string $deltaJson, string $initialText = ''): string
     {
-        return ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_sw","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        return HttpResponseFactory::anthropicStreamStart('msg_sw', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":' . wp_json_encode($initialText) . '}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: ' . $deltaJson . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
     }
 
     /**
@@ -306,13 +300,10 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * decides; the null aggregates onto the consolidated payload
          * and maps to the neutral natural-stop finish reason.
          */
-        $stream = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_null_stop_stream","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $stream = HttpResponseFactory::anthropicStreamStart('msg_null_stop_stream', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Nul"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":null},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -334,13 +325,10 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // check): the received null is judged like any non-tool_use
         // reason, so tool blocks under it stay a typed contradiction —
         // never laundered into a toolCalls() finish.
-        $stream = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_null_stop_tools_s","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $stream = HttpResponseFactory::anthropicStreamStart('msg_null_stop_tools_s', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":null},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -363,13 +351,10 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // un-received and the stream fails through the malformed-event
         // channel, matching the non-streaming typed rejection for the
         // same shape (GLM2 #5).
-        $stream = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_bad_stop_s","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $stream = HttpResponseFactory::anthropicStreamStart('msg_bad_stop_s', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"X"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":5},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -399,23 +384,16 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * order-insensitive, and the model returned a successful
          * generation).
          */
-        $stream = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_interleave","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $stream = HttpResponseFactory::anthropicStreamStart('msg_interleave', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"first"}}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":"second"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(1)
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"!"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
 
@@ -435,23 +413,16 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * is the protocol's own shape and keeps aggregating, both blocks
          * in order.
          */
-        $stream = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_serial","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $stream = HttpResponseFactory::anthropicStreamStart('msg_serial', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"first"}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"!"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":"second"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(1)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
 
@@ -753,9 +724,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // GLM8 #5 guard: a REAL event stream (message_start then a cut —
         // the record-0007 wrapped-garbage shape) is not a mislabeled
         // JSON body and must keep its malformed-stream verdict.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_cut","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n";
+        $body = HttpResponseFactory::anthropicStreamStart('msg_cut', 1, 1);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1208,17 +1177,11 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
 
     public function testAStreamedNonStringToolUseIdFlagsAsAMalformedEvent()
     {
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_nsi","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_nsi', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":5,"name":"get_weather","input":{}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1233,17 +1196,11 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
 
     public function testAStreamedNonStringToolUseNameFlagsAsAMalformedEvent()
     {
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_nsn","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_nsn', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nsn","name":["get_weather"],"input":{}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1265,17 +1222,11 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * parse-time identity channel glm18-2 established for absent
          * members, exactly as before the round.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_nul","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_nul', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":null,"name":"get_weather","input":{}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1291,19 +1242,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     public function testStreamedNegativeZeroToolArgumentsStillAggregate()
     {
         // Verifier round on GLM4 #2, streamed twin of the above.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_nzs","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_nzs', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nzs","name":"convert","input":{}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"delta\":-0.0}"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1321,19 +1266,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * the same channel as truncated tool JSON, never a fabricated
          * call that would detonate on replay.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_nrs","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_nrs', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nrs","name":"get_weather","input":{}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"amount\":1e999}"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 9);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1360,21 +1299,15 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * JSON body mislabeled as a stream) produces no tool blocks, so
          * this flag cannot be set there.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_both","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_both', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_both","name":"get_weather","input":{}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"amount\":1e999}"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta"' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 9);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1396,19 +1329,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * digits) completes the call; a genuinely lossy one still flags
          * the block like truncated JSON.
          */
-        $exact = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ex","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $exact = HttpResponseFactory::anthropicStreamStart('msg_ex', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_ex","name":"convert","input":{}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"scale\":100000000000000000000}"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $exact);
 
@@ -1459,17 +1386,11 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * delivery channel. Post-decode the window and the exact 2^63
          * literal are the same double, so both reject here now.
          */
-        $lossy = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ti","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $lossy = HttpResponseFactory::anthropicStreamStart('msg_ti', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_ti","name":"track","input":{"tracking_id":9223372036854775809}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $lossy);
 
@@ -1545,19 +1466,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * the aggregator accepted, so the stamp keeps one verdict per
          * value (the GLM3 #1 parse/replay agreement).
          */
-        $stream = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_rp","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $stream = HttpResponseFactory::anthropicStreamStart('msg_rp', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_rp","name":"convert","input":{}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"scale\":100000000000000000000}"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
 
@@ -1667,19 +1582,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          */
         $inputJson = '{"doc":"' . str_repeat('x\"y', 20000) . '","tracking_id":99999999999999999999}';
 
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_dn","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_dn', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_dn","name":"convert","input":{}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":' . wp_json_encode($inputJson) . '}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -1696,17 +1605,11 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // GLM4 #2: the content_block_start's OWN input object is an
         // acceptance point too — an initial INF argument must not ride a
         // block that received no input_json_delta at all.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_nri","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_nri', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nri","name":"get_weather","input":{"amount":1e999}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 9);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2122,12 +2025,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
                 . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
                 . 'event: content_block_delta' . "\n"
                 . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Chunk."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-                . 'event: message_delta' . "\n"
-                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+                . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
             $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2151,9 +2050,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         // Codex R6 #4: a missing or non-integer index was coerced to 0 —
         // mutating the WRONG block while the stream still succeeded.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ix","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ix', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Original"}}' . "\n\n"
             . $eventTemplate . "\n\n"
@@ -2197,9 +2094,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // whose payload builder ignored the member — the stream finished
         // with stop_reason tool_use while silently omitting the tool call
         // (or discarding text/thinking content on a tool block).
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_cf","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_cf', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: ' . $startBlockJson . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -2409,12 +2304,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"message_start","message":{"id":"msg_s_unmapped","role":"assistant","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srv_1","name":"search","input":{}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 1);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2432,9 +2323,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // the accumulator — fragments collected before the duplicate were
         // discarded and the completion reported success with altered
         // content.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_dup","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_dup', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -2475,9 +2364,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * directly so BOTH flags are observable, not just the model's
          * first-flag message.
          */
-        $duplicate = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_od","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $duplicate = HttpResponseFactory::anthropicStreamStart('msg_od', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}}' . "\n\n"
             . 'event: content_block_start' . "\n"
@@ -2495,9 +2382,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
 
         // Same discipline for the contiguity rejection: a gapped start
         // (index 1 with no block 0) whose tool content is malformed.
-        $gapped = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_og","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $gapped = HttpResponseFactory::anthropicStreamStart('msg_og', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_3","name":"lookup"}}' . "\n\n";
 
@@ -2515,9 +2400,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // member still reports through the tool-input channel (Codex
         // R7 #1 sibling) — the reorder moved WHEN content is judged, not
         // WHETHER.
-        $in_position = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ok","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $in_position = HttpResponseFactory::anthropicStreamStart('msg_ok', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_4","name":"lookup"}}' . "\n\n";
 
@@ -2534,15 +2417,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // Codex R7 #6: `event: ping` carrying a content_block_delta payload
         // was ignored as keep-alive — the answer completed with the content
         // chunk missing.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pair","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pair', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: ping' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Lost chunk."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -2558,21 +2438,15 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
 
         // A ping frame whose payload agrees (or has no type member) stays
         // ignorable, and agreeing pairs keep working.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pair2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pair2', 1, 1)
             . 'event: ping' . "\n"
             . 'data: {"type":"ping"}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2595,19 +2469,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * sibling corruption class (undecodable payload, non-object
          * payload, contradicting STRING type) already rejects through.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_nonstr","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_nonstr', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: ping' . "\n"
             . 'data: {"type":' . $typeValue . ',"index":0,"delta":{"type":"text_delta","text":"Lost chunk."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2651,13 +2519,10 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $corruptError = 'event: error' . "\n"
             . 'data: {"type":' . $typeValue . ',"error":{"type":"overloaded_error","message":"upstream busy"}}' . "\n\n";
 
-        $beforeTerminal = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_err_nonstr","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $beforeTerminal = HttpResponseFactory::anthropicStreamStart('msg_err_nonstr', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -2696,21 +2561,15 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // GLM9 #2 control: only the PRESENT-but-non-string shape rejects
         // — an ABSENT type member keeps the documented tolerance (the
         // frame stays judged by its event: field alone).
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_notype","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_notype', 1, 1)
             . 'event: ping' . "\n"
             . 'data: {"ts":123}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2726,17 +2585,11 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // block still normalized an absent/null input member into a
         // fabricated no-argument call — the exact shape #1 rejects on the
         // non-streaming path.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_abs","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_abs', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":' . $startBlockJson . '}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -2763,15 +2616,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         // Codex R8 #1: after content_block_stop for an index, another delta
         // for the SAME index still appended — no closed state existed.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_as","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_as', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Pre."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Post."}}' . "\n\n"
             . 'event: message_delta' . "\n"
@@ -2791,11 +2641,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         // Codex R8 #1: a stop closing an index that was never started is
         // corrupt — nothing legitimate is being closed.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ns2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":3}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ns2', 1, 1)
+            . HttpResponseFactory::anthropicBlockStop(3)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -2813,15 +2660,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         // Codex R8 #2: message_stop is terminal — post-termination frames
         // could still modify the returned text/args/stop reason/usage.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Final."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2840,15 +2684,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         }
 
         // A keepalive ping after message_stop stays tolerated.
-        $body2 = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body2 = HttpResponseFactory::anthropicStreamStart('msg_pt2', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2870,15 +2711,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * discarded a fully-received generation. The frame's event:
          * name now routes it.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt3', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2896,15 +2734,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // GLM3 #6: an OpenAI-style 'data: [DONE]' sentinel a gateway
         // appends after the Anthropic stream ended must not mark the
         // completed stream malformed.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt4","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt4', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2930,15 +2765,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * [DONE]'); content-bearing trailing events keep their
          * invalidation (testADataEventAfterMessageStopInvalidatesTheStream).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt5', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -2967,15 +2799,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * object payload) no-ops, pinned above.
          */
         foreach (array('[]', '["lost"]') as $garbled) {
-            $body = ''
-                . 'event: message_start' . "\n"
-                . 'data: {"type":"message_start","message":{"id":"msg_pt6","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            $body = HttpResponseFactory::anthropicStreamStart('msg_pt6', 1, 1)
                 . 'event: content_block_start' . "\n"
                 . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
                 . 'event: content_block_delta' . "\n"
                 . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . HttpResponseFactory::anthropicBlockStop(0)
                 . 'event: message_delta' . "\n"
                 . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
                 . 'event: message_stop' . "\n"
@@ -3011,15 +2840,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * event's documented payload, so the undecodable-payload channel
          * flags them exactly like their siblings.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt4b","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt4b', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3051,15 +2877,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * intercept a DECLARED error; the undecodable-payload channel
          * upholds the error declaration (GLM7 #4).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt4c","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt4c', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3083,15 +2906,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * instead of the typed 'stream contained an error event'
          * message; the error flag now wins regardless of position.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt5', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3115,15 +2935,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // GLM3 #6 (Codex R7 #6 agreement rule): 'event: ping' wearing a
         // content_block_delta payload stays a corrupt post-termination
         // frame — the name-based tolerance must not launder content.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt6","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt6', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3153,15 +2970,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * content-bearing event (or a genuine error event) still
          * invalidate.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt7","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt7', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3194,15 +3008,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * while the payload's string type member contradicts it, so the
          * surfaced verdict is the documented 'error event'.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt8","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt8', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3234,15 +3045,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * frames skip the object-shape gate (they carry no content into
          * the completed generation; the name-based policy judges them).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt9","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt9', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3272,15 +3080,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * frame' instead of the documented 'error event' message the
          * GLM4 #6 policy (and its own comment) promise.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt10","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt10', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3311,9 +3116,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * corruption; has_error()-keyed policies never fired). The
          * declaration itself is the error signal in both phases.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pe1","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pe1', 1, 1)
             . 'event: error' . "\n"
             . 'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded la' . "\n\n";
 
@@ -3344,9 +3147,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * malformed_event — the same misclassification the undecodable
          * branch fixed, one branch over.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pe2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pe2', 1, 1)
             . 'event: error' . "\n"
             . 'data: ["overloaded_error"]' . "\n\n";
 
@@ -3385,9 +3186,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * halves of this shape agree (the trailing half is the
          * consciously superseded GLM4 #6 pin above).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pe3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pe3', 1, 1)
             . 'event: error' . "\n"
             . 'data: {"type":"ping"}' . "\n\n";
 
@@ -3421,15 +3220,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * (the GLM7 #4 policy), exactly like the undecodable- and
          * non-object-payload siblings pinned above.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_gl81a","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_gl81a', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3466,15 +3262,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * downgraded to the generic 'malformed event frame' the
          * aggregated() absence guards raise).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_gl81b","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_gl81b', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3503,9 +3296,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // GLM8 #1 (pre-termination half): the bare declaration flips the
         // flag in BOTH phases, mirroring the GLM7 #4 two-phase rule its
         // payload-bearing siblings follow.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_gl81c","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_gl81c', 1, 1)
             . 'event: error' . "\n\n";
 
         $aggregator = new AnthropicSseAggregator();
@@ -3536,15 +3327,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * line) keeps failing through the aggregated() absence guards —
          * the channel every other data-less shape already used.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_gl81d","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_gl81d', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3555,9 +3343,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
 
         $this->assertSame('Done.', $this->model()->generateTextResult($this->prompt())->toText());
 
-        $truncated = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_gl81e","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $truncated = HttpResponseFactory::anthropicStreamStart('msg_gl81e', 1, 1)
             . 'event: message_delta' . "\n\n";
 
         $aggregator = new AnthropicSseAggregator();
@@ -3587,20 +3373,14 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * GLM1 #14 documents) keeps parsing; anything else is a cut
          * frame.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_g23a","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_g23a', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $aggregator = new AnthropicSseAggregator();
         $aggregator->feed($body);
@@ -3624,9 +3404,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * after the cut declaration flags at finish() — the pre-fix
          * behavior silently completed the generation.
          */
-        $eof_cut = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_g23b","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $eof_cut = HttpResponseFactory::anthropicStreamStart('msg_g23b', 1, 1)
             . 'event: content_block_delta' . "\n\n";
 
         $eof = new AnthropicSseAggregator();
@@ -3643,19 +3421,14 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * declaration followed by a truncated carrier was the same
          * silent loss, from the other half of the pair).
          */
-        $split = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_g23c","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $split = HttpResponseFactory::anthropicStreamStart('msg_g23c', 1, 1)
             . 'event: content_block_start' . "\n\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Split."}}' . "\n\n"
             . 'event: content_block_stop' . "\n\n"
             . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $reunited = new AnthropicSseAggregator();
         $reunited->feed($split);
@@ -3664,9 +3437,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $this->assertFalse($reunited->has_malformed_event(), 'The split form (declaration + data-only carrier as consecutive frames) keeps parsing.');
         $this->assertSame('Split.', $reunited->aggregated()['content'][0]['text']);
 
-        $split_cut = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_g23d","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $split_cut = HttpResponseFactory::anthropicStreamStart('msg_g23d', 1, 1)
             . 'event: content_block_delta' . "\n\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_de' . "\n\n";
 
@@ -3684,9 +3455,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * closed-lifecycle guard at message_delta).
          */
         foreach ( array( 'content_block_start', 'content_block_stop' ) as $cut_event ) {
-            $cut = ''
-                . 'event: message_start' . "\n"
-                . 'data: {"type":"message_start","message":{"id":"msg_g23e","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            $cut = HttpResponseFactory::anthropicStreamStart('msg_g23e', 1, 1)
                 . 'event: ' . $cut_event . "\n\n"
                 . 'event: message_stop' . "\n"
                 . 'data: {"type":"message_stop"}' . "\n\n";
@@ -3715,9 +3484,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * one classifier (the malformed-event channel — a frame
          * declaring nothing).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_g33a","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_g33a', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -3726,12 +3493,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             // data-only and TYPELESS (its type lives only in the
             // nested delta object).
             . 'data: {"index":0,"delta":{"type":"text_delta","text":"World"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $aggregator = new AnthropicSseAggregator();
         $aggregator->feed($body);
@@ -3801,18 +3564,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * ignores unknown trailing names; a completed generation
          * cannot lose content to it).
          */
-        $scalar = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_g33b","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $scalar = HttpResponseFactory::anthropicStreamStart('msg_g33b', 1, 1)
             . 'data: null' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Kept."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $scalar_stream = new AnthropicSseAggregator();
         $scalar_stream->feed($scalar);
@@ -3821,13 +3578,10 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $this->assertFalse($scalar_stream->has_malformed_event(), 'An undeclared scalar payload keeps its non-event skip.');
         $this->assertSame('Kept.', $scalar_stream->aggregated()['content'][0]['text']);
 
-        $trailing = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_g33c","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $trailing = HttpResponseFactory::anthropicStreamStart('msg_g33c', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -3858,9 +3612,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * parity, with json_last_error() keeping the decodable-scalar
          * skip (glm33-1) intact.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_g34a","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_g34a', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -3871,12 +3623,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"index":0,"delta":{"type":"text_delta","text":"Wo' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"rld"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $aggregator = new AnthropicSseAggregator();
         $aggregator->feed($body);
@@ -3996,13 +3744,10 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
                 $content_blocks[] = array('type' => 'text', 'text' => 'Anchor.');
             }
 
-            $stream = ''
-                . 'event: message_start' . "\n"
-                . 'data: {"type":"message_start","message":{"id":"msg_vocab_' . $type . '","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            $stream = HttpResponseFactory::anthropicStreamStart('msg_vocab_' . $type . '', 1, 1)
                 . 'event: content_block_start' . "\n"
                 . 'data: ' . wp_json_encode(array('type' => 'content_block_start', 'index' => 0, 'content_block' => $fixture['block'])) . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . HttpResponseFactory::anthropicBlockStop(0)
                 . 'event: message_delta' . "\n"
                 . 'data: ' . wp_json_encode(array('type' => 'message_delta', 'delta' => array('stop_reason' => $fixture['stop_reason']), 'usage' => array('output_tokens' => 2))) . "\n\n"
                 . 'event: message_stop' . "\n"
@@ -4028,17 +3773,11 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         }
 
         foreach ( AnthropicContentBlocks::KNOWN_UNMAPPED_TYPES as $unmapped ) {
-            $stream = ''
-                . 'event: message_start' . "\n"
-                . 'data: {"type":"message_start","message":{"id":"msg_vocab_drop_' . $unmapped . '","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            $stream = HttpResponseFactory::anthropicStreamStart('msg_vocab_drop_' . $unmapped . '', 1, 1)
                 . 'event: content_block_start' . "\n"
                 . 'data: ' . wp_json_encode(array('type' => 'content_block_start', 'index' => 0, 'content_block' => array('type' => $unmapped, 'data' => 'internal'))) . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-                . 'event: message_delta' . "\n"
-                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-                . 'event: message_stop' . "\n"
-                . 'data: {"type":"message_stop"}' . "\n\n";
+                . HttpResponseFactory::anthropicBlockStop(0)
+                . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
             $aggregator = new AnthropicSseAggregator();
             $aggregator->feed($stream);
@@ -4069,15 +3808,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // GLM6 #7 guard: only the trailing ERROR declaration changes
         // verdict — any other declared name after message_stop stays the
         // corrupt-mutation rejection, decodable payload or not.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pt11","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pt11', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -4127,9 +3863,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             '{"type":"content_block_start","index":0,"content_block":{"type":7,"text":""}}',
             '{"type":"content_block_start","index":0,"content_block":{"type":null,"text":""}}',
         ) as $startJson) {
-            $body = ''
-                . 'event: message_start' . "\n"
-                . 'data: {"type":"message_start","message":{"id":"msg_nt","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            $body = HttpResponseFactory::anthropicStreamStart('msg_nt', 1, 1)
                 . 'event: content_block_start' . "\n"
                 . 'data: ' . $startJson . "\n\n"
                 . 'event: content_block_delta' . "\n"
@@ -4153,21 +3887,15 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // Codex R9 #2: two message_delta events — the later one silently
         // overwrote the first stop reason and usage; end_turn then
         // tool_use made the result report toolCalls() with no call.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_dd","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_dd', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Answer."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 9);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -4189,9 +3917,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // Even a byte-identical repeat is a corrupt stream: the protocol
         // sends exactly one message_delta, and tolerating identical
         // payloads would make acceptance depend on payload comparison.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_dd2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_dd2', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -4291,12 +4017,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Fine."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -4315,9 +4037,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // Codex R13 #1: content events after the final message_delta
         // mutated the accumulators — the completion succeeded with text or
         // tool args received after the final message metadata.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ld","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ld', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -4363,19 +4083,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         // Guard: the normal order (all content events BEFORE the final
         // message metadata) must keep aggregating.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ok3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ok3', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Fine."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -4386,15 +4100,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         // Codex R13 #2: a second VALID message_start overwrote the first
         // id and input usage while the content still succeeded.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"first","content":[],"usage":{"input_tokens":11,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('first', 11, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Content."}}' . "\n\n"
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"second","content":[],"usage":{"input_tokens":99,"output_tokens":1}}}' . "\n\n"
+            . HttpResponseFactory::anthropicStreamStart('second', 99, 1)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -4426,9 +4137,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // Codex R13 #3: a text/thinking start block missing its content
         // member (or with a non-string value) silently fabricated an empty
         // initial value and later deltas succeeded.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_mm","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_mm', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: ' . $startJson . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -4463,19 +4172,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     public function testValidInitialTextAndThinkingMembersStillAggregate()
     {
         // Guard: valid starts keep their initial values (incl. empty '').
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_vm","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_vm', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Initial."}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" More."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -4513,21 +4216,14 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // The consolidated stream path funnels into the same content loop,
         // so the same verdict must hold when the duplicates arrive as two
         // distinct streamed blocks instead of one JSON body.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_dupstream","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_dupstream', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_dup","name":"ping","input":{}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_dup","name":"pong","input":{}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(1)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -4639,19 +4335,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // The consolidated stream path funnels into the same conversion:
         // message_delta declaring tool_use while only text was streamed
         // must fail exactly like the non-streaming shape.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_tust","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_tust', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Only text."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -4858,12 +4548,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"message_start","message":{"id":"msg_ovs","content":[],"usage":{"input_tokens":' . PHP_INT_MAX . ',"cache_read_input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"x"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -4892,8 +4578,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":20,"cache_read_input_tokens":4,"output_tokens":5}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -4913,15 +4598,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // GLM6 #4: message_delta is the final metadata — its input
         // accounting supersedes message_start's initial estimate, exactly
         // like the one usage object of the identical non-streaming body.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_di2","content":[],"usage":{"input_tokens":3,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_di2', 3, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":20,"output_tokens":5}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -4939,19 +4621,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         // GLM6 #4 guard: the legacy message_delta shape (output side only)
         // reports no input accounting — message_start's estimate stands.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_di3","content":[],"usage":{"input_tokens":7,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_di3', 7, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 3);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -4966,13 +4642,10 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // GLM6 #4: the delta input total is overflow-checked like
         // message_start's (GLM4 #11) — a promoting sum must invalidate,
         // never ride the consolidated payload as a float.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_di4","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_di4', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"x"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":' . PHP_INT_MAX . ',"cache_read_input_tokens":1,"output_tokens":2}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -5021,15 +4694,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * negatives, and list-shaped usage all became plausible counts
          * (a list silently became zero).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_mdu","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_mdu', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":' . $usageJson . '}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -5067,15 +4737,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         // Guards: zero is a valid count; an absent usage member keeps
         // the documented default-zero tolerance.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_vdu","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_vdu', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":' . $usageJson . '}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -5110,12 +4777,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 1);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -5150,12 +4813,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 1);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -5181,8 +4840,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Ghost."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -5222,12 +4880,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Fine."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -5370,12 +5024,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"A"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $aggregator = new AnthropicSseAggregator();
         $aggregator->feed($body);
@@ -5611,12 +5261,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"A"}}' . "\n\n"
             . 'data: this is not json' . "\n\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"B"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $aggregator = new AnthropicSseAggregator();
         // Feed in awkwardly-sized pieces to prove frames may split anywhere.
@@ -5639,15 +5285,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
     {
         // A response that ends right after the last event field (no blank
         // line) must not lose that frame.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_f","content":[],"usage":{"input_tokens":2,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_f', 2, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Tail frame."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -5662,15 +5305,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
 
     public function testEventStreamDetectedByBodyPrefixWithoutContentType()
     {
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_p","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_p', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Body-detected."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -5686,15 +5326,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // Codex R16 #1 (i), at the aggregator boundary: the truncated
         // stream must be null AND flagged malformed — never a payload a
         // caller could treat as success while is_done() is false.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_tr","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_tr', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Truncated."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n";
 
@@ -5743,19 +5380,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * above: a minimal valid lifecycle through all three event
          * kinds aggregates with no malformed flag raised.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_helper","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_helper', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $aggregator = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
         $aggregator->feed($body);
@@ -5780,17 +5411,11 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * (zero counts); an empty-LIST usage invalidates the stream.
          */
         $startWithInput = static function ( string $input_json ): string {
-            return ''
-                . 'event: message_start' . "\n"
-                . 'data: {"type":"message_start","message":{"id":"msg_on1","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            return HttpResponseFactory::anthropicStreamStart('msg_on1', 1, 1)
                 . 'event: content_block_start' . "\n"
                 . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"ping","input":' . $input_json . '}}' . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-                . 'event: message_delta' . "\n"
-                . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-                . 'event: message_stop' . "\n"
-                . 'data: {"type":"message_stop"}' . "\n\n";
+                . HttpResponseFactory::anthropicBlockStop(0)
+                . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
         };
 
         $object = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
@@ -5810,12 +5435,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
                 . 'data: {"type":"message_start","message":{"id":"msg_on2","content":[],"usage":' . $usage_json . '}}' . "\n\n"
                 . 'event: content_block_start' . "\n"
                 . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"X"}}' . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-                . 'event: message_delta' . "\n"
-                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-                . 'event: message_stop' . "\n"
-                . 'data: {"type":"message_stop"}' . "\n\n";
+                . HttpResponseFactory::anthropicBlockStop(0)
+                . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
         };
 
         $objectUsage = new Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator();
@@ -5842,12 +5463,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"message_start","message":{"id":"msg_late","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Laundered."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -5928,42 +5545,34 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          */
         $bodies = array(
             'first start at index 1 (block 0 lost)' => ''
-                . 'event: message_start' . "\n"
-                . 'data: {"type":"message_start","message":{"id":"msg_g1","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . HttpResponseFactory::anthropicStreamStart('msg_g1', 1, 1)
                 . 'event: content_block_start' . "\n"
                 . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+                . HttpResponseFactory::anthropicBlockStop(1)
                 . 'event: message_delta' . "\n"
                 . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
                 . 'event: message_stop' . "\n"
                 . 'data: {"type":"message_stop"}' . "\n\n",
             'skipped middle index (0 then 2)' => ''
-                . 'event: message_start' . "\n"
-                . 'data: {"type":"message_start","message":{"id":"msg_g2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . HttpResponseFactory::anthropicStreamStart('msg_g2', 1, 1)
                 . 'event: content_block_start' . "\n"
                 . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . HttpResponseFactory::anthropicBlockStop(0)
                 . 'event: content_block_start' . "\n"
                 . 'data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}' . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":2}' . "\n\n"
+                . HttpResponseFactory::anthropicBlockStop(2)
                 . 'event: message_delta' . "\n"
                 . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
                 . 'event: message_stop' . "\n"
                 . 'data: {"type":"message_stop"}' . "\n\n",
             'reordered arrival (1 before 0)' => ''
-                . 'event: message_start' . "\n"
-                . 'data: {"type":"message_start","message":{"id":"msg_g3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . HttpResponseFactory::anthropicStreamStart('msg_g3', 1, 1)
                 . 'event: content_block_start' . "\n"
                 . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
+                . HttpResponseFactory::anthropicBlockStop(1)
                 . 'event: content_block_start' . "\n"
                 . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
-                . 'event: content_block_stop' . "\n"
-                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . HttpResponseFactory::anthropicBlockStop(0)
                 . 'event: message_delta' . "\n"
                 . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
                 . 'event: message_stop' . "\n"
@@ -5987,21 +5596,14 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         // Codex R17 #2 guard: starts 0 then 1, in order, complete fine
         // (GLM3 #1: the fixtures carry translatable text — an empty-only
         // completion is a rejection now, not a success shape to pin).
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_c1","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_c1', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"One."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":"Two."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(1)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6093,12 +5695,8 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Ok."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 1);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6118,15 +5716,12 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * TRUNCATED stream, not a complete generation — stop_reason
          * being populated must not legitimize it.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_n","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_n', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n";
 
@@ -6151,9 +5746,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * generic 'No usable message event' a genuinely empty body
          * yields.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_t","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_t', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -6184,13 +5777,10 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * previously the soft null made this truncation indistinguishable
          * from an empty stream.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_t2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_t2', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_stop' . "\n"
             . 'data: {"type":"message_stop"}' . "\n\n";
 
@@ -6217,13 +5807,10 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * malformed-event channel (content_block_delta rejects its
          * non-object raw->delta the same way).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_md","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_md', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta",' . $deltaFragment . '"usage":{"output_tokens":4}}' . "\n\n"
             . 'event: message_stop' . "\n"
@@ -6367,17 +5954,11 @@ $body = ''
         // Codex R3 #2: a malformed content_block_start input (scalar here)
         // with NO input_json_delta following must not be silently replaced
         // with {} — that fabricated an executable no-argument call.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_sb","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_sb', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s1","name":"delete_file","input":"/etc/hosts"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6394,17 +5975,11 @@ $body = ''
     public function testAListStartBlockToolInputFailsAsAStreamParseError()
     {
         $list_start = '{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s2","name":"get_weather","input":["Oslo"]}}';
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_sb2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_sb2', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: ' . $list_start . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6422,17 +5997,11 @@ $body = ''
         // associative decode collapses "input":[] to an empty array — the
         // raw oracle must still recognize the empty LIST.
         $empty_list_start = '{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s3","name":"ping","input":[]}}';
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_sb3","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_sb3', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: ' . $empty_list_start . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6448,17 +6017,11 @@ $body = ''
     {
         // The legitimate start-block {}: no deltas follow, and the call is
         // a no-argument one (R3 #2: {} must stay legitimate).
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_sb4","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_sb4', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s4","name":"ping","input":{}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6472,17 +6035,11 @@ $body = ''
     {
         // Start-block object input with no deltas: the initial value IS the
         // call's arguments.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_sb5","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_sb5', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s5","name":"get_weather","input":{"city":"Oslo"}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6501,17 +6058,11 @@ $body = ''
          * exactly as the raw-oracle branch did (GLM1 #2/#3): a purely
          * numeric-keyed JSON object stays an object, never a PHP list.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_sb6","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_sb6', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_s6","name":"pick","input":{"0":"x","1":"y"}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6528,19 +6079,13 @@ $body = ''
         // Codex R4 #1: "partial_json": null was silently ignored (isset()
         // is false for null), letting the initial {} become an executable
         // no-argument call.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_np","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_np', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_np","name":"delete_file","input":{}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":null}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6557,19 +6102,13 @@ $body = ''
     {
         // Codex R4 #1: the member OMITTED entirely is the same corrupt
         // shape as null.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_mp","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_mp', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_mp","name":"delete_file","input":{}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6586,19 +6125,13 @@ $body = ''
         // The legitimate empty-string fragment keeps its no-op semantics:
         // it leaves the accumulated JSON empty (glm24-4's derived
         // non-empty check), and the start input stands.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ep","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ep', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_ep","name":"get_weather","input":{"city":"Oslo"}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6623,19 +6156,13 @@ $body = ''
          * no-op above is the adjacent boundary and keeps the start
          * input standing (an empty fragment accumulates nothing).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_glm312","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_glm312', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_glm312","name":"get_weather","input":{"a":1}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"b\":2}"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6653,19 +6180,13 @@ $body = ''
         // is a string; a non-string value is a corrupt streamed-arguments
         // event and must not be silently dropped (a {} start plus this
         // delta fabricated a no-argument call).
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_npd","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_npd', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_n1","name":"delete_file","input":{}}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":{"path":"/etc/hosts"}}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6683,19 +6204,14 @@ $body = ''
         // Codex R4 #3: a frame DECLARING content_block_delta with invalid
         // JSON must fail the whole stream — silently dropping the chunk
         // would return a successful completion with the answer altered.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_md","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_md', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: this is not json' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Complete."}}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6744,21 +6260,15 @@ $body = ''
         // The distinction is declared-event-with-bad-payload vs UNKNOWN
         // event: an unresolvable/unknown name with garbage data stays
         // ignorable for forward compatibility, and the stream completes.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ue","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ue', 1, 1)
             . 'event: some_future_event' . "\n"
             . 'data: not json at all' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6767,21 +6277,15 @@ $body = ''
 
     public function testAMalformedPingFrameStaysIgnorable()
     {
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_pg","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_pg', 1, 1)
             . 'event: ping' . "\n"
             . 'data: broken keep-alive' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6821,9 +6325,7 @@ $body = ''
         // Verifier sweep on Codex R4: valid JSON in LIST shape bypassed the
         // is_array() object-ness collapse — the dropped chunk inside the
         // list vanished while the stream reported success.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_lp","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_lp', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -6847,9 +6349,7 @@ $body = ''
         // A DATA-ONLY frame whose type member names the declared event and
         // whose shape is wrong: dispatch by the type member must apply the
         // same validation (there is no event: field to key on).
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_do","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_do', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'data: {"type":"content_block_delta","index":0}' . "\n\n"
@@ -6871,9 +6371,7 @@ $body = ''
         // Verifier sweep on Codex R4: a content_block_start whose
         // content_block member is absent/non-object defaulted to a text
         // block, silently swallowing the tool call's deltas.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_gb","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_gb', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":"garbage"}' . "\n\n"
             . 'event: message_delta' . "\n"
@@ -6911,17 +6409,11 @@ $body = ''
         // content_block_start was never received previously defaulted to a
         // text accumulator — the fragments were collected and ignored, so
         // a tool_use completion "succeeded" with NO FunctionCall at all.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ns","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ns', 1, 1)
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{"city":"Oslo"}"}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('tool_use', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -6944,9 +6436,7 @@ $body = ''
         // content_block_start — content before the missing start is
         // silently absent, and the synthesized accumulator returned a
         // successful TRUNCATED completion. Rejected like the tool path.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ts","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ts', 1, 1)
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Truncated chunk."}}' . "\n\n"
             . 'event: message_delta' . "\n"
@@ -6966,9 +6456,7 @@ $body = ''
     public function testAThinkingDeltaWithoutAStartBlockInvalidatesTheStream()
     {
         // Same rule on the thinking path (Codex R10 #3).
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_tsn","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_tsn', 1, 1)
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":2,"delta":{"type":"thinking_delta","thinking":"Orphan thought."}}' . "\n\n"
             . 'event: message_delta' . "\n"
@@ -6991,9 +6479,7 @@ $body = ''
          * completed successfully with a truncated block lifecycle — the
          * final metadata must not be accepted while a block is open.
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ob","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ob', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
@@ -7018,25 +6504,18 @@ $body = ''
     public function testFullyStoppedMultiBlockStreamsStillAggregate()
     {
         // Guard: two blocks, both stopped, aggregate in order.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_mb","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_mb', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"One "}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"two."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":1}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(1)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 3);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -7049,21 +6528,15 @@ $body = ''
     public function testAStreamWithOneOpenBlockAmongStoppedOnesInvalidates()
     {
         // Codex R15 #2 (iv): block 0 stopped, block 1 never stopped.
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_ob2","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_ob2', 1, 1)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Lost."}}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 2);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -7087,19 +6560,13 @@ $body = ''
          * tolerance (see testAnUnknownDeltaTypeWithoutAStartBlockStaysSeeded,
          * whose stream DOES start block 0).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_us","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_us', 1, 1)
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"citation_delta","citation":"src"}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Never."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 1);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -7120,17 +6587,11 @@ $body = ''
          * corruption flag, so the caller received a successful generation
          * with empty content (the exact missing-start-must-fail class).
          */
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_fr","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_fr', 1, 1)
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"future_delta","payload":42}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
-            . 'event: message_delta' . "\n"
-            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}' . "\n\n"
-            . 'event: message_stop' . "\n"
-            . 'data: {"type":"message_stop"}' . "\n\n";
+            . HttpResponseFactory::anthropicBlockStop(0)
+            . HttpResponseFactory::anthropicStreamEnd('end_turn', 1);
 
         $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
 
@@ -7196,17 +6657,14 @@ $body = ''
 
     public function testUnknownStreamEventsAreIgnored()
     {
-        $body = ''
-            . 'event: message_start' . "\n"
-            . 'data: {"type":"message_start","message":{"id":"msg_u","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+        $body = HttpResponseFactory::anthropicStreamStart('msg_u', 1, 1)
             . 'event: some_future_event' . "\n"
             . 'data: {"type":"some_future_event","payload":"whatever"}' . "\n\n"
             . 'event: content_block_start' . "\n"
             . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
             . 'event: content_block_delta' . "\n"
             . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK."}}' . "\n\n"
-            . 'event: content_block_stop' . "\n"
-            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . HttpResponseFactory::anthropicBlockStop(0)
             . 'event: message_delta' . "\n"
             . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}' . "\n\n"
             . 'event: message_stop' . "\n"
