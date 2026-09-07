@@ -1219,67 +1219,22 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
         if ($assignments === array()) {
             return array( sprintf('variable %s has no resolvable same-file assignment', $argument) );
         }
+        /*
+         * glm28-15: the per-assignment proof rules — the array-literal
+         * branch, the variable-through-variable resolution, and the
+         * fall-through literal+segment proofs — lived twice (the inner
+         * one-level unroll re-implemented the outer body minus its
+         * plain-variable branch), so a proof-rule change had to land in
+         * both copies. ONE helper judges every assignment at both
+         * depths now; see wp_connectors_assignment_value_reasons() for
+         * the deliberate two-level resolution cap.
+         */
         $reasons = array();
+        $prefix = sprintf('variable %s resolves to a path that %%s', $argument);
         foreach ($assignments as $assignment) {
             $expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
-
-            /*
-             * GLM10 #14: an assignment whose value is an array() literal
-             * (the uninstall owner chain's map) or a plain VARIABLE bound
-             * by a foreach over one resolves through the map's own
-             * same-file literal — every element VALUE must prove in-root
-             * by the same literal analysis a direct include passes.
-             * Verifier round: only when the owned variable's writes are
-             * all whole-array literals (an element write or append the
-             * assignment collector cannot see would make the analyzed
-             * values a non-superset of the runtime ones); otherwise the
-             * literal falls through to the not-anchored rejection.
-             */
-            if (preg_match('/^(?:array\s*\(|\[)/i', $expression)
-                && wp_connectors_array_writes_recognized($masked, $argument, $offset)) {
-                foreach (wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir, $masked) as $reason) {
-                    $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
-                }
-                continue;
-            }
-
-            if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $expression)) {
-                $inner_assignments = wp_connectors_same_file_assignments($code, $masked, $expression, $offset);
-                if ($inner_assignments === array()) {
-                    $reasons[] = sprintf('variable %s depends on %s with no resolvable same-file assignment', $argument, $expression);
-                    continue;
-                }
-                foreach ($inner_assignments as $inner_assignment) {
-                    $inner_expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($inner_assignment)), ';');
-                    if (preg_match('/^(?:array\s*\(|\[)/i', $inner_expression)
-                        && wp_connectors_array_writes_recognized($masked, $expression, $offset)) {
-                        foreach (wp_connectors_array_literal_value_reasons($file, $code, $inner_expression, $offset, $pluginDir, $masked) as $reason) {
-                            $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
-                        }
-                        continue;
-                    }
-                    foreach (wp_connectors_include_expression_reasons($file, $inner_expression, $pluginDir) as $reason) {
-                        $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
-                    }
-                    // An inner assignment may itself mix the anchor with
-                    // runtime segments — the same per-segment proof the
-                    // direct case applies, or a trailing `$x` would ride
-                    // an anchored literal unnoticed.
-                    foreach (wp_connectors_runtime_segment_reasons($file, $code, $inner_expression, $offset, $pluginDir, $masked) as $reason) {
-                        $reasons[] = sprintf('variable %s resolves through %s to a path that %s', $argument, $expression, $reason);
-                    }
-                }
-                continue;
-            }
-
-            foreach (wp_connectors_include_expression_reasons($file, $expression, $pluginDir) as $reason) {
-                $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
-            }
-            // An assignment may itself mix the anchor with runtime segments
-            // (`$path = __DIR__ . '/' . $x;`) — it must pass the same
-            // per-segment proof, not just the literal one.
-            foreach (wp_connectors_runtime_segment_reasons($file, $code, $expression, $offset, $pluginDir, $masked) as $reason) {
-                $reasons[] = sprintf('variable %s resolves to a path that %s', $argument, $reason);
+            foreach (wp_connectors_assignment_value_reasons($file, $code, $argument, $argument, $expression, $offset, $pluginDir, $masked, $prefix, 0) as $reason) {
+                $reasons[] = $reason;
             }
         }
 
@@ -1289,6 +1244,89 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
     $reasons = wp_connectors_include_expression_reasons($file, $argument, $pluginDir);
 
     return $reasons === array() ? array() : array( sprintf('expression %s', $reasons[0]) );
+}
+
+/**
+ * Reasons one same-file assignment's value cannot be proven in-root, at
+ * one resolution depth (glm28-15: the ONE per-assignment proof body —
+ * the former outer and inner copies of the hidden-include resolution).
+ *
+ * The branches, all behavior-preserving:
+ *
+ * - The array-literal branch (GLM10 #14): an assignment whose value is
+ *   an array() literal (the uninstall owner chain's map) resolves
+ *   through the map's own same-file literal, every element VALUE judged
+ *   by the same literal analysis a direct include passes — only when
+ *   the OWNED variable's writes are all whole-array literals (an
+ *   element write or append the collector cannot see would make the
+ *   analyzed values a non-superset of the runtime ones); otherwise the
+ *   literal falls through to the proofs below.
+ * - The plain-variable branch, at depth 0 ONLY: a variable-valued
+ *   assignment resolves through the inner variable's own same-file
+ *   assignments, re-entering this helper at depth 1. The TWO-LEVEL cap
+ *   is deliberate and load-bearing: it is a complete cycle guard by
+ *   construction ($a = $b; $b = $a; terminates at depth 1 through the
+ *   fall-through proofs), and a deeper resolution would CHANGE the
+ *   verdict for a 3-hop chain (the third hop currently keeps the
+ *   generic not-anchored rejection) — a verdict change that must not
+ *   ride in as a refactor.
+ * - The fall-through proofs: the literal analysis plus the per-segment
+ *   runtime proof — an assignment may itself mix the anchor with
+ *   runtime segments (`$path = __DIR__ . '/' . $x;`), and at depth 1
+ *   the plain-variable RHS lands here exactly as the pre-glm28 inner
+ *   block judged it.
+ *
+ * @param string $file             Absolute path of the file containing the include.
+ * @param string $code             Comment-stripped source of that file.
+ * @param string $reason_variable  The include's variable (every reason names it).
+ * @param string $owned_variable   The variable whose assignment is judged (the
+ *                                 array gate checks ITS writes; differs per depth).
+ * @param string $expression       The assignment's value expression.
+ * @param int    $offset           Byte offset of the include statement within $code.
+ * @param string $pluginDir        Absolute plugin directory.
+ * @param string $masked           String-masked view of $code (same length).
+ * @param string $prefix           The depth's reason template ('... that %s').
+ * @param int    $depth            0 at the include's own assignments, 1 one hop in.
+ * @return list<string> Violation reasons for this assignment (empty when provably in-root).
+ */
+function wp_connectors_assignment_value_reasons($file, $code, $reason_variable, $owned_variable, $expression, $offset, $pluginDir, $masked, $prefix, $depth)
+{
+    $reasons = array();
+
+    if (preg_match('/^(?:array\s*\(|\[)/i', $expression)
+        && wp_connectors_array_writes_recognized($masked, $owned_variable, $offset)) {
+        foreach (wp_connectors_array_literal_value_reasons($file, $code, $expression, $offset, $pluginDir, $masked) as $reason) {
+            $reasons[] = sprintf($prefix, $reason);
+        }
+
+        return $reasons;
+    }
+
+    if (0 === $depth && preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $expression)) {
+        $inner_assignments = wp_connectors_same_file_assignments($code, $masked, $expression, $offset);
+        if ($inner_assignments === array()) {
+            return array( sprintf('variable %s depends on %s with no resolvable same-file assignment', $reason_variable, $expression) );
+        }
+
+        $inner_prefix = sprintf('variable %s resolves through %s to a path that %%s', $reason_variable, $expression);
+        foreach ($inner_assignments as $inner_assignment) {
+            $inner_expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($inner_assignment)), ';');
+            foreach (wp_connectors_assignment_value_reasons($file, $code, $reason_variable, $expression, $inner_expression, $offset, $pluginDir, $masked, $inner_prefix, 1) as $reason) {
+                $reasons[] = $reason;
+            }
+        }
+
+        return $reasons;
+    }
+
+    foreach (wp_connectors_include_expression_reasons($file, $expression, $pluginDir) as $reason) {
+        $reasons[] = sprintf($prefix, $reason);
+    }
+    foreach (wp_connectors_runtime_segment_reasons($file, $code, $expression, $offset, $pluginDir, $masked) as $reason) {
+        $reasons[] = sprintf($prefix, $reason);
+    }
+
+    return $reasons;
 }
 
 /**

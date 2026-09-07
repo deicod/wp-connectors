@@ -181,4 +181,61 @@ final class SelfContainmentCompoundWritesTest extends TestCase
         $this->assertNotEmpty($violations, 'An alias of the include variable must refuse the proof.');
         $this->assertStringContainsString('require $f', implode("\n", $violations));
     }
+
+    public function testAVariableThroughVariableChainResolvesTwoLevels(): void
+    {
+        /*
+         * glm28-15: the one per-assignment proof helper must keep the
+         * two-level resolution the uninstall owner chain rides — a
+         * plain variable whose assignment is another variable whose
+         * assignment carries the anchor literal proves in-root, and an
+         * escaping second hop keeps the 'resolves through' reason.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\n\$a = \$b;\n\$b = __DIR__ . '/inside.php';\nrequire \$a;\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A two-level anchored chain stays clean.');
+
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\n\$a = \$b;\n\$b = '/outside/escape.php';\nrequire \$a;\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'An escaping second hop keeps flagging.');
+        $this->assertStringContainsString('variable $a resolves through $b to a path that is not anchored', implode("\n", $violations));
+    }
+
+    public function testAThreeHopChainKeepsTheCapRejection(): void
+    {
+        /*
+         * glm28-15's deliberate TWO-LEVEL cap, pinned: a 3-hop chain
+         * keeps the generic not-anchored rejection at the second hop
+         * (the plain-variable branch re-enters only from depth 0).
+         * The cap is the cycle guard — deepening the resolution would
+         * be a verdict CHANGE (the clean third hop would start
+         * proving), not a refactor, and must come with new fixtures.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\n\$a = \$b;\n\$b = \$c;\n\$c = __DIR__ . '/inside.php';\nrequire \$a;\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'A third hop stays a violation under the two-level cap.');
+        $this->assertStringContainsString('variable $a resolves through $b to a path that is not anchored', implode("\n", $violations));
+
+        // A variable cycle terminates at depth 1 through the fall-through
+        // proofs — never a recursion.
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\n\$a = \$b;\n\$b = \$a;\nrequire \$a;\n"
+        );
+
+        $this->assertNotEmpty(wp_connectors_self_containment_violations($this->root), 'A variable cycle terminates with a violation.');
+    }
 }
