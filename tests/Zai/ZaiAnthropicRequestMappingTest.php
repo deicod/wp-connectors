@@ -249,19 +249,8 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
          * mapping assembled (the snapshot suite pins the wire shape
          * already).
          */
-        $transporter = new class implements \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface {
-            /**
-             * @var \WordPress\AiClient\Providers\Http\DTO\Request|null
-             */
-            public $captured_request;
-
-            public function send(\WordPress\AiClient\Providers\Http\DTO\Request $request, ?\WordPress\AiClient\Providers\Http\DTO\RequestOptions $options = null): \WordPress\AiClient\Providers\Http\DTO\Response
-            {
-                $this->captured_request = $request;
-
-                return new \WordPress\AiClient\Providers\Http\DTO\Response(200, array(), HttpResponseFactory::anthropicMessagesBody('ride ok'));
-            }
-        };
+        // glm29-12: the harness-owned capturing double (the body is the argument).
+        $transporter = new CapturingTransporter(HttpResponseFactory::anthropicMessagesBody('ride ok'));
 
         $model = $this->model();
         $model->setHttpTransporter($transporter);

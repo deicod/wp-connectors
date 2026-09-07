@@ -175,19 +175,8 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
          * decodes to exactly the params the parent assembled (the
          * snapshot suite pins the wire shape already).
          */
-        $transporter = new class implements \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface {
-            /**
-             * @var \WordPress\AiClient\Providers\Http\DTO\Request|null
-             */
-            public $captured_request;
-
-            public function send(\WordPress\AiClient\Providers\Http\DTO\Request $request, ?\WordPress\AiClient\Providers\Http\DTO\RequestOptions $options = null): \WordPress\AiClient\Providers\Http\DTO\Response
-            {
-                $this->captured_request = $request;
-
-                return new \WordPress\AiClient\Providers\Http\DTO\Response(200, array(), HttpResponseFactory::openAiChatCompletionBody('ride ok', 'glm-5.3'));
-            }
-        };
+        // glm29-12: the harness-owned capturing double (the body is the argument).
+        $transporter = new CapturingTransporter(HttpResponseFactory::openAiChatCompletionBody('ride ok', 'glm-5.3'));
 
         $model = $this->model();
         $model->setHttpTransporter($transporter);
