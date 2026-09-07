@@ -1541,92 +1541,115 @@ function wp_connectors_self_containment_violations($pluginDir)
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($pluginDir, FilesystemIterator::SKIP_DOTS)
     );
-    foreach ($iterator as $file) {
-        /** @var SplFileInfo $file */
-        if ($file->getExtension() !== 'php') {
-            continue;
-        }
-        $path = $file->getPathname();
-        /*
-         * glm25-8: the file's views come from the ONE shared tokenizer
-         * provider — the unused-import scan over the same file in this
-         * process reuses the entry instead of re-tokenizing (the
-         * unreadable tolerance below is the old (string) cast's: an
-         * empty analysis, never a fatal).
-         */
-        $views = wp_connectors_file_code_views($path);
-        $code = null !== $views ? $views['code'] : '';
-        $relative = str_replace($pluginDir . '/', '', $path);
+    /*
+     * glm31-4 (round-31 finding 4): a subdirectory the iterator cannot
+     * OPEN mid-recursion aborts the walk with an UnexpectedValueException
+     * (it cannot step past what it cannot enter — glm17-17's class, on
+     * the sibling scan this file shares). The guard lives HERE, at the
+     * ONE shared owner, so every consumer's failure channel fires
+     * automatically: the conventions gate counts the returned violation,
+     * inspect-artifact lists it, and build's refusing RuntimeException
+     * carries it (UnexpectedValueException already extends
+     * RuntimeException, so build was the only consumer whose catch
+     * held pre-round). The abort converts to the same loud-counted
+     * channel glm17-10 gave the unreadable FILE — a named violation,
+     * never an uncaught fatal exiting 255 — and the partial violations
+     * collected before the abort are kept.
+     */
+    try {
+        foreach ($iterator as $file) {
+            /** @var SplFileInfo $file */
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+            $path = $file->getPathname();
+            /*
+             * glm25-8: the file's views come from the ONE shared tokenizer
+             * provider — the unused-import scan over the same file in this
+             * process reuses the entry instead of re-tokenizing (the
+             * unreadable tolerance below is the old (string) cast's: an
+             * empty analysis, never a fatal).
+             */
+            $views = wp_connectors_file_code_views($path);
+            $code = null !== $views ? $views['code'] : '';
+            $relative = str_replace($pluginDir . '/', '', $path);
 
-        /*
-         * glm15-2: the include keyword scan runs on the string-masked
-         * copy (same length as $code), so a 'require ...;' or
-         * '$x = ...;' written inside a quoted string or heredoc is never
-         * analyzed as a statement — matched offsets slice the REAL
-         * statement (literals intact) out of $code.
-         *
-         * glm24-6: this is the ONE mask pass for the file — every
-         * analysis below (the assignment collector, the write-shape
-         * check, and their callers) receives the view instead of
-         * re-tokenizing the whole file per consult (the per-include ×
-         * per-segment × per-assignment fan-out used to re-mask O(8×)
-         * on files like uninstall.php).
-         */
-        $masked = null !== $views ? $views['masked'] : '';
+            /*
+             * glm15-2: the include keyword scan runs on the string-masked
+             * copy (same length as $code), so a 'require ...;' or
+             * '$x = ...;' written inside a quoted string or heredoc is never
+             * analyzed as a statement — matched offsets slice the REAL
+             * statement (literals intact) out of $code.
+             *
+             * glm24-6: this is the ONE mask pass for the file — every
+             * analysis below (the assignment collector, the write-shape
+             * check, and their callers) receives the view instead of
+             * re-tokenizing the whole file per consult (the per-include ×
+             * per-segment × per-assignment fan-out used to re-mask O(8×)
+             * on files like uninstall.php).
+             */
+            $masked = null !== $views ? $views['masked'] : '';
 
-        if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $masked, $includes, PREG_OFFSET_CAPTURE)) {
-            foreach ($includes[0] as $include_match) {
-                $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
-                $quoted_literals = wp_connectors_quoted_literals($include[0]);
-                if ($quoted_literals !== array()) {
-                    foreach ($quoted_literals as $literal_pair) {
-                        /*
-                         * glm29-3: the old '${'-only dynamic test both
-                         * missed every other interpolation form ($name,
-                         * {$name}, $$var) and SUPPRESSED this unanchored
-                         * flag for the forms it did see — leaving an
-                         * unanchored runtime-built target flagged
-                         * nowhere (the runtime layers route back with
-                         * "already flagged by the literal analysis").
-                         * Unanchored flags fire regardless of
-                         * interpolation now; an anchored interpolated
-                         * literal is judged by the runtime layers below.
-                         */
-                        $anchored = strpos($include[0], '__DIR__') !== false || strpos($include[0], 'ABSPATH') !== false;
-                        $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include[0]);
-                        if (! $anchored || $escapesUp) {
+            if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $masked, $includes, PREG_OFFSET_CAPTURE)) {
+                foreach ($includes[0] as $include_match) {
+                    $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
+                    $quoted_literals = wp_connectors_quoted_literals($include[0]);
+                    if ($quoted_literals !== array()) {
+                        foreach ($quoted_literals as $literal_pair) {
+                            /*
+                             * glm29-3: the old '${'-only dynamic test both
+                             * missed every other interpolation form ($name,
+                             * {$name}, $$var) and SUPPRESSED this unanchored
+                             * flag for the forms it did see — leaving an
+                             * unanchored runtime-built target flagged
+                             * nowhere (the runtime layers route back with
+                             * "already flagged by the literal analysis").
+                             * Unanchored flags fire regardless of
+                             * interpolation now; an anchored interpolated
+                             * literal is judged by the runtime layers below.
+                             */
+                            $anchored = strpos($include[0], '__DIR__') !== false || strpos($include[0], 'ABSPATH') !== false;
+                            $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include[0]);
+                            if (! $anchored || $escapesUp) {
+                                $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
+                            }
+                        }
+                        if (wp_connectors_anchored_include_escapes_plugin($path, $include[0], $quoted_literals, $pluginDir)) {
                             $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
                         }
-                    }
-                    if (wp_connectors_anchored_include_escapes_plugin($path, $include[0], $quoted_literals, $pluginDir)) {
-                        $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
-                    }
-                    // A quoted literal must not select literal-only analysis
-                    // and hide the variable parts of the same statement:
-                    // `require __DIR__ . '/' . $dependency;` is analyzed
-                    // segment by segment like any other hidden target.
-                    foreach (wp_connectors_runtime_segment_reasons($path, $code, $include[0], $include[1], $pluginDir, $masked) as $reason) {
-                        $violations[] = sprintf('%s: %s includes a target not provably inside the plugin dir (%s): %s', $slug, $relative, $reason, trim($include[0]));
-                    }
-                } else {
-                    // No quoted literal: the target is hidden behind a variable
-                    // or a runtime expression the scanner cannot see. Strict
-                    // allow — only targets provably inside the plugin root pass.
-                    foreach (wp_connectors_hidden_include_reasons($path, $code, $include[0], $include[1], $pluginDir, $masked) as $reason) {
-                        $violations[] = sprintf('%s: %s includes a target not provably inside the plugin dir (%s): %s', $slug, $relative, $reason, trim($include[0]));
+                        // A quoted literal must not select literal-only analysis
+                        // and hide the variable parts of the same statement:
+                        // `require __DIR__ . '/' . $dependency;` is analyzed
+                        // segment by segment like any other hidden target.
+                        foreach (wp_connectors_runtime_segment_reasons($path, $code, $include[0], $include[1], $pluginDir, $masked) as $reason) {
+                            $violations[] = sprintf('%s: %s includes a target not provably inside the plugin dir (%s): %s', $slug, $relative, $reason, trim($include[0]));
+                        }
+                    } else {
+                        // No quoted literal: the target is hidden behind a variable
+                        // or a runtime expression the scanner cannot see. Strict
+                        // allow — only targets provably inside the plugin root pass.
+                        foreach (wp_connectors_hidden_include_reasons($path, $code, $include[0], $include[1], $pluginDir, $masked) as $reason) {
+                            $violations[] = sprintf('%s: %s includes a target not provably inside the plugin dir (%s): %s', $slug, $relative, $reason, trim($include[0]));
+                        }
                     }
                 }
             }
+            if (stripos($code, 'vendor/autoload') !== false) {
+                $violations[] = sprintf('%s: %s references vendor/autoload (no Composer at runtime).', $slug, $relative);
+            }
+            if (preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $code) && stripos($code, 'composer') !== false) {
+                $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
+            }
+            if (preg_match('#(?:\.\./)+shared/|\bshared/#', $code)) {
+                $violations[] = sprintf('%s: %s references shared/ (generated copies only, never source includes).', $slug, $relative);
+            }
         }
-        if (stripos($code, 'vendor/autoload') !== false) {
-            $violations[] = sprintf('%s: %s references vendor/autoload (no Composer at runtime).', $slug, $relative);
-        }
-        if (preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $code) && stripos($code, 'composer') !== false) {
-            $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
-        }
-        if (preg_match('#(?:\.\./)+shared/|\bshared/#', $code)) {
-            $violations[] = sprintf('%s: %s references shared/ (generated copies only, never source includes).', $slug, $relative);
-        }
+    } catch (UnexpectedValueException $e) {
+        $violations[] = sprintf(
+            '%s: unreadable subdirectory — the self-containment scan aborted (%s)',
+            $slug,
+            $e->getMessage()
+        );
     }
 
     return $violations;

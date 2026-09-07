@@ -47,6 +47,53 @@ final class SelfContainmentLoopWritesTest extends TestCase
         @rmdir($this->root);
     }
 
+    public function testAnUnreadableSubdirectoryConvertsTheWalkAbortIntoANamedViolation(): void
+    {
+        /*
+         * glm31-4: a subdirectory the recursive iterator cannot OPEN
+         * mid-recursion aborted the self-containment walk with an
+         * uncaught UnexpectedValueException — a PHP fatal exiting 255
+         * under `composer check`, `bin/inspect-artifact.php`, and
+         * `bin/build.php` alike — while the sibling unused-import scan
+         * has converted the same abort to a counted FAIL since
+         * glm17-17. The guard lives at the ONE shared walk now: the
+         * abort becomes a named violation (the partial violations
+         * collected before it are kept), so every consumer's failure
+         * channel fires automatically. chmod-000 is the one shape a
+         * non-root host cannot open (glm17-16: root reads through it),
+         * so the pin functionally probes the host and skips where
+         * opendir still succeeds.
+         */
+        file_put_contents($this->root . '/main.php', "<?php\n// a clean file\n");
+        $locked = $this->root . '/locked';
+        mkdir($locked . '/inner', 0777, true);
+        file_put_contents($locked . '/inner/deep.php', "<?php\n");
+        chmod($locked, 0000);
+
+        $probe = @opendir($locked);
+        if (false !== $probe) {
+            closedir($probe);
+            chmod($locked, 0777);
+            @unlink($locked . '/inner/deep.php');
+            @rmdir($locked . '/inner');
+            @rmdir($locked);
+            $this->markTestSkipped('This host opens chmod-000 directories; the abort shape is unreachable here.');
+        }
+
+        try {
+            $violations = wp_connectors_self_containment_violations($this->root);
+        } finally {
+            chmod($locked, 0777);
+            @unlink($locked . '/inner/deep.php');
+            @rmdir($locked . '/inner');
+            @rmdir($locked);
+        }
+
+        $this->assertNotEmpty($violations, 'The walk abort converts to a violation, never an uncaught fatal.');
+        $this->assertStringContainsString('unreadable subdirectory', implode("\n", $violations), 'The violation names the abort.');
+        $this->assertCount(1, $violations, 'The clean partial scan plus the named abort is the whole report.');
+    }
+
     public function testTheTwoDelimiterMatchersShareOneWalkWithStatedPolicies(): void
     {
         /*
