@@ -41,10 +41,18 @@ final class JsonShape {
 	 * decode — the documented limitation every former hand-rolled copy
 	 * carried.
 	 *
-	 * The empty case needs its OWN clause (it always did, at every
-	 * former call site): count()-1 is -1 there, and PHP's range(0, -1)
-	 * is a DESCENDING two-element sequence, not the empty array the bare
-	 * key comparison would need.
+	 * glm31-9: the predicate rides the NATIVE array_is_list() now — an
+	 * engine function on PHP 8.1+, the SDK's files-autoloaded polyfill
+	 * (vendor/wordpress/php-ai-client/src/polyfills.php, wired through
+	 * vendor/composer/autoload_files.php) on the composer-pinned 7.4
+	 * floor. The SDK's own hot paths (PromptBuilder, the
+	 * OpenAI-compatible parse the zai surface extends) already call it
+	 * on every request, so every functional SDK installation provides
+	 * it — JsonShape adds no new precondition. The hand-rolled
+	 * range-over-count idiom is deleted; a second hand-maintained copy
+	 * of platform semantics could silently diverge from the verdict the
+	 * SDK itself applies to the same value (the GLM8 #13 extraction pin
+	 * is superseded at its site to forbid the idiom everywhere).
 	 *
 	 * @since 0.2.0
 	 *
@@ -52,6 +60,6 @@ final class JsonShape {
 	 * @return bool True when the array encodes as a JSON list.
 	 */
 	public static function is_list( array $value ): bool {
-		return array() === $value || \array_keys( $value ) === \range( 0, \count( $value ) - 1 );
+		return \array_is_list( $value );
 	}
 }
