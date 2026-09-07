@@ -165,15 +165,16 @@ final class ZaiEndpointResolverTest extends WpConnectorsTestCase
         ZaiEndpoint::for('coding', 'eu');
     }
 
-    public function testABaseUrlAlreadyCarryingAnEndpointSuffixLosesItExactlyOnce()
+    public function testABaseUrlAlreadyCarryingEndpointSuffixesLosesThemAll()
     {
         /*
          * GLM8 #10: the double-append guard exists on BOTH surfaces now —
          * it lived only in the Anthropic copy while this surface ran a
          * bare rtrim, the live drift the shared AbstractZaiEndpoint base
          * exists to stop. A base URL that already carries one of this
-         * surface's suffixes (a matrix edit, a hand-built value) loses it
-         * exactly once, so api_url() can never produce
+         * surface's suffixes (a matrix edit, a hand-built value) loses
+         * them ALL — glm28-5 superseded the exactly-once contract with
+         * the fixpoint strip — so api_url() can never produce
          * {base}/models/models or {base}/chat/completions/chat/completions.
          */
         $this->assertSame(
@@ -195,6 +196,26 @@ final class ZaiEndpointResolverTest extends WpConnectorsTestCase
             'https://api.z.ai/api/paas/v4',
             ZaiEndpoint::normalize_base_url('https://api.z.ai/api/paas/v4'),
             'A clean base URL is untouched.'
+        );
+
+        /*
+         * glm28-5 supersedes the exactly-once contract (round-28
+         * finding 5): the strip runs to a FIXPOINT — the longest
+         * matching suffix per iteration, so a shorter suffix sharing
+         * the tail cannot eat half of a longer one's compound — and
+         * interior doubled slashes collapse. A DOUBLED suffix, the
+         * exact mis-edit class the guard exists to absorb, used to
+         * half-stand and api_url() re-emitted the doubled path.
+         */
+        $this->assertSame(
+            'https://api.z.ai/api/paas/v4',
+            ZaiEndpoint::normalize_base_url('https://api.z.ai/api/paas/v4/chat/completions/chat/completions'),
+            'A doubled suffix strips entirely (glm28-5 fixpoint).'
+        );
+        $this->assertSame(
+            'https://x.test',
+            ZaiEndpoint::normalize_base_url('https://x.test//models/'),
+            'An interior doubled slash collapses and the suffix still strips (glm28-5).'
         );
 
         $models = ZaiEndpoint::for('general', 'intl')->models_url();

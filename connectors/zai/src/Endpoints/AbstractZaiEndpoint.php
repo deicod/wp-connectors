@@ -95,7 +95,7 @@ abstract class AbstractZaiEndpoint {
 	}
 
 	/**
-	 * Strips trailing slashes and any already-appended endpoint suffix.
+	 * Strips trailing slashes and any already-appended endpoint suffixes.
 	 *
 	 * The double-append guard (GLM8 #10: on BOTH surfaces now — it lived
 	 * only in the Anthropic copy while ZaiEndpoint ran a bare rtrim, the
@@ -104,17 +104,53 @@ abstract class AbstractZaiEndpoint {
 	 * that already ends with one (a matrix edit, a hand-built value)
 	 * must lose it first.
 	 *
+	 * glm28-5: the strip runs to a FIXPOINT and collapses interior
+	 * doubled slashes. The single ordered pass left a DOUBLED suffix —
+	 * the exact mis-edit class the guard exists to absorb —
+	 * half-standing ('.../v1/messages/v1/messages' kept one suffix, so
+	 * messages_url() re-emitted the doubled path the guard was built to
+	 * prevent), and an interior '//' pair survived around a stripped
+	 * suffix ('https://x.test//messages/' kept its pair). The collapse
+	 * runs only past the scheme delimiter, so the scheme's own '//'
+	 * pair is never touched. Latent hardening only: every in-tree
+	 * MATRIX cell is clean, the constructor is final protected, and no
+	 * filter touches these URLs — the round-28 verifier reproduced the
+	 * shapes through hand-built values alone.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @param string $base_url Raw base URL.
 	 * @return string Normalized base URL.
 	 */
 	final public static function normalize_base_url( string $base_url ): string {
+		if ( 1 === preg_match( '#^([a-z][a-z0-9+.\-]*:)//#i', $base_url, $scheme ) ) {
+			$base_url = $scheme[0] . preg_replace( '#/{2,}#', '/', substr( $base_url, \strlen( $scheme[0] ) ) );
+		}
+
 		$trimmed = rtrim( $base_url, '/' );
 
-		foreach ( static::ENDPOINT_SUFFIXES as $suffix ) {
-			if ( substr( $trimmed, -\strlen( $suffix ) ) === $suffix ) {
-				$trimmed = substr( $trimmed, 0, -\strlen( $suffix ) );
+		/*
+		 * One suffix per iteration, the LONGEST match wins: stripping
+		 * inside a single ordered pass let a shorter suffix sharing the
+		 * tail ('/messages' inside '/v1/messages') eat half of a longer
+		 * suffix's compound and strand its prefix ('.../v1'). The loop
+		 * re-examines from the top after every strip, so a doubled
+		 * suffix leaves entirely.
+		 */
+		$previous = null;
+		while ( $previous !== $trimmed ) {
+			$previous = $trimmed;
+			$longest  = '';
+
+			foreach ( static::ENDPOINT_SUFFIXES as $suffix ) {
+				if ( \strlen( $suffix ) > \strlen( $longest )
+					&& substr( $trimmed, -\strlen( $suffix ) ) === $suffix ) {
+					$longest = $suffix;
+				}
+			}
+
+			if ( '' !== $longest ) {
+				$trimmed = rtrim( substr( $trimmed, 0, -\strlen( $longest ) ), '/' );
 			}
 		}
 

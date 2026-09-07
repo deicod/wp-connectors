@@ -116,7 +116,7 @@ final class ZaiAnthropicEndpointResolverTest extends WpConnectorsTestCase
      * The double-append guard (Task 2.2).
      */
 
-    public function testABaseUrlAlreadyCarryingAnEndpointSuffixLosesItExactlyOnce()
+    public function testABaseUrlAlreadyCarryingEndpointSuffixesLosesThemAll()
     {
         $this->assertSame(
             'https://api.z.ai/api/coding/anthropic',
@@ -139,6 +139,31 @@ final class ZaiAnthropicEndpointResolverTest extends WpConnectorsTestCase
         $this->assertSame(
             'https://api.z.ai/api/coding/anthropic',
             ZaiAnthropicEndpoint::normalize_base_url('https://api.z.ai/api/coding/anthropic')
+        );
+
+        /*
+         * glm28-5 supersedes the exactly-once contract (round-28
+         * finding 5): the strip runs to a FIXPOINT — the longest
+         * matching suffix per iteration, so the shared-tail '/messages'
+         * cannot eat half of a '/v1/messages' compound — and interior
+         * doubled slashes collapse. The round-28 verifier reproduced a
+         * doubled '/v1/messages' half-standing, so messages_url()
+         * re-emitted the doubled path the guard exists to prevent.
+         */
+        $this->assertSame(
+            'https://api.z.ai/api/anthropic',
+            ZaiAnthropicEndpoint::normalize_base_url('https://api.z.ai/api/anthropic/v1/messages/v1/messages'),
+            'A doubled /v1/messages suffix strips entirely (glm28-5 fixpoint).'
+        );
+        $this->assertSame(
+            'https://api.z.ai/api/anthropic',
+            ZaiAnthropicEndpoint::normalize_base_url('https://api.z.ai/api/anthropic/v1/models/v1/models'),
+            'A doubled /v1/models suffix strips entirely too.'
+        );
+        $this->assertSame(
+            'https://x.test',
+            ZaiAnthropicEndpoint::normalize_base_url('https://x.test//messages/'),
+            'An interior doubled slash collapses and the suffix still strips (glm28-5).'
         );
     }
 
