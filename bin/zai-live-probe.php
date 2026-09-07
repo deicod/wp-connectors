@@ -312,16 +312,31 @@ zai_live_probe_report( 'region', $region );
  * also ride. This CLI shell judges the structured outcome through exit
  * codes; the report lines and their order are byte-identical to the
  * pre-glm29-9 probe output.
+ *
+ * glm29-16 (security-verifier round): the call is guarded — an uncaught
+ * fatal anywhere inside the runner would print PHP's stack trace with
+ * the LIVE KEY visible in run()'s argument frame
+ * (zend.exception_ignore_args=Off is the engine default; the pre-round
+ * top-level frames carried no arguments), the exact channel this
+ * script's safe-facts contract forbids. The shell names the failure and
+ * exits; the trace never prints (the GLM7 #14 rule extended to the
+ * whole round trip).
  */
-$outcome = ZaiLiveRoundTrip::run(
-    $surface_facts['settings'],
-    $surface_facts['provider'],
-    $surface_facts['endpoint'],
-    $key,
-    $plan,
-    $region,
-    'zai_live_probe_report'
-);
+try {
+    $outcome = ZaiLiveRoundTrip::run(
+        $surface_facts['settings'],
+        $surface_facts['provider'],
+        $surface_facts['endpoint'],
+        $key,
+        $plan,
+        $region,
+        'zai_live_probe_report'
+    );
+} catch ( Throwable $e ) {
+    zai_live_probe_report( 'round trip', 'FAILED: ' . get_class( $e ) . ' ' . $e->getMessage() );
+    zai_live_probe_report( 'result', 'FAIL' );
+    exit( 1 );
+}
 
 $exit = 0;
 

@@ -111,12 +111,23 @@ abstract class AbstractZaiSurfaceResponseMappingTestCase extends WpConnectorsTes
          */
         $key = FakeSecrets::apiKey();
 
+        /*
+         * The canary: the redaction assertion really sees THIS key when
+         * it IS present. The failure is recorded as a FLAG and asserted
+         * OUTSIDE the catch — a fail() inside the try would be swallowed
+         * by the very AssertionFailedError catch it triggers (the
+         * correctness verifier's round-29 catch: PHPUnit's fail() throws
+         * that exact class), making the canary itself vacuous exactly
+         * when assertRedacted() stops flagging.
+         */
+        $canary_flagged = false;
         try {
             $this->assertRedacted('canary prefix ' . $key . ' suffix', $key);
-            $this->fail('assertRedacted must flag a message carrying the wired key — the pin would be vacuous.');
         } catch ( \PHPUnit\Framework\AssertionFailedError $e ) {
-            // The canary: the redaction assertion really sees THIS key.
+            $canary_flagged = true;
         }
+
+        $this->assertTrue($canary_flagged, 'assertRedacted must flag a message carrying the wired key — the pin would be vacuous.');
 
         $this->allowUnmockedHttp = true;
 
