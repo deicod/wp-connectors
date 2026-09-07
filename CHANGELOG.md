@@ -6,6 +6,118 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM28 round, /code-review max)
+
+All 16 actionable items of the round-28 max review (the 28th review
+round on this branch; the finder fleet's six remaining UNVERIFIED
+candidates were adversarially verified FIRST per the round's own
+protocol — four CONFIRMED and fixed, two REFUTED and ledgered;
+is_object_shape stays on the deferred list by disposition), one commit
+per item:
+
+- A trailing comment in a `use` statement no longer poisons the
+  unused-import verdict (glm28-1, the round's one confirmed scanner
+  defect): the single-form scanner derives the qualified name from the
+  REAL statement bytes, so a legal trailing comment rode into the
+  short name — a string that appears nowhere else, flagging a
+  genuinely used import (verifier repro: return type + `new
+  Request()`). A comment opener cannot occur inside the import's own
+  bytes, so the first opener ends them; the flag message prints the
+  clean name (pinned through a child-process STDERR capture).
+- Present-but-wrong-type stream members flag instead of silently
+  dropping (glm28-2, extends glm26-3): non-string content/
+  reasoning_content, non-array tool_calls/delta/choices, and the
+  tool-call fragment's own members all skipped silently while the
+  stream completed clean — the harmful repro was `"arguments":123` as
+  the only arguments fragment fabricating a successful no-argument
+  call. Every guard joins the present-wrong-type rule (flag + skip);
+  absent/null keeps the absent-semantics skip, the ''-string fragment
+  keeps its merge-nothing skip, and the choices rule lands pre- AND
+  post-sentinel identically.
+- Zero-part completions reject typed instead of poisoning the history
+  (glm28-4, the GLM3 #1/GLM5 #4 parity the Anthropic twin has enforced
+  since those rounds): a role-only delta stream, a contentless choice
+  message, or a thought-only turn parsed as a successful generation
+  whose empty assistant Message replayed as
+  `{"role":"assistant","content":[]}` (verifier-confirmed end-to-end
+  against the vendor mapper), poisoning every later request of the
+  conversation. One guard after the parent parse covers all three
+  transports; the empty-STRING text tolerance is kept and pinned.
+- normalize_base_url() strips suffixes to a fixpoint and collapses
+  interior doubled slashes (glm28-5, latent hardening): the single
+  ordered pass left a doubled suffix half-standing (longest suffix per
+  iteration now, so a shared-tail suffix cannot eat half of a longer
+  one's compound). The ExactlyOnce resolver pins are consciously
+  superseded to the LosesThemAll contract.
+- The credential gate rides raw_request_authentication() directly
+  (glm28-6, supersedes glm18-14's delegation shape): after the
+  delegation merge, two hook names shared one body on both surfaces
+  and every new surface had to keep them identical. One abstract (the
+  name SpeaksAnthropicMessagesProtocol already standardizes); the
+  zai_anthropic delegation is deleted, the zai surface gains the
+  one-line raw hook.
+- The duplicate tool_use-id check relies on the callee's contract
+  (glm28-7): the re-validation guards were dead (parse_content_block()
+  throws on any bad id before its tool_use return) and the adjacent
+  comment was stale; both fixed.
+- SseFrameBuffer compacts at one site (glm28-8): the trailing
+  last-frame compaction block was byte-identical to the entry check
+  and behaviorally redundant for every interleaving.
+- parse_decoded_message reads its own parameter (glm28-9): the
+  `$raw = $raw_body` rebinding serviced the glm24-7-deleted mirror
+  and survived it as a pure no-op.
+- One depth-zero split walk serves every split family (glm28-10, the
+  glm20-10 matcher precedent): four structurally parallel hand-rolled
+  split loops (group-use commas, runtime-segment dots, map-literal
+  commas and '=>') now ride wp_connectors_depth_zero_spans()
+  (parameterized depth classes and a byte-length cut predicate);
+  every walk's existing fixtures pass unchanged.
+- One shared skeleton for both live smoke tests (glm28-11, the
+  Abstract*MappingTestCase pattern): the two opt-in twins rode the
+  same ~40-line scaffold line-for-line and neither runs in CI. The
+  glm25-6 lockstep pin is superseded to the new shape (derivations
+  pinned once in the base; each twin pins its owner-class hooks).
+- The probe's credential ladder is one named helper (glm28-12):
+  resolve_probe_authentication() owns the ~70-line
+  empty/opaque/funnel/fallback resolution unchanged; probe() is a
+  flat read-then-verdict method.
+- The tool_use input member is judged by one presence check
+  (glm28-13): three property_exists evaluations and two flag branches
+  collapsed to one condition class (absent-or-null), verdicts
+  byte-identical.
+- One per-assignment proof body serves both hidden-include depths
+  (glm28-15, the corrected verified shape — naive recursion was
+  refuted: it memory-fatals on variable cycles and flips the 3-hop
+  verdict): wp_connectors_assignment_value_reasons() owns the body and
+  re-enters only from depth 0; the TWO-LEVEL cap is documented and
+  pinned as the cycle guard; all three reason wordings preserved.
+- The usage-rejection wording is reject()'s private detail
+  (glm28-16): the REASON_* constants and message_for_reason() served
+  only reject()'s internal routing. Privatized; the two direct-call
+  test assertions superseded behaviorally through the public
+  rejection channel.
+- The JSON-output guidance builder rides one shared trait
+  (glm28-17, the StashesGenerationPrompt precedent):
+  Support\BuildsJsonOutputGuidance owns the byte-identical lazy-init
+  block; the glm23-2 memo reflection pin survives the trait
+  flattening unchanged.
+- Two diagnostic-wording drifts name their real mechanisms
+  (glm28-19+20): the replay-guard bound compare is PHP's numeric-
+  string comparison (not lexical — both floors decide exactly,
+  verified), and the encode-rejection template names the
+  JSON_ERROR_DEPTH cause.
+
+Two round-28 candidates were REFUTED on verification and ledgered:
+the trailing finish_reason type gap (no pre-sentinel asymmetry
+exists; verbatim storage is the documented pinned design whose
+outcome is byte-identical either way) and the generation_url() alias
+deletion (the delegator is the cost of the glm15-4 cross-surface
+probe contract; deleting it re-opens what that round closed).
+is_object_shape() stays on the ledger deferred list by disposition.
+
+Suite: 1208 tests / 29715 assertions (round baseline 1193/29652),
+green in default AND --order-by=random order.
+
 ### Fixed (zai / M2 — GLM27 round, Codex R21)
 
 All 3 findings of Codex review round 21, one commit each, plus one
