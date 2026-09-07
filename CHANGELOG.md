@@ -6,6 +6,74 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM30 round, /code-review max)
+
+The 30th review round (ledger-filtered: 10 of its 15 raw findings were
+re-flags of ledgered decisions, dropped) left 5 surviving findings,
+fixed one commit per item, plus 2 fixes over the 10 verified cleanup
+candidates the round's 15-cap had cut — the other 8 were refuted on
+re-examination against the ledger and recorded there (round 30):
+
+- The test harness erases SDK credentials between tests (glm30-1): a
+  credential wired onto the process-wide SDK state rode every later
+  test in the same PHP process — the registry's per-provider
+  authentication map (re-applied by any later registerProvider(), and
+  bindModelDependencies() stamps it onto new model instances) and the
+  AbstractProvider static instances themselves (reachable through the
+  direct setRequestAuthentication() several suites use). Under the
+  pipeline's own --order-by=random ordering, a test asserting the
+  no-credential path failed as a pure function of execution order.
+  setUp() empties the registry map and nulls the SDK trait's nullable
+  credential storage on every cached provider instance — through the
+  DECLARING class, because reflection does not see the private
+  trait-composed property from a concrete surface class. Regression
+  pair mutation-tested; both suite orders green.
+- The HTTP-error catalog names each surface by its card name (glm30-2):
+  safe_http_message()/to_wp_error() hardcoded the single 'z.ai API'
+  identity for BOTH surfaces' non-2xx generation errors, so with both
+  cards configured a 401 never named which surface rejected the key.
+  The identity is the caller's now: each model declares HTTP_API_LABEL
+  on the card-name chain (the settings layer's PROVIDER_LABEL, glm24-2's
+  direction). The OpenAI surface passes 'z.ai API' (messages
+  byte-identical to the old wording); the Anthropic surface passes
+  'z.ai (Anthropic API)' verbatim. Both surfaces' suites pin that the
+  catalog text names the surface.
+- A final 1xx status is an invalid status, never a redirect (glm30-3):
+  throwIfNotSuccessful()'s <400 fall-through labeled a final 1xx
+  informational (representable in the Response DTO, though no real
+  transport yields one) as RedirectException → zai_redirect_error. The
+  three families get the vendor ResponseUtil's explicit ranges now and
+  every other non-2xx status throws the SDK RuntimeException family
+  with a label-carrying, status-only message on the zai_error mapping.
+  Pinned by a status-family mapping battery; mutation-tested.
+- One shared owner for the translatable-part predicate (glm30-4):
+  message_has_translatable_part() was a private near-verbatim twin in
+  the two models, differing only in the Anthropic empty-text clause.
+  Support\TranslatableMessageParts::has_translatable_part() owns the
+  shared shape; the ONE deliberate divergence (glm28-4's pinned
+  tolerance) rides a parameter each model passes from its own
+  EMPTY_TEXT_TRANSLATES policy constant. Both pinned behaviors survive
+  byte-for-byte.
+- The absent-total derivation vocabulary is a named, pinned constant
+  (glm30-5): derive_absent_total_tokens() hand-listed the
+  prompt+completion pair inline while validation rode
+  UsageValidator::OPENAI_MEMBERS. The set is
+  OPENAI_TOTAL_DERIVATION_MEMBERS now — the WIRE SEMANTIC of
+  total_tokens, deliberately not computed from OPENAI_MEMBERS — and a
+  pin asserts the sets agree, so any OPENAI_MEMBERS change forces the
+  constant's conscious revisit.
+- The wired-credential pair construction has one owner (glm30-6):
+  effective_key() and effective_for_authentication() each spelled the
+  wired-ApiKey credential pair inline; wired_credential() owns the
+  non-empty-key mapping (the GLM5 #11 divergence class closed at the
+  last duplication).
+- The zai directory's auth-reader closure has one owner (glm30-7): the
+  deferred reader was spelled inline twice (refuse_discovery() and
+  record_rejection_for_status()); wired_authentication_reader() is the
+  one factory — a closure factory, since the consumers invoke the
+  reader in their own scope and the closure keeps the raw getter
+  callable without widening visibility.
+
 ### Fixed (zai / M2 — GLM29 round, /code-review max)
 
 Verifier pass (two independent lenses, correctness + security, over the
