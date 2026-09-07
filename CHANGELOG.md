@@ -118,7 +118,27 @@ deletion (the delegator is the cost of the glm15-4 cross-surface
 probe contract; deleting it re-opens what that round closed).
 is_object_shape() stays on the ledger deferred list by disposition.
 
-Suite: 1208 tests / 29715 assertions (round baseline 1193/29652),
+A two-lens verifier pass over the full diff (independent security +
+correctness agents) found ONE confirmed defect — glm28-1's first fix
+regressed the keyword-to-name comment position in `use` statements
+(`use /* note */ Dead;` silently skipped a dead import the pre-round
+scanner flagged) — fixed as glm28-22 (the name derives from the
+masked match text; every comment position derives the clean name).
+Everything else held under their evidence: a 4000-stream
+merge_tool_calls fuzz (byte-identical accumulated state; every flag
+difference a verified new present-wrong-type catch), a 21-shape
+tolerance battery (zero flags on legitimate shapes), the
+malformed-event/zero-part/fallback precedence battery, a pre/post
+non-streamed model differential (8 legitimate shapes byte-identical,
+5 poisoning shapes now typed), a 3996-URL normalize_base_url corpus
+(every difference in the documented direction; clean cells
+byte-identical), old-vs-new differentials over the split walks and
+the hidden-include resolution (byte-identical verdict/reason lists),
+SseFrameBuffer interleavings, the probe ladder's six wiring shapes,
+and pin mutation tests (glm28-15's cap, glm28-17's composition, and
+glm28-11's lockstep pins all non-vacuous).
+
+Suite: 1211 tests / 29718 assertions (round baseline 1193/29652),
 green in default AND --order-by=random order.
 
 ### Fixed (zai / M2 — GLM27 round, Codex R21)
