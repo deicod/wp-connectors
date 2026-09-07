@@ -285,4 +285,72 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         $this->assertSame(0, preg_match("/array\(\s*'coding',\s*'general'\s*\)/", $uninstall), 'No hand-copied plan list may ride the uninstall sweep.');
         $this->assertSame(0, preg_match("/array\(\s*'intl',\s*'cn'\s*\)/", $uninstall), 'No hand-copied region list may ride the uninstall sweep.');
     }
+
+    public function testHelpRequestsPrintUsageAndExitZeroWithoutReachingTheKeyLookup()
+    {
+        /*
+         * glm31-3: --help used to be an unrecognized option getopt()
+         * silently dropped — the probe fell to the defaults and, with a
+         * key present, ran the full live, billable round trip while
+         * answering the help request with PASS. Help answers before
+         * anything else now, exit 0, and never reaches the key lookup.
+         */
+        foreach (array('--help', '-h') as $helpFlag) {
+            list($exitCode, $output) = $this->runProbe(array($helpFlag));
+
+            $this->assertSame(0, $exitCode, "[{$helpFlag}] Help must exit 0, got {$exitCode}: {$output}");
+            $this->assertStringContainsString('Usage: php bin/zai-live-probe.php', $output);
+            $this->assertStringContainsString('--surface <openai|anthropic>', $output, 'The usage derives its surface list from the built map.');
+            $this->assertStringContainsString('--plan <coding|general>', $output, 'The usage derives its plan spellings from the owner constants.');
+            $this->assertStringContainsString('--region <intl|cn>', $output, 'The usage derives its region spellings from the owner constants.');
+            $this->assertStringNotContainsString('no key found', $output, 'A help request never reaches the key lookup.');
+        }
+    }
+
+    public function testMisspelledAndUnknownOptionsAreRejectedBeforeAnyDefaultRun()
+    {
+        /*
+         * glm31-3: getopt() drops unrecognized options, so --surfac=
+         * anthropic (typo), -surface (single dash: undeclared short
+         * options), --verbose (unknown), and a stray positional all
+         * fell to the defaults — the silent-defaults class that runs
+         * the billable round trip the operator did not ask for. The
+         * raw-argv scan rejects each shape with its own diagnostic
+         * before the key lookup.
+         */
+        $shapes = array(
+            array('--surfac=anthropic', 'unrecognized option', '--surfac'),
+            array('-surface', 'anthropic', 'unrecognized argument', '-surface'),
+            array('--verbose', 'unrecognized option', '--verbose'),
+            array('anthropic', 'unrecognized argument', 'anthropic'),
+        );
+
+        foreach ($shapes as $shape) {
+            $label = implode(' ', array_slice($shape, 0, -1));
+            $expected = $shape[count($shape) - 1];
+
+            list($exitCode, $output) = $this->runProbe(array_slice($shape, 0, -1));
+
+            $this->assertSame(2, $exitCode, "[{$label}] The shape must be rejected, got {$exitCode}: {$output}");
+            $this->assertStringContainsString($expected, $output, "[{$label}] The diagnostic names the shape.");
+            $this->assertStringContainsString('--help prints the usage', $output, "[{$label}] The diagnostic points at the help path.");
+            $this->assertStringNotContainsString('no key found', $output, "[{$label}] The rejection precedes the key lookup.");
+            $this->assertStringNotContainsString('must be openai or anthropic', $output, "[{$label}] The diagnostic must not blame a value for an unknown option's sake.");
+        }
+    }
+
+    public function testAValueConsumedByAKnownOptionIsNeverJudgedItself()
+    {
+        /*
+         * glm31-3 (scan-boundary pin): the sequential scan consumes the
+         * token after a space-separated option as its VALUE — a plan
+         * named '--region'-like or a value carrying a dash stays the
+         * option's business (the whitelists judge it), never the
+         * unknown-argument channel's.
+         */
+        list($exitCode, $output) = $this->runProbe(array('--plan', 'co-ding'));
+
+        $this->assertSame(2, $exitCode);
+        $this->assertStringContainsString('--plan must be coding or general', $output, 'The value reaches the whitelist diagnostic, not the argument scan.');
+    }
 }

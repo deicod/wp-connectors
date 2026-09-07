@@ -147,6 +147,102 @@ function zai_live_probe_sdk_facts(): array
     );
 }
 
+/**
+ * The usage text, composed from the same owners the argument validation
+ * rides (glm31-3).
+ *
+ * The surface list, the default surface, and the plan/region spellings
+ * derive from the built surface map and AbstractPlanRegionSettings'
+ * whitelists — a new surface or plan value updates the usage with the
+ * same edit that teaches the probe about it (glm15-10's owner-constant
+ * discipline, applied to the help text).
+ *
+ * @param array<string, array<string, mixed>> $surfaces The built surface map.
+ * @return string The full usage text.
+ */
+function zai_live_probe_usage( array $surfaces ): string
+{
+    $lines = array(
+        'Usage: php bin/zai-live-probe.php [options]',
+        '',
+        'Runs the opt-in live acceptance round trip (availability, /models',
+        'discovery, and one REAL, billed generation) for one z.ai surface.',
+        '',
+        '  --surface <' . implode( '|', array_keys( $surfaces ) ) . '>  Surface to probe (default: ' . (string) array_key_first( $surfaces ) . ')',
+        "  --plan <" . implode( '|', AbstractPlanRegionSettings::PLANS ) . '>  Plan (default: the surface\'s own default)',
+        '  --region <' . implode( '|', AbstractPlanRegionSettings::REGIONS ) . '>  Region (default: ' . AbstractPlanRegionSettings::DEFAULT_REGION . ')',
+        '  -h, --help                Print this usage and exit',
+        '',
+        'Every long option accepts both the --option value and --option=value forms.',
+        'The live key is read at runtime from ZAI_LIVE_API_KEY,',
+        'WP_CONNECTORS_TEST_ZAI_API_KEY, or ~/.config/z.ai/api_key.',
+    );
+
+    return implode( "\n", $lines ) . "\n";
+}
+
+/*
+ * GLM10 #15: ONE per-surface fact table. The script previously
+ * hand-composed the plan/region option names and selected ~8
+ * per-surface facts through scattered inline ternaries (the plan
+ * default, provider id/class, key/state options, endpoint class)
+ * although it already rode owner constants elsewhere — an option rename
+ * would have stranded the probe writing options nothing reads while it
+ * still printed the chosen plan/region as acceptance evidence,
+ * misleading evidence for the exact billing-surface risk the
+ * plan/region whitelists exist for. Every fact now rides its owner: the
+ * settings layer's OPTION_PLAN/OPTION_REGION (and, since glm24-1,
+ * KEY_OPTION/STATE_OPTION — the availability layer's constants alias
+ * them), the endpoint layer's discovery_transient_ids() — and
+ * (GLM11 #5) the provider layer's PROVIDER_ID and the settings layer's
+ * DEFAULT_PLAN, the last two hand-composed identity literals: a
+ * PROVIDER_ID rename would have left Plugin::register() under the new
+ * id while the probe wired setProviderRequestAuthentication()/
+ * getProviderModel() to the stale one, failing with a diagnostic that
+ * never points at the stale literal.
+ *
+ * glm21-10: the settings/endpoint PAIRING is DERIVED from the one
+ * cross-file owner registry — zai_live_probe_sdk_facts() holds only the
+ * SDK-dependent columns the SDK-free registry may not carry (glm20-4's
+ * split), keyed by the registry row's settings class. A pairing swap in
+ * the registry reaches the probe with the same edit, and a third
+ * surface without its facts row fails loudly below instead of silently
+ * writing surface A's plan/region options while wiring surface B's
+ * provider — the misleading-evidence class the file's own Codex R7 #2
+ * comment warns about. The CLI whitelist and the default surface derive
+ * from the built map's keys (registration order: the first registry row
+ * is the default, as 'openai' was).
+ *
+ * glm31-3: the map is built BEFORE argument parsing now — the --help
+ * usage text derives its surface list and default from it, so a third
+ * surface's row updates the usage with the same edit that teaches the
+ * probe.
+ */
+$zai_probe_sdk_facts = zai_live_probe_sdk_facts();
+
+$zai_probe_surfaces = array();
+foreach ( ZaiSurfaces::SURFACES as $zai_probe_row ) {
+    $zai_probe_facts = $zai_probe_sdk_facts[ $zai_probe_row['settings'] ] ?? null;
+
+    if ( null === $zai_probe_facts ) {
+        fwrite( STDERR, 'live-probe: no SDK facts for surface ' . $zai_probe_row['settings'] . " (add its row to zai_live_probe_sdk_facts() in bin/zai-live-probe.php)\n" );
+        exit( 3 );
+    }
+
+    /*
+     * glm29-9: the map mirrors every per-surface fact (the pins hold the
+     * bracket spellings); the shared round-trip runner consumes settings/
+     * provider/endpoint and re-derives PROVIDER_ID at wiring time.
+     */
+    $zai_probe_surfaces[ $zai_probe_facts['cli'] ] = array(
+        'settings'     => $zai_probe_row['settings'],
+        'endpoint'     => $zai_probe_row['endpoint'],
+        'provider'     => $zai_probe_facts['provider'],
+        'provider_id'  => $zai_probe_facts['provider_id'],
+        'default_plan' => $zai_probe_facts['default_plan'],
+    );
+}
+
 /*
  * GLM8 #7: getopt's OPTIONAL-value '::' declarations (this probe's old
  * form) capture only the '--option=value' syntax — the conventional
@@ -175,6 +271,17 @@ function zai_live_probe_sdk_facts(): array
 global $argv;
 $zai_probe_argv = isset( $argv ) && \is_array( $argv ) ? $argv : array();
 
+/*
+ * glm31-3 (round-31 finding 3): --help/-h answers BEFORE anything else
+ * — a help request must never reach the key lookup, let alone the
+ * live, billable round trip this tool exists to gate. Checked on raw
+ * argv: getopt() drops the token ('help' is not a declared option).
+ */
+if ( \in_array( '-h', $zai_probe_argv, true ) || \in_array( '--help', $zai_probe_argv, true ) ) {
+    fwrite( STDOUT, zai_live_probe_usage( $zai_probe_surfaces ) );
+    exit( 0 );
+}
+
 foreach ( array( 'surface', 'plan', 'region' ) as $zai_probe_option_name ) {
     $zai_probe_position = array_search( '--' . $zai_probe_option_name, $zai_probe_argv, true );
     if ( false === $zai_probe_position ) {
@@ -188,69 +295,60 @@ foreach ( array( 'surface', 'plan', 'region' ) as $zai_probe_option_name ) {
     }
 }
 
+/*
+ * glm31-3 (round-31 finding 3): getopt() silently DROPS every
+ * unrecognized option, and the pre-scan above knows only the three
+ * exact tokens — so a typo (--surfac), a single-dash spelling
+ * (-surface), or a stray positional fell to the defaults and ran the
+ * FULL live, billable acceptance round trip while reporting PASS (the
+ * finding's live repro: both --help and --surfac=anthropic probed the
+ * default surface for real). The sequential scan judges raw argv
+ * itself: every option-led token must be a known long option, the
+ * token after a space-separated option is its VALUE (consumed here,
+ * never judged — the missing-value pre-scan owns that shape), and this
+ * CLI takes no positionals at all — a value without its flag is the
+ * same silent-defaults class. The option vocabulary is this CLI's own
+ * three flags (the same list the missing-value pre-scan walks); the
+ * surface VALUES stay the whitelists' business below.
+ */
+$zai_probe_i = 1;
+$zai_probe_argument_count = \count( $zai_probe_argv );
+while ( $zai_probe_i < $zai_probe_argument_count ) {
+    $zai_probe_token = (string) $zai_probe_argv[ $zai_probe_i ];
+
+    if ( 0 !== strpos( $zai_probe_token, '--' ) ) {
+        // A positional value or a single-dash token: getopt() reads
+        // single-dash tokens as undeclared SHORT options and drops
+        // them too, so neither spelling reaches the parser.
+        fwrite( STDERR, "live-probe: unrecognized argument '{$zai_probe_token}' (this tool takes --surface, --plan, and --region only; --help prints the usage)\n" );
+        exit( 2 );
+    }
+
+    $zai_probe_name = substr( $zai_probe_token, 2 );
+    $zai_probe_equals = strpos( $zai_probe_name, '=' );
+    if ( false !== $zai_probe_equals ) {
+        $zai_probe_name = substr( $zai_probe_name, 0, $zai_probe_equals );
+    }
+
+    if ( ! \in_array( $zai_probe_name, array( 'surface', 'plan', 'region' ), true ) ) {
+        fwrite( STDERR, "live-probe: unrecognized option '--{$zai_probe_name}' (this tool takes --surface, --plan, and --region; --help prints the usage)\n" );
+        exit( 2 );
+    }
+
+    // The space-separated form's value is the next token; the
+    // '='-attached form carries its value in-token.
+    if ( false === $zai_probe_equals ) {
+        ++$zai_probe_i;
+    }
+
+    ++$zai_probe_i;
+}
+
 $args = getopt( '', array( 'surface:', 'plan:', 'region:' ) );
 if ( false === $args ) {
 	// glm23-3: the same register_argc_argv=0 shape — getopt() reads the
 	// argv that is not there. No options parsed; the defaults below.
 	$args = array();
-}
-
-/*
- * GLM10 #15: ONE per-surface fact table, chosen after the surface
- * validates. The script previously hand-composed the plan/region option
- * names and selected ~8 per-surface facts through scattered inline
- * ternaries (the plan default, provider id/class, key/state options,
- * endpoint class) although it already rode owner constants elsewhere —
- * an option rename would have stranded the probe writing options
- * nothing reads while it still printed the chosen plan/region as
- * acceptance evidence, misleading evidence for the exact billing-surface
- * risk the plan/region whitelists exist for. Every fact now rides its
- * owner: the settings layer's OPTION_PLAN/OPTION_REGION (and, since
- * glm24-1, KEY_OPTION/STATE_OPTION — the availability layer's constants
- * alias them), the endpoint layer's
- * discovery_transient_ids() — and (GLM11 #5) the provider layer's
- * PROVIDER_ID and the settings layer's DEFAULT_PLAN, the last two
- * hand-composed identity literals: a PROVIDER_ID rename would have
- * left Plugin::register() under the new id while the probe wired
- * setProviderRequestAuthentication()/getProviderModel() to the stale
- * one, failing with a diagnostic that never points at the stale
- * literal.
- *
- * glm21-10: the settings/endpoint PAIRING is DERIVED from the one
- * cross-file owner registry — zai_live_probe_sdk_facts() holds only the
- * SDK-dependent columns the SDK-free registry may not carry (glm20-4's
- * split), keyed by the registry row's settings class. A pairing swap in
- * the registry reaches the probe with the same edit, and a third
- * surface without its facts row fails loudly below instead of silently
- * writing surface A's plan/region options while wiring surface B's
- * provider — the misleading-evidence class the file's own Codex R7 #2
- * comment warns about. The CLI whitelist and the default surface derive
- * from the built map's keys (registration order: the first registry row
- * is the default, as 'openai' was).
- */
-$zai_probe_sdk_facts = zai_live_probe_sdk_facts();
-
-$zai_probe_surfaces = array();
-foreach ( ZaiSurfaces::SURFACES as $zai_probe_row ) {
-    $zai_probe_facts = $zai_probe_sdk_facts[ $zai_probe_row['settings'] ] ?? null;
-
-    if ( null === $zai_probe_facts ) {
-        fwrite( STDERR, 'live-probe: no SDK facts for surface ' . $zai_probe_row['settings'] . " (add its row to zai_live_probe_sdk_facts() in bin/zai-live-probe.php)\n" );
-        exit( 3 );
-    }
-
-    /*
-     * glm29-9: the map mirrors every per-surface fact (the pins hold the
-     * bracket spellings); the shared round-trip runner consumes settings/
-     * provider/endpoint and re-derives PROVIDER_ID at wiring time.
-     */
-    $zai_probe_surfaces[ $zai_probe_facts['cli'] ] = array(
-        'settings'     => $zai_probe_row['settings'],
-        'endpoint'     => $zai_probe_row['endpoint'],
-        'provider'     => $zai_probe_facts['provider'],
-        'provider_id'  => $zai_probe_facts['provider_id'],
-        'default_plan' => $zai_probe_facts['default_plan'],
-    );
 }
 
 $surface = zai_live_probe_option( $args, 'surface', (string) array_key_first( $zai_probe_surfaces ) );
