@@ -6,6 +6,42 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM32 round, /code-review max)
+
+The 32nd review round (10 finder angles, 20 candidates, per-candidate
+verification, empty gap sweep) produced ZERO correctness defects: 13 of
+its 15 findings were dropped at triage as ledgered re-flags or in-code
+documented decisions (see round 32 in docs/review/REFUTATION_LEDGER.md
+for the citation list). The two surviving cleanup findings, fixed one
+commit each:
+
+- apply_delta()'s text/thinking arms append unconditionally (glm32-1):
+  the arms re-checked isset()+is_string() on the very member
+  dispatch_event()'s has_string_content_member() gate (the glm15-21
+  map) had already proved present-and-string, and that gated site is
+  apply_delta()'s only caller — dead by construction (the glm24-5
+  dead-conjunct class), completing the glm15-21 unification. The
+  per-arm block-type mismatch checks and the input_json_delta
+  partial_json check are untouched; a source pin holds both halves of
+  the invariant (exactly one call site; no re-check pasted back),
+  mutation-tested all three ways.
+- JsonEncodeGuard::must_encode() rides encode(), the one oracle
+  (glm32-2): the guard method hand-copied encode()'s check-plus-throw
+  in the class that exists to single-source the raw oracle (the glm30-6
+  micro class). It delegates with the returned encoding discarded, so
+  its exception type and message are byte-identical to the encoding
+  call sites' by construction.
+
+Verifier pass (two independent lenses, correctness + security, over the
+full round diff): ZERO confirmed defects — every equivalence claim held
+empirically (a static only-caller proof, 84 curated frame sequences,
+3000 seeded plus 35,000 hostile fuzz interleavings all byte-identical
+pre/post, a dead-check instrument proving the deleted guards never
+fired on any reachable input, and a 22-class hostile value battery for
+the guard delegation), with both mapping suites' message pins green and
+the full suite green in default and random order (1248 tests, 29898
+assertions, 2 skipped).
+
 ### Fixed (zai / M2 — GLM31 round, /code-review max)
 
 The 31st review round (13 finder angles, 17 verifiers; 11 candidates
