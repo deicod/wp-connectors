@@ -199,7 +199,14 @@ final class DebugSettings {
 	 * @return void
 	 */
 	public static function handle_enabled_change( $old_value, $new_value ): void {
-		if ( ! PlanRegionSettings::option_values_equal( '1', $new_value ) ) {
+		/*
+		 * glm29-14: the declaring owner is the abstract settings base —
+		 * the concrete first-surface child was a reach-through (the
+		 * glm21-12 pattern this file's register_fields() already
+		 * replaced) whose rename or removal would fatal the update_option
+		 * hook for BOTH surfaces while mis-attributing ownership to one.
+		 */
+		if ( ! AbstractPlanRegionSettings::option_values_equal( '1', $new_value ) ) {
 			DebugLogger::clear();
 		}
 	}
