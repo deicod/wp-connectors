@@ -379,6 +379,37 @@ FIXTURE
                 "<?php\nuse Vendor\\Pkg\\DeadLine # note\n;\n",
                 1,
             ),
+            /*
+             * glm28-22 (the security verifier's regression repro): a
+             * comment between the keyword and the name is legal PHP
+             * too, and the first real-bytes comment cut emptied the
+             * derived name — the pre-round scanner flagged these dead
+             * imports, the cut silently skipped them. The name derives
+             * from the MASKED match text now (comments blank to space
+             * runs the keyword-prefix regex spans), so every comment
+             * position derives the clean name.
+             */
+            'comment between keyword and name, unused, still flags (glm28-22)' => array(
+                <<<'FIXTURE'
+<?php
+use /* note */ Vendor\Pkg\DeadThing;
+FIXTURE
+                ,
+                1,
+            ),
+            'comment between keyword and name, used, does not flag (glm28-22)' => array(
+                <<<'FIXTURE'
+<?php
+use /* note */ Vendor\Pkg\Widget;
+$x = new Widget();
+FIXTURE
+                ,
+                0,
+            ),
+            'hash comment between keyword and name, unused, still flags (glm28-22)' => array(
+                "<?php\nuse # hash\n Vendor\\Pkg\\DeadThree;\n",
+                1,
+            ),
         );
     }
 

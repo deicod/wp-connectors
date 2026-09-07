@@ -16,14 +16,17 @@ is_object_shape stays on the deferred list by disposition), one commit
 per item:
 
 - A trailing comment in a `use` statement no longer poisons the
-  unused-import verdict (glm28-1, the round's one confirmed scanner
-  defect): the single-form scanner derives the qualified name from the
-  REAL statement bytes, so a legal trailing comment rode into the
-  short name — a string that appears nowhere else, flagging a
+  unused-import verdict (glm28-1 + glm28-22, the round's one confirmed
+  scanner defect): the single-form scanner derived the qualified name
+  from the REAL statement bytes, so a legal trailing comment rode into
+  the short name — a string that appears nowhere else, flagging a
   genuinely used import (verifier repro: return type + `new
-  Request()`). A comment opener cannot occur inside the import's own
-  bytes, so the first opener ends them; the flag message prints the
-  clean name (pinned through a child-process STDERR capture).
+  Request()`). The name derives from the MASKED match text now (the
+  security verifier's pass caught the first fix's real-bytes cut
+  regressing the keyword-to-name comment position — `use /* note */
+  Dead;` silently skipped); every comment position derives the clean
+  name, the flag message prints it (pinned through a child-process
+  STDERR capture), and the dead-import shapes keep flagging.
 - Present-but-wrong-type stream members flag instead of silently
   dropping (glm28-2, extends glm26-3): non-string content/
   reasoning_content, non-array tool_calls/delta/choices, and the
