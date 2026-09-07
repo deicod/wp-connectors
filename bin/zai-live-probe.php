@@ -408,7 +408,16 @@ $discovery_transient_ids = $endpoint::discovery_transient_ids( $plan, $region );
 foreach ( $discovery_transient_ids as $discovery_transient_id ) {
     delete_transient( $discovery_transient_id );
 }
-$discovery_cache_id = $discovery_transient_ids[0];
+/*
+ * glm29-8: the EVIDENCE transient is the named
+ * discovery_cache_id(), never a positional pick out of the pair — a
+ * reorder or a new marker in discovery_transient_ids() would otherwise
+ * read the 60s '_miss' marker (which stores literal true) and report
+ * 'live' after a FAILED discovery, the misleading-evidence class this
+ * file's own GLM12 #11 comments exist to prevent. The pair list stays
+ * for the delete loop only.
+ */
+$discovery_cache_id = $endpoint::discovery_cache_id( $plan, $region );
 
 $start = microtime( true );
 try {
