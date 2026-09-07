@@ -440,13 +440,24 @@ if (!class_exists('wpdb')) {
         /**
          * Runs the supported single-column option_name LIKE select.
          *
+         * glm29-15: an unrecognized query shape THROWS instead of silently
+         * answering array() — the silent-empty direction let the uninstall
+         * sweeps' negative assertions pass vacuously whenever the query
+         * drifted from the exact shape this stub recognizes (a second LIKE
+         * family, an ORDER BY, a LIMIT would all fabricate "no rows" for a
+         * query whose results the stub never computed). A caller with a new
+         * shape must extend the stub consciously.
+         *
          * @param string $query Prepared query.
          * @return list<string> Matching option names (sorted).
+         * @throws RuntimeException When the query is not the supported shape.
          */
         public function get_col($query)
         {
             if (!preg_match("/SELECT option_name FROM \\S+ WHERE option_name LIKE '(.*)'$/s", (string) $query, $matches)) {
-                return array();
+                throw new RuntimeException(
+                    'wp-stubs wpdb::get_col(): unsupported query shape (extend the stub consciously): ' . (string) $query
+                );
             }
 
             /*

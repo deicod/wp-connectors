@@ -260,6 +260,25 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      * Acceptance: outbound HTTP is blocked unless mocked.
      */
 
+    public function testTheWpdbGetColStubFailsLoudOnUnrecognizedQueries()
+    {
+        /*
+         * glm29-15: the stub used to answer array() for any query not
+         * matching its single recognized shape, so negative assertions
+         * over a drifted query passed vacuously on fabricated empty
+         * results — the silently-compliant direction. An unrecognized
+         * shape throws now; extending the stub to a new query family is
+         * a conscious edit, never a silent empty.
+         */
+        try {
+            $GLOBALS['wpdb']->get_col('SELECT option_name FROM wp_options WHERE option_name LIKE \'x%\' ORDER BY option_name');
+            $this->fail('An unrecognized get_col() query shape must throw.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('unsupported query shape', $e->getMessage());
+            $this->assertStringContainsString('ORDER BY', $e->getMessage(), 'The diagnostic names the query it refused.');
+        }
+    }
+
     public function testOutboundHttpIsBlockedUnlessMocked()
     {
         // This test deliberately exercises the blocked path.
