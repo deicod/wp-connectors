@@ -4211,8 +4211,25 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $this->assertSame('bad_member', $validator::failure_reason(array('prompt_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS, true), 'Lenient: a string count is still rejected.');
         $this->assertSame('not_object', $validator::failure_reason(null, null), 'Strict (default): a null usage member is rejected.');
 
-        $this->assertSame('The usage member must be a JSON object.', $validator::message_for_reason('not_object'), 'One fixed rejection message per reason.');
-        $this->assertSame('Token counts must be non-negative integers.', $validator::message_for_reason('bad_member'), 'One fixed rejection message per reason.');
+        /*
+         * glm28-16 supersession (GLM10 #4 lesson): message_for_reason()
+         * and the REASON_* constants are reject()'s private wording
+         * now — the former direct calls pinned the two message
+         * strings, so the behavioral form asserts them through the
+         * public rejection channel (glm26-7's one composition).
+         */
+        try {
+            $validator::reject('5', null, 'z.ai Anthropic');
+            $this->fail('A scalar usage member must reject.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage(), 'One fixed rejection message for the not-object reason.');
+        }
+        try {
+            $validator::reject(array('input_tokens' => '5'), new stdClass(), 'z.ai Anthropic');
+            $this->fail('A string count must reject.');
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('Token counts must be non-negative integers.', $e->getMessage(), 'One fixed rejection message for the bad-member reason.');
+        }
 
         /*
          * glm20-6 (source pin): the aggregator's message_start and

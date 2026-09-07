@@ -36,11 +36,16 @@ final class UsageValidator {
 	/**
 	 * Failure reason: the usage member is not a JSON object.
 	 *
+	 * GLM28-16: private — the reason vocabulary is reject()'s internal
+	 * routing (the sole consumer is the comparison inside
+	 * message_for_reason()); every external caller wants the verdict
+	 * (failure_reason()) or the rejection (reject()), never the token.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @var string
 	 */
-	public const REASON_NOT_OBJECT = 'not_object';
+	private const REASON_NOT_OBJECT = 'not_object';
 
 	/**
 	 * Failure reason: a supplied token count is not a non-negative int.
@@ -49,7 +54,7 @@ final class UsageValidator {
 	 *
 	 * @var string
 	 */
-	public const REASON_BAD_MEMBER = 'bad_member';
+	private const REASON_BAD_MEMBER = 'bad_member';
 
 	/**
 	 * The token-count members the Anthropic Messages usage object carries.
@@ -188,7 +193,7 @@ final class UsageValidator {
 	 * @param string $reason A reason returned by failure_reason().
 	 * @return string The fixed, safe message.
 	 */
-	public static function message_for_reason( string $reason ): string {
+	private static function message_for_reason( string $reason ): string {
 		return self::REASON_NOT_OBJECT === $reason
 			? 'The usage member must be a JSON object.'
 			: 'Token counts must be non-negative integers.';
