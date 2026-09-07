@@ -1887,16 +1887,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			$part = $this->parse_content_block( $part_data, $raw_part );
 
 			/*
-			 * Codex R13 #4: two tool_use blocks with the same NON-EMPTY id
-			 * are ambiguous identities — a consumer cannot correlate
-			 * results to calls, and replaying the assistant turn hits this
-			 * adapter's own outbound duplicate-id rejection after tools may
-			 * have executed. Rejected in the same channel as other
-			 * malformed content blocks; empty/absent ids keep their
-			 * existing malformed-id handling untouched.
+			 * Codex R13 #4: two tool_use blocks with the same id are
+			 * ambiguous identities — a consumer cannot correlate results
+			 * to calls, and replaying the assistant turn hits this
+			 * adapter's own outbound duplicate-id rejection after tools
+			 * may have executed. Rejected in the same channel as other
+			 * malformed content blocks.
+			 *
+			 * glm28-7: the id re-validation guards were dead — a non-null
+			 * part under type tool_use has, by parse_content_block()'s
+			 * Codex R9 #3 identity loop, a non-empty string id already
+			 * (the callee THROWS on anything less before its tool_use
+			 * return), and the null-return path exists only for the
+			 * non-tool_use unmapped blocks. The callee's contract is
+			 * relied on directly now (the old comment's "empty/absent ids
+			 * keep their existing malformed-id handling" claim was itself
+			 * stale — such ids throw inside the callee).
 			 */
-			if ( null !== $part && 'tool_use' === ( $part_data['type'] ?? null )
-				&& isset( $part_data['id'] ) && \is_string( $part_data['id'] ) && '' !== $part_data['id'] ) {
+			if ( null !== $part && 'tool_use' === ( $part_data['type'] ?? null ) ) {
 				if ( isset( $seen_tool_ids[ $part_data['id'] ] ) ) {
 					throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'Two tool_use blocks carried the same id.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				}
