@@ -56,6 +56,7 @@ use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Support\AdvertisedOptionGuard;
 use Deicod\WpConnectors\Zai\Support\AdvertisedUsageGuard;
+use Deicod\WpConnectors\Zai\Support\AnthropicContentBlocks;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\EncodabilityNet;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
@@ -2292,6 +2293,36 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'The message contained a block of an unsupported type.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 		}
 
+		/*
+		 * glm34-8: the unmapped trio rides the shared vocabulary
+		 * constant (AnthropicContentBlocks::KNOWN_UNMAPPED_TYPES) — the
+		 * aggregator's streamed drop and this parse's ride ONE table,
+		 * so the mapped/unmapped decision is one catalog edit with a
+		 * lockstep pin behind it, never a two-file hand-enumeration.
+		 */
+		if ( \in_array( $type, AnthropicContentBlocks::KNOWN_UNMAPPED_TYPES, true ) ) {
+			/*
+			 * KNOWN LIMITATION (code-review #15, documented not fixed):
+			 * these provider-internal block types carry no SDK
+			 * representation and are silently DROPPED. Accepted as of
+			 * 2026-09-01 because they are an upstream quirk — this
+			 * connector's own requests send client function tools
+			 * only, so it cannot trigger server_tool_use /
+			 * web_search_tool_result / redacted_thinking itself. The
+			 * failure surface stays typed, never silent-empty: a
+			 * response whose content is ONLY unmapped blocks produces
+			 * no parts, which parse_decoded_message() rejects as a
+			 * ResponseException (zai_invalid_response) regardless of
+			 * the stop reason (GLM3 #2 made this guarantee real; GLM5
+			 * #4 removed the empty-refusal tolerance so the guarantee
+			 * has no exception — a zero-part turn can never replay),
+			 * with a message naming the dropped blocks when that was
+			 * the case. The streamed path drops the same shapes
+			 * earlier (the aggregator's content_block_payload()).
+			 */
+			return null;
+		}
+
 		switch ( $type ) {
 			case 'text':
 				if ( ! isset( $part_data['text'] ) || ! \is_string( $part_data['text'] ) ) {
@@ -2476,31 +2507,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * conversation (see ReplayValidatedFunctionCall).
 				 */
 				return new MessagePart( new ReplayValidatedFunctionCall( $part_data['id'], $part_data['name'], $args ) );
-
-			case 'redacted_thinking':
-			case 'server_tool_use':
-			case 'web_search_tool_result':
-				/*
-				 * KNOWN LIMITATION (code-review #15, documented not fixed):
-				 * these provider-internal block types carry no SDK
-				 * representation and are silently DROPPED. Accepted as of
-				 * 2026-09-01 because they are an upstream quirk — this
-				 * connector's own requests send client function tools
-				 * only, so it cannot trigger server_tool_use /
-				 * web_search_tool_result / redacted_thinking itself. The
-				 * failure surface stays typed, never silent-empty: a
-				 * response whose content is ONLY unmapped blocks produces
-				 * no parts, which parse_decoded_message() rejects as a
-				 * ResponseException (zai_invalid_response) regardless of
-				 * the stop reason (GLM3 #2 made this guarantee real; GLM5
-				 * #4 removed the empty-refusal tolerance so the guarantee
-				 * has no exception — a zero-part turn can never replay),
-				 * with a message naming the dropped blocks when that was
-				 * the case. The streamed path drops the
-				 * same shapes earlier (see the aggregator's
-				 * content_block_payload()).
-				 */
-				return null;
 		}
 
 		throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'The message contained a block of an unsupported type.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.

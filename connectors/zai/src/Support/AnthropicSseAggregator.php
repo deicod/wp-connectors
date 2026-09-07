@@ -645,9 +645,9 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 
 		/*
 		 * Every other block type is dropped rather than mis-mapped. The
-		 * three provider-internal types (redacted_thinking,
-		 * server_tool_use, web_search_tool_result) are the streamed half
-		 * of the KNOWN LIMITATION documented at the model's
+		 * three provider-internal types (the shared
+		 * KNOWN_UNMAPPED_TYPES vocabulary, glm34-8) are the streamed
+		 * half of the KNOWN LIMITATION documented at the model's
 		 * parse_content_block() drop site (code-review #15) — the twin
 		 * drops those identically. A type unknown to BOTH paths diverges
 		 * by transport (glm26-2's doc fix, the glm19-13 class): this
@@ -1613,36 +1613,16 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	}
 
 	/**
-	 * The string content member each known content-carrying block/delta
-	 * type requires (glm15-21).
-	 *
-	 * The 'known non-tool block requires its string content member' rule
-	 * (Codex R13 #3 for block starts, the R4 verifier sweep for deltas)
-	 * was encoded as four near-identical 5-line guards — start_block()'s
-	 * text/thinking cases and dispatch_event()'s text_delta/thinking_delta
-	 * cases. One map states it: the next block type with a content member
-	 * (a citation or signature delta, say) is one entry plus one case arm,
-	 * never a fifth pasted guard that misses one site and gives starts and
-	 * deltas different corruption verdicts for the same payload shape.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var array<string, string> Block/delta type => required string member.
-	 */
-	private const STRING_CONTENT_MEMBERS = array(
-		'text'           => 'text',
-		'thinking'       => 'thinking',
-		'text_delta'     => 'text',
-		'thinking_delta' => 'thinking',
-	);
-
-	/**
 	 * Whether one known block/delta payload carries its required string
 	 * content member (glm15-21).
 	 *
-	 * Types absent from STRING_CONTENT_MEMBERS carry no member requirement
-	 * here (tool_use validates its input member separately; unknown types
+	 * Types absent from the shared map carry no member requirement here
+	 * (tool_use validates its input member separately; unknown types
 	 * keep their forward-compatible tolerance) and pass unchanged.
+	 * glm34-8: the map itself is the shared vocabulary table
+	 * (AnthropicContentBlocks::STRING_CONTENT_MEMBERS) — the body
+	 * parse's start/delta member rules and this aggregator's ride one
+	 * table, so a new block type's member rule is one catalog entry.
 	 *
 	 * @since 0.2.0
 	 *
@@ -1651,7 +1631,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 * @return bool True when the payload satisfies the rule.
 	 */
 	private static function has_string_content_member( string $type, ?\stdClass $payload ): bool {
-		$member = self::STRING_CONTENT_MEMBERS[ $type ] ?? null;
+		$member = AnthropicContentBlocks::STRING_CONTENT_MEMBERS[ $type ] ?? null;
 
 		if ( null === $member ) {
 			return true;

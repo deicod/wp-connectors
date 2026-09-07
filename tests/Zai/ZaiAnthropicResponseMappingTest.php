@@ -26,6 +26,7 @@ use WordPress\AiClient\Providers\Http\Exception\ServerException;
 use WordPress\AiClient\Results\Enums\FinishReasonEnum;
 use Deicod\WpConnectors\Zai\Models\ZaiAnthropicTextGenerationModel;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
+use Deicod\WpConnectors\Zai\Support\AnthropicContentBlocks;
 use Deicod\WpConnectors\Zai\Support\AnthropicSseAggregator;
 use Deicod\WpConnectors\Zai\Support\ErrorMapper;
 
@@ -472,12 +473,17 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * the same shape differently. One STRING_CONTENT_MEMBERS map
          * and one has_string_content_member() helper carry the rule
          * (Codex R13 #3 / R4 pins above hold the verdicts).
+         *
+         * glm34-8 supersession: the map moved to the shared
+         * AnthropicContentBlocks vocabulary table (the body parse and
+         * the aggregator ride one catalog now) — the pin re-targets
+         * the shared spelling and keeps forbidding a private copy.
          */
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
         );
 
-        $this->assertStringContainsString("const STRING_CONTENT_MEMBERS = array(", $source, 'The content-member rule is one map.');
+        $this->assertStringContainsString('AnthropicContentBlocks::STRING_CONTENT_MEMBERS', $source, 'The content-member rule is one map, on the shared catalog.');
         $this->assertSame(
             3,
             preg_match_all('/self::has_string_content_member\(|function has_string_content_member\(/', $source),
@@ -3921,6 +3927,141 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $trailing_garbage->finish();
 
         $this->assertTrue($trailing_garbage->has_malformed_event(), 'An undecodable data-only frame after the terminal flags in both phases, like the zai twin.');
+    }
+
+    public function testTheContentBlockVocabularyIsOneTableBothSwitchesRide()
+    {
+        /*
+         * glm34-8 (round-34 finding 8): the mapped/unmapped
+         * content-block vocabulary lives on AnthropicContentBlocks and
+         * BOTH switches ride it. The behavioral half drives the
+         * catalog constants themselves — a type moved in the table
+         * without both transports following cannot pass — and the
+         * lexical half forbids the hand-enumerated trio spellings the
+         * drift would creep back through. The unknown-type divergence
+         * (streamed drop vs body reject) stays the documented GLM1
+         * #15/glm26-2 decision; this pin is about the vocabulary's
+         * OWNERSHIP, not that boundary.
+         */
+        $model_source      = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php');
+        $aggregator_source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Support/AnthropicSseAggregator.php');
+
+        $this->assertStringContainsString(
+            'AnthropicContentBlocks::KNOWN_UNMAPPED_TYPES',
+            $model_source,
+            'The body parse drops the unmapped trio through the shared constant.'
+        );
+        $this->assertStringContainsString(
+            'AnthropicContentBlocks::STRING_CONTENT_MEMBERS',
+            $aggregator_source,
+            'The string-member map is the shared table.'
+        );
+        $this->assertStringNotContainsString(
+            'const STRING_CONTENT_MEMBERS',
+            $aggregator_source,
+            'The aggregator keeps no private copy of the member map.'
+        );
+
+        foreach ( AnthropicContentBlocks::MAPPED_TYPES as $mapped ) {
+            $this->assertStringContainsString("case '{$mapped}':", $model_source, "The body parse maps the catalog type {$mapped}.");
+            $this->assertStringContainsString("case '{$mapped}':", $aggregator_source, "The streamed payload builder maps the catalog type {$mapped}.");
+        }
+
+        foreach ( AnthropicContentBlocks::KNOWN_UNMAPPED_TYPES as $unmapped ) {
+            $this->assertStringNotContainsString("case '{$unmapped}':", $model_source, "No hand-enumerated {$unmapped} arm in the body parse — it rides the constant.");
+            $this->assertStringNotContainsString("case '{$unmapped}':", $aggregator_source, "No hand-enumerated {$unmapped} arm in the aggregator.");
+        }
+
+        /*
+         * Behavioral lockstep over the constants: every MAPPED type
+         * maps on BOTH transports (an anchor text part keeps a
+         * thinking-only turn translatable on the body side), every
+         * UNMAPPED type drops on both.
+         */
+        $mapped_fixtures = array(
+            'text'     => array('block' => array('type' => 'text', 'text' => 'T.'), 'stop_reason' => 'end_turn', 'anchor' => false),
+            'thinking' => array('block' => array('type' => 'thinking', 'thinking' => 'H.'), 'stop_reason' => 'end_turn', 'anchor' => true),
+            'tool_use' => array('block' => array('type' => 'tool_use', 'id' => 'toolu_vocab', 'name' => 'pick', 'input' => array('a' => 1)), 'stop_reason' => 'tool_use', 'anchor' => false),
+        );
+
+        $this->assertSame(
+            array_keys($mapped_fixtures),
+            AnthropicContentBlocks::MAPPED_TYPES,
+            'A catalog addition needs a fixture here — the lockstep cannot run vacuously.'
+        );
+
+        foreach ( $mapped_fixtures as $type => $fixture ) {
+            $content_blocks = array($fixture['block']);
+            if ( $fixture['anchor'] ) {
+                $content_blocks[] = array('type' => 'text', 'text' => 'Anchor.');
+            }
+
+            $stream = ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_vocab_' . $type . '","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: ' . wp_json_encode(array('type' => 'content_block_start', 'index' => 0, 'content_block' => $fixture['block'])) . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: ' . wp_json_encode(array('type' => 'message_delta', 'delta' => array('stop_reason' => $fixture['stop_reason']), 'usage' => array('output_tokens' => 2))) . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: {"type":"message_stop"}' . "\n\n";
+
+            $aggregator = new AnthropicSseAggregator();
+            $aggregator->feed($stream);
+            $aggregator->finish();
+
+            $this->assertSame($type, $aggregator->aggregated()['content'][0]['type'], "The streamed transport maps the catalog type {$type}.");
+
+            $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+                'id' => 'msg_vocab_body_' . $type,
+                'type' => 'message',
+                'role' => 'assistant',
+                'content' => $content_blocks,
+                'stop_reason' => $fixture['stop_reason'],
+                'usage' => array('input_tokens' => 3, 'output_tokens' => 2),
+            )));
+
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->assertNotEmpty($result->getCandidates()[0]->getMessage()->getParts(), "The body transport maps the catalog type {$type}.");
+        }
+
+        foreach ( AnthropicContentBlocks::KNOWN_UNMAPPED_TYPES as $unmapped ) {
+            $stream = ''
+                . 'event: message_start' . "\n"
+                . 'data: {"type":"message_start","message":{"id":"msg_vocab_drop_' . $unmapped . '","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+                . 'event: content_block_start' . "\n"
+                . 'data: ' . wp_json_encode(array('type' => 'content_block_start', 'index' => 0, 'content_block' => array('type' => $unmapped, 'data' => 'internal'))) . "\n\n"
+                . 'event: content_block_stop' . "\n"
+                . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+                . 'event: message_delta' . "\n"
+                . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+                . 'event: message_stop' . "\n"
+                . 'data: {"type":"message_stop"}' . "\n\n";
+
+            $aggregator = new AnthropicSseAggregator();
+            $aggregator->feed($stream);
+            $aggregator->finish();
+
+            $this->assertSame(array(), $aggregator->aggregated()['content'], "The streamed transport drops the catalog-unmapped type {$unmapped}.");
+
+            $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+                'id' => 'msg_vocab_body_drop_' . $unmapped,
+                'type' => 'message',
+                'role' => 'assistant',
+                'content' => array(array('type' => $unmapped, 'data' => 'internal')),
+                'stop_reason' => 'end_turn',
+                'usage' => array('input_tokens' => 3, 'output_tokens' => 2),
+            )));
+
+            try {
+                $this->model()->generateTextResult($this->prompt());
+                $this->fail("A body of only the unmapped type {$unmapped} must reject through the zero-parts channel.");
+            } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                $this->assertStringContainsString('unmapped types', $e->getMessage());
+            }
+        }
     }
 
     public function testATrailingUndecodableDeclaredContentEventStillInvalidates()
