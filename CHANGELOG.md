@@ -6,6 +6,37 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM27 round, Codex R21)
+
+All 3 findings of Codex review round 21, one commit each, plus one
+verifier subagent over the full diff (ALL CLEAR — zero confirmed
+defects; writer-exhaustiveness traces, a 24-shape scanner pre/post
+differential, marker/memo flow repros, and schema-walk cross-checks):
+
+- Cached model rows must carry recognized chat-model IDs (glm27-1):
+  the glm23-7 all-string soundness rule still accepted rows whose
+  every entry cannot map to metadata — array(''),
+  array('unknown-model') — so cached_ids() skipped discovery while
+  map_from_ids() filtered every entry out, leaving both directories an
+  EMPTY catalog for the 12-hour TTL with no probe and no fallback.
+  Soundness rides the one map rule (id_maps_to_metadata()); every
+  in-repo writer caches already-chat-filtered parse output, so no
+  legitimate row is excluded.
+- Mixed group-use typed members parse in the import scanner (glm27-2):
+  `use Vendor\Pkg\{function helper, const FLAG, Widget};` members
+  failed both member regexes and were silently skipped — an unused
+  typed member reported no violation. The optional kind prefix is
+  stripped before the alias/name parse (it never affects the short
+  name); the alias form works.
+- dependentSchemas entries normalize as subschemas (glm27-3): the
+  keyword joins the object-map list, so a dependent's empty schema
+  encodes as {} (never []) exactly like properties/patternProperties/
+  definitions/$defs — a strict JSON Schema validator can no longer
+  reject an otherwise-valid tool definition for the shape.
+
+Suite: 1193 tests / 29652 assertions (round baseline 1188/29636),
+green in default AND --order-by=random order.
+
 ### Fixed (zai / M2 — GLM26 round)
 
 All 12 ledger-filtered findings of code-review round 26 (high; the
