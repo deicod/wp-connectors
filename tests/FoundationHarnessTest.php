@@ -12,6 +12,7 @@
 declare(strict_types=1);
 
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\HttpTransporter;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -362,6 +363,82 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     {
         $this->assertArrayNotHasKey('zai_connector_test_marker', WpHarness::$options);
         $this->assertFalse(wp_next_scheduled('test_leftover_event'));
+    }
+
+    /**
+     * SDK credential isolation, part 1 (glm30-1): wires a credential
+     * through BOTH leak channels — the registry's per-provider map and
+     * the process-wide provider instances — exactly the way the mapping
+     * suites do. MUST run before
+     * testSdkProviderCredentialsDoNotLeakBetweenTests; the dependency
+     * annotation on that test keeps the pair ordered under
+     * --order-by=random.
+     */
+    public function testSdkProviderCredentialPollutionForTheNextTest()
+    {
+        \Deicod\WpConnectors\Zai\Plugin::register(AiClient::defaultRegistry());
+
+        $key = FakeSecrets::apiKey();
+        $authentication = new ApiKeyRequestAuthentication($key);
+
+        // Channel 1: the registry map (re-applied by any later
+        // registerProvider(), stamped onto new model instances).
+        AiClient::defaultRegistry()->setProviderRequestAuthentication(
+            \Deicod\WpConnectors\Zai\Provider\ZaiProvider::PROVIDER_ID,
+            $authentication
+        );
+
+        // Channel 2: a cached provider instance directly (the
+        // setRequestAuthentication() shape several suites use on a
+        // different surface than the registry wiring).
+        \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::modelMetadataDirectory()
+            ->setRequestAuthentication($authentication);
+
+        $this->assertSame(
+            $authentication,
+            AiClient::defaultRegistry()->getProviderRequestAuthentication(
+                \Deicod\WpConnectors\Zai\Provider\ZaiProvider::PROVIDER_ID
+            ),
+            'The registry map holds the wired credential before the reset.'
+        );
+        $this->assertSame(
+            $key,
+            \Deicod\WpConnectors\Zai\Provider\ZaiProvider::availability()->getRequestAuthentication()->getApiKey(),
+            'The process-wide availability instance carries the wired credential.'
+        );
+    }
+
+    /**
+     * Part 2: setUp() must have erased both channels by now (glm30-1).
+     * Before the reset, the credential rode every later test in the same
+     * PHP process — under the pipeline's --order-by=random ordering a
+     * test asserting the no-credential path failed as a pure function of
+     * execution order.
+     *
+     * @depends testSdkProviderCredentialPollutionForTheNextTest
+     */
+    public function testSdkProviderCredentialsDoNotLeakBetweenTests()
+    {
+        $this->assertNull(
+            AiClient::defaultRegistry()->getProviderRequestAuthentication(
+                \Deicod\WpConnectors\Zai\Provider\ZaiProvider::PROVIDER_ID
+            ),
+            'The registry authentication map must not leak between tests.'
+        );
+
+        foreach (array(
+            \Deicod\WpConnectors\Zai\Provider\ZaiProvider::class,
+            \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::class,
+        ) as $provider_class) {
+            foreach (array('availability', 'modelMetadataDirectory') as $factory) {
+                try {
+                    $provider_class::$factory()->getRequestAuthentication();
+                    $this->fail("{$provider_class}::{$factory}() still carries a credential from a previous test.");
+                } catch (\WordPress\AiClient\Common\Exception\RuntimeException $e) {
+                    // The SDK trait's unwired throw — the pre-wiring state.
+                }
+            }
+        }
     }
 
     public function testDeterministicClockDrivesTransientsAndCron()

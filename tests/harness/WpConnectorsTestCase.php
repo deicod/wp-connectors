@@ -51,12 +51,100 @@ abstract class WpConnectorsTestCase extends TestCase
 
         WpHarness::reset();
 
+        self::resetSdkProviderAuthentication();
+
         // The SDK registry is a process-wide singleton: point its transporter
         // at the harness client before any provider boots. Re-installing on
         // every test also re-propagates to previously registered providers.
         AiClient::defaultRegistry()->setHttpTransporter(
             new HttpTransporter(new SdkHttpClient())
         );
+    }
+
+    /**
+     * Erases every SDK credential a previous test wired onto process-wide
+     * state (glm30-1).
+     *
+     * Two leak channels hold a wired credential beyond its test, and the SDK
+     * offers no unset API for either: the registry's per-provider
+     * authentication map (which bindModelDependencies() stamps onto every new
+     * model instance and any later registerProvider() re-applies to the
+     * provider statics), and the credential held by AbstractProvider's
+     * process-wide availability/directory instances — reachable through the
+     * registry call AND through the direct setRequestAuthentication() several
+     * suites use. Left standing, a wired ApiKeyRequestAuthentication rides
+     * every later test in the same PHP process, so under the pipeline's
+     * --order-by=random ordering a test asserting the no-credential path
+     * failed as a pure function of execution order. Both resets are
+     * reflection writes onto the SDK's nullable trait storage ('unwired' is
+     * its default state); transporter and memo state on the same instances
+     * is untouched — only the credential dies with the test that wired it.
+     *
+     * @return void
+     */
+    private static function resetSdkProviderAuthentication(): void
+    {
+        $registry_map = new \ReflectionProperty(
+            AiClient::defaultRegistry(),
+            'providerAuthenticationInstances'
+        );
+        self::openPrivateProperty($registry_map)->setValue(AiClient::defaultRegistry(), array());
+
+        foreach (array('availabilityCache', 'modelMetadataDirectoryCache') as $cache) {
+            $instances = new \ReflectionProperty(
+                \WordPress\AiClient\Providers\AbstractProvider::class,
+                $cache
+            );
+            self::openPrivateProperty($instances);
+
+            foreach ($instances->getValue() as $instance) {
+                self::nullWiredCredential($instance);
+            }
+        }
+    }
+
+    /**
+     * Nulls the SDK trait's credential storage on one cached provider
+     * instance.
+     *
+     * The storage is declared PRIVATE in WithRequestAuthenticationTrait, so
+     * reflection only sees it through its DECLARING class —
+     * ReflectionProperty on a concrete surface class (which merely inherits
+     * the trait through an abstract base) throws 'does not exist'. The
+     * hierarchy walk finds the declaring class for every cached instance;
+     * instances whose hierarchy never composed the trait are left alone.
+     *
+     * @param object $instance A cached availability/directory instance.
+     * @return void
+     */
+    private static function nullWiredCredential(object $instance): void
+    {
+        for ($class = get_class($instance); $class !== false; $class = get_parent_class($class)) {
+            if (!(new \ReflectionClass($class))->hasProperty('requestAuthentication')) {
+                continue;
+            }
+
+            $credential = new \ReflectionProperty($class, 'requestAuthentication');
+            self::openPrivateProperty($credential)->setValue($instance, null);
+            return;
+        }
+    }
+
+    /**
+     * Opens a private/reflected property for read/write on every PHP the
+     * suite runs on (the aggregator_state() guard, stated once).
+     *
+     * @param \ReflectionProperty $property The property to open.
+     * @return \ReflectionProperty The same property, accessible everywhere.
+     */
+    private static function openPrivateProperty(\ReflectionProperty $property): \ReflectionProperty
+    {
+        if (PHP_VERSION_ID < 80100) {
+            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
+            $property->setAccessible(true);
+        }
+
+        return $property;
     }
 
     /**
