@@ -6,6 +6,133 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM29 round, /code-review max)
+
+Verifier pass (two independent lenses, correctness + security, over the
+full round diff): all 15 fixes' equivalence claims held; the two
+confirmed defects were the round's own hardening additions and are fixed
+as glm29-16 — the glm29-7 redaction canary could not fail (PHPUnit's
+fail() throws the same class the canary catches, empirically
+demonstrated; the canary records a flag and asserts it outside,
+mutation-tested), and the glm29-9 round-trip call is guarded at the CLI
+shell so an uncaught fatal inside the runner can no longer print the
+live key in the stack-trace argument frame
+(zend.exception_ignore_args=Off default; no realistic trigger today —
+re-verified LIVE through the guarded shell). The security lens'
+bypass battery found no open, non-ledgered vector against the glm29-3
+interpolation fix — including the escaped-quote and backslash-parity
+shapes, caught by the escape-aware runtime-segment layer's
+composability.
+
+All 15 findings of the round-29 max review (the 29th review round on
+this branch, ledger-filtered; one PLAUSIBLE finding verified first —
+its mechanism held but production reachability refuted, recorded as a
+conscious accept), one commit per item:
+
+- A diverging JsonSerializable no longer ships a zero-length request
+  body as success (glm29-1, the round's top defect): the encodability
+  net's fall-through `return '';` was claimed unreachable, but
+  jsonSerialize() is user code whose output can differ between
+  invocations — the full-payload oracle failed, the attribution walk's
+  re-encodes succeeded, and the ride discipline shipped the empty
+  string AS the body. The fall-through returns the re-encoded artifact
+  (or rejects typed when no invocation encodes); the invocation count
+  and the shipped body are pinned.
+- The zai (OpenAI-surface) SSE aggregator gained the error-event
+  channel the Anthropic twin added in this same branch (glm29-2): a
+  streamed provider error frame (`data: {"error":{...}}`) fell through
+  the object-without-choices tolerance and completed the generation
+  clean. A PRESENT error member or an `event: error` declaration sets
+  has_error() (absent/null keeps its skip), pre- and post-sentinel
+  identically, and the model rejects first with the surface-worded
+  fixed message. glm23-6's pinned tolerances stay (a scalar
+  `data: null`, a choices-less object without an error member).
+- SECURITY: interpolated double-quoted literals no longer launder
+  '../' traversal past the self-containment gate (glm29-3): the proof
+  treated `"/sub/$name.php"` as static because only '${' counted as
+  dynamic, missing `$name`/`{$name}`/`$$var` spellings AND suppressing
+  the unanchored flag for the one form it saw — the value's runtime
+  control was invisible to every layer. One quote-aware predicate
+  (any '$' in a double-quoted literal; single quotes never interpolate;
+  escaped dollars over-detect on purpose) serves every dynamic
+  judgment, and the segment blanking keeps interpolated literals
+  visible. Fixtures pin every spelling in both positions, the
+  assignment-mediated route, and the tolerances.
+- A present-but-wrong-type tool_use id or name in content_block_start
+  flags at the stream channel (glm29-4, the glm28-2 parity): the
+  accumulator ternaries nulled `"id":5` silently and the corruption
+  surfaced only as parse_content_block()'s generic identity rejection —
+  the coincidental-downstream-catch channel the zai twin's own comment
+  says corruption must not rely on. Absent/null keeps its parse-time
+  rejection (pinned both directions).
+- The empty-prompt rejection rides the shared RequestShapeGuard for
+  both surfaces (glm29-5, glm18-3's maxTokens-parity class closed for
+  this member): the zai surface shipped the vendor parent's assembled
+  `"messages": []` to a spec-faithful 400 with the generic
+  misattributed message after the wasted round trip. One
+  reject_empty_prompt() rule; the twin's inline copy rides it
+  byte-identically; one inherited pin runs on both surfaces.
+- The transport-failure redaction pin sees the key that actually flew
+  (glm29-7): it asserted against a freshly drawn fixture key while the
+  model was wired with a different random draw — an ErrorMapper
+  embedding the wired key passed green. One draw wires and asserts
+  (model_with_key()), and a canary proves the assertion flags exactly
+  this key instance when present.
+- The live probe's discovery evidence reads the named
+  discovery_cache_id() (glm29-8), never a positional pick out of the
+  owner's [positive, '_miss'] pair — a reorder would have read the
+  marker that stores literal true and reported 'live' after a FAILED
+  discovery.
+- ONE round-trip runner owns the live acceptance sequence (glm29-9):
+  the CLI probe and the PHPUnit smoke skeleton had each
+  hand-maintained the sequence and drifted in both directions (the CLI
+  carried the state delete, the miss-marker clear, the
+  definitive-verdict rule, the transient clearing and live-vs-fallback
+  evidence, and the preferred-model fallback; the skeleton alone
+  checked the state option for plaintext). tests/harness/
+  ZaiLiveRoundTrip.php owns the ordered steps once — report lines
+  byte-identical — with both shells reconciled to the stricter side;
+  the pins re-target the runner with supersessions documented, and
+  both surfaces verified LIVE (PASS, openai coding/intl and anthropic
+  general/intl, 2026-09-07).
+- One catalog-derived harness model id feeds all four wiring/prime
+  sites (glm29-10): the four independent 'glm-5.3' literals had to
+  agree for the vendor directory lookup to resolve.
+- The eight inline Anthropic error envelopes ride
+  HttpResponseFactory::anthropicErrorBody() (glm29-11): the glm25-10
+  drift class re-opened for error bodies. The message-less
+  `{"type":"forbidden"}` fixtures stay inline by design.
+- One harness-owned CapturingTransporter double (glm29-12, the
+  OpaqueAuthentication pattern) replaces the byte-identical anonymous
+  transporter classes in both request-mapping suites.
+- The plugin boot facts ride the loadPlugin() owner (glm29-13):
+  ZAI_PLUGIN_FILE/ZAI_PLUGIN_BOOT plus loadZaiPlugin()/
+  bootZaiPluginAndInit() replace eleven spellings of the fact across
+  eight files — the private copies had already drifted (the same
+  bootPlugin() name meant load-only in three suites and load+init in
+  the fourth).
+- The debug hook's equality check calls the declaring
+  AbstractPlanRegionSettings owner (glm29-14, the glm21-12
+  reach-through pattern), not the concrete first-surface child whose
+  rename would fatal the update_option hook for both surfaces.
+- The wpdb::get_col stub fails loud on unrecognized queries (glm29-15):
+  the silent array() answer let negative assertions pass vacuously on
+  query drift; an unrecognized shape throws with the query named.
+
+### Accepted (GLM29 round)
+
+- normalize_empty_object_members() does not descend stdClass nodes
+  (glm29-6, the round's one PLAUSIBLE finding — mechanism confirmed,
+  production reachability refuted): a HAND-BUILT mixed tree embedding a
+  stdClass node with a hand-written `[]` at a schema position ships
+  that `[]` verbatim, but both schema entry points type-gate the root
+  to array, the realistic json_decode'd embed needs no normalization
+  (`{}` arrives as stdClass already; its `[]` members are
+  genuinely-declared lists — converting them would misread the
+  caller's JSON), and no production writer builds the hand-cast form.
+  Ledger-recorded with the reachability argument; the boundary is
+  pinned both directions.
+
 ### Fixed (zai / M2 — GLM28 round, /code-review max)
 
 All 16 actionable items of the round-28 max review (the 28th review
