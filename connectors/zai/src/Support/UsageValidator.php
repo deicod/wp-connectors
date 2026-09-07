@@ -85,6 +85,31 @@ final class UsageValidator {
 	);
 
 	/**
+	 * The members an absent OpenAI total_tokens DERIVES from (glm12-6,
+	 * named and pinned by glm30-5).
+	 *
+	 * Deliberately NOT computed from OPENAI_MEMBERS at runtime: this set
+	 * is the WIRE SEMANTIC of total_tokens (prompt + completion — GLM12
+	 * #6's twin parity), not the validation vocabulary. A member later
+	 * admitted to OPENAI_MEMBERS does not automatically belong in the
+	 * total — whether it counts is a wire-semantics decision to make
+	 * consciously at THIS constant (and against the vendor's own total),
+	 * never by array arithmetic. Today the set equals OPENAI_MEMBERS
+	 * minus total_tokens, and a pin in the response-mapping suite
+	 * asserts exactly that equality, so any OPENAI_MEMBERS change breaks
+	 * the pin and forces this constant's revisit — the two sets drift
+	 * only by decision, never silently.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var list<string>
+	 */
+	public const OPENAI_TOTAL_DERIVATION_MEMBERS = array(
+		'prompt_tokens',
+		'completion_tokens',
+	);
+
+	/**
 	 * The Anthropic usage members that count toward the INPUT side.
 	 *
 	 * The input total (message_start's stored count, and the

@@ -1840,6 +1840,32 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         $this->assertSame(11, $result->getTokenUsage()->getTotalTokens(), 'The streamed absent total is derived prompt+completion.');
     }
 
+    public function testTheAbsentTotalDerivationVocabularyIsPinnedToTheValidationVocabulary()
+    {
+        /*
+         * glm30-5: the derivation set (what an absent total_tokens sums)
+         * is the validator's named wire-semantics constant, deliberately
+         * NOT computed from OPENAI_MEMBERS — whether a new validation
+         * member counts toward the total is a conscious decision at the
+         * constant, never array arithmetic. This pin asserts the sets
+         * agree TODAY, so a member admitted to OPENAI_MEMBERS breaks it
+         * and forces the derivation constant's conscious revisit: the
+         * two drift only by decision, never silently.
+         */
+        $validator = \Deicod\WpConnectors\Zai\Support\UsageValidator::class;
+
+        $this->assertSame(
+            array('prompt_tokens', 'completion_tokens'),
+            $validator::OPENAI_TOTAL_DERIVATION_MEMBERS,
+            'The derivation vocabulary is the prompt+completion wire semantic of total_tokens (GLM12 #6).'
+        );
+        $this->assertSame(
+            array_values(array_diff($validator::OPENAI_MEMBERS, array('total_tokens'))),
+            $validator::OPENAI_TOTAL_DERIVATION_MEMBERS,
+            'Every non-total OPENAI_MEMBERS member must appear in the derivation set — a vocabulary change forces the constant\'s revisit.'
+        );
+    }
+
     public function testAcceptedToolArgumentsReplayWithoutReRunningTheOracle()
     {
         /*

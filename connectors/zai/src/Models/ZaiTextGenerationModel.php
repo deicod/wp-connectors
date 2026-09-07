@@ -970,9 +970,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * overflow-rule change reaches this derivation too: no
 		 * intermediate may promote to float, and an overflowing sum
 		 * stays absent (0, master parity) rather than introducing a
-		 * rejection this surface never had.
+		 * rejection this surface never had. glm30-5: the member set is
+		 * the validator's named wire-semantics constant (pinned against
+		 * OPENAI_MEMBERS there), never an inline literal.
 		 */
-		$total = UsageValidator::sum_members( $usage, array( 'prompt_tokens', 'completion_tokens' ) );
+		$total = UsageValidator::sum_members( $usage, UsageValidator::OPENAI_TOTAL_DERIVATION_MEMBERS );
 
 		if ( null === $total ) {
 			return $data;
