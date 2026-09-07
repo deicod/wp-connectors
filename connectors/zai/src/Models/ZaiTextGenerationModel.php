@@ -1300,6 +1300,19 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * attribution pass on failure (guard_wire_values()).
 		 */
 		$this->reject_misshapen_wire_values( $prompt );
+
+		/*
+		 * glm29-5 (parity with the zai_anthropic twin's empty-prompt
+		 * rejection — glm18-3's maxTokens-parity class, the member that
+		 * round left open): the vendor parent's params builder ships an
+		 * empty prompt as "messages": [] although the chat-completions
+		 * schema requires minItems 1, so the round trip answered 400 and
+		 * the caller got the generic misattributed rejection after the
+		 * wasted request. Typed pre-transport, at the position the
+		 * twin's validate_message_order() occupies (last — a
+		 * multi-invalid request keeps naming the member the twin names).
+		 */
+		RequestShapeGuard::reject_empty_prompt( $prompt, self::PROVIDER_LABEL );
 	}
 
 	/**

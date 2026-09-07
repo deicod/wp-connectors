@@ -120,6 +120,28 @@ abstract class AbstractZaiSurfaceRequestMappingTestCase extends WpConnectorsTest
         $this->assertRejectedBeforeTransport($config, 'custom options');
     }
 
+    public function testAnEmptyPromptIsRejectedBeforeTransport()
+    {
+        /*
+         * glm29-5 (cross-surface parity, the shared RequestShapeGuard
+         * rule): the zai surface shipped the vendor parent's assembled
+         * "messages": [] verbatim although the chat-completions schema
+         * requires minItems 1 — the round trip answered 400 and the
+         * caller got the generic misattributed rejection after the
+         * wasted request, while this surface's twin rejected the
+         * identical input typed pre-transport. One inherited pin runs
+         * on BOTH surfaces (the glm22-6 shape).
+         */
+        try {
+            $this->model()->generateTextResult(array());
+            $this->fail('An empty prompt must be rejected before transport.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('requires at least one message', $e->getMessage());
+        }
+
+        $this->assertNoHttpRequests();
+    }
+
     public function testNonPositiveMaxTokensIsRejectedBeforeTransport()
     {
         /*

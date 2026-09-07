@@ -152,6 +152,34 @@ final class RequestShapeGuard {
 	}
 
 	/**
+	 * Rejects an empty prompt before any transport work (glm29-5).
+	 *
+	 * The zai surface shipped the vendor parent's assembled
+	 * "messages": [] verbatim although the chat-completions schema
+	 * requires minItems 1 — a filter loop that removes every message
+	 * made the round trip, answered 400, and surfaced the generic
+	 * misattributed upstream rejection after the wasted request, while
+	 * the zai_anthropic twin rejected the identical input typed
+	 * pre-transport (glm18-3's maxTokens-parity class, the member that
+	 * round left open). One rule on the shared guard serves both
+	 * surfaces now; the twin's inline copy rides it too, byte-identical
+	 * in message and channel.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array  $prompt         Prompt messages (list of Message).
+	 * @param string $provider_label Provider name for the message.
+	 * @return void
+	 * @throws InvalidArgumentException When the prompt carries no message.
+	 */
+	public static function reject_empty_prompt( array $prompt, string $provider_label ): void {
+		if ( array() === $prompt ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+			throw new InvalidArgumentException( sprintf( 'The %s provider requires at least one message.', $provider_label ) );
+		}
+	}
+
+	/**
 	 * Rejects a configured unit-interval member outside the CLOSED
 	 * interval 0..1, or NAN (glm21-6).
 	 *

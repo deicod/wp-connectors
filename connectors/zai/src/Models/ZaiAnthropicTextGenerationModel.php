@@ -2612,11 +2612,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @throws InvalidArgumentException When the role order violates the protocol.
 	 */
 	private function validate_message_order( array $prompt ): void {
-		if ( array() === $prompt ) {
-			throw new InvalidArgumentException(
-				sprintf( 'The %s provider requires at least one message.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-			);
-		}
+		/*
+		 * glm29-5: the empty-prompt rule rides the shared
+		 * RequestShapeGuard now (byte-identical message and channel) —
+		 * the zai twin shipped "messages": [] to a spec-faithful 400
+		 * (glm18-3's maxTokens-parity class, the member that round
+		 * left open), and a message tweak must not land on one surface
+		 * only.
+		 */
+		RequestShapeGuard::reject_empty_prompt( $prompt, self::PROVIDER_LABEL );
 
 		$first_role = $this->message_role_string( $prompt[0]->getRole() );
 		if ( 'user' !== $first_role ) {
