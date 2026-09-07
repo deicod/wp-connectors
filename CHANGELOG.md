@@ -6,6 +6,104 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM34 round, /code-review max)
+
+The 34th review round (15 findings emitted after the ledger filter
+struck 4 as re-flags): 10 fixes, one doc-drift correction, one
+conscious accept. Nine commits plus this record; see round 34 in
+docs/review/REFUTATION_LEDGER.md:
+
+- An undeclared UNDECODABLE data-only SSE frame flags through the
+  malformed-event channel (glm34-1): the one corruption corner every
+  sibling rule missed (Codex R4 #3 needs a declaration, glm33-1 a
+  decodable payload, glm16-15 a decodable non-object) — a data: line
+  cut mid-JSON with no event: field was silently dropped, the stream
+  completing with the chunk missing and every flag false. json_last_error()
+  distinguishes the undecodable shape from decodable scalars exactly as
+  the zai twin does (glm23-6, both phases); the decodable tolerances
+  (scalar skip, trailing typeless noise, bare trailing [DONE]) are
+  untouched, and the GLM12 #15 call-site pin is superseded to 8.
+- The zero-translatable-part and zero-parts rejections throw the marker
+  exception (glm34-2, glm28-4 parity): the plain ResponseException was
+  nulled out by the mislabeled-Content-Type fallback's catch, surfacing
+  the generic stream error where the zai twin surfaces the precise
+  message — the asymmetry glm14-2's marker contract exists to prevent.
+- Content presence is judged with array_key_exists semantics (glm34-3):
+  an explicitly-present "content": null now rejects through the
+  invalid-data channel like every sibling envelope member, not
+  fromMissingData.
+- guard_wire_values() states the old-eager-order contract (glm34-4,
+  adjudicated): NO behavioral drift — both surfaces' compositions are
+  exactly glm20-8's documented pinned orders, and the finding's claim
+  about the zai twin misread it; what was wrong is the zai_anthropic
+  docblock's "matches the mapping order" phrasing (the glm19-13
+  doc-drift class), now corrected.
+- effective_key() reads the raw wired instance (glm34-6): the last
+  availability reader routing through the protocol wrap, where a
+  foreign wiring's wrap() throw laundered into "nothing wired" — output
+  identical today (the wrap product is an ApiKeyRequestAuthentication
+  subclass carrying the same key), the states now structurally
+  distinct; source-pinned to the probe's one remaining funnel call.
+- The wpdb::prepare() test stub substitutes in one pass over the
+  original query (glm34-7): a bound value carrying a literal %s/%d no
+  longer consumes the next argument's placeholder (core's
+  left-to-right once-each semantics); glm20-9's pinned net encoding
+  (quotes escaped, backslashes and $ tokens verbatim) and get_col()'s
+  LIKE-to-regex contract are byte-identical, and the old stub's latent
+  NUL-byte backreference corruption is gone with the preg_replace.
+- One shared Anthropic content-block vocabulary table (glm34-8):
+  Support\AnthropicContentBlocks owns the mapped set, the known-unmapped
+  trio, and the glm15-21 string-member map; the body parse drops the
+  trio through the constant, and a lockstep pin drives the catalog
+  constants behaviorally on both transports — the two-file edit with no
+  failing test is gone (the unknown-type divergence stays the documented
+  GLM1 #15/glm26-2 decision).
+- Test model wiring rides HARNESS_MODEL_ID (glm34-9): the eight sites
+  spelling 'glm-5.3' beside a discovery prime (whose default IS the
+  catalog-derived constant) were the glm29-10 catalog-refresh desync
+  re-opening; a sweep pin forbids future ::model('glm-…') literals.
+- The Anthropic SSE envelope boilerplate rides HttpResponseFactory
+  builders (glm34-10): anthropicStreamStart()/anthropicBlockStop()/
+  anthropicStreamEnd() emit byte-identical frames to the canonical
+  hand-spelled forms; 297 of ~330 envelopes converted (net -542 lines).
+  Deliberately-malformed fixtures, the framing suite's own fixtures,
+  and the bespoke OpenAI chunk streams (whose implode composition
+  carries no envelope boilerplate beyond the data: prefix) stay
+  hand-spelled.
+- sort_callback() compares memoized per-ID keys (glm34-11, the glm26-12
+  idiom): the O(N log N) comparator no longer re-runs the two
+  extraction regexes per comparison; the ordering rule is unchanged.
+
+Consciously accepted, no code change (ledger round 34): the zeroed
+input_tokens shape (glm34-5 — absent-members on both frames, each half
+a documented tolerance, with the byte-equivalent non-streamed
+absent-usage body pinned to parse zeroed since Codex R14 #5; the
+present-but-wrong-type half already flags through the shared validator).
+
+Verifier pass (two independent lenses, correctness + security, over the
+full round diff): ZERO confirmed defects — every equivalence claim HELD
+empirically (a 21-case pre/post aggregator differential with every
+divergence exactly the new rule's class and byte-identical aggregated
+payloads; a 32-case plus 200,000-iteration wpdb fuzz with zero
+divergences outside the intended fix and the NUL class the old stub
+itself corrupted; a 3,000-shuffle comparator differential including
+hostile ids; mechanical multiset balance of the fixture conversion —
+all 118 removed hand-spelled message_start ids reappear verbatim as
+builder arguments, every token bucket exact, no assert/catch line
+drifted; and the sort-key memo's key universe proven bounded to the
+constant catalog on every feeder path). Security lens CLEAN across all
+six areas (no DoS — a 200k-frame flood within milliseconds of
+pre-round; no value or credential leakage — both new marker throws are
+constant-fed by construction; no new file/network/eval constructs; no
+benign frame class false-flags). Residuals ledgered: a pre-terminal
+bare [DONE] now flags (was a silent drop — fail-closed, twin parity,
+no pinned tolerance broke), the marker's trace origin one frame deeper
+(glm32's diagnostic class), the builder id-input domain is implicitly
+ASCII (a /- or unicode-bearing id would emit valid-but-differently-
+escaped JSON), and the wpdb %% divergence from core stays (cosmetic,
+caller-free). Full suite green in default and random order (1260
+tests, 29973 assertions, 2 skipped — the live-key gates).
+
 ### Fixed (zai / M2 — GLM33 round, /code-review max)
 
 The 33rd review round (the fork's relayed board after the round-32
