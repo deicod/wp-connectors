@@ -12,7 +12,15 @@ The 30th review round (ledger-filtered: 10 of its 15 raw findings were
 re-flags of ledgered decisions, dropped) left 5 surviving findings,
 fixed one commit per item, plus 2 fixes over the 10 verified cleanup
 candidates the round's 15-cap had cut — the other 8 were refuted on
-re-examination against the ledger and recorded there (round 30):
+re-examination against the ledger and recorded there (round 30).
+Verifier pass (two independent lenses, correctness + security, over the
+full round diff): every fix's equivalence claim HELD — the credential
+reset reaches every SDK credential store (vendor-wide enumeration), the
+OpenAI catalog byte-identity held across all branches, the status-class
+mapping matched the vendor for every status, and no new attack surface
+opened. One defect confirmed (the round's OWN refutation text stated
+PHP's strict array compare backwards — it judges objects by identity,
+not value); corrected in the ledger as glm30-9.
 
 - The test harness erases SDK credentials between tests (glm30-1): a
   credential wired onto the process-wide SDK state rode every later
