@@ -225,10 +225,25 @@ function wp_connectors_unused_import_violations(string $root): int
             // for the removal and the flag message (glm17-15).
             $statement        = substr($source, $statement_offset, strlen($match[0][0]));
 
+            /*
+             * glm28-1: a comment between the name (or alias) and the
+             * terminator is legal PHP — glm17-15 met it between the name
+             * and the alias — and the real bytes sliced above carry it
+             * verbatim, so the qualified name (and the short name
+             * derived from it) used to include the comment bytes
+             * ('Request' plus a trailing note): a string that appears
+             * nowhere else, so a genuinely USED import flagged (the
+             * verifier's repro: a return type plus 'new Request()'). A
+             * comment opener (block, slash-slash, or hash) cannot occur
+             * inside the import's own bytes (word chars, backslashes,
+             * 'as', whitespace only), so the first opener ends those
+             * bytes; the flag message prints the clean qualified name.
+             */
+            $name = preg_replace('/(?:\/\*|\/\/|#).*$/s', '', substr($statement, 0, -1));
             // The short name is the alias when one is given, else the
             // last segment of the qualified name (the whole name for a
             // global class import with no backslash).
-            $qualified = trim(preg_replace('/^use\s+(?:function\s+|const\s+)?/', '', substr($statement, 0, -1)));
+            $qualified = trim(preg_replace('/^use\s+(?:function\s+|const\s+)?/', '', $name));
             $lastBackslash = strrpos($qualified, '\\');
             $alias = isset($match[1][0]) && \is_string($match[1][0]) ? $match[1][0] : '';
             $short = '' !== $alias

@@ -337,6 +337,78 @@ FIXTURE
                 ,
                 0,
             ),
+            /*
+             * glm28-1: a trailing comment between the qualified name and
+             * the terminator is legal PHP, and the qualified name is
+             * derived from the REAL statement bytes — the comment used
+             * to ride into the short name ('Request' plus the note
+             * bytes), a string that appears nowhere else, so a
+             * genuinely used import flagged. The import's own bytes
+             * cannot contain a comment opener, so the first opener ends
+             * them.
+             */
+            'trailing comment on a used import does not flag (glm28-1)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Pkg\Request /* note */;
+function f(): Request {
+	return new Request();
+}
+FIXTURE
+                ,
+                0,
+            ),
+            'trailing comment on an unused import still flags (glm28-1)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Pkg\DeadThing /* note */;
+FIXTURE
+                ,
+                1,
+            ),
+            'trailing comment after an alias keeps the alias short name (glm28-1)' => array(
+                <<<'FIXTURE'
+<?php
+use Vendor\Pkg\Widget as W /* note */;
+$x = new W();
+FIXTURE
+                ,
+                0,
+            ),
+            'trailing line-comment on an unused import still flags (glm28-1)' => array(
+                "<?php\nuse Vendor\\Pkg\\DeadLine # note\n;\n",
+                1,
+            ),
+        );
+    }
+
+    /**
+     * glm28-1: the violation message must print the CLEAN qualified
+     * name. The short-name derivation used to carry the trailing
+     * comment bytes into the flag text, and while the count fixtures
+     * above pin the verdict, the message shape needs the real STDERR
+     * channel — captured through a child process because fwrite to
+     * STDERR bypasses output buffering.
+     */
+    public function testTheTrailingCommentFlagMessagePrintsTheCleanQualifiedName(): void
+    {
+        file_put_contents($this->root . '/fixture.php', "<?php\nuse Vendor\\Pkg\\DeadThing /* note */;\n");
+
+        $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/check-conventions.php'), true) . ';'
+            . ' wp_connectors_unused_import_violations(' . var_export($this->root, true) . ');';
+        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+        $message = implode("\n", $output);
+
+        $this->assertSame(0, $exit, 'The scanner helper must not exit non-zero; the CLI gate owns the exit code.');
+        $this->assertStringContainsString(
+            "unused import 'Vendor\\Pkg\\DeadThing'",
+            $message,
+            'The flag message must print the clean qualified name.'
+        );
+        $this->assertStringNotContainsString(
+            'note',
+            $message,
+            'The flag message must not carry the trailing comment bytes.'
         );
     }
 
