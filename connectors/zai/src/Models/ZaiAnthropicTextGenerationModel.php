@@ -1838,13 +1838,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * ({} is stdClass, [] is an array) and is handed to each content
 		 * block alongside the associative value.
 		 *
-		 * glm24-7: no $raw_content_ok mirror — a non-null $raw IMPLIES its
-		 * content member is a present array here (the associative check at
-		 * the top proved the member exists in the same payload's other
+		 * glm24-7: no $raw_content_ok mirror — a non-null $raw_body IMPLIES
+		 * its content member is a present array here (the associative check
+		 * at the top proved the member exists in the same payload's other
 		 * decode, and the object-ness probe above proved it is an array),
 		 * so the per-part probe below needs only the null check.
 		 */
-		$raw = $raw_body;
 
 		/*
 		 * Verifier residual on Codex R5 + Codex R6 #1: a Messages response
@@ -1881,8 +1880,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'Every content entry must be an object.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 			}
 
-			$raw_part = null !== $raw && isset( $raw->content[ $index ] ) && \is_object( $raw->content[ $index ] )
-				? $raw->content[ $index ]
+			$raw_part = null !== $raw_body && isset( $raw_body->content[ $index ] ) && \is_object( $raw_body->content[ $index ] )
+				? $raw_body->content[ $index ]
 				: null;
 
 			$part = $this->parse_content_block( $part_data, $raw_part );
@@ -2091,7 +2090,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 */
 			UsageValidator::reject(
 				\is_array( $data['usage'] ) ? $data['usage'] : null,
-				null !== $raw && \property_exists( $raw, 'usage' ) ? $raw->usage : null,
+				null !== $raw_body && \property_exists( $raw_body, 'usage' ) ? $raw_body->usage : null,
 				self::PROVIDER_LABEL
 			);
 
