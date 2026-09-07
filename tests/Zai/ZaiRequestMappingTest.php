@@ -1043,6 +1043,60 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
         );
     }
 
+    public function testADivergingJsonSerializableShipsARealBodyNotAnEmptyOne()
+    {
+        /*
+         * glm29-1: jsonSerialize() is user code whose output can
+         * DIVERGE between invocations — the net's full-payload oracle
+         * met an unencodable view below while every per-member
+         * re-encode (the attribution walk's, and the fall-through's
+         * own) meets a clean one. The old fall-through returned ''
+         * ("unreachable: must_encode() rejects above"), and the ride
+         * discipline (glm14-4) shipped that empty string AS the body
+         * — a zero-length request generateTextResult() reported as
+         * success. The fall-through returns the re-encoded artifact
+         * now: this request must carry a genuine JSON encoding of the
+         * CLEAN view, never an empty body. The double counts its
+         * invocations so the test proves the divergence actually
+         * happened (call 1 unencodable, call 2 encodable) rather than
+         * passing on a double that never failed the first oracle.
+         */
+        $model = $this->model();
+
+        $diverging = new class() implements \JsonSerializable {
+            public $invocations = 0;
+
+            public function jsonSerialize(): array
+            {
+                ++$this->invocations;
+
+                return 1 === $this->invocations
+                    ? array('evil' => NAN)
+                    : array('clean' => 'ok');
+            }
+        };
+
+        $create = new \ReflectionMethod($model, 'createRequest');
+
+        $request = $create->invoke(
+            $model,
+            WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum::POST(),
+            'chat/completions',
+            array('Content-Type' => 'application/json'),
+            array('future_member' => $diverging)
+        );
+
+        $this->assertSame(2, $diverging->invocations, 'The oracle must fail on invocation 1 and the fall-through must re-encode on invocation 2.');
+
+        $body = (string) $request->getBody();
+        $this->assertNotSame('', $body, 'A diverging JsonSerializable must ship the re-encoded artifact, never an empty body.');
+        $this->assertSame(
+            array('future_member' => array('clean' => 'ok')),
+            json_decode($body, true),
+            'The shipped body must be the encoding of the clean view the re-encode saw.'
+        );
+    }
+
     public function testAnEmptyDeclaredToolNameIsRejectedBeforeTransport()
     {
         /*

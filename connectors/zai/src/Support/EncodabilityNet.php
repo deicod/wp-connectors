@@ -55,9 +55,9 @@ final class EncodabilityNet {
 	 * body before riding). On failure the caller's attribution walk
 	 * runs first — naming the first bad member with the precise
 	 * per-member message — and only then the generic typed rejection
-	 * fires (unreachable after it; the walk must throw for any member
-	 * it knows, so the generic branch catches only members the walk
-	 * does not).
+	 * fires for a payload the re-encode still cannot serialize (the
+	 * walk must throw for any member it knows, so the generic branch
+	 * catches only members the walk does not).
 	 *
 	 * @since 0.2.0
 	 *
@@ -76,9 +76,19 @@ final class EncodabilityNet {
 
 		$attribution_walk();
 
-		JsonEncodeGuard::must_encode( $payload, 'a request payload member', $provider_label );
-
-		return ''; // Unreachable: must_encode() rejects above.
+		/*
+		 * glm29-1: the fall-through is REACHABLE — jsonSerialize() is
+		 * user code whose output can diverge between invocations, so
+		 * the full-payload oracle above can meet an unencodable view
+		 * the attribution walk's per-member re-encodes do not (each
+		 * member encodes clean on its second visit). Returning ''
+		 * here shipped a zero-length body generateTextResult() then
+		 * reported as success. The re-encoded artifact rides instead:
+		 * either this encode throws the generic typed rejection (a
+		 * payload no invocation can serialize) or its string is a
+		 * genuine encoding of the payload as the walk saw it.
+		 */
+		return JsonEncodeGuard::encode( $payload, 'a request payload member', $provider_label );
 	}
 
 	/**
