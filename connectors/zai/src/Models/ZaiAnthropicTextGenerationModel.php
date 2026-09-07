@@ -204,6 +204,16 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * (glm15-8: the protocol wrap lives once on the
 	 * SpeaksAnthropicMessagesProtocol trait).
 	 *
+	 * GLM28-6: this one hook now feeds BOTH consumers of the raw
+	 * instance — the protocol wrap (SpeaksAnthropicMessagesProtocol)
+	 * and the credential gate/recorder (SafeGenerationBoundary,
+	 * superseding glm18-14's gate_authentication() delegation: the gate
+	 * hook and the raw hook were two names for one body). The GLM3 #9
+	 * contract rides it: the gate keys on the API key alone, which the
+	 * raw instance carries, and wrap() refuses foreign wiring with the
+	 * same binding-failure RuntimeException, so wherever the failure
+	 * eventually surfaces it maps to 500 zai_error, never 400.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @return RequestAuthenticationInterface
@@ -222,33 +232,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 */
 	protected function credential_gate_availability(): AbstractZaiProviderAvailability {
 		return new ZaiAnthropicProviderAvailability();
-	}
-
-	/**
-	 * The authentication the credential gate judges: the RAW parent getter,
-	 * not this model's protocol-wrapping getRequestAuthentication() override
-	 * — the override's wrap() threw a foreign-wiring failure through the
-	 * gate's RuntimeException-only skip as a 400 BEFORE validate_request()
-	 * (GLM3 #9); the availability gate keys on the API key alone, which the
-	 * raw instance carries, and wrap() refuses foreign wiring with the same
-	 * binding-failure RuntimeException, so wherever the failure eventually
-	 * surfaces it maps to 500 zai_error, never 400. GLM9 #11 wiring hook.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return RequestAuthenticationInterface
-	 */
-	protected function gate_authentication(): RequestAuthenticationInterface {
-		/*
-		 * glm18-14: the gate hook DELEGATES to raw_request_authentication()
-		 * — the two bodies were byte-identical ('return
-		 * parent::getRequestAuthentication();'), so a future edit to one
-		 * hook could silently make the gate judge a different credential
-		 * instance than the one the protocol wrap authenticates with, on
-		 * this security-sensitive path. One body now; the gate's judging
-		 * contract (the docblock above) is unchanged.
-		 */
-		return $this->raw_request_authentication();
 	}
 
 	/**

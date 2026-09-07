@@ -425,16 +425,18 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
-	 * The authentication the credential gate judges: this model's own SDK
-	 * getter for the authentication it would authenticate with (an
-	 * unwired model skips the gate, keeping the pre-gate exception
-	 * order — the GLM1 #1 verifier nit; GLM9 #11 wiring hook).
+	 * The RAW wired authentication the credential gate judges: this
+	 * surface's own SDK getter (glm28-6 — the hook name
+	 * SpeaksAnthropicMessagesProtocol already standardizes for the same
+	 * contract; on this surface the vendor getter IS raw, no protocol
+	 * wrap exists). An unwired model skips the gate, keeping the
+	 * pre-gate exception order — the GLM1 #1 verifier nit.
 	 *
 	 * @since 0.2.0
 	 *
 	 * @return RequestAuthenticationInterface
 	 */
-	protected function gate_authentication(): RequestAuthenticationInterface {
+	protected function raw_request_authentication(): RequestAuthenticationInterface {
 		return $this->getRequestAuthentication();
 	}
 

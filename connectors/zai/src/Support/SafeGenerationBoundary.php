@@ -62,11 +62,19 @@ trait SafeGenerationBoundary {
 
 	/**
 	 * The authentication instance the credential gate judges: the exact
-	 * credential this model would authenticate with.
+	 * RAW credential this model would authenticate with.
 	 *
-	 * The two surfaces' deliberate wiring difference (GLM3 #9): the zai
-	 * surface reads its own getter; the zai_anthropic surface reads the
-	 * RAW parent getter, so a foreign-wiring failure surfaces as the 500
+	 * GLM28-6 supersedes glm18-14's shape: the gate hook and the raw
+	 * hook were two names for one body on both surfaces (glm18-14 had
+	 * merged them into a delegation; the delegation itself was the
+	 * residual indirection), and SpeaksAnthropicMessagesProtocol
+	 * already standardizes THIS name for the same contract — the raw
+	 * wired instance, unwrapped. The gate reads it directly now; a
+	 * surface that also speaks the protocol satisfies both abstracts
+	 * with the one implementation. The surfaces' deliberate wiring
+	 * difference (GLM3 #9) stays: the zai surface's vendor getter IS
+	 * raw (no protocol wrap); the zai_anthropic surface reads the raw
+	 * parent getter so a foreign-wiring failure surfaces as the 500
 	 * binding error rather than a 400 option-rejection. May throw the
 	 * SDK's unwired RuntimeException — the gate wrapper treats that as
 	 * "not the gate's concern" and skips (an unwired model is a caller
@@ -76,7 +84,7 @@ trait SafeGenerationBoundary {
 	 *
 	 * @return RequestAuthenticationInterface
 	 */
-	abstract protected function gate_authentication(): RequestAuthenticationInterface;
+	abstract protected function raw_request_authentication(): RequestAuthenticationInterface;
 
 	/**
 	 * Records the definitive invalid verdict a credential-rejecting
@@ -104,7 +112,7 @@ trait SafeGenerationBoundary {
 		$this->credential_gate_availability()->record_rejection_for_status(
 			$status,
 			function () {
-				return $this->gate_authentication();
+				return $this->raw_request_authentication();
 			},
 			$this->generation_endpoint_cache_key
 		);
@@ -197,7 +205,7 @@ trait SafeGenerationBoundary {
 	private function refuse_refused_credentials(): void {
 		$this->credential_gate_availability()->refuse_generation(
 			function () {
-				return $this->gate_authentication();
+				return $this->raw_request_authentication();
 			}
 		);
 	}
