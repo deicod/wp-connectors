@@ -1316,6 +1316,16 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
             $source,
             'The stash assignment stays at the params build — the earliest point the surface sees the prompt.'
         );
+
+        /*
+         * glm28-17 (source pin, the glm25-3 shape): the guidance
+         * builder's lazy-init block is trait-owned — the twin's pin
+         * holds the same statements, so a builder-lifecycle change
+         * cannot land on one surface only.
+         */
+        $this->assertStringContainsString('use BuildsJsonOutputGuidance;', $source, 'The model composes the one shared guidance-builder trait.');
+        $this->assertStringNotContainsString('private $json_output_guidance_builder', $source, 'The builder property is declared by the trait, not hand-synced per surface.');
+        $this->assertStringNotContainsString('new JsonOutputGuidance()', $source, 'The lazy construction lives on the trait, not per surface.');
     }
 
     public function testAnUnboundInstanceFailsIdenticallyOnBothSurfaces()

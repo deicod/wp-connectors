@@ -49,9 +49,9 @@ use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonFallbackResult;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
-use Deicod\WpConnectors\Zai\Support\JsonOutputGuidance;
 use Deicod\WpConnectors\Zai\Support\MemoizesToolLoopVerdicts;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
+use Deicod\WpConnectors\Zai\Support\BuildsJsonOutputGuidance;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
 use Deicod\WpConnectors\Zai\Support\RequestShapeGuard;
 use Deicod\WpConnectors\Zai\Support\SafeGenerationBoundary;
@@ -72,6 +72,7 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	use SafeGenerationBoundary;
 	use MemoizesToolLoopVerdicts;
 	use StashesGenerationPrompt;
+	use BuildsJsonOutputGuidance;
 
 	/**
 	 * The per-surface provider label interpolated into every guard and
@@ -329,22 +330,6 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	}
 
 	/**
-	 * The shared JSON-output guidance builder (glm23-2), or null before
-	 * the first dropped-case guidance build.
-	 *
-	 * See the twin's $json_output_guidance_builder — the sentences and
-	 * the glm21-7/16 memoized schema encode ride the one
-	 * Support\JsonOutputGuidance owner; this surface embeds the guidance
-	 * only in the DROPPED case (the config's schema under a non-JSON
-	 * mime), which with_dropped_schema_guidance() scopes.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var JsonOutputGuidance|null
-	 */
-	private $json_output_guidance_builder = null;
-
-	/**
 	 * Prepares the messages parameter, embedding the dropped-case JSON
 	 * guidance into the system instruction (glm23-2).
 	 *
@@ -400,12 +385,11 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 * exactly in this dropped case — proved the schema encodable
 		 * (glm13-8/glm14-1); the shared builder re-checks the shape
 		 * idempotently and serves the memoized encoding (glm21-7/16).
+		 * glm28-17: the lazy builder rides the one shared trait
+		 * (BuildsJsonOutputGuidance), the StashesGenerationPrompt
+		 * precedent for this byte-identical lazy-init block.
 		 */
-		if ( null === $this->json_output_guidance_builder ) {
-			$this->json_output_guidance_builder = new JsonOutputGuidance();
-		}
-
-		$guidance = $this->json_output_guidance_builder->schema_guidance( $output_schema, $config, self::PROVIDER_LABEL );
+		$guidance = $this->json_output_guidance_builder()->schema_guidance( $output_schema, $config, self::PROVIDER_LABEL );
 
 		return \is_string( $system_instruction ) && '' !== $system_instruction
 			? $system_instruction . "\n\n" . $guidance

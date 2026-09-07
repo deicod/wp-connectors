@@ -65,6 +65,7 @@ use Deicod\WpConnectors\Zai\Support\MemoizesToolLoopVerdicts;
 use Deicod\WpConnectors\Zai\Support\ReplayValidatedFunctionCall;
 use Deicod\WpConnectors\Zai\Support\RequestShapeGuard;
 use Deicod\WpConnectors\Zai\Support\UsageValidator;
+use Deicod\WpConnectors\Zai\Support\BuildsJsonOutputGuidance;
 use Deicod\WpConnectors\Zai\Support\EventStreamSniff;
 use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonShape;
@@ -85,6 +86,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	use SpeaksAnthropicMessagesProtocol;
 	use MemoizesToolLoopVerdicts;
 	use StashesGenerationPrompt;
+	use BuildsJsonOutputGuidance;
 
 	/**
 	 * Default maximum number of tokens for one generation.
@@ -178,26 +180,6 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @var array|null
 	 */
 	private $tool_schema_memo_declarations = null;
-
-	/**
-	 * The shared JSON-output guidance builder (glm23-2), or null before
-	 * the first guidance build.
-	 *
-	 * The json_output_guidance() sentences and the glm21-7/16 memoized
-	 * schema encode ride the one Support\JsonOutputGuidance owner now
-	 * (both surfaces' guidance bytes and memo discipline are one owner
-	 * — the zai surface embeds the same guidance in the DROPPED case
-	 * its glm14-1 guard scopes, which was review round 23's finding 2:
-	 * a schema under a non-JSON mime flew unconstrained on zai while
-	 * the identical config constrained on this surface). The instance
-	 * carries the memo state; the lazy null keeps unwired instances
-	 * allocation-free.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var JsonOutputGuidance|null
-	 */
-	private $json_output_guidance_builder = null;
 
 	/**
 	 * The RAW wired authentication — the SDK parent's getter, unwrapped
@@ -581,11 +563,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			return JsonOutputGuidance::base_guidance();
 		}
 
-		if ( null === $this->json_output_guidance_builder ) {
-			$this->json_output_guidance_builder = new JsonOutputGuidance();
-		}
-
-		return $this->json_output_guidance_builder->schema_guidance( $output_schema, $config, self::PROVIDER_LABEL );
+		/*
+		 * glm28-17: the lazy builder rides the one shared trait
+		 * (BuildsJsonOutputGuidance) — the StashesGenerationPrompt
+		 * precedent for this byte-identical lazy-init block.
+		 */
+		return $this->json_output_guidance_builder()->schema_guidance( $output_schema, $config, self::PROVIDER_LABEL );
 	}
 
 	/**
