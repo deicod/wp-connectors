@@ -366,9 +366,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		 * verdict can discover again.
 		 */
 		$this->availability()->refuse_discovery(
-			function () {
-				return $this->getRequestAuthentication();
-			}
+			$this->wired_authentication_reader()
 		);
 
 		/*
@@ -393,6 +391,31 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		}
 
 		return array_keys( $discovered );
+	}
+
+	/**
+	 * The deferred wired-authentication reader the credential-aware
+	 * discovery consumers share (glm30-7).
+	 *
+	 * The reader closure was spelled inline twice — once for the
+	 * availability gate (refuse_discovery(), inside the SDK discovery)
+	 * and once for the rejection recorder (record_rejection_for_status(),
+	 * inside the throwIfNotSuccessful() hook) — so the two spellings
+	 * could drift apart the way the twin's five did before glm21-14
+	 * unified them. A closure factory (not a method callable): the
+	 * consumers invoke the reader in THEIR scope, and the closure
+	 * captures this directory's scope at creation, keeping the raw
+	 * getRequestAuthentication() getter (glm26-4's discipline) callable
+	 * without widening its visibility.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @return \Closure The deferred reader: the wired authentication.
+	 */
+	private function wired_authentication_reader(): \Closure {
+		return function () {
+			return $this->getRequestAuthentication();
+		};
 	}
 
 	/**
@@ -448,9 +471,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 
 		$this->availability()->record_rejection_for_status(
 			$status,
-			function () {
-				return $this->getRequestAuthentication();
-			},
+			$this->wired_authentication_reader(),
 			$endpoint->cache_key()
 		);
 
