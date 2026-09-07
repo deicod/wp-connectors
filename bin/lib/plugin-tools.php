@@ -403,10 +403,12 @@ function wp_connectors_header_violations(array $headers, $slug)
  * Nested-but-inside includes (a file in src/Sub requiring
  * `__DIR__ . '/../support.php'`) still pass.
  *
- * @param string       $file     Absolute path of the file containing the include.
- * @param string       $include  The full include statement.
- * @param list<string> $literals Quoted string literals of the statement, in order.
- * @param string       $pluginDir Absolute plugin directory.
+ * @param string $file     Absolute path of the file containing the include.
+ * @param string $include  The full include statement.
+ * @param list<array{0: string, 1: string}> $literals Quoted literals of the
+ *                          statement as [opening quote, inner text] pairs
+ *                          (glm29-3: quote-aware), in order.
+ * @param string $pluginDir Absolute plugin directory.
  * @return bool True when the include is __DIR__-anchored, static, and escapes.
  */
 function wp_connectors_anchored_include_escapes_plugin($file, $include, array $literals, $pluginDir)
@@ -419,12 +421,12 @@ function wp_connectors_anchored_include_escapes_plugin($file, $include, array $l
         return false;
     }
     $walksUp = false;
-    foreach ($literals as $literal) {
-        if (strpos($literal, '${') !== false) {
+    foreach ($literals as $literal_pair) {
+        if (wp_connectors_literal_is_interpolated($literal_pair[0], $literal_pair[1])) {
             // Dynamic segment: the target cannot be resolved statically.
             return false;
         }
-        if (preg_match('#(^|[/\\\\])\.\.([/\\\\]|$)#', $literal)) {
+        if (preg_match('#(^|[/\\\\])\.\.([/\\\\]|$)#', $literal_pair[1])) {
             $walksUp = true;
         }
     }
@@ -434,7 +436,8 @@ function wp_connectors_anchored_include_escapes_plugin($file, $include, array $l
     }
 
     $resolved = dirname($file);
-    foreach ($literals as $literal) {
+    foreach ($literals as $literal_pair) {
+        $literal = $literal_pair[1];
         foreach (preg_split('#[/\\\\]+#', $literal) ?: array() as $segment) {
             if ($segment === '' || $segment === '.') {
                 continue;
@@ -476,15 +479,16 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
     if (strpos($expression, '__DIR__') === false && strpos($expression, 'ABSPATH') === false) {
         return array( 'is not anchored to __DIR__ or ABSPATH' );
     }
-    if (! preg_match_all('/[\'"]([^\'"]+)[\'"]/', $expression, $matches)) {
+    $quoted_literals = wp_connectors_quoted_literals($expression);
+    if ($quoted_literals === array()) {
         return array( 'combines the anchor with unresolvable runtime segments' );
     }
-    foreach ($matches[1] as $literal) {
-        if (strpos($literal, '${') !== false) {
-            return array( 'contains a dynamic ${...} segment' );
+    foreach ($quoted_literals as $literal_pair) {
+        if (wp_connectors_literal_is_interpolated($literal_pair[0], $literal_pair[1])) {
+            return array( 'contains an interpolated segment' );
         }
     }
-    if (wp_connectors_anchored_include_escapes_plugin($file, $expression, $matches[1], $pluginDir)) {
+    if (wp_connectors_anchored_include_escapes_plugin($file, $expression, $quoted_literals, $pluginDir)) {
         return array( 'resolves outside the plugin dir' );
     }
 
@@ -506,7 +510,27 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
 function wp_connectors_include_runtime_segments($statement)
 {
     $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($statement)), " \t\n\r();");
-    $blanked = (string) preg_replace('/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/', "''", $argument);
+    /*
+     * glm29-3: an INTERPOLATED double-quoted literal stays visible.
+     * Blanking every quoted string to '' classified the whole
+     * runtime-built path as a static segment, so a "$name" inside the
+     * quotes never surfaced here as runtime — the segment walk saw a
+     * proven-literal include while PHP interpolated '../' traversal
+     * into the target at runtime. Single-quoted literals and
+     * interpolation-free double-quoted ones keep the blanking: their
+     * text IS their runtime value.
+     */
+    $blanked = (string) preg_replace_callback(
+        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/',
+        static function ($match) {
+            if ('"' === $match[0][0] && false !== strpos(substr($match[0], 1, -1), '$')) {
+                return $match[0];
+            }
+
+            return "''";
+        },
+        $argument
+    );
 
     // glm28-10: the dot split rides the ONE depth-zero span walk.
     $segments = array();
@@ -1100,13 +1124,12 @@ function wp_connectors_is_psr4_autoloader_shape($file, $statement, array $segmen
     if (strpos($statement, '__DIR__') === false) {
         return false;
     }
-    if (preg_match_all('/[\'"]([^\'"]+)[\'"]/', $statement, $matches)) {
-        foreach ($matches[1] as $literal) {
-            if (strpos($literal, '${') !== false || preg_match('#(^|[/\\\\])\.\.([/\\\\]|$)#', $literal)) {
-                // Only strictly downward literal segments may surround the
-                // class-name mapping.
-                return false;
-            }
+    foreach (wp_connectors_quoted_literals($statement) as $literal_pair) {
+        if (wp_connectors_literal_is_interpolated($literal_pair[0], $literal_pair[1]) || preg_match('#(^|[/\\\\])\.\.([/\\\\]|$)#', $literal_pair[1])) {
+            // Only strictly downward static literal segments may surround
+            // the class-name mapping (glm29-3: quote-aware — an
+            // interpolated literal is runtime text, never sanctioned).
+            return false;
         }
     }
     foreach ($segments as $segment) {
@@ -1445,6 +1468,59 @@ function wp_connectors_array_literal_value_reasons($file, $code, $expression, $o
 }
 
 /**
+ * The quoted string literals of an expression, each with its opening
+ * quote character (glm29-3).
+ *
+ * The old quote-blind capture (`[\'"]([^\'"]+)[\'"]`) lost which quote
+ * opened a literal, so interpolation judgments could not tell a
+ * double-quoted runtime-built string from a single-quoted static one —
+ * the laundering hole the interpolation predicate below closes.
+ *
+ * @param string $expression Include-target expression or statement.
+ * @return list<array{0: string, 1: string}> [opening quote, inner text] pairs.
+ */
+function wp_connectors_quoted_literals($expression)
+{
+    $literals = array();
+    if (preg_match_all('/([\'"])([^\'"]+)\\1/', $expression, $matches, PREG_SET_ORDER)) {
+        foreach ($matches as $match) {
+            $literals[] = array($match[1], $match[2]);
+        }
+    }
+
+    return $literals;
+}
+
+/**
+ * Whether a quoted literal's runtime value is controlled by string
+ * interpolation (glm29-3 — the round-29 security fix).
+ *
+ * A double-quoted literal containing a '$' is DYNAMIC: PHP interpolates
+ * `$name`, `{$name}`, `${name}`, and `$$var` spellings into its value at
+ * runtime, so the quoted text is NOT the value that reaches the include.
+ * The proof machinery used to test only '${', missing every other
+ * spelling — `require __DIR__ . "/sub/$name.php";` with
+ * `$name = "../../../evil";` laundered out-of-root traversal past every
+ * layer (the literal scan judged the interpolated text as a static
+ * in-root segment, the runtime-segment blanking erased the whole quoted
+ * string, and the assignment substitution never ran because the include
+ * statement textually references no variable). Deliberately
+ * OVER-detecting: an escaped or trailing literal '$' inside a
+ * double-quoted include path is flagged as dynamic too — a false
+ * violation a maintainer can see and argue with beats a silent
+ * traversal hole (security > tool convenience). Single-quoted literals
+ * never interpolate; a '$' there IS the filename.
+ *
+ * @param string $quote   The literal's opening quote character.
+ * @param string $literal The literal's inner text.
+ * @return bool True when the runtime value cannot be read off the text.
+ */
+function wp_connectors_literal_is_interpolated($quote, $literal)
+{
+    return '"' === $quote && false !== strpos($literal, '$');
+}
+
+/**
  * Checks that no PHP file in the plugin escapes the plugin directory.
  *
  * Flags include/require statements with unanchored literal paths, upward
@@ -1501,16 +1577,28 @@ function wp_connectors_self_containment_violations($pluginDir)
         if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $masked, $includes, PREG_OFFSET_CAPTURE)) {
             foreach ($includes[0] as $include_match) {
                 $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
-                if (preg_match_all('/[\'"]([^\'"]+)[\'"]/', $include[0], $literals)) {
-                    foreach ($literals[1] as $literal) {
-                        $dynamic = (strpos($literal, '${') !== false);
+                $quoted_literals = wp_connectors_quoted_literals($include[0]);
+                if ($quoted_literals !== array()) {
+                    foreach ($quoted_literals as $literal_pair) {
+                        /*
+                         * glm29-3: the old '${'-only dynamic test both
+                         * missed every other interpolation form ($name,
+                         * {$name}, $$var) and SUPPRESSED this unanchored
+                         * flag for the forms it did see — leaving an
+                         * unanchored runtime-built target flagged
+                         * nowhere (the runtime layers route back with
+                         * "already flagged by the literal analysis").
+                         * Unanchored flags fire regardless of
+                         * interpolation now; an anchored interpolated
+                         * literal is judged by the runtime layers below.
+                         */
                         $anchored = strpos($include[0], '__DIR__') !== false || strpos($include[0], 'ABSPATH') !== false;
                         $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include[0]);
-                        if ((! $anchored && ! $dynamic) || $escapesUp) {
+                        if (! $anchored || $escapesUp) {
                             $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
                         }
                     }
-                    if (wp_connectors_anchored_include_escapes_plugin($path, $include[0], $literals[1], $pluginDir)) {
+                    if (wp_connectors_anchored_include_escapes_plugin($path, $include[0], $quoted_literals, $pluginDir)) {
                         $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
                     }
                     // A quoted literal must not select literal-only analysis
