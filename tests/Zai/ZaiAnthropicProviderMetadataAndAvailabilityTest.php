@@ -585,6 +585,55 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         }
     }
 
+    public function testOpaqueWiringFallsToTheLadderWithoutLaunderingThroughTheWrap()
+    {
+        /*
+         * glm34-6 (round-34 finding 6): effective_key() reads the RAW
+         * wired instance — the glm16-1 channel the probe's own reader
+         * uses. The wrapping getter laundered a foreign (non-Api-key)
+         * wiring into its type-refusal RuntimeException INSIDE the
+         * reader's try, indistinguishable from 'nothing wired'; the
+         * raw read makes the states structurally distinct (a foreign
+         * instance fails the instanceof, no exception flies) even
+         * though both fall to the ladder today. The source pin holds
+         * the spelling: the availability base's ONE
+         * getRequestAuthentication() call is the probe's flight funnel
+         * (resolve_probe_authentication()), never a wiring question.
+         */
+        putenv('ZAI_ANTHROPIC_API_KEY');
+
+        $dbKey = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $dbKey);
+
+        $opaque = new ZaiAnthropicProviderAvailability();
+        $opaque->setRequestAuthentication($this->opaqueAuthentication());
+
+        $this->assertSame(
+            array('key' => $dbKey, 'source' => 'database'),
+            $opaque->effective_key(),
+            'Opaque wiring falls to the ladder through the raw read, not a laundered wrap throw.'
+        );
+
+        $wired = new ZaiAnthropicProviderAvailability();
+        $wired->setRequestAuthentication(new ApiKeyRequestAuthentication($dbKey));
+
+        $this->assertSame(
+            array('key' => $dbKey, 'source' => 'database'),
+            $wired->effective_key(),
+            'A wired Api-key keeps its credential pair read raw (the wrap only ever re-wraps at flight time).'
+        );
+
+        delete_option(ZaiAnthropicProviderAvailability::KEY_OPTION);
+
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Availability/AbstractZaiProviderAvailability.php');
+
+        $this->assertSame(
+            1,
+            substr_count($source, '$this->getRequestAuthentication()'),
+            'The wrap funnel is consulted exactly once — the probe flight, never a wiring question.'
+        );
+    }
+
     public function testTheSharedCredentialGateHelperServesEveryConsumer()
     {
         /*

@@ -352,8 +352,24 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return array{key: string, source: string} Empty key with source 'none' when unavailable.
 	 */
 	public function effective_key(): array {
+		/*
+		 * glm34-6 (round-34 finding 6): the RAW hook, like the probe's
+		 * own reader (glm16-1) — this was the one availability reader
+		 * still routing through the wrapping getter, so on zai_anthropic
+		 * a foreign (non-Api-key) wiring surfaced as wrap()'s
+		 * type-refusal RuntimeException INSIDE this try and laundered
+		 * into 'nothing wired', reporting the ladder key as effective.
+		 * Output was identical only because both states fall to the
+		 * ladder; the raw read distinguishes them structurally (a
+		 * foreign instance fails the instanceof below, no exception),
+		 * and the catch's one sanctioned throw is back to the raw
+		 * accessor's own unwired RuntimeException (the hook's
+		 * docblock). The probe's FLIGHT keeps the wrap funnel — only
+		 * resolve_probe_authentication() re-wraps, after the raw shape
+		 * check.
+		 */
 		try {
-			$authentication = $this->getRequestAuthentication();
+			$authentication = $this->raw_request_authentication();
 		} catch ( Throwable $e ) {
 			$authentication = null;
 		}
