@@ -341,6 +341,44 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
 
         $this->assertSame(array('glm-5.2'), $this->idList($directory->listModelMetadata()), 'A foreign non-string entry is a cache miss: the probe runs.');
         $this->assertCount(2, $this->sdkHttpAttempts(), 'The foreign row triggered discovery too.');
+
+        /*
+         * glm27-1 (Codex R21 finding 1): the all-string rule still
+         * blessed rows whose every entry cannot map to metadata —
+         * id_maps_to_metadata() filtered them all out and the provider
+         * exposed an EMPTY catalog for the 12h TTL with no probe and
+         * no fallback. A string row must carry recognized chat-model
+         * IDs to be sound.
+         */
+        $string_shape_attempts = count($this->sdkHttpAttempts());
+
+        set_transient($cache_id, array(''));
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
+
+        $this->assertSame(array('glm-5.3'), $this->idList($directory->listModelMetadata()), 'An empty-string row is a cache miss: discovery runs.');
+        $this->assertCount(++$string_shape_attempts, $this->sdkHttpAttempts(), 'The empty-string row triggered discovery.');
+
+        set_transient($cache_id, array('unknown-model'));
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.2')));
+
+        $this->assertSame(array('glm-5.2'), $this->idList($directory->listModelMetadata()), 'An unrecognized-model row is a cache miss: discovery runs.');
+        $this->assertCount(++$string_shape_attempts, $this->sdkHttpAttempts(), 'The unrecognized-model row triggered discovery.');
+
+        set_transient($cache_id, array('glm-5.3', 'unknown-model'));
+
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.2')));
+
+        $this->assertSame(array('glm-5.2'), $this->idList($directory->listModelMetadata()), 'A mixed valid+invalid row is a cache miss: discovery runs.');
+        $this->assertCount(++$string_shape_attempts, $this->sdkHttpAttempts(), 'The mixed row triggered discovery.');
+
+        // Control: a row of recognized chat IDs stays a sound cache hit —
+        // no discovery attempt for it.
+        set_transient($cache_id, array('glm-5.2'));
+
+        $this->assertSame(array('glm-5.2'), $this->idList($directory->listModelMetadata()), 'A recognized-ID row serves from the cache.');
+        $this->assertCount($string_shape_attempts, $this->sdkHttpAttempts(), 'The recognized row skipped discovery.');
     }
 
     public function testTransientInvalidationBypassesTheSdkCacheLayerToo()

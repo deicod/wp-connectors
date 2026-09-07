@@ -249,13 +249,24 @@ final class ZaiDiscoveryCache {
 
 	/**
 	 * Whether a cached transient row is a sound ID list: NON-EMPTY and
-	 * every entry a string (glm23-7).
+	 * every entry a non-empty string the metadata map can carry (glm23-7,
+	 * narrowed by glm27-1).
 	 *
 	 * Both surfaces' discovery rejects an empty data list (glm13-2), so
 	 * a legitimate discovery never caches one — the empty array (or any
 	 * non-string entry) under the transient can only be an out-of-band
 	 * or corrupt write, and serving it would report an empty catalog
 	 * for the full DISCOVERY_TTL.
+	 *
+	 * glm27-1 (Codex R21 finding 1): the all-string rule still accepted
+	 * rows whose every entry cannot map to metadata — array(''),
+	 * array('unknown-model') — which id_maps_to_metadata() then
+	 * filtered out entirely, so the provider exposed the same empty
+	 * catalog for the 12h TTL with no probe and no fallback. Soundness
+	 * rides the ONE map rule now (id_maps_to_metadata(): non-empty
+	 * string AND recognized chat model); every in-repo writer caches
+	 * parse_decoded_chat_ids() output, which is already chat-filtered,
+	 * so no legitimate row is excluded.
 	 *
 	 * @since 0.2.0
 	 *
@@ -268,7 +279,7 @@ final class ZaiDiscoveryCache {
 		}
 
 		foreach ( $row as $id ) {
-			if ( ! \is_string( $id ) ) {
+			if ( ! self::id_maps_to_metadata( $id ) ) {
 				return false;
 			}
 		}
