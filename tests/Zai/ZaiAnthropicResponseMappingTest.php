@@ -472,6 +472,39 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $this->assertSame(0, preg_match('/\$expected_type/', $source), 'No separate mapping switch/variable may return.');
     }
 
+    public function testTheGatedDeltaMemberCarriesNoRecheckInsideApplyDelta()
+    {
+        /*
+         * glm32-1 (source pin): the text_delta/thinking_delta arms once
+         * re-checked isset()+is_string() on the very member
+         * dispatch_event()'s has_string_content_member() gate (the
+         * glm15-21 map) had already proved present-and-string — dead by
+         * construction, because that gated site is apply_delta()'s only
+         * caller. The arms append unconditionally now; this pin holds
+         * both halves of the invariant, so a second caller or a pasted
+         * re-check must break it consciously.
+         */
+        $source = (string) file_get_contents(
+            __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
+        );
+
+        $this->assertSame(
+            1,
+            preg_match_all('/\$this->apply_delta\(/', $source),
+            'apply_delta() has exactly one caller — the gated dispatch_event() site.'
+        );
+        $this->assertSame(
+            0,
+            preg_match('/isset\( \$delta->text \)/', $source),
+            'The gated text member may not be re-checked inside apply_delta().'
+        );
+        $this->assertSame(
+            0,
+            preg_match('/isset\( \$delta->thinking \)/', $source),
+            'The gated thinking member may not be re-checked inside apply_delta().'
+        );
+    }
+
     public function testAJsonBodyMislabeledAsEventStreamParsesViaTheFallback()
     {
         /*

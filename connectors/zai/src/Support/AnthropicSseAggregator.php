@@ -1879,6 +1879,14 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * now maps AND applies, so a new delta type is one case, never
 		 * two lockstep edits. The mismatch rejection stays first inside
 		 * each case (the apply never runs on a rejected delta).
+		 *
+		 * glm32-1: the text/thinking member needs no re-check here
+		 * either — dispatch_event()'s has_string_content_member() gate
+		 * (the glm15-21 map) proved the member present-and-string
+		 * before apply_delta() was entered, and that gated site is
+		 * apply_delta()'s only caller (source-pinned in
+		 * ZaiAnthropicResponseMappingTest). The arms append
+		 * unconditionally — the glm24-5 dead-conjunct class.
 		 */
 		switch ( $delta->type ) {
 			case 'text_delta':
@@ -1888,9 +1896,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					return;
 				}
 
-				if ( isset( $delta->text ) && \is_string( $delta->text ) ) {
-					$this->blocks[ $index ]['text'] .= $delta->text;
-				}
+				$this->blocks[ $index ]['text'] .= $delta->text;
 
 				return;
 
@@ -1901,9 +1907,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					return;
 				}
 
-				if ( isset( $delta->thinking ) && \is_string( $delta->thinking ) ) {
-					$this->blocks[ $index ]['thinking'] .= $delta->thinking;
-				}
+				$this->blocks[ $index ]['thinking'] .= $delta->thinking;
 
 				return;
 
