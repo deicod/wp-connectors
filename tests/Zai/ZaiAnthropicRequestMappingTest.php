@@ -637,6 +637,51 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
         $this->assertStringNotContainsString('"input_schema":[]', $raw, 'input_schema must never encode as [].');
     }
 
+    public function testStdClassSchemaNodesPassThroughWithDecodeTruthPreserved()
+    {
+        /*
+         * glm29-6 (round-29 finding 6, PLAUSIBLE — consciously
+         * accepted, ledger-recorded): normalize_empty_object_members()
+         * does not descend stdClass nodes, so a HAND-BUILT mixed tree
+         * (an array embedding a cast/decoded stdClass node that itself
+         * carries a hand-written [] at a schema position) ships that []
+         * verbatim. Accepted: both schema entry points type-gate the
+         * ROOT to array (the DTO's ?array), and the realistic embed —
+         * a json_decode'd subtree — needs no normalization at all:
+         * {} arrives as stdClass ALREADY (this pin's first assertion)
+         * and its [] members are genuinely-declared lists the JSON
+         * source stated, so converting them would misread the caller
+         * (GLM8 #6's charity exists for PHP's array conflation, which
+         * decode products do not have — the second assertion). No
+         * plugin, SDK, or DTO-gated production writer builds the
+         * vulnerable hand-cast form; the residual is pre-GLM8 #6
+         * diagnosis quality on an unconstructible input, never silent
+         * corruption of a valid schema.
+         */
+        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
+
+        $config = ModelConfig::fromArray(array(
+            'functionDeclarations' => array(
+                (new FunctionDeclaration('decoded_object', 'Decoded object member', array(
+                    'type' => 'object',
+                    'properties' => json_decode('{"a":{}}'),
+                )))->toArray(),
+                (new FunctionDeclaration('decoded_list', 'Decoded list member', array(
+                    'type' => 'object',
+                    'properties' => json_decode('{"a":[]}'),
+                )))->toArray(),
+            ),
+        ));
+
+        $this->model($config)->generateTextResult(array(
+            new Message(MessageRoleEnum::user(), array(new MessagePart('go'))),
+        ));
+
+        $raw = (string) $this->sdkHttpAttempts()[0]['body'];
+        $this->assertStringContainsString('"properties":{"a":{}}', $raw, 'A decoded {} member is already the object it must ship as — no normalization needed.');
+        $this->assertStringContainsString('"properties":{"a":[]}', $raw, 'A decoded [] member is a genuinely-declared list; the walk must not misread it as the empty-object schema.');
+    }
+
     public function testEmptyObjectMapMembersInsideASchemaNormalizeToObjects()
     {
         /*
