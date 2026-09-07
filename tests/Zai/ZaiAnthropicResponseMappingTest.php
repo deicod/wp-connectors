@@ -1428,13 +1428,17 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * glm33-1 added the seventh: the undeclared TYPELESS carrier
          * gate before dispatch_event() (a frame declaring nothing —
          * the helper's null mapping to the malformed-event channel).
+         *
+         * glm34-1 added the eighth: the undeclared UNDECODABLE carrier
+         * (twin parity with glm23-6) — also a frame declaring nothing,
+         * also through the helper's null mapping.
          */
         $source = (string) file_get_contents(
             __DIR__ . '/../../connectors/zai/src/Support/AnthropicSseAggregator.php'
         );
 
         $this->assertSame(
-            7,
+            8,
             preg_match_all('/->flag_corrupt_event\(/', $source),
             'Every corruption branch rides the one classification helper.'
         );
@@ -3752,6 +3756,93 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
 
         $this->assertFalse($trailing_stream->has_malformed_event(), 'A typeless object frame after the terminal keeps the trailing-noise tolerance.');
         $this->assertSame('Done.', $trailing_stream->aggregated()['content'][0]['text']);
+    }
+
+    public function testAnUndecodableDataOnlyFrameInvalidatesTheStream()
+    {
+        /*
+         * glm34-1 (round-34 finding 1): the UNDECODABLE data-only frame —
+         * no event: field, no pending glm23-1 declaration to reunite
+         * with, and a payload that fails JSON decoding — was the one
+         * corruption corner every sibling rule missed (Codex R4 #3 needs
+         * a declaration, glm33-1 needs a decodable payload, glm16-15 a
+         * decodable non-object): the repro cut one content_block_delta
+         * data line mid-JSON and the stream aggregated a successful
+         * completion with the chunk silently missing and all three
+         * flags false. The zai twin flags every undecodable data frame
+         * in both phases (glm23-6); this is the Anthropic half of that
+         * parity, with json_last_error() keeping the decodable-scalar
+         * skip (glm33-1) intact.
+         */
+        $body = ''
+            . 'event: message_start' . "\n"
+            . 'data: {"type":"message_start","message":{"id":"msg_g34a","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}' . "\n\n"
+            . 'event: content_block_start' . "\n"
+            . 'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello "}}' . "\n\n"
+            // This frame's event: line and its payload tail were both
+            // cut by the intermediary: a data-only line whose JSON is
+            // unterminated.
+            . 'data: {"index":0,"delta":{"type":"text_delta","text":"Wo' . "\n\n"
+            . 'event: content_block_delta' . "\n"
+            . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"rld"}}' . "\n\n"
+            . 'event: content_block_stop' . "\n"
+            . 'data: {"type":"content_block_stop","index":0}' . "\n\n"
+            . 'event: message_delta' . "\n"
+            . 'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}' . "\n\n"
+            . 'event: message_stop' . "\n"
+            . 'data: {"type":"message_stop"}' . "\n\n";
+
+        $aggregator = new AnthropicSseAggregator();
+        $aggregator->feed($body);
+        $aggregator->finish();
+
+        $this->assertTrue($aggregator->has_malformed_event(), 'An undecodable data-only frame must flag the stream corrupt, not drop silently.');
+        $this->assertFalse($aggregator->has_error(), 'An undeclared undecodable frame is corruption, not an error event.');
+        $this->assertFalse($aggregator->has_malformed_tool_input(), 'An undeclared undecodable frame is not a tool-input problem.');
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $body);
+
+        try {
+            $result = $this->model()->generateTextResult($this->prompt());
+            $this->fail('A stream with an undecodable data-only frame must fail the generation, got: ' . wp_json_encode($result->toText()));
+        } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+            $this->assertStringContainsString('malformed event frame', $e->getMessage());
+        }
+
+        /*
+         * The control is the sibling rule itself: the identical
+         * undecodable payload WITH its event: field already flags
+         * (Codex R4 #3) — the fix closes the undeclared half only.
+         */
+        $declared = str_replace(
+            'data: {"index":0,"delta":{"type":"text_delta","text":"Wo' . "\n",
+            'event: content_block_delta' . "\n" . 'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_de' . "\n",
+            $body
+        );
+
+        $with_event = new AnthropicSseAggregator();
+        $with_event->feed($declared);
+        $with_event->finish();
+
+        $this->assertTrue($with_event->has_malformed_event(), 'The with-event variant keeps its Codex R4 #3 flag.');
+
+        /*
+         * Both phases (twin parity, glm23-6): an undecodable frame after
+         * the terminal flags like its declared sibling
+         * (testATrailingUndecodableDeclaredContentEventStillInvalidates)
+         * — the trailing-[DONE] skip owns the one sanctioned post-terminal
+         * data-only spelling, and the DECODABLE tolerances
+         * (testUndeclaredTypelessFramesKeepTheirTolerances) are untouched.
+         */
+        $trailing = str_replace('data: {"type":"message_stop"}' . "\n\n", 'data: {"type":"message_stop"}' . "\n\n" . 'data: {"telemetry' . "\n\n", $body);
+
+        $trailing_garbage = new AnthropicSseAggregator();
+        $trailing_garbage->feed($trailing);
+        $trailing_garbage->finish();
+
+        $this->assertTrue($trailing_garbage->has_malformed_event(), 'An undecodable data-only frame after the terminal flags in both phases, like the zai twin.');
     }
 
     public function testATrailingUndecodableDeclaredContentEventStillInvalidates()

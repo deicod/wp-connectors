@@ -810,6 +810,33 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 */
 			if ( \is_string( $event_name ) && \in_array( $event_name, self::DECLARED_EVENTS, true ) ) {
 				$this->flag_corrupt_event( $event_name );
+			} elseif ( null === $event_name && \JSON_ERROR_NONE !== \json_last_error() ) {
+				/*
+				 * glm34-1 (round-34 finding 1): the UNDECODABLE data-only
+				 * frame — no event: field, no pending glm23-1 declaration
+				 * to reunite with (the settlement above already ran), and
+				 * no payload to derive a type from — was the one
+				 * corruption corner every sibling rule missed: Codex R4
+				 * #3 needs a DECLARATION to flag through, glm33-1 needs a
+				 * DECODABLE payload to find typeless, and the glm16-15
+				 * non-object check below equally presupposes the decode
+				 * succeeded. The round-34 repro: a content_block_delta
+				 * data line cut mid-JSON by a proxy aggregated a
+				 * successful completion with the chunk silently missing
+				 * and all three flags false. json_last_error()
+				 * distinguishes the undecodable shape from decodable
+				 * scalars exactly as the zai twin does (glm23-6): a
+				 * `data: null` decodes fine and keeps its glm33-1
+				 * non-event skip, an empty `data:` value is a cut payload
+				 * under the same rule (the twin's own empty-data note),
+				 * and the flag is termination-independent — the twin
+				 * flags undecodable frames in BOTH phases, and the
+				 * declared-name sibling above already does (GLM5 #18's
+				 * one-pipeline rule; the trailing-[DONE] skip earlier
+				 * owns the one sanctioned post-terminal data-only
+				 * spelling).
+				 */
+				$this->flag_corrupt_event( null );
 			}
 
 			return;
