@@ -77,6 +77,17 @@ final class DebugLogger {
 	 * The URL query string is stripped before storage; nothing else about the
 	 * request or response is accepted by this API.
 	 *
+	 * glm31-5 (conscious accept): the read-append-write below is not
+	 * atomic — two concurrent workers with debug logging enabled can
+	 * interleave and one worker's row is lost (last writer wins with a
+	 * COMPLETE array; the loss mode is one dropped diagnostic row, never
+	 * a corrupted one, in an off-by-default 50-row ring buffer).
+	 * WordPress's option store carries no row locking and core itself
+	 * accepts this read-modify-write class for option-backed state; the
+	 * shape is pre-existing (this connector adds producers, not the
+	 * race) and no production loss report exists. Do not add locking
+	 * machinery without a real loss report.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param string $method       HTTP method.

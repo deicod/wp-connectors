@@ -6,6 +6,92 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM31 round, /code-review max)
+
+The 31st review round (13 finder angles, 17 verifiers; 11 candidates
+refuted directly by the refutation ledger; the review caller dropped a
+12th — the ledger's own deferred `$ships_forwarded_values` item, no new
+evidence) left 10 verified findings: 9 fixed one commit per item, 1
+consciously accepted (the DebugLogger concurrency shape, pre-existing
+and out of charter) and recorded in the ledger (round 31).
+
+- A corrupt-only streamed usage declaration flags the stream (glm31-1):
+  a present non-array `usage` member on a streamed frame skipped the
+  merge silently, so a stream whose ONLY usage declaration was corrupt
+  ("usage":"unavailable") completed with zeroed accounting while the
+  byte-equivalent non-streaming body rejects typed (the validator's
+  object rule — lenient mode rescues null, never a scalar): the glm18-4
+  cross-channel divergence class, on the one member glm28-2's hardening
+  left to the GLM6 #3/GLM7 #8 pins (whose letter covers absent/null
+  members and partial objects, never a present non-object member). The
+  member is remembered in both phases and flags at end of stream ONLY
+  when no valid usage member merged (the post-[DONE] gap-fill included)
+  — GLM6 #3's pin survives verbatim (a late corrupt member after a
+  valid merge stays superseding noise), pinned both ways now.
+- Fragments over a non-empty start input fail as a parse error
+  (glm31-2): the tool_use consolidation replaced the
+  content_block_start-carried input wholesale with the decoded
+  input_json_delta fragments — a start input {"a":1} plus fragments
+  decoding to {"b":2} shipped {"b":2} on a success, silently discarding
+  the start-carried arguments. The Messages streaming wire never
+  carries both (vendor-documented: tool_use starts ship an EMPTY
+  placeholder input), so the shape is nonconforming and ambiguous: it
+  flags the tool-input channel now. The adjacent pins survive (an
+  empty-string fragment keeps the start input standing; a start-block
+  input with no fragments still becomes the call args).
+- The probe CLI rejects unknown options and answers --help (glm31-3):
+  getopt() drops unrecognized options and the argv pre-scan knew only
+  the three exact tokens, so a flag typo, a single-dash spelling, a
+  stray positional, or a help request all fell to the defaults — with a
+  key present, the probe ran the full live, BILLABLE round trip on the
+  default surface while reporting PASS (live-reproduced by the review).
+  A sequential raw-argv scan rejects every unknown shape before the key
+  lookup; --help/-h prints a usage composed from the same owners the
+  validation rides (the surface map, the settings layer's
+  PLANS/REGIONS) and exits 0.
+- An unreadable subdirectory converts the walk abort to a violation
+  (glm31-4): the self-containment tree walk aborted with an uncaught
+  UnexpectedValueException — a fatal exiting 255 under `composer
+  check` and `bin/inspect-artifact.php` — while the sibling
+  unused-import scan has converted the same abort to a counted FAIL
+  since glm17-17. The guard lives at the ONE shared walk (plugin-tools)
+  so every consumer's failure channel fires automatically; partial
+  violations kept. Pinned with the chmod-000 shape on non-root hosts.
+- The availability classes stop mirroring KEY_ENV_NAME (glm31-6): the
+  mirrors were production-dead (env/constant resolution is the settings
+  layer's own ladder) — deleted with glm19-10-style no-redeclaration
+  pins; the settings class is the one owner.
+- The plugin-row Settings link follows the settings-page owner
+  (glm31-7): action_links() hand-named PlanRegionSettings::PAGE_SLUG
+  while boot() and DebugSettings derive the owner from the ZaiSurfaces
+  registry — a page move would have stranded the link on a dead admin
+  URL with no failing test. The link derives the owner now and the
+  behavioral pin reads it the same way.
+- The artifact must-ship pin sweeps the whole source tree (glm31-8):
+  the hand-enumerated eight-class list could pass a third surface's
+  silently-missing classes; the pin now asserts EVERY connectors/zai/
+  src file ships.
+- JsonShape::is_list() rides the native array_is_list() (glm31-9): the
+  SDK already polyfills it for the 7.4 floor and its own hot paths
+  (PromptBuilder, the OpenAI-compatible parse the zai surface extends)
+  call it on every request — every functional installation provides it.
+  The hand-rolled range-over-count idiom is deleted and forbidden
+  everywhere (the GLM8 #13 pin superseded at its site); a canary pins
+  the harness context loading the function.
+- The is_object_shape() docblock loses its paste artifact (glm31-10):
+  duplicated summary line with a stray inline '/*' opener.
+
+### Accepted (zai / M2 — GLM31 round)
+
+- DebugLogger's read-append-write on the debug-log option is not atomic
+  (glm31-5): two concurrent workers can lose one diagnostic row (last
+  writer wins with a COMPLETE array — a dropped row, never a corrupted
+  one, in an off-by-default 50-row ring buffer). WordPress's option
+  store carries no row locking and core itself accepts this class for
+  option-backed state; the shape is pre-existing (this connector adds
+  producers, not the race) with no production loss report. No locking
+  machinery; the boundary is documented at log() and in the ledger.
+
 ### Fixed (zai / M2 — GLM30 round, /code-review max)
 
 The 30th review round (ledger-filtered: 10 of its 15 raw findings were
