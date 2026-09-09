@@ -1781,19 +1781,23 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * message_start was received (Codex R8 #3), which must never
 			 * produce a payload. The check runs AFTER aggregated() because
 			 * aggregation itself raises the flag.
+			 *
+			 * glm35-1: this channel is the stream parse's ONLY unusable-
+			 * stream verdict. Every aggregated() null return raises the
+			 * flag first — this wire's required message_start/
+			 * message_delta/message_stop lifecycle makes every unusable
+			 * stream a flagged truncation (Codex R8 #3, GLM7 #5, Codex
+			 * R16 #1) — so a former separate no-usable-event branch below
+			 * this check was unreachable dead code and is deleted
+			 * (source-pinned absent). The zai twin keeps its null branch
+			 * LIVE: an OpenAI event stream with no choices is unusable
+			 * without being malformed, a shape this wire's required
+			 * lifecycle cannot produce.
 			 */
 			throw ResponseException::fromInvalidData(
 				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				'stream',
 				'The message stream contained a malformed event frame.'
-			);
-		}
-
-		if ( null === $aggregated ) {
-			throw ResponseException::fromInvalidData(
-				self::PROVIDER_LABEL, // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
-				'stream',
-				'No usable message event was received.'
 			);
 		}
 

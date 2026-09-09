@@ -428,7 +428,13 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return array<string, mixed>|null Null when no usable completion was consumed.
+	 * @return array<string, mixed>|null Null when no usable completion was
+	 *                                    consumed — ALWAYS together with the
+	 *                                    malformed-event flag (glm35-1: every
+	 *                                    null return is a flagged lifecycle
+	 *                                    truncation, so the model rides the
+	 *                                    flag channel alone and carries no
+	 *                                    separate no-usable-event branch).
 	 */
 	public function aggregated(): ?array {
 		/*

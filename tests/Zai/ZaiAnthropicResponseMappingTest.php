@@ -5794,6 +5794,26 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         }
     }
 
+    public function testTheStreamParseCarriesNoSeparateNoUsableEventChannel()
+    {
+        /*
+         * glm35-1: every aggregated() null return raises the malformed-
+         * event flag first (each lifecycle loss is pinned null-plus-flag
+         * above), and the model checks the flag before any null — so the
+         * former 'No usable message event was received.' branch was
+         * unreachable dead code and is deleted. The pin keeps it deleted:
+         * a branch copy-pasted back from the zai twin (whose null channel
+         * IS live — an OpenAI choices-less stream is unusable without
+         * being malformed, a shape this wire's required lifecycle cannot
+         * produce) would be dead again here, silently misleading
+         * maintainers about a diagnostic channel that can never fire.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Models/ZaiAnthropicTextGenerationModel.php');
+
+        $this->assertStringNotContainsString('No usable message event was received.', $source, 'The dead diagnostic branch stays deleted (glm35-1).');
+        $this->assertStringNotContainsString('null === $aggregated', $source, 'The consolidated payload is never null-checked past the malformed channel (glm35-1).');
+    }
+
     /**
      * @dataProvider provideShapelessMessageDeltaPayloads
      */
