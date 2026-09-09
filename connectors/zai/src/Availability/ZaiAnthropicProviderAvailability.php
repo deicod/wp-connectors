@@ -4,7 +4,7 @@
  *
  * All behavior lives in AbstractZaiProviderAvailability; this child binds it
  * to the zai_anthropic provider's OWN option names (state, region-pending
- * flag, core-owned key option, env/constant name) and the Anthropic-surface
+ * flag, core-owned key option, refusal label) and the Anthropic-surface
  * endpoint resolver. Availability is validated INDEPENDENTLY: the state
  * option and the endpoint-scoped binding are distinct from the zai
  * provider's, so a validated zai key can never establish this provider's
@@ -35,10 +35,14 @@ use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 final class ZaiAnthropicProviderAvailability extends AbstractZaiProviderAvailability {
 	use SpeaksAnthropicMessagesProtocol;
 
-	// The four identifier constants below mirror the SDK-free settings
-	// layer (ZaiAnthropicPlanRegionSettings), which owns them so settings
-	// invalidation never autoloads this SDK-dependent class (Codex R2 #3);
-	// a consistency test pins the mirror.
+	// The four identifier constants below are constant-expression
+	// aliases of the SDK-free settings layer
+	// (ZaiAnthropicPlanRegionSettings), which owns them so settings
+	// invalidation never autoloads this SDK-dependent class (Codex
+	// R2 #3). An alias cannot drift — a settings-side rename breaks this
+	// class at compile time (glm35-6: the former wording described the
+	// deleted mirror-plus-consistency-test mechanism the aliasing
+	// replaced).
 
 	/**
 	 * Plugin-owned option persisting the last validated state.

@@ -4,7 +4,7 @@
  *
  * All behavior lives in AbstractZaiProviderAvailability; this child binds it
  * to the zai provider's option names (state, region-pending flag, core-owned
- * key option, env/constant name) and the OpenAI-surface endpoint resolver.
+ * key option, refusal label) and the OpenAI-surface endpoint resolver.
  * See the base class for the validation, binding, and region-switch
  * distrust semantics.
  *
@@ -27,10 +27,13 @@ use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
  */
 final class ZaiProviderAvailability extends AbstractZaiProviderAvailability {
 
-	// The four identifier constants below mirror the SDK-free settings
-	// layer (PlanRegionSettings), which owns them so settings invalidation
-	// never autoloads this SDK-dependent class (Codex R2 #3); a
-	// consistency test pins the mirror.
+	// The four identifier constants below are constant-expression
+	// aliases of the SDK-free settings layer (PlanRegionSettings), which
+	// owns them so settings invalidation never autoloads this
+	// SDK-dependent class (Codex R2 #3). An alias cannot drift — a
+	// settings-side rename breaks this class at compile time (glm35-6:
+	// the former wording described the deleted mirror-plus-consistency-
+	// test mechanism the aliasing replaced).
 
 	/**
 	 * Plugin-owned option persisting the last validated state.
