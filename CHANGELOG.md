@@ -6,6 +6,121 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM35 round, /code-review max)
+
+The 35th review round (zero novel correctness defects; one candidate
+struck as a glm26-2 re-flag — the ledgered ascending-stops-over-
+interleaved-starts tolerance): 10 fixes, then a two-lens verifier
+pass whose one confirmed finding (a message-only divergence in the
+glm35-4 guard) is fixed as glm35-11. Ten commits plus this record;
+see round 35 in docs/review/REFUTATION_LEDGER.md:
+
+- The zai_anthropic stream parse rides the malformed-event channel
+  alone (glm35-1): every aggregated() null return raises the flag
+  first (this wire's required message_start/message_delta/message_stop
+  lifecycle makes every unusable stream a flagged truncation), and the
+  model checks the flag before any null — so the separate 'No usable
+  message event was received.' branch was unreachable dead code.
+  Deleted and source-pinned absent; the zai twin's null channel stays
+  live (an OpenAI choices-less stream is unusable without being
+  malformed, a shape this wire cannot produce).
+- Every canonical SSE segment a builder can emit rides the builder
+  (glm35-2, completing glm34-10's conversion): 28 hand-spelled
+  message_delta+message_stop tails, 4 content_block_stop frames, and
+  3 message_start frames — each byte-verified against the builder's
+  runtime output before the swap, through a layout-independent
+  matcher. Malformed fixtures whose damage is the tail, canonical
+  tails the builder cannot emit byte-identically, and the array-idiom
+  compositions stay hand-spelled.
+- The protocol-trait pin derives its class set by sweep (glm35-3):
+  the pin hand-listed the three SDK-interfaced files, so the fourth
+  class it exists for could never be seen — and the omission fails
+  open (fallback_authentication()'s base default is plain ApiKey
+  auth, which z.ai accepts). The set is derived now: every class
+  under connectors/zai/src implementing the SDK's own
+  WithRequestAuthenticationInterface under this surface's naming
+  convention must compose the trait (checked through the reflection
+  trait chain), supply the raw hook, and carry no bespoke wrap
+  override; a >= 3 lower bound proves the sweep sees the real tree.
+- The body parse's member rule rides the content-block table
+  (glm35-4, corrected by glm35-11): the text/thinking arms' hand-
+  rolled isset+is_string probes are one hoisted guard reading
+  AnthropicContentBlocks::STRING_CONTENT_MEMBERS, with the message
+  derived from the closed constant keys; the lockstep pin asserts the
+  model rides the table and forbids the hand-rolled spellings, plus a
+  behavioral member battery. The verifier pass found the unscoped
+  lookup also caught the table's two DELTA names (a body block typed
+  as text_delta answered the member message instead of the
+  unsupported-type rejection) — scoped to MAPPED_TYPES (the block
+  half) as glm35-11, with delta-named-block shapes added to the
+  battery (mutation-tested).
+- The map memo stores no digest nothing reads (glm35-5): glm26-6
+  replaced the digest compare with a strict stored-list compare but
+  left the md5 computed and stored on every rebuild — zero readers.
+  The key, the md5, and the shape clause are gone; the docblocks
+  state the strict-compare contract in present tense.
+- The availability children describe their aliasing (glm35-6): both
+  children opened with the pre-alias "mirror plus consistency test"
+  contract directly above constant-expression aliases that cannot
+  drift — an instruction manual for reintroducing the two-list drift
+  the aliasing made structurally impossible. The headers' deleted
+  KEY_ENV_NAME listing is corrected to the four constants that exist.
+- DebugSettings registers through the declaring owner (glm35-7):
+  register_settings() reached the plugin-wide option group through
+  the concrete first-surface child although the group is declared on
+  AbstractPlanRegionSettings — the reach-through class glm29-14
+  eliminated from the same file's neighbor. Same string, the
+  abstract owner named.
+- The stop-lifecycle walks ride the stopped-prefix count (glm35-8):
+  the content_block_stop handler's O(B^2) per-stop probe walk and the
+  message_delta closed-lifecycle gate's per-block loop are each
+  provably one compare (while block i is open no stop above i can
+  have been recorded, so the stopped blocks are exactly a prefix);
+  the count is incremented at the one stop-recording site.
+  Equivalence held under the round's 41,066-sequence exhaustive
+  ordering differential and 4,000-run hostile fuzz, plus the verifier
+  pass's own 8,000-stream old-vs-new differential (zero divergences,
+  full private state compared).
+- The directory suites' surface-constant twins ride one base
+  (glm35-9): the plan/region retargeting, unauthorized-fallback, and
+  general-fallback tests were byte-identical twins in both directory
+  suites except for each surface's constants — the glm22-6 drift
+  class. AbstractZaiModelDirectoryTestCase owns the four tests; each
+  concrete suite supplies its constants through hooks, with the
+  endpoint URLs a literal per-surface map (the pin, never derived).
+  Deliberately not consolidated, ledgered as debt: the twins whose
+  bodies embed per-surface decision history (verdict recording, memo,
+  parse shape) — merging those comments would orphan the ledger's
+  citations and their assertion bodies genuinely differ.
+- anthropicModelsBody() derives last_id from the input like first_id
+  (glm35-10): the $previous accumulator threaded the foreach solely
+  to mirror the input list by hand, desyncable from the emitted
+  'data' entries under any future in-loop filtering; output
+  byte-identical for the empty, single, and multi-entry shapes.
+
+Verifier pass (two independent lenses, correctness + security, over
+the full 10-commit diff): every equivalence claim held except one —
+the glm35-4 unscoped-lookup divergence above (LOW, message-only, same
+class/channel/verdict), fixed as glm35-11 and pinned. Evidence: an
+8,000-stream randomized/pathological old-vs-new differential on the
+aggregator (glm35-8 — full private state, aggregated(), and all three
+flags, zero divergences); byte-comparison of every glm35-2 builder
+swap; a live run of the glm35-3 sweep (the derived set is exactly the
+old three, no wrong entries); the glm35-4 exception-message escape
+claim proven end-to-end (is_string gate + closed non-numeric-key
+table + table-value member; no unescaped render path anywhere the
+message travels); OPTION_GROUP proven single-declared and equal
+(glm35-7); and glm35-9's inherited tests assertion-for-assertion
+faithful to both originals (each runs exactly twice, once per
+concrete suite). Security lens clean on all shipped code; three LOW
+residuals ledgered (test-code only, none a regression): the
+auth-headers pin's override regexes name two historical spellings,
+the sweep's class gate is the surface's naming convention, and
+class_exists() autoloads the scanned classes (side-effect-free today,
+fail-loud if not). Full suite green in default and random order
+(1261 tests, 29992 assertions, 2 skipped — the live-key gates; +1
+test, +19 assertions over glm34).
+
 ### Fixed (zai / M2 — GLM34 round, /code-review max)
 
 The 34th review round (15 findings emitted after the ledger filter
