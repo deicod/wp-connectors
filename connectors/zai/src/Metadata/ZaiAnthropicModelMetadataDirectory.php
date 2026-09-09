@@ -187,16 +187,18 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 * the zai surface's directory runs the identical flow through it, so
 	 * a caching-rule change can never land on one surface only.
 	 *
-	 * GLM7 #13 memoized the map rebuild per transient CONTENT (the cache
-	 * id plus a digest of the resolved IDs — the map is a pure function
-	 * of the ID list, but every list/has/get call re-ran the full
-	 * rebuild plus sort of constant data, twice or more per AI request).
-	 * GLM9 #10 moved that memo into the shared cache
-	 * (ZaiDiscoveryCache::memoized_map()), where the zai surface's
-	 * GLM8 #9 copy had lived beside it as a verbatim twin. The transient
-	 * is still read on every call, so a settings change, a
-	 * cross-process cache write, or a TTL expiry swaps the content
-	 * digest and the next call rebuilds.
+	 * GLM7 #13 memoized the map rebuild per transient CONTENT
+	 * (originally keyed by the cache id plus a digest of the resolved
+	 * IDs — the map is a pure function of the ID list, but every
+	 * list/has/get call re-ran the full rebuild plus sort of constant
+	 * data, twice or more per AI request). GLM9 #10 moved that memo
+	 * into the shared cache (ZaiDiscoveryCache::memoized_map()), where
+	 * the zai surface's GLM8 #9 copy had lived beside it as a verbatim
+	 * twin; glm26-6 replaced the digest with a strict stored-list
+	 * compare (the digest glm26-6 left stored is gone since glm35-5).
+	 * The transient is still read on every call, so a settings change,
+	 * a cross-process cache write, or a TTL expiry swaps the stored id
+	 * list and the next call rebuilds.
 	 *
 	 * @since 0.2.0
 	 *

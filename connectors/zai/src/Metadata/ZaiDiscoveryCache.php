@@ -84,24 +84,24 @@ final class ZaiDiscoveryCache {
 	/**
 	 * The per-cache-id memoized metadata maps (GLM9 #10).
 	 *
-	 * One entry per endpoint cache id — the LAST content seen there,
-	 * keyed by a digest of its resolved IDs — so the map (metadata
-	 * construction plus the newest-first sort, a pure function of the
-	 * ID list) is rebuilt only when the transient CONTENT changes. The
-	 * bound is the number of distinct cache ids (two surfaces × plans ×
-	 * regions); the per-instance single-entry memo this replaces had
-	 * the same per-endpoint semantics but thrashed whenever both
-	 * directories were consulted alternately.
+	 * One entry per endpoint cache id — the LAST content seen there —
+	 * so the map (metadata construction plus the newest-first sort, a
+	 * pure function of the ID list) is rebuilt only when the transient
+	 * CONTENT changes. The bound is the number of distinct cache ids
+	 * (two surfaces × plans × regions); the per-instance single-entry
+	 * memo this replaces had the same per-endpoint semantics but
+	 * thrashed whenever both directories were consulted alternately.
 	 *
-	 * glm26-6: the entry also keeps the FILTERED id list itself, so a
+	 * glm26-6: the entry keeps the FILTERED id list itself, and a
 	 * consult over unchanged content proves it by a strict list compare
-	 * instead of re-deriving the digest — the compare sees the fresh
-	 * content every consult, so the memo stays content-keyed under any
-	 * transient mutation.
+	 * — the compare sees the fresh content every consult, so the memo
+	 * stays content-keyed under any transient mutation. glm35-5: the
+	 * md5 digest glm26-6 left beside the list (computed on every
+	 * rebuild, read by nothing since the compare replaced it) is gone.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @var array<string, array{ids: list<string>, digest: string, map: array<string, ModelMetadata>}>
+	 * @var array<string, array{ids: list<string>, map: array<string, ModelMetadata>}>
 	 */
 	private static $memoized_maps = array();
 
@@ -126,8 +126,8 @@ final class ZaiDiscoveryCache {
 	 * consult BY DESIGN (the glm15-6 memoization boundary: the harness
 	 * resets options and transients without firing hooks, so a
 	 * cache-id-keyed read skip is the order-dependence class glm15-1
-	 * purged); what a consult stops re-paying is the map rebuild AND its
-	 * digest derivation while the content is unchanged.
+	 * purged); what a consult stops re-paying is the map rebuild while
+	 * the content is unchanged.
 	 *
 	 * @since 0.2.0
 	 *
@@ -323,16 +323,18 @@ final class ZaiDiscoveryCache {
 	 */
 	public static function memoized_map( string $cache_id, array $ids, ?array $prebuilt = null ): array {
 		/*
-		 * glm18-9: the digest rides the same string-only view of the list
-		 * map_from_ids() keeps — an md5() over the RAW list raised an
-		 * Array-to-string warning (an ErrorException out of this
-		 * documented never-throw path on hosts whose error handler
+		 * glm18-9: the string-only view this filter keeps is the view the
+		 * compare below judges — the digest-era md5() over the RAW list
+		 * raised an Array-to-string warning (an ErrorException out of
+		 * this documented never-throw path on hosts whose error handler
 		 * throws) on every directory lookup for a transient row carrying
 		 * a non-string entry (a foreign or corrupt write; no in-repo
 		 * writer produces one) — for the transient's whole 12h TTL.
 		 * Dropped entries cannot change the built map (map_from_ids()
-		 * drops them from it too), so a digest over the string-only list
-		 * is still a faithful memo key.
+		 * drops them from it too), so the string-only list is a faithful
+		 * content identity. glm35-5: the digest itself is gone — since
+		 * glm26-6 the strict list compare alone decides, and nothing
+		 * read the digest.
 		 */
 		$string_ids = array();
 		foreach ( $ids as $id ) {
@@ -343,19 +345,17 @@ final class ZaiDiscoveryCache {
 
 		/*
 		 * glm26-6: unchanged content is proven by the STRICT list compare
-		 * against the entry's stored list — the digest (still the entry's
-		 * identity, unchanged in shape) is derived only when the compare
-		 * fails. The compare reads the freshly filtered list every call,
-		 * so the memo stays exactly as content-keyed as before under any
-		 * transient mutation, cross-process write, or TTL expiry.
+		 * against the entry's stored list. The compare reads the freshly
+		 * filtered list every call, so the memo stays exactly as
+		 * content-keyed as the digest era under any transient mutation,
+		 * cross-process write, or TTL expiry.
 		 */
 		$memo = self::$memoized_maps[ $cache_id ] ?? null;
 
 		if ( null === $memo || $memo['ids'] !== $string_ids ) {
 			$memo = array(
-				'ids'    => $string_ids,
-				'digest' => md5( implode( "\n", $string_ids ) ),
-				'map'    => null !== $prebuilt ? $prebuilt : self::map_from_ids( $ids ),
+				'ids' => $string_ids,
+				'map' => null !== $prebuilt ? $prebuilt : self::map_from_ids( $ids ),
 			);
 
 			self::$memoized_maps[ $cache_id ] = $memo;

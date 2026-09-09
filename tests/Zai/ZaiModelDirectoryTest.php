@@ -639,8 +639,9 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * ZaiDiscoveryCache::memoized_map() owns the state and the key
          * formula now: the same resolved IDs through either surface's
          * cache id produce the identical map, content changes rebuild
-         * through the digest rule, and distinct cache ids memoize
-         * independently.
+         * through the strict list compare (glm26-6; the digest it left
+         * stored is gone since glm35-5), and distinct cache ids
+         * memoize independently.
          */
         $ids = array('glm-5.3', 'glm-5.2');
 
@@ -651,7 +652,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         // map, independently memoized.
         $this->assertSame(array_keys($zai_map), array_keys(ZaiDiscoveryCache::memoized_map('test_cache_anthropic', $ids)));
 
-        // A content change rebuilds through the digest rule...
+        // A content change rebuilds through the strict list compare...
         $this->assertSame(array('glm-5.2'), array_keys(ZaiDiscoveryCache::memoized_map('test_cache_zai', array('glm-5.2'))));
         // ...and the original content still memoizes per cache id.
         $this->assertSame(array('glm-5.3', 'glm-5.2'), array_keys(ZaiDiscoveryCache::memoized_map('test_cache_zai', $ids)));
@@ -666,8 +667,10 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
          * Array-to-string warning on every directory lookup for the
          * transient's 12h TTL — and an ErrorException out of this
          * documented never-throw path on hosts whose error handler
-         * throws. The digest now rides the same string-only view
-         * map_from_ids() keeps; the corrupt entry cannot change the
+         * throws. The identity rides the same string-only view
+         * map_from_ids() keeps — first the digest (gone since glm35-5:
+         * the strict list compare decided alone since glm26-6), now the
+         * stored list itself; the corrupt entry cannot change the
          * built map (it is dropped from it too), so the memo stays
          * faithful. failOnWarning makes the unguarded call fail here.
          */

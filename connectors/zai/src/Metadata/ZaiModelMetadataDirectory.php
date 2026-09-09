@@ -190,15 +190,17 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * only. This directory owns just its surface's discovery attempt
 	 * (discover_model_ids_via_sdk()).
 	 *
-	 * GLM8 #9 memoized the map rebuild per transient CONTENT (the cache
-	 * id plus a digest of the resolved IDs — with hasCache() hard-wired
-	 * false, every list/has/get lookup re-ran the full map_from_ids()
-	 * rebuild plus sort of constant data, twice or more per AI request).
-	 * GLM9 #10 moved that memo into the shared cache
-	 * (ZaiDiscoveryCache::memoized_map()), where the twin's GLM7 #13
-	 * copy had lived beside it as a verbatim twin. The transient is
+	 * GLM8 #9 memoized the map rebuild per transient CONTENT (originally
+	 * keyed by the cache id plus a digest of the resolved IDs — with
+	 * hasCache() hard-wired false, every list/has/get lookup re-ran the
+	 * full map_from_ids() rebuild plus sort of constant data, twice or
+	 * more per AI request). GLM9 #10 moved that memo into the shared
+	 * cache (ZaiDiscoveryCache::memoized_map()), where the twin's
+	 * GLM7 #13 copy had lived beside it as a verbatim twin; glm26-6
+	 * replaced the digest with a strict stored-list compare (the digest
+	 * glm26-6 left stored is gone since glm35-5). The transient is
 	 * still read on every call, so a settings change, a cross-process
-	 * cache write, or a TTL expiry swaps the content digest and the
+	 * cache write, or a TTL expiry swaps the stored id list and the
 	 * next call rebuilds.
 	 *
 	 * @since 0.1.0
