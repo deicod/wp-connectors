@@ -3644,11 +3644,31 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
             $aggregator_source,
             'The string-member map is the shared table.'
         );
+        $this->assertStringContainsString(
+            'AnthropicContentBlocks::STRING_CONTENT_MEMBERS',
+            $model_source,
+            'The body parse rides the shared member table too (glm35-4).'
+        );
         $this->assertStringNotContainsString(
             'const STRING_CONTENT_MEMBERS',
             $aggregator_source,
             'The aggregator keeps no private copy of the member map.'
         );
+
+        /*
+         * glm35-4: no hand-rolled member probe anywhere — the arms ride
+         * the table's $member variable, so a per-member isset spelling
+         * is the reverted shape this forbids (the tool_use identity
+         * loop's $part_data[ $member ] spelling is the table-adjacent
+         * form, never a literal member name).
+         */
+        foreach (array_unique(array_values(AnthropicContentBlocks::STRING_CONTENT_MEMBERS)) as $table_member) {
+            $this->assertStringNotContainsString(
+                "isset( \$part_data['{$table_member}'] )",
+                $model_source,
+                "The {$table_member} member check rides the table, not a hand-rolled probe (glm35-4)."
+            );
+        }
 
         foreach ( AnthropicContentBlocks::MAPPED_TYPES as $mapped ) {
             $this->assertStringContainsString("case '{$mapped}':", $model_source, "The body parse maps the catalog type {$mapped}.");
@@ -3739,6 +3759,48 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
                 $this->fail("A body of only the unmapped type {$unmapped} must reject through the zero-parts channel.");
             } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
                 $this->assertStringContainsString('unmapped types', $e->getMessage());
+            }
+        }
+
+        /*
+         * glm35-4: arm-vs-table member consistency, behaviorally. Every
+         * table entry whose type the body parse maps must reject a
+         * payload missing exactly that member, a present-but-non-string
+         * member, and a payload whose only string member is a FOREIGN
+         * one (the guard reads the table's member, never "any string").
+         */
+        $member_fixtures = array(
+            'text'     => 'text',
+            'thinking' => 'thinking',
+        );
+
+        $this->assertSame(
+            $member_fixtures,
+            array_intersect_key(AnthropicContentBlocks::STRING_CONTENT_MEMBERS, array_flip(AnthropicContentBlocks::MAPPED_TYPES)),
+            'A table entry for a newly mapped block type needs a member fixture here — the battery cannot run vacuously.'
+        );
+
+        foreach ($member_fixtures as $type => $member) {
+            foreach (array(
+                array('block' => array('type' => $type), 'label' => 'absent member'),
+                array('block' => array('type' => $type, $member => 7), 'label' => 'non-string member'),
+                array('block' => array('type' => $type, 'other' => 'present'), 'label' => 'only a foreign string member'),
+            ) as $case) {
+                $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+                    'id' => 'msg_member_' . $type,
+                    'type' => 'message',
+                    'role' => 'assistant',
+                    'content' => array($case['block']),
+                    'stop_reason' => 'end_turn',
+                    'usage' => array('input_tokens' => 3, 'output_tokens' => 2),
+                )));
+
+                try {
+                    $this->model()->generateTextResult($this->prompt());
+                    $this->fail("[{$type}] {$case['label']} must reject typed.");
+                } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                    $this->assertStringContainsString("A {$type} block is missing its {$member} member.", $e->getMessage());
+                }
             }
         }
     }

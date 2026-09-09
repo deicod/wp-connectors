@@ -2327,19 +2327,29 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			return null;
 		}
 
+		/*
+		 * glm35-4: the required-string-member rule rides the shared
+		 * vocabulary table (AnthropicContentBlocks::
+		 * STRING_CONTENT_MEMBERS) — the map's own contract says every
+		 * consumer does — instead of the per-arm hand-rolled
+		 * isset+is_string probes the glm34-8 lockstep pin could not
+		 * see. Only the non-tool block types carry an entry (tool_use's
+		 * identity and input rules are its own arm below); an unknown
+		 * type has no entry and reaches the switch's typed
+		 * unsupported-type rejection unchanged. The message names the
+		 * type and member from the closed constant table —
+		 * byte-identical to the per-arm spellings it replaces.
+		 */
+		$member = AnthropicContentBlocks::STRING_CONTENT_MEMBERS[ $type ] ?? null;
+		if ( null !== $member && ( ! isset( $part_data[ $member ] ) || ! \is_string( $part_data[ $member ] ) ) ) {
+			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', sprintf( 'A %s block is missing its %s member.', $type, $member ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5): the interpolated type and member are closed constant-table keys, never upstream free text; escaping belongs to the display layer.
+		}
+
 		switch ( $type ) {
 			case 'text':
-				if ( ! isset( $part_data['text'] ) || ! \is_string( $part_data['text'] ) ) {
-					throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A text block is missing its text member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
-				}
-
 				return new MessagePart( $part_data['text'] );
 
 			case 'thinking':
-				if ( ! isset( $part_data['thinking'] ) || ! \is_string( $part_data['thinking'] ) ) {
-					throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'A thinking block is missing its thinking member.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
-				}
-
 				return new MessagePart( $part_data['thinking'], MessagePartChannelEnum::thought() );
 
 			case 'tool_use':
