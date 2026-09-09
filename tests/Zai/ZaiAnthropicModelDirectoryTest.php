@@ -24,15 +24,73 @@ use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
 use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache;
 
-final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
+final class ZaiAnthropicModelDirectoryTest extends AbstractZaiModelDirectoryTestCase
 {
+    /*
+     * glm35-9: the surface-constant discovery/cache twins (plan/region
+     * retargeting, unauthorized fallback, general fallback) execute once
+     * per surface from AbstractZaiModelDirectoryTestCase through these
+     * hooks.
+     */
+
+    /**
+     * The zai_anthropic surface's settings class.
+     *
+     * @return string
+     */
+    protected function settings_class()
+    {
+        return ZaiAnthropicPlanRegionSettings::class;
+    }
+
+    /**
+     * The zai_anthropic surface's /models success body (the Anthropic wire shape).
+     *
+     * @param list<string> $ids Discovered model ids.
+     * @return string Body bytes.
+     */
+    protected function models_body(array $ids)
+    {
+        return HttpResponseFactory::anthropicModelsBody($ids);
+    }
+
+    /**
+     * The zai_anthropic surface's error body (the Anthropic wire shape).
+     *
+     * @param string $message Fixture error message.
+     * @param string $type Fixture error type.
+     * @return string Body bytes.
+     */
+    protected function error_body($message, $type)
+    {
+        return HttpResponseFactory::anthropicErrorBody($message, $type);
+    }
+
+    /**
+     * The zai_anthropic surface's /models URLs (the pin, never derived).
+     *
+     * @param string $plan Plan slug.
+     * @param string $region Region slug.
+     * @return string URL.
+     */
+    protected function models_url($plan, $region)
+    {
+        $urls = array(
+            'general|intl' => 'https://api.z.ai/api/anthropic/v1/models',
+            'coding|intl' => 'https://api.z.ai/api/coding/anthropic/v1/models',
+            'coding|cn' => 'https://open.bigmodel.cn/api/coding/anthropic/v1/models',
+        );
+
+        return $urls["{$plan}|{$region}"];
+    }
+
     /**
      * Fresh directory wired to the harness transporter with a fixture key.
      *
      * @param string|null $key API key; a fresh fixture key when omitted.
      * @return ZaiAnthropicModelMetadataDirectory
      */
-    private function directory(?string $key = null): ZaiAnthropicModelMetadataDirectory
+    protected function directory(?string $key = null): ZaiAnthropicModelMetadataDirectory
     {
         return $this->wiredZaiSdkInstance(ZaiAnthropicModelMetadataDirectory::class, $key);
     }
@@ -192,41 +250,6 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
      * Cache scoping across plan/region switches (BEFORE expiry).
      */
 
-    public function testPlanSwitchBeforeExpiryRefetchesTheOtherEndpoint()
-    {
-        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
-
-        $this->directory()->listModelMetadata(); // Warms the coding|intl cache.
-        $this->assertCount(1, $this->sdkHttpAttempts());
-
-        // Switch plan well inside the TTL: the general endpoint must be
-        // re-fetched, never served the coding cache.
-        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'general', 'intl');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-4.5')));
-
-        $models = $this->directory()->listModelMetadata();
-
-        $this->assertCount(2, $models);
-        $this->assertCount(2, $this->sdkHttpAttempts());
-        $this->assertSame('https://api.z.ai/api/anthropic/v1/models', $this->sdkHttpAttempts()[1]['url']);
-    }
-
-    public function testRegionSwitchBeforeExpiryRefetchesTheOtherEndpoint()
-    {
-        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3')));
-        $this->directory()->listModelMetadata();
-
-        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'cn');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicModelsBody(array('glm-5.3', 'glm-5.2')));
-
-        $models = $this->directory()->listModelMetadata();
-
-        $this->assertCount(2, $this->idList($models));
-        $this->assertSame('https://open.bigmodel.cn/api/coding/anthropic/v1/models', $this->sdkHttpAttempts()[1]['url']);
-    }
-
     public function testTheZaiProvidersCacheNeverServesTheAnthropicDirectoryAndViceVersa()
     {
         // Prime the ZAI provider's warm cache for the same plan/region
@@ -248,17 +271,6 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
     /*
      * Fallback behavior.
      */
-
-    public function testUnauthorizedDiscoveryFallsBackToThePlanCatalog()
-    {
-        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'coding', 'intl');
-        $this->queueSdkResponse(401, array(), HttpResponseFactory::anthropicErrorBody('token expired or incorrect', 'authentication_error'));
-
-        $models = $this->directory()->listModelMetadata();
-
-        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models));
-        $this->assertSame('https://api.z.ai/api/coding/anthropic/v1/models', $this->sdkHttpAttempts()[0]['url']);
-    }
 
     public function testRepeatedLookupsOnOneInstanceReuseTheBuiltMap()
     {
@@ -534,17 +546,6 @@ final class ZaiAnthropicModelDirectoryTest extends WpConnectorsTestCase
             get_option(Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::STATE_OPTION, false),
             'A non-auth failure must not persist a verdict.'
         );
-    }
-
-    public function testGeneralPlanFallbackContainsTheFullCatalog()
-    {
-        $this->selectEndpoint(ZaiAnthropicPlanRegionSettings::class, 'general', 'cn');
-
-        $this->queueSdkResponse(404, array(), HttpResponseFactory::anthropicErrorBody('not found', 'not_found_error'));
-
-        $models = $this->directory()->listModelMetadata();
-
-        $this->assertSame(ZaiModelCatalog::GENERAL_MODELS, $this->idList($models));
     }
 
     public function testAPaginatedDiscoveryPageFallsBackAndIsNotCached()

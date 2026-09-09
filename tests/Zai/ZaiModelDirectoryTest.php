@@ -25,7 +25,7 @@ use Deicod\WpConnectors\Zai\Metadata\ZaiModelListParser;
 use Deicod\WpConnectors\Zai\Metadata\ZaiModelMetadataDirectory;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
-final class ZaiModelDirectoryTest extends WpConnectorsTestCase
+final class ZaiModelDirectoryTest extends AbstractZaiModelDirectoryTestCase
 {
     /**
      * The full 10-model list observed live (record 0006).
@@ -36,6 +36,64 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         'glm-4.5', 'glm-4.5-air', 'glm-4.6', 'glm-4.7', 'glm-5',
         'glm-5-turbo', 'glm-5.1', 'glm-5.2', 'glm-5.3', 'glm-5.3-flash',
     );
+
+    /*
+     * glm35-9: the surface-constant discovery/cache twins (plan/region
+     * retargeting, unauthorized fallback, general fallback) execute once
+     * per surface from AbstractZaiModelDirectoryTestCase through these
+     * hooks.
+     */
+
+    /**
+     * The zai surface's settings class.
+     *
+     * @return string
+     */
+    protected function settings_class()
+    {
+        return PlanRegionSettings::class;
+    }
+
+    /**
+     * The zai surface's /models success body (the OpenAI wire shape).
+     *
+     * @param list<string> $ids Discovered model ids.
+     * @return string Body bytes.
+     */
+    protected function models_body(array $ids)
+    {
+        return HttpResponseFactory::openAiModelsBody($ids);
+    }
+
+    /**
+     * The zai surface's error body (the OpenAI wire shape).
+     *
+     * @param string $message Fixture error message.
+     * @param string $type Unused on this wire — the shape carries a default type.
+     * @return string Body bytes.
+     */
+    protected function error_body($message, $type)
+    {
+        return HttpResponseFactory::openAiErrorBody($message);
+    }
+
+    /**
+     * The zai surface's /models URLs (the pin, never derived).
+     *
+     * @param string $plan Plan slug.
+     * @param string $region Region slug.
+     * @return string URL.
+     */
+    protected function models_url($plan, $region)
+    {
+        $urls = array(
+            'general|intl' => 'https://api.z.ai/api/paas/v4/models',
+            'coding|intl' => 'https://api.z.ai/api/coding/paas/v4/models',
+            'coding|cn' => 'https://open.bigmodel.cn/api/coding/paas/v4/models',
+        );
+
+        return $urls["{$plan}|{$region}"];
+    }
 
     /**
      * Fresh directory wired to the harness transporter.
@@ -50,7 +108,7 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
      *                         flags/verdicts to the key).
      * @return ZaiModelMetadataDirectory
      */
-    private function directory(?string $key = null): ZaiModelMetadataDirectory
+    protected function directory(?string $key = null): ZaiModelMetadataDirectory
     {
         return $this->wiredZaiSdkInstance(ZaiModelMetadataDirectory::class, $key);
     }
@@ -455,41 +513,6 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
      * Cache scoping across plan/region switches (before expiry).
      */
 
-    public function testPlanSwitchBeforeExpiryRefetchesTheOtherEndpoint()
-    {
-        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
-
-        $this->directory()->listModelMetadata(); // Warms the coding|intl cache.
-        $this->assertCount(1, $this->sdkHttpAttempts());
-
-        // Switch plan well inside the TTL: the general endpoint must be
-        // re-fetched, never served the coding cache.
-        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'intl');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-4.5')));
-
-        $models = $this->directory()->listModelMetadata();
-
-        $this->assertCount(2, $models);
-        $this->assertCount(2, $this->sdkHttpAttempts());
-        $this->assertSame('https://api.z.ai/api/paas/v4/models', $this->sdkHttpAttempts()[1]['url']);
-    }
-
-    public function testRegionSwitchBeforeExpiryRefetchesTheOtherEndpoint()
-    {
-        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
-        $this->directory()->listModelMetadata();
-
-        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'cn');
-        $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
-
-        $models = $this->directory()->listModelMetadata();
-
-        $this->assertCount(2, $models);
-        $this->assertSame('https://open.bigmodel.cn/api/coding/paas/v4/models', $this->sdkHttpAttempts()[1]['url']);
-    }
-
     /*
      * Fallback behavior.
      */
@@ -679,17 +702,6 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
         $this->assertSame(array('glm-5.3'), array_keys($map), 'The corrupt entries drop exactly as map_from_ids() drops them.');
     }
 
-    public function testUnauthorizedDiscoveryFallsBackToThePlanCatalog()
-    {
-        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
-        $this->queueSdkResponse(401, array(), HttpResponseFactory::openAiErrorBody('token expired or incorrect'));
-
-        $models = $this->directory()->listModelMetadata();
-
-        $this->assertSame(ZaiModelCatalog::CODING_MODELS, $this->idList($models));
-        $this->assertSame('https://api.z.ai/api/coding/paas/v4/models', $this->sdkHttpAttempts()[0]['url']);
-    }
-
     /**
      * @dataProvider provideCredentialRejectionStatuses
      */
@@ -840,18 +852,6 @@ final class ZaiModelDirectoryTest extends WpConnectorsTestCase
             get_option(Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_OPTION, false),
             'A non-auth failure must not persist a verdict.'
         );
-    }
-
-    public function testGeneralPlanFallbackContainsTheFullCatalog()
-    {
-        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'cn');
-
-        // cn is unprobed; any discovery failure falls back per plan.
-        $this->queueSdkResponse(404, array(), '{"error":{"message":"not found"}}');
-
-        $models = $this->directory()->listModelMetadata();
-
-        $this->assertSame(ZaiModelCatalog::GENERAL_MODELS, $this->idList($models));
     }
 
     public function testMalformedDiscoveryResponseFallsBack()

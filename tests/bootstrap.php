@@ -58,5 +58,6 @@ require_once __DIR__ . '/harness/OpaqueAuthentication.php';
 require_once __DIR__ . '/harness/CapturingTransporter.php';
 require_once __DIR__ . '/harness/ZaiLiveRoundTrip.php';
 require_once __DIR__ . '/harness/AbstractZaiSurfaceRequestMappingTestCase.php';
+require_once __DIR__ . '/harness/AbstractZaiModelDirectoryTestCase.php';
 require_once __DIR__ . '/harness/AbstractZaiSurfaceResponseMappingTestCase.php';
 require_once __DIR__ . '/harness/AbstractZaiSurfaceLiveSmokeTestCase.php';
