@@ -2339,8 +2339,22 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * unsupported-type rejection unchanged. The message names the
 		 * type and member from the closed constant table —
 		 * byte-identical to the per-arm spellings it replaces.
+		 *
+		 * glm35-11 (verifier round): the table also carries the two
+		 * DELTA names (the aggregator's delta arms read the same map
+		 * in their own context), so the lookup is scoped to
+		 * MAPPED_TYPES — the BLOCK half of the table. A body content
+		 * block TYPED as a delta name is an unsupported type, not a
+		 * member-missing one: it must reach the switch's typed
+		 * rejection with the pre-glm35-4 message, which the unscoped
+		 * first form broke (the round's one verifier finding —
+		 * message-only, same class, channel, and verdict).
 		 */
-		$member = AnthropicContentBlocks::STRING_CONTENT_MEMBERS[ $type ] ?? null;
+		$member = null;
+		if ( \in_array( $type, AnthropicContentBlocks::MAPPED_TYPES, true ) ) {
+			$member = AnthropicContentBlocks::STRING_CONTENT_MEMBERS[ $type ] ?? null;
+		}
+
 		if ( null !== $member && ( ! isset( $part_data[ $member ] ) || ! \is_string( $part_data[ $member ] ) ) ) {
 			throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', sprintf( 'A %s block is missing its %s member.', $type, $member ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5): the interpolated type and member are closed constant-table keys, never upstream free text; escaping belongs to the display layer.
 		}

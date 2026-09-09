@@ -3803,6 +3803,44 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
                 }
             }
         }
+
+        /*
+         * glm35-11: the member guard is scoped to the table's BLOCK
+         * half. Every table key OUTSIDE MAPPED_TYPES (the delta names,
+         * read by the aggregator's delta arms in their own context) is
+         * an unsupported BLOCK type here: a body content block typed as
+         * one must reject through the switch's unsupported-type message
+         * whether or not its string member is present — the unscoped
+         * first form answered the member message instead (the round's
+         * one verifier finding), and this battery's member half cannot
+         * see it (delta names never enter MAPPED_TYPES).
+         */
+        $delta_names = array_keys(array_diff_key(AnthropicContentBlocks::STRING_CONTENT_MEMBERS, array_flip(AnthropicContentBlocks::MAPPED_TYPES)));
+
+        $this->assertSame(array('text_delta', 'thinking_delta'), $delta_names, 'A table restructure beyond the block/delta halves needs this battery revisited.');
+
+        foreach ($delta_names as $delta_name) {
+            foreach (array(
+                array('block' => array('type' => $delta_name), 'label' => 'absent member'),
+                array('block' => array('type' => $delta_name, AnthropicContentBlocks::STRING_CONTENT_MEMBERS[$delta_name] => 'present'), 'label' => 'the member the unscoped guard would read, present and string'),
+            ) as $case) {
+                $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), (string) wp_json_encode(array(
+                    'id' => 'msg_delta_named_' . $delta_name,
+                    'type' => 'message',
+                    'role' => 'assistant',
+                    'content' => array($case['block']),
+                    'stop_reason' => 'end_turn',
+                    'usage' => array('input_tokens' => 3, 'output_tokens' => 2),
+                )));
+
+                try {
+                    $this->model()->generateTextResult($this->prompt());
+                    $this->fail("[{$delta_name}] {$case['label']} must reject as an unsupported block type.");
+                } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
+                    $this->assertStringContainsString('The message contained a block of an unsupported type.', $e->getMessage());
+                }
+            }
+        }
     }
 
     public function testATrailingUndecodableDeclaredContentEventStillInvalidates()
