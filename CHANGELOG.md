@@ -6,6 +6,59 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Added (zai / M2 — proph property harness)
+
+The mutation-invariant property harness for both SSE aggregators
+(tests/SseAggregatorMutationPropertyTest.php) — infrastructure, not a
+review round: it closes the silent-divergence/silent-loss defect
+class the per-round loop had been chasing one shape at a time
+(glm23-6, glm28-2, glm31-1, glm31-2, glm33-1, glm34-1 were all
+members) as an INVARIANT over the mutation space. For every
+(well-formed corpus stream × mutation operator × site) the
+aggregation must be CLEAN, FLAGGED, or an explicitly allow-listed
+TOLERATED class with a ledger citation — never a diff without a flag
+and without an entry, never an escaping Throwable. 18 operators
+cover every mutation family the ledger ever flagged; the allow-list
+is enumerated, not discovered, and widening it requires adjudication.
+A cross-surface parity battery checks shared corruption shapes earn
+matching verdicts on both twins, with the pinned divergences encoded
+(the required-lifecycle [Anthropic] vs sentinel-optional [OpenAI]
+terminal drop). The default run (2000 cases/surface, fixed seed) rides
+`composer check` (~0.6 s of suite time); WP_CONNECTORS_FUZZ_CASES /
+WP_CONNECTORS_FUZZ_SEED scale it for soaks (ceiling 250k).
+
+Bring-up found ZERO production defects: every diff-no-flag observation
+adjudicated to a tolerance, each ledgered — the GLM9 #1/glm33-4
+stop_reason string-latch family, the GLM4 #11/Codex R15 #1 usage
+default-zero and value-transparency classes, the GLM12 #9/glm34-5
+empty-usage shapes, the GLM1 #15/glm13-4 unknown-type forward-compat
+drops (empty-string spellings included), the entry-granularity
+drop-frame and GLM7 #1/GLM10 #13 index-value merge-identity classes,
+and the GLM5 #3 associative {} / [] collapse for array-shaped
+members. See the proph section in docs/review/REFUTATION_LEDGER.md.
+
+Verifier pass (two independent lenses over proph-1): the allow-list
+is SOUND — no entry swallows a shape a ledgered rule says must flag
+(20 hand-built lifecycle damage shapes all flag past the generic
+entries), the coverage/non-vacuity gates go red under hostile env
+input, and the parity expectations reproduce against the real
+aggregators. Five harness-side findings fixed as proph-2: the loose
+!= payload comparator (null/false/[] flips classified CLEAN — now a
+type-strict, map-order-insensitive deep comparator), a mislabeled
+operator target (dead allow-list entry), a dead cut tolerance entry
+(removed with the wire-construction proof; decodable-scalar skip
+frames joined the corpus), the missing CASES ceiling (clamped to
+250k), and a seed-clamp float overflow (strict-types TypeError —
+now digit-length-exact, SEED=0 honored). Residual, ledgered: the
+effective env CASES/SEED are visible only through the assertion
+count and failure reports, not printed on green runs.
+
+Validated: 50k cases/surface soak green twice (pre- and post-fix;
+100k total mutations each time, 300040 assertions, ~17 s), alternate
+seeds (0, 15-digit, 20-digit, three fixed) green, and the full
+suite green in default and random order (1264 tests, 42032
+assertions).
+
 ### Fixed (zai / M2 — GLM35 round, /code-review max)
 
 The 35th review round (zero novel correctness defects; one candidate
