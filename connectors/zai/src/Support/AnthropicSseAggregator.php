@@ -160,6 +160,26 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	private $blocks = array();
 
 	/**
+	 * How many block accumulators carry their closed-lifecycle state.
+	 *
+	 * GLM35-8: the count is PROVABLY the loop it replaces — while block
+	 * $i is open, no stop above $i can have been recorded (a stop at
+	 * $j > $i requires every index below $j stopped, $i included), so
+	 * the stopped blocks are exactly a prefix and "every index below N
+	 * is stopped" (glm26-2's non-LIFO walk) reads as
+	 * stopped_blocks === N, and "every block is stopped" (Codex
+	 * R15 #2's closed-lifecycle gate at message_delta) reads as
+	 * stopped_blocks === count( blocks ). Incremented at the ONE stop-
+	 * recording site; the per-block 'stopped' member stays (the
+	 * duplicate-stop and post-stop-delta guards read it, glm26-9).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	private $stopped_blocks = 0;
+
+	/**
 	 * Whether the message_start event was received (Codex R8 #3).
 	 *
 	 * @since 0.2.0
@@ -1273,17 +1293,18 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 * completion with no malformed flag. Starts are
 				 * contiguous (R17 #2), so every index below N exists;
 				 * the check is the non-LIFO stop order, rejected without
-				 * recording the stop.
+				 * recording the stop. glm35-8: the stopped prefix count
+				 * IS the walk (see the $stopped_blocks proof) — one
+				 * compare, not one probe per lower index.
 				 */
-				for ( $open_below = 0; $open_below < $index; $open_below++ ) {
-					if ( ! $this->blocks[ $open_below ]['stopped'] ) {
-						$this->malformed_event = true;
+				if ( $this->stopped_blocks !== $index ) {
+					$this->malformed_event = true;
 
-						return;
-					}
+					return;
 				}
 
 				$this->blocks[ $index ]['stopped'] = true;
+				++$this->stopped_blocks;
 
 				return;
 
@@ -1323,14 +1344,13 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 				 * completed successfully with a truncated block lifecycle.
 				 * Every started (or seeded) block index must be stopped
 				 * before the delta is accepted; a stream with zero blocks
-				 * keeps its existing behavior.
+				 * keeps its existing behavior. glm35-8: the stopped-count
+				 * compare IS the walk (see the $stopped_blocks proof).
 				 */
-				foreach ( $this->blocks as $open_index => $_open_block ) {
-					if ( ! $_open_block['stopped'] ) {
-						$this->malformed_event = true;
+				if ( \count( $this->blocks ) !== $this->stopped_blocks ) {
+					$this->malformed_event = true;
 
-						return;
-					}
+					return;
 				}
 
 				/*
