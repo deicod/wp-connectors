@@ -19,7 +19,9 @@ use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request as SdkRequest;
+use WordPress\AiClient\Providers\Http\Contracts\WithRequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
+use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Authentication\ZaiAnthropicRequestAuthentication;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
@@ -306,26 +308,71 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
     {
         /*
          * glm15-8: the protocol wrap was re-declared as a bespoke
-         * getRequestAuthentication() override in each of the three
-         * SDK-interfaced classes — a fourth class speaking the surface
-         * that forgets the override silently sends plain ApiKey auth
-         * (requests still succeed against z.ai while violating the
-         * never-x-api-key contract, so the omission fails open and
-         * undetected). The SpeaksAnthropicMessagesProtocol trait owns
-         * the wrap now; the pins hold every SDK-interfaced class on
-         * the trait and forbid the bespoke-override shape.
+         * getRequestAuthentication() override in each SDK-interfaced
+         * class — a fourth class speaking the surface that forgets the
+         * override silently sends plain ApiKey auth (requests still
+         * succeed against z.ai while violating the never-x-api-key
+         * contract, so the omission fails open and undetected). The
+         * SpeaksAnthropicMessagesProtocol trait owns the wrap now; it
+         * also overrides fallback_authentication()'s plain ApiKey
+         * default, so the unwired probe flies the same headers.
+         *
+         * glm35-3: the class set is DERIVED, never hand-listed (the
+         * glm31-8 checklist-in-code class — a three-file literal
+         * cannot see the fourth class the pin exists for). The sweep
+         * walks every plugin source file and takes the classes the SDK
+         * itself authenticates through: implementors of
+         * WithRequestAuthenticationInterface (directly or through any
+         * parent — the vendor bases AbstractApiBasedModel and
+         * AbstractApiBasedModelMetadataDirectory and this plugin's
+         * AbstractZaiProviderAvailability all carry it) on this
+         * surface (the ZaiAnthropic naming convention every class of
+         * the surface follows). Each must compose the trait, supply
+         * the raw hook the trait demands, and carry no bespoke wrap
+         * override. The lower bound of three proves the sweep sees the
+         * real tree; a fourth class enters the set automatically.
          */
-        $classes = array(
-            'the model' => 'src/Models/ZaiAnthropicTextGenerationModel.php',
-            'the metadata directory' => 'src/Metadata/ZaiAnthropicModelMetadataDirectory.php',
-            'the availability' => 'src/Availability/ZaiAnthropicProviderAvailability.php',
+        $candidates = array();
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(dirname(__DIR__, 2) . '/connectors/zai/src', FilesystemIterator::SKIP_DOTS)
         );
+        foreach ($iterator as $file) {
+            if ('php' !== $file->getExtension()) {
+                continue;
+            }
+            $source = (string) file_get_contents($file->getPathname());
+            if (!preg_match('/^namespace\s+(.+);/m', $source, $ns)
+                || !preg_match('/^(?:final\s+|abstract\s+)?class\s+(ZaiAnthropic\w+)/m', $source, $cls)
+            ) {
+                continue;
+            }
+            $fqcn = $ns[1] . '\\' . $cls[1];
+            if (!class_exists($fqcn)
+                || !in_array(WithRequestAuthenticationInterface::class, class_implements($fqcn), true)
+            ) {
+                continue;
+            }
 
-        foreach ($classes as $label => $relative) {
-            $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/' . $relative);
+            $candidates[$cls[1]] = array($fqcn, $source);
+        }
 
-            $this->assertStringContainsString('use SpeaksAnthropicMessagesProtocol', $source, "{$label} composes the protocol trait.");
-            $this->assertStringContainsString('raw_request_authentication()', $source, "{$label} supplies the raw-authentication hook.");
+        $this->assertGreaterThanOrEqual(3, count($candidates), 'The sweep must see the model, the metadata directory, and the availability — a smaller set means the derivation broke.');
+
+        foreach ($candidates as $label => $candidate) {
+            list($fqcn, $source) = $candidate;
+
+            $traits = array();
+            $walk = $fqcn;
+            do {
+                $uses = class_uses($walk);
+                if (false !== $uses) {
+                    $traits += $uses;
+                }
+            } while ($walk = get_parent_class($walk));
+            $this->assertArrayHasKey(SpeaksAnthropicMessagesProtocol::class, $traits, "{$label} composes the protocol trait.");
+
+            $this->assertTrue(method_exists($fqcn, 'raw_request_authentication'), "{$label} supplies the raw-authentication hook.");
             $this->assertSame(0, preg_match('/ZaiAnthropicRequestAuthentication::wrap\(\s*parent::/', $source), "{$label} carries no bespoke parent-wrap override.");
             $this->assertSame(0, preg_match('/ZaiAnthropicRequestAuthentication::wrap\(\s*\$this->trait_/', $source), "{$label} carries no bespoke trait-wrap override.");
         }
