@@ -61,6 +61,15 @@ final class SseAggregatorMutationPropertyTest extends WpConnectorsTestCase
     const DEFAULT_CASES = 2000;
     const DEFAULT_SEED = 20260909;
 
+    /**
+     * The case-count ceiling (proph-2, verifier round): the env var
+     * scales the run for soaks, and a ceiling keeps a leaked or
+     * hostile CI environment bounded instead of hanging the check
+     * pipeline's test stage for days — 250k cases (~95s worst case)
+     * still covers every soak the round ran.
+     */
+    const MAX_CASES = 250000;
+
     public function testTheOpenAiSurfaceAggregatorMutationInvariantHolds()
     {
         $this->run_invariant('zai');
@@ -80,8 +89,31 @@ final class SseAggregatorMutationPropertyTest extends WpConnectorsTestCase
     private function run_invariant($surface)
     {
         $class = 'zai' === $surface ? SseAggregator::class : AnthropicSseAggregator::class;
-        $cases = max(1, (int) (getenv(self::CASES_ENV) ?: self::DEFAULT_CASES));
-        $seed = (int) (getenv(self::SEED_ENV) ?: self::DEFAULT_SEED) + ('zai' === $surface ? 0 : 1);
+
+        /*
+         * proph-2 (verifier round): both env reads accept only
+         * non-negative integer literals — garbage, negatives, and
+         * empty values fall back to the full defaults (never a
+         * thinner run), CASES is clamped to MAX_CASES, and SEED is
+         * clamped below PHP_INT_MAX so the per-surface +1 offset
+         * cannot overflow to a float (a strict-types TypeError under
+         * mt_srand). '0' is a legal seed (the old falsy ?: read
+         * silently ignored it).
+         */
+        $cases = self::DEFAULT_CASES;
+        $raw_cases = getenv(self::CASES_ENV);
+        if (false !== $raw_cases && '' !== $raw_cases && ctype_digit($raw_cases)) {
+            $cases = min(max(1, (int) $raw_cases), self::MAX_CASES);
+        }
+        $seed = self::DEFAULT_SEED;
+        $raw_seed = getenv(self::SEED_ENV);
+        if (false !== $raw_seed && '' !== $raw_seed && ctype_digit($raw_seed)) {
+            // 15 digits stays int-exact with headroom for the +1 offset;
+            // anything longer clamps (a float cast rounds 2^63 up and the
+            // offset would leave the int domain — the proph-2 first form).
+            $seed = strlen($raw_seed) > 15 ? 999999999999999 : (int) $raw_seed;
+        }
+        $seed += ('zai' === $surface ? 0 : 1);
 
         mt_srand($seed);
 
@@ -382,6 +414,16 @@ final class SseAggregatorMutationPropertyTest extends WpConnectorsTestCase
             $frames[] = array('raw' => '[DONE]');
         }
 
+        /*
+         * proph-2 (verifier round): a decodable-scalar noise frame
+         * (the glm23-6 skip shape, live-attested as gateway noise) —
+         * keeps the decodable-scalar tolerance inside the fuzz corpus,
+         * not just the fixed parity battery.
+         */
+        if (0 === mt_rand(0, 5)) {
+            $frames[] = array('raw' => '1234567890123');
+        }
+
         return $frames;
     }
 
@@ -481,6 +523,15 @@ final class SseAggregatorMutationPropertyTest extends WpConnectorsTestCase
         }
         if (0 === mt_rand(0, 4)) {
             $frames[] = array('event' => 'telemetry', 'data' => array('type' => 'telemetry', 'span' => 'abc'));
+        }
+
+        /*
+         * proph-2 (verifier round): a decodable-scalar noise frame
+         * (glm33-1's scalar tolerance) — keeps the skip shape inside
+         * the fuzz corpus, not just the fixed parity battery.
+         */
+        if (0 === mt_rand(0, 5)) {
+            $frames[] = array('raw' => '1234567890123');
         }
 
         return $frames;
@@ -672,16 +723,9 @@ final class SseAggregatorMutationPropertyTest extends WpConnectorsTestCase
         $label = null !== $event ? $event : 'data-only';
         $frames[$i] = $keep_event && null !== $event ? array('event' => $event, 'raw' => $remainder) : array('raw' => $remainder);
 
-        // A remainder that still decodes to a non-array keeps the
-        // decodable-scalar tolerance on both wires; anything else must
-        // flag through the undecodable rules.
-        $decoded = json_decode($remainder);
-        $decodes = null !== $decoded && !is_object($decoded) && !is_array($decoded) ? gettype($decoded) : null;
-
         return array('frames' => $frames, 'meta' => array(
             'target' => $label . '.data',
             'kind' => 'cut',
-            'decodes' => $decodes,
         ));
     }
 
@@ -760,8 +804,11 @@ final class SseAggregatorMutationPropertyTest extends WpConnectorsTestCase
             foreach ($probes as $probe) {
                 if ("\0absent" !== $this->get_member_path($frame['data'], $probe)) {
                     $label = $frames[$i]['event'] ?? 'data-only';
-                    $tail = 'type' === $probe[0] ? 'type' : implode('.', array_slice($probe, -2));
-                    $candidates[] = array($i, $probe, $label . '.' . $tail);
+                    // proph-2 (verifier round): the FULL probe path — the
+                    // old last-two-segments label mislabeled the nested
+                    // tool_calls probe ('data-only.0.type'), leaving its
+                    // allow-list entry unreachable.
+                    $candidates[] = array($i, $probe, $label . '.' . implode('.', $probe));
                 }
             }
         }
@@ -1378,7 +1425,7 @@ final class SseAggregatorMutationPropertyTest extends WpConnectorsTestCase
             return array('class' => 'FAIL', 'cite' => null, 'why' => 'the aggregator threw (' . $mut['threw'] . ') — the invariant requires a flag or identical output, never an escaping Error/Throwable');
         }
 
-        $diff = $mut['payload'] != $pri['payload'];
+        $diff = !$this->payloads_equal($mut['payload'], $pri['payload']);
         $flagged = array(false, false, false) !== $mut['flags'];
 
         if (!$diff && !$flagged) {
@@ -1393,6 +1440,79 @@ final class SseAggregatorMutationPropertyTest extends WpConnectorsTestCase
         return null !== $cite
             ? array('class' => 'TOLERATED', 'cite' => $cite, 'why' => null)
             : array('class' => 'FAIL', 'cite' => null, 'why' => 'output diverged with NO corruption flag and NO allow-listed tolerance');
+    }
+
+    /**
+     * The deep payload comparator (proph-2, verifier round).
+     *
+     * TYPE-STRICT and MAP-ORDER-INSENSITIVE: loose == equated
+     * null/false/[]/0 family members (a finish_reason null→false flip
+     * classified CLEAN — "semantically invisible" — while the output
+     * genuinely changed), and a plain json_encode comparison would
+     * flag benign map key-order permutations as divergences. Maps
+     * (string-keyed arrays, stdClass property sets) compare by member
+     * set; lists (0..n-1 sequences) compare element-wise in order —
+     * content order is semantic, key order is not.
+     *
+     * @param mixed $a One payload (or payload node).
+     * @param mixed $b The other.
+     * @return bool True when the payloads are semantically identical.
+     */
+    private function payloads_equal($a, $b)
+    {
+        if (gettype($a) !== gettype($b)) {
+            return false;
+        }
+
+        if (is_array($a)) {
+            if (!is_array($b) || count($a) !== count($b)) {
+                return false;
+            }
+
+            $a_list = array() === $a || array_keys($a) === range(0, count($a) - 1);
+            $b_list = array() === $b || array_keys($b) === range(0, count($b) - 1);
+            if ($a_list !== $b_list) {
+                return false;
+            }
+
+            if ($a_list) {
+                foreach ($a as $k => $v) {
+                    if (!$this->payloads_equal($v, $b[$k])) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            foreach ($a as $k => $v) {
+                if (!array_key_exists($k, $b) || !$this->payloads_equal($v, $b[$k])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if ($a instanceof stdClass) {
+            if (!($b instanceof stdClass)) {
+                return false;
+            }
+            $a_props = get_object_vars($a);
+            $b_props = get_object_vars($b);
+            if (count($a_props) !== count($b_props)) {
+                return false;
+            }
+            foreach ($a_props as $k => $v) {
+                if (!array_key_exists($k, $b_props) || !$this->payloads_equal($v, $b_props[$k])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return $a === $b;
     }
 
     /**
@@ -1489,10 +1609,15 @@ final class SseAggregatorMutationPropertyTest extends WpConnectorsTestCase
         if ('duplicate-frame' === $op) {
             return 'a byte-identical duplicate is indistinguishable from a legitimately repeated delta (no idempotency key exists on the wire); the duplicate-sentinel no-op is the pinned member of this class (glm16-2 appending-gateway tolerance)';
         }
-        if (('cut-data-json' === $op || 'cut-data-only-frame' === $op || 'partial-then-valid' === $op) && null !== ($meta['decodes'] ?? null)) {
-            return 'cut data whose remainder still decodes to a scalar keeps the decodable-scalar non-event skip (glm23-6 on zai, glm33-1\'s scalar tolerance on the twin)';
-        }
-
+        /*
+         * proph-2 (verifier round): the cut ops carry NO decodable-
+         * scalar entry, by wire construction — a cut that damages a
+         * CONTRIBUTING frame always leaves undecodable JSON (a prefix
+         * of an object payload never decodes), and a cut of a
+         * non-contributing scalar frame changes nothing (CLEAN). The
+         * decodable-scalar SKIP itself is exercised by the corpus's
+         * scalar noise frames and the parity battery, not by cuts.
+         */
         return 'zai' === $surface
             ? $this->zai_tolerance_cite($meta)
             : $this->anthropic_tolerance_cite($meta);
