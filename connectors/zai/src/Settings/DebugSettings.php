@@ -37,7 +37,10 @@ final class DebugSettings {
 	 */
 	public static function register_settings(): void {
 		register_setting(
-			PlanRegionSettings::OPTION_GROUP,
+			// glm35-7: the declaring owner, not the first surface's child —
+			// the group is plugin-wide (the reach-through class glm29-14
+			// eliminated from this file's neighbor).
+			AbstractPlanRegionSettings::OPTION_GROUP,
 			DebugLogger::OPTION_ENABLED,
 			array(
 				'type'              => 'string',
