@@ -109,7 +109,6 @@ final class HttpResponseFactory
     public static function anthropicModelsBody(array $modelIds)
     {
         $models = array();
-        $previous = null;
         foreach ($modelIds as $modelId) {
             $models[] = array(
                 'id' => $modelId,
@@ -117,14 +116,16 @@ final class HttpResponseFactory
                 'display_name' => strtoupper(str_replace('-', ' ', $modelId)),
                 'created_at' => '2026-01-01T00:00:00Z',
             );
-            $previous = $modelId;
         }
 
+        // glm35-10: first_id and last_id derive from the input the same
+        // way — an accumulator threading the loop could desync from the
+        // emitted 'data' entries under any future in-loop filtering.
         return (string) wp_json_encode(array(
             'data' => $models,
             'first_id' => $modelIds !== array() ? $modelIds[0] : null,
             'has_more' => false,
-            'last_id' => $previous,
+            'last_id' => $modelIds !== array() ? $modelIds[count($modelIds) - 1] : null,
         ));
     }
 
