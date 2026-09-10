@@ -6,6 +6,94 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM36 round, /code-review max)
+
+The 36th review round (13 emitted, 6 correctly dropped as
+ledger-covered re-flags; 7 fixes over the survivors): 10 commits plus
+this record — the round's own first scanner fix was falsified by the
+verifier pass and completed in a hardening commit. See round 36 in
+docs/review/REFUTATION_LEDGER.md:
+
+- Every destructuring and dynamic write spelling refuses the
+  self-containment include proof on both write paths (glm36-1 +
+  glm36-8): the PHP 7.1+ '[ ... ] =' spelling and the list() twin
+  were invisible to the plain-variable collector (and the square
+  spelling to both paths), so a foreign array rewrite laundered the
+  proof. The verifier pass then found the first form's holes — all
+  empirically reproduced with the runtime include escaping the plugin
+  dir while the scanner reported zero violations — and glm36-8 closes
+  them: the statement anchor is gone ('([$f] = ...)', 'if ([$f] =
+  ...)', 'return[$f] = ...'), nested list() parens cross, foreach
+  VALUE bindings refuse ('as [$f]', "as ['k' => $f]", 'as $k =>
+  [$f]', 'as &$f'), variable-variable writes ('$$name', "{'f'}")
+  refuse every proof in the file, and every refusal reads
+  '0 !== preg_match(...)' — a PCRE backtrack-limit abort is a
+  REFUSAL, never a no-match (a ~4 KB burner statement could spend the
+  call's budget before the real write was examined). Documented
+  safe-direction over-approximations: an element write KEYED by the
+  map ('$rows[$map] = 1') now refuses; word boundaries end the
+  '$mapx' false-refusal class.
+- stop_sequence's non-string degrade is the ledgered envelope-metadata
+  tolerance, stated honestly (glm36-2, boundary adjudication): a
+  present-but-non-string stop_sequence latches nothing and flags
+  nothing on the stream (null in additionalData) while the
+  non-streaming body's vendor pass-through carries the value
+  verbatim — every schema-legal input agrees on both channels.
+  Accepted as GLM1 #9's non-load-bearing metadata class (the proph
+  harness allow-lists the degrade; zero plugin consumers); the false
+  "envelope parity" comments at the latch site and aggregated()'s
+  header are rewritten, and a behavioral pin asserts the accepted
+  divergence in both directions.
+- The live probe's missing-value check rides the argv consumption
+  site, and an empty '='-attached value is a missing value (glm36-3 +
+  glm36-9): a trailing bare repeat ('--plan coding --plan') was
+  silently ignored into the full live round trip, and getopt() drops
+  '--plan=' entirely — the option fell to defaults (billable on
+  settings the operator never chose, glm31-3's silent-defaults
+  class). One sequential scan checks at consumption time; the
+  option-named diagnostic fires before the key lookup.
+- One wired_or_null() helper owns the guarded auth-reader invocation
+  (glm36-4): the identical RuntimeException-guarded reader call was
+  hand-copied three times in AbstractZaiProviderAvailability — the
+  GLM5 #11 divergence class. Behavior-preserving at all three sites.
+- The guidance-to-system-instruction merge rides the shared builder
+  (glm36-5): the append-or-replace rule was duplicated verbatim in
+  both models; JsonOutputGuidance::merge_into_system_instruction()
+  serves both byte-identically, with per-suite source pins.
+- The zai_anthropic directory rides the SDK's route-agnostic base
+  (glm36-6, boundary adjudication): the docblock's custom-directory
+  justification targeted the OpenAI-compat abstract's route
+  assumptions — the route-agnostic parent imposes none. The
+  hand-rolled list/has/get trio is gone (the consult is the parent's
+  sendListModelsRequest()), the sibling's cache neutralization rides
+  with it so the WordPress transient stays the single cache, and the
+  unknown-model rejection wording unifies on the vendor trio's (the
+  per-surface divergence was the finding's own drift evidence).
+- The usage validator's member list and mode are required arguments
+  (glm36-7): the defaults baked the Anthropic surface's vocabulary
+  into the shared both-surface class — a default-riding OpenAI call
+  site would validate the wrong member list and answer null
+  fail-open. Every call site names its protocol's members and mode; a
+  missing argument fails loudly.
+- The glm36-6 rename's stale models_map() doc references corrected
+  (glm36-10, the glm19-13 doc-drift class).
+
+Verifier pass (two independent lenses — correctness + security — over
+the full round diff): every confirmed defect is fixed above (five
+scanner laundering channels + the probe silent-default + the doc
+drift); every other equivalence and adjudication claim HELD — glm36-2
+per-shape on both channels, glm36-3's shape battery with no
+scan-vs-getopt divergence, glm36-4's catch-scope equivalence,
+glm36-5's byte-identity, glm36-6 empirically inert against a counting
+PSR-16 stub (zero cache ops, next-consult retarget, poison entry not
+served, sweep pin green), glm36-7's loud failure mode. Residuals,
+ledgered: an absent stop_sequence leaves the stream's key present-null
+while the body omits it; valued probe repeats reject through a
+value-blaming whitelist diagnostic (loud-only); the inherited
+invalidateCaches() issues one delete-only no-op against a host-shared
+PSR-16 store. Full suite green in default and random order (1288
+tests, 42100 assertions, 2 skipped — the live-key gates).
+
 ### Added (zai / M2 — proph property harness)
 
 The mutation-invariant property harness for both SSE aggregators
