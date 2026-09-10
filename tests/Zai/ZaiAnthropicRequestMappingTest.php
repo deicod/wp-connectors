@@ -3259,8 +3259,8 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
          * JSON encoded' JsonException instead of the typed rejection the
          * guard exists to produce.
          */
-        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('temperature' => fdiv(0, 0))), 'temperature between 0 and 1');
-        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('topP' => fdiv(0, 0))), 'top_p between 0 and 1');
+        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('temperature' => NAN)), 'temperature between 0 and 1');
+        $this->assertRejectedBeforeTransport(ModelConfig::fromArray(array('topP' => NAN)), 'top_p between 0 and 1');
     }
 
     public function testBoundaryTemperatureAndTopPAreForwardedVerbatim()
