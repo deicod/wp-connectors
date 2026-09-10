@@ -443,9 +443,12 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
 
         // The owner itself states the names once — the bans target the
         // CONSUMER sites (the whitelist and the spec), where a hand-stated
-        // copy is the silent-defaults shape.
+        // copy is the silent-defaults shape. glm37-13 (verifier note): the
+        // spec ban anchors on the getopt() call itself so the literal is
+        // banned in ANY order ('array(' directly as getopt's second
+        // argument — the composed spec passes 'array_map(' through).
         $this->assertSame(0, preg_match("/in_array\(\s*\\\$zai_probe_name,\s*array\(/", $source), 'No hand-stated whitelist: the scan composes from the owner.');
-        $this->assertSame(0, preg_match("/array\(\s*'surface:'/", $source), 'No hand-stated getopt spec: it composes from the owner.');
+        $this->assertSame(0, preg_match("/getopt\(\s*''\s*,\s*array\(/", $source), 'No hand-stated getopt spec in any order: it composes from the owner.');
 
         foreach (array('surface', 'plan', 'region') as $option) {
             $this->assertStringContainsString("zai_live_probe_option( \$args, '{$option}',", $source, "The --{$option} read spells the owner's name.");
