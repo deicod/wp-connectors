@@ -2017,6 +2017,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$parts            = array();
 		$seen_tool_ids    = array();
 		$dropped_unmapped = false;
+
+		/*
+		 * glm38-9: the tool-call presence the stop-reason consistency
+		 * check reads below is computed HERE, in the build loop that
+		 * already judges it — the tool_use branch a non-null part lands
+		 * in is exactly the getFunctionCall()-carrying part (the
+		 * callee's tool_use arm always builds one; the text/thinking
+		 * arms never do), so the third full pass over $parts this
+		 * method used to run after the loop was reconstruction.
+		 */
+		$has_tool_call = false;
 		foreach ( $data['content'] as $index => $part_data ) {
 			if ( ! \is_array( $part_data ) ) {
 				throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'Every content entry must be an object.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
@@ -2047,6 +2058,8 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			 * stale — such ids throw inside the callee).
 			 */
 			if ( null !== $part && 'tool_use' === ( $part_data['type'] ?? null ) ) {
+				$has_tool_call = true;
+
 				if ( isset( $seen_tool_ids[ $part_data['id'] ] ) ) {
 					throw ResponseException::fromInvalidData( self::PROVIDER_LABEL, 'content', 'Two tool_use blocks carried the same id.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed message by design (GLM1 #5); escaping belongs to the display layer.
 				}
@@ -2176,15 +2189,13 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * finish_reason_for() so the typed truncation exceptions keep
 		 * precedence; same typed channel as the duplicate-id rejection
 		 * above.
+		 *
+		 * glm38-9: $has_tool_call comes from the build loop above (the
+		 * tool_use branch sets it), not a re-scan of the parts — the
+		 * branch's condition is exactly the getFunctionCall()-carrying
+		 * part (the callee's tool_use arm always builds one; the
+		 * text/thinking arms never do).
 		 */
-		$has_tool_call = false;
-		foreach ( $parts as $part ) {
-			if ( null !== $part->getFunctionCall() ) {
-				$has_tool_call = true;
-				break;
-			}
-		}
-
 		if ( ( 'tool_use' === $data['stop_reason'] ) !== $has_tool_call ) {
 			/*
 			 * Code-review #15 (diagnosability only — no new rejections):
