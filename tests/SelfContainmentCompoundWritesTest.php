@@ -296,22 +296,104 @@ final class SelfContainmentCompoundWritesTest extends TestCase
                 "<?php\n\$f = __DIR__ . '/ok.php';\nlist( \$f ) = array( '/etc/passwd' );\nrequire \$f;\n",
                 '$f',
             ),
+            'glm36-8: parenthesized statement, no anchor' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\n([\$f] = array( '/etc/passwd' ));\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: if-condition, bracket glued to the paren' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\nif ([\$f] = array( '/etc/passwd' )) {\n    echo 'x';\n}\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: return-keyword adjacency at top level' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\nreturn[\$f] = array( '/etc/passwd' );\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: call-argument position' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\narray_keys([\$f] = array( '/etc/passwd' ));\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: nested list() parens' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\nlist( list(\$a), \$f ) = array( array(1), '/etc/passwd' );\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: parenthesized list() element' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\nlist( (\$a), \$f ) = array( 1, '/etc/passwd' );\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: foreach square value binding' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\nforeach ( array( '/etc/passwd' ) as [ \$f ] ) {\n}\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: foreach keyed value binding' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\nforeach ( array( array( 'k' => '/etc/passwd' ) ) as [ 'k' => \$f ] ) {\n}\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: foreach keyed-by-k value binding' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\nforeach ( array( 'x' => array( '/etc/passwd' ) ) as \$k => [ \$f ] ) {\n}\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: foreach by-reference value binding' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\nforeach ( array( '/etc/passwd' ) as &\$f ) {\n}\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: map path through a foreach square binding' => array(
+                "<?php\n\$map = array( __DIR__ . '/ok.php' );\nforeach ( array( array( '/etc/passwd' ) ) as [ \$map ] ) {\n}\nforeach (\$map as \$p) {\n    require \$p;\n}\n",
+                '$p',
+            ),
+            'glm36-8: variable-variable write through a name variable' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\n\$name = 'f';\n\$\$name = '/etc/passwd';\nrequire \$f;\n",
+                '$f',
+            ),
+            'glm36-8: braced variable-variable write' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\n\${'f'} = '/etc/passwd';\nrequire \$f;\n",
+                '$f',
+            ),
         );
+    }
+
+    public function testAPcreAbortRefusesTheProofRatherThanReadingAsNoMatch(): void
+    {
+        /*
+         * glm36-8 (verifier round): a ~4 KB bracket-run statement
+         * exhausts pcre.backtrack_limit inside the square-destructuring
+         * pattern, preg_match() returns FALSE, and the old `if
+         * (preg_match(...))` shape read that as "no match" — the call's
+         * budget was spent on the burner, so the REAL write later in
+         * the text was never examined (verifier-reproduced laundering).
+         * The burner here is a pure COMPARISON (no write at all): with
+         * the `0 !==` guards, the abort itself refuses the proof.
+         */
+        $burner = '[ ' . str_repeat('$f, ', 1000) . '$f ] == 1;';
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\n\$f = __DIR__ . '/ok.php';\n" . $burner . "\nrequire \$f;\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'A PCRE abort must refuse the proof, never read as no-match.');
+        $this->assertStringContainsString('require $f', implode("\n", $violations));
     }
 
     public function testDestructuringReadsOfTheIncludeVariablesStayClean(): void
     {
         /*
          * The refusals judge WRITE channels only: the map as an array
-         * VALUE ('$rows = array( $map )'), as a whole-array KEY
-         * ('$rows[ $map ] = ...' — the statement-level anchor keeps a
-         * bracket group preceded by the indexer variable a read), and a
-         * destructuring targeting OTHER variables never re-bind the
-         * include variable, so the proven literals keep holding.
+         * VALUE ('$rows = array( $map )') and a destructuring
+         * targeting OTHER variables never re-bind the include
+         * variable, so the proven literals keep holding.
+         *
+         * glm36-8: an element WRITE keyed by the map ('$rows[$map] =
+         * 1' — a read of the map as the index) now REFUSES too: the
+         * unanchored square form cannot distinguish it from a
+         * destructuring target lexically, and the anchor that used to
+         * spare it laundered '([$map] = ...)' shapes (the verifier's
+         * anchor-bypass finding) — a documented over-approximation in
+         * the safe direction, the glm29-3 doctrine.
          */
         file_put_contents(
             $this->root . '/fixture.php',
-            "<?php\n\$map = array( __DIR__ . '/a.php', __DIR__ . '/b.php' );\n\$rows = array( \$map );\n\$rows2[ \$map ] = 'v';\n[ \$x, \$y ] = array( 1, 2 );\n\$z = \$x + \$y;\nforeach (\$map as \$p) {\n    require \$p;\n}\n"
+            "<?php\n\$map = array( __DIR__ . '/a.php', __DIR__ . '/b.php' );\n\$rows = array( \$map );\n[ \$x, \$y ] = array( 1, 2 );\n\$z = \$x + \$y;\nforeach (\$map as \$p) {\n    require \$p;\n}\n"
         );
 
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'Reads through the map and other-variable destructuring stay clean.');

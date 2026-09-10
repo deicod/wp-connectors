@@ -899,13 +899,30 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
     }
     $quoted = preg_quote($variable, '/');
 
+    /*
+     * glm36-8 (verifier round): every refusal below reads preg_match()
+     * with `0 !==` — a PCRE abort (backtrack-limit exhaustion, verifier-
+     * reproduced with a ~4 KB bracket-run statement) returns FALSE,
+     * which reads as "no match" and would spend the call's budget
+     * before the REAL write later in the text is ever examined. An
+     * error REFUSES the proof now: fail-closed, never fail-open.
+     */
+
     // Element access, append, or element write: $map[...].
-    if (preg_match('/' . $quoted . '\s*\[/', $before)) {
+    if (0 !== preg_match('/' . $quoted . '\s*\[/', $before)) {
         return false;
     }
 
-    // list() destructuring mentioning the map.
-    if (preg_match('/\blist\s*\([^)]*' . $quoted . '/i', $before)) {
+    /*
+     * list() destructuring mentioning the map. glm36-8: the span is
+     * [^;]* (a destructuring statement carries no semicolon), so
+     * NESTED parens cross — 'list( list($a), $map )' and
+     * 'list( ($a), $map )' laundered through the old [^)]* bound
+     * (verifier-reproduced); the widened span also refuses a pure
+     * source read ('list($a) = $map') — over-approximate, the safe
+     * direction.
+     */
+    if (0 !== preg_match('/\blist\s*\([^;]*' . $quoted . '\b/i', $before)) {
         return false;
     }
 
@@ -916,31 +933,76 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * followed by an operator, so a bracket-preceded target was an
      * INVISIBLE whole-array write and a foreign rewrite laundered the
      * literal proof (empirically confirmed: the semantically identical
-     * list() form refused). The statement-level anchor (a ';', '{', '}',
-     * or whitespace before the bracket) keeps an element READ —
-     * '$other[ $map ] = ...', where the map is the INDEX — unaffected;
-     * the [^;]* spans cross the nested brackets of '[ [ $x ], $map ] ='
-     * and the '=>' of keyed spellings (whose literal keys the masked
-     * view blanks); and a bracket group an assignment follows can only
-     * re-bind what it names, so an over-broad match refuses a proof,
-     * never launders one.
+     * list() form refused). The [^;]* spans cross the nested brackets
+     * of '[ [ $x ], $map ] =' and the '=>' of keyed spellings (whose
+     * literal keys the masked view blanks).
+     *
+     * glm36-8 (verifier round): NO statement anchor. The glm36-1 form
+     * anchored on a ';', '{', '}', or whitespace before the bracket —
+     * so '([$map] = ...)', 'if ([$map] = ...)', 'return[$map] = ...',
+     * and a call argument 'foo([$map] = ...)' (the bracket preceded by
+     * '(' or a keyword character) all laundered. A bracket group an
+     * assignment follows can only re-bind what it names, so the
+     * unanchored form refuses more — including an element WRITE keyed
+     * by the map ('$rows[$map] = 1', a read of the map as index): a
+     * documented over-approximation in the safe direction.
      */
-    if (preg_match('/(?:^|[;{}\s])\[[^;]*' . $quoted . '[^;]*\]\s*=(?![=>])/', $before)) {
+    if (0 !== preg_match('/\[[^;]*' . $quoted . '\b[^;]*\]\s*=(?![=>])/', $before)) {
+        return false;
+    }
+
+    /*
+     * glm36-8 (verifier round): a foreach VALUE binding through a
+     * bracket group — 'foreach ($rows as [$map])', 'as $k => [$map]',
+     * 'as ['k' => $map]' — re-binds the variable per iteration
+     * (empirically confirmed laundering on both paths, pre-round and
+     * glm36-1 alike: the header's bracket group ends ')' or ',', never
+     * '='). The search stays inside the header: the after-'as' spans
+     * are paren-bounded, so brackets in the loop BODY or before 'as'
+     * (the SOURCE position — the legitimate whole-map iteration) never
+     * trip it. The list() twin in the same position was already
+     * refused above.
+     */
+    if (0 !== preg_match('/foreach\s*\([^;]*\bas\b[^;()]*\[[^;()]*' . $quoted . '\b/', $before)) {
+        return false;
+    }
+
+    /*
+     * glm36-8 (verifier round): VARIABLE-VARIABLE writes — '$$name = ...'
+     * with $name spelling this variable, or '${'f'} = ...' — never
+     * spell the target textually (the masked view blanks the '${'f'}'
+     * name), so no write-shape check can see them (verifier-reproduced
+     * laundering, pre-existing). One anywhere in the visible regions
+     * refuses every proof in the file: dynamic naming defeats static
+     * proof wholesale, the by-ref channel's rule (glm18-18).
+     */
+    if (0 !== preg_match('/\$\$|\$\{/', $before)) {
         return false;
     }
 
     // Array-write helpers.
-    if (preg_match('/(?:array_push|array_unshift|array_splice|unset)\s*\(\s*' . $quoted . '\b/i', $before)) {
+    if (0 !== preg_match('/(?:array_push|array_unshift|array_splice|unset)\s*\(\s*' . $quoted . '\b/i', $before)) {
         return false;
     }
 
-    // By-reference aliasing (a write channel through &$map).
-    if (preg_match('/=\s*&\s*' . $quoted . '\b/', $before)) {
+    /*
+     * By-reference channels (a write through &$map). glm36-8: the
+     * aliasing form '=&$map' gains its twin — a foreach VALUE binding
+     * 'foreach ($rows as &$map)' hands the variable each element BY
+     * REFERENCE and leaves it bound to the last one (verifier-
+     * reproduced laundering, pre-existing; the plain '= &' shape never
+     * matched it).
+     */
+    if (0 !== preg_match('/(?:=\s*&|\bas\s*&)\s*' . $quoted . '\b/', $before)) {
         return false;
     }
 
     // An occurrence inside a function signature (a parameter default).
-    if (preg_match_all('/\bfunction\b/i', $before, $functions, PREG_OFFSET_CAPTURE)) {
+    $signature_matches = preg_match_all('/\bfunction\b/i', $before, $functions, PREG_OFFSET_CAPTURE);
+    if (false === $signature_matches) {
+        return false; // A PCRE abort refuses the proof (glm36-8).
+    }
+    if ($signature_matches > 0) {
         foreach ($functions[0] as $function) {
             $open = strpos($before, '(', $function[1]);
             if (false === $open) {
@@ -979,7 +1041,11 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * variants are missed; comparisons (==, !=, <=, >=, =>) stay
      * unmatched through the single-= lookahead and the op classes.
      */
-    if (preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+);/', $before, $writes, PREG_SET_ORDER)) {
+    $write_matches = preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+);/', $before, $writes, PREG_SET_ORDER);
+    if (false === $write_matches) {
+        return false; // A PCRE abort refuses the proof (glm36-8).
+    }
+    if ($write_matches > 0) {
         foreach ($writes as $write) {
             if (! preg_match('/^(?:array\s*\(|\[)/i', trim($write[1]))) {
                 return false;
@@ -1054,32 +1120,31 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      * GLM10 #14 round. The plain-variable path refused nothing:
      * `$alias = &$f; $alias = <foreign>; require $f;` laundered
      * (empirically confirmed).
+     *
+     * glm36-1/glm36-8: the destructuring refusals ride the SAME loop —
+     * the list() spelling (span [^;]*, so nested parens cross) and its
+     * square-bracket twin (NO statement anchor, so '([$f] = ...)',
+     * 'if ([$f] = ...)' and 'return[$f] = ...' refuse like their
+     * statement-level forms; an element WRITE keyed by the variable,
+     * '$rows[$f] = 1', refuses too — over-approximate, the safe
+     * direction) — plus the verifier-round channels: a foreach VALUE
+     * binding through a bracket group ('as [$f]', 'as $k => [$f]'),
+     * the by-ref VALUE binding ('as &$f' beside the '= &' alias
+     * above), and VARIABLE-VARIABLE writes ('$$name', '${'f'}' — the
+     * target is never spelled textually, so no shape check can see
+     * it; one anywhere refuses every proof in the file). Every
+     * preg_match() reads `0 !==`: a PCRE abort returns FALSE and must
+     * refuse, never read as "no match" (verifier-reproduced
+     * backtrack-limit bypass).
      */
-    foreach ($spans as $span) {
-        if (preg_match('/=\s*&\s*' . preg_quote($variable, '/') . '\b/', (string) substr($masked, $span[0], $span[1] - $span[0] + 1))) {
-            return array();
-        }
-    }
-
-    /*
-     * glm36-1: a destructuring target naming the variable re-binds it
-     * through a write the assignment regex below cannot see — the
-     * list() spelling AND its PHP 7.1+ square-bracket twin, both of
-     * which the map path's array_writes_recognized() refuses for its
-     * own variable. The collector matches writes TO the variable only,
-     * so an invisible destructuring write understates the runtime
-     * value set — one anywhere in the visible regions refuses the
-     * proof entirely (the by-ref channel's rule, glm18-18). The square
-     * form anchors at statement level, so the variable as an element
-     * INDEX ('$rows[ $var ] = ...') stays a read; its spans cross
-     * nested brackets and the '=>' of keyed spellings like the map
-     * path's.
-     */
-    $destructured = preg_quote($variable, '/');
+    $refused = preg_quote($variable, '/');
     foreach ($spans as $span) {
         $region = (string) substr($masked, $span[0], $span[1] - $span[0] + 1);
-        if (preg_match('/\blist\s*\([^)]*' . $destructured . '/i', $region)
-            || preg_match('/(?:^|[;{}\s])\[[^;]*' . $destructured . '[^;]*\]\s*=(?![=>])/', $region)) {
+        if (0 !== preg_match('/(?:=\s*&|\bas\s*&)\s*' . $refused . '\b/', $region)
+            || 0 !== preg_match('/\$\$|\$\{/', $region)
+            || 0 !== preg_match('/\blist\s*\([^;]*' . $refused . '\b/i', $region)
+            || 0 !== preg_match('/\[[^;]*' . $refused . '\b[^;]*\]\s*=(?![=>])/', $region)
+            || 0 !== preg_match('/foreach\s*\([^;]*\bas\b[^;()]*\[[^;()]*' . $refused . '\b/', $region)) {
             return array();
         }
     }
