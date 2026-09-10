@@ -7,7 +7,7 @@
  * (miss) marker read, try/discover/catch-to-marker-plus-plan-fallback,
  * positive set, and the chat-filtered metadata map — was duplicated
  * line-for-line between ZaiModelMetadataDirectory::sendListModelsRequest()
- * and ZaiAnthropicModelMetadataDirectory::models_map(), so every
+ * and ZaiAnthropicModelMetadataDirectory::sendListModelsRequest(), so every
  * discovery-caching change in this PR alone (the GLM1 #6 negative cache,
  * the GLM3 #10 endpoint capture) had to land twice, and each surface was
  * only tested against its own copy. One orchestration serves both
@@ -112,7 +112,7 @@ final class ZaiDiscoveryCache {
 	 * The skeleton — endpoint resolve → discovery cache id → cached_ids() (the transient
 	 * read, negative marker, discovery, fallback) → memoized_map() was
 	 * re-stated in ZaiModelMetadataDirectory::sendListModelsRequest() and
-	 * ZaiAnthropicModelMetadataDirectory::models_map(), so a caching-rule
+	 * ZaiAnthropicModelMetadataDirectory::sendListModelsRequest(), so a caching-rule
 	 * change could land on one surface only and the two silently diverge —
 	 * the drift pattern this class exists to stop, surviving GLM4 #10 at
 	 * the composition layer. One orchestrator serves both now; a directory

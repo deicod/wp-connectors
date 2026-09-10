@@ -215,7 +215,7 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 		 * glm26-6: the consult skeleton (endpoint resolve → discovery
 		 * cache id → cached_ids → memoized_map) rides the shared
 		 * ZaiDiscoveryCache::resolved_map() orchestrator — the zai
-		 * surface's hand-spelled copy of the twin's models_map() flow,
+		 * surface's hand-spelled copy of the twin's sendListModelsRequest() flow,
 		 * the composition-layer drift GLM4 #10's shared cache left
 		 * standing. This surface owns what genuinely differs: the
 		 * SDK-parent discovery (discover_model_ids_via_sdk()) and the

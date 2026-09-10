@@ -283,7 +283,7 @@ final class ZaiAnthropicModelMetadataDirectory extends AbstractApiBasedModelMeta
 	 * the Anthropic shape (data + display_name/created_at) and the OpenAI
 	 * shape (data + object/created/owned_by) alike. Any malformed shape, a
 	 * non-2xx status, or a list with no usable chat IDs throws, which
-	 * models_map() turns into the plan fallback — a definitive 401/403
+	 * sendListModelsRequest() turns into the plan fallback — a definitive 401/403
 	 * additionally records the invalid verdict through the availability
 	 * layer before throwing (GLM7 #12), exactly as the probe would.
 	 *
@@ -336,7 +336,7 @@ final class ZaiAnthropicModelMetadataDirectory extends AbstractApiBasedModelMeta
 		 * predicate; GLM5 #17: the shared refuse_discovery() wrapper the
 		 * other credential consumers also use): while refused, the
 		 * authenticated request never happens and discovery degrades to the
-		 * static plan fallback via models_map()'s catch — never fatal,
+		 * static plan fallback via the resolved-map orchestrator's catch — never fatal,
 		 * cached at most as the 60s negative marker (GLM1 #6), so a later
 		 * definitive verdict can discover again.
 		 */
