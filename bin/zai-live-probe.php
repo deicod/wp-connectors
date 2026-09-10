@@ -335,6 +335,14 @@ while ( $zai_probe_i < $zai_probe_argument_count ) {
      * missing value (none of this probe's values starts with '--') —
      * judged at the consumption site so EVERY occurrence checks, not
      * each option's first (glm36-3).
+     *
+     * glm36-9 (verifier round): an '='-attached EMPTY value is the
+     * same missing-value shape — getopt() silently DROPS '--plan='
+     * from its result entirely (empirically verified), so the option
+     * fell to its default and, with a key present, the probe ran the
+     * full live round trip on settings the operator never chose. The
+     * scan judges the emptiness itself; the diagnostic keeps the
+     * option-named wording.
      */
     if ( false === $zai_probe_equals ) {
         $zai_probe_next = isset( $zai_probe_argv[ $zai_probe_i + 1 ] ) ? (string) $zai_probe_argv[ $zai_probe_i + 1 ] : null;
@@ -343,6 +351,10 @@ while ( $zai_probe_i < $zai_probe_argument_count ) {
             exit( 2 );
         }
         ++$zai_probe_i;
+    } elseif ( '' === substr( $zai_probe_token, $zai_probe_equals + 2 + 1 ) ) {
+        // The token is '--name=' with nothing after the equals sign.
+        fwrite( STDERR, "live-probe: --{$zai_probe_name} requires a value (use --{$zai_probe_name} <value> or --{$zai_probe_name}=<value>)\n" );
+        exit( 2 );
     }
 
     ++$zai_probe_i;

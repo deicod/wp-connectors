@@ -378,6 +378,32 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAnEmptyEqualsAttachedValueIsRejectedAsAMissingValue()
+    {
+        /*
+         * glm36-9 (verifier round): getopt() silently DROPS an empty
+         * '='-attached value from its result ('--plan=' → the option
+         * absent), so the probe fell to its DEFAULTS and, with a key
+         * present, ran the full live, billable round trip on settings
+         * the operator never chose — glm31-3's silent-defaults class,
+         * empirically confirmed by both verifier lenses. The scan
+         * judges the emptiness itself: same diagnostic as the bare
+         * option, before the key lookup.
+         */
+        foreach (array('surface', 'plan', 'region') as $option) {
+            list($exitCode, $output) = $this->runProbe(array("--{$option}="));
+
+            $this->assertSame(2, $exitCode, "[--{$option}=] The empty attached value must be rejected, got {$exitCode}: {$output}");
+            $this->assertStringContainsString("--{$option} requires a value", $output, "[--{$option}=] The diagnostic names the option.");
+            $this->assertStringNotContainsString('no key found', $output, "[--{$option}=] The rejection precedes the key lookup.");
+        }
+
+        // A trailing empty repeat after a valid value is the same shape.
+        list($exitCode, $output) = $this->runProbe(array('--plan=general', '--plan='));
+        $this->assertSame(2, $exitCode);
+        $this->assertStringContainsString('--plan requires a value', $output);
+    }
+
     public function testAValueConsumedByAKnownOptionIsNeverJudgedItself()
     {
         /*
