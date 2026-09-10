@@ -423,6 +423,39 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
         }
     }
 
+    public function testEverySurfaceRowPairsItsSettingsClassWithThatClassOwnEndpointConstant()
+    {
+        /*
+         * glm38-5 (round-38 finding 5): the settings-to-endpoint pairing
+         * is owned TWICE — each settings class's ENDPOINT_CLASS constant
+         * (which AbstractPlanRegionSettings::handle_settings_change()
+         * sweeps discovery transients through) and the SURFACES rows'
+         * endpoint column (which uninstall.php's sweep reads) — with no
+         * tie between them. A pairing edit touching one copy split the
+         * two invalidation worlds: the two paths cleared different 12h
+         * transient sets and a stale discovery catalog silently survived
+         * one of them — the silent-strand drift class this registry's
+         * own header records happening twice before glm20-4. The pin is
+         * PER-ROW pairing identity (glm37-3's key-set template): every
+         * registry row's endpoint class IS its settings class's
+         * ENDPOINT_CLASS, so a one-sided edit fails before any sweep
+         * diverges. The reflection read fatals loudly on a settings
+         * class that stops declaring the constant, so the pin cannot go
+         * vacuous.
+         */
+        $surfaces = \Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES;
+
+        $this->assertGreaterThan(0, count($surfaces), 'The pairing pin must see the real registry, not an empty one.');
+
+        foreach ($surfaces as $index => $surface) {
+            $this->assertSame(
+                $surface['settings']::ENDPOINT_CLASS,
+                $surface['endpoint'],
+                "Surface row [{$index}]: the registry's endpoint column must be the settings class's own ENDPOINT_CLASS — the settings-change sweep and the uninstall sweep must clear the same transient set."
+            );
+        }
+    }
+
     public function testNoTestWiresACatalogModelIdLiteralThroughTheFactory()
     {
         /*
