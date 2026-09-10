@@ -112,6 +112,31 @@ final class JsonOutputGuidance {
 	}
 
 	/**
+	 * Merges built guidance into a system instruction (glm36-5).
+	 *
+	 * The append-or-replace rule both surface models spelled by hand —
+	 * an existing non-empty instruction keeps its place with a blank
+	 * line before the guidance; a null or empty instruction gives way
+	 * to the guidance alone — lived byte-identical in both models'
+	 * guidance consults, the twin-drift class this class's single
+	 * ownership exists to stop (a framing change — separator,
+	 * trimming, empty policy — had to land twice or the same
+	 * outputSchema config framed the system prompt differently per
+	 * surface).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string|null $system_instruction The configured system instruction.
+	 * @param string      $guidance           The built guidance (callers pass a non-empty string).
+	 * @return string The merged system instruction.
+	 */
+	public static function merge_into_system_instruction( $system_instruction, string $guidance ): string {
+		return \is_string( $system_instruction ) && '' !== $system_instruction
+			? $system_instruction . "\n\n" . $guidance
+			: $guidance;
+	}
+
+	/**
 	 * The full guidance for a configured outputSchema: the base sentence
 	 * plus the schema-embed sentence carrying the memoized encoding.
 	 *

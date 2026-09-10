@@ -51,6 +51,7 @@ use Deicod\WpConnectors\Zai\Support\FixedMessageResponseException;
 use Deicod\WpConnectors\Zai\Support\JsonBodyDecoder;
 use Deicod\WpConnectors\Zai\Support\JsonFallbackResult;
 use Deicod\WpConnectors\Zai\Support\JsonEncodeGuard;
+use Deicod\WpConnectors\Zai\Support\JsonOutputGuidance;
 use Deicod\WpConnectors\Zai\Support\MemoizesToolLoopVerdicts;
 use Deicod\WpConnectors\Zai\Support\PreDecodedResponse;
 use Deicod\WpConnectors\Zai\Support\BuildsJsonOutputGuidance;
@@ -448,9 +449,12 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 		 */
 		$guidance = $this->json_output_guidance_builder()->schema_guidance( $output_schema, $config, self::PROVIDER_LABEL );
 
-		return \is_string( $system_instruction ) && '' !== $system_instruction
-			? $system_instruction . "\n\n" . $guidance
-			: $guidance;
+		/*
+		 * glm36-5: the append-or-replace merge rides the shared builder
+		 * — the rule was byte-identical in both models (the framing is
+		 * the guidance owner's business, not a per-surface half).
+		 */
+		return JsonOutputGuidance::merge_into_system_instruction( $system_instruction, $guidance );
 	}
 
 	/**

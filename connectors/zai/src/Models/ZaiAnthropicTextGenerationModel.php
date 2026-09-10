@@ -504,9 +504,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		$system_instruction = $config->getSystemInstruction();
 		$json_guidance      = $this->json_output_guidance();
 		if ( '' !== $json_guidance ) {
-			$system_instruction = \is_string( $system_instruction ) && '' !== $system_instruction
-				? $system_instruction . "\n\n" . $json_guidance
-				: $json_guidance;
+			/*
+			 * glm36-5: the append-or-replace merge rides the shared
+			 * builder — the rule was byte-identical in both models (the
+			 * framing is the guidance owner's business, not a per-surface
+			 * half). The emptiness guard stays here: json_output_guidance()
+			 * answers '' with no schema configured, and merging that would
+			 * append a bare separator to the instruction.
+			 */
+			$system_instruction = JsonOutputGuidance::merge_into_system_instruction( $system_instruction, $json_guidance );
 		}
 		if ( \is_string( $system_instruction ) && '' !== $system_instruction ) {
 			/*

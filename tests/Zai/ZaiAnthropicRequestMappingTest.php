@@ -219,6 +219,18 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
         $this->assertStringContainsString('use BuildsJsonOutputGuidance;', $source, 'The model composes the one shared guidance-builder trait.');
         $this->assertStringNotContainsString('private $json_output_guidance_builder', $source, 'The builder property is declared by the trait, not hand-synced per surface.');
         $this->assertStringNotContainsString('new JsonOutputGuidance()', $source, 'The lazy construction lives on the trait, not per surface.');
+
+        /*
+         * glm36-5 (source pin): the guidance-to-instruction MERGE rule
+         * rides the shared builder too — the append-or-replace ternary
+         * was byte-identical in both models, so a framing change
+         * (separator, trimming, empty policy) had to land twice. The
+         * twin's pin holds the same statements. The emptiness guard
+         * stays per-surface by design: only this surface's consult can
+         * answer '' (no schema configured).
+         */
+        $this->assertStringContainsString('JsonOutputGuidance::merge_into_system_instruction(', $source, 'The merge rides the one shared builder.');
+        $this->assertStringNotContainsString('. "\n\n" .', $source, 'No hand-rolled separator merge may ride the model.');
         $this->assertSame(
             0,
             preg_match_all('/must_encode\( \$text, \'a message text part\'/', $source),
