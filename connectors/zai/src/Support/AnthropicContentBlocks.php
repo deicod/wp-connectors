@@ -98,4 +98,65 @@ final class AnthropicContentBlocks {
 		'text_delta'     => 'text',
 		'thinking_delta' => 'thinking',
 	);
+
+	/**
+	 * MAPPED_TYPES as a membership SET (glm38-8): the once-built flipped
+	 * derivation the aggregator's event-name membership (glm37-11) and
+	 * the catalog's chat-model membership (glm26-12) already ride — the
+	 * body parse consults the table per content block of every response
+	 * parse, so the linear scans become one isset().
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, true>|null
+	 */
+	private static $mapped_type_set = null;
+
+	/**
+	 * KNOWN_UNMAPPED_TYPES as a membership SET (glm38-8): the same
+	 * once-flipped derivation for the drop list.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, true>|null
+	 */
+	private static $unmapped_type_set = null;
+
+	/**
+	 * Whether a block type is one BOTH transports map (glm38-8).
+	 *
+	 * MAPPED_TYPES' membership rule on the once-flipped set — the
+	 * strict in_array the rule rode before, the same derivation shape
+	 * glm37-11 pinned for the aggregator's event names.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $type The block type member.
+	 * @return bool True when the type is a mapped content-block type.
+	 */
+	public static function is_mapped_type( string $type ): bool {
+		if ( null === self::$mapped_type_set ) {
+			self::$mapped_type_set = \array_fill_keys( self::MAPPED_TYPES, true );
+		}
+
+		return isset( self::$mapped_type_set[ $type ] );
+	}
+
+	/**
+	 * Whether a block type is one BOTH transports drop (glm38-8).
+	 *
+	 * KNOWN_UNMAPPED_TYPES' membership rule on the once-flipped set.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $type The block type member.
+	 * @return bool True when the type is a known provider-internal block.
+	 */
+	public static function is_known_unmapped_type( string $type ): bool {
+		if ( null === self::$unmapped_type_set ) {
+			self::$unmapped_type_set = \array_fill_keys( self::KNOWN_UNMAPPED_TYPES, true );
+		}
+
+		return isset( self::$unmapped_type_set[ $type ] );
+	}
 }

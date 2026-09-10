@@ -2343,8 +2343,11 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * aggregator's streamed drop and this parse's ride ONE table,
 		 * so the mapped/unmapped decision is one catalog edit with a
 		 * lockstep pin behind it, never a two-file hand-enumeration.
+		 * glm38-8: the membership consults ride the vocabulary owner's
+		 * once-flipped sets (the glm37-11 idiom), not per-block linear
+		 * scans.
 		 */
-		if ( \in_array( $type, AnthropicContentBlocks::KNOWN_UNMAPPED_TYPES, true ) ) {
+		if ( AnthropicContentBlocks::is_known_unmapped_type( $type ) ) {
 			/*
 			 * KNOWN LIMITATION (code-review #15, documented not fixed):
 			 * these provider-internal block types carry no SDK
@@ -2391,7 +2394,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		 * message-only, same class, channel, and verdict).
 		 */
 		$member = null;
-		if ( \in_array( $type, AnthropicContentBlocks::MAPPED_TYPES, true ) ) {
+		if ( AnthropicContentBlocks::is_mapped_type( $type ) ) {
 			$member = AnthropicContentBlocks::STRING_CONTENT_MEMBERS[ $type ] ?? null;
 		}
 
