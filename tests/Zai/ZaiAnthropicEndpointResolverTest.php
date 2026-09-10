@@ -187,6 +187,41 @@ final class ZaiAnthropicEndpointResolverTest extends WpConnectorsTestCase
         $this->assertSame($coding, ZaiAnthropicEndpoint::normalize_base_url($coding) . '/messages');
     }
 
+    public function testEveryMatrixPlanCarriesAMessagesRoute()
+    {
+        /*
+         * glm37-3: MESSAGES_ROUTE_BY_PLAN is the one plan-keyed map on
+         * this surface (the zai twin has a flat generation route, so no
+         * cross-surface pin sees it), and it had ZERO test references —
+         * the provider above enumerates only today's four combinations
+         * and messagesPath() hand-mirrors the routes, so a plan added to
+         * PLANS and MATRIX but missed here passed for() and every guard,
+         * then hit an undefined-index read inside messages_url() at the
+         * first real generation (a PHP 8 warning passing null to the
+         * strict-typed api_url(string) — an uncaught TypeError, generic
+         * 500). The vocabulary tie is the glm34-8 discipline: the route
+         * map's key set IS the matrix's plan vocabulary, and every route
+         * is a leading-slash path messages_url() can append for EVERY
+         * matrix combination — so the miss fails HERE, at the pin, not
+         * in a generation.
+         */
+        $this->assertSame(
+            array_keys(ZaiAnthropicEndpoint::MATRIX),
+            array_keys(ZaiAnthropicEndpoint::MESSAGES_ROUTE_BY_PLAN),
+            'Every matrix plan must carry a Messages route (glm37-3): a plan in MATRIX without a MESSAGES_ROUTE_BY_PLAN row fatals messages_url() at request time.'
+        );
+
+        foreach (ZaiAnthropicEndpoint::MESSAGES_ROUTE_BY_PLAN as $plan => $route) {
+            $this->assertIsString($route);
+            $this->assertStringStartsWith('/', $route, "The [{$plan}] route is a path api_url() appends, not a full URL.");
+
+            foreach (array_keys(ZaiAnthropicEndpoint::MATRIX[$plan]) as $region) {
+                $url = ZaiAnthropicEndpoint::for($plan, $region)->messages_url();
+                $this->assertStringEndsWith($route, $url, "The [{$plan}+{$region}] Messages URL rides the plan's route row.");
+            }
+        }
+    }
+
     /*
      * Request-time retargeting (Task 2.2's core requirement).
      */
