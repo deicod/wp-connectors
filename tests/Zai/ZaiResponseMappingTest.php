@@ -1320,6 +1320,43 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
         }
     }
 
+    public function testACorruptOnlyUsageStreamWithoutChoicesRejectsThroughTheNoUsableEventChannel()
+    {
+        /*
+         * glm37-1: the adjudicated corner, pinned. aggregated()'s choices
+         * gate (glm26-11) returns before the glm31-1 resolution runs, so
+         * a stream whose ONLY usage declaration is corrupt AND that
+         * carried no choices frame keeps malformed_event false — the
+         * glm31 verifier round accepted exactly this channel (nothing
+         * aggregates, so no zeroed-accounting success is constructible),
+         * and round 37 rewrote $non_array_usage_pending's docblock to
+         * state it instead of claiming the typed usage twin. The pin
+         * holds the corner so that comment cannot drift back.
+         */
+        $stream = implode("\n\n", array(
+            'data: {"id":"chatcmpl-cu5","usage":"unavailable"}',
+            'data: [DONE]',
+        ));
+
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        try {
+            $this->model()->generateTextResult($this->prompt());
+            $this->fail('A corrupt-only usage stream with no choices must still reject — fail-closed.');
+        } catch (ResponseException $e) {
+            $this->assertStringContainsString(
+                'No usable chat.completion.chunk event was received.',
+                $e->getMessage(),
+                'The corner rejects through the generic no-usable-event channel (the adjudicated shape).'
+            );
+            $this->assertStringNotContainsString(
+                'malformed chunk event',
+                $e->getMessage(),
+                'The glm31-1 resolution never ran — the flag stayed false.'
+            );
+        }
+    }
+
     public function testAScalarUsageMemberSupersededByALaterValidOneStillSucceeds()
     {
         /*

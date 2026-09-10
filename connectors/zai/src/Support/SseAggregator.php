@@ -166,10 +166,20 @@ final class SseAggregator extends AbstractSseAggregator {
 	 * byte-equivalent non-streaming body rejects typed through the
 	 * validator's object rule (lenient mode rescues null, never a
 	 * scalar — the glm18-4 cross-channel divergence class). aggregated()
-	 * resolves the flag at end of stream: malformed_event rises only
-	 * when NO valid usage member merged in either phase (the post-DONE
-	 * gap-fill included), so the GLM6 #3 shape keeps succeeding and the
-	 * corrupt-only shape fails typed like its non-streamed twin.
+	 * resolves the flag at end of stream, AFTER its own choices gate
+	 * (glm26-11): malformed_event rises only when NO valid usage member
+	 * merged in either phase (the post-DONE gap-fill included), so the
+	 * GLM6 #3 shape keeps succeeding and the corrupt-only shape over a
+	 * stream that carried choices flags malformed and fails typed like
+	 * its non-streamed twin. The corner with NO choices frame never
+	 * reaches the resolution — aggregated() returns null at the gate and
+	 * the model rejects through the generic no-usable-event channel: the
+	 * glm31 verifier round's adjudicated corner, fail-closed (nothing
+	 * aggregates, so no zeroed-accounting success is constructible — the
+	 * message is the generic one, not the validator's usage wording).
+	 * Pinned in ZaiResponseMappingTest (glm37-1, which rewrote this
+	 * paragraph after the "fails typed like its non-streamed twin" claim
+	 * silently covered the corner the resolution never sees).
 	 *
 	 * @since 0.2.0
 	 *
