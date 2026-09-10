@@ -263,14 +263,28 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			return false;
 		}
 
-		$binding = $this->binding( $effective['source'], $effective['key'] );
+		/*
+		 * glm37-8: ONE endpoint resolution per consult (the glm26-5/GLM10 #1
+		 * precompute-then-pass shape — binding() already accepts the
+		 * request-captured cache key; region_switch_pending() takes the same
+		 * consult-local endpoint now). The resolution reads the plan/region
+		 * options and sanitizes both enums; consulting it twice — binding()'s
+		 * internal default, then region_switch_pending()'s own — paid the
+		 * reads twice on every isConfigured() call (ProviderRegistry consults
+		 * availability on every request). glm15-6's per-consult-read boundary
+		 * is untouched: this threads WITHIN one synchronous consult, no memo.
+		 */
+		$endpoint_class = static::endpoint_class();
+		$endpoint       = $endpoint_class::for_current_settings();
+
+		$binding = $this->binding( $effective['source'], $effective['key'], $endpoint->cache_key() );
 		$state   = $this->stored_state();
 
 		// Region-switch distrust (set by the settings layer after a region
 		// change): while the effective key is exactly the env/constant
 		// credential that rode the switch, only a DEFINITIVE result may
 		// report it connected — see region_switch_pending().
-		$region_pending = $this->region_switch_pending( $effective['key'] );
+		$region_pending = $this->region_switch_pending( $effective['key'], $endpoint );
 
 		if ( \is_array( $state ) && ( $state['binding'] ?? '' ) === $binding ) {
 			// UTC on BOTH sides (current_time() with $gmt, not time(), so the
@@ -577,11 +591,15 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param string $key Complete effective key value.
+	 * @param string                   $key      Complete effective key value.
+	 * @param AbstractZaiEndpoint|null $endpoint The consult's already-resolved
+	 *                                        endpoint (glm37-8), or null to
+	 *                                        resolve the current settings
+	 *                                        here.
 	 * @return bool True when the flag binds this exact key to the currently
 	 *              selected region.
 	 */
-	private function region_switch_pending( string $key ): bool {
+	private function region_switch_pending( string $key, ?AbstractZaiEndpoint $endpoint = null ): bool {
 		$flag = get_option( static::REGION_PENDING_OPTION, null );
 
 		if ( ! \is_array( $flag ) ) {
@@ -595,9 +613,16 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 			return false;
 		}
 
-		$endpoint_class = static::endpoint_class();
+		if ( null === $endpoint ) {
+			// glm37-8: isConfigured() passes the endpoint its consult
+			// already resolved; callers without one (the refusal gate,
+			// the settle check in record_definitive_verdict) resolve here
+			// exactly as before.
+			$endpoint_class = static::endpoint_class();
+			$endpoint       = $endpoint_class::for_current_settings();
+		}
 
-		return $endpoint_class::for_current_settings()->region() === $region
+		return $endpoint->region() === $region
 			&& hash_equals( $fingerprint, hash( 'sha256', $key ) );
 	}
 
