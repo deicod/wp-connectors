@@ -367,12 +367,21 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 		 * docblock). The probe's FLIGHT keeps the wrap funnel — only
 		 * resolve_probe_authentication() re-wraps, after the raw shape
 		 * check.
+		 *
+		 * glm37-7: the guarded read rides wired_or_null() (glm36-4's one
+		 * owner) — RuntimeException-width like the three reader consults
+		 * it serves. The hook's docblock names RuntimeException its ONLY
+		 * throw, so anything else is a contract violation that must
+		 * surface loudly here exactly as it already does through every
+		 * wired_or_null() site, never launder into 'nothing wired' with
+		 * the ladder key reported effective (the cross-credential shape
+		 * glm34-6's raw read exists to prevent).
 		 */
-		try {
-			$authentication = $this->raw_request_authentication();
-		} catch ( Throwable $e ) {
-			$authentication = null;
-		}
+		$authentication = $this->wired_or_null(
+			function (): RequestAuthenticationInterface {
+				return $this->raw_request_authentication();
+			}
+		);
 
 		if ( $authentication instanceof ApiKeyRequestAuthentication && '' !== $authentication->getApiKey() ) {
 			return $this->wired_credential( $authentication );
