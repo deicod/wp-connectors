@@ -1431,12 +1431,28 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 				// glm14-5: the opaque-wiring refusal — inconclusive,
 				// nothing flown (see the docblock).
 				return null;
+			} elseif ( ApiKeyRequestAuthentication::class !== \get_class( $wired ) ) {
+				/*
+				 * glm38-3: an Api-key SUBCLASS takes the opaque
+				 * disposition, not the funnel — since the wrap's
+				 * plain-class requirement went exact, the funnel would
+				 * throw its typed subclass refusal INSIDE this try, and
+				 * the Throwable catch below would launder it into the
+				 * ladder fallback (a DIFFERENT credential flying while
+				 * an unwrappable wiring sits on the instance — the
+				 * glm14-5/glm16-1 cross-credential shape this early
+				 * return exists to prevent). The subclass's key is
+				 * readable, so effective_key() still reports its
+				 * material; nothing flies and nothing persists.
+				 */
+				return null;
 			} else {
 				// glm16-1: the FLIGHT credential goes back through the
 				// one protocol-wrap funnel; the funnel cannot throw here
-				// (the raw instance just passed the Api-key shape check
-				// the wrap() itself applies — the uncarriable rejection
-				// rides authenticateRequest(), later, in probe()'s try).
+				// (a plain Api-key instance is the one shape the wrap
+				// rebuilds unconditionally — the subclass shape returned
+				// above, and the uncarriable rejection rides
+				// authenticateRequest(), later, in probe()'s try).
 				$authentication = $this->getRequestAuthentication();
 			}
 		} catch ( Throwable $unwired ) {

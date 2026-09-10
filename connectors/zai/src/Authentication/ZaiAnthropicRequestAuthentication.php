@@ -198,8 +198,23 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 	 * through unchanged. Any OTHER implementation is refused: passing it
 	 * through would send the request unauthenticated (no Bearer, no
 	 * anthropic-version) instead of failing closed (review finding). The
-	 * registry itself only ever wires ApiKeyRequestAuthentication subclasses
-	 * for apiKey() metadata, so this guard is defense in depth.
+	 * registry itself only ever wires plain ApiKeyRequestAuthentication for
+	 * apiKey() metadata, so this guard is defense in depth.
+	 *
+	 * glm38-3: the plain-class requirement is EXACT — an
+	 * ApiKeyRequestAuthentication SUBCLASS (the registry's instanceof gate
+	 * accepts one; the SDK's own paths never produce one) used to be
+	 * silently rebuilt from getApiKey() alone, stripping whatever
+	 * authenticateRequest() behavior the override added (an org header,
+	 * key rotation) — requests flew with bare Bearer auth and failed
+	 * upstream with no local diagnostic, the fail-OPEN sibling of the
+	 * foreign shape's typed refusal directly below. The subclass shape is
+	 * refused typed too, in the same family: the rebuild can carry the
+	 * key, but it can never carry the override, and a wiring whose
+	 * behavior cannot ride this surface's protocol must fail closed
+	 * (glm14-5's one-credential-flies discipline). The message stays
+	 * fixed and value-free — the wiring class name is caller-controlled
+	 * and never interpolated.
 	 *
 	 * @since 0.2.0
 	 *
@@ -217,8 +232,14 @@ final class ZaiAnthropicRequestAuthentication extends ApiKeyRequestAuthenticatio
 			return $authentication;
 		}
 
-		if ( $authentication instanceof ApiKeyRequestAuthentication ) {
+		if ( ApiKeyRequestAuthentication::class === \get_class( $authentication ) ) {
 			return new self( $authentication->getApiKey() );
+		}
+
+		if ( $authentication instanceof ApiKeyRequestAuthentication ) {
+			throw new RuntimeException(
+				sprintf( 'The %s provider refuses an API-key authentication subclass: its overridden behavior cannot ride this surface.', self::PROVIDER_LABEL ) // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
+			);
 		}
 
 		throw new RuntimeException(

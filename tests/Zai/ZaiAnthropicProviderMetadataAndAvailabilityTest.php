@@ -398,6 +398,46 @@ final class ZaiAnthropicProviderMetadataAndAvailabilityTest extends WpConnectors
         return new OpaqueAuthentication();
     }
 
+    public function testAnApiKeySubclassWiringFliesNothingAndBindsNothing()
+    {
+        /*
+         * glm38-3: the wrap funnel refuses Api-key SUBCLASSES typed now,
+         * so resolve_probe_authentication() must judge the exact class
+         * BEFORE the funnel — without the early return, the funnel's
+         * refusal landed in the probe's Throwable catch and LAUNDERED
+         * into the ladder fallback: the subclass's own key (readable
+         * through the raw instanceof) flew as the plain-wrapped
+         * fallback credential and a doomed 403 persisted as ITS invalid
+         * verdict — the glm16-1 cross-credential shape. The subclass
+         * takes the opaque disposition: inconclusive, nothing flies,
+         * nothing persists, configured-pending.
+         */
+        putenv('ZAI_ANTHROPIC_API_KEY');
+        $key = FakeSecrets::apiKey();
+        update_option(ZaiAnthropicProviderAvailability::KEY_OPTION, $key);
+
+        $instance = new ZaiAnthropicProviderAvailability();
+        $instance->setHttpTransporter(AiClient::defaultRegistry()->getHttpTransporter());
+        $instance->setRequestAuthentication(
+            new class ('subclass-wired-' . FakeSecrets::apiKey()) extends ApiKeyRequestAuthentication {
+            }
+        );
+
+        // A doomed rejection would be served to whatever flew; none may.
+        $this->queueSdkResponse(403, array(), '{"type":"error","error":{"type":"forbidden"}}');
+
+        $this->assertTrue(
+            $instance->isConfigured(),
+            'Subclass wiring reports configured-pending, never a verdict for a credential that never flew.'
+        );
+
+        $this->assertNoHttpRequests();
+        $this->assertFalse(
+            get_option(ZaiAnthropicProviderAvailability::STATE_OPTION, false),
+            'No verdict may be recorded for a wiring the protocol funnel refuses.'
+        );
+    }
+
     public function testUncarriableCredentialMaterialSavesAsADefinitiveInvalidVerdict()
     {
         /*

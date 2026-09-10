@@ -304,6 +304,53 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         ZaiAnthropicRequestAuthentication::wrap($foreign);
     }
 
+    public function testTheWrapFunnelRefusesApiKeySubclassesTyped()
+    {
+        /*
+         * glm38-3: the wrap's plain-class requirement went EXACT. An
+         * ApiKeyRequestAuthentication subclass — the registry's
+         * instanceof gate accepts one; the SDK's own paths never
+         * produce one — used to be silently rebuilt from getApiKey()
+         * alone, stripping whatever authenticateRequest() behavior the
+         * override added: requests flew bare Bearer auth and failed
+         * upstream with no local diagnostic, the fail-OPEN sibling of
+         * the foreign shape's typed refusal above. The subclass shape
+         * refuses typed in the same family now; the message stays fixed
+         * and value-free (the wiring class name is caller-controlled
+         * and never interpolated).
+         */
+        $subclass = new class (FakeSecrets::apiKey()) extends ApiKeyRequestAuthentication {
+            /**
+             * An override the bare rebuild could never carry.
+             *
+             * @param SdkRequest $request The request.
+             * @return SdkRequest
+             */
+            public function authenticateRequest( SdkRequest $request ): SdkRequest
+            {
+                return $request->withHeader( 'X-Org', 'acme' );
+            }
+        };
+
+        try {
+            ZaiAnthropicRequestAuthentication::wrap( $subclass );
+            $this->fail( 'An API-key authentication subclass must be refused typed, never silently rebuilt.' );
+        } catch ( RuntimeException $e ) {
+            $this->assertSame(
+                'The ' . ZaiAnthropicProviderAvailability::REFUSAL_LABEL . ' provider refuses an API-key authentication subclass: its overridden behavior cannot ride this surface.',
+                $e->getMessage()
+            );
+        }
+
+        // The plain instance keeps its byte-identical rebuild (the
+        // registry's own shape — the pass-through pin sits above).
+        $plain = new ApiKeyRequestAuthentication( FakeSecrets::apiKey() );
+        $this->assertInstanceOf(
+            ZaiAnthropicRequestAuthentication::class,
+            ZaiAnthropicRequestAuthentication::wrap( $plain )
+        );
+    }
+
     public function testEveryAnthropicSdkClassSpeaksTheProtocolThroughTheOneTrait()
     {
         /*
@@ -521,13 +568,18 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
          * positive half requires the label-interpolating sprintf idiom
          * at every rejection site, and the negative halves forbid the
          * standalone slug literal AND the reverted sentence prefix.
+         *
+         * glm38-3: the count is 3 now — the wrap's Api-key SUBCLASS
+         * refusal is the third rejection site, riding the same idiom
+         * (superseding glm24-10's 2, the GLM10 #4 lesson: the pin
+         * counts the sites, and a site was added).
          */
         $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Authentication/ZaiAnthropicRequestAuthentication.php');
 
         $this->assertSame(
-            2,
+            3,
             substr_count($source, "sprintf( 'The %s provider"),
-            'Both rejection messages interpolate the surface label — the verbatim revert fails here (it scores 0).'
+            'Every rejection message interpolates the surface label — the verbatim revert fails here (it scores 0).'
         );
         $this->assertSame(0, preg_match('/The zai_anthropic provider/', $source), 'No rejection message embeds the surface slug mid-string.');
         $this->assertSame(0, preg_match('/[\'"]zai_anthropic[\'"]/', $source), 'No standalone quoted slug literal either.');
