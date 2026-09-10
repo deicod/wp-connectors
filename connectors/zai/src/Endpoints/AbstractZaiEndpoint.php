@@ -322,7 +322,31 @@ abstract class AbstractZaiEndpoint {
 	 * @return string e.g. 'zai|coding|intl'.
 	 */
 	final public function cache_key(): string {
-		return static::CACHE_SCOPE . '|' . $this->plan . '|' . $this->region;
+		return self::compose_cache_key( static::CACHE_SCOPE, $this->plan, $this->region );
+	}
+
+	/**
+	 * The ONE endpoint-identity FORMULA, parameterized (glm37-5, the
+	 * glm18-11 compose_discovery_cache_id shape).
+	 *
+	 * The settings layer's quarantined-endpoint fallback (the probe-miss
+	 * sweep, beside its discovery twin) must compose the identity WITHOUT
+	 * loading an endpoint child — hand-mirroring the formula there was
+	 * exactly the drift class glm18-11 closed for the discovery id. The
+	 * formula lives HERE once; cache_key() itself delegates to it, so an
+	 * identity-layout change can never strand a fallback mirror.
+	 *
+	 * SDK-free loadable by construction (see discovery_cache_id()).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $scope  The surface's cache-key scope (CACHE_SCOPE).
+	 * @param string $plan   One of the surface's plans.
+	 * @param string $region One of the surface's regions.
+	 * @return string e.g. 'zai|coding|intl'.
+	 */
+	final public static function compose_cache_key( string $scope, string $plan, string $region ): string {
+		return $scope . '|' . $plan . '|' . $region;
 	}
 
 	/**

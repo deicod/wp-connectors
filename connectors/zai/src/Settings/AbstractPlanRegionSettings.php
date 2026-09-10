@@ -944,10 +944,34 @@ abstract class AbstractPlanRegionSettings {
 	public static function probe_miss_transient_ids( string $key ): array {
 		$endpoint_class = static::ENDPOINT_CLASS;
 
+		/*
+		 * glm37-5: the guarded shape discovery_transient_ids_for()
+		 * carries (GLM12 #10) — on a partially-updated install where the
+		 * settings children load but an endpoint child file is
+		 * quarantined, the unguarded dereference fataled the sweep with
+		 * an uncaught Class-not-found Error. The public method cannot
+		 * lean on uninstall.php's owner-ready gate alone (a future
+		 * REST/CLI invalidation, or a third surface outside its chain);
+		 * with the child quarantined the identities compose through the
+		 * endpoint BASE's parameterized formula (SDK-free loadable,
+		 * identical by the ZaiUninstallTest equality pin), and with the
+		 * base gone too there is no composably safe name left — the
+		 * bounded pre-GLM12 #10 behavior, whose residue the
+		 * option-name-prefix sweep still covers.
+		 */
+		$endpoint_base = \Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint::class;
+		$child_exists  = \class_exists( $endpoint_class );
+
+		if ( ! $child_exists && ! \class_exists( $endpoint_base ) ) {
+			return array();
+		}
+
 		$names = array();
 		foreach ( self::PLANS as $plan ) {
 			foreach ( self::REGIONS as $region ) {
-				$cache_key = $endpoint_class::for( $plan, $region )->cache_key();
+				$cache_key = $child_exists
+					? $endpoint_class::for( $plan, $region )->cache_key()
+					: $endpoint_base::compose_cache_key( static::CACHE_SCOPE, $plan, $region );
 
 				foreach ( self::PROBE_BINDING_SOURCES as $source ) {
 					$names[] = self::probe_miss_transient_name( self::credential_binding( $source, $cache_key, $key ) );

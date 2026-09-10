@@ -715,6 +715,38 @@ PHP;
         $this->assertSame(1, substr_count($source, "\$zai_connector_settings_class = \$zai_connector_surface['settings'];"), 'The derivable probe-miss sweep iterates the registry.');
     }
 
+    public function testTheQuarantinedEndpointProbeMissFallbackComposesTheIdenticalIdentity()
+    {
+        /*
+         * glm37-5: probe_miss_transient_ids() mirrors
+         * discovery_transient_ids_for()'s guarded shape — when the
+         * endpoint CHILD is quarantined the sweep composes its cache
+         * keys through the endpoint base's parameterized
+         * compose_cache_key() instead of fataling. The fallback's
+         * correctness is formula identity: the composed key must equal
+         * the endpoint instance's cache_key() for every combination on
+         * BOTH surfaces (the glm18-11 discovery-id equality, one member
+         * down — cache_key() itself delegates to the parameterized form
+         * now, so this pins the delegation too).
+         */
+        foreach (array(
+            array(\Deicod\WpConnectors\Zai\Settings\PlanRegionSettings::class, \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class),
+            array(\Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::class, \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class),
+        ) as $pair) {
+            list($settings_class, $endpoint_class) = $pair;
+
+            foreach ($settings_class::PLANS as $plan) {
+                foreach ($settings_class::REGIONS as $region) {
+                    $this->assertSame(
+                        $endpoint_class::for($plan, $region)->cache_key(),
+                        \Deicod\WpConnectors\Zai\Endpoints\AbstractZaiEndpoint::compose_cache_key($settings_class::CACHE_SCOPE, $plan, $region),
+                        "[{$plan}+{$region}] The quarantined-endpoint fallback composes the identical endpoint identity (glm37-5)."
+                    );
+                }
+            }
+        }
+    }
+
     public function testTheConstantRungsMarkersAreDeletedByTheSweepItself()
     {
         /*
