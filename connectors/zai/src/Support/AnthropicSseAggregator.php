@@ -432,7 +432,9 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	private function validated_usage_view( $usage ): ?array {
 		$usage_array = null === $usage ? null : (array) $usage;
 
-		return null !== UsageValidator::failure_reason( $usage_array, $usage ) ? null : $usage_array;
+		// glm36-7: the vocabulary and mode are REQUIRED arguments — this
+		// Anthropic aggregator states its own, never rides a default.
+		return null !== UsageValidator::failure_reason( $usage_array, $usage, UsageValidator::ANTHROPIC_MEMBERS, false ) ? null : $usage_array;
 	}
 
 	/**

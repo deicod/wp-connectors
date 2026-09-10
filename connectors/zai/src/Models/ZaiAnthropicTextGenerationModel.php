@@ -2222,7 +2222,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			UsageValidator::reject(
 				\is_array( $data['usage'] ) ? $data['usage'] : null,
 				null !== $raw_body && \property_exists( $raw_body, 'usage' ) ? $raw_body->usage : null,
-				self::PROVIDER_LABEL
+				self::PROVIDER_LABEL,
+				UsageValidator::ANTHROPIC_MEMBERS,
+				false
 			);
 
 			$usage_data = $data['usage'];

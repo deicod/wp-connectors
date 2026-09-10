@@ -4478,19 +4478,19 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $validator = 'Deicod\WpConnectors\Zai\Support\UsageValidator';
 
         // Valid shapes: absent members, empty object, cache variants.
-        $this->assertNull($validator::failure_reason(array(), new stdClass()));
-        $this->assertNull($validator::failure_reason(array('input_tokens' => 3, 'cache_read_input_tokens' => 4, 'output_tokens' => 5), new stdClass()));
+        $this->assertNull($validator::failure_reason(array(), new stdClass(), $validator::ANTHROPIC_MEMBERS, false));
+        $this->assertNull($validator::failure_reason(array('input_tokens' => 3, 'cache_read_input_tokens' => 4, 'output_tokens' => 5), new stdClass(), $validator::ANTHROPIC_MEMBERS, false));
         // Oracle-less fallback: sequential keys mean list, string keys mean object.
-        $this->assertNull($validator::failure_reason(array('input_tokens' => 1), null));
-        $this->assertSame('not_object', $validator::failure_reason(array(1, 2), null));
+        $this->assertNull($validator::failure_reason(array('input_tokens' => 1), null, $validator::ANTHROPIC_MEMBERS, false));
+        $this->assertSame('not_object', $validator::failure_reason(array(1, 2), null, $validator::ANTHROPIC_MEMBERS, false));
 
         // Rejections both transports must share.
-        $this->assertSame('not_object', $validator::failure_reason(null, null), 'An explicitly-null usage is not an object.');
-        $this->assertSame('not_object', $validator::failure_reason('5', null), 'A scalar usage is not an object.');
-        $this->assertSame('not_object', $validator::failure_reason(array('input_tokens' => 1), array()), 'A raw LIST oracle value means the wire carried a list.');
-        $this->assertSame('bad_member', $validator::failure_reason(array('input_tokens' => '5'), new stdClass()), 'A string count is a bad member.');
-        $this->assertSame('bad_member', $validator::failure_reason(array('input_tokens' => -1), new stdClass()), 'A negative count is a bad member.');
-        $this->assertSame('bad_member', $validator::failure_reason(array('output_tokens' => 1.5), new stdClass()), 'A float count is a bad member.');
+        $this->assertSame('not_object', $validator::failure_reason(null, null, $validator::ANTHROPIC_MEMBERS, false), 'An explicitly-null usage is not an object.');
+        $this->assertSame('not_object', $validator::failure_reason('5', null, $validator::ANTHROPIC_MEMBERS, false), 'A scalar usage is not an object.');
+        $this->assertSame('not_object', $validator::failure_reason(array('input_tokens' => 1), array(), $validator::ANTHROPIC_MEMBERS, false), 'A raw LIST oracle value means the wire carried a list.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('input_tokens' => '5'), new stdClass(), $validator::ANTHROPIC_MEMBERS, false), 'A string count is a bad member.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('input_tokens' => -1), new stdClass(), $validator::ANTHROPIC_MEMBERS, false), 'A negative count is a bad member.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('output_tokens' => 1.5), new stdClass(), $validator::ANTHROPIC_MEMBERS, false), 'A float count is a bad member.');
 
         // The overflow-checked totals (GLM4 #5) live in the same source.
         $this->assertSame(PHP_INT_MAX, $validator::total(array('input_tokens' => PHP_INT_MAX, 'output_tokens' => 0)), 'The exact boundary total stays representable.');
@@ -4501,13 +4501,17 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * GLM5 #3: the validator is parameterized by member set — the
          * zai (OpenAI) surface validates through the SAME source with
          * its own member list, so a usage-rule change can never land on
-         * one surface only.
+         * one surface only. glm36-7: both parameters are REQUIRED now
+         * (every direct call in this pin states its vocabulary and
+         * mode) — the shared class defaults to neither surface's
+         * semantics, so a future call site cannot silently validate
+         * the wrong member list and answer null fail-open.
          */
-        $this->assertNull($validator::failure_reason(array('prompt_tokens' => 7, 'completion_tokens' => 3, 'total_tokens' => 10), new stdClass(), $validator::OPENAI_MEMBERS), 'OpenAI members validate against their own list.');
-        $this->assertNull($validator::failure_reason(array(), new stdClass(), $validator::OPENAI_MEMBERS), 'Absent OpenAI members stay tolerated.');
-        $this->assertSame('bad_member', $validator::failure_reason(array('prompt_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS), 'A string OpenAI count is a bad member.');
-        $this->assertSame('bad_member', $validator::failure_reason(array('completion_tokens' => INF), new stdClass(), $validator::OPENAI_MEMBERS), 'An INF OpenAI count is a bad member.');
-        $this->assertNull($validator::failure_reason(array('input_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS), 'Foreign (Anthropic) members are not judged by the OpenAI list.');
+        $this->assertNull($validator::failure_reason(array('prompt_tokens' => 7, 'completion_tokens' => 3, 'total_tokens' => 10), new stdClass(), $validator::OPENAI_MEMBERS, false), 'OpenAI members validate against their own list.');
+        $this->assertNull($validator::failure_reason(array(), new stdClass(), $validator::OPENAI_MEMBERS, false), 'Absent OpenAI members stay tolerated.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('prompt_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS, false), 'A string OpenAI count is a bad member.');
+        $this->assertSame('bad_member', $validator::failure_reason(array('completion_tokens' => INF), new stdClass(), $validator::OPENAI_MEMBERS, false), 'An INF OpenAI count is a bad member.');
+        $this->assertNull($validator::failure_reason(array('input_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS, false), 'Foreign (Anthropic) members are not judged by the OpenAI list.');
 
         /*
          * GLM7 #8: the LENIENT mode is the legacy zai surface's master
@@ -4522,7 +4526,7 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $this->assertSame('not_object', $validator::failure_reason(array(1, 2), array(), $validator::OPENAI_MEMBERS, true), 'Lenient: a NON-empty list is still rejected.');
         $this->assertSame('not_object', $validator::failure_reason('5', null, $validator::OPENAI_MEMBERS, true), 'Lenient: a scalar is still rejected.');
         $this->assertSame('bad_member', $validator::failure_reason(array('prompt_tokens' => '5'), new stdClass(), $validator::OPENAI_MEMBERS, true), 'Lenient: a string count is still rejected.');
-        $this->assertSame('not_object', $validator::failure_reason(null, null), 'Strict (default): a null usage member is rejected.');
+        $this->assertSame('not_object', $validator::failure_reason(null, null, $validator::ANTHROPIC_MEMBERS, false), 'Strict: a null usage member is rejected.');
 
         /*
          * glm28-16 supersession (GLM10 #4 lesson): message_for_reason()
@@ -4532,13 +4536,13 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          * public rejection channel (glm26-7's one composition).
          */
         try {
-            $validator::reject('5', null, 'z.ai Anthropic');
+            $validator::reject('5', null, 'z.ai Anthropic', $validator::ANTHROPIC_MEMBERS, false);
             $this->fail('A scalar usage member must reject.');
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
             $this->assertStringContainsString('The usage member must be a JSON object.', $e->getMessage(), 'One fixed rejection message for the not-object reason.');
         }
         try {
-            $validator::reject(array('input_tokens' => '5'), new stdClass(), 'z.ai Anthropic');
+            $validator::reject(array('input_tokens' => '5'), new stdClass(), 'z.ai Anthropic', $validator::ANTHROPIC_MEMBERS, false);
             $this->fail('A string count must reject.');
         } catch (WordPress\AiClient\Providers\Http\Exception\ResponseException $e) {
             $this->assertStringContainsString('Token counts must be non-negative integers.', $e->getMessage(), 'One fixed rejection message for the bad-member reason.');

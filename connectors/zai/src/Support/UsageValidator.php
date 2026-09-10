@@ -15,6 +15,15 @@
  * (GLM4 #5) and the fixed rejection messages, for the same single-source
  * reason.
  *
+ * glm36-7: the member list and the lenient flag are REQUIRED on both
+ * entry points — the old defaults baked ONE surface's vocabulary and
+ * mode into the shared class, so a future call site copying the shorter
+ * default-riding spelling onto the OpenAI surface would validate
+ * ANTHROPIC_MEMBERS against an OpenAI payload, find none of its keys,
+ * and answer null (fail-open). The parameterized-divergence idiom
+ * (GLM7 #8; glm30-4/glm26-7) keeps per-surface arguments as arguments:
+ * every call site names its protocol's members and its mode.
+ *
  * @since 0.2.0
  *
  * @package wp-connectors
@@ -157,15 +166,19 @@ final class UsageValidator {
 	 * @param mixed    $usage     The associatively decoded usage member.
 	 * @param mixed    $raw_usage The same member from the non-associative
 	 *                            decode, or null when unavailable.
-	 * @param string[] $members   The protocol's known token members
-	 *                            (ANTHROPIC_MEMBERS or OPENAI_MEMBERS).
-	 * @param bool     $lenient   The legacy zai surface's master
-	 *                            semantics: null/empty shapes count as
-	 *                            absent (GLM7 #8).
+	 * @param string[] $members   REQUIRED (glm36-7): the protocol's known
+	 *                            token members — ANTHROPIC_MEMBERS or
+	 *                            OPENAI_MEMBERS, named by the caller, never
+	 *                            defaulted; the shared class defaults to
+	 *                            neither surface's vocabulary.
+	 * @param bool     $lenient   REQUIRED (glm36-7): the legacy zai
+	 *                            surface's master semantics — null/empty
+	 *                            shapes count as absent (GLM7 #8); the
+	 *                            Anthropic surfaces pass false.
 	 * @return string|null Null when valid; REASON_NOT_OBJECT or
 	 *                     REASON_BAD_MEMBER when the caller must reject.
 	 */
-	public static function failure_reason( $usage, $raw_usage, array $members = self::ANTHROPIC_MEMBERS, bool $lenient = false ): ?string {
+	public static function failure_reason( $usage, $raw_usage, array $members, bool $lenient ): ?string {
 		if ( ! \is_array( $usage ) ) {
 			// Present but scalar or null — not a usage object.
 			if ( $lenient && null === $usage ) {
@@ -245,13 +258,17 @@ final class UsageValidator {
 	 * @param mixed    $raw_usage      The same member from a non-associative
 	 *                                 decode, or null when unavailable.
 	 * @param string   $provider_label The consuming surface's PROVIDER_LABEL.
-	 * @param string[] $members        The protocol's known token members.
-	 * @param bool     $lenient        The legacy zai surface's master
-	 *                                 semantics (GLM7 #8).
+	 * @param string[] $members        REQUIRED (glm36-7): the protocol's
+	 *                                 known token members — the shared class
+	 *                                 defaults to neither surface's
+	 *                                 vocabulary.
+	 * @param bool     $lenient        REQUIRED (glm36-7): the legacy zai
+	 *                                 surface's master semantics (GLM7 #8);
+	 *                                 the Anthropic surfaces pass false.
 	 * @return void
 	 * @throws ResponseException When the usage member is malformed.
 	 */
-	public static function reject( $usage, $raw_usage, string $provider_label, array $members = self::ANTHROPIC_MEMBERS, bool $lenient = false ): void {
+	public static function reject( $usage, $raw_usage, string $provider_label, array $members, bool $lenient ): void {
 		$reason = self::failure_reason( $usage, $raw_usage, $members, $lenient );
 
 		if ( null !== $reason ) {
