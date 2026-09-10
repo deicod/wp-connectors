@@ -238,7 +238,8 @@ final class ZaiAnthropicModelMetadataDirectory extends AbstractApiBasedModelMeta
 	 * state, never network. The probing instance is the one the registry
 	 * wires. An isConfigured() consult on this un-wired instance answers
 	 * SILENTLY, not loudly — inconclusive → configured-pending TRUE on
-	 * zero network evidence, plus a planted 60s probe-miss marker (see
+	 * zero network evidence (FALSE under region-switch distrust,
+	 * glm21-2), plus a planted 60s probe-miss marker either way (see
 	 * the SafeGenerationBoundary hook's full statement). Gate state
 	 * only; never probe through it.
 	 *

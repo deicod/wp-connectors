@@ -65,8 +65,10 @@ trait SafeGenerationBoundary {
 	 * resolve_probe_authentication() resolves the fallback, the unset
 	 * transporter throws inside probe()'s catch(Throwable), and the
 	 * consult reports inconclusive → configured-pending TRUE on zero
-	 * network evidence, planting the 60s probe-miss marker under the
-	 * shared binding name. Gate state only; never probe through it.
+	 * network evidence (FALSE under region-switch distrust — glm21-2's
+	 * carve-out, documented at isConfigured() itself), planting the 60s
+	 * probe-miss marker under the shared binding name either way. Gate
+	 * state only; never probe through it.
 	 *
 	 * @since 0.2.0
 	 *
