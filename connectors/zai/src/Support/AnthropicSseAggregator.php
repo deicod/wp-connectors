@@ -276,14 +276,18 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 */
 	private static $content_block_event_set = null;
 
-	/**
-	 * Whether an error event was received.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var bool
+	/*
+	 * glm38-6: the $error/$malformed_event fields and their getters moved
+	 * to AbstractSseAggregator (byte-identical twins in both aggregators).
+	 * This wire's channel meanings: error is the declared `error` event
+	 * channel (raised through flag_corrupt_event() below and the error
+	 * arms of consume_frame()/dispatch_event()); malformed_event is
+	 * Codex R4 #3's undecodable-declared-payload channel plus the
+	 * impossible-shape rejections glm23-1/glm26-2/glm33-1/glm34-1 added —
+	 * every raising site routes through flag_corrupt_event(), the one
+	 * owner that also maps a declared 'error' name onto the error
+	 * channel.
 	 */
-	private $error = false;
 
 	/**
 	 * Whether message_stop terminated the stream (Codex R8 #2).
@@ -316,18 +320,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	private $malformed_tool_input = false;
 
 	/**
-	 * Whether a frame DECLARING a known event name carried an undecodable
-	 * payload (Codex R4 #3): the stream is corrupt and the model must
-	 * surface its fixed parse-error message instead of completing with the
-	 * damaged content silently missing.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var bool
-	 */
-	private $malformed_event = false;
-
-	/**
 	 * A data-less CONTENT-BLOCK declaration awaiting its data-only
 	 * carrier (glm23-1), or null when the previous frame was not one.
 	 *
@@ -347,16 +339,13 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 */
 	private $pending_content_declaration = null;
 
-	/**
-	 * Whether an error event was received.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return bool True when the stream contained an error event.
+	/*
+	 * glm38-6: has_error()/has_malformed_event() moved to
+	 * AbstractSseAggregator as final getters over the shared channels —
+	 * the model's check order over them (has_error() first, then the
+	 * tool-input channel, then malformed_event — glm20-2's precedence)
+	 * is unchanged and lives in the model's stream parse.
 	 */
-	public function has_error(): bool {
-		return $this->error;
-	}
 
 	/*
 	 * glm19-11: the observability getters (is_done(), event_count(),
@@ -406,23 +395,6 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	 */
 	public function has_malformed_tool_input(): bool {
 		return $this->malformed_tool_input;
-	}
-
-	/**
-	 * Whether a declared event frame carried an undecodable payload.
-	 *
-	 * True means the stream is corrupt: at least one frame explicitly
-	 * declaring a known event name (message_start, content_block_*,
-	 * message_delta, message_stop, error) had a payload that failed JSON
-	 * decoding, so the aggregated completion would be missing that event's
-	 * content and must be treated as a parse error.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return bool True when a declared event frame was malformed.
-	 */
-	public function has_malformed_event(): bool {
-		return $this->malformed_event;
 	}
 
 	/**

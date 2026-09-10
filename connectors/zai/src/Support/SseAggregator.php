@@ -202,46 +202,20 @@ final class SseAggregator extends AbstractSseAggregator {
 	 */
 	private $trailing_finish_reasons = array();
 
-	/**
-	 * Whether a chunk choice or tool-call delta carried an index this
-	 * merge could not identify soundly (GLM7 #1).
-	 *
-	 * The legacy merge used to SILENTLY SKIP choices whose 'index' member
-	 * was missing or null and int-COERCE malformed ones ((int) "1.9" is 1,
-	 * (int) null is 0) — a chunk of the answer (or a tool-call fragment)
-	 * vanished from a stream that still reported success, and a float or
-	 * null index merged its delta into the WRONG accumulator. The Anthropic
-	 * twin added in this branch rejects the identical corruption through
-	 * raw_block_index(); this flag is the legacy surface's parity channel:
-	 * aggregated() raises it, the model turns it into the typed
-	 * zai_invalid_response stream rejection.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var bool
+	/*
+	 * glm38-6: the $error/$malformed_event fields and their getters moved
+	 * to AbstractSseAggregator (they were byte-identical twins here and
+	 * in the Anthropic aggregator — a contract change had to land twice).
+	 * This wire's channel meanings, preserved from the moved field
+	 * docblocks: malformed_event is the GLM7 #1 index-corruption channel
+	 * (a chunk choice or tool-call delta whose 'index' member this merge
+	 * could not identify soundly — the legacy surface's parity with the
+	 * twin's raw_block_index() rejection), and error is glm29-2's channel
+	 * in the OpenAI wire's own spelling (a decodable event object with a
+	 * PRESENT error member, or an `event: error` declaration — the
+	 * declaration itself is the signal, and the payload's condition
+	 * cannot un-declare it). The raising sites below carry each rule.
 	 */
-	private $malformed_event = false;
-
-	/**
-	 * Whether an error event was received (glm29-2 — the Anthropic
-	 * twin's has_error() channel, in the OpenAI wire's own spelling).
-	 *
-	 * The twin's error signal is an `event: error` DECLARATION; this
-	 * wire has no declared-event semantics (GLM7 #18), so the signal
-	 * rides the payload instead: a decodable event object carrying a
-	 * PRESENT error member (absent or null keeps the member's absent
-	 * semantics — the glm28-1 one-check idiom), pre- and post-sentinel
-	 * identically. An `event: error` declaration sets the same flag
-	 * (wire-robustness parity with the twin; bare event: lines are
-	 * absent from the live capture, GLM1 #14) — the declaration itself
-	 * is the error signal and the payload's condition cannot
-	 * un-declare it.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @var bool
-	 */
-	private $error = false;
 
 	/*
 	 * glm19-11: the observability getters (is_done(), event_count(),
@@ -260,41 +234,14 @@ final class SseAggregator extends AbstractSseAggregator {
 	 * frames merged — was already implied).
 	 */
 
-	/**
-	 * Whether a chunk choice or tool-call delta carried an unusable index.
-	 *
-	 * True means the stream is corrupt: at least one decoded chunk
-	 * declared a choices entry (or a tool_calls delta) whose 'index'
-	 * member was absent, null, or not a non-negative integer, so the
-	 * merged payload would be missing that delta's content or carry it
-	 * merged into the wrong accumulator. The model must treat the whole
-	 * response as a parse error (GLM7 #1 — parity with the Anthropic
-	 * twin's raw_block_index() rejection).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return bool True when a declared index was malformed.
+	/*
+	 * glm38-6: has_error()/has_malformed_event() moved to
+	 * AbstractSseAggregator as final getters over the shared channels —
+	 * the model still rejects this surface's error-event streams typed
+	 * with the fixed message before consulting any aggregated payload
+	 * (glm29-2), and the malformed channel still names this wire's
+	 * index-corruption classes at the raising sites below.
 	 */
-	public function has_malformed_event(): bool {
-		return $this->malformed_event;
-	}
-
-	/**
-	 * Whether the stream contained an error event (glm29-2).
-	 *
-	 * The model rejects the response typed with the fixed error-event
-	 * message before consulting any aggregated payload — a
-	 * provider-declared failure must not complete as a clean
-	 * generation, exactly as the Anthropic twin's has_error() channel
-	 * rejects the byte-equivalent shape.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @return bool True when the stream contained an error event.
-	 */
-	public function has_error(): bool {
-		return $this->error;
-	}
 
 	/**
 	 * Assembles the consolidated chat.completion payload.
