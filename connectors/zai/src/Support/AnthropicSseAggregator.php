@@ -255,6 +255,28 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 	);
 
 	/**
+	 * DECLARED_EVENTS as a membership SET (glm37-11, the glm26-12 idiom):
+	 * built once per process on first consult, answered through isset().
+	 * The LIST constant stays the vocabulary owner; the set derives from
+	 * it and is never spelled by hand.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, true>|null
+	 */
+	private static $declared_event_set = null;
+
+	/**
+	 * CONTENT_BLOCK_EVENTS as a membership SET (glm37-11): the same
+	 * once-built derivation for the content-block lifecycle names.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, true>|null
+	 */
+	private static $content_block_event_set = null;
+
+	/**
 	 * Whether an error event was received.
 	 *
 	 * @since 0.2.0
@@ -763,7 +785,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 */
 			if ( 'error' === $event_name ) {
 				$this->error = true;
-			} elseif ( \is_string( $event_name ) && \in_array( $event_name, self::CONTENT_BLOCK_EVENTS, true ) ) {
+			} elseif ( \is_string( $event_name ) && self::is_content_block_event( $event_name ) ) {
 				$this->pending_content_declaration = $event_name;
 			}
 
@@ -844,7 +866,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			 * flag_corrupt_event() — this and the three sibling
 			 * corruption branches below share the one rule.
 			 */
-			if ( \is_string( $event_name ) && \in_array( $event_name, self::DECLARED_EVENTS, true ) ) {
+			if ( \is_string( $event_name ) && self::is_declared_event( $event_name ) ) {
 				$this->flag_corrupt_event( $event_name );
 			} elseif ( null === $event_name && \JSON_ERROR_NONE !== \json_last_error() ) {
 				/*
@@ -973,7 +995,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * false and surfaced 'malformed event frame', the same
 		 * misclassification the undecodable branch above fixed.
 		 */
-		if ( ( ! $this->terminated || 'message_stop' === $type ) && \in_array( $type, self::DECLARED_EVENTS, true ) && ! \is_object( $raw ) ) {
+		if ( ( ! $this->terminated || 'message_stop' === $type ) && self::is_declared_event( $type ) && ! \is_object( $raw ) ) {
 
 			$this->flag_corrupt_event( $type );
 
@@ -1577,7 +1599,7 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 			return;
 		}
 
-		if ( \in_array( $type, self::DECLARED_EVENTS, true ) ) {
+		if ( self::is_declared_event( $type ) ) {
 			// A declared content-bearing event (message_start,
 			// content_block_*, message_delta) after the terminal
 			// message_stop would mutate a completed generation.
@@ -1689,6 +1711,45 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		}
 
 		return null !== $payload && \property_exists( $payload, $member ) && \is_string( $payload->{$member} );
+	}
+
+	/**
+	 * Whether an event name is one the aggregator actively dispatches on
+	 * (glm37-11): isset() on the once-flipped static set — the
+	 * DECLARED_EVENTS list's membership rule without the per-frame
+	 * strict in_array scan (consume_frame() classifies EVERY decodable
+	 * frame, the token-delta hot path). The list constant stays the
+	 * vocabulary owner; the set derives from it.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $name Declared event name.
+	 * @return bool
+	 */
+	private static function is_declared_event( string $name ): bool {
+		if ( null === self::$declared_event_set ) {
+			self::$declared_event_set = \array_fill_keys( self::DECLARED_EVENTS, true );
+		}
+
+		return isset( self::$declared_event_set[ $name ] );
+	}
+
+	/**
+	 * Whether an event name opens the content-block lifecycle (glm37-11):
+	 * the CONTENT_BLOCK_EVENTS list's membership rule on the once-flipped
+	 * set, the same derivation is_declared_event() rides.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $name Declared event name.
+	 * @return bool
+	 */
+	private static function is_content_block_event( string $name ): bool {
+		if ( null === self::$content_block_event_set ) {
+			self::$content_block_event_set = \array_fill_keys( self::CONTENT_BLOCK_EVENTS, true );
+		}
+
+		return isset( self::$content_block_event_set[ $name ] );
 	}
 
 	/**
