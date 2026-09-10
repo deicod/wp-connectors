@@ -86,6 +86,52 @@ function zai_live_probe_report( string $label, $value ): void
 }
 
 /**
+ * The CLI's entire long-option vocabulary (glm37-9): ONE owner driving
+ * the raw-argv scan's whitelist, the getopt() spec, and the
+ * diagnostics.
+ *
+ * The round-37 finding: the three names were hand-stated at ~7 sites,
+ * and the dangerous direction of a missed lockstep edit is the getopt()
+ * SPEC — the scan accepts a token the spec never declared, getopt()
+ * silently drops it, and the option falls to its default: the glm36-9
+ * silent-defaults class, where a key-present run is billable on
+ * settings the operator never chose. Every consumer composes from this
+ * list; ZaiLiveProbeArgsTest's source pin holds the composition.
+ *
+ * @return list<string> The declared long-option names.
+ */
+function zai_live_probe_long_options(): array
+{
+    return array( 'surface', 'plan', 'region' );
+}
+
+/**
+ * The option names as diagnostic prose (glm37-9): "--surface, --plan,
+ * and --region" — Oxford-joined from the one owner, so a fourth option
+ * updates every diagnostic with the edit that teaches the probe about it.
+ *
+ * @return string The dashed, human-readable option list.
+ */
+function zai_live_probe_option_names(): string
+{
+    $names = array_map(
+        static function ( string $name ): string {
+            return '--' . $name;
+        },
+        zai_live_probe_long_options()
+    );
+    $last = array_pop( $names );
+
+    if ( array() === $names ) {
+        return $last;
+    }
+
+    $joiner = 1 === count( $names ) ? ' and ' : ', and ';
+
+    return implode( ', ', $names ) . $joiner . $last;
+}
+
+/**
  * Returns one long-option value, or the default when absent/malformed.
  *
  * GLM8 #7: getopt() returns an ARRAY for a repeated option — the old
@@ -313,7 +359,7 @@ while ( $zai_probe_i < $zai_probe_argument_count ) {
         // A positional value or a single-dash token: getopt() reads
         // single-dash tokens as undeclared SHORT options and drops
         // them too, so neither spelling reaches the parser.
-        fwrite( STDERR, "live-probe: unrecognized argument '{$zai_probe_token}' (this tool takes --surface, --plan, and --region only; --help prints the usage)\n" );
+        fwrite( STDERR, "live-probe: unrecognized argument '{$zai_probe_token}' (this tool takes " . zai_live_probe_option_names() . " only; --help prints the usage)\n" );
         exit( 2 );
     }
 
@@ -323,8 +369,8 @@ while ( $zai_probe_i < $zai_probe_argument_count ) {
         $zai_probe_name = substr( $zai_probe_name, 0, $zai_probe_equals );
     }
 
-    if ( ! \in_array( $zai_probe_name, array( 'surface', 'plan', 'region' ), true ) ) {
-        fwrite( STDERR, "live-probe: unrecognized option '--{$zai_probe_name}' (this tool takes --surface, --plan, and --region; --help prints the usage)\n" );
+    if ( ! \in_array( $zai_probe_name, zai_live_probe_long_options(), true ) ) {
+        fwrite( STDERR, "live-probe: unrecognized option '--{$zai_probe_name}' (this tool takes " . zai_live_probe_option_names() . "; --help prints the usage)\n" );
         exit( 2 );
     }
 
@@ -360,7 +406,22 @@ while ( $zai_probe_i < $zai_probe_argument_count ) {
     ++$zai_probe_i;
 }
 
-$args = getopt( '', array( 'surface:', 'plan:', 'region:' ) );
+/*
+ * glm37-9: the getopt() SPEC composes from the same owner the
+ * raw-argv whitelist rides — a name present in one and missing from
+ * the other is the silent-defaults shape (the scan passes the token,
+ * getopt() drops it, the option takes its default), so the two can no
+ * longer disagree.
+ */
+$args = getopt(
+    '',
+    array_map(
+        static function ( string $zai_probe_name ): string {
+            return $zai_probe_name . ':';
+        },
+        zai_live_probe_long_options()
+    )
+);
 if ( false === $args ) {
 	// glm23-3: the same register_argc_argv=0 shape — getopt() reads the
 	// argv that is not there. No options parsed; the defaults below.

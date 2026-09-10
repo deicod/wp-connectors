@@ -418,4 +418,37 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         $this->assertSame(2, $exitCode);
         $this->assertStringContainsString('--plan must be coding or general', $output, 'The value reaches the whitelist diagnostic, not the argument scan.');
     }
+
+    public function testTheLongOptionVocabularyRidesOneOwner()
+    {
+        /*
+         * glm37-9: the option names were hand-stated at ~7 sites; the
+         * dangerous direction of a missed lockstep edit is the getopt()
+         * SPEC — the raw scan accepts a token the spec never declared,
+         * getopt() silently drops it, and the option falls to its
+         * default (the glm36-9 silent-defaults class: a key-present run
+         * billable on settings the operator never chose). The whitelist,
+         * the spec, and the diagnostics compose from
+         * zai_live_probe_long_options() now; this source pin holds the
+         * composition and forbids the hand-stated list shapes, and every
+         * owner name must appear in exactly one option read so a rename
+         * cannot strand a read on a name getopt() no longer captures.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/zai-live-probe.php');
+
+        $this->assertStringContainsString('function zai_live_probe_long_options()', $source, 'The CLI names its long-option vocabulary once (glm37-9).');
+        $this->assertStringContainsString("return array( 'surface', 'plan', 'region' );", $source, "The owner states today's three names.");
+        $this->assertStringContainsString('\in_array( $zai_probe_name, zai_live_probe_long_options(), true )', $source, 'The raw-argv whitelist rides the owner.');
+        $this->assertStringContainsString('zai_live_probe_long_options()', $source, 'The getopt spec composition rides the owner.');
+
+        // The owner itself states the names once — the bans target the
+        // CONSUMER sites (the whitelist and the spec), where a hand-stated
+        // copy is the silent-defaults shape.
+        $this->assertSame(0, preg_match("/in_array\(\s*\\\$zai_probe_name,\s*array\(/", $source), 'No hand-stated whitelist: the scan composes from the owner.');
+        $this->assertSame(0, preg_match("/array\(\s*'surface:'/", $source), 'No hand-stated getopt spec: it composes from the owner.');
+
+        foreach (array('surface', 'plan', 'region') as $option) {
+            $this->assertStringContainsString("zai_live_probe_option( \$args, '{$option}',", $source, "The --{$option} read spells the owner's name.");
+        }
+    }
 }
