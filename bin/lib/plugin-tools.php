@@ -859,11 +859,12 @@ function wp_connectors_write_visibility_spans($masked, $offset)
  * the map. Strict rule: every assignment-shaped write is a WHOLE-array
  * array()/[] literal, and the variable never appears as an element
  * access ($map[...] — read or write, element shapes are unmodeled), a
- * list() target, an array-write helper argument, a by-reference
- * binding, or inside a function signature (a parameter DEFAULT the
- * assignment regex can mistake for the map's definition while the
- * caller's argument wins at runtime). Any unrecognized shape refuses
- * the proof, restoring the flagged default.
+ * destructuring target (list() or its '[ ... ] =' spelling, glm36-1),
+ * an array-write helper argument, a by-reference binding, or inside a
+ * function signature (a parameter DEFAULT the assignment regex can
+ * mistake for the map's definition while the caller's argument wins at
+ * runtime). Any unrecognized shape refuses the proof, restoring the
+ * flagged default.
  *
  * @param string $masked   String-masked view of the file (same length as
  *                         the comment-stripped source; offsets
@@ -905,6 +906,26 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
 
     // list() destructuring mentioning the map.
     if (preg_match('/\blist\s*\([^)]*' . $quoted . '/i', $before)) {
+        return false;
+    }
+
+    /*
+     * glm36-1: the square-bracket spelling of the destructuring target
+     * above — '[ $map ] = source;', PHP 7.1+'s twin of list(). The
+     * assignment alternation below anchors on the variable directly
+     * followed by an operator, so a bracket-preceded target was an
+     * INVISIBLE whole-array write and a foreign rewrite laundered the
+     * literal proof (empirically confirmed: the semantically identical
+     * list() form refused). The statement-level anchor (a ';', '{', '}',
+     * or whitespace before the bracket) keeps an element READ —
+     * '$other[ $map ] = ...', where the map is the INDEX — unaffected;
+     * the [^;]* spans cross the nested brackets of '[ [ $x ], $map ] ='
+     * and the '=>' of keyed spellings (whose literal keys the masked
+     * view blanks); and a bracket group an assignment follows can only
+     * re-bind what it names, so an over-broad match refuses a proof,
+     * never launders one.
+     */
+    if (preg_match('/(?:^|[;{}\s])\[[^;]*' . $quoted . '[^;]*\]\s*=(?![=>])/', $before)) {
         return false;
     }
 
@@ -1036,6 +1057,29 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      */
     foreach ($spans as $span) {
         if (preg_match('/=\s*&\s*' . preg_quote($variable, '/') . '\b/', (string) substr($masked, $span[0], $span[1] - $span[0] + 1))) {
+            return array();
+        }
+    }
+
+    /*
+     * glm36-1: a destructuring target naming the variable re-binds it
+     * through a write the assignment regex below cannot see — the
+     * list() spelling AND its PHP 7.1+ square-bracket twin, both of
+     * which the map path's array_writes_recognized() refuses for its
+     * own variable. The collector matches writes TO the variable only,
+     * so an invisible destructuring write understates the runtime
+     * value set — one anywhere in the visible regions refuses the
+     * proof entirely (the by-ref channel's rule, glm18-18). The square
+     * form anchors at statement level, so the variable as an element
+     * INDEX ('$rows[ $var ] = ...') stays a read; its spans cross
+     * nested brackets and the '=>' of keyed spellings like the map
+     * path's.
+     */
+    $destructured = preg_quote($variable, '/');
+    foreach ($spans as $span) {
+        $region = (string) substr($masked, $span[0], $span[1] - $span[0] + 1);
+        if (preg_match('/\blist\s*\([^)]*' . $destructured . '/i', $region)
+            || preg_match('/(?:^|[;{}\s])\[[^;]*' . $destructured . '[^;]*\]\s*=(?![=>])/', $region)) {
             return array();
         }
     }

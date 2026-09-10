@@ -11,7 +11,11 @@
  * array_merge was correctly flagged, += was not). Both write-shape
  * checks (the collector and the map-literal recognizer) match every
  * compound assignment form now. These fixtures pin the laundering
- * shapes flag and the legitimate shapes stay clean.
+ * shapes flag and the legitimate shapes stay clean. glm36-1 extends
+ * the charter to the destructuring WRITE spellings: '[ ... ] =' and
+ * list() targets re-bind the include variable through a channel
+ * neither write-shape check saw on the plain path (and the square
+ * spelling escaped both), so both refuse on both paths now.
  *
  * @package wp-connectors
  */
@@ -237,5 +241,79 @@ final class SelfContainmentCompoundWritesTest extends TestCase
         );
 
         $this->assertNotEmpty(wp_connectors_self_containment_violations($this->root), 'A variable cycle terminates with a violation.');
+    }
+
+    /**
+     * @dataProvider destructuringLaunderingProvider
+     */
+    public function testADestructuringWriteRefusesTheProofOnBothPaths(string $source, string $include_variable): void
+    {
+        /*
+         * glm36-1: the PHP 7.1+ '[ ... ] =' destructuring target is the
+         * spelling twin of the list() refusal — and neither spelling was
+         * refused on the PLAIN-variable path (the collector matches
+         * writes TO the variable only). Both laundered a foreign rewrite
+         * past the gate on both paths (empirically confirmed: zero
+         * violations while the runtime require loaded /etc/passwd;
+         * the semantically identical list() form refused on the map
+         * path). Both spellings refuse on both paths now.
+         */
+        file_put_contents($this->root . '/fixture.php', $source);
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'A destructuring write to the include variable must refuse the proof.');
+        $this->assertStringContainsString('require ' . $include_variable, implode("\n", $violations));
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function destructuringLaunderingProvider(): array
+    {
+        return array(
+            'map path, square spelling' => array(
+                "<?php\n\$map = array( __DIR__ . '/ok.php' );\n[ \$map ] = array( '/etc/passwd' );\nforeach (\$map as \$p) {\n    require \$p;\n}\n",
+                '$p',
+            ),
+            'map path, nested group carrying the map' => array(
+                "<?php\n\$map = array( __DIR__ . '/ok.php' );\n[ \$other, \$map ] = array( 'x', '/etc/passwd' );\nforeach (\$map as \$p) {\n    require \$p;\n}\n",
+                '$p',
+            ),
+            'map path, keyed spelling' => array(
+                "<?php\n\$map = array( __DIR__ . '/ok.php' );\n[ 'k' => \$map ] = array( 'k' => '/etc/passwd' );\nforeach (\$map as \$p) {\n    require \$p;\n}\n",
+                '$p',
+            ),
+            'map path, loop-visible square write' => array(
+                "<?php\n\$map = array( __DIR__ . '/g.php' );\nforeach (\$map as \$p) {\n    require \$p;\n    [ \$map ] = array( '/etc/passwd' );\n}\n",
+                '$p',
+            ),
+            'plain path, square spelling' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\n[ \$f ] = array( '/etc/passwd' );\nrequire \$f;\n",
+                '$f',
+            ),
+            'plain path, list() spelling' => array(
+                "<?php\n\$f = __DIR__ . '/ok.php';\nlist( \$f ) = array( '/etc/passwd' );\nrequire \$f;\n",
+                '$f',
+            ),
+        );
+    }
+
+    public function testDestructuringReadsOfTheIncludeVariablesStayClean(): void
+    {
+        /*
+         * The refusals judge WRITE channels only: the map as an array
+         * VALUE ('$rows = array( $map )'), as a whole-array KEY
+         * ('$rows[ $map ] = ...' — the statement-level anchor keeps a
+         * bracket group preceded by the indexer variable a read), and a
+         * destructuring targeting OTHER variables never re-bind the
+         * include variable, so the proven literals keep holding.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\n\$map = array( __DIR__ . '/a.php', __DIR__ . '/b.php' );\n\$rows = array( \$map );\n\$rows2[ \$map ] = 'v';\n[ \$x, \$y ] = array( 1, 2 );\n\$z = \$x + \$y;\nforeach (\$map as \$p) {\n    require \$p;\n}\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'Reads through the map and other-variable destructuring stay clean.');
     }
 }
