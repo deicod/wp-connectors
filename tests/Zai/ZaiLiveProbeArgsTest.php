@@ -433,6 +433,14 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
          * composition and forbids the hand-stated list shapes, and every
          * owner name must appear in exactly one option read so a rename
          * cannot strand a read on a name getopt() no longer captures.
+         *
+         * glm38-10 SUPERSEDES the spec half (the GLM10 #4 lesson,
+         * documented here): the scan COLLECTS the options it validates,
+         * so the getopt() call and its spec are deleted — one parser,
+         * nothing to keep in agreement. The spec ban below stays as a
+         * guard against getopt() ever returning with a hand-stated spec;
+         * the whitelist and diagnostic compositions are unchanged and
+         * remain the pin's live information.
          */
         $source = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/zai-live-probe.php');
 

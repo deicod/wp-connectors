@@ -181,17 +181,20 @@ function zai_live_probe_option_names(): string
 }
 
 /**
- * Returns one long-option value, or the default when absent/malformed.
+ * Returns one long-option value, or the default when absent.
  *
- * GLM8 #7: getopt() returns an ARRAY for a repeated option — the old
+ * GLM8 #7: getopt() returned an ARRAY for a repeated option — the old
  * (string) cast emitted an Array-to-string notice and handed the
- * whitelist checks the literal 'Array'. A malformed value normalizes to
- * '' so the per-option whitelist rejects it with its own diagnostic.
+ * whitelist checks the literal 'Array', so a non-string value
+ * normalized to '' and the per-option whitelist rejected it with its
+ * own diagnostic. glm38-10: the scan's collected map states that
+ * semantics directly — values are strings, and a repeated option is
+ * collected AS '' — so this lookup is a plain defaulting read.
  *
- * @param array  $args    The getopt() result.
+ * @param array  $args    The scan's collected name=>value map.
  * @param string $name    Option name (without leading dashes).
  * @param string $default Value used when the option is absent.
- * @return string The option value ('' when present but malformed).
+ * @return string The option value ('' when the option was repeated).
  */
 function zai_live_probe_option( array $args, string $name, string $default ): string
 {
@@ -199,7 +202,7 @@ function zai_live_probe_option( array $args, string $name, string $default ): st
         return $default;
     }
 
-    return \is_string( $args[ $name ] ) ? $args[ $name ] : '';
+    return $args[ $name ];
 }
 
 /**
@@ -338,30 +341,29 @@ foreach ( ZaiSurfaces::SURFACES as $zai_probe_row ) {
 }
 
 /*
- * GLM8 #7: getopt's OPTIONAL-value '::' declarations (this probe's old
- * form) capture only the '--option=value' syntax — the conventional
- * space-separated '--option value' form returns false for every
- * declared option, which the (string) cast turned into '' and rejected
- * with a diagnostic that blamed the VALUE ('--surface must be openai or
- * anthropic' for exactly that value). The REQUIRED-value ':'
- * declarations below accept BOTH forms. Their one silent gap: a bare
- * '--option' with no value at all drops out of the getopt() result
- * entirely (or swallows the next token as its value), so the missing
- * value is detected by the sequential scan below — a bare '--option'
- * token whose following token is absent or itself option-led can only
- * ever mean a missing value (none of this probe's values starts with
- * '--').
+ * GLM8 #7: the old getopt-based form's OPTIONAL-value '::'
+ * declarations captured only the '--option=value' syntax — the
+ * conventional space-separated '--option value' form returned false
+ * for every declared option, which the (string) cast turned into ''
+ * and rejected with a diagnostic that blamed the VALUE ('--surface
+ * must be openai or anthropic' for exactly that value). The scan
+ * below accepts BOTH forms. The getopt form's one silent gap — a bare
+ * '--option' with no value at all dropping out of the parse result
+ * entirely — is why the missing-value check lives in the scan itself:
+ * a bare '--option' token whose following token is absent or itself
+ * option-led can only ever mean a missing value (none of this probe's
+ * values starts with '--').
  */
 /*
  * glm23-3 (review round 23, finding 3): register_argc_argv=0 (a valid
  * php.ini setting — the CLI SAPI defaults it on, a hardened ini or a
- * -d flag turns it off) leaves $argv UNDEFINED and getopt() returning
- * false, so an unguarded strict array read fataled with a TypeError
- * before any diagnostic — violating this file's own GLM7 #14 rule that
- * even Errors must surface as named FAILED steps. An absent argv means
- * no arguments to scan: the empty-array normalization walks the usage
- * path (every option at its default, stopping at the key lookup with
- * its named diagnostic).
+ * -d flag turns it off) leaves $argv UNDEFINED and the old getopt()
+ * call returning false, so an unguarded strict array read fataled with
+ * a TypeError before any diagnostic — violating this file's own GLM7
+ * #14 rule that even Errors must surface as named FAILED steps. An
+ * absent argv means no arguments to scan: the empty-array
+ * normalization walks the usage path (every option at its default,
+ * stopping at the key lookup with its named diagnostic).
  */
 global $argv;
 $zai_probe_argv = isset( $argv ) && \is_array( $argv ) ? $argv : array();
@@ -370,7 +372,8 @@ $zai_probe_argv = isset( $argv ) && \is_array( $argv ) ? $argv : array();
  * glm31-3 (round-31 finding 3): --help/-h answers BEFORE anything else
  * — a help request must never reach the key lookup, let alone the
  * live, billable round trip this tool exists to gate. Checked on raw
- * argv: getopt() drops the token ('help' is not a declared option).
+ * argv: the old getopt() dropped the token ('help' was not a declared
+ * option).
  */
 if ( \in_array( '-h', $zai_probe_argv, true ) || \in_array( '--help', $zai_probe_argv, true ) ) {
     fwrite( STDOUT, zai_live_probe_usage( $zai_probe_surfaces ) );
@@ -378,35 +381,49 @@ if ( \in_array( '-h', $zai_probe_argv, true ) || \in_array( '--help', $zai_probe
 }
 
 /*
- * glm31-3 (round-31 finding 3): getopt() silently DROPS every
- * unrecognized option — so a typo (--surfac), a single-dash spelling
- * (-surface), or a stray positional fell to the defaults and ran the
- * FULL live, billable acceptance round trip while reporting PASS (the
- * finding's live repro: both --help and --surfac=anthropic probed the
- * default surface for real). The sequential scan judges raw argv
- * itself: every option-led token must be a known long option, this CLI
- * takes no positionals at all (a value without its flag is the same
- * silent-defaults class), and the token after a space-separated option
- * is its VALUE — consumed never judged (the whitelists own values),
- * but glm36-3 (round 36, finding 3): the absent-or-option-led check
- * rides the consumption itself, for EVERY occurrence. The round-31
- * form split the work across three passes — a missing-value pre-scan
- * whose array_search() saw only each option's FIRST occurrence, this
- * scan's blind consumption, and getopt — so a trailing bare repeat
- * ('--plan coding --plan': the first --plan passes the pre-scan, the
- * scan's ++i walks past the dangling flag, getopt drops it) was
- * silently ignored and the probe ran the full live round trip
- * (empirically confirmed). One scan, one check site.
+ * glm31-3 (round-31 finding 3): the old getopt() silently DROPPED
+ * every unrecognized option — so a typo (--surfac), a single-dash
+ * spelling (-surface), or a stray positional fell to the defaults and
+ * ran the FULL live, billable acceptance round trip while reporting
+ * PASS (the finding's live repro: both --help and --surfac=anthropic
+ * probed the default surface for real). The sequential scan judges raw
+ * argv itself: every option-led token must be a known long option,
+ * this CLI takes no positionals at all (a value without its flag is
+ * the same silent-defaults class), and the token after a
+ * space-separated option is its VALUE — consumed never judged (the
+ * whitelists own values), but glm36-3 (round 36, finding 3): the
+ * absent-or-option-led check rides the consumption itself, for EVERY
+ * occurrence. The round-31 form split the work across three passes —
+ * a missing-value pre-scan whose array_search() saw only each option's
+ * FIRST occurrence, the scan's blind consumption, and getopt — so a
+ * trailing bare repeat ('--plan coding --plan': the first --plan
+ * passed the pre-scan, the scan's ++i walked past the dangling flag,
+ * getopt dropped it) was silently ignored and the probe ran the full
+ * live round trip (empirically confirmed). One scan, one check site.
+ *
+ * glm38-10: the scan also COLLECTS the options it validates — one
+ * parser. The pre-round form ran this scan for validation and getopt()
+ * for extraction, with glm37-9's spec composition existing purely to
+ * keep the two parsers in agreement; the collected map deletes the
+ * second parser and with it the agreement-maintenance class. The
+ * collected semantics are getopt's own, byte-identically: a name's
+ * FIRST occurrence supplies its value, and any repeat marks it '' —
+ * exactly what zai_live_probe_option()'s non-string mapping did to
+ * getopt's repeated-option array — so the ledgered valued-repeat
+ * diagnostics (glm36's residual: '--plan coding --plan=general'
+ * rejects through the whitelist, value-blaming, loud-only) survive
+ * verbatim.
  */
+$args = array();
 $zai_probe_i = 1;
 $zai_probe_argument_count = \count( $zai_probe_argv );
 while ( $zai_probe_i < $zai_probe_argument_count ) {
     $zai_probe_token = (string) $zai_probe_argv[ $zai_probe_i ];
 
     if ( 0 !== strpos( $zai_probe_token, '--' ) ) {
-        // A positional value or a single-dash token: getopt() reads
-        // single-dash tokens as undeclared SHORT options and drops
-        // them too, so neither spelling reaches the parser.
+        // A positional value or a single-dash token: the old getopt()
+        // read single-dash tokens as undeclared SHORT options and
+        // dropped them too, so neither spelling reaches the parser.
         fwrite( STDERR, "live-probe: unrecognized argument '{$zai_probe_token}' (this tool takes " . zai_live_probe_option_names() . " only; --help prints the usage)\n" );
         exit( 2 );
     }
@@ -431,49 +448,36 @@ while ( $zai_probe_i < $zai_probe_argument_count ) {
      * each option's first (glm36-3).
      *
      * glm36-9 (verifier round): an '='-attached EMPTY value is the
-     * same missing-value shape — getopt() silently DROPS '--plan='
+     * same missing-value shape — getopt() silently DROPPED '--plan='
      * from its result entirely (empirically verified), so the option
      * fell to its default and, with a key present, the probe ran the
      * full live round trip on settings the operator never chose. The
      * scan judges the emptiness itself; the diagnostic keeps the
      * option-named wording.
      */
+    $zai_probe_value = '';
     if ( false === $zai_probe_equals ) {
         $zai_probe_next = isset( $zai_probe_argv[ $zai_probe_i + 1 ] ) ? (string) $zai_probe_argv[ $zai_probe_i + 1 ] : null;
         if ( null === $zai_probe_next || '--' === substr( $zai_probe_next, 0, 2 ) ) {
             fwrite( STDERR, "live-probe: --{$zai_probe_name} requires a value (use --{$zai_probe_name} <value> or --{$zai_probe_name}=<value>)\n" );
             exit( 2 );
         }
+        $zai_probe_value = $zai_probe_next;
         ++$zai_probe_i;
     } elseif ( '' === substr( $zai_probe_token, $zai_probe_equals + 2 + 1 ) ) {
         // The token is '--name=' with nothing after the equals sign.
         fwrite( STDERR, "live-probe: --{$zai_probe_name} requires a value (use --{$zai_probe_name} <value> or --{$zai_probe_name}=<value>)\n" );
         exit( 2 );
+    } else {
+        $zai_probe_value = substr( $zai_probe_token, $zai_probe_equals + 2 + 1 );
     }
 
-    ++$zai_probe_i;
-}
+    // glm38-10: getopt's repeated-option semantics, stated (see the
+    // block comment above) — the first occurrence carries the value,
+    // any repeat marks ''.
+    $args[ $zai_probe_name ] = \array_key_exists( $zai_probe_name, $args ) ? '' : $zai_probe_value;
 
-/*
- * glm37-9: the getopt() SPEC composes from the same owner the
- * raw-argv whitelist rides — a name present in one and missing from
- * the other is the silent-defaults shape (the scan passes the token,
- * getopt() drops it, the option takes its default), so the two can no
- * longer disagree.
- */
-$args = getopt(
-    '',
-    array_map(
-        static function ( string $zai_probe_name ): string {
-            return $zai_probe_name . ':';
-        },
-        zai_live_probe_long_options()
-    )
-);
-if ( false === $args ) {
-	// glm23-3: the same register_argc_argv=0 shape — getopt() reads the
-	// argv that is not there. No options parsed; the defaults below.
-	$args = array();
+    ++$zai_probe_i;
 }
 
 $surface = zai_live_probe_option( $args, 'surface', (string) array_key_first( $zai_probe_surfaces ) );
