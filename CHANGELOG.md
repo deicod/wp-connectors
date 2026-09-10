@@ -6,6 +6,71 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM37 round, /code-review max)
+
+The 37th review round (11 emitted; the caller dropped one
+behavioral re-flag as the ledgered glm31-verifier adjudication,
+keeping its doc-drift half, and the review's own verifiers refuted 3
+candidates): 13 commits — 11 fixes plus two from the round's
+two-lens verifier pass, every claim HELD. See round 37 in
+docs/review/REFUTATION_LEDGER.md:
+
+- The refutation ledger's falsy-option line is scoped to the keys it
+  still governs (glm37-2): "setLogprobs(false) etc. are neutral
+  no-ops" contradicted the pinned glm4-4 rejection of ANY
+  explicitly-set wire-forwarded value — the stale line had just
+  burned a verifier on a non-defect. The wire-inert keys (topK,
+  webSearch, output-*) keep the no-op tolerance.
+- The corrupt-only usage docblock states the zero-choices corner
+  (glm37-1): aggregated()'s choices gate returns before the glm31-1
+  resolution, so a corrupt-only stream with NO choices frame rejects
+  through the generic no-usable-event channel (the adjudicated,
+  fail-closed corner — no silent zeroing, generic message). Pinned;
+  behavior unchanged.
+- The Anthropic Messages route map is pinned to the matrix's plan
+  vocabulary (glm37-3): MESSAGES_ROUTE_BY_PLAN had zero test
+  references, so a plan added to PLANS+MATRIX but missed there hit
+  an undefined index → TypeError at the first real generation. The
+  pin asserts key-set identity and per-combination resolution.
+- The availability gate hooks state their un-wired read/recorder
+  contract (glm37-4 + glm37-12): a FRESH instance probed through
+  isConfigured() answers SILENTLY — configured-pending TRUE (FALSE
+  under region-switch distrust) on zero network evidence, plus a
+  planted 60s miss marker; verifier-reproduced. Docblock
+  disposition; no current consumer probes through the hooks.
+- The probe-miss sweep survives a quarantined endpoint child
+  (glm37-5): probe_miss_transient_ids() mirrors its discovery twin's
+  guard, composing identities through the new parameterized
+  AbstractZaiEndpoint::compose_cache_key() (which cache_key() now
+  delegates to); identity equality pinned on both surfaces.
+- The SDK cache neutralization is one trait both directories compose
+  (glm37-6): Support\NeutralizesSdkModelCache owns the trio,
+  parameterized by a per-surface endpoint hook; the endpoint-scoping
+  and PSR-16 poison-entry pins moved to the shared directory test
+  base and now execute once per surface (the anthropic side was
+  verified once by glm36-6 and pinned never).
+- effective_key()'s guarded read rides wired_or_null() (glm37-7,
+  completing glm36-4): a reader throwing beyond its documented
+  RuntimeException contract now surfaces loudly instead of
+  laundering into "nothing wired" with the ladder key reported
+  effective.
+- One isConfigured() consult resolves its endpoint once (glm37-8):
+  the plan/region option reads ran twice per consult; threaded
+  through binding()'s precomputed parameter and
+  region_switch_pending()'s new optional one. glm15-6's boundary
+  untouched.
+- The probe CLI's long-option vocabulary and key-source guidance
+  compose from single owners (glm37-9/10 + glm37-13): the getopt
+  spec, the whitelist, the diagnostics, and the usage/no-key prose
+  derive from zai_live_probe_long_options() and the key-source
+  constants — closing the scan-passes/spec-drops silent-defaults
+  direction (a key-present run billable on unchosen settings);
+  source-pinned with an order-independent spec ban.
+- The aggregator's event-name membership rides once-flipped sets
+  (glm37-11): isset() over derived static sets replaces the
+  per-frame strict in_array scans; the list constants stay the
+  vocabulary owners. Behavior identical (proph harness green).
+
 ### Fixed (zai / M2 — GLM36 round, /code-review max)
 
 The 36th review round (13 emitted, 6 correctly dropped as
