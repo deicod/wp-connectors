@@ -54,6 +54,20 @@ trait SafeGenerationBoundary {
 	 * Each surface returns its own availability class — the gate state is
 	 * per-provider, and one provider's verdict must never gate the other.
 	 *
+	 * glm37-4 (the honest contract, glm15-24's pattern): the hook returns
+	 * a FRESH instance carrying no transporter and no wired
+	 * authentication — the refusal reads and verdict/evidence WRITES it
+	 * exists for are option/transient state, never network. The probing
+	 * instance is the one the registry wires (transporter + credential
+	 * onto the process-wide availability). An isConfigured() consult on
+	 * this un-wired instance is a misuse that answers SILENTLY, not
+	 * loudly: with a ladder credential present,
+	 * resolve_probe_authentication() resolves the fallback, the unset
+	 * transporter throws inside probe()'s catch(Throwable), and the
+	 * consult reports inconclusive → configured-pending TRUE on zero
+	 * network evidence, planting the 60s probe-miss marker under the
+	 * shared binding name. Gate state only; never probe through it.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @return AbstractZaiProviderAvailability

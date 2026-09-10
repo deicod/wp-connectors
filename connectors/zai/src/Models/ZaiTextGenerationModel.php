@@ -461,6 +461,10 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 	 * The availability instance whose credential gate generation consults
 	 * (GLM9 #11 wiring hook — see the SafeGenerationBoundary trait).
 	 *
+	 * A FRESH, un-wired instance by contract (glm37-4) — gate state and
+	 * verdict writes only, never a probe (the trait hook's honest
+	 * contract states the silent configured-pending misuse).
+	 *
 	 * @since 0.2.0
 	 *
 	 * @return AbstractZaiProviderAvailability

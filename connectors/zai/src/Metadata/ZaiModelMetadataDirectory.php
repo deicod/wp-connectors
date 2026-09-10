@@ -326,6 +326,18 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	 * the models' credential_gate_availability() shape (glm14-6) — and
 	 * the lockstep test pins it to the registry row.
 	 *
+	 * glm37-4 (the honest contract, glm15-24's pattern): the hook returns
+	 * a FRESH instance carrying no transporter and no wired
+	 * authentication — the refusal reads and verdict WRITES this
+	 * directory's two consult sites (the discovery gate and the
+	 * definitive-rejection recorder) exist for are option/transient
+	 * state, never network. The probing instance is the one the registry
+	 * wires. An isConfigured() consult on this un-wired instance answers
+	 * SILENTLY, not loudly — inconclusive → configured-pending TRUE on
+	 * zero network evidence, plus a planted 60s probe-miss marker (see
+	 * the SafeGenerationBoundary hook's full statement). Gate state
+	 * only; never probe through it.
+	 *
 	 * @since 0.2.0
 	 *
 	 * @return AbstractZaiProviderAvailability
