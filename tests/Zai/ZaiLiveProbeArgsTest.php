@@ -93,6 +93,45 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('--plan requires a value', $output);
     }
 
+    public function testATrailingBareRepeatOptionIsRejectedWithTheOptionNamed()
+    {
+        /*
+         * glm36-3 (round-36 finding 3): the missing-value check rode a
+         * pre-scan whose array_search() saw only each option's FIRST
+         * occurrence, the sequential scan consumed values blind, and
+         * getopt() dropped the dangling flag — so '--plan coding --plan'
+         * was silently ignored and the probe ran the full live,
+         * billable round trip (empirically confirmed), while
+         * '--plan a --plan' died blaming the VALUE through the
+         * whitelist. The check rides the consumption site now — every
+         * occurrence checks, and the diagnostic names the option.
+         */
+        list($exitCode, $output) = $this->runProbe(array('--plan', 'coding', '--plan'));
+
+        $this->assertSame(2, $exitCode, "The dangling flag must be rejected, got {$exitCode}: {$output}");
+        $this->assertStringContainsString('--plan requires a value', $output, 'The repeat occurrence is judged, not just the first.');
+        $this->assertStringNotContainsString('no key found', $output, 'The rejection precedes the key lookup — no billable run.');
+
+        // The '--plan a --plan' form previously reached the whitelist
+        // and blamed the VALUE the user did pass for the flag they
+        // left dangling.
+        list($exitCode, $output) = $this->runProbe(array('--plan', 'a', '--plan'));
+        $this->assertSame(2, $exitCode);
+        $this->assertStringContainsString('--plan requires a value', $output, 'The dangling flag is the named problem, never the earlier value.');
+        $this->assertStringNotContainsString('--plan must be', $output);
+
+        list($exitCode, $output) = $this->runProbe(array('--surface', 'anthropic', '--surface'));
+        $this->assertSame(2, $exitCode);
+        $this->assertStringContainsString('--surface requires a value', $output);
+
+        // An option-led VALUE is the missing-value shape for every
+        // option (the pre-scan owned this; the consumption site owns it
+        // now — same diagnostic, one site).
+        list($exitCode, $output) = $this->runProbe(array('--surface', '--plan', 'coding'));
+        $this->assertSame(2, $exitCode);
+        $this->assertStringContainsString('--surface requires a value', $output);
+    }
+
     public function testAnInvalidValueStillFailsWithTheValueDiagnostic()
     {
         // GLM8 #7 guard: only the FORM handling changed — a genuinely

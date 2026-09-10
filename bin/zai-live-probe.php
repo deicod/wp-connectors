@@ -253,20 +253,21 @@ foreach ( ZaiSurfaces::SURFACES as $zai_probe_row ) {
  * declarations below accept BOTH forms. Their one silent gap: a bare
  * '--option' with no value at all drops out of the getopt() result
  * entirely (or swallows the next token as its value), so the missing
- * value is detected against the raw argv — a bare '--option' token
- * whose following token is absent or itself option-led can only ever
- * mean a missing value (none of this probe's values starts with '--').
+ * value is detected by the sequential scan below — a bare '--option'
+ * token whose following token is absent or itself option-led can only
+ * ever mean a missing value (none of this probe's values starts with
+ * '--').
  */
 /*
  * glm23-3 (review round 23, finding 3): register_argc_argv=0 (a valid
  * php.ini setting — the CLI SAPI defaults it on, a hardened ini or a
  * -d flag turns it off) leaves $argv UNDEFINED and getopt() returning
- * false, so the pre-scan's strict array_search() fataled with a
- * TypeError before any diagnostic — violating this file's own GLM7 #14
- * rule that even Errors must surface as named FAILED steps. An absent
- * argv means no arguments to scan: the empty-array normalization walks
- * the usage path (every option at its default, stopping at the key
- * lookup with its named diagnostic).
+ * false, so an unguarded strict array read fataled with a TypeError
+ * before any diagnostic — violating this file's own GLM7 #14 rule that
+ * even Errors must surface as named FAILED steps. An absent argv means
+ * no arguments to scan: the empty-array normalization walks the usage
+ * path (every option at its default, stopping at the key lookup with
+ * its named diagnostic).
  */
 global $argv;
 $zai_probe_argv = isset( $argv ) && \is_array( $argv ) ? $argv : array();
@@ -282,34 +283,26 @@ if ( \in_array( '-h', $zai_probe_argv, true ) || \in_array( '--help', $zai_probe
     exit( 0 );
 }
 
-foreach ( array( 'surface', 'plan', 'region' ) as $zai_probe_option_name ) {
-    $zai_probe_position = array_search( '--' . $zai_probe_option_name, $zai_probe_argv, true );
-    if ( false === $zai_probe_position ) {
-        continue;
-    }
-
-    $zai_probe_next = isset( $zai_probe_argv[ $zai_probe_position + 1 ] ) ? (string) $zai_probe_argv[ $zai_probe_position + 1 ] : null;
-    if ( null === $zai_probe_next || '--' === substr( $zai_probe_next, 0, 2 ) ) {
-        fwrite( STDERR, "live-probe: --{$zai_probe_option_name} requires a value (use --{$zai_probe_option_name} <value> or --{$zai_probe_option_name}=<value>)\n" );
-        exit( 2 );
-    }
-}
-
 /*
  * glm31-3 (round-31 finding 3): getopt() silently DROPS every
- * unrecognized option, and the pre-scan above knows only the three
- * exact tokens — so a typo (--surfac), a single-dash spelling
+ * unrecognized option — so a typo (--surfac), a single-dash spelling
  * (-surface), or a stray positional fell to the defaults and ran the
  * FULL live, billable acceptance round trip while reporting PASS (the
  * finding's live repro: both --help and --surfac=anthropic probed the
  * default surface for real). The sequential scan judges raw argv
- * itself: every option-led token must be a known long option, the
- * token after a space-separated option is its VALUE (consumed here,
- * never judged — the missing-value pre-scan owns that shape), and this
- * CLI takes no positionals at all — a value without its flag is the
- * same silent-defaults class. The option vocabulary is this CLI's own
- * three flags (the same list the missing-value pre-scan walks); the
- * surface VALUES stay the whitelists' business below.
+ * itself: every option-led token must be a known long option, this CLI
+ * takes no positionals at all (a value without its flag is the same
+ * silent-defaults class), and the token after a space-separated option
+ * is its VALUE — consumed never judged (the whitelists own values),
+ * but glm36-3 (round 36, finding 3): the absent-or-option-led check
+ * rides the consumption itself, for EVERY occurrence. The round-31
+ * form split the work across three passes — a missing-value pre-scan
+ * whose array_search() saw only each option's FIRST occurrence, this
+ * scan's blind consumption, and getopt — so a trailing bare repeat
+ * ('--plan coding --plan': the first --plan passes the pre-scan, the
+ * scan's ++i walks past the dangling flag, getopt drops it) was
+ * silently ignored and the probe ran the full live round trip
+ * (empirically confirmed). One scan, one check site.
  */
 $zai_probe_i = 1;
 $zai_probe_argument_count = \count( $zai_probe_argv );
@@ -335,9 +328,20 @@ while ( $zai_probe_i < $zai_probe_argument_count ) {
         exit( 2 );
     }
 
-    // The space-separated form's value is the next token; the
-    // '='-attached form carries its value in-token.
+    /*
+     * The space-separated form's value is the next token; the
+     * '='-attached form carries its value in-token. GLM8 #7: a next
+     * token that is absent or itself option-led can only ever mean a
+     * missing value (none of this probe's values starts with '--') —
+     * judged at the consumption site so EVERY occurrence checks, not
+     * each option's first (glm36-3).
+     */
     if ( false === $zai_probe_equals ) {
+        $zai_probe_next = isset( $zai_probe_argv[ $zai_probe_i + 1 ] ) ? (string) $zai_probe_argv[ $zai_probe_i + 1 ] : null;
+        if ( null === $zai_probe_next || '--' === substr( $zai_probe_next, 0, 2 ) ) {
+            fwrite( STDERR, "live-probe: --{$zai_probe_name} requires a value (use --{$zai_probe_name} <value> or --{$zai_probe_name}=<value>)\n" );
+            exit( 2 );
+        }
         ++$zai_probe_i;
     }
 
