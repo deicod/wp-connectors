@@ -43,6 +43,20 @@ use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Support\ZaiSurfaces;
 
 /**
+ * Env-var ladder for the live key, in resolution order (glm37-10): the
+ * ONE statement of the names — the lookup loop, the usage text, and the
+ * no-key diagnostic all compose from it, so a renamed or added source
+ * updates the guidance with the same edit that changes the lookup.
+ */
+const ZAI_PROBE_KEY_ENV_LADDER = array( 'ZAI_LIVE_API_KEY', 'WP_CONNECTORS_TEST_ZAI_API_KEY' );
+
+/**
+ * The key-file fallback path under HOME (glm37-10): the ONE statement of
+ * the path — same composition rule as the env ladder above.
+ */
+const ZAI_PROBE_KEY_FILE = '.config/z.ai/api_key';
+
+/**
  * Resolves the live key from the documented runtime sources only.
  *
  * glm15-3: HOME may be UNSET (cron, systemd) — getenv()
@@ -55,7 +69,7 @@ use Deicod\WpConnectors\Zai\Support\ZaiSurfaces;
  */
 function zai_live_probe_key(): string
 {
-    foreach ( array( 'ZAI_LIVE_API_KEY', 'WP_CONNECTORS_TEST_ZAI_API_KEY' ) as $name ) {
+    foreach ( ZAI_PROBE_KEY_ENV_LADDER as $name ) {
         $value = getenv( $name );
         if ( false !== $value && '' !== $value ) {
             return trim( $value );
@@ -64,13 +78,31 @@ function zai_live_probe_key(): string
 
     $home = getenv( 'HOME' );
     if ( \is_string( $home ) && '' !== $home ) {
-        $file = $home . '/.config/z.ai/api_key';
+        $file = $home . '/' . ZAI_PROBE_KEY_FILE;
         if ( is_file( $file ) && is_readable( $file ) ) {
             return trim( (string) file_get_contents( $file ) );
         }
     }
 
     return '';
+}
+
+/**
+ * The key sources as prose (glm37-10): the env ladder plus the ~/ file
+ * fallback, "or"-joined — composed from the same constants the lookup
+ * rides, so --help and the no-key diagnostic can never name a source
+ * the tool stopped reading (or omit one it reads).
+ *
+ * @return string The human-readable key-source list.
+ */
+function zai_live_probe_key_source_prose(): string
+{
+    $sources = array_merge(
+        ZAI_PROBE_KEY_ENV_LADDER,
+        array( '~/' . ZAI_PROBE_KEY_FILE )
+    );
+
+    return zai_live_probe_oxford_join( $sources, 'or' );
 }
 
 /**
@@ -106,6 +138,29 @@ function zai_live_probe_long_options(): array
 }
 
 /**
+ * Oxford-joins a list into prose (glm37-9/10): two items join as
+ * "A and B", three or more as "A, B, and C" — the file's diagnostic
+ * style, composed so a vocabulary change updates every sentence that
+ * names it.
+ *
+ * @param list<string> $items       Items to join (at least one).
+ * @param string       $conjunction 'and' or 'or'.
+ * @return string The joined prose.
+ */
+function zai_live_probe_oxford_join( array $items, string $conjunction ): string
+{
+    $last = array_pop( $items );
+
+    if ( array() === $items ) {
+        return $last;
+    }
+
+    $joiner = 1 === count( $items ) ? " {$conjunction} " : ", {$conjunction} ";
+
+    return implode( ', ', $items ) . $joiner . $last;
+}
+
+/**
  * The option names as diagnostic prose (glm37-9): "--surface, --plan,
  * and --region" — Oxford-joined from the one owner, so a fourth option
  * updates every diagnostic with the edit that teaches the probe about it.
@@ -114,21 +169,15 @@ function zai_live_probe_long_options(): array
  */
 function zai_live_probe_option_names(): string
 {
-    $names = array_map(
-        static function ( string $name ): string {
-            return '--' . $name;
-        },
-        zai_live_probe_long_options()
+    return zai_live_probe_oxford_join(
+        array_map(
+            static function ( string $name ): string {
+                return '--' . $name;
+            },
+            zai_live_probe_long_options()
+        ),
+        'and'
     );
-    $last = array_pop( $names );
-
-    if ( array() === $names ) {
-        return $last;
-    }
-
-    $joiner = 1 === count( $names ) ? ' and ' : ', and ';
-
-    return implode( ', ', $names ) . $joiner . $last;
 }
 
 /**
@@ -220,8 +269,7 @@ function zai_live_probe_usage( array $surfaces ): string
         '  -h, --help                Print this usage and exit',
         '',
         'Every long option accepts both the --option value and --option=value forms.',
-        'The live key is read at runtime from ZAI_LIVE_API_KEY,',
-        'WP_CONNECTORS_TEST_ZAI_API_KEY, or ~/.config/z.ai/api_key.',
+        'The live key is read at runtime from ' . zai_live_probe_key_source_prose() . '.',
     );
 
     return implode( "\n", $lines ) . "\n";
@@ -465,7 +513,7 @@ if ( ! in_array( $region, AbstractPlanRegionSettings::REGIONS, true ) ) {
 
 $key = zai_live_probe_key();
 if ( '' === $key ) {
-    fwrite( STDERR, "live-probe: no key found (ZAI_LIVE_API_KEY, WP_CONNECTORS_TEST_ZAI_API_KEY, or ~/.config/z.ai/api_key)\n" );
+    fwrite( STDERR, 'live-probe: no key found (' . zai_live_probe_key_source_prose() . ")\n" );
     exit( 2 );
 }
 

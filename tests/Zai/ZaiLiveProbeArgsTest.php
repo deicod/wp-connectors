@@ -451,4 +451,27 @@ final class ZaiLiveProbeArgsTest extends WpConnectorsTestCase
             $this->assertStringContainsString("zai_live_probe_option( \$args, '{$option}',", $source, "The --{$option} read spells the owner's name.");
         }
     }
+
+    public function testTheKeySourceProseRidesTheLookupConstants()
+    {
+        /*
+         * glm37-10: the key-source names lived in code (the env ladder,
+         * the key-file path) and were re-typed as literals in the usage
+         * text and the no-key diagnostic — a renamed or added source
+         * left --help telling the operator to set an env var the tool no
+         * longer reads, on the exact failure where the guidance matters
+         * most. The prose composes from the lookup's own constants now;
+         * these pins hold the composition at both consumers.
+         */
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/zai-live-probe.php');
+
+        $this->assertStringContainsString(
+            "const ZAI_PROBE_KEY_ENV_LADDER = array( 'ZAI_LIVE_API_KEY', 'WP_CONNECTORS_TEST_ZAI_API_KEY' );",
+            $source,
+            'The env ladder is stated once, as a constant.'
+        );
+        $this->assertStringContainsString("const ZAI_PROBE_KEY_FILE = '.config/z.ai/api_key';", $source, 'The key-file path is stated once, as a constant.');
+        $this->assertStringContainsString("zai_live_probe_key_source_prose() . '.',", $source, 'The usage sentence composes from the owner constants.');
+        $this->assertStringContainsString('zai_live_probe_key_source_prose() . ")', $source, 'The no-key diagnostic composes from the owner constants.');
+    }
 }
