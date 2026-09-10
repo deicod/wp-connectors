@@ -6,6 +6,83 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (zai / M2 — GLM38 round, /code-review max)
+
+The 38th review round (15 emitted; the caller dropped 3 as
+ledger-covered re-flags — the zai 200-envelope directory gap (glm18-4),
+the setLogprobs(false) rejection (glm4-4/glm37-2), and the per-surface
+guard_settings_save neighborhood (GLM2 #8, closed by scope decision)):
+10 fix commits over the survivors and one adjudicated carve-out, then a
+two-lens verifier pass (independent correctness + security agents over
+the full 10-commit diff) whose every claim HELD with zero confirmed
+defects — plus this record. See round 38 in
+docs/review/REFUTATION_LEDGER.md:
+
+- The NAN guard pin rides the 7.4-safe NAN constant (glm38-1): fdiv()
+  is PHP 8.0+ and fataled the test on the composer-declared floor
+  instead of exercising the GLM2 #4 pin — locked PHPCompatibility
+  9.3.5 has no sniff for it. A floor sweep in ToolchainSmokeTest now
+  pins a curated 8.0+ call vocabulary over the phpcs-compat tree set
+  (array_is_list stays unlisted: the SDK polyfills it, glm31-9).
+- The three unguarded reflection invokes carry the PHP<8.1
+  setAccessible idiom (glm38-2): the chokepoint-net pins and the
+  entry-rejection lockstep pin errored with ReflectionException on
+  PHP <= 8.0. Verified on real 7.4.33 in docker both directions.
+- The protocol wrap's plain-class requirement goes EXACT (glm38-3):
+  an ApiKeyRequestAuthentication subclass — accepted by the registry's
+  instanceof gate, never produced by the SDK — was silently rebuilt
+  from getApiKey() alone, stripping its overridden
+  authenticateRequest() behavior (fail-OPEN where the foreign shape
+  refuses typed). The subclass shape refuses typed now, and the
+  probe's raw shape check judges the exact class BEFORE the funnel so
+  the refusal cannot launder into the ladder fallback (the glm16-1
+  cross-credential shape; mutation-tested).
+- The token-limit payload names the max_tokens the WIRE carried
+  (glm38-4): the finish-reason walk re-read the live config at parse
+  time, so a mid-request setMaxTokens() (middleware capturing the
+  model inside send()) retold the limit; the build stashes the wire
+  value and the payload names it unconditionally.
+- The registry's endpoint column is pinned to each settings class's
+  own ENDPOINT_CLASS (glm38-5): the pairing was owned twice with no
+  tie — a one-sided edit split the settings-change and uninstall
+  invalidation worlds. Per-row pairing identity, mutation-tested.
+- The error/malformed channels ride the shared aggregator base
+  (glm38-6): $error/has_error() and $malformed_event/
+  has_malformed_event() were byte-identical twins in both
+  aggregators; flags (protected) and getters (final) hoisted, each
+  subclass keeping its genuinely divergent raising sites. The
+  property harness and every pin stay green unchanged.
+- The unanchored-include judgment is per statement, not per quoted
+  literal (glm38-7): the per-literal loop never read its variable and
+  appended the identical violation N times; exactly-once pinned.
+- The content-block vocabulary's membership rides once-flipped sets
+  (glm38-8): parse_content_block()'s per-block in_array scans over
+  MAPPED_TYPES/KNOWN_UNMAPPED_TYPES became isset() on the vocabulary
+  owner's set helpers (the glm26-12/glm37-11 idiom);
+  differential-verified identical over the hostile spellings.
+- The stop-reason consistency check reuses the build loop's
+  tool-call presence (glm38-9): the third full parts pass
+  reconstructing $has_tool_call is deleted; the tool_use branch sets
+  it in the loop that already judges it.
+- The probe CLI parses argv ONCE (glm38-10, supersession): the scan
+  collects name=>value pairs as it validates, deleting the getopt()
+  call, its composed spec, and the agreement-maintenance class
+  glm37-9 existed to police. getopt's repeat semantics stated
+  deliberately (first occurrence carries the value, any repeat
+  marks '') so the ledgered valued-repeat diagnostics survive
+  verbatim. Old-vs-new differential byte-identical over 4,735
+  hostile invocations (every 1-/2-token combination of a 34-token
+  hostile set, the core 3-token space, 800 seeded randoms), then the
+  exhaustive 3-token differential (44,495 invocations, zero
+  divergences), plus the verifier lenses' own independent batteries.
+- glm38-11 LEDGERED as a confirmed carve-out (no code change): the
+  refusal gate's endpoint resolution is lazy by design — the flag
+  read precedes region_switch_pending()'s resolution and the
+  region_pending return precedes binding(), so no steady-state
+  double resolution exists to thread away and an eager resolution
+  would ADD cost to the no-state path (the finding's per-request
+  cost premise was wrong).
+
 ### Fixed (zai / M2 — GLM37 round, /code-review max)
 
 The 37th review round (11 emitted; the caller dropped one
