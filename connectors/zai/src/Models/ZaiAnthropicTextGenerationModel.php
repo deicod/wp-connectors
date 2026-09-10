@@ -223,6 +223,28 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	private $tool_schema_memo_declarations = null;
 
 	/**
+	 * The max_tokens value THIS instance's last request build put on the
+	 * wire (glm38-4).
+	 *
+	 * The vendor ModelConfig is mutable (a public setMaxTokens()), so a
+	 * mid-request mutation — a PSR-18 middleware or plugin callback
+	 * capturing the model inside the transport's send() — changes what
+	 * effective_max_tokens() answers at response-parse time. The typed
+	 * TokenLimitReachedException payload's contract is to name EXACTLY
+	 * the limit the wire member carried (glm19-7), so the build stashes
+	 * the resolved value beside the params array and the finish-reason
+	 * walk reads the stash, never the live config. Null only before the
+	 * first build; every parse follows a build on the same instance in
+	 * the request lifecycle, and the walk's null fallback keeps a
+	 * hand-driven parse total.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int|null
+	 */
+	private $wire_max_tokens = null;
+
+	/**
 	 * The RAW wired authentication — the SDK parent's getter, unwrapped
 	 * (glm15-8: the protocol wrap lives once on the
 	 * SpeaksAnthropicMessagesProtocol trait).
@@ -502,6 +524,12 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 			'max_tokens' => $this->effective_max_tokens(),
 			'messages'   => $this->prepare_messages_param( $prompt ),
 		);
+
+		// glm38-4: the wire member's resolved value, stashed beside the
+		// params array it rode into — the finish-reason walk's typed
+		// payload names THIS value, not whatever a mid-request config
+		// mutation leaves effective at parse time (see $wire_max_tokens).
+		$this->wire_max_tokens = $params['max_tokens'];
 
 		$this->prune_tool_loop_memos();
 
@@ -2587,15 +2615,17 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	/**
 	 * The effective max_tokens value for the CURRENT config (glm19-7).
 	 *
-	 * One resolution rule for both consumers — the wire member at the
-	 * params build and the TokenLimitReachedException payload at the
-	 * finish-reason walk. The expression was written out twice; a
-	 * defaulting-rule edit at one site but not the other would make the
-	 * token-limit error message and WP_Error payload report a limit the
-	 * request never carried, so both read this one helper (the payload
-	 * drops its old absint() wrap: getMaxTokens() is ?int, the
-	 * expression is already int, and the payload's job is to name
-	 * EXACTLY what the wire member carried).
+	 * The ONE resolution rule — the wire member at the params build and
+	 * the typed payload's null fallback both read this helper. The
+	 * expression was once written out at both sites; a defaulting-rule
+	 * edit at one but not the other would make the token-limit error
+	 * message report a limit the request never carried. glm38-4 split
+	 * the TIMING, not the rule: the payload itself names the value the
+	 * build STASHED beside the wire member ($wire_max_tokens), because
+	 * the vendor ModelConfig is mutable and a mid-request
+	 * setMaxTokens() must not retell what the request carried — the
+	 * helper answers the live config, which is the right truth at BUILD
+	 * time and the wrong one at PARSE time.
 	 *
 	 * @since 0.2.0
 	 *
@@ -2644,15 +2674,24 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				return FinishReasonEnum::contentFilter();
 
 			case 'max_tokens':
-				$max_tokens = $this->effective_max_tokens();
+				/*
+				 * glm38-4: the STASHED wire value, not the live config —
+				 * the payload's contract names EXACTLY the limit the
+				 * request carried (glm19-7), and a mid-request
+				 * setMaxTokens() (middleware capturing the model inside
+				 * send()) must not retell it. The null fallback is the
+				 * pre-first-build hand-driven parse only; every
+				 * lifecycle parse follows the build that stashed.
+				 */
+				$max_tokens = $this->wire_max_tokens ?? $this->effective_max_tokens();
 
 				throw new TokenLimitReachedException(
 					sprintf(
-						/* translators: %d: the configured token limit. */
+						/* translators: %d: the token limit the request carried. */
 						__( 'The generation stopped because the token limit was reached (%d). Raise maxTokens to continue longer answers.', 'zai' ), // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
-						$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer from effective_max_tokens(), formatted via %d.
+						$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer from the stashed wire value, formatted via %d.
 					),
-					$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer payload for the typed accessor, from effective_max_tokens().
+					$max_tokens // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- integer payload for the typed accessor, from the stashed wire value.
 				);
 
 			case 'model_context_window_exceeded':

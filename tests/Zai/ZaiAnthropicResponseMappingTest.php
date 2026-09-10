@@ -1871,6 +1871,65 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         }
     }
 
+    public function testTheTokenLimitPayloadNamesTheLimitTheWireCarriedNotALaterConfig()
+    {
+        /*
+         * glm38-4: the vendor ModelConfig is mutable (a public
+         * setMaxTokens()), so a mid-request mutation — a PSR-18
+         * middleware or plugin callback capturing the model inside the
+         * transport's send() — changed what the finish-reason walk's
+         * typed payload named: the request shipped max_tokens 4096 but
+         * the exception told the user to raise a 999 limit the request
+         * never carried. The build stashes the wire value
+         * ($wire_max_tokens) and the payload names THAT, unconditionally
+         * — the glm19-7 'name EXACTLY what the wire member carried'
+         * contract, which the shared-live-helper form could only honor
+         * while nothing mutated the config mid-request.
+         */
+        $model = $this->model();
+
+        $model->setHttpTransporter(new class ($model) implements \WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface {
+            /**
+             * The model whose request is in flight.
+             *
+             * @var ZaiAnthropicTextGenerationModel
+             */
+            private $model;
+
+            /**
+             * @param ZaiAnthropicTextGenerationModel $model The wired model.
+             */
+            public function __construct($model)
+            {
+                $this->model = $model;
+            }
+
+            /**
+             * Answers the max_tokens-stopped body AFTER mutating the config —
+             * the exact mid-request window.
+             */
+            public function send(\WordPress\AiClient\Providers\Http\DTO\Request $request, ?\WordPress\AiClient\Providers\Http\DTO\RequestOptions $options = null): \WordPress\AiClient\Providers\Http\DTO\Response
+            {
+                $this->model->getConfig()->setMaxTokens(999);
+
+                return new \WordPress\AiClient\Providers\Http\DTO\Response(
+                    200,
+                    array(),
+                    HttpResponseFactory::anthropicMessagesBody('trunc', null, 'max_tokens')
+                );
+            }
+        });
+
+        try {
+            $model->generateTextResult($this->prompt());
+            $this->fail('A max_tokens stop reason must throw.');
+        } catch (TokenLimitReachedException $e) {
+            $this->assertSame(4096, $e->getMaxTokens(), 'The typed payload names the limit the WIRE carried, not the post-mutation config.');
+            $this->assertStringContainsString('(4096)', $e->getMessage(), 'The advice sentence names the wire value too.');
+            $this->assertStringNotContainsString('999', $e->getMessage(), 'The mid-request mutation value never appears.');
+        }
+    }
+
     /*
      * Malformed payloads: fixed, redacted messages.
      */
