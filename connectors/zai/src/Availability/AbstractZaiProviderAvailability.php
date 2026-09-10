@@ -770,6 +770,35 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	}
 
 	/**
+	 * Invokes an authentication reader, mapping the unwired state to null.
+	 *
+	 * The ONE guarded invocation the three reader consults shared by
+	 * hand (glm36-4) — refuse_generation(), refuse_discovery(), and
+	 * record_rejection_via_reader() each wrapped the reader call in the
+	 * same RuntimeException catch (the readers' documented unwired
+	 * signal, GLM10 #8), so a future policy change (a second unwired
+	 * exception type, a diagnostic hook on the unwired read) would have
+	 * to land three times and miss one — the GLM5 #11 divergence class
+	 * this file's own docblocks name. The readers are typed non-null,
+	 * so null unambiguously means unwired.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param callable $authentication_reader Returns the wired
+	 *                                        RequestAuthenticationInterface
+	 *                                        (throws RuntimeException when
+	 *                                        unwired).
+	 * @return RequestAuthenticationInterface|null The wired credential, or null when unwired.
+	 */
+	private function wired_or_null( callable $authentication_reader ): ?RequestAuthenticationInterface {
+		try {
+			return $authentication_reader();
+		} catch ( RuntimeException $unwired ) {
+			return null;
+		}
+	}
+
+	/**
 	 * Refuses MODEL GENERATION for a distrusted credential, or returns
 	 * quietly (GLM5 #17: the gate wrappers absorbed).
 	 *
@@ -795,9 +824,8 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @throws InvalidArgumentException When the gate refuses the credential.
 	 */
 	public function refuse_generation( callable $authentication_reader ): void {
-		try {
-			$authentication = $authentication_reader();
-		} catch ( RuntimeException $e ) {
+		$authentication = $this->wired_or_null( $authentication_reader );
+		if ( null === $authentication ) {
 			return;
 		}
 
@@ -829,9 +857,8 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @throws ResponseException When the gate refuses the credential.
 	 */
 	public function refuse_discovery( callable $authentication_reader ): void {
-		try {
-			$authentication = $authentication_reader();
-		} catch ( RuntimeException $e ) {
+		$authentication = $this->wired_or_null( $authentication_reader );
+		if ( null === $authentication ) {
 			return;
 		}
 
@@ -1151,11 +1178,7 @@ abstract class AbstractZaiProviderAvailability implements ProviderAvailabilityIn
 	 * @return void
 	 */
 	private function record_rejection_via_reader( callable $authentication_reader, ?string $endpoint_cache_key ): void {
-		try {
-			$wired = $authentication_reader();
-		} catch ( RuntimeException $unwired ) {
-			$wired = null;
-		}
+		$wired = $this->wired_or_null( $authentication_reader );
 
 		/*
 		 * glm14-5: an OPAQUE wired credential (a non-Api-key
