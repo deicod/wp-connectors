@@ -523,7 +523,15 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 		 * GLM1 #9: the consolidated payload carries the same always-present
 		 * members a non-streaming Messages body does (model from
 		 * message_start, stop_sequence from message_delta), so the two
-		 * transports of one generation expose identical result fields.
+		 * transports of one generation expose identical result fields for
+		 * every SCHEMA-LEGAL input (string values and explicit nulls
+		 * included). glm36-2: on non-legal inputs the two envelope
+		 * metadata members degrade here (non-string → null) while the
+		 * non-streaming body's vendor pass-through carries the corrupt
+		 * value verbatim — the consciously accepted GLM1 #9 metadata
+		 * divergence: nothing in the plugin reads either member, so the
+		 * degrade fabricates nothing (the mutation harness allow-lists
+		 * it; ledger round 36).
 		 *
 		 * GLM6 #4: the input side prefers the FINAL accounting
 		 * message_delta reported (collapsed like message_start's, so the
@@ -1398,7 +1406,22 @@ final class AnthropicSseAggregator extends AbstractSseAggregator {
 					$this->stop_reason          = $raw->delta->stop_reason;
 					$this->stop_reason_received = true;
 				}
-				// GLM1 #9: envelope parity with the non-streaming body.
+
+				/*
+				 * GLM1 #9/glm36-2: a string latches and survives into the
+				 * consolidated payload — the envelope-parity pin (the same
+				 * additional field the non-streaming body exposes, explicit
+				 * null included). An absent member or a PRESENT non-string
+				 * degrades to the documented default (null, carried into
+				 * the result verbatim) with NO corruption flag — the
+				 * envelope-metadata tolerance this member shares with
+				 * message_start's model (GLM1 #9's class, ledger round
+				 * 36): nothing in the plugin reads stop_sequence, so the
+				 * degrade fabricates nothing, while the non-streaming
+				 * body's vendor pass-through carries a corrupt value
+				 * verbatim — the accepted divergence, NOT parity, on
+				 * inputs the Messages schema types string|null.
+				 */
 				if ( isset( $raw->delta->stop_sequence ) && \is_string( $raw->delta->stop_sequence ) ) {
 					$this->stop_sequence = $raw->delta->stop_sequence;
 				}

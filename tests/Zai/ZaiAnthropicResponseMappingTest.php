@@ -5285,6 +5285,56 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         $this->assertSame('END', $streamed['stop_sequence'], 'message_delta\'s stop_sequence must survive into the consolidated payload.');
     }
 
+    public function testAPresentNonStringStopSequenceDegradesWithoutFlaggingOnTheStream(): void
+    {
+        /*
+         * glm36-2 (round 36's boundary adjudication): a present-but-
+         * non-string stop_sequence latches nothing and raises NO
+         * corruption flag on the stream — the envelope-metadata
+         * tolerance the member shares with message_start's model
+         * (GLM1 #9's class; the mutation harness allow-lists the
+         * degrade). The body channel's vendor pass-through carries the
+         * same corrupt value verbatim, so the channels DIVERGE on
+         * non-schema-legal inputs — a consciously accepted divergence,
+         * not parity: nothing in the plugin reads the member, so the
+         * degrade fabricates nothing. Pinned in both directions so the
+         * acceptance is a named decision, never an unnoticed drift.
+         */
+        $stream = implode("\n\n", array(
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_deg","role":"assistant","model":"glm-5.3","content":[],"usage":{"input_tokens":10,"output_tokens":1}}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi."}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_delta',
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":5},"usage":{"output_tokens":5}}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ));
+        $this->queueSdkResponse(200, array('Content-Type' => 'text/event-stream'), $stream);
+
+        $result = $this->model()->generateTextResult($this->prompt());
+
+        $this->assertSame('Hi.', $result->toText(), 'The generation completes — the degraded metadata member flags nothing.');
+        $this->assertNull($result->getAdditionalData()['stop_sequence'], 'A non-string stop_sequence degrades to null, never ships as-is.');
+
+        $body = (string) wp_json_encode(array(
+            'id' => 'msg_fixture', 'type' => 'message', 'role' => 'assistant',
+            'content' => array(array('type' => 'text', 'text' => 'Hi.')),
+            'model' => 'glm-5.3', 'stop_reason' => 'end_turn', 'stop_sequence' => 5,
+            'usage' => array('input_tokens' => 10, 'output_tokens' => 5),
+        ));
+        $this->queueSdkResponse(200, array('Content-Type' => 'application/json'), $body);
+
+        $direct = $this->model()->generateTextResult($this->prompt())->getAdditionalData();
+
+        $this->assertSame(5, $direct['stop_sequence'], 'The body channel\'s vendor pass-through carries the corrupt value verbatim — the accepted divergence.');
+    }
+
     public function testStreamParserToleratesSplitFramesCrlfCommentsAndMalformedEvents()
     {
         $body = ''
