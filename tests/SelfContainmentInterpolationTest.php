@@ -127,6 +127,33 @@ final class SelfContainmentInterpolationTest extends TestCase
         $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
     }
 
+    public function testAnUnanchoredIncludeFlagsExactlyOncePerStatement(): void
+    {
+        /*
+         * glm38-7: the unanchored judgment is per INCLUDE, not per
+         * quoted literal — the per-literal loop this pin replaced never
+         * read its variable and appended the identical violation N times
+         * for an N-literal statement (check-conventions/build/inspect
+         * output printed the same line repeatedly, and every reader had
+         * to puzzle over a loop whose variable was unused). A
+         * multi-literal unanchored statement flags exactly ONCE; the
+         * runtime-segment analysis below still judges each literal's
+         * own segments separately.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nrequire 'a/' . 'b.php';\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertSame(
+            1,
+            substr_count(implode("\n", $violations), 'not anchored to the plugin dir'),
+            'A two-literal unanchored include flags exactly once — the judgment is per statement.'
+        );
+    }
+
     public function testAssignmentMediatedInterpolationLaunderingFlags(): void
     {
         /*

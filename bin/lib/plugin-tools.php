@@ -1704,24 +1704,29 @@ function wp_connectors_self_containment_violations($pluginDir)
                     $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
                     $quoted_literals = wp_connectors_quoted_literals($include[0]);
                     if ($quoted_literals !== array()) {
-                        foreach ($quoted_literals as $literal_pair) {
-                            /*
-                             * glm29-3: the old '${'-only dynamic test both
-                             * missed every other interpolation form ($name,
-                             * {$name}, $$var) and SUPPRESSED this unanchored
-                             * flag for the forms it did see — leaving an
-                             * unanchored runtime-built target flagged
-                             * nowhere (the runtime layers route back with
-                             * "already flagged by the literal analysis").
-                             * Unanchored flags fire regardless of
-                             * interpolation now; an anchored interpolated
-                             * literal is judged by the runtime layers below.
-                             */
-                            $anchored = strpos($include[0], '__DIR__') !== false || strpos($include[0], 'ABSPATH') !== false;
-                            $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include[0]);
-                            if (! $anchored || $escapesUp) {
-                                $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
-                            }
+                        /*
+                         * glm29-3: the old '${'-only dynamic test both
+                         * missed every other interpolation form ($name,
+                         * {$name}, $$var) and SUPPRESSED this unanchored
+                         * flag for the forms it did see — leaving an
+                         * unanchored runtime-built target flagged
+                         * nowhere (the runtime layers route back with
+                         * "already flagged by the literal analysis").
+                         * Unanchored flags fire regardless of
+                         * interpolation now; an anchored interpolated
+                         * literal is judged by the runtime layers below.
+                         *
+                         * glm38-7: judged ONCE per include, not once per
+                         * quoted literal — the per-literal loop this
+                         * replaced never read its variable and recomputed
+                         * these two loop-invariant probes from the same
+                         * statement, appending the identical violation N
+                         * times for an N-literal include.
+                         */
+                        $anchored = strpos($include[0], '__DIR__') !== false || strpos($include[0], 'ABSPATH') !== false;
+                        $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include[0]);
+                        if (! $anchored || $escapesUp) {
+                            $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
                         }
                         if (wp_connectors_anchored_include_escapes_plugin($path, $include[0], $quoted_literals, $pluginDir)) {
                             $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
