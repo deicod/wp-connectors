@@ -29,7 +29,6 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Metadata;
 
-use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\DTO\Response;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -41,6 +40,7 @@ use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
+use Deicod\WpConnectors\Zai\Support\NeutralizesSdkModelCache;
 
 /**
  * Model metadata directory for z.ai.
@@ -60,6 +60,13 @@ use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
  * @package wp-connectors
  */
 final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetadataDirectory {
+
+	// glm37-6: the SDK cache neutralization (getBaseCacheKey/hasCache/
+	// setCache) rides the shared Support\NeutralizesSdkModelCache trait —
+	// the near-verbatim twin the zai_anthropic directory carried with no
+	// pin on either side beyond this suite. One rule composes for both
+	// surfaces now, pinned through the shared directory test base.
+	use NeutralizesSdkModelCache;
 
 	/**
 	 * Wraps the transporter with the (option-gated) debug logger.
@@ -91,60 +98,16 @@ final class ZaiModelMetadataDirectory extends AbstractOpenAiCompatibleModelMetad
 	private $discovery_endpoint;
 
 	/**
-	 * Scopes the SDK-level cache key to the CURRENT endpoint.
+	 * The endpoint class whose current-settings identity scopes the SDK
+	 * cache key (glm37-6's one parameterized fact for the shared
+	 * NeutralizesSdkModelCache trait).
 	 *
-	 * The SDK wraps sendListModelsRequest() in its own cache
-	 * (WithDataCachingTrait, 24h TTL, per-class key by default — including a
-	 * persistent PSR-16 cache when one is configured via AiClient::setCache()).
-	 * That layer is bypassed wholesale here (see hasCache()/setCache()), but
-	 * the key stays endpoint-scoped so entries written by any other path
-	 * (a foreign directory instance, invalidateCaches() clears) can never
-	 * cross endpoints.
+	 * @since 0.2.0
 	 *
-	 * @since 0.1.0
-	 *
-	 * @return string
+	 * @return class-string
 	 */
-	protected function getBaseCacheKey(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
-		return 'ai_client_' . AiClient::VERSION . '_' . md5( self::class . '|' . ZaiEndpoint::for_current_settings()->cache_key() );
-	}
-
-	/**
-	 * Never serves from the SDK cache layer (in-memory local or PSR-16).
-	 *
-	 * The plugin transient is the ONLY discovery cache: outer layers retain
-	 * values for 24h, which would defeat the advertised 12h TTL and survive
-	 * the transient deletion on settings changes/uninstall. Reporting
-	 * "never cached" forces every lookup through sendListModelsRequest(),
-	 * which applies the plugin's own TTL and invalidation rules.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $key Cache key suffix.
-	 * @return bool Always false.
-	 */
-	protected function hasCache( string $key ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
-		return false;
-	}
-
-	/**
-	 * Never persists anything in the SDK cache layer (in-memory or PSR-16).
-	 *
-	 * Successful discoveries are persisted as the plugin transient inside
-	 * sendListModelsRequest() with DISCOVERY_TTL; fallbacks are cached at
-	 * most as the 60s negative marker (never here — see GLM1 #6). Storing
-	 * here as well would leave warmed entries behind after transient
-	 * invalidation.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string                 $key   Cache key suffix.
-	 * @param mixed                  $value Value to cache (ignored).
-	 * @param int|\DateInterval|null $ttl   TTL (ignored).
-	 * @return bool Always true (pretend success; store nothing).
-	 */
-	protected function setCache( string $key, $value, $ttl = null ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
-		return true; // Pretend success; store nothing.
+	protected static function discovery_endpoint_class(): string {
+		return ZaiEndpoint::class;
 	}
 
 	/**

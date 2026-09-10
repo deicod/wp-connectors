@@ -460,56 +460,14 @@ final class ZaiModelDirectoryTest extends AbstractZaiModelDirectoryTestCase
         $this->assertCount(2, $this->sdkHttpAttempts());
     }
 
-    public function testConfiguredPsr16CacheNeverServesOrStoresDiscovery()
-    {
-        // End-to-end against a REAL configured PSR-16 cache (the SDK's
-        // outermost cache layer when core wires one via AiClient::setCache()):
-        // a poisoned pre-existing entry must never be served, and successful
-        // discoveries must never be written — the plugin transient is the
-        // sole discovery cache (review finding).
-        $cache = new SimpleArrayCache();
-        AiClient::setCache($cache);
-
-        try {
-            $this->freezeTime(1700000000);
-            $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
-
-            $directory = $this->directory();
-            $base_key = Closure::bind(
-                function () {
-                    return $this->getBaseCacheKey();
-                },
-                $directory,
-                ZaiModelMetadataDirectory::class
-            );
-            $cache->set($base_key() . '_models', array('poisoned-model' => ZaiModelCatalog::metadata_for('poisoned-model')));
-
-            $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3')));
-            $models = $directory->listModelMetadata();
-
-            $this->assertSame(array('glm-5.3'), $this->idList($models), 'A warmed PSR-16 entry must never be served.');
-            $this->assertCount(1, $this->sdkHttpAttempts());
-
-            // Expiry still governs: past the transient TTL the same instance
-            // re-discovers even though a PSR-16 cache is configured.
-            $this->advanceTime(ZaiDiscoveryCache::DISCOVERY_TTL + 1);
-            $this->queueSdkResponse(200, array(), HttpResponseFactory::openAiModelsBody(array('glm-5.3', 'glm-5.2')));
-            $models = $directory->listModelMetadata();
-
-            $this->assertCount(2, $this->idList($models));
-            $this->assertCount(2, $this->sdkHttpAttempts());
-
-            $this->assertSame(
-                array( $base_key() . '_models' ),
-                array_keys($cache->entries),
-                'No discovery value may be written to the PSR-16 cache (only the poisoned test entry may remain).'
-            );
-        } finally {
-            AiClient::setCache(null);
-        }
-    }
-
     /*
+     * glm37-6: testConfiguredPsr16CacheNeverServesOrStoresDiscovery and
+     * testSdkCacheKeyIsEndpointScoped moved to the shared
+     * AbstractZaiModelDirectoryTestCase — the neutralization trio is ONE
+     * rule on the shared Support\NeutralizesSdkModelCache trait now, and
+     * its pins execute once per surface (this suite's copies were the
+     * zai-only half of a both-surface rule).
+     *
      * Cache scoping across plan/region switches (before expiry).
      */
 
@@ -1144,32 +1102,6 @@ final class ZaiModelDirectoryTest extends AbstractZaiModelDirectoryTestCase
         $this->assertCount(2, $this->sdkHttpAttempts());
         $this->assertSame('https://open.bigmodel.cn/api/paas/v4/models', end(WpHarness::$sdk_http_attempts)['url']);
         $this->assertTrue($registry->hasProvider('zai'), 'Registry state must be untouched.');
-    }
-
-    public function testSdkCacheKeyIsEndpointScoped()
-    {
-        // Direct proof that the SDK-level cache key (including any PSR-16
-        // persistent cache configured via AiClient::setCache()) differs per
-        // plan and per region.
-        $directory = new ZaiModelMetadataDirectory();
-        $base_key = Closure::bind(
-            function () {
-                return $this->getBaseCacheKey();
-            },
-            $directory,
-            ZaiModelMetadataDirectory::class
-        );
-
-        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'intl');
-        $coding_intl = $base_key();
-        $this->selectEndpoint(PlanRegionSettings::class, 'general', 'intl');
-        $general_intl = $base_key();
-        $this->selectEndpoint(PlanRegionSettings::class, 'coding', 'cn');
-        $coding_cn = $base_key();
-
-        $this->assertNotSame($coding_intl, $general_intl);
-        $this->assertNotSame($coding_intl, $coding_cn);
-        $this->assertNotSame($general_intl, $coding_cn);
     }
 
     public function testFallbackIsNotCachedAtTheSdkLayerEither()

@@ -60,7 +60,6 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Metadata;
 
-use WordPress\AiClient\AiClient;
 use WordPress\AiClient\Providers\ApiBasedImplementation\AbstractApiBasedModelMetadataDirectory;
 use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
@@ -75,6 +74,7 @@ use Deicod\WpConnectors\Zai\Availability\AbstractZaiProviderAvailability;
 use Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
 use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
+use Deicod\WpConnectors\Zai\Support\NeutralizesSdkModelCache;
 
 /**
  * Model metadata directory for zai_anthropic.
@@ -103,6 +103,14 @@ final class ZaiAnthropicModelMetadataDirectory extends AbstractApiBasedModelMeta
 	use SpeaksAnthropicMessagesProtocol {
 		SpeaksAnthropicMessagesProtocol::getRequestAuthentication insteadof WithRequestAuthenticationTrait; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method name.
 	}
+
+	// glm37-6: the SDK cache neutralization (getBaseCacheKey/hasCache/
+	// setCache) rides the shared Support\NeutralizesSdkModelCache trait —
+	// this surface's glm36-6 port was verified once empirically and pinned
+	// nowhere, so a neutralization change landing on the zai sibling only
+	// drifted silently. One rule composes for both surfaces now, pinned
+	// through the shared directory test base.
+	use NeutralizesSdkModelCache;
 
 	/*
 	 * glm19-10: this class carried four cache alias constants
@@ -141,63 +149,17 @@ final class ZaiAnthropicModelMetadataDirectory extends AbstractApiBasedModelMeta
 	}
 
 	/**
-	 * Scopes the SDK-level cache key to the CURRENT endpoint (glm36-6).
-	 *
-	 * The SDK base wraps sendListModelsRequest() in its own cache
-	 * (WithDataCachingTrait, 24h TTL, per-class key by default — including
-	 * a persistent PSR-16 cache when one is configured via
-	 * AiClient::setCache()). That layer is bypassed wholesale here (see
-	 * hasCache()/setCache()), but the key stays endpoint-scoped so entries
-	 * written by any other path (a foreign directory instance,
-	 * invalidateCaches() clears) can never cross endpoints — the zai
-	 * sibling's exact neutralization.
+	 * The endpoint class whose current-settings identity scopes the SDK
+	 * cache key (glm37-6's one parameterized fact for the shared
+	 * NeutralizesSdkModelCache trait — the glm36-6 neutralization this
+	 * class carried inline, one owner down).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return string
+	 * @return class-string
 	 */
-	protected function getBaseCacheKey(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
-		return 'ai_client_' . AiClient::VERSION . '_' . md5( self::class . '|' . ZaiAnthropicEndpoint::for_current_settings()->cache_key() );
-	}
-
-	/**
-	 * Never serves from the SDK cache layer (in-memory local or PSR-16).
-	 *
-	 * The plugin transient is the ONLY discovery cache: outer layers retain
-	 * values for 24h, which would defeat the advertised 12h TTL and survive
-	 * the transient deletion on settings changes/uninstall. Reporting
-	 * "never cached" forces every list/has/get consult through the final
-	 * trio's map build — sendListModelsRequest() below — which applies the
-	 * plugin's own TTL and invalidation rules (the per-consult option reads
-	 * glm15-6 pins stay per-consult).
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param string $key Cache key suffix.
-	 * @return bool Always false.
-	 */
-	protected function hasCache( string $key ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
-		return false;
-	}
-
-	/**
-	 * Never persists anything in the SDK cache layer (in-memory or PSR-16).
-	 *
-	 * Successful discoveries are persisted as the plugin transient inside
-	 * sendListModelsRequest() with DISCOVERY_TTL; fallbacks are cached at
-	 * most as the 60s negative marker (never here — see GLM1 #6). Storing
-	 * here as well would leave warmed entries behind after transient
-	 * invalidation.
-	 *
-	 * @since 0.2.0
-	 *
-	 * @param string                 $key   Cache key suffix.
-	 * @param mixed                  $value Value to cache (ignored).
-	 * @param int|\DateInterval|null $ttl   TTL (ignored).
-	 * @return bool Always true (pretend success; store nothing).
-	 */
-	protected function setCache( string $key, $value, $ttl = null ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
-		return true; // Pretend success; store nothing.
+	protected static function discovery_endpoint_class(): string {
+		return ZaiAnthropicEndpoint::class;
 	}
 
 	/**

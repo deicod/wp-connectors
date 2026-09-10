@@ -27,6 +27,8 @@
 
 declare( strict_types=1 );
 
+use WordPress\AiClient\AiClient;
+
 abstract class AbstractZaiModelDirectoryTestCase extends WpConnectorsTestCase
 {
     /**
@@ -128,5 +130,133 @@ abstract class AbstractZaiModelDirectoryTestCase extends WpConnectorsTestCase
         $models = $this->directory()->listModelMetadata();
 
         $this->assertSame(\Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog::GENERAL_MODELS, $this->idList($models));
+    }
+
+    public function testTheSdkCacheNeutralizationRidesTheSharedTrait()
+    {
+        /*
+         * glm37-6: the neutralization trio (getBaseCacheKey/hasCache/
+         * setCache) was a near-verbatim twin on the two directories with
+         * behavioral pins on the zai side only — glm36-6 verified the
+         * anthropic port empirically and pinned nothing, so a one-surface
+         * neutralization change (say, a hasCache() that starts serving
+         * SDK-layer entries, defeating the 12h transient TTL and
+         * surviving plan/region invalidation) drifted silently. The trio
+         * composes Support\NeutralizesSdkModelCache now, parameterized by
+         * the per-surface endpoint hook; this pin runs once per concrete
+         * suite and holds both the composition and the registry pairing
+         * of the hook.
+         */
+        $class = get_class($this->directory());
+
+        $this->assertContains(
+            \Deicod\WpConnectors\Zai\Support\NeutralizesSdkModelCache::class,
+            class_uses($class, true),
+            'The SDK cache neutralization composes the shared trait (glm37-6).'
+        );
+
+        $expected_endpoint = null;
+        foreach (\Deicod\WpConnectors\Zai\Support\ZaiSurfaces::SURFACES as $row) {
+            if ($row['settings'] === $this->settings_class()) {
+                $expected_endpoint = $row['endpoint'];
+            }
+        }
+
+        $hook = new \ReflectionMethod($class, 'discovery_endpoint_class');
+        if (PHP_VERSION_ID < 80100) {
+            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated
+            // only since 8.5) — openPrivateProperty()'s stated guard.
+            $hook->setAccessible(true);
+        }
+
+        $this->assertSame(
+            $expected_endpoint,
+            $hook->invoke(null),
+            'The base-key endpoint hook pairs with the registry row\'s endpoint class (glm37-6).'
+        );
+    }
+
+    public function testSdkCacheKeyIsEndpointScoped()
+    {
+        // glm37-6: moved from ZaiModelDirectoryTest (the zai-only pin of a
+        // BOTH-surface rule) — one copy executes per surface now.
+        //
+        // Direct proof that the SDK-level cache key (including any PSR-16
+        // persistent cache configured via AiClient::setCache()) differs per
+        // plan and per region.
+        $directory = $this->directory();
+        $base_key = \Closure::bind(
+            function () {
+                return $this->getBaseCacheKey();
+            },
+            $directory,
+            get_class($directory)
+        );
+
+        $this->selectEndpoint($this->settings_class(), 'coding', 'intl');
+        $coding_intl = $base_key();
+        $this->selectEndpoint($this->settings_class(), 'general', 'intl');
+        $general_intl = $base_key();
+        $this->selectEndpoint($this->settings_class(), 'coding', 'cn');
+        $coding_cn = $base_key();
+
+        $this->assertNotSame($coding_intl, $general_intl);
+        $this->assertNotSame($coding_intl, $coding_cn);
+        $this->assertNotSame($general_intl, $coding_cn);
+    }
+
+    public function testConfiguredPsr16CacheNeverServesOrStoresDiscovery()
+    {
+        // glm37-6: moved from ZaiModelDirectoryTest (the zai-only pin of a
+        // BOTH-surface rule) — one copy executes per surface now.
+        //
+        // End-to-end against a REAL configured PSR-16 cache (the SDK's
+        // outermost cache layer when core wires one via AiClient::setCache()):
+        // a poisoned pre-existing entry must never be served, and successful
+        // discoveries must never be written — the plugin transient is the
+        // sole discovery cache (review finding).
+        $cache = new \SimpleArrayCache();
+        AiClient::setCache($cache);
+
+        try {
+            $this->freezeTime(1700000000);
+            $this->selectEndpoint($this->settings_class(), 'coding', 'intl');
+
+            $directory = $this->directory();
+            $base_key = \Closure::bind(
+                function () {
+                    return $this->getBaseCacheKey();
+                },
+                $directory,
+                get_class($directory)
+            );
+            $cache->set(
+                $base_key() . '_models',
+                array('poisoned-model' => \Deicod\WpConnectors\Zai\Metadata\ZaiModelCatalog::metadata_for('poisoned-model'))
+            );
+
+            $this->queueSdkResponse(200, array(), $this->models_body(array('glm-5.3')));
+            $models = $directory->listModelMetadata();
+
+            $this->assertSame(array('glm-5.3'), $this->idList($models), 'A warmed PSR-16 entry must never be served.');
+            $this->assertCount(1, $this->sdkHttpAttempts());
+
+            // Expiry still governs: past the transient TTL the same instance
+            // re-discovers even though a PSR-16 cache is configured.
+            $this->advanceTime(\Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::DISCOVERY_TTL + 1);
+            $this->queueSdkResponse(200, array(), $this->models_body(array('glm-5.3', 'glm-5.2')));
+            $models = $directory->listModelMetadata();
+
+            $this->assertCount(2, $this->idList($models));
+            $this->assertCount(2, $this->sdkHttpAttempts());
+
+            $this->assertSame(
+                array( $base_key() . '_models' ),
+                array_keys($cache->entries),
+                'No discovery value may be written to the PSR-16 cache (only the poisoned test entry may remain).'
+            );
+        } finally {
+            AiClient::setCache(null);
+        }
     }
 }
