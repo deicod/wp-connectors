@@ -1,16 +1,30 @@
 <?php
 /**
  * Zai_anthropic model metadata directory: custom (non-OpenAI-compat)
- * directory with a plan-partitioned static GLM fallback and optional
+ * discovery with a plan-partitioned static GLM fallback and optional
  * cached /v1/models discovery.
  *
- * This is a CUSTOM directory (SPEC §2 layer table): the Anthropic surface's
- * model-list route and framing differ from the OpenAI-compat abstract's
- * assumptions, so the class implements ModelMetadataDirectoryInterface
- * directly. The NEUTRAL GLM catalog DATA (IDs, capability/option metadata,
+ * The class rides the SDK's ROUTE-AGNOSTIC directory base (glm36-6) —
+ * its final list/has/get trio and its one abstract (a map of model ID
+ * to metadata) impose no route or framing assumption, so the hand-
+ * rolled trio's drift risk (a future vendor contract change landing on
+ * the zai surface's inherited copy while silently skipping this one)
+ * is closed at the same inheritance the sibling already rides. The
+ * SDK base's own cache layer (in-memory plus any PSR-16 cache, 24h
+ * TTL) is bypassed exactly like the sibling's — hasCache() never
+ * serves, setCache() stores nothing, the base key stays
+ * endpoint-scoped — so the WordPress transient below remains the
+ * single cache. What stays CUSTOM is the Anthropic surface's own
+ * discovery flow (discover_model_ids(): the models route, the protocol
+ * wrap, the verdict recording) — the part the OpenAI-compat abstract's
+ * baked-in route assumptions genuinely excluded, and the reason this
+ * class extends the route-agnostic parent directly instead of that
+ * subclass like the zai sibling.
+ *
+ * The NEUTRAL GLM catalog DATA (IDs, capability/option metadata,
  * newest-first sorting, chat-support evidence) is shared with the zai
- * provider's ZaiModelCatalog — data reuse, not adapter coupling: the two
- * protocol adapters never call each other.
+ * provider's ZaiModelCatalog — data reuse, not adapter coupling: the
+ * two protocol adapters never call each other.
  *
  * The fallback is plan-partitioned exactly like the zai provider's (SPEC
  * §3.3): coding subscriptions expose a restricted, coding-suitable model
@@ -32,8 +46,8 @@
  * settings change. Successful discovery is additionally intersected with
  * the ACTIVE plan's catalog before caching (Codex R3 #4): the coding plan
  * advertises only its restricted model set even though the live route
- * returns the full list. There is no other cache layer: this class
- * implements the SDK interface directly and keeps no in-memory state
+ * returns the full list. The SDK base's cache layer is neutralized (see
+ * hasCache()/setCache() below) and the class keeps no in-memory state
  * beyond the per-content map memo (GLM7 #13) — the transient stays the
  * single source of the resolved IDs.
  *
@@ -46,12 +60,10 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Zai\Metadata;
 
-use WordPress\AiClient\Common\Exception\InvalidArgumentException;
-use WordPress\AiClient\Providers\Contracts\ModelMetadataDirectoryInterface;
+use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Providers\ApiBasedImplementation\AbstractApiBasedModelMetadataDirectory;
 use WordPress\AiClient\Providers\Http\Contracts\HttpTransporterInterface;
 use WordPress\AiClient\Providers\Http\Contracts\RequestAuthenticationInterface;
-use WordPress\AiClient\Providers\Http\Contracts\WithHttpTransporterInterface;
-use WordPress\AiClient\Providers\Http\Contracts\WithRequestAuthenticationInterface;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
 use WordPress\AiClient\Providers\Http\Exception\ResponseException;
@@ -69,7 +81,7 @@ use Deicod\WpConnectors\Zai\Support\LoggingHttpTransporter;
  *
  * @since 0.2.0
  */
-final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectoryInterface, WithHttpTransporterInterface, WithRequestAuthenticationInterface {
+final class ZaiAnthropicModelMetadataDirectory extends AbstractApiBasedModelMetadataDirectory {
 
 	// The aliases keep the traits' originals reachable for the wrapping
 	// overrides below (traits have no parent:: chain inside the using
@@ -129,58 +141,77 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	}
 
 	/**
-	 * Lists all available model metadata for the current endpoint.
+	 * Scopes the SDK-level cache key to the CURRENT endpoint (glm36-6).
+	 *
+	 * The SDK base wraps sendListModelsRequest() in its own cache
+	 * (WithDataCachingTrait, 24h TTL, per-class key by default — including
+	 * a persistent PSR-16 cache when one is configured via
+	 * AiClient::setCache()). That layer is bypassed wholesale here (see
+	 * hasCache()/setCache()), but the key stays endpoint-scoped so entries
+	 * written by any other path (a foreign directory instance,
+	 * invalidateCaches() clears) can never cross endpoints — the zai
+	 * sibling's exact neutralization.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @return list<ModelMetadata> Array of model metadata.
+	 * @return string
 	 */
-	public function listModelMetadata(): array {
-		return array_values( $this->models_map() );
+	protected function getBaseCacheKey(): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
+		return 'ai_client_' . AiClient::VERSION . '_' . md5( self::class . '|' . ZaiAnthropicEndpoint::for_current_settings()->cache_key() );
 	}
 
 	/**
-	 * Checks if metadata exists for a specific model.
+	 * Never serves from the SDK cache layer (in-memory local or PSR-16).
+	 *
+	 * The plugin transient is the ONLY discovery cache: outer layers retain
+	 * values for 24h, which would defeat the advertised 12h TTL and survive
+	 * the transient deletion on settings changes/uninstall. Reporting
+	 * "never cached" forces every list/has/get consult through the final
+	 * trio's map build — sendListModelsRequest() below — which applies the
+	 * plugin's own TTL and invalidation rules (the per-consult option reads
+	 * glm15-6 pins stay per-consult).
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param string $model_id Model identifier.
-	 * @return bool True if metadata exists, false otherwise.
+	 * @param string $key Cache key suffix.
+	 * @return bool Always false.
 	 */
-	public function hasModelMetadata( string $model_id ): bool {
-		$models = $this->models_map();
-
-		return isset( $models[ $model_id ] );
+	protected function hasCache( string $key ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
+		return false;
 	}
 
 	/**
-	 * Gets metadata for a specific model.
+	 * Never persists anything in the SDK cache layer (in-memory or PSR-16).
+	 *
+	 * Successful discoveries are persisted as the plugin transient inside
+	 * sendListModelsRequest() with DISCOVERY_TTL; fallbacks are cached at
+	 * most as the 60s negative marker (never here — see GLM1 #6). Storing
+	 * here as well would leave warmed entries behind after transient
+	 * invalidation.
 	 *
 	 * @since 0.2.0
 	 *
-	 * @param string $model_id Model identifier.
-	 * @return ModelMetadata Model metadata.
-	 * @throws InvalidArgumentException If model metadata not found.
+	 * @param string                 $key   Cache key suffix.
+	 * @param mixed                  $value Value to cache (ignored).
+	 * @param int|\DateInterval|null $ttl   TTL (ignored).
+	 * @return bool Always true (pretend success; store nothing).
 	 */
-	public function getModelMetadata( string $model_id ): ModelMetadata {
-		$models = $this->models_map();
-
-		if ( ! isset( $models[ $model_id ] ) ) {
-			throw new InvalidArgumentException(
-				'No model with ID ' . wp_json_encode( $model_id ) . ' was found in the provider'
-			);
-		}
-
-		return $models[ $model_id ];
+	protected function setCache( string $key, $value, $ttl = null ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK trait method override.
+		return true; // Pretend success; store nothing.
 	}
 
 	/**
 	 * Returns the model map for the CURRENT endpoint: cached discovery,
 	 * discovery, or the plan-specific static fallback.
 	 *
-	 * The plan/region options are read at call time, so a settings change
-	 * swaps the cache identity and catalog on the very next lookup — a warm
-	 * cache can never serve another endpoint's models.
+	 * This is the SDK base's one abstract (glm36-6) — the final trio's
+	 * list/has/get consults land here through the neutralized cache
+	 * funnel (hasCache() never serves, so every consult re-runs this
+	 * build; the plugin transient and the content memo below are the
+	 * only caches). The plan/region options are read at call time, so a
+	 * settings change swaps the cache identity and catalog on the very
+	 * next lookup — a warm cache can never serve another endpoint's
+	 * models.
 	 *
 	 * GLM4 #10: the cache orchestration (positive/negative transients,
 	 * TTLs, plan fallback) lives once in the shared ZaiDiscoveryCache —
@@ -204,7 +235,8 @@ final class ZaiAnthropicModelMetadataDirectory implements ModelMetadataDirectory
 	 *
 	 * @return array<string, ModelMetadata> Map of model ID to metadata.
 	 */
-	private function models_map(): array {
+	protected function sendListModelsRequest(): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- SDK base abstract's name; the per-consult plugin cache owns discovery, not an SDK cache.
+
 		/*
 		 * glm26-6: the consult skeleton (endpoint resolve → discovery
 		 * cache id → cached_ids → memoized_map) rides the shared
