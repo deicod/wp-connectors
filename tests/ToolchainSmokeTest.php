@@ -17,9 +17,10 @@ final class ToolchainSmokeTest extends TestCase
 {
     public function testPhpVersionIsInSupportedRange(): void
     {
-        // Runtime may be newer than the floor (dev hosts run 8.5); plugin code
-        // itself must stay 7.4-compatible, enforced by phpcs-compat + php -l.
-        $this->assertGreaterThanOrEqual(70400, PHP_VERSION_ID);
+        // floor82 (user decision 2026-09-11): the supported floor is 8.2;
+        // the runtime may be newer (dev hosts run 8.5), but a suite run on
+        // anything older proves nothing about the shipped plugin.
+        $this->assertGreaterThanOrEqual(80200, PHP_VERSION_ID);
     }
 
     public function testPinnedAiClientSdkIsInstalled(): void
@@ -49,36 +50,52 @@ final class ToolchainSmokeTest extends TestCase
     }
 
     /**
-     * glm38-1: the curated PHP 8.0+ function floor for every tree the
-     * phpcs-compat ruleset holds to "must run on 7.4-8.4" (bin, connectors,
-     * shared, tests).
+     * floor82 (superseding glm38-1's pin): the curated POST-floor function
+     * vocabulary for every tree the phpcs-compat ruleset holds to "must run
+     * on 8.2-8.4" (bin, connectors, shared, tests).
      *
-     * The locked PHPCompatibility 9.3.5 predates several of these functions
-     * and has no availability sniff for them — the fdiv spelling sailed
-     * through the static gate and fataled the NAN guard pin on the declared
-     * 7.4 floor instead of exercising it. The sweep is the grep-shaped
-     * backstop for exactly the sniff-gap class (comments included: prose
-     * naming the call shape gets rewritten, not exempted).
+     * glm38-1's form banned 8.0+ functions against the former 7.4 floor —
+     * fdiv fatals were the demonstrated class, and the locked
+     * PHPCompatibility 9.3.5 predates the function and has no sniff for it.
+     * With the 8.2 floor every pre-8.2 function is legal (fdiv,
+     * str_contains, array_is_list, enum_exists included — the fdiv spelling
+     * in the NAN pin stays the NAN constant anyway: clearer than the
+     * division spelling, and the zai sibling suite's idiom since GLM2 #4),
+     * so the sweep's job flips to the OTHER side of the range: functions
+     * introduced ABOVE the floor (8.3/8.4 additions) would fatal every 8.2
+     * install while phpcs-compat 9.3.5 — pinned in 2019 — cannot see them
+     * either. Same grep-shaped backstop, same sniff-gap class, opposite
+     * direction. Comments included: prose naming the call shape gets
+     * rewritten, not exempted (the pin flagged its own first docblock).
      *
-     * Deliberately NOT listed: array_is_list (8.1) — the SDK polyfills it
-     * on the 7.4 floor (glm31-9), and the harness canary pins the polyfill
-     * loads. A name joins this list only with a demonstrated 7.4 fatal and
-     * no polyfill in the tree.
+     * A name joins this list only with a demonstrated unavailable-at-8.2
+     * fatal and no polyfill in the tree.
      */
-    public function testNoUnsupportedPhp8FunctionCallsInTheCompatTrees(): void
+    public function testNoPostFloorFunctionCallsInTheCompatTrees(): void
     {
-        $floor8Functions = array(
-            'fdiv',
-            'str_contains',
-            'str_starts_with',
-            'str_ends_with',
-            'preg_last_error_msg',
-            'get_debug_type',
-            'get_resource_id',
-            'enum_exists',
+        $postFloorFunctions = array(
+            // PHP 8.3 additions.
+            'json_validate',
+            'str_increment',
+            'str_decrement',
+            'stream_context_set_options',
+            'mysqli_execute_query',
+            'posix_eaccess',
+            'posix_sysconf',
+            'posix_pathconf',
+            'posix_fpathconf',
+            // PHP 8.4 additions.
+            'array_find',
+            'array_find_key',
+            'array_any',
+            'array_all',
+            'mb_trim',
+            'mb_ltrim',
+            'mb_rtrim',
+            'bcdivmod',
         );
 
-        $pattern = '/\b(' . implode('|', $floor8Functions) . ')\s*\(/';
+        $pattern = '/\b(' . implode('|', $postFloorFunctions) . ')\s*\(/';
         $scanned = 0;
 
         foreach ($this->compatTreeFiles() as $path) {
@@ -87,7 +104,7 @@ final class ToolchainSmokeTest extends TestCase
                 if (1 === preg_match($pattern, $line, $matches)) {
                     $this->fail(
                         sprintf(
-                            'PHP 8.0+ function call on the 7.4 floor: %s() at %s:%d (PHPCompatibility 9.3.5 has no sniff for it — see glm38-1).',
+                            'Function call unavailable on the 8.2 floor: %s() at %s:%d (PHPCompatibility 9.3.5 has no sniff for it — see floor82/glm38-1).',
                             $matches[1],
                             $path,
                             $index + 1
