@@ -4,7 +4,7 @@
  * Plugin URI:        https://github.com/deicod/wp-connectors
  * Description:       z.ai GLM models for the WordPress AI Client via the OpenAI-compatible and Anthropic-compatible APIs. Coding or general plan, international or China region.
  * Requires at least: 6.9
- * Requires PHP:      7.4
+ * Requires PHP:      8.2
  * Version:           0.1.0
  * Author:            deicod
  * Author URI:        https://github.com/deicod

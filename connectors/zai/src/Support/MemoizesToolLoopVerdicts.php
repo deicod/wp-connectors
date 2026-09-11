@@ -53,8 +53,12 @@ trait MemoizesToolLoopVerdicts {
 	 * K-turn tool loop that replays the conversation every request
 	 * otherwise re-proves every prior tool result (often multi-KB
 	 * scraped or JSON payloads) on every request build — O(K²) on the
-	 * hot path. SplObjectStorage is the identity-keyed store on the PHP
-	 * 7.4 floor (the tool_schema_memo precedent, glm16-6); rejections
+	 * hot path. SplObjectStorage is the identity-keyed store — chosen
+	 * on the former 7.4 floor and KEPT on 8.2 by decision: it is
+	 * STRONG-keyed by design (the storage pins every entry until the
+	 * sweep releases it — the tool_schema_memo precedent, glm16-6; a
+	 * WeakMap swap would change the lifetime semantics the resets are
+	 * tuned against); rejections
 	 * never memoize (the guard throws before any entry lands), and the
 	 * first-run proof is byte-identical. The VALUE convention is
 	 * per-surface (see this trait's docblock); the build-set sweep

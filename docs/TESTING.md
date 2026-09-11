@@ -13,7 +13,7 @@ php tools/composer.phar check     # full offline validation entry point
 ```
 
 `check` runs, in order: `php -l` sweep, PHPCS (WordPress standard),
-PHPCompatibility (7.4–8.4), PHPStan, convention enforcement, the secret
+PHPCompatibility (8.2–8.4), PHPStan, convention enforcement, the secret
 scanner, and PHPUnit. It never contacts the network: the harness fails both
 HTTP layers closed (`wp_remote_*` and the SDK's PSR transport) unless a test
 installs a mock.

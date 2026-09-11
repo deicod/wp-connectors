@@ -305,7 +305,7 @@ Rules:
 - `Requires at least: 6.9` (matching the official provider plugins) — on 7.0 the SDK ships in
   core, on 6.9 the standalone PHP AI Client plugin must be active; guard with
   `class_exists(AiClient::class)` and admin notice if missing.
-- `Requires PHP: 7.4` (SDK minimum). Use `wp_remote_*` for all HTTP (no cURL ext dependency).
+- `Requires PHP: 8.2` (floor per the 2026-09-11 user decision; the SDK itself only needs 7.4). Use `wp_remote_*` for all HTTP (no cURL ext dependency).
 - Plugin text domains per plugin; English strings, `__()` wrapped from day one.
 - Namespace per plugin: `Deicod\WpConnectors\Zai`, `…\OpenAiOauth`, `…\XaiOauth`, `…\AnthropicOauth`.
 
@@ -340,7 +340,7 @@ Rules:
     limitation, not a plugin choice.
 
 ### 6.3 Compatibility
-- WordPress 7.0+ (6.9 with standalone SDK plugin), PHP 7.4–8.4, no cURL ext needed.
+- WordPress 7.0+ (6.9 with standalone SDK plugin), PHP 8.2–8.4 (floor per the 2026-09-11 user decision), no cURL ext needed.
 - Multisite: per-site (network-activated = per-site settings; document, don't special-case v1).
 
 ---

@@ -379,8 +379,8 @@ function wp_connectors_header_violations(array $headers, $slug)
     if (isset($headers['requires at least']) && '6.9' !== $headers['requires at least']) {
         $violations[] = sprintf('%s: "Requires at least" must be 6.9, found "%s".', $slug, $headers['requires at least']);
     }
-    if (isset($headers['requires php']) && '7.4' !== $headers['requires php']) {
-        $violations[] = sprintf('%s: "Requires PHP" must be 7.4, found "%s".', $slug, $headers['requires php']);
+    if (isset($headers['requires php']) && '8.2' !== $headers['requires php']) {
+        $violations[] = sprintf('%s: "Requires PHP" must be 8.2, found "%s".', $slug, $headers['requires php']);
     }
     if (isset($headers['license']) && false === strpos($headers['license'], 'GPL-2.0-or-later')) {
         $violations[] = sprintf('%s: license header must be GPL-2.0-or-later, found "%s".', $slug, $headers['license']);

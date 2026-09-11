@@ -29,7 +29,7 @@ conventions` fails otherwise:
 
 1. Exactly one main plugin file at the plugin root containing the header block
    with **all** of: `Plugin Name`, `Version`, `Requires at least: 6.9`,
-   `Requires PHP: 7.4`, `License: GPL-2.0-or-later`, `Text Domain`.
+   `Requires PHP: 8.2`, `License: GPL-2.0-or-later`, `Text Domain`.
 2. `Text Domain` equals the plugin directory slug.
 3. The main file defines a version constant named
    `STRAIGHTENED_SLUG_VERSION` (slug uppercased, `-` → `_`, e.g.
@@ -42,7 +42,7 @@ conventions` fails otherwise:
    no shipped file may reference `vendor/autoload` or `composer` at runtime —
    plugins are standalone drop-ins (SPEC §5).
 6. Shipped PHP is WordPress-coding-standard clean (`composer phpcs`) and
-   PHP 7.4–8.4 compatible (`composer phpcs-compat`, `composer lint`).
+   PHP 8.2–8.4 compatible (`composer phpcs-compat`, `composer lint`).
 
 The same rules apply to test fixture plugins under `tests/fixtures/plugins/`
 (the `example-connector` fixture is the reference implementation).

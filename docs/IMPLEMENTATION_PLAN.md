@@ -3,7 +3,7 @@
 **Based on:** [`docs/specs/SPEC.md`](specs/SPEC.md), Draft v1 (2026-08-30)  
 **Planning status:** Ready for implementation  
 **Target:** WordPress 7.0+ and WordPress 6.9 with the standalone PHP AI Client plugin
-(advertised via `Requires at least: 6.9`), PHP 7.4–8.4
+(advertised via `Requires at least: 6.9`), PHP 8.2–8.4 (floor per the 2026-09-11 user decision)
 
 ## How to use this plan
 
@@ -52,7 +52,7 @@ These decisions remove ambiguity without changing the product scope in the SPEC:
 
 ## Definition of done for every implementation task
 
-A task is complete only when its code is PHP 7.4-compatible, user-facing text is translatable,
+A task is complete only when its code is PHP 8.2-compatible, user-facing text is translatable,
 admin mutations have capability and nonce checks, error paths return typed `WP_Error` values,
 relevant unit/integration tests pass, no secret can appear in logs, and affected documentation
 matches actual behavior. Apply WordPress coding standards unless an SDK signature requires a
@@ -78,7 +78,7 @@ documented exception.
 
 - [x] **Task 0.2 — Establish development tooling.** Add Composer development dependencies and
   scripts for PHPCS with WordPress rules, PHPUnit, PHP syntax checks, and any static analysis that
-  supports PHP 7.4. Configure generated/vendor paths, test fixtures, and consistent namespaces.
+  supports PHP 8.2. Configure generated/vendor paths, test fixtures, and consistent namespaces.
   Avoid a runtime Composer dependency in plugin zips. Check this task only after each script runs
   locally (or a precisely documented environment limitation is demonstrated).
 
@@ -359,7 +359,7 @@ documented exception.
 
 ### Tasks
 
-- [ ] **Task 3.1 — Define provider-neutral OAuth contracts.** In `shared/`, define PHP 7.4-safe
+- [ ] **Task 3.1 — Define provider-neutral OAuth contracts.** In `shared/`, define PHP 8.2-safe
   interfaces/value objects for token sets, clocks, HTTP transport, OAuth grants, token storage,
   refresh policy, availability, and typed errors. Keep provider endpoints/client IDs out of generic
   classes. Check this task only after contract tests cover token validation/serialization and an
@@ -791,7 +791,7 @@ documented exception.
 ### Tasks
 
 - [ ] **Task 7.1 — Enforce code quality in CI.** Add workflows for Composer validation, PHPCS,
-  PHP syntax on 7.4–8.4, PHPUnit, static analysis, build reproducibility, secret scanning, and a
+  PHP syntax on 8.2–8.4, PHPUnit, static analysis, build reproducibility, secret scanning, and a
   simultaneous-plugin activation smoke test. Pin third-party actions by immutable commit where
   practical and use least-privilege permissions. Check this task only after a pull request run is
   green or each unavailable runner limitation is documented with an equivalent local result.
@@ -899,7 +899,7 @@ The following checks were applied while producing this plan:
   endpoint is later documented; user-facing copy must not imply remote invalidation.
 - OAuth admin polling is described behaviorally in the SPEC. The plan forbids a single long-lived
   PHP request and requires a bounded state machine suitable for WordPress request lifetimes.
-- The plan keeps PHP 7.4 syntax compatibility, uses only `wp_remote_*` for provider traffic,
+- The plan keeps PHP 8.2 syntax compatibility, uses only `wp_remote_*` for provider traffic,
   preserves per-site multisite settings, and maintains standalone plugin artifacts as required.
 
 If implementation discovers a genuine contradiction with the SDK or live provider behavior, the

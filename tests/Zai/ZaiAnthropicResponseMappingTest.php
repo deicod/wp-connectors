@@ -2289,8 +2289,9 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
         /*
          * GLM5 #5: the unvalidated block type reached switch($type),
          * whose loose == semantics accept a non-string as 'text' (true ==
-         * 'text' on all PHP versions; 0 == 'text' on the declared 7.4
-         * target), so {"type":true,"text":"hello"} PARSED into a
+         * 'text' on all PHP versions; 0 == 'text' additionally on the
+         * pre-8.0 comparison semantics the original 7.4 target carried),
+         * so {"type":true,"text":"hello"} PARSED into a
          * successful generation instead of hitting the typed
          * unsupported-type rejection — the coercion class the GLM2 #5
          * is_string guard closed for stop_reason, closed for block types

@@ -58,8 +58,8 @@ final class ZaiEndpoint extends AbstractZaiEndpoint {
 	 *
 	 * Required by the SDK's AbstractApiProvider::baseUrl(), which stays fixed
 	 * regardless of the active plan/region (SPEC §3.3). glm22-5: derived
-	 * from the MATRIX cell it names (a constant expression, legal on the
-	 * composer-pinned PHP 7.4 floor) — the second literal could drift
+	 * from the MATRIX cell it names (a constant expression, legal on every
+	 * supported PHP floor) — the second literal could drift
 	 * from a MATRIX migration with no failing test, the same "can never
 	 * drift" alias discipline the CACHE_SCOPE constant below rides.
 	 *

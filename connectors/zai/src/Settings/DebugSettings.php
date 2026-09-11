@@ -134,8 +134,9 @@ final class DebugSettings {
 		 * null ENTRY (out-of-band code, a corrupt round trip — the
 		 * option family's GLM5 #9 / glm13-13 hardening class) fatalled
 		 * the settings page mid-render: on PHP 8+ $entry['at'] on a
-		 * string throws outright; on 7.4 it warns per member and renders
-		 * 1970-01-01 rows. Only well-formed entries render; the rest of
+		 * string throws outright (the only behavior on the 8.2 floor;
+		 * the pre-8.0 runtime warned per member and rendered 1970-01-01
+		 * rows). Only well-formed entries render; the rest of
 		 * the list does.
 		 *
 		 * glm18-16 (verifier round): the members must be SCALARS, not

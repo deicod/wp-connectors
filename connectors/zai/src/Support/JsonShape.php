@@ -42,13 +42,14 @@ final class JsonShape {
 	 * carried.
 	 *
 	 * glm31-9: the predicate rides the NATIVE array_is_list() now — an
-	 * engine function on PHP 8.1+, the SDK's files-autoloaded polyfill
-	 * (vendor/wordpress/php-ai-client/src/polyfills.php, wired through
-	 * vendor/composer/autoload_files.php) on the composer-pinned 7.4
-	 * floor. The SDK's own hot paths (PromptBuilder, the
-	 * OpenAI-compatible parse the zai surface extends) already call it
-	 * on every request, so every functional SDK installation provides
-	 * it — JsonShape adds no new precondition. The hand-rolled
+	 * engine function on PHP 8.1+, which the 8.2 floor (2026-09-11
+	 * user decision) guarantees natively; the SDK additionally ships a
+	 * files-autoloaded polyfill
+	 * (vendor/wordpress/php-ai-client/src/polyfills.php) from its own
+	 * 7.4 era, so every functional SDK installation provides the
+	 * function either way. The SDK's own hot paths (PromptBuilder, the
+	 * OpenAI-compatible parse the zai surface extends) call it on every
+	 * request — JsonShape adds no new precondition. The hand-rolled
 	 * range-over-count idiom is deleted; a second hand-maintained copy
 	 * of platform semantics could silently diverge from the verdict the
 	 * SDK itself applies to the same value (the GLM8 #13 extraction pin

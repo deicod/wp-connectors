@@ -336,8 +336,9 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
          * or null ENTRY (out-of-band code, a corrupt round trip — the
          * option family's GLM5 #9 / glm13-13 hardening class) fatalled
          * the settings page mid-render: on PHP 8+ $entry['at'] on a
-         * string throws outright; on 7.4 it warned per member and
-         * rendered 1970-01-01 rows. Only well-formed entries render;
+         * string throws outright (the only behavior on the 8.2 floor;
+         * the pre-8.0 runtime warned per member and rendered 1970-01-01
+         * rows). Only well-formed entries render;
          * the rest of the list does.
          */
         update_option(DebugLogger::OPTION_LOG, array(

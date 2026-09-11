@@ -488,12 +488,15 @@ FIXTURE
          * newline inside T_COMMENT; blanking the whole token joined the
          * next line onto the comment's line in the stripped view,
          * un-anchoring every ^-anchored scan (the scanner's /^use/m
-         * silently missed real dead imports on the composer-pinned 7.4
-         * floor — glm17 verifier round, empirically confirmed in
-         * docker php:7.4-cli). The contract below holds identically on
-         * 7.4 (terminator preserved out of the comment token) and 8.0+
-         * (the newline is separate whitespace copied verbatim), and
-         * fails on 7.4 against the old all-spaces strip.
+         * silently missed real dead imports on the former
+         * composer-pinned 7.4 floor — glm17 verifier round, empirically
+         * confirmed in docker php:7.4-cli). The contract below holds on
+         * the 8.0+ tokenizer the 8.2 floor guarantees (terminator
+         * preserved out of the comment token; the newline is separate
+         * whitespace copied verbatim) and failed on 7.4 against the old
+         * all-spaces strip — the version-conditional history stays
+         * because the byte-preservation invariant it explains is
+         * version-independent.
          */
         $source   = "<?php\n// drop\nuse Vendor\\Package\\StillAnchored;\n";
         $stripped = wp_connectors_strip_comments($source);

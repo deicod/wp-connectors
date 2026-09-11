@@ -55,10 +55,11 @@ final class JsonShapeTest extends WpConnectorsTestCase
          *
          * glm31-9 SUPERSEDES the pin's first half (the GLM10 #4
          * lesson, documented here): the shared predicate itself rides
-         * the NATIVE array_is_list() now (engine function on 8.1+, the
-         * SDK's files-autoloaded polyfill on the 7.4 floor — the SDK's
-         * own hot paths already call it on every request, so every
-         * functional installation provides it), and the range-over-
+         * the NATIVE array_is_list() now (an engine function on the
+         * 8.2 floor; on the former 7.4 floor the SDK's files-autoloaded
+         * polyfill provided it — the SDK's own hot paths already call
+         * it on every request, so every functional installation
+         * provides it either way), and the range-over-
          * count idiom is forbidden EVERYWHERE, JsonShape included: a
          * second hand-maintained copy of platform semantics could
          * silently diverge from the verdict the SDK itself applies to
@@ -94,12 +95,13 @@ final class JsonShapeTest extends WpConnectorsTestCase
     {
         /*
          * glm31-9 canary: JsonShape::is_list() calls the NATIVE
-         * array_is_list() — on the PHP 8.1+ hosts an engine function,
-         * on the composer-pinned 7.4 floor the SDK's files-autoloaded
-         * polyfill. The canary pins the harness context loading it (the
-         * same context every JsonShape consumer runs in), so a
-         * polyfill-less environment fails HERE with a named cause,
-         * never as an undefined-function fatal inside a generation.
+         * array_is_list() — an engine function on the 8.2 floor (the
+         * SDK's files-autoloaded polyfill covered the former 7.4
+         * floor). The canary pins the harness context loading it (the
+         * same context every JsonShape consumer runs in), so an
+         * environment missing the function fails HERE with a named
+         * cause, never as an undefined-function fatal inside a
+         * generation.
          */
         $this->assertTrue(
             \function_exists('array_is_list'),
