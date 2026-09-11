@@ -73,13 +73,26 @@ final class ToolchainSmokeTest extends TestCase
      */
     public function testNoPostFloorFunctionCallsInTheCompatTrees(): void
     {
+        /*
+         * floor82-5 (verifier round): the list is assembled from the
+         * php.net migration pages, not recollection — the first form
+         * misattributed mysqli_execute_query (a PHP 8.2.0 function,
+         * legal on the floor) to 8.3 and missed the mb_str_pad,
+         * socket_atmark, mb_ucfirst/lcfirst, bcceil/floor/round,
+         * request_parse_body, http_*_last_response_headers, and
+         * grapheme_str_split families. PHP calls are CASE-INSENSITIVE
+         * (an uppercase spelling of any banned name evaded the
+         * case-sensitive pattern — the security lens), so the pattern
+         * carries the /i flag.
+         */
         $postFloorFunctions = array(
             // PHP 8.3 additions.
             'json_validate',
             'str_increment',
             'str_decrement',
             'stream_context_set_options',
-            'mysqli_execute_query',
+            'mb_str_pad',
+            'socket_atmark',
             'posix_eaccess',
             'posix_sysconf',
             'posix_pathconf',
@@ -92,10 +105,19 @@ final class ToolchainSmokeTest extends TestCase
             'mb_trim',
             'mb_ltrim',
             'mb_rtrim',
+            'mb_ucfirst',
+            'mb_lcfirst',
             'bcdivmod',
+            'bcceil',
+            'bcfloor',
+            'bcround',
+            'request_parse_body',
+            'http_get_last_response_headers',
+            'http_clear_last_response_headers',
+            'grapheme_str_split',
         );
 
-        $pattern = '/\b(' . implode('|', $postFloorFunctions) . ')\s*\(/';
+        $pattern = '/\b(' . implode('|', $postFloorFunctions) . ')\s*\(/i';
         $scanned = 0;
 
         foreach ($this->compatTreeFiles() as $path) {

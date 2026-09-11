@@ -95,7 +95,6 @@ abstract class WpConnectorsTestCase extends TestCase
                 \WordPress\AiClient\Providers\AbstractProvider::class,
                 $cache
             );
-            $instances;
 
             foreach ($instances->getValue() as $instance) {
                 self::nullWiredCredential($instance);

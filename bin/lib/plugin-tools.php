@@ -27,7 +27,7 @@ declare(strict_types=1);
  * whole token joined the next line onto the comment's line in this
  * view — un-anchoring every ^-anchored line scan on those runtimes
  * (the unused-import scanner's /^use/m silently missed real dead
- * imports on the composer-pinned 7.4 floor; empirically confirmed in
+ * imports on the former composer-pinned 7.4 floor; empirically confirmed in
  * the glm17 verifier round). Keeping the terminator byte verbatim
  * preserves length, so the offset invariant above is untouched, and
  * on PHP 8.0+ this branch is a no-op (the token carries no newline).

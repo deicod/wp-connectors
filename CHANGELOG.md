@@ -6,6 +6,49 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Changed (tooling — PHP floor 8.2, user decision 2026-09-11)
+
+The supported PHP floor is **8.2**, not 7.4 — "Pff PHP 7.4 wird nicht mal
+mehr maintained. Nur weil WP sagt es läuft auf 7.4 müssen wir das nicht
+auch tun. 8.2 ist die Untergrenze." This supersedes every prior 7.4-floor
+decision, including glm38-1's 7.4-compat fixes and the PHPCompatibility
+7.4-8.4 scan range. Four commits (floor82-1..4):
+
+- floor82-1 — declared everywhere: composer `php >=8.2` and the platform
+  config 8.2.0 (lock re-hashed, validate/install verified), phpcs-compat
+  testVersion 8.2-8.4, the plugin header and readme Requires PHP 8.2, the
+  conventions gate's header literal and every fixture header it judges,
+  the composer script descriptions, and the live docs (CONVENTIONS,
+  TESTING, SPEC, IMPLEMENTATION_PLAN, architecture 0003/0005 — historical
+  records untouched). Floor-claiming docblocks updated honestly; one
+  floor-exploiting deletion rode along because it gated the check: the
+  composer platform is 8.2, so phpstan's curl signature matches the
+  runtime and CurlPsr18Client's two argument-type suppressions are gone.
+- floor82-2 — the function-floor sweep flipped to the POST-floor side:
+  with 8.2 every pre-8.2 function is legal, so the sweep now bans the
+  8.3/8.4 additions PHPCompatibility 9.3.5 (pinned 2019) cannot see and
+  that would fatal every 8.2 install (json_validate, str_increment, the
+  posix trio, array_find/any/all, the mb_trim family, bcdivmod).
+  Mutation-tested. The NAN spelling stays (clearer than fdiv, the zai
+  sibling suite's idiom since GLM2 #4); the runtime pin asserts >= 8.2.
+- floor82-3 — the PHP<8.1 reflection guards (glm38-2's three plus their
+  ten sibling idioms) and WpConnectorsTestCase::openPrivateProperty()
+  are deleted: reflection needs no accessibility opening on 8.1+, and
+  the guarded calls would be deprecation-emitting no-ops on the 8.5
+  runtime. glm38-2's fixes complete as no-ops kept honestly.
+- floor82-4 — the last floor-claiming stragglers (the fixture readme, the
+  tool_schema_memo and GLM5 #5 docblocks); every remaining 7.4 mention
+  is a historical record or an SDK fact.
+- floor82-5 (verifier round) — the sweep's ban list rebuilt from the php.net
+  migration pages: the first form misattributed mysqli_execute_query (a PHP
+  8.2.0 function, legal on the floor) to 8.3 and missed ten families
+  (mb_str_pad, socket_atmark, mb_ucfirst/lcfirst, bcceil/bcfloor/bcround,
+  request_parse_body, the http_*_last_response_headers pair,
+  grapheme_str_split); the pattern gained the /i flag (PHP calls are
+  case-insensitive — an uppercase spelling evaded it). Mutation-batteried
+  both directions; the verifier's cosmetic residues cleaned (the harness's
+  bare $instances; no-op, two comment phrasings).
+
 ### Fixed (zai / M2 — GLM38 round, /code-review max)
 
 The 38th review round (15 emitted; the caller dropped 3 as
