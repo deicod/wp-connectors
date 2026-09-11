@@ -170,8 +170,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * every turn re-ran a full json_encode plus the recursive
 	 * normalization walk per declaration per request for a wire form
 	 * that never changes. SplObjectStorage is the identity-keyed store
-	 * on the PHP 7.4 floor (WeakMap is 8.0+; a spl_object_id-keyed map
-	 * is unsafe across GC id reuse) — but unlike WeakMap it holds
+	 * — chosen on the former 7.4 floor and KEPT on 8.2 by decision
+	 * (a spl_object_id-keyed map is unsafe across GC id reuse): unlike
+	 * WeakMap it holds
 	 * STRONG keys: the storage itself pins every declaration it holds
 	 * until a reset releases it, which is why the reset set must cover
 	 * every reconfiguration idiom (glm16-16/glm17-1).
@@ -2336,8 +2337,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 		/*
 		 * GLM5 #5: the unvalidated block type reached switch($type),
 		 * whose loose == semantics accept a non-string as a known type
-		 * (true == 'text' on every PHP version; 0 == 'text' on the
-		 * declared PHP 7.4 target), so a corrupt block like
+		 * (true == 'text' on every PHP version; 0 == 'text'
+		 * additionally on the pre-8.0 comparison semantics the original
+		 * 7.4 target carried), so a corrupt block like
 		 * {"type":true,"text":"hello"} PARSED instead of hitting the
 		 * typed unsupported-type rejection — the same coercion class the
 		 * GLM2 #5 is_string guard closed for stop_reason. A missing type

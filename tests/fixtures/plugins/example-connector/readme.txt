@@ -3,7 +3,7 @@ Contributors: deicod
 Tags: ai, connectors, test-fixture
 Requires at least: 6.9
 Tested up to: 7.1
-Requires PHP: 7.4
+Requires PHP: 8.2
 Stable tag: 0.1.0
 License: GPL-2.0-or-later
 License URI: https://spdx.org/licenses/GPL-2.0-or-later.html
