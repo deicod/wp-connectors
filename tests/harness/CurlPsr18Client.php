@@ -71,11 +71,15 @@ final class CurlPsr18Client implements ClientInterface
             throw new CurlPsr18Exception("curl error {$errno}: {$error}");
         }
 
-        // PHPStan's curl signature follows the analyzed PHP 7.4 platform
-        // (resource) while the runtime uses CurlHandle; the handle is
-        // validated non-false above.
-        $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE); // @phpstan-ignore argument.type
-        $headerSize = (int) curl_getinfo($handle, CURLINFO_HEADER_SIZE); // @phpstan-ignore argument.type
+        /*
+         * floor82: the composer platform is 8.2 now, so phpstan's curl
+         * signature (CurlHandle) matches the runtime — the two
+         * argument-type suppression comments this site carried for the
+         * 7.4 platform's resource-typed signature are deleted with it
+         * (an unmatched suppression is itself a phpstan error).
+         */
+        $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+        $headerSize = (int) curl_getinfo($handle, CURLINFO_HEADER_SIZE);
 
         $headerBlock = substr((string) $raw, 0, $headerSize);
         $bodyOut = substr((string) $raw, $headerSize);

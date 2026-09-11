@@ -72,3 +72,53 @@ final class SdkHttpBlocked extends Exception implements ClientExceptionInterface
         return $this->request;
     }
 }
+
+/**
+ * PSR-18 client that flips a WordPress option on its FIRST request before
+ * delegating, simulating a concurrent settings save that lands between the
+ * request build and the response processing (GLM10 #1).
+ */
+final class MidFlightOptionFlipClient implements ClientInterface
+{
+    /**
+     * @var ClientInterface
+     */
+    private $inner;
+
+    /**
+     * @var string
+     */
+    private $option;
+
+    /**
+     * @var mixed
+     */
+    private $value;
+
+    /**
+     * @var bool
+     */
+    private $armed = true;
+
+    /**
+     * @param ClientInterface $inner  The delegating client (the harness SdkHttpClient).
+     * @param string          $option Option name to write mid-flight.
+     * @param mixed           $value  Option value to write mid-flight.
+     */
+    public function __construct(ClientInterface $inner, string $option, $value)
+    {
+        $this->inner = $inner;
+        $this->option = $option;
+        $this->value = $value;
+    }
+
+    public function sendRequest(RequestInterface $request): ResponseInterface
+    {
+        if ($this->armed) {
+            $this->armed = false;
+            update_option($this->option, $this->value);
+        }
+
+        return $this->inner->sendRequest($request);
+    }
+}

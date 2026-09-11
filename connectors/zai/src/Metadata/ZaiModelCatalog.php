@@ -27,7 +27,6 @@ use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
 use WordPress\AiClient\Providers\Models\DTO\SupportedOption;
 use WordPress\AiClient\Providers\Models\Enums\CapabilityEnum;
 use WordPress\AiClient\Providers\Models\Enums\OptionEnum;
-use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
 
 /**
  * Static model catalog and capability data.
@@ -123,7 +122,23 @@ final class ZaiModelCatalog {
 	 * @return bool True when the ID has known chat support.
 	 */
 	public static function is_chat_model( string $model_id ): bool {
-		return \in_array( $model_id, self::verified_chat_ids(), true );
+		/*
+		 * glm26-12: once-built flipped lookup — the merged id list is
+		 * constant data, and the per-ID loops (the parser's chat filter,
+		 * the discovery map rebuild, the seed filter) call this once per
+		 * model ID per discovery parse, each re-merging the three
+		 * constant sets plus a linear scan. The static local builds the
+		 * flipped set on the first call; isset() answers every later
+		 * one. The membership RULE is unchanged (verified evidence
+		 * only), and verified_chat_ids() keeps serving the list shape.
+		 */
+		static $chat_id_set = null;
+
+		if ( null === $chat_id_set ) {
+			$chat_id_set = array_fill_keys( self::verified_chat_ids(), true );
+		}
+
+		return isset( $chat_id_set[ $model_id ] );
 	}
 
 	/**
@@ -229,6 +244,13 @@ final class ZaiModelCatalog {
 	 * (e.g. glm-5.3 before glm-5.3-flash), then variants alphabetically.
 	 * Non-GLM IDs sort after all GLM IDs.
 	 *
+	 * glm34-11: the comparison reads memoized per-ID keys (sort_key()) —
+	 * usort invokes this O(N log N) times per catalog build, and every
+	 * invocation used to re-run the two extraction regexes on both IDs;
+	 * the static-local memo (the glm26-12 flipped-set idiom) computes
+	 * each ID's key once. The RULE is unchanged: same versions, same
+	 * base-before-variant tie-break, same strcmp.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param ModelMetadata $a First model.
@@ -239,8 +261,8 @@ final class ZaiModelCatalog {
 		$a_id = $a->getId();
 		$b_id = $b->getId();
 
-		$a_version = self::glm_version( $a_id );
-		$b_version = self::glm_version( $b_id );
+		$a_version = self::sort_key( $a_id )[0];
+		$b_version = self::sort_key( $b_id )[0];
 
 		if ( null === $a_version || null === $b_version ) {
 			// Non-GLM models after GLM models; otherwise alphabetical.
@@ -255,8 +277,8 @@ final class ZaiModelCatalog {
 			return version_compare( $b_version, $a_version );
 		}
 
-		$a_variant = self::glm_variant( $a_id );
-		$b_variant = self::glm_variant( $b_id );
+		$a_variant = self::sort_key( $a_id )[1];
+		$b_variant = self::sort_key( $b_id )[1];
 
 		// Base model first.
 		if ( '' === $a_variant && '' !== $b_variant ) {
@@ -267,6 +289,24 @@ final class ZaiModelCatalog {
 		}
 
 		return strcmp( $a_variant, $b_variant );
+	}
+
+	/**
+	 * The memoized [version, variant] sort key for one model ID (glm34-11).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $model_id Model ID.
+	 * @return array{0: string|null, 1: string} Version (null for non-GLM) and variant.
+	 */
+	private static function sort_key( string $model_id ): array {
+		static $keys = array();
+
+		if ( ! isset( $keys[ $model_id ] ) ) {
+			$keys[ $model_id ] = array( self::glm_version( $model_id ), self::glm_variant( $model_id ) );
+		}
+
+		return $keys[ $model_id ];
 	}
 
 	/**

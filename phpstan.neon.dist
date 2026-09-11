@@ -6,6 +6,9 @@ parameters:
 		- shared
 		# Live-probe tooling referenced from bin/zai-live-probe.php.
 		- tests/harness/CurlPsr18Client.php
+		# glm29-9: the shared live acceptance round trip both the probe
+		# and the opt-in smoke tests ride.
+		- tests/harness/ZaiLiveRoundTrip.php
 	excludePaths:
 		- */vendor/*
 		- */dist/*
@@ -15,3 +18,74 @@ parameters:
 	# the same stubs the test harness loads).
 	bootstrapFiles:
 		- tests/harness/wp-stubs.php
+	ignoreErrors:
+		# GLM6 #12: the three shared bases reference CHILD-owned identifier
+		# constants through static:: by design — a provider child that
+		# forgets a declaration fails LOUDLY (undefined-constant fatal on a
+		# test-covered path) instead of silently inheriting a sibling
+		# provider's option names. PHPStan's type system cannot express
+		# abstract class constants (interface constants are treated as
+		# final, so the usual workaround is unavailable), so these accesses
+		# are suppressed HERE, pinned to their exact counts: a new or
+		# removed static:: identifier access in these files changes the
+		# count and fails analysis, forcing a conscious decision. The
+		# children's declarations are pinned by reflection tests instead.
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Settings/AbstractPlanRegionSettings.php
+			# GLM12 #10: +2 (the load-broken-install sweep fallback composes
+			# the discovery ids from static::CACHE_PREFIX/CACHE_SCOPE, the
+			# same constants the endpoint children alias).
+			# glm15-16: -2 (each enum field wrapper passes its option
+			# constant once into the shared renderer where two inline
+			# attribute reads used to spell it).
+			# glm23-5: +5 (DEFAULT_PLAN joins the child-owned set — the
+			# base no longer declares it, so its five static:: reads
+			# resolve on the children, same loud-failure design).
+			# glm37-5: +1 (the quarantined-endpoint probe-miss fallback
+			# composes identities from static::CACHE_SCOPE, the discovery
+			# twin's own GLM12 #10 spelling).
+			count: 32
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Availability/AbstractZaiProviderAvailability.php
+			# GLM10 #9 verifier round: +1 (refuse_discovery()'s label rides
+			# static::REFUSAL_LABEL like refuse_generation()'s already did).
+			# GLM12 #2: +1 (the discovery seed names the parser rejection
+			# through static::REFUSAL_LABEL too).
+			# glm26-5: -2 (the three hand-copied region-pending settle
+			# sites ride one settle_region_pending() helper now, so the
+			# static::REGION_PENDING_OPTION read is stated once, not
+			# three times).
+			count: 11
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Provider/AbstractZaiProvider.php
+			count: 1
+		# GLM8 #10: the shared endpoint base reads the CHILD-owned
+		# identifier constants (matrix, suffixes, cache scope, settings
+		# class, rejection label) through static:: by the same GLM6 #12
+		# design — a child that forgets a declaration fails LOUDLY, and
+		# the children's declarations are pinned by reflection tests
+		# (see ZaiEndpointResolverTest).
+		-
+			identifier: classConstant.notFound
+			path: connectors/zai/src/Endpoints/AbstractZaiEndpoint.php
+			count: 9
+		# glm23-3: the live probe's argv guard reads $argv unguarded by
+		# design — PHPStan's model types the CLI superglobal as an
+		# always-present non-empty list, which holds only on PHP builds
+		# newer than the composer platform ceiling; on the supported
+		# range register_argc_argv=0 empirically leaves $argv
+		# UNSET (probed in docker php:7.4-cli/8.3-cli), where the unguarded strict
+		# array_search() fataled before any diagnostic (review round 23,
+		# finding 3). The is_array() half of the guard is the same
+		# story; both are pinned to their exact counts.
+		-
+			identifier: isset.variable
+			path: bin/zai-live-probe.php
+			count: 1
+		-
+			identifier: function.alreadyNarrowedType
+			path: bin/zai-live-probe.php
+			count: 1

@@ -29,6 +29,10 @@ if (! defined('ABSPATH')) {
 
 require_once __DIR__ . '/WpHarness.php';
 
+// Snapshot the pristine request superglobals before any test can touch
+// them; reset() full-restores this state between tests (code-review #13).
+WpHarness::snapshotRequestSuperglobals();
+
 /*
  * -------------------------------------------------------------------------
  * Hooks (filters/actions).
@@ -227,10 +231,41 @@ function update_option($option, $value, $autoload = null)
 {
     $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
 
-    // Core semantics: no update (and no hooks) when the value is unchanged.
-    if ($old === $value && null === $autoload) {
+    /*
+     * Core semantics: no update (and no hooks, no write, no autoload
+     * flip) when the value is unchanged — the short-circuit runs BEFORE
+     * any autoload handling. glm23-8 (review round 23, finding 8)
+     * removed the old `null === $autoload` condition: an unchanged-value
+     * save with an explicit autoload argument used to rewrite the row,
+     * flip the recorded autoload, and return true where core returns
+     * false with no write at all.
+     */
+    if ($old === $value) {
         return false;
     }
+
+    /*
+     * Core semantics (see add_option()'s docblock below): a save for a
+     * MISSING row delegates to add_option(), which fires ONLY the
+     * add_option_ hook family — never update_option_{$option} or
+     * updated_option (code-review GLM1 #7; the stub previously fired the
+     * update family here, so tests emulating a first persisted save
+     * exercised the wrong hook path).
+     */
+    if (! array_key_exists($option, WpHarness::$options)) {
+        return add_option($option, $value, '', $autoload);
+    }
+
+    /*
+     * Core semantics (glm23-9, review round 23, finding 9): the GENERIC
+     * 'update_option' hook fires FIRST and pre-write with ($option,
+     * $old_value, $value); the write follows; then the specific
+     * update_option_{$option} hook with THREE args ($old_value, $value,
+     * $option); then 'updated_option' with ($option, $old_value,
+     * $value). The old stub fired the specific hook first with two
+     * args and the generic LAST.
+     */
+    do_action('update_option', $option, $old, $value);
 
     WpHarness::$options[ $option ] = $value;
     if (null !== $autoload) {
@@ -239,11 +274,8 @@ function update_option($option, $value, $autoload = null)
         WpHarness::$option_autoload[ $option ] = true;
     }
 
-    if ($old !== $value) {
-        do_action("update_option_{$option}", $old, $value);
-        do_action('updated_option', $option, $old, $value);
-        do_action('update_option', $option, $old, $value);
-    }
+    do_action("update_option_{$option}", $old, $value, $option);
+    do_action('updated_option', $option, $old, $value);
 
     return true;
 }
@@ -270,9 +302,15 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
 function delete_option($option)
 {
     if (! array_key_exists($option, WpHarness::$options)) {
+        // Core still runs the DELETE (and its caches) for a missing row;
+        // record the ATTEMPT so tests can pin "no needless delete" call
+        // shapes (e.g. availability state cleanup).
+        WpHarness::$delete_option_attempts[] = $option;
+
         return false;
     }
     unset(WpHarness::$options[ $option ], WpHarness::$option_autoload[ $option ]);
+    WpHarness::$delete_option_attempts[] = $option;
 
     return true;
 }
@@ -331,6 +369,173 @@ function delete_transient($transient)
 
     return true;
 }
+
+/*
+ * Minimal wpdb for uninstall-style prefix enumerations: the probe-miss
+ * transient cleanup (connectors/zai/uninstall.php, GLM2 #7) enumerates
+ * option rows by an option_name LIKE pattern because the exact names
+ * embed a credential-binding hash. Only the surface that cleanup uses is
+ * implemented: esc_like(), prepare() with %s/%d placeholders, and the
+ * single-column SELECT ... LIKE ... get_col() shape. Storage is the
+ * harness's: real options come from WpHarness::$options, transient rows
+ * are presented in their _transient_<name> option_name form (the harness
+ * keeps them unprefixed in WpHarness::$transients). Scanning the CURRENT
+ * arrays keeps the stub per-site under switch_to_blog().
+ */
+if (!class_exists('wpdb')) {
+    class wpdb
+    {
+        /** @var string Options table name (matches core's property). */
+        public $options = 'wp_options';
+
+        /**
+         * Escapes LIKE wildcards in a literal for a LIKE pattern.
+         *
+         * @param string $text Literal text.
+         * @return string Escaped text.
+         */
+        public function esc_like($text)
+        {
+            return addcslashes((string) $text, '_%\\');
+        }
+
+        /**
+         * Substitutes %s/%d placeholders left-to-right in ONE pass over
+         * the original query (glm34-7).
+         *
+         * @param string $query Query with placeholders.
+         * @param mixed  ...$args Values to substitute.
+         * @return string Prepared query.
+         */
+        public function prepare($query, ...$args)
+        {
+            $prepared = '';
+            $length = strlen($query);
+            $arg_count = count($args);
+            $next_arg = 0;
+            for ($i = 0; $i < $length; $i++) {
+                /*
+                 * glm34-7: one pass over the ORIGINAL bytes — the
+                 * former sequential preg_replace() loop re-scanned the
+                 * already-substituted query each iteration, so a bound
+                 * value carrying a literal '%s'/'%d' was re-read as a
+                 * placeholder and consumed the NEXT argument's slot
+                 * (prepare('a = %s AND b = %s', 'lit%s', 7) yielded
+                 * "a = 'lit7' AND b = %s"), where core substitutes each
+                 * placeholder exactly once, left-to-right over the
+                 * original string.
+                 */
+                if ('%' === $query[$i] && $i + 1 < $length && ('s' === $query[$i + 1] || 'd' === $query[$i + 1]) && $next_arg < $arg_count) {
+                    $arg = $args[$next_arg++];
+                    if (is_int($arg) || is_float($arg)) {
+                        $prepared .= (string) $arg;
+                    } else {
+                        /*
+                         * glm20-9's net encoding, spelled directly: the
+                         * value lands with its quotes escaped and every
+                         * other byte VERBATIM — backslashes and '$'
+                         * tokens included (the former addslashes +
+                         * preg_replace replacement-processing round
+                         * trip produced exactly this: its \\ collapse
+                         * un-doubled addslashes's backslashes and its
+                         * escaped \$ kept dollars literal), so
+                         * get_col()'s LIKE-to-regex walk below still
+                         * reads a backslash in the captured literal as
+                         * an esc_like() escape.
+                         */
+                        $prepared .= "'" . addcslashes((string) $arg, "'\"") . "'";
+                    }
+                    $i++;
+                    continue;
+                }
+
+                $prepared .= $query[$i];
+            }
+
+            return $prepared;
+        }
+
+        /**
+         * Runs the supported single-column option_name LIKE select.
+         *
+         * glm29-15: an unrecognized query shape THROWS instead of silently
+         * answering array() — the silent-empty direction let the uninstall
+         * sweeps' negative assertions pass vacuously whenever the query
+         * drifted from the exact shape this stub recognizes (a second LIKE
+         * family, an ORDER BY, a LIMIT would all fabricate "no rows" for a
+         * query whose results the stub never computed). A caller with a new
+         * shape must extend the stub consciously.
+         *
+         * @param string $query Prepared query.
+         * @return list<string> Matching option names (sorted).
+         * @throws RuntimeException When the query is not the supported shape.
+         */
+        public function get_col($query)
+        {
+            if (!preg_match("/SELECT option_name FROM \\S+ WHERE option_name LIKE '(.*)'$/s", (string) $query, $matches)) {
+                throw new RuntimeException(
+                    'wp-stubs wpdb::get_col(): unsupported query shape (extend the stub consciously): ' . (string) $query
+                );
+            }
+
+            /*
+             * SQL LIKE (with esc_like() backslash escapes) to regex. No
+             * stripslashes() here: prepare() binds values with
+             * backslashes verbatim (glm34-7's direct encoding — the
+             * same net result the former addslashes/preg_replace round
+             * trip produced), so a backslash in the captured literal is
+             * ALWAYS an esc_like() escape marking the next character
+             * literal (verifier round on GLM2 #7 — stripping them
+             * turned the escaped underscores back into wildcards).
+             */
+            $like = $matches[1];
+            $regex = '';
+            $length = strlen($like);
+            for ($i = 0; $i < $length; $i++) {
+                $char = $like[$i];
+                if ('\\' === $char && $i + 1 < $length) {
+                    $regex .= preg_quote($like[++$i], '/');
+                    continue;
+                }
+                if ('%' === $char) {
+                    $regex .= '.*';
+                    continue;
+                }
+                if ('_' === $char) {
+                    $regex .= '.';
+                    continue;
+                }
+                $regex .= preg_quote($char, '/');
+            }
+
+            $names = array_keys(WpHarness::$options);
+            /*
+             * With a persistent object cache (GLM5 #12), transient values
+             * live outside wp_options: no _transient_ rows exist for the
+             * enumeration to find — the exact uninstall shape the direct
+             * probe-miss deletions exist to cover.
+             */
+            if (!WpHarness::$external_object_cache) {
+                foreach (array_keys(WpHarness::$transients) as $transient) {
+                    $names[] = '_transient_' . $transient;
+                }
+            }
+
+            $matches = array();
+            foreach (array_unique($names) as $name) {
+                if (preg_match('/^' . $regex . '$/s', $name)) {
+                    $matches[] = $name;
+                }
+            }
+
+            sort($matches);
+
+            return $matches;
+        }
+    }
+}
+
+$GLOBALS['wpdb'] = new wpdb();
 
 /*
  * -------------------------------------------------------------------------
@@ -783,7 +988,19 @@ function sanitize_text_field($str)
 
 function sanitize_key($key)
 {
-    return preg_replace('/[^a-z0-9_\-]/', '', strtolower((string) $key));
+    // Core semantics (wp-includes/formatting.php): only SCALAR keys are
+    // sanitized — a non-scalar (an array POST value, say) yields '' after
+    // the filter, never a coerced string and never a TypeError. The
+    // earlier `(string)` cast diverged from core and silently masked
+    // array inputs (GLM3 #8).
+    $sanitized_key = '';
+
+    if (is_scalar($key)) {
+        $sanitized_key = strtolower((string) $key);
+        $sanitized_key = preg_replace('/[^a-z0-9_\-]/', '', $sanitized_key);
+    }
+
+    return apply_filters('sanitize_key', $sanitized_key, $key);
 }
 
 function sanitize_email($email)
@@ -798,12 +1015,20 @@ function absint($maybeint)
 
 function wp_json_encode($data, $options = 0)
 {
-    $json = json_encode($data, $options);
-    if (false === $json) {
-        return 'null';
-    }
-
-    return $json;
+    // Bare json_encode: string on success, FALSE on failure (the earlier
+    // 'null' fallback masked unencodable values — NAN, resources,
+    // recursion — behind a successful-looking "null" string).
+    //
+    // KNOWN DIVERGENCE (GLM3 verifier round): core's wp_json_encode()
+    // additionally runs a sanity fallback that LOSSILY rescues invalid
+    // UTF-8 in strings (substituting or stripping the bad bytes) and
+    // returns a successful encoding — core never returns false for a
+    // string. The R18/R19/R20 tool-result/schema oracles rely on the
+    // stricter bare-encode semantics this stub provides; the GLM3 #4
+    // wire-string guards therefore call raw json_encode() themselves
+    // instead of this function, so their behavior is identical under
+    // the stub and in production.
+    return json_encode($data, $options);
 }
 
 function wp_unslash($value)
@@ -1061,7 +1286,17 @@ function current_time($type = 'U', $gmt = false)
         return WpHarness::now() + ($gmt ? 0 : WpHarness::$utc_offset);
     }
     if ('mysql' === $type) {
-        return gmdate('Y-m-d H:i:s', WpHarness::now());
+        /*
+         * glm20-12: the mysql form honors $gmt exactly like the
+         * timestamp branch and core's own implementation — non-gmt
+         * renders the site's LOCAL time (now + the offset), gmt stays
+         * offset-free. The unconditional gmdate() pinned UTC strings
+         * while the timestamp branch honored the offset, so code under
+         * test adopting current_time('mysql') for cache/log timestamps
+         * would have written divergent strings in production on any
+         * non-UTC site.
+         */
+        return gmdate('Y-m-d H:i:s', WpHarness::now() + ($gmt ? 0 : WpHarness::$utc_offset));
     }
 
     return WpHarness::now();
@@ -1132,12 +1367,16 @@ function register_setting($option_group, $option_name, $args = array())
         (array) $args
     );
 
+    // Mirror core's global registry (same shape) so plugin code can use the
+    // idiomatic `global $wp_registered_settings` read.
+    $GLOBALS['wp_registered_settings'][ $option_name ] = WpHarness::$registered_settings[ $option_name ];
+
     return true;
 }
 
 function unregister_setting($option_group, $option_name)
 {
-    unset(WpHarness::$registered_settings[ $option_name ]);
+    unset(WpHarness::$registered_settings[ $option_name ], $GLOBALS['wp_registered_settings'][ $option_name ]);
 
     return true;
 }
@@ -1176,11 +1415,15 @@ function get_registered_settings()
 
 function add_settings_section($id, $title, $callback, $page)
 {
+    WpHarness::$settings_sections[$page][] = $id;
+
     return true;
 }
 
 function add_settings_field($id, $title, $callback, $page, $section = 'default', $args = array())
 {
+    WpHarness::$settings_fields[$page][$section][] = $id;
+
     return true;
 }
 
@@ -1212,6 +1455,31 @@ function add_settings_error($setting, $code, $message, $type = 'error')
 function settings_errors($setting = '', $sanitize = false, $hide_on_update = false)
 {
     return WpHarness::$settings_errors;
+}
+
+/**
+ * Core-faithful getter for the registered settings errors: returns (does
+ * NOT print) the errors recorded for a setting slug, mirroring
+ * wp-admin/includes/template.php. The settings_errors() stub above keeps
+ * its historical return-the-array behavior for existing callers.
+ *
+ * @param string $setting_code Setting slug to filter by ('' for all).
+ * @return array<string, array<string, string>> Filtered errors.
+ */
+function get_settings_errors($setting_code = '')
+{
+    if ('' === $setting_code) {
+        return WpHarness::$settings_errors;
+    }
+
+    $matches = array();
+    foreach (WpHarness::$settings_errors as $key => $error) {
+        if (is_array($error) && (isset($error['setting']) ? $error['setting'] : '') === $setting_code) {
+            $matches[$key] = $error;
+        }
+    }
+
+    return $matches;
 }
 
 function do_settings_sections($page)

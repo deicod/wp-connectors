@@ -12,6 +12,7 @@
 declare(strict_types=1);
 
 use WordPress\AiClient\AiClient;
+use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
 use WordPress\AiClient\Providers\Http\DTO\Request;
 use WordPress\AiClient\Providers\Http\HttpTransporter;
 use WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum;
@@ -25,6 +26,193 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     /*
      * Acceptance: plugin registration timing.
      */
+
+    /**
+     * Core option-write semantics (code-review GLM1 #7): a first save with
+     * no option row delegates to add_option() and fires ONLY the
+     * add_option_ hook family; real updates fire the update family.
+     */
+    public function testWpdbPrepareSubstitutesBoundValuesVerbatim()
+    {
+        /*
+         * glm20-9: preg_replace() processes $n backreference tokens
+         * inside replacement strings even when the pattern has no
+         * capture groups, so a bound value containing '$1' was silently
+         * consumed by the stub ('_transient_x$1probe%' became
+         * '_transient_xprobe%') where core wpdb::prepare() substitutes
+         * verbatim — a test binding such a value would fail (or pass a
+         * wrong assertion) for a reason impossible against real wpdb.
+         */
+        $like = "SELECT option_name FROM wp_options WHERE option_name LIKE %s";
+
+        $this->assertSame(
+            "SELECT option_name FROM wp_options WHERE option_name LIKE '_transient_x\$1probe%'",
+            $GLOBALS['wpdb']->prepare($like, '_transient_x$1probe%'),
+            'A $1 token in a bound value substitutes verbatim, never as a backreference.'
+        );
+        $this->assertSame(
+            "SELECT option_name FROM wp_options WHERE option_name LIKE 'a\$0b'",
+            $GLOBALS['wpdb']->prepare($like, 'a$0b'),
+            'A $0 token (the whole-match splice) substitutes verbatim too.'
+        );
+
+        /*
+         * The backslash collapse get_col()'s LIKE-to-regex conversion
+         * relies on is unchanged: addslashes() doubles the backslash,
+         * the replacement processing un-doubles it.
+         */
+        $this->assertSame(
+            "SELECT option_name FROM wp_options WHERE option_name LIKE 'a\\b'",
+            $GLOBALS['wpdb']->prepare($like, 'a\b'),
+            'The addslashes/replace backslash round trip keeps producing a single backslash.'
+        );
+
+        /*
+         * glm34-7: placeholders substitute ONCE, left-to-right over the
+         * original query — the former sequential preg_replace() loop
+         * re-scanned the already-substituted string, so a bound value
+         * carrying a literal '%s' consumed the next argument's slot
+         * ('a = %s AND b = %s', 'lit%s', 7) yielded "a = 'lit7' AND
+         * b = %s"), misbinding arguments the real wpdb never re-reads.
+         */
+        $this->assertSame(
+            "SELECT option_name FROM wp_options WHERE option_name LIKE 'lit%s' AND other = 7",
+            $GLOBALS['wpdb']->prepare(
+                'SELECT option_name FROM wp_options WHERE option_name LIKE %s AND other = %d',
+                'lit%s',
+                7
+            ),
+            'A placeholder-like token inside a bound value never consumes the next argument slot.'
+        );
+    }
+
+    public function testSanitizeKeyMirrorsCoreScalarSemantics()
+    {
+        /*
+         * GLM3 #8: core sanitizes only SCALAR keys — an array POST value
+         * yields '' (never a coerced string, never a TypeError), and the
+         * sanitize_key filter still fires with the original value. The
+         * stub's earlier (string) cast masked array inputs, so the
+         * settings guard could not be tested against them.
+         */
+        $seen = null;
+        add_filter('sanitize_key', function ($sanitized, $raw) use (&$seen) {
+            $seen = $raw;
+            return $sanitized;
+        }, 10, 2);
+
+        $this->assertSame('', sanitize_key(array('x')), 'A non-scalar key returns the empty string, as in core.');
+        $this->assertSame(array('x'), $seen, 'The filter still receives the original raw value.');
+        $this->assertSame('abc_def-1', sanitize_key('ABC_def-1!'));
+        $this->assertSame('42', sanitize_key(42));
+    }
+
+    public function testUpdateOptionOnAMissingRowDelegatesToAddOptionHooks()
+    {
+        update_option('wpct_probe_opt', 'first');
+
+        $this->assertSame(1, did_action('add_option_wpct_probe_opt'), 'The add-option hook family fires for a first save.');
+        $this->assertSame(0, did_action('update_option_wpct_probe_opt'), 'The update hooks must NOT fire when no row existed.');
+        $this->assertSame(0, did_action('updated_option'));
+        $this->assertSame('first', get_option('wpct_probe_opt'));
+
+        update_option('wpct_probe_opt', 'second');
+
+        $this->assertSame(1, did_action('update_option_wpct_probe_opt'), 'A real update fires the specific update hook.');
+        $this->assertSame(1, did_action('updated_option'));
+        $this->assertSame('second', get_option('wpct_probe_opt'));
+    }
+
+    public function testUpdateOptionShortCircuitsUnchangedValuesBeforeAutoloadHandling()
+    {
+        /*
+         * glm23-8 (review round 23, finding 8): core returns false
+         * BEFORE any autoload handling whenever the new value equals
+         * the old — the old stub's `null === $autoload` condition let
+         * an unchanged-value save with an explicit autoload argument
+         * rewrite the row, flip the recorded autoload, and return true
+         * where production returns false with no write at all. Both
+         * arities of the call keep the short-circuit.
+         */
+        add_option('wpct_probe_autoload', 'keep', '', false);
+
+        $this->assertFalse(update_option('wpct_probe_autoload', 'keep', true), 'An unchanged value returns false regardless of the autoload argument.');
+        $this->assertSame('keep', get_option('wpct_probe_autoload'), 'No write happened.');
+        $this->assertSame(0, did_action('update_option_wpct_probe_autoload'), 'No update hooks fired.');
+        $this->assertFalse(WpHarness::$option_autoload['wpct_probe_autoload'], 'The recorded autoload did not flip.');
+
+        $this->assertFalse(update_option('wpct_probe_autoload', 'keep'), 'The null-autoload arity keeps the same short-circuit.');
+        $this->assertSame(0, did_action('update_option_wpct_probe_autoload'));
+    }
+
+
+    public function testUpdateOptionHookOrderAndArityMatchCore()
+    {
+        /*
+         * glm23-9 (review round 23, finding 9): core fires the GENERIC
+         * 'update_option' hook FIRST and pre-write with ($option,
+         * $old_value, $value); then the specific
+         * update_option_{$option} hook with THREE args ($old_value,
+         * $value, $option); then 'updated_option'. The old stub fired
+         * the specific hook first with two args and the generic LAST,
+         * so code under test hooking the generic to observe
+         * pre-invalidation state ran on the wrong side of the plugin's
+         * per-option handlers, and a 3-arg specific registration
+         * reading $option died on a missing argument.
+         */
+        update_option('wpct_probe_order', 'first');
+
+        $calls = array();
+        add_action('update_option', static function (...$args) use (&$calls) {
+            $calls[] = array('generic', $args, get_option('wpct_probe_order'));
+        }, 10, 3);
+        add_action('update_option_wpct_probe_order', static function (...$args) use (&$calls) {
+            $calls[] = array('specific', $args, get_option('wpct_probe_order'));
+        }, 10, 3);
+        add_action('updated_option', static function (...$args) use (&$calls) {
+            $calls[] = array('updated', $args, get_option('wpct_probe_order'));
+        }, 10, 3);
+
+        update_option('wpct_probe_order', 'second');
+
+        $this->assertSame(array(
+            array('generic', array('wpct_probe_order', 'first', 'second'), 'first'),
+            array('specific', array('first', 'second', 'wpct_probe_order'), 'second'),
+            array('updated', array('wpct_probe_order', 'first', 'second'), 'second'),
+        ), $calls);
+    }
+
+    /**
+     * Request-superglobal isolation, part 1 (code-review #13): pollutes
+     * $_POST/$_GET/$_REQUEST en bloc exactly the way settings tests do.
+     * MUST run before testRequestSuperglobalsAreRestoredBetweenTests —
+     * PHPUnit executes same-class tests in declaration order.
+     */
+    public function testRequestSuperglobalPollutionForTheNextTest()
+    {
+        $_POST = array('option_page' => 'zai_connector', 'plan' => 'general', '_wpnonce' => 'stale');
+        $_GET = array('page' => 'zai-connector');
+        $_REQUEST = $_POST;
+
+        $this->assertSame('zai_connector', $_POST['option_page']);
+    }
+
+    /**
+     * Part 2: setUp()'s WpHarness::reset() must have restored the pristine
+     * bootstrap snapshot by now. The previous reset() only unset nonce
+     * keys, so the en-bloc assignment above leaked between tests
+     * (code-review #13) — an order-dependent failure waiting for
+     * --filter runs, suite reordering, or newly added tests.
+     */
+    public function testRequestSuperglobalsAreRestoredBetweenTests()
+    {
+        $this->assertArrayNotHasKey('option_page', $_POST, '$_POST must not leak between tests.');
+        $this->assertArrayNotHasKey('plan', $_POST, 'Non-nonce POST state must not leak either.');
+        $this->assertArrayNotHasKey('page', $_GET);
+        $this->assertSame(WpHarness::$request_superglobals_snapshot['POST'], $_POST, '$_POST must equal the pristine bootstrap snapshot.');
+        $this->assertSame(WpHarness::$request_superglobals_snapshot['GET'], $_GET, '$_GET must equal the pristine bootstrap snapshot.');
+        $this->assertSame(WpHarness::$request_superglobals_snapshot['REQUEST'], $_REQUEST, '$_REQUEST must equal the pristine bootstrap snapshot.');
+    }
 
     /**
      * The provider registered by the plugin at init priority 5 must be
@@ -90,6 +278,25 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     /*
      * Acceptance: outbound HTTP is blocked unless mocked.
      */
+
+    public function testTheWpdbGetColStubFailsLoudOnUnrecognizedQueries()
+    {
+        /*
+         * glm29-15: the stub used to answer array() for any query not
+         * matching its single recognized shape, so negative assertions
+         * over a drifted query passed vacuously on fabricated empty
+         * results — the silently-compliant direction. An unrecognized
+         * shape throws now; extending the stub to a new query family is
+         * a conscious edit, never a silent empty.
+         */
+        try {
+            $GLOBALS['wpdb']->get_col('SELECT option_name FROM wp_options WHERE option_name LIKE \'x%\' ORDER BY option_name');
+            $this->fail('An unrecognized get_col() query shape must throw.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('unsupported query shape', $e->getMessage());
+            $this->assertStringContainsString('ORDER BY', $e->getMessage(), 'The diagnostic names the query it refused.');
+        }
+    }
 
     public function testOutboundHttpIsBlockedUnlessMocked()
     {
@@ -176,6 +383,82 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(wp_next_scheduled('test_leftover_event'));
     }
 
+    /**
+     * SDK credential isolation, part 1 (glm30-1): wires a credential
+     * through BOTH leak channels — the registry's per-provider map and
+     * the process-wide provider instances — exactly the way the mapping
+     * suites do. MUST run before
+     * testSdkProviderCredentialsDoNotLeakBetweenTests; the dependency
+     * annotation on that test keeps the pair ordered under
+     * --order-by=random.
+     */
+    public function testSdkProviderCredentialPollutionForTheNextTest()
+    {
+        \Deicod\WpConnectors\Zai\Plugin::register(AiClient::defaultRegistry());
+
+        $key = FakeSecrets::apiKey();
+        $authentication = new ApiKeyRequestAuthentication($key);
+
+        // Channel 1: the registry map (re-applied by any later
+        // registerProvider(), stamped onto new model instances).
+        AiClient::defaultRegistry()->setProviderRequestAuthentication(
+            \Deicod\WpConnectors\Zai\Provider\ZaiProvider::PROVIDER_ID,
+            $authentication
+        );
+
+        // Channel 2: a cached provider instance directly (the
+        // setRequestAuthentication() shape several suites use on a
+        // different surface than the registry wiring).
+        \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::modelMetadataDirectory()
+            ->setRequestAuthentication($authentication);
+
+        $this->assertSame(
+            $authentication,
+            AiClient::defaultRegistry()->getProviderRequestAuthentication(
+                \Deicod\WpConnectors\Zai\Provider\ZaiProvider::PROVIDER_ID
+            ),
+            'The registry map holds the wired credential before the reset.'
+        );
+        $this->assertSame(
+            $key,
+            \Deicod\WpConnectors\Zai\Provider\ZaiProvider::availability()->getRequestAuthentication()->getApiKey(),
+            'The process-wide availability instance carries the wired credential.'
+        );
+    }
+
+    /**
+     * Part 2: setUp() must have erased both channels by now (glm30-1).
+     * Before the reset, the credential rode every later test in the same
+     * PHP process — under the pipeline's --order-by=random ordering a
+     * test asserting the no-credential path failed as a pure function of
+     * execution order.
+     *
+     * @depends testSdkProviderCredentialPollutionForTheNextTest
+     */
+    public function testSdkProviderCredentialsDoNotLeakBetweenTests()
+    {
+        $this->assertNull(
+            AiClient::defaultRegistry()->getProviderRequestAuthentication(
+                \Deicod\WpConnectors\Zai\Provider\ZaiProvider::PROVIDER_ID
+            ),
+            'The registry authentication map must not leak between tests.'
+        );
+
+        foreach (array(
+            \Deicod\WpConnectors\Zai\Provider\ZaiProvider::class,
+            \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::class,
+        ) as $provider_class) {
+            foreach (array('availability', 'modelMetadataDirectory') as $factory) {
+                try {
+                    $provider_class::$factory()->getRequestAuthentication();
+                    $this->fail("{$provider_class}::{$factory}() still carries a credential from a previous test.");
+                } catch (\WordPress\AiClient\Common\Exception\RuntimeException $e) {
+                    // The SDK trait's unwired throw — the pre-wiring state.
+                }
+            }
+        }
+    }
+
     public function testDeterministicClockDrivesTransientsAndCron()
     {
         $this->freezeTime(1700000000);
@@ -198,6 +481,35 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1, WpHarness::runDueEvents());
         $this->assertSame(1, $fired);
         $this->assertFalse(wp_next_scheduled('test_clock_event'));
+    }
+
+    public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
+    {
+        /*
+         * glm20-12: the stub's 'mysql' branch returned UTC
+         * unconditionally while the 'timestamp' branch honored
+         * $gmt/WpHarness::$utc_offset — core's current_time('mysql')
+         * renders LOCAL time for the non-gmt form, so the harness could
+         * never exercise local-time mysql timestamps and a test could
+         * pass against code that writes divergent strings in production
+         * on any non-UTC site.
+         */
+        WpHarness::$utc_offset = 2 * HOUR_IN_SECONDS;
+
+        $local = current_time('mysql');
+        $gmt = current_time('mysql', true);
+
+        $this->assertSame(
+            gmdate('Y-m-d H:i:s', WpHarness::now() + 2 * HOUR_IN_SECONDS),
+            $local,
+            'The non-gmt mysql form renders the site-local time.'
+        );
+        $this->assertSame(gmdate('Y-m-d H:i:s', WpHarness::now()), $gmt, 'The gmt mysql form stays offset-free.');
+        $this->assertSame(
+            gmdate('Y-m-d H:i:s', WpHarness::now() + 2 * HOUR_IN_SECONDS),
+            gmdate('Y-m-d H:i:s', current_time('timestamp')),
+            'The mysql and timestamp forms agree on the offset, exactly like core.'
+        );
     }
 
     public function testNoncesAreDeterministicAndUserBound()

@@ -1,0 +1,19 @@
+{
+    "url": "https://api.z.ai/api/anthropic/v1/messages",
+    "body": {
+        "model": "glm-5.3",
+        "max_tokens": 4096,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Capital of France?"
+                    }
+                ]
+            }
+        ],
+        "system": "Respond with a single JSON value only \u2014 no markdown fences, no commentary, no surrounding text.\nThe JSON value must conform to this JSON Schema: {\"type\":\"object\",\"properties\":{\"answer\":{\"type\":\"string\"}},\"required\":[\"answer\"]}"
+    }
+}

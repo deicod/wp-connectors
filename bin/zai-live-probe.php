@@ -1,8 +1,11 @@
 <?php
 /**
- * Opt-in live smoke probe for the z.ai connector (Task 1.9).
+ * Opt-in live smoke probe for the z.ai connector (Tasks 1.9 / 2.7).
  *
- *   php bin/zai-live-probe.php [--plan=coding|general] [--region=intl|cn]
+ *   php bin/zai-live-probe.php [--surface openai|anthropic] [--plan coding|general] [--region intl|cn]
+ *
+ * Every long option accepts both the space-separated and the '='-attached
+ * value form (GLM8 #7).
  *
  * Reads a real API key at RUNTIME from the environment
  * (ZAI_LIVE_API_KEY or WP_CONNECTORS_TEST_ZAI_API_KEY) or from
@@ -10,8 +13,11 @@
  * fixtures, logs, or output. Only safe facts are printed: endpoint URLs,
  * HTTP statuses, model IDs, the generated text, and timings.
  *
- * Exercises exactly the M1 acceptance path: availability probe, /models
- * discovery, and one chat completion through the plugin classes.
+ * Exercises exactly the acceptance path of the selected surface
+ * (default openai): availability probe, /models discovery, and one
+ * generation through the plugin classes. The anthropic surface resolves
+ * the /anthropic endpoints and speaks the Messages protocol; per SPEC §3.2
+ * the SAME account key works on both surfaces.
  *
  * @package wp-connectors
  */
@@ -26,28 +32,77 @@ require_once $repo . '/vendor/autoload.php';
 require_once $repo . '/tests/harness/wp-stubs.php';
 require_once $repo . '/tests/harness/SdkHttpClient.php';
 require_once $repo . '/tests/harness/CurlPsr18Client.php';
+require_once $repo . '/tests/harness/ZaiLiveRoundTrip.php';
 require_once $repo . '/connectors/zai/src/autoload.php';
+
+use Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider;
+use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
+use Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings;
+use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
+use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
+use Deicod\WpConnectors\Zai\Support\ZaiSurfaces;
+
+/**
+ * Env-var ladder for the live key, in resolution order (glm37-10): the
+ * ONE statement of the names — the lookup loop, the usage text, and the
+ * no-key diagnostic all compose from it, so a renamed or added source
+ * updates the guidance with the same edit that changes the lookup.
+ */
+const ZAI_PROBE_KEY_ENV_LADDER = array( 'ZAI_LIVE_API_KEY', 'WP_CONNECTORS_TEST_ZAI_API_KEY' );
+
+/**
+ * The key-file fallback path under HOME (glm37-10): the ONE statement of
+ * the path — same composition rule as the env ladder above.
+ */
+const ZAI_PROBE_KEY_FILE = '.config/z.ai/api_key';
 
 /**
  * Resolves the live key from the documented runtime sources only.
+ *
+ * glm15-3: HOME may be UNSET (cron, systemd) — getenv()
+ * then returns false, and the previous bare concatenation probed the
+ * filesystem ROOT ('/.config/z.ai/api_key'), silently using whatever
+ * unrelated readable file lives there as the live API key. The fallback
+ * is skipped entirely when no usable HOME exists.
  *
  * @return string Empty when no key is available.
  */
 function zai_live_probe_key(): string
 {
-    foreach ( array( 'ZAI_LIVE_API_KEY', 'WP_CONNECTORS_TEST_ZAI_API_KEY' ) as $name ) {
+    foreach ( ZAI_PROBE_KEY_ENV_LADDER as $name ) {
         $value = getenv( $name );
         if ( false !== $value && '' !== $value ) {
             return trim( $value );
         }
     }
 
-    $file = getenv( 'HOME' ) . '/.config/z.ai/api_key';
-    if ( is_file( $file ) && is_readable( $file ) ) {
-        return trim( (string) file_get_contents( $file ) );
+    $home = getenv( 'HOME' );
+    if ( \is_string( $home ) && '' !== $home ) {
+        $file = $home . '/' . ZAI_PROBE_KEY_FILE;
+        if ( is_file( $file ) && is_readable( $file ) ) {
+            return trim( (string) file_get_contents( $file ) );
+        }
     }
 
     return '';
+}
+
+/**
+ * The key sources as prose (glm37-10): the env ladder plus the ~/ file
+ * fallback, "or"-joined — composed from the same constants the lookup
+ * rides, so --help and the no-key diagnostic can never name a source
+ * the tool stopped reading (or omit one it reads).
+ *
+ * @return string The human-readable key-source list.
+ */
+function zai_live_probe_key_source_prose(): string
+{
+    $sources = array_merge(
+        ZAI_PROBE_KEY_ENV_LADDER,
+        array( '~/' . ZAI_PROBE_KEY_FILE )
+    );
+
+    return zai_live_probe_oxford_join( $sources, 'or' );
 }
 
 /**
@@ -62,91 +117,480 @@ function zai_live_probe_report( string $label, $value ): void
     printf( "%-24s %s\n", $label . ':', is_scalar( $value ) ? (string) $value : wp_json_encode( $value ) );
 }
 
-$args = getopt( '', array( 'plan::', 'region::' ) );
-$plan = isset( $args['plan'] ) ? (string) $args['plan'] : 'coding';
-$region = isset( $args['region'] ) ? (string) $args['region'] : 'intl';
+/**
+ * The CLI's entire long-option vocabulary (glm37-9): ONE owner driving
+ * the raw-argv scan's whitelist, the getopt() spec, and the
+ * diagnostics.
+ *
+ * The round-37 finding: the three names were hand-stated at ~7 sites,
+ * and the dangerous direction of a missed lockstep edit is the getopt()
+ * SPEC — the scan accepts a token the spec never declared, getopt()
+ * silently drops it, and the option falls to its default: the glm36-9
+ * silent-defaults class, where a key-present run is billable on
+ * settings the operator never chose. Every consumer composes from this
+ * list; ZaiLiveProbeArgsTest's source pin holds the composition.
+ *
+ * @return list<string> The declared long-option names.
+ */
+function zai_live_probe_long_options(): array
+{
+    return array( 'surface', 'plan', 'region' );
+}
 
-$key = zai_live_probe_key();
-if ( '' === $key ) {
-    fwrite( STDERR, "live-probe: no key found (ZAI_LIVE_API_KEY, WP_CONNECTORS_TEST_ZAI_API_KEY, or ~/.config/z.ai/api_key)\n" );
+/**
+ * Oxford-joins a list into prose (glm37-9/10): two items join as
+ * "A and B", three or more as "A, B, and C" — the file's diagnostic
+ * style, composed so a vocabulary change updates every sentence that
+ * names it.
+ *
+ * @param list<string> $items       Items to join (at least one).
+ * @param string       $conjunction 'and' or 'or'.
+ * @return string The joined prose.
+ */
+function zai_live_probe_oxford_join( array $items, string $conjunction ): string
+{
+    $last = array_pop( $items );
+
+    if ( array() === $items ) {
+        return $last;
+    }
+
+    $joiner = 1 === count( $items ) ? " {$conjunction} " : ", {$conjunction} ";
+
+    return implode( ', ', $items ) . $joiner . $last;
+}
+
+/**
+ * The option names as diagnostic prose (glm37-9): "--surface, --plan,
+ * and --region" — Oxford-joined from the one owner, so a fourth option
+ * updates every diagnostic with the edit that teaches the probe about it.
+ *
+ * @return string The dashed, human-readable option list.
+ */
+function zai_live_probe_option_names(): string
+{
+    return zai_live_probe_oxford_join(
+        array_map(
+            static function ( string $name ): string {
+                return '--' . $name;
+            },
+            zai_live_probe_long_options()
+        ),
+        'and'
+    );
+}
+
+/**
+ * Returns one long-option value, or the default when absent.
+ *
+ * GLM8 #7: getopt() returned an ARRAY for a repeated option — the old
+ * (string) cast emitted an Array-to-string notice and handed the
+ * whitelist checks the literal 'Array', so a non-string value
+ * normalized to '' and the per-option whitelist rejected it with its
+ * own diagnostic. glm38-10: the scan's collected map states that
+ * semantics directly — values are strings, and a repeated option is
+ * collected AS '' — so this lookup is a plain defaulting read.
+ *
+ * @param array  $args    The scan's collected name=>value map.
+ * @param string $name    Option name (without leading dashes).
+ * @param string $default Value used when the option is absent.
+ * @return string The option value ('' when the option was repeated).
+ */
+function zai_live_probe_option( array $args, string $name, string $default ): string
+{
+    if ( ! isset( $args[ $name ] ) ) {
+        return $default;
+    }
+
+    return $args[ $name ];
+}
+
+/**
+ * The SDK-dependent per-surface probe facts, keyed by settings class.
+ *
+ * glm21-10: the settings/endpoint pairing is DERIVED from the registry
+ * (the loop below); this table carries only the columns the SDK-free
+ * registry may not hold — the CLI name, the provider class, and the two
+ * owner-constant identity facts (GLM11 #5). A declared return type (not
+ * a foldable literal): the registry may grow a surface this table has no
+ * row for, and the loop's guard must stay reachable — a registry surface
+ * without its facts row exits loudly instead of silently probing the
+ * wrong surface.
+ *
+ * glm24-1: the availability-class column is GONE. Its only consumers
+ * read KEY_OPTION/STATE_OPTION — constants the availability layer
+ * itself aliases from the settings class (glm15-23's fixed alias
+ * direction), so the registry row's settings class already carries
+ * them. The hand-paired column was the one probe fact no lockstep pin
+ * covered: a pairing swap between rows wrote surface A's key option and
+ * deleted surface B's validation state while generation ran on A.
+ *
+ * @return array<string, array{cli: string, provider: class-string, provider_id: string, default_plan: string}>
+ */
+function zai_live_probe_sdk_facts(): array
+{
+    return array(
+        PlanRegionSettings::class          => array(
+            'cli'          => 'openai',
+            'provider'     => ZaiProvider::class,
+            'provider_id'  => ZaiProvider::PROVIDER_ID,
+            'default_plan' => PlanRegionSettings::DEFAULT_PLAN,
+        ),
+        ZaiAnthropicPlanRegionSettings::class => array(
+            'cli'          => 'anthropic',
+            'provider'     => ZaiAnthropicProvider::class,
+            'provider_id'  => ZaiAnthropicProvider::PROVIDER_ID,
+            'default_plan' => ZaiAnthropicPlanRegionSettings::DEFAULT_PLAN,
+        ),
+    );
+}
+
+/**
+ * The usage text, composed from the same owners the argument validation
+ * rides (glm31-3).
+ *
+ * The surface list, the default surface, and the plan/region spellings
+ * derive from the built surface map and AbstractPlanRegionSettings'
+ * whitelists — a new surface or plan value updates the usage with the
+ * same edit that teaches the probe about it (glm15-10's owner-constant
+ * discipline, applied to the help text).
+ *
+ * @param array<string, array<string, mixed>> $surfaces The built surface map.
+ * @return string The full usage text.
+ */
+function zai_live_probe_usage( array $surfaces ): string
+{
+    $lines = array(
+        'Usage: php bin/zai-live-probe.php [options]',
+        '',
+        'Runs the opt-in live acceptance round trip (availability, /models',
+        'discovery, and one REAL, billed generation) for one z.ai surface.',
+        '',
+        '  --surface <' . implode( '|', array_keys( $surfaces ) ) . '>  Surface to probe (default: ' . (string) array_key_first( $surfaces ) . ')',
+        "  --plan <" . implode( '|', AbstractPlanRegionSettings::PLANS ) . '>  Plan (default: the surface\'s own default)',
+        '  --region <' . implode( '|', AbstractPlanRegionSettings::REGIONS ) . '>  Region (default: ' . AbstractPlanRegionSettings::DEFAULT_REGION . ')',
+        '  -h, --help                Print this usage and exit',
+        '',
+        'Every long option accepts both the --option value and --option=value forms.',
+        'The live key is read at runtime from ' . zai_live_probe_key_source_prose() . '.',
+    );
+
+    return implode( "\n", $lines ) . "\n";
+}
+
+/*
+ * GLM10 #15: ONE per-surface fact table. The script previously
+ * hand-composed the plan/region option names and selected ~8
+ * per-surface facts through scattered inline ternaries (the plan
+ * default, provider id/class, key/state options, endpoint class)
+ * although it already rode owner constants elsewhere — an option rename
+ * would have stranded the probe writing options nothing reads while it
+ * still printed the chosen plan/region as acceptance evidence,
+ * misleading evidence for the exact billing-surface risk the
+ * plan/region whitelists exist for. Every fact now rides its owner: the
+ * settings layer's OPTION_PLAN/OPTION_REGION (and, since glm24-1,
+ * KEY_OPTION/STATE_OPTION — the availability layer's constants alias
+ * them), the endpoint layer's discovery_transient_ids() — and
+ * (GLM11 #5) the provider layer's PROVIDER_ID and the settings layer's
+ * DEFAULT_PLAN, the last two hand-composed identity literals: a
+ * PROVIDER_ID rename would have left Plugin::register() under the new
+ * id while the probe wired setProviderRequestAuthentication()/
+ * getProviderModel() to the stale one, failing with a diagnostic that
+ * never points at the stale literal.
+ *
+ * glm21-10: the settings/endpoint PAIRING is DERIVED from the one
+ * cross-file owner registry — zai_live_probe_sdk_facts() holds only the
+ * SDK-dependent columns the SDK-free registry may not carry (glm20-4's
+ * split), keyed by the registry row's settings class. A pairing swap in
+ * the registry reaches the probe with the same edit, and a third
+ * surface without its facts row fails loudly below instead of silently
+ * writing surface A's plan/region options while wiring surface B's
+ * provider — the misleading-evidence class the file's own Codex R7 #2
+ * comment warns about. The CLI whitelist and the default surface derive
+ * from the built map's keys (registration order: the first registry row
+ * is the default, as 'openai' was).
+ *
+ * glm31-3: the map is built BEFORE argument parsing now — the --help
+ * usage text derives its surface list and default from it, so a third
+ * surface's row updates the usage with the same edit that teaches the
+ * probe.
+ */
+$zai_probe_sdk_facts = zai_live_probe_sdk_facts();
+
+$zai_probe_surfaces = array();
+foreach ( ZaiSurfaces::SURFACES as $zai_probe_row ) {
+    $zai_probe_facts = $zai_probe_sdk_facts[ $zai_probe_row['settings'] ] ?? null;
+
+    if ( null === $zai_probe_facts ) {
+        fwrite( STDERR, 'live-probe: no SDK facts for surface ' . $zai_probe_row['settings'] . " (add its row to zai_live_probe_sdk_facts() in bin/zai-live-probe.php)\n" );
+        exit( 3 );
+    }
+
+    /*
+     * glm29-9: the map mirrors every per-surface fact (the pins hold the
+     * bracket spellings); the shared round-trip runner consumes settings/
+     * provider/endpoint and re-derives PROVIDER_ID at wiring time.
+     */
+    $zai_probe_surfaces[ $zai_probe_facts['cli'] ] = array(
+        'settings'     => $zai_probe_row['settings'],
+        'endpoint'     => $zai_probe_row['endpoint'],
+        'provider'     => $zai_probe_facts['provider'],
+        'provider_id'  => $zai_probe_facts['provider_id'],
+        'default_plan' => $zai_probe_facts['default_plan'],
+    );
+}
+
+/*
+ * GLM8 #7: the old getopt-based form's OPTIONAL-value '::'
+ * declarations captured only the '--option=value' syntax — the
+ * conventional space-separated '--option value' form returned false
+ * for every declared option, which the (string) cast turned into ''
+ * and rejected with a diagnostic that blamed the VALUE ('--surface
+ * must be openai or anthropic' for exactly that value). The scan
+ * below accepts BOTH forms. The getopt form's one silent gap — a bare
+ * '--option' with no value at all dropping out of the parse result
+ * entirely — is why the missing-value check lives in the scan itself:
+ * a bare '--option' token whose following token is absent or itself
+ * option-led can only ever mean a missing value (none of this probe's
+ * values starts with '--').
+ */
+/*
+ * glm23-3 (review round 23, finding 3): register_argc_argv=0 (a valid
+ * php.ini setting — the CLI SAPI defaults it on, a hardened ini or a
+ * -d flag turns it off) leaves $argv UNDEFINED and the old getopt()
+ * call returning false, so an unguarded strict array read fataled with
+ * a TypeError before any diagnostic — violating this file's own GLM7
+ * #14 rule that even Errors must surface as named FAILED steps. An
+ * absent argv means no arguments to scan: the empty-array
+ * normalization walks the usage path (every option at its default,
+ * stopping at the key lookup with its named diagnostic).
+ */
+global $argv;
+$zai_probe_argv = isset( $argv ) && \is_array( $argv ) ? $argv : array();
+
+/*
+ * glm31-3 (round-31 finding 3): --help/-h answers BEFORE anything else
+ * — a help request must never reach the key lookup, let alone the
+ * live, billable round trip this tool exists to gate. Checked on raw
+ * argv: the old getopt() dropped the token ('help' was not a declared
+ * option).
+ */
+if ( \in_array( '-h', $zai_probe_argv, true ) || \in_array( '--help', $zai_probe_argv, true ) ) {
+    fwrite( STDOUT, zai_live_probe_usage( $zai_probe_surfaces ) );
+    exit( 0 );
+}
+
+/*
+ * glm31-3 (round-31 finding 3): the old getopt() silently DROPPED
+ * every unrecognized option — so a typo (--surfac), a single-dash
+ * spelling (-surface), or a stray positional fell to the defaults and
+ * ran the FULL live, billable acceptance round trip while reporting
+ * PASS (the finding's live repro: both --help and --surfac=anthropic
+ * probed the default surface for real). The sequential scan judges raw
+ * argv itself: every option-led token must be a known long option,
+ * this CLI takes no positionals at all (a value without its flag is
+ * the same silent-defaults class), and the token after a
+ * space-separated option is its VALUE — consumed never judged (the
+ * whitelists own values), but glm36-3 (round 36, finding 3): the
+ * absent-or-option-led check rides the consumption itself, for EVERY
+ * occurrence. The round-31 form split the work across three passes —
+ * a missing-value pre-scan whose array_search() saw only each option's
+ * FIRST occurrence, the scan's blind consumption, and getopt — so a
+ * trailing bare repeat ('--plan coding --plan': the first --plan
+ * passed the pre-scan, the scan's ++i walked past the dangling flag,
+ * getopt dropped it) was silently ignored and the probe ran the full
+ * live round trip (empirically confirmed). One scan, one check site.
+ *
+ * glm38-10: the scan also COLLECTS the options it validates — one
+ * parser. The pre-round form ran this scan for validation and getopt()
+ * for extraction, with glm37-9's spec composition existing purely to
+ * keep the two parsers in agreement; the collected map deletes the
+ * second parser and with it the agreement-maintenance class. The
+ * collected semantics are getopt's own, byte-identically: a name's
+ * FIRST occurrence supplies its value, and any repeat marks it '' —
+ * exactly what zai_live_probe_option()'s non-string mapping did to
+ * getopt's repeated-option array — so the ledgered valued-repeat
+ * diagnostics (glm36's residual: '--plan coding --plan=general'
+ * rejects through the whitelist, value-blaming, loud-only) survive
+ * verbatim.
+ */
+$args = array();
+$zai_probe_i = 1;
+$zai_probe_argument_count = \count( $zai_probe_argv );
+while ( $zai_probe_i < $zai_probe_argument_count ) {
+    $zai_probe_token = (string) $zai_probe_argv[ $zai_probe_i ];
+
+    if ( 0 !== strpos( $zai_probe_token, '--' ) ) {
+        // A positional value or a single-dash token: the old getopt()
+        // read single-dash tokens as undeclared SHORT options and
+        // dropped them too, so neither spelling reaches the parser.
+        fwrite( STDERR, "live-probe: unrecognized argument '{$zai_probe_token}' (this tool takes " . zai_live_probe_option_names() . " only; --help prints the usage)\n" );
+        exit( 2 );
+    }
+
+    $zai_probe_name = substr( $zai_probe_token, 2 );
+    $zai_probe_equals = strpos( $zai_probe_name, '=' );
+    if ( false !== $zai_probe_equals ) {
+        $zai_probe_name = substr( $zai_probe_name, 0, $zai_probe_equals );
+    }
+
+    if ( ! \in_array( $zai_probe_name, zai_live_probe_long_options(), true ) ) {
+        fwrite( STDERR, "live-probe: unrecognized option '--{$zai_probe_name}' (this tool takes " . zai_live_probe_option_names() . "; --help prints the usage)\n" );
+        exit( 2 );
+    }
+
+    /*
+     * The space-separated form's value is the next token; the
+     * '='-attached form carries its value in-token. GLM8 #7: a next
+     * token that is absent or itself option-led can only ever mean a
+     * missing value (none of this probe's values starts with '--') —
+     * judged at the consumption site so EVERY occurrence checks, not
+     * each option's first (glm36-3).
+     *
+     * glm36-9 (verifier round): an '='-attached EMPTY value is the
+     * same missing-value shape — getopt() silently DROPPED '--plan='
+     * from its result entirely (empirically verified), so the option
+     * fell to its default and, with a key present, the probe ran the
+     * full live round trip on settings the operator never chose. The
+     * scan judges the emptiness itself; the diagnostic keeps the
+     * option-named wording.
+     */
+    $zai_probe_value = '';
+    if ( false === $zai_probe_equals ) {
+        $zai_probe_next = isset( $zai_probe_argv[ $zai_probe_i + 1 ] ) ? (string) $zai_probe_argv[ $zai_probe_i + 1 ] : null;
+        if ( null === $zai_probe_next || '--' === substr( $zai_probe_next, 0, 2 ) ) {
+            fwrite( STDERR, "live-probe: --{$zai_probe_name} requires a value (use --{$zai_probe_name} <value> or --{$zai_probe_name}=<value>)\n" );
+            exit( 2 );
+        }
+        $zai_probe_value = $zai_probe_next;
+        ++$zai_probe_i;
+    } elseif ( '' === substr( $zai_probe_token, $zai_probe_equals + 2 + 1 ) ) {
+        // The token is '--name=' with nothing after the equals sign.
+        fwrite( STDERR, "live-probe: --{$zai_probe_name} requires a value (use --{$zai_probe_name} <value> or --{$zai_probe_name}=<value>)\n" );
+        exit( 2 );
+    } else {
+        $zai_probe_value = substr( $zai_probe_token, $zai_probe_equals + 2 + 1 );
+    }
+
+    // glm38-10: getopt's repeated-option semantics, stated (see the
+    // block comment above) — the first occurrence carries the value,
+    // any repeat marks ''.
+    $args[ $zai_probe_name ] = \array_key_exists( $zai_probe_name, $args ) ? '' : $zai_probe_value;
+
+    ++$zai_probe_i;
+}
+
+$surface = zai_live_probe_option( $args, 'surface', (string) array_key_first( $zai_probe_surfaces ) );
+if ( ! isset( $zai_probe_surfaces[ $surface ] ) ) {
+    fwrite( STDERR, 'live-probe: --surface must be ' . implode( ' or ', array_keys( $zai_probe_surfaces ) ) . "\n" );
     exit( 2 );
 }
 
-update_option( 'zai_connector_zai_plan', $plan );
-update_option( 'zai_connector_zai_region', $region );
+$surface_facts = $zai_probe_surfaces[ $surface ];
 
-use Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability;
-use Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint;
-use Deicod\WpConnectors\Zai\Plugin;
-use Deicod\WpConnectors\Zai\Provider\ZaiProvider;
-use WordPress\AiClient\AiClient;
-use WordPress\AiClient\Messages\DTO\Message;
-use WordPress\AiClient\Messages\DTO\MessagePart;
-use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
-use WordPress\AiClient\Providers\Http\HttpTransporter;
+$plan = zai_live_probe_option( $args, 'plan', $surface_facts['default_plan'] );
+$region = zai_live_probe_option( $args, 'region', AbstractPlanRegionSettings::DEFAULT_REGION );
+
+/*
+ * Codex R7 #2: a typo in --plan/--region was stored and REPORTED while
+ * the settings getters silently fell back to defaults before endpoint
+ * resolution — the probe printed e.g. `china` while actually hitting
+ * intl, making evidence misleading and potentially exercising the wrong
+ * billing surface. Validate exactly like --surface: reject before any
+ * key lookup or network call.
+ *
+ * glm15-10: the whitelists ride the declared owner
+ * (AbstractPlanRegionSettings::PLANS/REGIONS) — the third hand-copy of
+ * the lists after the settings layer and uninstall.php, so a valid new
+ * value was rejected here with a misleading diagnostic while the
+ * plugin itself served it. The diagnostics compose from the same
+ * constants.
+ */
+if ( ! in_array( $plan, AbstractPlanRegionSettings::PLANS, true ) ) {
+    fwrite( STDERR, 'live-probe: --plan must be ' . implode( ' or ', AbstractPlanRegionSettings::PLANS ) . "\n" );
+    exit( 2 );
+}
+if ( ! in_array( $region, AbstractPlanRegionSettings::REGIONS, true ) ) {
+    fwrite( STDERR, 'live-probe: --region must be ' . implode( ' or ', AbstractPlanRegionSettings::REGIONS ) . "\n" );
+    exit( 2 );
+}
+
+$key = zai_live_probe_key();
+if ( '' === $key ) {
+    fwrite( STDERR, 'live-probe: no key found (' . zai_live_probe_key_source_prose() . ")\n" );
+    exit( 2 );
+}
 
 zai_live_probe_report( 'date (UTC)', gmdate( 'Y-m-d H:i:s' ) );
+zai_live_probe_report( 'surface', $surface );
 zai_live_probe_report( 'plan', $plan );
 zai_live_probe_report( 'region', $region );
 
-$endpoint = ZaiEndpoint::for_current_settings();
-zai_live_probe_report( 'endpoint base', $endpoint->base_url() );
-
-// A REAL transporter (curl, no redirects) — this script intentionally
-// performs live network requests.
-$registry = AiClient::defaultRegistry();
-$registry->setHttpTransporter( new HttpTransporter( new CurlPsr18Client() ) );
-
-Plugin::register( $registry );
-$registry->setProviderRequestAuthentication( 'zai', new ApiKeyRequestAuthentication( $key ) );
-update_option( ZaiProviderAvailability::KEY_OPTION, $key );
+/*
+ * glm29-9: the ordered acceptance steps — the option writes, the
+ * registry/provider wiring, the endpoint evidence lines, the
+ * availability probe (Codex R13 #5's state delete, GLM2 #6's miss-marker
+ * clear, R17b's definitive-verdict rule), live discovery (Codex R8 #6's
+ * transient clearing and fallback signal, GLM12 #11's evidence URL,
+ * glm29-8's named cache id), one generation (glm19-9's preferred id and
+ * fallback diagnostic, Codex R17's empty-output rule), and the
+ * state-plaintext check — ride the ONE shared runner
+ * (tests/harness/ZaiLiveRoundTrip.php) the opt-in PHPUnit smoke tests
+ * also ride. This CLI shell judges the structured outcome through exit
+ * codes; the report lines and their order are byte-identical to the
+ * pre-glm29-9 probe output.
+ *
+ * glm29-16 (security-verifier round): the call is guarded — an uncaught
+ * fatal anywhere inside the runner would print PHP's stack trace with
+ * the LIVE KEY visible in run()'s argument frame
+ * (zend.exception_ignore_args=Off is the engine default; the pre-round
+ * top-level frames carried no arguments), the exact channel this
+ * script's safe-facts contract forbids. The shell names the failure and
+ * exits; the trace never prints (the GLM7 #14 rule extended to the
+ * whole round trip).
+ */
+try {
+    $outcome = ZaiLiveRoundTrip::run(
+        $surface_facts['settings'],
+        $surface_facts['provider'],
+        $surface_facts['endpoint'],
+        $key,
+        $plan,
+        $region,
+        'zai_live_probe_report'
+    );
+} catch ( Throwable $e ) {
+    zai_live_probe_report( 'round trip', 'FAILED: ' . get_class( $e ) . ' ' . $e->getMessage() );
+    zai_live_probe_report( 'result', 'FAIL' );
+    exit( 1 );
+}
 
 $exit = 0;
 
-// 1. Availability (authenticated /models probe with persisted verdict).
-$start = microtime( true );
-$configured = ZaiProvider::availability()->isConfigured();
-zai_live_probe_report( 'availability', $configured ? 'connected' : 'NOT connected' );
-zai_live_probe_report( 'availability ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
-
-// 2. Model discovery through the directory (live /models).
-$start = microtime( true );
-try {
-    $models = ZaiProvider::modelMetadataDirectory()->listModelMetadata();
-    zai_live_probe_report( 'models discovered', count( $models ) );
-    zai_live_probe_report( 'model ids', implode( ', ', array_slice( array_map( static function ( $m ) {
-        return $m->getId();
-    }, $models ), 0, 12 ) ) );
-    zai_live_probe_report( 'discovery ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
-} catch ( Exception $e ) {
-    zai_live_probe_report( 'models discovered', 'FAILED: ' . $e->getMessage() );
+/*
+ * Codex R7 #5: availability is a documented acceptance STEP — a false
+ * (or inconclusive) verdict must fail the probe even when a later
+ * generation happens to succeed (the two routes can apply different
+ * access policy).
+ */
+if ( ! $outcome['availability']['definitive'] || ! $outcome['availability']['connected'] ) {
     $exit = 1;
 }
 
-// 3. One chat completion through the plugin model class.
-$start = microtime( true );
-try {
-    $model_id = 'glm-5.3';
-    if ( isset( $models ) && ! ZaiProvider::modelMetadataDirectory()->hasModelMetadata( $model_id ) ) {
-        $model_id = $models[0]->getId();
-    }
-    /**
-     * getProviderModel() (not ZaiProvider::model()) binds the registry's
-     * transporter and auth into the instance.
-     *
-     * @var Deicod\WpConnectors\Zai\Models\ZaiTextGenerationModel $model
-     */
-    $model = $registry->getProviderModel( 'zai', $model_id );
-    $result = $model->generateTextResult( array(
-        new Message( MessageRoleEnum::user(), array( new MessagePart( 'Reply with exactly: wp-connectors live probe ok' ) ) ),
-    ) );
-    zai_live_probe_report( 'model used', $model_id );
-    zai_live_probe_report( 'generated text', trim( $result->toText() ) );
-    zai_live_probe_report( 'usage total tokens', $result->getTokenUsage()->getTotalTokens() );
-    zai_live_probe_report( 'generation ms', (int) ( ( microtime( true ) - $start ) * 1000 ) );
-} catch ( Exception $e ) {
-    zai_live_probe_report( 'generation', 'FAILED: ' . get_class( $e ) . ' ' . $e->getMessage() );
+// Codex R8 #6: fallback discovery is a failed step, never a model count.
+if ( ! $outcome['discovery']['live'] ) {
+    $exit = 1;
+}
+
+// Codex R17: empty generation output is a failed step, never a pass.
+if ( ! $outcome['generation']['ok'] ) {
+    $exit = 1;
+}
+
+// glm29-9: the state-plaintext rule (the PHPUnit skeleton's own check,
+// shared with the CLI now — reconciled to the stricter side).
+if ( $outcome['state_option_plaintext'] ) {
+    zai_live_probe_report( 'state option', 'FAILED: the validation state carries the key in plaintext' );
     $exit = 1;
 }
 

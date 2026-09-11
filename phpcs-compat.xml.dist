@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <ruleset name="wp-connectors-compat">
-	<description>PHPCompatibility scan: all shipped and tooling code must run on PHP 7.4-8.4.</description>
+	<description>PHPCompatibility scan: all shipped and tooling code must run on PHP 8.2-8.4.</description>
 
 	<file>bin</file>
 	<file>connectors</file>
@@ -18,6 +18,6 @@
 
 	<rule ref="PHPCompatibility"/>
 
-	<!-- The supported PHP matrix (SPEC section 6.3). -->
-	<config name="testVersion" value="7.4-8.4"/>
+	<!-- The supported PHP matrix (SPEC section 6.3; floor 8.2 per the 2026-09-11 user decision). -->
+	<config name="testVersion" value="8.2-8.4"/>
 </ruleset>

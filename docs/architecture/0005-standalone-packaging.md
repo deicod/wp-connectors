@@ -21,7 +21,7 @@ connectors/<slug>/uninstall.php      ← plugin-owned cleanup only (record 0004)
   `spl_autoload_register` closure).
 - **Plugin header fields** (required in every artifact, enforced by the artifact
   inspector and `composer conventions`): `Plugin Name`, `Version`,
-  `Requires at least: 6.9`, `Requires PHP: 7.4`, `License: GPL-2.0-or-later`,
+  `Requires at least: 6.9`, `Requires PHP: 8.2`, `License: GPL-2.0-or-later`,
   `Text Domain` matching the plugin slug, `Author`. (`Description` and
   `License URI` are conventionally included but not machine-enforced.)
 - **Namespaces**: `Deicod\WpConnectors\Zai`, `…\OpenAiOauth`, `…\XaiOauth`,

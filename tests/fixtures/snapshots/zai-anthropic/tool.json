@@ -1,0 +1,58 @@
+{
+    "url": "https://api.z.ai/api/anthropic/v1/messages",
+    "body": {
+        "model": "glm-5.3",
+        "max_tokens": 4096,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Weather in Paris?"
+                    }
+                ]
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_1",
+                        "name": "get_weather",
+                        "input": {
+                            "city": "Paris"
+                        }
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_1",
+                        "content": "{\"temp_c\":21}"
+                    }
+                ]
+            }
+        ],
+        "tools": [
+            {
+                "name": "get_weather",
+                "description": "Get the weather for a city",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "city": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "city"
+                    ]
+                }
+            }
+        ]
+    }
+}

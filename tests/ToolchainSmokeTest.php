@@ -17,9 +17,10 @@ final class ToolchainSmokeTest extends TestCase
 {
     public function testPhpVersionIsInSupportedRange(): void
     {
-        // Runtime may be newer than the floor (dev hosts run 8.5); plugin code
-        // itself must stay 7.4-compatible, enforced by phpcs-compat + php -l.
-        $this->assertGreaterThanOrEqual(70400, PHP_VERSION_ID);
+        // floor82 (user decision 2026-09-11): the supported floor is 8.2;
+        // the runtime may be newer (dev hosts run 8.5), but a suite run on
+        // anything older proves nothing about the shipped plugin.
+        $this->assertGreaterThanOrEqual(80200, PHP_VERSION_ID);
     }
 
     public function testPinnedAiClientSdkIsInstalled(): void
@@ -46,5 +47,134 @@ final class ToolchainSmokeTest extends TestCase
         $registry = \WordPress\AiClient\AiClient::defaultRegistry();
         $this->assertInstanceOf(\WordPress\AiClient\Providers\ProviderRegistry::class, $registry);
         $this->assertSame($registry, \WordPress\AiClient\AiClient::defaultRegistry());
+    }
+
+    /**
+     * floor82 (superseding glm38-1's pin): the curated POST-floor function
+     * vocabulary for every tree the phpcs-compat ruleset holds to "must run
+     * on 8.2-8.4" (bin, connectors, shared, tests).
+     *
+     * glm38-1's form banned 8.0+ functions against the former 7.4 floor —
+     * fdiv fatals were the demonstrated class, and the locked
+     * PHPCompatibility 9.3.5 predates the function and has no sniff for it.
+     * With the 8.2 floor every pre-8.2 function is legal (fdiv,
+     * str_contains, array_is_list, enum_exists included — the fdiv spelling
+     * in the NAN pin stays the NAN constant anyway: clearer than the
+     * division spelling, and the zai sibling suite's idiom since GLM2 #4),
+     * so the sweep's job flips to the OTHER side of the range: functions
+     * introduced ABOVE the floor (8.3/8.4 additions) would fatal every 8.2
+     * install while phpcs-compat 9.3.5 — pinned in 2019 — cannot see them
+     * either. Same grep-shaped backstop, same sniff-gap class, opposite
+     * direction. Comments included: prose naming the call shape gets
+     * rewritten, not exempted (the pin flagged its own first docblock).
+     *
+     * A name joins this list only with a demonstrated unavailable-at-8.2
+     * fatal and no polyfill in the tree.
+     */
+    public function testNoPostFloorFunctionCallsInTheCompatTrees(): void
+    {
+        /*
+         * floor82-5 (verifier round): the list is assembled from the
+         * php.net migration pages, not recollection — the first form
+         * misattributed mysqli_execute_query (a PHP 8.2.0 function,
+         * legal on the floor) to 8.3 and missed the mb_str_pad,
+         * socket_atmark, mb_ucfirst/lcfirst, bcceil/floor/round,
+         * request_parse_body, http_*_last_response_headers, and
+         * grapheme_str_split families. PHP calls are CASE-INSENSITIVE
+         * (an uppercase spelling of any banned name evaded the
+         * case-sensitive pattern — the security lens), so the pattern
+         * carries the /i flag.
+         */
+        $postFloorFunctions = array(
+            // PHP 8.3 additions.
+            'json_validate',
+            'str_increment',
+            'str_decrement',
+            'stream_context_set_options',
+            'mb_str_pad',
+            'socket_atmark',
+            'posix_eaccess',
+            'posix_sysconf',
+            'posix_pathconf',
+            'posix_fpathconf',
+            // PHP 8.4 additions.
+            'array_find',
+            'array_find_key',
+            'array_any',
+            'array_all',
+            'mb_trim',
+            'mb_ltrim',
+            'mb_rtrim',
+            'mb_ucfirst',
+            'mb_lcfirst',
+            'bcdivmod',
+            'bcceil',
+            'bcfloor',
+            'bcround',
+            'request_parse_body',
+            'http_get_last_response_headers',
+            'http_clear_last_response_headers',
+            'grapheme_str_split',
+        );
+
+        $pattern = '/\b(' . implode('|', $postFloorFunctions) . ')\s*\(/i';
+        $scanned = 0;
+
+        foreach ($this->compatTreeFiles() as $path) {
+            ++$scanned;
+            foreach (preg_split('/\R/u', (string) file_get_contents($path)) as $index => $line) {
+                if (1 === preg_match($pattern, $line, $matches)) {
+                    $this->fail(
+                        sprintf(
+                            'Function call unavailable on the 8.2 floor: %s() at %s:%d (PHPCompatibility 9.3.5 has no sniff for it — see floor82/glm38-1).',
+                            $matches[1],
+                            $path,
+                            $index + 1
+                        )
+                    );
+                }
+            }
+        }
+
+        // Non-vacuity: the sweep must see the real trees, not an empty root.
+        $this->assertGreaterThan(0, $scanned, 'The floor sweep must visit at least one file.');
+    }
+
+    /**
+     * Every PHP file under the phpcs-compat ruleset's tree set, mirroring
+     * its vendor/dist/tools and tests/fixtures/data exclusions.
+     *
+     * @return string[]
+     */
+    private function compatTreeFiles(): array
+    {
+        $files = array();
+        $excludedData = realpath(__DIR__ . '/../tests/fixtures/data');
+
+        foreach (array('/../bin', '/../connectors', '/../shared', '/../tests') as $tree) {
+            $root = realpath(__DIR__ . $tree);
+            if (false === $root) {
+                continue;
+            }
+
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)
+            );
+            foreach ($iterator as $file) {
+                $path = $file->getPathname();
+                if ('.php' !== substr($path, -4)) {
+                    continue;
+                }
+                if (1 === preg_match('#(^|/)(vendor|dist|tools)/#', substr($path, strlen($root) + 1))) {
+                    continue;
+                }
+                if (false !== $excludedData && 0 === strpos($path, $excludedData . '/')) {
+                    continue;
+                }
+                $files[] = $path;
+            }
+        }
+
+        return $files;
     }
 }

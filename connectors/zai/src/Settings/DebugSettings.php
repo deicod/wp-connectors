@@ -16,6 +16,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Settings;
 
 use Deicod\WpConnectors\Zai\Support\DebugLogger;
+use Deicod\WpConnectors\Zai\Support\ZaiSurfaces;
 
 /**
  * Debug settings store and Settings API wiring.
@@ -36,7 +37,10 @@ final class DebugSettings {
 	 */
 	public static function register_settings(): void {
 		register_setting(
-			PlanRegionSettings::OPTION_GROUP,
+			// glm35-7: the declaring owner, not the first surface's child —
+			// the group is plugin-wide (the reach-through class glm29-14
+			// eliminated from this file's neighbor).
+			AbstractPlanRegionSettings::OPTION_GROUP,
 			DebugLogger::OPTION_ENABLED,
 			array(
 				'type'              => 'string',
@@ -48,21 +52,38 @@ final class DebugSettings {
 	}
 
 	/**
-	 * Adds the debug field to the shared settings section.
+	 * Adds the debug field to the shared settings page's owning section.
 	 *
-	 * Hooked on `admin_menu` after PlanRegionSettings::register_page().
+	 * Hooked on `admin_menu` after the owner's register_page().
+	 *
+	 * Codex R6 #6: the field was attached to the OPTION_GROUP section id
+	 * ('zai_connector') — valid before the SDK-free settings refactor
+	 * registered sections under per-provider SECTION_IDs. do_settings_sections()
+	 * renders only fields of REGISTERED sections, so the debug checkbox
+	 * silently disappeared from Settings → z.ai. It now attaches to the
+	 * section actually registered for the page (one shared debug toggle
+	 * for the whole plugin, exactly the M1 UX).
+	 *
+	 * glm21-12: the page owner DERIVES from the surface registry's
+	 * first row — the same owner zai.php's boot() derives — instead of
+	 * restating the PlanRegionSettings pair: a registry reorder or
+	 * page-owner move retargeted the bootstrap automatically while the
+	 * hardcoded pair stranded the debug field on the old section (the
+	 * Codex R6 #6 silent-disappearance class, no test failing).
 	 *
 	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
 	public static function register_fields(): void {
+		$page_owner = ZaiSurfaces::settings_classes()[0];
+
 		add_settings_field(
 			DebugLogger::OPTION_ENABLED,
 			esc_html__( 'Debug logging', 'zai' ),
 			array( __CLASS__, 'render_enabled_field' ),
-			PlanRegionSettings::PAGE_SLUG,
-			PlanRegionSettings::OPTION_GROUP
+			$page_owner::PAGE_SLUG,
+			$page_owner::SECTION_ID
 		);
 	}
 
@@ -107,6 +128,37 @@ final class DebugSettings {
 		}
 
 		$entries = DebugLogger::entries();
+
+		/*
+		 * glm18-5: entries() validates only the TOP level, so a scalar or
+		 * null ENTRY (out-of-band code, a corrupt round trip — the
+		 * option family's GLM5 #9 / glm13-13 hardening class) fatalled
+		 * the settings page mid-render: on PHP 8+ $entry['at'] on a
+		 * string throws outright (the only behavior on the 8.2 floor;
+		 * the pre-8.0 runtime warned per member and rendered 1970-01-01
+		 * rows). Only well-formed entries render; the rest of
+		 * the list does.
+		 *
+		 * glm18-16 (verifier round): the members must be SCALARS, not
+		 * merely set — isset() passes an ARRAY-valued member, and the
+		 * (string) casts below then raise the same Array-to-string
+		 * conversion warning class the guard exists to prevent.
+		 */
+		$entries = array_values(
+			array_filter(
+				$entries,
+				static function ( $entry ): bool {
+					return \is_array( $entry )
+						&& isset( $entry['at'], $entry['method'], $entry['url'], $entry['status'], $entry['duration_ms'] )
+						&& \is_scalar( $entry['at'] )
+						&& \is_scalar( $entry['method'] )
+						&& \is_scalar( $entry['url'] )
+						&& \is_scalar( $entry['status'] )
+						&& \is_scalar( $entry['duration_ms'] );
+				}
+			)
+		);
+
 		if ( array() === $entries ) {
 			return;
 		}
@@ -134,6 +186,16 @@ final class DebugSettings {
 	 *
 	 * Hooked on `update_option_zai_connector_zai_debug`.
 	 *
+	 * glm13-13: the comparison rides the shared is_scalar-guarded
+	 * option_values_equal() helper (GLM5 #9) — the bare (string) cast
+	 * this handler carried raised an Array-to-string conversion warning
+	 * for a non-scalar payload from out-of-band code (CLI, a corrupt
+	 * round trip), aborting the hook on installs whose error handler
+	 * throws and leaving the request log populated after logging was
+	 * disabled. The cast's failure direction was already the safe one
+	 * ('Array' !== '1' cleared anyway); the helper keeps that outcome
+	 * without the coercion.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param mixed $old_value Previous value.
@@ -141,8 +203,40 @@ final class DebugSettings {
 	 * @return void
 	 */
 	public static function handle_enabled_change( $old_value, $new_value ): void {
-		if ( '1' !== (string) $new_value ) {
+		/*
+		 * glm29-14: the declaring owner is the abstract settings base —
+		 * the concrete first-surface child was a reach-through (the
+		 * glm21-12 pattern this file's register_fields() already
+		 * replaced) whose rename or removal would fatal the update_option
+		 * hook for BOTH surfaces while mis-attributing ownership to one.
+		 */
+		if ( ! AbstractPlanRegionSettings::option_values_equal( '1', $new_value ) ) {
 			DebugLogger::clear();
 		}
+	}
+
+	/**
+	 * Initial debug-flag save: the add_option() path of an enabled change.
+	 *
+	 * Same fresh-install mechanism as the plan/region add companions
+	 * (GLM5 #14): while no option row exists, core's update_option()
+	 * delegates to add_option(), which fires add_option_{option} instead
+	 * of the update hook — without this companion the FIRST persisted
+	 * save of a disabled flag (the row deleted out-of-band while log
+	 * entries persist) skipped the log clear the later updates perform.
+	 * The effective previous value of a missing row is the registered
+	 * default ('0', disabled), so handle_enabled_change() decides
+	 * identically.
+	 *
+	 * Hooked on `add_option_zai_connector_zai_debug`.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $option Option name (hook contract; the handler knows its option).
+	 * @param mixed  $value  New value.
+	 * @return void
+	 */
+	public static function handle_enabled_add( $option, $value ): void {
+		self::handle_enabled_change( '0', $value );
 	}
 }
