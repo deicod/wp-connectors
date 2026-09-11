@@ -220,12 +220,6 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
          * testTheGenerationRequestRidesTheNetsPreEncodedBody().
          */
         $mirror = new \ReflectionMethod(ZaiTextGenerationModel::class, 'carries_json_body');
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (the
-            // harness's openPrivateProperty idiom).
-            $mirror->setAccessible(true);
-        }
-
         $this->assertTrue(
             $mirror->invoke(null, HttpMethodEnum::POST(), array('content-type' => 'application/json')),
             'A lowercase Content-Type spelling must ride the pre-encoded body (glm33-5).'
@@ -1058,14 +1052,6 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
         $model = $this->model();
 
         $create = new \ReflectionMethod($model, 'createRequest');
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (the
-            // harness's openPrivateProperty idiom, glm38-2 — without it
-            // the invoke throws ReflectionException outside the try's
-            // InvalidArgumentException catch).
-            $create->setAccessible(true);
-        }
-
         try {
             $create->invoke(
                 $model,
@@ -1125,11 +1111,6 @@ final class ZaiRequestMappingTest extends AbstractZaiSurfaceRequestMappingTestCa
         };
 
         $create = new \ReflectionMethod($model, 'createRequest');
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (glm38-2).
-            $create->setAccessible(true);
-        }
-
         $request = $create->invoke(
             $model,
             WordPress\AiClient\Providers\Http\Enums\HttpMethodEnum::POST(),

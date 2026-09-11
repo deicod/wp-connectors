@@ -88,14 +88,14 @@ abstract class WpConnectorsTestCase extends TestCase
             AiClient::defaultRegistry(),
             'providerAuthenticationInstances'
         );
-        self::openPrivateProperty($registry_map)->setValue(AiClient::defaultRegistry(), array());
+        $registry_map->setValue(AiClient::defaultRegistry(), array());
 
         foreach (array('availabilityCache', 'modelMetadataDirectoryCache') as $cache) {
             $instances = new \ReflectionProperty(
                 \WordPress\AiClient\Providers\AbstractProvider::class,
                 $cache
             );
-            self::openPrivateProperty($instances);
+            $instances;
 
             foreach ($instances->getValue() as $instance) {
                 self::nullWiredCredential($instance);
@@ -125,27 +125,16 @@ abstract class WpConnectorsTestCase extends TestCase
             }
 
             $credential = new \ReflectionProperty($class, 'requestAuthentication');
-            self::openPrivateProperty($credential)->setValue($instance, null);
+            $credential->setValue($instance, null);
             return;
         }
     }
 
-    /**
-     * Opens a private/reflected property for read/write on every PHP the
-     * suite runs on (the aggregator_state() guard, stated once).
-     *
-     * @param \ReflectionProperty $property The property to open.
-     * @return \ReflectionProperty The same property, accessible everywhere.
+    /* floor82: openPrivateProperty() — a setAccessible() wrapper that
+     * existed for the pre-8.1 floor — is deleted with the guards;
+     * reflection needs no accessibility opening on 8.1+, and the call
+     * sites read the property objects directly.
      */
-    private static function openPrivateProperty(\ReflectionProperty $property): \ReflectionProperty
-    {
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
-            $property->setAccessible(true);
-        }
-
-        return $property;
-    }
 
     /**
      * Audits unmocked HTTP attempts. Runs in assertPostConditions (NOT
@@ -600,11 +589,6 @@ abstract class WpConnectorsTestCase extends TestCase
     protected function aggregator_state($aggregator, string $field)
     {
         $property = new \ReflectionProperty($aggregator, $field);
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
-            $property->setAccessible(true);
-        }
-
         return $property->getValue($aggregator);
     }
 

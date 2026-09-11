@@ -163,12 +163,6 @@ abstract class AbstractZaiModelDirectoryTestCase extends WpConnectorsTestCase
         }
 
         $hook = new \ReflectionMethod($class, 'discovery_endpoint_class');
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated
-            // only since 8.5) — openPrivateProperty()'s stated guard.
-            $hook->setAccessible(true);
-        }
-
         $this->assertSame(
             $expected_endpoint,
             $hook->invoke(null),

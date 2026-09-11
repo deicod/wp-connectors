@@ -1219,13 +1219,6 @@ final class ZaiModelDirectoryTest extends AbstractZaiModelDirectoryTestCase
         // The one map builds every reason's rejection (the old default
         // arm's silently-missing cases now throw instead).
         $build = new \ReflectionMethod(ZaiModelListParser::class, 'entry_rejection');
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (the
-            // parent harness's own invoke idiom — glm38-2; without it the
-            // private-static invoke errors before the pin can run).
-            $build->setAccessible(true);
-        }
-
         foreach ($reason_constants as $constant) {
             $reason = $reflection->getConstant($constant);
 

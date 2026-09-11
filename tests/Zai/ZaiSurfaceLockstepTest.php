@@ -397,17 +397,9 @@ final class ZaiSurfaceLockstepTest extends WpConnectorsTestCase
             ),
         ) as $label => $owner) {
             $hook = new \ReflectionMethod($owner['directory'], 'availability');
-            if (PHP_VERSION_ID < 80100) {
-                // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
-                $hook->setAccessible(true);
-            }
             $availability = $hook->invoke(new $owner['directory']());
 
             $settings_class = new \ReflectionMethod($availability, 'settings_class');
-            if (PHP_VERSION_ID < 80100) {
-                $settings_class->setAccessible(true);
-            }
-
             $this->assertSame(
                 $owner['settings'],
                 $settings_class->invoke(null),

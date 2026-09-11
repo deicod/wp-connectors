@@ -1520,10 +1520,6 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
         }
 
         $memo = new \ReflectionProperty(ZaiAnthropicTextGenerationModel::class, 'tool_schema_memo');
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
-            $memo->setAccessible(true);
-        }
         $storage = $memo->getValue($model);
 
         $this->assertInstanceOf(\SplObjectStorage::class, $storage);
@@ -1550,11 +1546,6 @@ final class ZaiAnthropicRequestMappingTest extends AbstractZaiSurfaceRequestMapp
         $prompt = array(new Message(MessageRoleEnum::user(), array(new MessagePart('go'))));
 
         $memo = new \ReflectionProperty(ZaiAnthropicTextGenerationModel::class, 'tool_schema_memo');
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
-            $memo->setAccessible(true);
-        }
-
         // First build fills the memo for A.
         $this->queueSdkResponse(200, array(), HttpResponseFactory::anthropicMessagesBody('ok'));
         $model->generateTextResult($prompt);

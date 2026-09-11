@@ -1509,11 +1509,6 @@ final class ZaiAnthropicResponseMappingTest extends AbstractZaiSurfaceResponseMa
          */
         $model = $this->model();
         $parse = new \ReflectionMethod($model, 'parse_content_block');
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
-            $parse->setAccessible(true);
-        }
-
         $inf_input = array('type' => 'tool_use', 'id' => 'toolu_df', 'name' => 'convert', 'input' => array('qty' => INF));
 
         try {

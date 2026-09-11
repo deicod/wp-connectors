@@ -919,11 +919,6 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
          */
         $guard  = 'Deicod\WpConnectors\Zai\Support\ToolArgsReplayGuard';
         $method = new \ReflectionMethod($guard, 'float_literal_is_lossy_integer');
-        if (PHP_VERSION_ID < 80100) {
-            // Required on PHP <= 8.0; a silent no-op since 8.1 (deprecated only since 8.5).
-            $method->setAccessible(true);
-        }
-
         $lossy = array(
             'positive saturating exponent' => '1e9223372036854775808',
             'negative saturating exponent' => '-1e9223372036854775808',
