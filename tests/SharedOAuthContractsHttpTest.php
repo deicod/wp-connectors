@@ -215,6 +215,66 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * Verifier-round pin (t31-r1-16, the security lens's redaction
+     * hole): a header name outside the RFC 7230 token grammar dodged
+     * the SecretMask vocabulary — 'Authorization ' (trailing space,
+     * and the leading-space, semicolon, NBSP, and homoglyph siblings)
+     * rendered its full Bearer secret UNMASKED through __toString,
+     * falsifying the documented redaction contract, and re-opened the
+     * t31-r1-10 order-dependence ('Retry-After' beside 'retry-after '
+     * coexisted). Names are tokens now; nothing off-grammar
+     * constructs in either VO.
+     */
+    public function testOffGrammarHeaderNamesAreRejectedInBothVos(): void
+    {
+        $token = FakeSecrets::accessToken();
+        $hostile_names = array(
+            'Authorization ',
+            ' Authorization',
+            'Authorization;',
+            " Authorization",
+            'Author ization',
+            'гetry-after',
+            'ｒetry-after',
+            "Authorization\r\nX-Other",
+            "X-Foo\x00",
+            "X\tY",
+        );
+
+        foreach ($hostile_names as $name) {
+            try {
+                new HttpRequest('POST', 'https://host.example/', array($name => 'Bearer ' . $token));
+                $this->fail(sprintf('An off-grammar header name (%s) must be rejected by the request VO.', addcslashes($name, "\x00..\xFF")));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('RFC 7230 tokens', $e->getMessage());
+            }
+
+            try {
+                new HttpResponse(200, array($name => 'session=' . $token));
+                $this->fail(sprintf('An off-grammar header name (%s) must be rejected by the response VO.', addcslashes($name, "\x00..\xFF")));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('RFC 7230 tokens', $e->getMessage());
+            }
+        }
+
+        // The order-dependence door is closed with it: a space-suffixed
+        // duplicate can no longer coexist with the canonical spelling.
+        $this->expectException(\InvalidArgumentException::class);
+        new HttpResponse(429, array('Retry-After' => '60', 'retry-after ' => '2'));
+    }
+
+    public function testEveryTokenCharacterClassSpellingIsALegalName(): void
+    {
+        // The full RFC 7230 tchar alphabet ( specials, digits, letters,
+        // and the hyphen ) constructs and renders.
+        $name = "X-Custom_1~.+^`|!*#\$%&-";
+        $request = new HttpRequest('POST', 'https://host.example/', array($name => 'value'));
+
+        $this->assertSame('value', $request->header($name));
+        $this->assertStringContainsString($name . ': value', (string) $request);
+    }
+
     public function testHorizontalTabStaysLegalInHeaderValues(): void
     {
         // RFC 7230 field-value: HTAB is legal (and rendered as-is).

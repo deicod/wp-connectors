@@ -45,14 +45,21 @@ final class HeaderMap {
 	private const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]/';
 
 	/**
-	 * Control bytes a header NAME may not carry: the whole C0 range
-	 * (tabs are not legal in a token) plus DEL.
+	 * The RFC 7230 token grammar every header NAME must satisfy
+	 * (verifier round t31-r1-16): visible ASCII token characters only.
+	 * The masking vocabulary and the duplicate fence both key on the
+	 * exact lowercased name, so an off-grammar spelling — a trailing
+	 * space, punctuation, a homoglyph — dodges the vocabulary and its
+	 * value rendered UNMASKED into the safe debug forms (the security
+	 * lens reproduced a full Bearer secret rendering verbatim through
+	 * 'Authorization '). The grammar closes the whole class: no C0
+	 * controls, no DEL, no C1-as-UTF-8, no separators, no non-ASCII.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @var string
 	 */
-	private const NAME_CONTROL_BYTE_PATTERN = '/[\x00-\x1F\x7F]/';
+	private const NAME_TOKEN_PATTERN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/';
 
 	/**
 	 * Header lines (name as given => value).
@@ -80,14 +87,17 @@ final class HeaderMap {
 			if ( ! is_string( $value ) ) {
 				throw new InvalidArgumentException( 'Header values must be strings.' );
 			}
-			// Control bytes in a header line are injection material: a
-			// line break in a NAME forges extra header lines and in a
-			// VALUE does the same from the second line on; the remaining
-			// control bytes (NUL, vertical tab, ESC, DEL) render verbatim
-			// into the safe debug forms. The whole class is rejected at
-			// the boundary, so the debug form can never carry it.
-			if ( 1 === preg_match( self::NAME_CONTROL_BYTE_PATTERN, $name ) || 1 === preg_match( self::VALUE_CONTROL_BYTE_PATTERN, $value ) ) {
-				throw new InvalidArgumentException( 'Header names and values must not contain control characters or line breaks (a horizontal tab is legal in a value).' );
+			// A header NAME must be an RFC 7230 token: the masking
+			// vocabulary and the case-insensitive duplicate fence both
+			// key on the exact lowercased name, so any off-grammar
+			// spelling would dodge them. Control bytes in a VALUE are
+			// injection material — a line break forges header lines,
+			// NUL/vertical tab/ESC/DEL render verbatim into the safe
+			// debug forms. Both gates read abort-as-reject (glm36-8):
+			// the allow-pattern as `1 !==` (no-match or abort refuses),
+			// the ban-pattern as `0 !==` (abort refuses).
+			if ( 1 !== preg_match( self::NAME_TOKEN_PATTERN, $name ) || 0 !== preg_match( self::VALUE_CONTROL_BYTE_PATTERN, $value ) ) {
+				throw new InvalidArgumentException( 'Header names must be RFC 7230 tokens (control characters, whitespace, separators, and non-ASCII spellings are rejected); header values must not contain control characters or line breaks (a horizontal tab is legal in a value).' );
 			}
 			// Case-variant spellings of one name make every
 			// case-insensitive lookup order-dependent — whichever came
