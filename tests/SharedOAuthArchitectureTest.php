@@ -126,8 +126,18 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             );
         }
 
-        $contents = file_get_contents($path);
-        if (false === $contents) {
+        $contents = @file_get_contents($path);
+        if (false === $contents || ('' === $contents && !is_file($path))) {
+            // The read is @-suppressed because ITS diagnostic (the
+            // errno notice of a failed read) would surface as a test
+            // error before this named failure could name the file —
+            // the glm17-16 idiom: suppress the diagnostic, own the
+            // failed return. The failure itself has TWO runtime
+            // spellings: false on most unreadable paths, and '' on
+            // PHP 8.5's directory reads (the errno-21 shape degrades
+            // to an empty string, indistinguishable from a false
+            // return without the guard) — a non-regular path is never
+            // a legitimately-empty swept file, so both refuse.
             $this->fail(
                 sprintf(
                     'The architecture sweep cannot read %s — the read itself failed (vanished or blocked between the readability probe and the read), and a silent empty sweep is never acceptable.',
@@ -143,29 +153,23 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      * Lines of one file, as (line number => line) pairs.
      *
      * Reading failures are LOUD, never silent: an unreadable file
-     * (chmod 000, vanished mid-sweep) and a PCRE abort (one invalid
-     * UTF-8 byte under /\R/u) both fail naming the file — the old
-     * silent fallbacks swept the file as zero-or-one contentless
-     * lines, every gate skipped it, and the non-vacuity counts stayed
-     * green (the glm36-8 doctrine applied one layer below by t31-r1-7,
-     * and one layer above by t31-r1-21: a file_get_contents() false
-     * cast to '' swept as a single contentless line).
+     * (chmod 000, vanished mid-sweep), a read that fails BETWEEN the
+     * readability probe and the read itself (review round t31-r2-9 —
+     * the old probe-then-(string)-cast shape swept such a file as ONE
+     * contentless line), and a PCRE abort (one invalid UTF-8 byte under
+     * /\R/u) all fail naming the file — the silent fallbacks would
+     * sweep the file as zero-or-one contentless lines, every gate
+     * would skip it, and the non-vacuity counts would stay green (the
+     * glm36-8 doctrine applied one layer below by t31-r1-7, and one
+     * layer above by t31-r1-21). The read rides the shared loud reader
+     * (fileContents()), which owns both failure checks once.
      *
      * @param string $path File path.
      * @return list<array{0: int, 1: string}>
      */
     private function numberedLines(string $path): array
     {
-        if (!is_readable($path)) {
-            $this->fail(
-                sprintf(
-                    'The architecture sweep cannot read %s — an unreadable swept file must fail loudly, never sweep as contentless lines.',
-                    $path
-                )
-            );
-        }
-
-        $split = preg_split('/\R/u', (string) file_get_contents($path));
+        $split = preg_split('/\R/u', $this->fileContents($path));
         if (false === $split) {
             $this->fail(
                 sprintf(
@@ -243,6 +247,55 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
             $this->assertStringContainsString('cannot read', $e->getMessage());
             $this->assertStringContainsString('vanished-file.php', $e->getMessage());
+        }
+    }
+
+    /**
+     * Fix-round pin (t31-r2-9): the read-failure class the is_readable
+     * probe cannot see — a path that PASSES the probe but fails the
+     * read itself (reproduced at HEAD with a readable directory: the
+     * (string) cast of file_get_contents()'s false swept it as ONE
+     * contentless line, [1 => '']). The line reader rides the shared
+     * loud reader now, whose failed-return check owns exactly this
+     * TOCTOU-narrowed shape — under BOTH runtime spellings: false
+     * (/proc/self/map_files, the probe-passing unreadable file shape)
+     * and the '' a PHP 8.5 directory read degrades to. The canary
+     * records its flag OUTSIDE the catch (the glm29-16 discipline —
+     * a fail() sentinel inside a catch of AssertionFailedError is
+     * swallowed by its own catch).
+     */
+    public function testAReadableButUnreadablePathFailsTheLineReaderLoudly(): void
+    {
+        $reader = new \ReflectionMethod($this, 'numberedLines');
+
+        // The '' spelling: a readable directory (errno-21 read failure
+        // that 8.5 returns as an empty string).
+        $directory = realpath(__DIR__ . '/fixtures/sweep-corruption');
+        $this->assertNotFalse($directory, 'The sweep-corruption fixture directory must exist.');
+        $this->assertTrue(is_readable($directory), 'The shape must pass the readability probe for the pin to exercise the read failure, not the probe.');
+
+        $failed = null;
+        try {
+            $reader->invoke($this, $directory);
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $failed = $e->getMessage();
+        }
+        $this->assertNotNull($failed, 'A path whose read fails after passing the readability probe must fail loudly, never sweep as contentless lines.');
+        $this->assertStringContainsString('read itself failed', $failed);
+        $this->assertStringContainsString('sweep-corruption', $failed);
+
+        // The false spelling: a procfs node that passes the readability
+        // probe but refuses the read.
+        $procNode = '/proc/self/map_files';
+        if (is_readable($procNode) && !is_file($procNode)) {
+            $failed = null;
+            try {
+                $reader->invoke($this, $procNode);
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $failed = $e->getMessage();
+            }
+            $this->assertNotNull($failed, 'A readable-but-refusing procfs node must fail loudly through the same reader.');
+            $this->assertStringContainsString('read itself failed', $failed);
         }
     }
 
