@@ -236,6 +236,33 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->assertNotNull($grant->token_set());
     }
 
+    /**
+     * Review-round pin (t31-r1-11): revoke() did an unguarded
+     * generation + 1 — at PHP_INT_MAX (constructible via
+     * with_generation()) the int overflowed to float and the engine
+     * threw a TypeError from the constructor instead of the documented
+     * rejection. The tombstone is unrepresentable there, and the class
+     * says so with its own typed rejection.
+     */
+    public function testRevokeAtMaxGenerationRejectsInsteadOfOverflowing(): void
+    {
+        $grant = (new StoredGrant('fixture-provider', 0, GrantState::ReconnectRequired, null))
+            ->with_generation(PHP_INT_MAX - 1);
+
+        // One below the boundary revokes normally.
+        $this->assertSame(PHP_INT_MAX, $grant->revoke()->generation());
+
+        $maxed = $grant->with_generation(PHP_INT_MAX);
+        $this->assertSame(PHP_INT_MAX, $maxed->generation());
+
+        try {
+            $maxed->revoke();
+            $this->fail('revoke() at PHP_INT_MAX must reject with the documented type, never overflow to a float TypeError.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('PHP_INT_MAX', $e->getMessage());
+        }
+    }
+
     public function testGrantVoIsImmutableWithNoSetters(): void
     {
         $reflection = new \ReflectionClass(StoredGrant::class);

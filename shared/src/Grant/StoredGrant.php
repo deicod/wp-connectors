@@ -211,8 +211,13 @@ final class StoredGrant {
 	 * @since 0.1.0
 	 *
 	 * @return self
+	 * @throws InvalidArgumentException When the generation cannot advance (already at PHP_INT_MAX — the tombstone is unrepresentable, not minted).
 	 */
 	public function revoke(): self {
+		if ( PHP_INT_MAX === $this->generation ) {
+			throw new InvalidArgumentException( 'The grant generation cannot advance past PHP_INT_MAX — the revocation tombstone is unrepresentable.' );
+		}
+
 		return new self( $this->provider_id, $this->generation + 1, GrantState::Revoked, null );
 	}
 }
