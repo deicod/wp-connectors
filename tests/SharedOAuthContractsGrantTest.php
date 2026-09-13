@@ -30,7 +30,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
 
     private function connectedGrant(): StoredGrant
     {
-        return new StoredGrant('fixture-provider', 3, GrantState::Connected, $this->tokenSet());
+        return StoredGrant::in_state('fixture-provider', 3, GrantState::Connected, $this->tokenSet());
     }
 
     /* ---------------------------------------------------------------
@@ -60,7 +60,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
     public function testValidGrantCarriesItsFacts(): void
     {
         $set = $this->tokenSet();
-        $grant = new StoredGrant('fixture-provider', 7, GrantState::Connected, $set);
+        $grant = StoredGrant::in_state('fixture-provider', 7, GrantState::Connected, $set);
 
         $this->assertSame('fixture-provider', $grant->provider_id());
         $this->assertSame(7, $grant->generation());
@@ -72,19 +72,19 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new StoredGrant('  ', 0, GrantState::ReconnectRequired, null);
+        StoredGrant::in_state('  ', 0, GrantState::ReconnectRequired, null);
     }
 
     public function testNegativeGenerationIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new StoredGrant('fixture-provider', -1, GrantState::ReconnectRequired, null);
+        StoredGrant::in_state('fixture-provider', -1, GrantState::ReconnectRequired, null);
     }
 
     public function testZeroGenerationIsAcceptable(): void
     {
-        $grant = new StoredGrant('fixture-provider', 0, GrantState::ReconnectRequired, null);
+        $grant = StoredGrant::in_state('fixture-provider', 0, GrantState::ReconnectRequired, null);
 
         $this->assertSame(0, $grant->generation());
     }
@@ -94,23 +94,66 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('connected grant requires a token set');
 
-        new StoredGrant('fixture-provider', 0, GrantState::Connected, null);
+        StoredGrant::in_state('fixture-provider', 0, GrantState::Connected, null);
     }
 
-    public function testRevokedTombstoneForbidsTokens(): void
+    /**
+     * Fix-round pin (t31-r2-3): the tombstone invariant is structural —
+     * no public spelling constructs a Revoked grant, because only
+     * revoke() can guarantee the generation ADVANCES (the fence an
+     * in-flight refresh CAS-commits against; the finding's shape — a
+     * constructor-minted tombstone at an un-advanced generation —
+     * let a late refresh commit over the revoke).
+     */
+    public function testARevokedTombstoneIsOnlyEverMintedByRevoke(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('revoked tombstone');
+        // The constructor is private: revoke() and the immutable
+        // transitions are its only callers.
+        $constructor = (new \ReflectionClass(StoredGrant::class))->getConstructor();
+        $this->assertTrue($constructor->isPrivate(), 'The StoredGrant constructor must be private — a tombstone must not be publicly constructible.');
 
-        new StoredGrant('fixture-provider', 0, GrantState::Revoked, $this->tokenSet());
+        // The named constructor — the public construction entry —
+        // rejects the tombstone state with the class's typed exception,
+        // with or without a token set.
+        foreach (array(null, $this->tokenSet()) as $token_set) {
+            try {
+                StoredGrant::in_state('fixture-provider', 3, GrantState::Revoked, $token_set);
+                $this->fail('A Revoked grant must not be constructible through the public entry point.');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('revoke()', $e->getMessage());
+            }
+        }
+
+        // revoke() remains the producer, and its tombstone is advanced.
+        $tombstone = $this->connectedGrant()->revoke();
+        $this->assertSame(GrantState::Revoked, $tombstone->state());
+        $this->assertSame(4, $tombstone->generation());
+    }
+
+    /**
+     * The adjudicated tolerance (t31-r2-3), pinned honestly: a
+     * tombstone may transition BACK to a live state at the same
+     * generation — fence-neutral (no in-flight writer's commit verdict
+     * changes; the CAS reads the generation, which is preserved), and
+     * terminality is the Task 3.3 coordinator's policy, not the VO's.
+     */
+    public function testATombstoneMayTransitionBackAtTheSameGenerationForNow(): void
+    {
+        $tombstone = StoredGrant::in_state('fixture-provider', 4, GrantState::ReconnectRequired, null)->revoke();
+
+        $revived = $tombstone->with_state(GrantState::ReconnectRequired);
+
+        $this->assertSame(GrantState::ReconnectRequired, $revived->state());
+        $this->assertSame($tombstone->generation(), $revived->generation());
+        $this->assertSame(GrantState::Revoked, $tombstone->state());
     }
 
     public function testDeadGrantMayRetainItsTokenSetAsDiagnosticState(): void
     {
         // Terminal authorization failure: dead, but safe diagnostic state
         // (the token set) may be retained by the coordination task.
-        $dead = new StoredGrant('fixture-provider', 2, GrantState::ReconnectRequired, $this->tokenSet());
-        $deadWithoutTokens = new StoredGrant('fixture-provider', 2, GrantState::ReconnectRequired, null);
+        $dead = StoredGrant::in_state('fixture-provider', 2, GrantState::ReconnectRequired, $this->tokenSet());
+        $deadWithoutTokens = StoredGrant::in_state('fixture-provider', 2, GrantState::ReconnectRequired, null);
 
         $this->assertNotNull($dead->token_set());
         $this->assertNull($deadWithoutTokens->token_set());
@@ -120,7 +163,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
     {
         // Third terminal class: retries suppressed until configuration
         // changes; the token set is retained.
-        $grant = new StoredGrant('fixture-provider', 1, GrantState::ConfigurationError, $this->tokenSet());
+        $grant = StoredGrant::in_state('fixture-provider', 1, GrantState::ConfigurationError, $this->tokenSet());
 
         $this->assertSame(GrantState::ConfigurationError, $grant->state());
         $this->assertNotNull($grant->token_set());
@@ -146,7 +189,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
 
     public function testWithTokenSetOnRevokedTombstoneIsRejected(): void
     {
-        $tombstone = (new StoredGrant('fixture-provider', 4, GrantState::ReconnectRequired, null))
+        $tombstone = (StoredGrant::in_state('fixture-provider', 4, GrantState::ReconnectRequired, null))
             ->revoke();
 
         $this->expectException(\InvalidArgumentException::class);
@@ -168,7 +211,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
 
     public function testWithStateToConnectedWithoutTokensIsRejected(): void
     {
-        $grant = new StoredGrant('fixture-provider', 0, GrantState::ReconnectRequired, null);
+        $grant = StoredGrant::in_state('fixture-provider', 0, GrantState::ReconnectRequired, null);
 
         $this->expectException(\InvalidArgumentException::class);
 
@@ -193,7 +236,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
      */
     public function testWithStateToRevokedOnTokenlessGrantIsRejectedToo(): void
     {
-        $grant = new StoredGrant('fixture-provider', 5, GrantState::ReconnectRequired, null);
+        $grant = StoredGrant::in_state('fixture-provider', 5, GrantState::ReconnectRequired, null);
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('revoke()');
@@ -246,7 +289,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
      */
     public function testRevokeAtMaxGenerationRejectsInsteadOfOverflowing(): void
     {
-        $grant = (new StoredGrant('fixture-provider', 0, GrantState::ReconnectRequired, null))
+        $grant = (StoredGrant::in_state('fixture-provider', 0, GrantState::ReconnectRequired, null))
             ->with_generation(PHP_INT_MAX - 1);
 
         // One below the boundary revokes normally.

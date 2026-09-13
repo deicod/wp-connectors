@@ -12,8 +12,10 @@
  *
  * Pure value object: immutable, transitions return new instances, no
  * environment access. State/token compatibility is enforced at every
- * construction (Connected requires a token set; a Revoked tombstone
- * carries none), so an inconsistent grant is unrepresentable.
+ * construction (Connected requires a token set; a Revoked tombstone is
+ * UNCONSTRUCTIBLE — revoke() is the only tombstone producer, so every
+ * tombstone's generation is advanced by construction), so an
+ * inconsistent grant is unrepresentable.
  *
  * @since 0.1.0
  *
@@ -75,13 +77,25 @@ final class StoredGrant {
 	 *
 	 * @since 0.1.0
 	 *
+	 * PRIVATE (review round t31-r2-3): the tombstone invariant is structural
+	 * only if no public spelling can construct a Revoked grant — an
+	 * un-advanced tombstone persisted by mistake does not fence (an
+	 * in-flight refresh CAS-commits over the revoke). Every public entry
+	 * point rejects Revoked with the typed exception; revoke() — the one
+	 * tombstone producer — and the immutable transitions are the internal
+	 * callers left. Forward note for Task 3.2: hydrating a PERSISTED
+	 * tombstone will need its own deliberate producer (e.g. a named
+	 * constructor documented "the persisted generation was advanced when
+	 * the tombstone was minted; hydration re-states persisted facts, it
+	 * never mints") — do not reopen the plain constructor for it.
+	 *
 	 * @param string              $provider_id Provider label (non-empty).
 	 * @param int                 $generation  Fencing generation (non-negative).
 	 * @param GrantState          $state       Lifecycle state.
 	 * @param AccessTokenSet|null $token_set   Token set; REQUIRED for Connected, FORBIDDEN for Revoked, optional otherwise.
 	 * @throws InvalidArgumentException When the combination violates the contract above.
 	 */
-	public function __construct( string $provider_id, int $generation, GrantState $state, ?AccessTokenSet $token_set = null ) {
+	private function __construct( string $provider_id, int $generation, GrantState $state, ?AccessTokenSet $token_set = null ) {
 		if ( '' === trim( $provider_id ) ) {
 			throw new InvalidArgumentException( 'The provider id must be a non-empty string.' );
 		}
@@ -99,6 +113,34 @@ final class StoredGrant {
 		$this->generation  = $generation;
 		$this->state       = $state;
 		$this->token_set   = $token_set;
+	}
+
+	/**
+	 * Constructs a grant in any NON-tombstone state (review round
+	 * t31-r2-3).
+	 *
+	 * The public construction entry now that the constructor is private:
+	 * Revoked is rejected with the class's typed exception — revoke() is
+	 * the only tombstone producer, because only it can guarantee the
+	 * generation ADVANCES (the fence an in-flight refresh or exchange
+	 * commits against; a tombstone minted at an un-advanced generation
+	 * does not fence).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string              $provider_id Provider label (non-empty).
+	 * @param int                 $generation  Fencing generation (non-negative).
+	 * @param GrantState          $state       Lifecycle state; Revoked is rejected (use revoke()).
+	 * @param AccessTokenSet|null $token_set   Token set; REQUIRED for Connected, optional otherwise.
+	 * @return self
+	 * @throws InvalidArgumentException When Revoked is requested, or the combination violates the constructor contract.
+	 */
+	public static function in_state( string $provider_id, int $generation, GrantState $state, ?AccessTokenSet $token_set = null ): self {
+		if ( GrantState::Revoked === $state ) {
+			throw new InvalidArgumentException( 'A revoked tombstone must be built via revoke() so the generation advances — an un-advanced tombstone does not fence, and an in-flight refresh would CAS-commit over the revoke.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed wording in a developer-facing rejection; escaping belongs to the display layer.
+		}
+
+		return new self( $provider_id, $generation, $state, $token_set );
 	}
 
 	/**
@@ -168,6 +210,14 @@ final class StoredGrant {
 	 * ADVANCED generation (the fence late writers commit against), and a
 	 * plain state swap cannot advance it — revoke() is the only tombstone
 	 * producer.
+	 *
+	 * The reverse direction — a tombstone transitioning BACK to a live
+	 * state at the same generation — stays permitted by adjudication
+	 * (t31-r2-3): it is fence-neutral (the generation is preserved, so
+	 * no in-flight writer's commit verdict changes), and whether a
+	 * tombstone is terminal is the Task 3.3 coordinator's policy, not
+	 * the value object's. Reopen only if a same-generation resurrection
+	 * ever changes a fence verdict.
 	 *
 	 * @since 0.1.0
 	 *
