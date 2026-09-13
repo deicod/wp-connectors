@@ -58,14 +58,30 @@ final class WpConnectorsBuild
      * file stays valid PHP even when the source starts with
      * `<?php declare(strict_types=1);`.
      *
+     * Verifier round t31-r2-19: both interpolated values land in
+     * preg_replace REPLACEMENT strings, where '$1'/'${1}'/'\1' are
+     * backreference material — a namespace_suffix of 'Evil$1' rewrote
+     * the namespace to 'Deicod\WpConnectors\Evilnamespace \Shared\Clock;'
+     * and the broken file shipped into the zip with no lint gate to
+     * catch it (pre-existing, byte-unchanged by the round that found
+     * it; inputs are repo/plugin-author controlled). The suffix is
+     * validated as a legal namespace segment (which is also
+     * replacement-safe by construction) and the provenance string's
+     * replacement metacharacters are escaped.
+     *
      * @param string $source        PHP source from shared/src.
      * @param string $pluginSuffix  Namespace segment, e.g. 'OpenAiOauth'.
      * @param string $sourceVersion Provenance string (repo-relative path/rev).
      * @return string Rewritten source ready for src/Shared/.
+     * @throws RuntimeException When the namespace suffix is not a legal namespace segment.
      */
     public static function rewriteSharedNamespace($source, $pluginSuffix, $sourceVersion)
     {
-        $provenance = "/**\n * Generated copy of {$sourceVersion} for this plugin's private namespace.\n * Do not edit here; change the shared source and rebuild.\n */\n";
+        if (1 !== preg_match('/\A[A-Za-z_][A-Za-z0-9_]*\z/', (string) $pluginSuffix)) {
+            throw new RuntimeException("build: namespace_suffix must be a namespace segment (letters, digits, underscores; it may not start with a digit): '{$pluginSuffix}' given");
+        }
+        $escapedVersion = str_replace(array('\\', '$'), array('\\\\', '\\$'), (string) $sourceVersion);
+        $provenance = "/**\n * Generated copy of {$escapedVersion} for this plugin's private namespace.\n * Do not edit here; change the shared source and rebuild.\n */\n";
         $rewritten = (string) preg_replace(
             '/(namespace\s+)Deicod\\\\WpConnectors\\\\Shared((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
             '$1Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared$2',

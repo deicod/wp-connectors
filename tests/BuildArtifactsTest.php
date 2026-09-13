@@ -1175,6 +1175,25 @@ FIXTURE;
         $this->assertStringNotContainsString('namespace Deicod\\WpConnectors\\Shared', $rewritten);
         $this->assertStringContainsString('Generated copy of shared/src/Storage/TokenStore.php', $rewritten);
 
+        // Verifier-round pin (t31-r2-19): both interpolated values land
+        // in preg_replace REPLACEMENT strings, where '$1' is
+        // backreference material — a suffix 'Evil$1' shipped a parse
+        // error into the zip, and a '$1' in the provenance path was
+        // silently consumed. The suffix must be a namespace segment
+        // (refused loudly otherwise) and the provenance string escapes
+        // its replacement metacharacters.
+        foreach (array('Evil$1', 'X${1}Y', 'Z\\1W', '123Starts', '', 'Has-Dash') as $hostile) {
+            try {
+                WpConnectorsBuild::rewriteSharedNamespace($source, $hostile, 'shared/src/Storage/TokenStore.php');
+                $this->fail('A namespace_suffix that is not a namespace segment must be refused: ' . var_export($hostile, true));
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('namespace segment', $e->getMessage());
+            }
+        }
+
+        $dollarPath = WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/Evil$1Name.php');
+        $this->assertStringContainsString('Generated copy of shared/src/Evil$1Name.php', $dollarPath, 'A dollar in the provenance path must render literally, never be consumed as a backreference.');
+
         // The rewritten file must be valid PHP (provenance placement must not
         // precede the open tag / strict_types) and must load without output.
         $temp = self::distDir() . '/.rewrite-test-' . getmypid() . '.php';
