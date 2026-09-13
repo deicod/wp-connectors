@@ -42,11 +42,17 @@ final class HeaderMap {
 	 * treat them as line breaks — forged log lines). Other high bytes
 	 * stay legal as RFC 7230 obs-text (verifier round t31-r1-19).
 	 *
+	 * PUBLIC and single-owner beyond the header map itself (review
+	 * round t31-r2-1): this constant names the control vocabulary no
+	 * SAFE DEBUG FORM may ever render, so Url screens the request
+	 * surface against the same bytes — one vocabulary, two surfaces,
+	 * no drift between the header-value rule and the URL rule.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var string
 	 */
-	private const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F]|\xE2\x80[\xA8\xA9]/';
+	const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F]|\xE2\x80[\xA8\xA9]/';
 
 	/**
 	 * The RFC 7230 token grammar every header NAME must satisfy

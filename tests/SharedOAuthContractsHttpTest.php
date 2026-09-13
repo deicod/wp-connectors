@@ -16,6 +16,7 @@ use Deicod\WpConnectors\Shared\Http\HeaderMap;
 use Deicod\WpConnectors\Shared\Http\HttpRequest;
 use Deicod\WpConnectors\Shared\Http\HttpResponse;
 use Deicod\WpConnectors\Shared\Http\HttpTransportInterface;
+use Deicod\WpConnectors\Shared\Http\Url;
 use Deicod\WpConnectors\Shared\Support\SecretMask;
 
 final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
@@ -97,6 +98,61 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->expectException(\InvalidArgumentException::class);
 
         new HttpRequest('POST', $url);
+    }
+
+    /**
+     * Fix-round pin (t31-r2-1): parse_url passed U+2028/U+2029, the
+     * C1 controls riding as valid UTF-8, and the C0 range through to
+     * redacted_url()/__toString() verbatim — the forged-log-line class
+     * t31-r1-19 rejected in header VALUES, reopened in the URL
+     * position ('https://api.example/callback<U+2028>Authorization:
+     * Bearer ***' constructed and rendered). The whole URL surface is
+     * screened with the SAME vocabulary (owned by HeaderMap, so the
+     * header rule and the URL rule cannot drift), in the path and the
+     * host positions alike, at the shared owner and through the VO.
+     */
+    public function testControlBytesInUrlsAreRejectedInPathAndHostPositions(): void
+    {
+        $hostile_urls = array(
+            'U+2028 line separator in path' => "https://api.example/callback\xE2\x80\xA8Authorization: Bearer ***",
+            'U+2029 paragraph separator in path' => "https://api.example/cb\xE2\x80\xA9forged",
+            'NEL in path' => "https://api.example/cb\xC2\x85nel",
+            'line feed in path' => "https://api.example/c\nb",
+            'U+2028 line separator in host' => "https://api.example\xE2\x80\xA8.evil/callback",
+            'carriage return in host' => "https://api.example\r.evil/callback",
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A URL carrying %s must be rejected by the shared URL owner.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A URL carrying %s must be rejected by the request VO.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * The tolerance boundary, pinned honestly: a space in a host still
+     * constructs and renders (the round-1 host-charset adjudication —
+     * parse_url's lenient host charset is below-the-bar for constructor
+     * validation; the byte renders oddly but forges no line). Widening
+     * or narrowing this tolerance is a supersession of that
+     * adjudication, not a drive-by. (A TAB in the host normalizes to an
+     * underscore inside modern parse_url — no tab byte reaches the
+     * debug form to tolerate.)
+     */
+    public function testSpaceStaysLegalInUrlHostsForNow(): void
+    {
+        $spaced = new HttpRequest('GET', 'https://host.example well/path');
+        $this->assertSame('https://host.example well/path', $spaced->redacted_url());
     }
 
     public function testNonStringHeaderKeysAndValuesAreRejected(): void
