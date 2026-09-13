@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 use Deicod\WpConnectors\Shared\Clock\ClockInterface;
 use Deicod\WpConnectors\Shared\Clock\SystemClock;
+use Deicod\WpConnectors\Shared\Support\InstantArithmetic;
 use Deicod\WpConnectors\Shared\Token\AccessTokenSet;
 
 final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCase
@@ -530,5 +531,40 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
 
         $this->expectException(\InvalidArgumentException::class);
         $clock->advanceBy(-1);
+    }
+
+    /* ---------------------------------------------------------------
+     * Shared instant arithmetic (review round t31-r1).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Verifier-round pin (t31-r1-18): minus_seconds(PHP_INT_MIN)
+     * negated its int argument before the shift — the negation
+     * overflowed to float and the engine threw a strict-types TypeError
+     * instead of the documented rejection (the same class t31-r1-11
+     * counted for StoredGrant). The mirror plus_seconds(PHP_INT_MIN)
+     * is representable and exact.
+     */
+    public function testMinusSecondsAtIntMinRejectsTypedInsteadOfOverflowing(): void
+    {
+        $instant = new \DateTimeImmutable('2026-09-13T10:00:00.000000+00:00');
+
+        try {
+            InstantArithmetic::minus_seconds($instant, PHP_INT_MIN);
+            $this->fail('minus_seconds at PHP_INT_MIN must reject with the documented type, never overflow the negation to a float TypeError.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('unrepresentable', $e->getMessage());
+        }
+
+        // The representable mirrors stay exact.
+        $this->assertSame(
+            PHP_INT_MIN,
+            InstantArithmetic::plus_seconds(new \DateTimeImmutable('@0'), PHP_INT_MIN)->getTimestamp()
+        );
+        $this->assertSame(
+            0,
+            InstantArithmetic::minus_seconds(new \DateTimeImmutable('@0'), 0)->getTimestamp()
+        );
     }
 }

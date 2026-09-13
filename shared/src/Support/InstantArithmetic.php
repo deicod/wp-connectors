@@ -55,8 +55,13 @@ final class InstantArithmetic {
 	 * @param DateTimeImmutable $instant The base instant.
 	 * @param int               $seconds Seconds to subtract (absolute elapsed time).
 	 * @return DateTimeImmutable The shifted instant in the original timezone.
+	 * @throws InvalidArgumentException When the negation itself would overflow (PHP_INT_MIN — the shift is unrepresentable as an addition, never a silently wrong instant).
 	 */
 	public static function minus_seconds( DateTimeImmutable $instant, int $seconds ): DateTimeImmutable {
+		if ( PHP_INT_MIN === $seconds ) {
+			throw new InvalidArgumentException( sprintf( 'A %d-second shift is unrepresentable — the request is misconfigured, and the alternative is a silently wrong instant.', $seconds ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
+		}
+
 		return self::offset_in_utc( $instant, -$seconds );
 	}
 
