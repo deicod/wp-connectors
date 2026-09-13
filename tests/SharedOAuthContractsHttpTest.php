@@ -346,6 +346,87 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…wxyz', SecretMask::mask('abcdefghijklmnopwxyz'));
     }
 
+    /**
+     * Review-round pin (t31-r1-6): the visible tail is the last four
+     * CHARACTERS — the byte-wise substr(-4) split a multibyte character
+     * mid-sequence, and the masked value was invalid UTF-8.
+     */
+    public function testMaskOfMultibyteSecretsNeverSplitsACharacter(): void
+    {
+        // 13 characters, 17 bytes; the four-character tail is entirely
+        // two-byte sequences.
+        $this->assertSame('…öööö', SecretMask::mask('aaaaaaaaöööö'));
+
+        // Four-byte sequences (emoji): the tail covers four complete
+        // characters, up to sixteen bytes.
+        $this->assertSame('…😀😀😀😀', SecretMask::mask('😀😀😀😀😀😀😀😀😀'));
+
+        // Fewer than eight CHARACTERS shows nothing, however many bytes
+        // the value carries (the old byte threshold split this shape).
+        $this->assertSame('…', SecretMask::mask('ööö'));
+    }
+
+    /**
+     * The reproduced failure mode: an invalid-UTF-8 masked value made
+     * json_encode() return false, so the redacted log line was dropped
+     * or mangled. Every masked rendering must survive the round trip.
+     */
+    public function testMaskedRenderingsAlwaysSurviveJsonEncoding(): void
+    {
+        foreach (array(
+            'xxxxxxxxé',                      // byte tail split the final character
+            'aaaaaaaaöööö',                   // multibyte tail
+            '😀😀😀😀😀😀😀😀😀',             // four-byte sequences
+            "xxxxxxxx\xB1",                   // binary continuation byte
+            "xxxxxxxxx\xC3",                  // dangling lead byte
+            "abcdefghijklmnopwxyz",           // plain ASCII
+        ) as $secret) {
+            $masked = SecretMask::mask($secret);
+
+            $this->assertNotFalse(json_encode($masked), sprintf('mask() of %s must be valid UTF-8.', addcslashes($secret, "\x00..\xFF")));
+            $this->assertSame($masked, json_decode((string) json_encode($masked)));
+            $this->assertStringNotContainsString($secret, $masked);
+            // The leading bytes stay hidden (byte-wise for pure-ASCII
+            // secrets; multibyte tails legitimately repeat characters).
+            if (1 === preg_match('/\A[\x00-\x7F]*\z/', $secret)) {
+                $this->assertStringNotContainsString(substr($secret, 0, 4), $masked);
+            }
+        }
+    }
+
+    public function testMaskOfBinaryValuesDegradesToValidTrailingBytesOnly(): void
+    {
+        // A dangling lead byte can never head a valid sequence: the tail
+        // sheds characters until nothing valid remains — the bare mask.
+        $this->assertSame('…', SecretMask::mask("xxxxxxxxx\xC3"));
+
+        // A trailing continuation byte counts as part of the preceding
+        // ASCII character, so this binary value has eight apparent
+        // characters — at the threshold, nothing is shown (the old
+        // byte threshold split this shape and emitted the raw byte).
+        $this->assertSame('…', SecretMask::mask("xxxxxxxx\xB1"));
+
+        // Nine ASCII characters plus a stray trailing byte: the stray
+        // byte rides inside every candidate slice, so no slice ever
+        // validates — the bare mask, never the raw byte.
+        $this->assertSame('…', SecretMask::mask("xxxxxxxxx\xB1"));
+    }
+
+    public function testMaskedMultibyteSecretRendersThroughTheRequestForm(): void
+    {
+        $token = 'xxxxxxxxé';
+        $rendered = (string) new HttpRequest(
+            'POST',
+            'https://token-endpoint.example/',
+            array('Authorization' => 'Bearer ' . $token)
+        );
+
+        $this->assertNotFalse(json_encode(array('debug' => $rendered)));
+        $this->assertStringNotContainsString('Bearer ', $rendered);
+        $this->assertStringNotContainsString('xxxxxxxx', $rendered);
+        $this->assertStringContainsString('…xxxé', $rendered);
+    }
+
     public function testRequestAndResponseVosAreImmutableWithNoSetters(): void
     {
         foreach (array(HttpRequest::class, HttpResponse::class, HeaderMap::class) as $class) {
