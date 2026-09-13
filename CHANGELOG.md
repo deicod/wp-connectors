@@ -6,6 +6,89 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Added (shared — M3 OAuth foundation, Task 3.1)
+
+Provider-neutral OAuth contracts under `shared/src` (source namespace
+`Deicod\WpConnectors\Shared`, PSR-4; the build's namespace rewriter
+already targets it, record 0005). Six commits, each suite-green:
+
+- `AccessTokenSet` (Token): immutable token-set VO. Nullable refresh
+  token models "no replacement issued" distinctly from empty; expiry is
+  derived (obtained-at + expires_in, never stored independently);
+  validation rejects empty/whitespace tokens and non-positive
+  expires_in; `with_replacement_refresh_token()` encodes the Task 3.3
+  merge rule (null keeps the stored token); strict
+  `to_array()`/`from_array()` storage serialization (exact key set, no
+  coercion, microsecond instants, serialized expiry must re-derive).
+- `ClockInterface` + `SystemClock` (Clock): the time port; the harness
+  gains `DeterministicClock` for time-sensitive contract tests.
+- `OAuthRuntimeException` family (Exception): abstract base plus six
+  concrete types — transport and rate-limit (both transient, sharing the
+  `OAuthTransientException` marker so retryability is decided by type
+  alone), terminal-auth (reconnect required), configuration (update
+  required, the third terminal class), storage (fails closed),
+  malformed-response. Rate-limit exposes parsed Retry-After seconds;
+  none of them carries payload or credential material (reflection-pinned).
+- `HttpRequest`/`HttpResponse`/`HttpTransportInterface` (Http) +
+  `SecretMask` (Support): the neutral HTTP port. Both VOs' `__toString()`
+  is safe by construction — URL query/userinfo dropped, sensitive header
+  values masked `…last4`, body always omitted; a token in an
+  Authorization header, URL, or body can never reach a string form.
+  Statuses are responses at the port; timeouts/redirect policy/TLS are
+  the Task 3.7 binding's documented contract (redirects disabled or
+  origin-revalidated for credential-bearing requests). `Url` owns the
+  one absolute-http(s) validation rule.
+- `GrantState`/`StoredGrant`/`TokenStorageInterface` (Grant) +
+  `RefreshPolicy` (Policy): the persisted grant carries the fencing
+  generation (strictly forward; `revoke()` produces the tombstone that
+  late refreshes/exchanges commit against) and the state/token
+  compatibility rules; the storage port documents the envelope
+  invariants now (atomic replace, versioned, provider+site bound,
+  never partial plaintext, fail closed) for Task 3.2 to implement. The
+  refresh policy holds neutral numbers only (skew, initial backoff, one
+  cooldown cap governing BOTH Retry-After forms and the fallback
+  backoff) and the two pure rules: expiry-minus-skew and the
+  Retry-After clamp.
+- `AvailabilityState`/`AvailabilityContext`/`OAuthAvailabilityInterface`
+  (Availability) + flow shapes (Flow): five availability states
+  (including the configuration-error "Update required" state) with
+  neutral labels; the context parameter carries the GET-render
+  read-only contract (cached grant state only — no HTTP, no rotation,
+  no event creation); `DeviceAuthorizationSession`, `PkceCodePair`
+  (S256 pinned against the RFC 7636 appendix B vector), and
+  user-scoped `PendingAuthorization` (exactly one flow payload,
+  structurally enforced). No endpoints or client ids anywhere.
+
+Architecture enforcement: `SharedOAuthArchitectureTest` sweeps
+`shared/src` for WordPress reach (functions, hooks, options, globals,
+auth-salt constants — case-insensitive), provider names (code and
+docs), inline namespace spellings that would break the Task 3.8
+rewrite, static mutable state, and PSR-4 discipline — non-vacuity
+guarded by a file floor plus anchor files, mutation-batteried
+(`add_action`, `WP_REMOTE_GET`, a provider name in a docblock, an
+inline FQCN reference, a static property each fail their sweep).
+
+Review round (two-lens, four dimension reviewers + adversarial
+verification over the branch diff; 8 findings raised, 4 confirmed,
+4 refuted): CRLF in header names/values is rejected at both VO
+constructors (a forged `Authorization:` line in the debug form was
+constructible — `X-Foo\r\nAuthorization` rendered its value verbatim);
+the method-token and PKCE verifier patterns anchor `\z` (a trailing
+newline passed both); `with_state(Revoked)` is rejected outright —
+`revoke()` is the only tombstone producer, so no un-advanced tombstone
+is mintable; the sweep's dead `doing_it_wrong` entry is fixed to
+`_doing_it_wrong` and the per-site/URL vocabulary
+(`get_blog_option`, `switch_to_blog`, `network_admin_url`,
+`add_query_arg`, ...) joins the ban list, mutation-batteried. Refuted
+and consciously deferred: the PKCE CSRF `state` member (plugin flow
+config, Tasks 3.6/M6) and parse_url host-charset hardening
+(below-the-bar for constructor validation).
+
+New test suites: `SharedOAuthContracts*Test` (token/clock 34, errors 9,
+HTTP 36, grant 22, policy 16, availability 5, flow 21) +
+`SharedOAuthArchitectureTest` (5) — 1305 → 1453 tests, 42179 → 42668
+assertions, 2 skipped unchanged (live-key gates).
+
 ### Changed (tooling — PHP floor 8.2, user decision 2026-09-11)
 
 The supported PHP floor is **8.2**, not 7.4 — "Pff PHP 7.4 wird nicht mal

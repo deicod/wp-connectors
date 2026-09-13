@@ -359,11 +359,32 @@ documented exception.
 
 ### Tasks
 
-- [ ] **Task 3.1 — Define provider-neutral OAuth contracts.** In `shared/`, define PHP 8.2-safe
+- [x] **Task 3.1 — Define provider-neutral OAuth contracts.** In `shared/`, define PHP 8.2-safe
   interfaces/value objects for token sets, clocks, HTTP transport, OAuth grants, token storage,
   refresh policy, availability, and typed errors. Keep provider endpoints/client IDs out of generic
   classes. Check this task only after contract tests cover token validation/serialization and an
   architecture review confirms no WordPress global is hidden inside pure value objects.
+  — Done: `shared/src` (source namespace `Deicod\WpConnectors\Shared`, the namespace
+  `bin/build.php`'s rewriter targets) ships the token-set VO (validation matrix, strict
+  microsecond-exact `to_array()`/`from_array()`, null-vs-empty refresh token modelled distinctly,
+  merge semantics), the clock port + system implementation, the HTTP transport port with
+  redaction-safe request/response VOs (masked `…last4`, query/userinfo dropped, body omitted,
+  CRLF rejected at the boundary), the grant VO with the fencing generation and the
+  three-class terminal model (connected / reconnect-required / configuration-error / revoked
+  tombstone — `revoke()` the only tombstone producer), the storage port with the envelope
+  invariants documented (atomic replace, versioned, provider+site bound, never partial
+  plaintext, fail closed), the refresh policy (neutral numbers; expiry-minus-skew; one
+  cooldown cap governing both Retry-After forms), the availability vocabulary (five states
+  incl. update-required; the GET-render read-only contract rides the context parameter), the
+  typed error hierarchy (transient marker; rate-limit Retry-After aware), and the device/PKCE
+  flow shapes (S256 pinned against the RFC 7636 vector; user-scoped pending state). Contract
+  tests: 148 new (token/clock, errors, HTTP incl. redaction + CRLF pins, grant, policy,
+  availability, flow) plus `SharedOAuthArchitectureTest`, the architecture sweep proving zero
+  WordPress reach, provider neutrality, rewrite-safe namespace spelling, no static mutable
+  state, and PSR-4 discipline (non-vacuity-guarded, mutation-batteried). Architecture review:
+  a two-lens review round (four dimension reviewers, adversarial verification — 4 confirmed
+  findings fixed as 9c41baa/ec2ba0d, 4 refuted with two consciously deferred to the plugin
+  flow tasks) confirmed no WordPress global is hidden inside the pure value objects.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

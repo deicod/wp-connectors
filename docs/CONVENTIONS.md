@@ -11,7 +11,7 @@ check disagree, fix the check and this document in the same change.
 |------|---------|-------------------|
 | `connectors/<slug>/` | one standalone plugin | `Deicod\WpConnectors\<Ns>` |
 | `connectors/<slug>/src/` | PSR-4 mapped source root | — |
-| `shared/` | source-only shared OAuth/token library | none (copied per-plugin at build time) |
+| `shared/src/` | source-only shared OAuth/token contracts | `Deicod\WpConnectors\Shared` (dev/test only; rewritten per-plugin at build time) |
 | `tests/` | PHPUnit suite + harness | global-namespace WP stubs |
 | `bin/` | build/validation tooling (committed) | — |
 | `tools/`, `vendor/`, `dist/` | gitignored artifacts (composer.phar, deps, zips) | — |
