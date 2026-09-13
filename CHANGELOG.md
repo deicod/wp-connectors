@@ -49,6 +49,44 @@ decision, including glm38-1's 7.4-compat fixes and the PHPCompatibility
   both directions; the verifier's cosmetic residues cleaned (the harness's
   bare $instances; no-op, two comment phrasings).
 
+### Fixed (zai / M2 — GLM39 round, /code-review max)
+
+The 39th review round (15 emitted; the caller dropped 13 as
+ledger-covered re-flags, each naming its own ledger citation and
+offering no new evidence — zero correctness defects, both survivors
+cleanup-class). 2 fix commits, then a two-lens verifier pass
+(independent correctness + security agents over the full round diff) —
+verdicts in round 39 of docs/review/REFUTATION_LEDGER.md:
+
+- The declaration-validation walk is ONE shared scaffold (glm39-1):
+  the sequence (empty tool name → duplicate name → declared-names
+  bookkeeping → list-root parameter schema, per declaration,
+  first-bad-wins) was maintained as near-verbatim loop twins in
+  prepare_tools_param() and reject_misshapen_wire_values() while the
+  rules already lived on RequestShapeGuard (glm19-5) — and the parity
+  records show each rule landing one surface late while the loops were
+  twins (GLM12 #5, glm13-9, glm16-11). The walk joins the rules on the
+  guard (the glm26-7/glm30-4 composition idiom): the zai surface calls
+  it bare (rejections only; the vendor parent assembles tools[]
+  itself), the zai_anthropic surface's memo read/store, eager
+  encodability oracle, empty-object normalization, and tools entry run
+  as the per-declaration continuation. Behaviorally inert by the DTO's
+  immutability (the schema check now precedes the memo read and re-runs
+  on hits — a no-op, the same immutable parameters that passed once).
+  New inherited lockstep pin holds the order on BOTH surfaces
+  (identity before schema within one declaration; declaration order
+  across declarations) — the coverage the duplication lacked.
+- The DebugLogger option pair joins the glm23-13 class-free pin
+  (glm39-2): the debug literals were hand-spelled on both the
+  uninstall side and the suite's own plants/assertions, so a constant
+  rename left both sides consistently wrong together — the suite green
+  while the running plugin's log row (redacted request URLs) survived
+  uninstall as an orphan. The pin derives both names from
+  DebugLogger::OPTION_ENABLED/OPTION_LOG and the plants ride the
+  constants too; mutation-tested (a planted rename fails three
+  assertions across both directions). uninstall.php itself is
+  untouched — the class-free constraint stands.
+
 ### Fixed (zai / M2 — GLM38 round, /code-review max)
 
 The 38th review round (15 emitted; the caller dropped 3 as
