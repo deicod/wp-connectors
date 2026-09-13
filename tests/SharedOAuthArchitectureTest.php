@@ -71,15 +71,18 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      * Case-insensitive for the CALL names (PHP calls are), scoped so
      * the superglobals stay case-sensitive ($globals is an ordinary
      * variable, $GLOBALS the superglobal). The clock-read twins of
-     * date() ride along (gmdate/mktime/idate/strftime) and putenv joins
-     * getenv (an environment WRITE is the same seam); strtotime and
-     * date_create stay legal — they are string-parse shapes, and the
-     * 'now'-reading spellings they share are the port implementation's
-     * own (SystemClock's DateTimeImmutable('now')), which a
-     * spelling-level sweep cannot and should not ban. Prose naming a
-     * call shape is rewritten, never exempted (the floor82-2 idiom).
+     * date() ride along (gmdate/mktime/idate/strftime, and the
+     * no-argument clock readers getdate/localtime — verifier round
+     * t31-r2-17, the floor82-2 'holes a recollection-assembled list
+     * misses' class again) and putenv joins getenv (an environment
+     * WRITE is the same seam); strtotime and date_create stay legal —
+     * they are string-parse shapes, and the 'now'-reading spellings
+     * they share are the port implementation's own (SystemClock's
+     * DateTimeImmutable('now')), which a spelling-level sweep cannot
+     * and should not ban. Prose naming a call shape is rewritten,
+     * never exempted (the floor82-2 idiom).
      */
-    private const DIRECT_ENVIRONMENT_PATTERN = '/\b(?i:time|microtime|hrtime|date|gmdate|mktime|idate|strftime|getenv|putenv)\s*\(|\$(?:_SERVER|_ENV|GLOBALS)\b/';
+    private const DIRECT_ENVIRONMENT_PATTERN = '/\b(?i:time|microtime|hrtime|date|gmdate|mktime|idate|strftime|getdate|localtime|getenv|putenv)\s*\(|\$(?:_SERVER|_ENV|GLOBALS)\b/';
 
     /**
      * @return list<string> Absolute paths of every PHP file under shared/src.
@@ -571,6 +574,9 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             'getenv("PROXY_URL")',
             'PUTENV("LC_ALL=C")',
             'mktime(0, 0, 0)',
+            'getdate()',
+            'GETDATE()',
+            'localtime()',
             "\$_SERVER['REQUEST_TIME']",
             '$GLOBALS[\'offenders\']',
             '$env = $_ENV;',
