@@ -47,11 +47,36 @@ foreach ( glob( $connectors_dir . '/*/src', GLOB_ONLYDIR ) ?: array() as $src_di
 	);
 }
 
+/*
+ * Dev-only PSR-4 map for the shared OAuth contracts (Task 3.1): shared/src
+ * carries the source namespace Deicod\WpConnectors\Shared, which
+ * bin/build.php rewrites into each plugin's private namespace at build
+ * time (record 0005). Tests load the source directly; shipped plugins
+ * never do.
+ */
+$shared_src = dirname( __DIR__ ) . '/shared/src';
+if ( is_dir( $shared_src ) ) {
+	$shared_prefix = 'Deicod\\WpConnectors\\Shared\\';
+	spl_autoload_register(
+		static function ( string $class ) use ( $shared_prefix, $shared_src ) {
+			$len = strlen( $shared_prefix );
+			if ( strncmp( $class, $shared_prefix, $len ) !== 0 ) {
+				return;
+			}
+			$file = $shared_src . '/' . str_replace( '\\', '/', substr( $class, $len ) ) . '.php';
+			if ( is_file( $file ) ) {
+				require $file;
+			}
+		}
+	);
+}
+
 require_once __DIR__ . '/harness/wp-stubs.php';
 require_once __DIR__ . '/harness/SdkHttpClient.php';
 require_once __DIR__ . '/harness/CurlPsr18Client.php';
 require_once __DIR__ . '/harness/WpConnectorsTestCase.php';
 require_once __DIR__ . '/harness/FakeSecrets.php';
+require_once __DIR__ . '/harness/DeterministicClock.php';
 require_once __DIR__ . '/harness/HttpResponseFactory.php';
 require_once __DIR__ . '/harness/SimpleArrayCache.php';
 require_once __DIR__ . '/harness/OpaqueAuthentication.php';
