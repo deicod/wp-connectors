@@ -65,6 +65,16 @@ final class OAuthRateLimitException extends OAuthRuntimeException implements OAu
 	/**
 	 * Provider-supplied Retry-After in seconds, or null when none was supplied.
 	 *
+	 * ADJUDICATION (review round t31-r1-15): this accessor hands out
+	 * the RAW provider number by design — the cap is applied by the
+	 * consumer through RefreshPolicy::capped_retry_after_seconds(),
+	 * never here (clamping inside the exception would couple it to the
+	 * policy and to per-provider config it cannot know). Task 3.3's
+	 * cooldown consumer is the ONE intended reader and lands with its
+	 * own MUST-test for the clamp. Re-open only if a SECOND consumer
+	 * reads the raw accessor — then misuse becomes structural and the
+	 * coupling question is re-litigated.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return int|null

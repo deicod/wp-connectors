@@ -384,7 +384,20 @@ documented exception.
   state, and PSR-4 discipline (non-vacuity-guarded, mutation-batteried). Architecture review:
   a two-lens review round (four dimension reviewers, adversarial verification — 4 confirmed
   findings fixed as 9c41baa/ec2ba0d, 4 refuted with two consciously deferred to the plugin
-  flow tasks) confirmed no WordPress global is hidden inside the pure value objects.
+  flow tasks) confirmed no WordPress global is hidden inside the pure value objects. Fix
+  round t31-r1 (21 commits over the review's 15 findings): DST-proof, saturation-proof
+  absolute-second arithmetic with canonical-UTC serialization (Support\InstantArithmetic);
+  serializability bounds on expires_in and obtained-at; Http\HeaderMap as the single
+  header-map owner (RFC 7230 token names, control-byte + C1/line-separator class in values,
+  case-variant duplicate fence) with the redaction hole the verifier reproduced closed;
+  character-wise SecretMask (never invalid UTF-8); the architecture sweep loud on PCRE
+  aborts and unreadable files, typed/DNF statics caught; revoke() and the instant
+  arithmetic reject typed at their int boundaries; canonical-only serialized instants;
+  the storage port widened to a generation-checked compare-and-set (Task 3.3's fence,
+  fixed before 3.2/3.3 pin the shape) and token-set reads made forward-tolerant (Task
+  4.4's sixth key loads on older readers) — both scope decisions and the raw
+  retry-after adjudication ledgered; a two-lens verifier pass re-drove every fix
+  empirically (six findings fixed as t31-r1-16..21).
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

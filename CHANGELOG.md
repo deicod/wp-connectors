@@ -89,6 +89,95 @@ HTTP 36, grant 22, policy 16, availability 5, flow 21) +
 `SharedOAuthArchitectureTest` (5) — 1305 → 1453 tests, 42179 → 42668
 assertions, 2 skipped unchanged (live-key gates).
 
+### Fixed (shared — M3 Task 3.1, review round t31-r1)
+
+Fix round over the review's 15 findings (12 counted defects + 3 scope
+decisions), 21 commits (t31-r1-1..12, a saturation follow-up,
+t31-r1-13/14 executing the two DECIDE+IMPLEMENT scope notes, and six
+verifier-round fixes t31-r1-16..21 after the two-lens verifier pass),
+each suite-green:
+
+- **DST-proof absolute-second arithmetic** (t31-r1-1..3 + follow-up):
+  expiry was derived via wall-clock `modify()` in the reading's named
+  timezone — across a spring-forward a 7200-second lifetime really
+  spans 3600 absolute seconds, and `from_array()`'s re-parse then
+  rejected the payload `to_array()` itself produced (permanently
+  unloadable grant). New single owner `Support\InstantArithmetic`
+  (raw integer-timestamp arithmetic — DST-proof AND
+  saturation-proof: `modify()` silently no-ops near a trillion
+  seconds); serialization is canonical UTC (the only
+  DST-unambiguous spelling); the policy's expiry-minus-skew
+  threshold rides the same owner. Pinned across Europe/Berlin,
+  America/New_York, and Australia/Sydney in both transition
+  directions, plus pre-epoch and saturation-scale boundaries.
+- **`expires_in` upper bound** (t31-r1-4): the derived expiry must
+  stay inside the serializable range (the last UTC second of year
+  9999) — an unchecked derivation saturated silently (expiry ==
+  obtained-at with every gate green). Boundary pinned exactly;
+  obtained-at readings are floored at year 0000 for the same
+  round-trip reason (t31-r1-20).
+- **`Http\HeaderMap`, the single header-map owner** (t31-r1-5): the
+  validation loop, case-insensitive lookup, and masked render lived
+  near-verbatim in both HTTP VOs; all three now live once (behavior
+  identical, lockstep-pinned). Hardened inside the owner:
+  the full control-byte class in values with HTAB legal per RFC 7230
+  (t31-r1-9) and the UTF-8 spellings of C1/U+2028/U+2029 (t31-r1-19),
+  case-variant duplicate names rejected (t31-r1-10), and header
+  NAMES must be RFC 7230 tokens — off-grammar spellings
+  ('Authorization ' et al.) had dodged the SecretMask vocabulary and
+  rendered full secrets unmasked (t31-r1-16, the verifier's MEDIUM
+  redaction hole). All gates read abort-as-reject.
+- **`SecretMask` is character-wise, never invalid UTF-8** (t31-r1-6):
+  the byte-wise tail split multibyte characters mid-sequence and
+  `json_encode()` dropped the redacted log line. Pure byte-level
+  UTF-8 awareness (no mbstring dependency): the tail is the last
+  four complete characters, binary values degrade to the longest
+  valid trailing run or the bare mask.
+- **Architecture sweep hardening** (t31-r1-7/8/17/21): a PCRE abort
+  and an unreadable swept file both fail LOUDLY (the old silent
+  fallbacks swept the file as zero-or-one contentless lines with
+  every gate skipping it); the static-mutable pattern catches typed,
+  DNF-typed, and untyped spellings (battery-pinned both directions).
+- **`StoredGrant::revoke()` at PHP_INT_MAX** (t31-r1-11) rejects with
+  the documented type instead of overflowing the int to a float
+  TypeError; `InstantArithmetic::minus_seconds(PHP_INT_MIN)` likewise
+  (t31-r1-18).
+- **Serialized instants must be the exact canonical spelling**
+  (t31-r1-12): `createFromFormat()` alone accepted 'Z' suffixes,
+  padded fractions, whitespace, non-UTC offsets, and silently ROLLED
+  calendar-impossible dates — laundering corrupted payloads into
+  valid sets. Shape-validated and calendar-honest now.
+
+### Changed (shared — M3 Task 3.1, review round t31-r1 scope decisions)
+
+- **The storage port commits generation-checked** (t31-r1-13):
+  `save(provider, grant, expected_generation): bool` is a
+  compare-and-set against the persisted generation — Task 3.3's
+  fencing requirement fixed into the port before the envelope and
+  coordination tasks pin the three-method shape. `EXPECT_NO_GRANT`
+  names the absent precondition (first install); a false return is a
+  fence verdict (the late writer discards its tokens, never merges),
+  not an error. The in-memory fake implements the CAS; the
+  revoke-versus-late-refresh race is pinned end-to-end.
+- **Token-set reads are forward-tolerant** (t31-r1-14): the five
+  modelled keys stay required and strictly validated; keys this
+  version does not model are ignored, so Task 4.4's sixth key loads
+  on older readers instead of fail-closing every stored grant into a
+  forced re-connect. Versioning stays the envelope's single
+  authority; a load → save round trip through an older reader drops
+  the unmodelled keys (documented and pinned).
+- **`OAuthRateLimitException::retry_after_seconds()` stays raw**
+  (t31-r1-15, adjudicated, no fix): the clamp is the consumer's job
+  (`RefreshPolicy::capped_retry_after_seconds()`); the adjudication
+  and its reopen condition (a second consumer) are recorded at the
+  accessor and in the ledger.
+
+Verifier pass: two independent lenses (correctness + security) over
+the whole round diff — every fix-claim HELD (re-driven empirically,
+the DST battery extended into +30-minute and +12:45 zones), six
+findings fixed as t31-r1-16..21, below-bar notes ledgered. Suite
+1453 → 1495 tests, 42668 → 42899 assertions, 2 skipped unchanged.
+
 ### Changed (tooling — PHP floor 8.2, user decision 2026-09-11)
 
 The supported PHP floor is **8.2**, not 7.4 — "Pff PHP 7.4 wird nicht mal
