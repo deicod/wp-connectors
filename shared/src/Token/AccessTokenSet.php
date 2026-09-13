@@ -282,6 +282,12 @@ final class AccessTokenSet {
 	/**
 	 * Storage serialization (strict, round-trip exact).
 	 *
+	 * The product carries exactly the keys this version models —
+	 * from_array() ignores keys it does not model, so a payload that
+	 * round-trips through an older reader degrades to that reader's
+	 * shape (the forward-tolerance decision; the envelope owns the
+	 * format version).
+	 *
 	 * Both instants render in their CANONICAL UTC spelling — the
 	 * serialized payload must name each instant unambiguously, and a
 	 * named timezone's rendering is DST-dependent (the same instant
@@ -310,16 +316,27 @@ final class AccessTokenSet {
 	/**
 	 * Rebuilds a token set from its storage serialization.
 	 *
-	 * Strict in both directions: the key set must match exactly (missing or
-	 * extra keys rejected), types are never coerced (`'3600'` is not an
-	 * int), the instants must parse in the serialization format, and the
-	 * serialized expiry must equal the re-derived one — a payload whose
-	 * facts disagree is malformed, not repaired. The compare is on the
-	 * CANONICAL UTC rendering of both instants, so a payload serialized
-	 * from a named-timezone reading round-trips exactly: the re-derived
-	 * expiry is re-derived by the same absolute arithmetic, and the
-	 * parsed reading re-attaches only the offset the canonical spelling
-	 * itself carries.
+	 * Strict about everything this version models, forward-tolerant
+	 * about what it does not (review round t31-r1, the Task-4.4
+	 * decision): the five modelled keys must all be PRESENT and
+	 * strictly typed, types are never coerced (`'3600'` is not an
+	 * int), the instants must carry the canonical spelling, and the
+	 * serialized expiry must equal the re-derived one — a payload
+	 * whose facts disagree is malformed, not repaired. Keys this
+	 * version does not model are IGNORED: a payload written by a
+	 * newer version (Task 4.4 adds the id-token facts member) loads
+	 * on the older reader instead of fail-closing every stored grant
+	 * into a forced re-connect. Format versioning stays the ENVELOPE's
+	 * job (the versioned-encryption invariant documented on the
+	 * storage port) — the inner payload keeps no version of its own.
+	 * Honest cost, stated: a load → save round trip through an older
+	 * reader DROPS the unmodelled keys.
+	 *
+	 * The expiry compare is on the CANONICAL UTC rendering of both
+	 * instants, so a payload serialized from a named-timezone reading
+	 * round-trips exactly: the re-derived expiry is re-derived by the
+	 * same absolute arithmetic, and the parsed reading re-attaches
+	 * only the offset the canonical spelling itself carries.
 	 *
 	 * @since 0.1.0
 	 *
@@ -333,10 +350,9 @@ final class AccessTokenSet {
 		}
 
 		$expected = array( 'access_token', 'expires_at', 'expires_in', 'obtained_at', 'refresh_token' );
-		$actual   = array_keys( $data );
-		sort( $actual, SORT_STRING );
-		if ( $actual !== $expected ) {
-			throw new InvalidArgumentException( 'The serialized token set must carry exactly the keys ' . implode( ', ', $expected ) . ' — missing or extra keys are rejected.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a fixed class-owned key list; escaping belongs to the display layer.
+		$missing  = array_diff( $expected, array_keys( $data ) );
+		if ( array() !== $missing ) {
+			throw new InvalidArgumentException( 'The serialized token set must carry the keys ' . implode( ', ', $expected ) . ' — missing: ' . implode( ', ', $missing ) . '.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- fixed class-owned key lists in a developer-facing rejection; escaping belongs to the display layer.
 		}
 		if ( ! is_string( $data['access_token'] ) ) {
 			throw new InvalidArgumentException( 'The serialized access token must be a string.' );

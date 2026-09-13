@@ -332,8 +332,11 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
 
         return array(
             'not an array' => array('nope', 'must be an array'),
-            'missing key' => array($without('expires_in'), 'exactly the keys'),
-            'extra key' => array($with(array('id_token' => 'x')), 'exactly the keys'),
+            // t31-r1-14: missing keys name the missing-key rejection;
+            // EXTRA keys are no longer rejected — see the
+            // forward-tolerance pin below (the superseded exact-key
+            // entry pinned the old contract).
+            'missing key' => array($without('expires_in'), 'missing: expires_in'),
             'non-string access token' => array($with(array('access_token' => 42)), 'access token must be a string'),
             'numeric-string expires_in' => array($with(array('expires_in' => '3600')), 'expires_in must be an int'),
             'float expires_in' => array($with(array('expires_in' => 3600.5)), 'expires_in must be an int'),
@@ -391,6 +394,36 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         );
 
         $this->assertSame($data, AccessTokenSet::from_array($reordered)->to_array());
+    }
+
+    /**
+     * Review-round pin (t31-r1-14, the Task-4.4 decision): reads are
+     * FORWARD-TOLERANT — the five modelled keys are required and
+     * strictly validated, but keys this version does not model are
+     * ignored, so a payload written by a newer version (Task 4.4 adds
+     * the id-token facts member) loads on an older reader instead of
+     * fail-closing every stored grant into a forced re-connect on
+     * upgrade. Honest cost, pinned: a load → save round trip through
+     * THIS version drops the unmodelled keys. Format versioning stays
+     * the envelope's job — the inner payload carries no version field.
+     */
+    public function testFromArrayIgnoresKeysThisVersionDoesNotModel(): void
+    {
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, $this->obtainedAt());
+        $future = $set->to_array() + array('id_token' => 'future-facts-member');
+
+        $restored = AccessTokenSet::from_array($future);
+
+        // The modelled facts survive...
+        $this->assertSame($set->access_token(), $restored->access_token());
+        $this->assertEquals($set->expires_at(), $restored->expires_at());
+        // ...and the re-serialization is this version's shape: exactly
+        // the five modelled keys, the future member dropped.
+        $this->assertSame($set->to_array(), $restored->to_array());
+        $this->assertSame(
+            array('access_token', 'refresh_token', 'expires_in', 'obtained_at', 'expires_at'),
+            array_keys($restored->to_array())
+        );
     }
 
     /* ---------------------------------------------------------------
