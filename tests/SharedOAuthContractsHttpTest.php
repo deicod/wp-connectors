@@ -167,6 +167,71 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         new HttpResponse(200, array('Content-Type' => "application/json\nSet-Cookie: x"));
     }
 
+    /**
+     * Review-round pin (t31-r1-9): the boundary rejected only \r and \n
+     * — ANSI escapes, NUL, vertical tab, and DEL passed and rendered
+     * verbatim into the safe debug forms (provider-side response
+     * values too). The whole control-byte class is rejected now; a
+     * horizontal tab stays legal in a VALUE (RFC 7230 field-value).
+     */
+    public function testControlBytesInHeaderValuesAreRejectedInBothVos(): void
+    {
+        $hostile_values = array(
+            'NUL' => "token\x00suffix",
+            'vertical tab' => "token\x0Bsuffix",
+            'escape sequence' => "ok\x1B[2Jok",
+            'bell' => "ok\x07",
+            'DEL' => "ok\x7F",
+            'bare carriage return' => "ok\x0Dnope",
+            'bare line feed' => "ok\x0Anope",
+        );
+
+        foreach ($hostile_values as $label => $value) {
+            try {
+                new HttpRequest('POST', 'https://host.example/', array('X-Test' => $value));
+                $this->fail(sprintf('A header value carrying %s must be rejected by the request VO.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+
+            try {
+                new HttpResponse(200, array('X-Test' => $value));
+                $this->fail(sprintf('A header value carrying %s must be rejected by the response VO.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+        }
+    }
+
+    public function testControlBytesInHeaderNamesAreRejectedToo(): void
+    {
+        foreach (array("X-Foo\x00", "X\x1B[F", "X\x7F", "X\tY") as $name) {
+            try {
+                new HttpRequest('POST', 'https://host.example/', array($name => 'value'));
+                $this->fail('A header name carrying a control byte (tab included) must be rejected.');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+        }
+    }
+
+    public function testHorizontalTabStaysLegalInHeaderValues(): void
+    {
+        // RFC 7230 field-value: HTAB is legal (and rendered as-is).
+        $request = new HttpRequest('POST', 'https://host.example/', array('X-Test' => "a\tb"));
+
+        $this->assertSame("a\tb", $request->header('x-test'));
+        $this->assertStringContainsString("X-Test: a\tb", (string) $request);
+    }
+
+    public function testObsTextHighBytesStayLegalInHeaderValues(): void
+    {
+        $request = new HttpRequest('POST', 'https://host.example/', array('X-Test' => "café"));
+
+        $this->assertSame("café", $request->header('x-test'));
+        $this->assertStringContainsString('X-Test: café', (string) $request);
+    }
+
     public function testEmptyHeaderNameIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);
@@ -458,9 +523,11 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $this->assertStringNotContainsString('is_sensitive_header_name', $source, $class . ' must not hand-roll the masked render.');
         }
 
-        // Non-vacuity: the owner really owns all three halves.
+        // Non-vacuity: the owner really owns all three halves. (The
+        // rejection-message fragment was superseded by t31-r1-9 when
+        // the control-byte class replaced the line-break-only check.)
         $owner = (string) file_get_contents((new \ReflectionClass(HeaderMap::class))->getFileName());
-        foreach (array('must not contain line breaks', 'strtolower', 'is_sensitive_header_name', 'rendered_lines') as $fragment) {
+        foreach (array('must not contain control characters', 'strtolower', 'is_sensitive_header_name', 'rendered_lines') as $fragment) {
             $this->assertStringContainsString($fragment, $owner, 'HeaderMap must own the ' . $fragment . ' half.');
         }
     }

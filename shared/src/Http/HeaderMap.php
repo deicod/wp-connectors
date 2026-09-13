@@ -33,6 +33,28 @@ use InvalidArgumentException;
 final class HeaderMap {
 
 	/**
+	 * Control bytes a header VALUE may not carry: the whole C0 range
+	 * except horizontal tab — legal in field values per RFC 7230 — plus
+	 * DEL. ANSI escapes, NUL, and vertical tab rendered verbatim into
+	 * the safe debug forms otherwise (terminal-injection material).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	private const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]/';
+
+	/**
+	 * Control bytes a header NAME may not carry: the whole C0 range
+	 * (tabs are not legal in a token) plus DEL.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	private const NAME_CONTROL_BYTE_PATTERN = '/[\x00-\x1F\x7F]/';
+
+	/**
 	 * Header lines (name as given => value).
 	 *
 	 * @since 0.1.0
@@ -46,7 +68,7 @@ final class HeaderMap {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param array<string, mixed> $headers Header map; non-empty string keys, string values.
+	 * @param array<string, mixed> $headers Header map; non-empty string keys, string values free of control bytes (a horizontal tab is legal in a value).
 	 * @throws InvalidArgumentException When the header map violates the contract.
 	 */
 	public function __construct( array $headers = array() ) {
@@ -57,12 +79,14 @@ final class HeaderMap {
 			if ( ! is_string( $value ) ) {
 				throw new InvalidArgumentException( 'Header values must be strings.' );
 			}
-			// Line breaks in a header line are injection material: in a
-			// NAME they forge extra header lines; in a VALUE they do the
-			// same from the second line on. Rejected at the boundary, so
-			// the debug form can never render a forged line.
-			if ( false !== strpos( $name . $value, "\r" ) || false !== strpos( $name . $value, "\n" ) ) {
-				throw new InvalidArgumentException( 'Header names and values must not contain line breaks.' );
+			// Control bytes in a header line are injection material: a
+			// line break in a NAME forges extra header lines and in a
+			// VALUE does the same from the second line on; the remaining
+			// control bytes (NUL, vertical tab, ESC, DEL) render verbatim
+			// into the safe debug forms. The whole class is rejected at
+			// the boundary, so the debug form can never carry it.
+			if ( 1 === preg_match( self::NAME_CONTROL_BYTE_PATTERN, $name ) || 1 === preg_match( self::VALUE_CONTROL_BYTE_PATTERN, $value ) ) {
+				throw new InvalidArgumentException( 'Header names and values must not contain control characters or line breaks (a horizontal tab is legal in a value).' );
 			}
 		}
 
