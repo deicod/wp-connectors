@@ -63,6 +63,22 @@ final class AccessTokenSet {
 	const SERIAL_INSTANT_FORMAT = 'Y-m-d\TH:i:s.uP';
 
 	/**
+	 * The exact canonical spelling one serialized instant must have.
+	 *
+	 * Parsing with createFromFormat() alone accepts non-canonical
+	 * spellings — a 'Z' suffix, whitespace before the offset,
+	 * one-to-five-digit fractions ('.5' becomes 500000 microseconds) —
+	 * laundering corrupted or foreign payloads into valid sets. The
+	 * shape is validated explicitly: four-digit year, T separator,
+	 * six-digit fraction, and the canonical UTC offset exactly.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	private const SERIAL_INSTANT_PATTERN = '/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+00:00\z/';
+
+	/**
 	 * The zone every serialized instant renders in (canonical UTC).
 	 *
 	 * @since 0.1.0
@@ -335,11 +351,8 @@ final class AccessTokenSet {
 			throw new InvalidArgumentException( 'The serialized instants must be strings.' );
 		}
 
-		$obtained_at = DateTimeImmutable::createFromFormat( self::SERIAL_INSTANT_FORMAT, $data['obtained_at'] );
-		$expires_at  = DateTimeImmutable::createFromFormat( self::SERIAL_INSTANT_FORMAT, $data['expires_at'] );
-		if ( false === $obtained_at || false === $expires_at ) {
-			throw new InvalidArgumentException( 'The serialized instants must match the serialization format exactly.' );
-		}
+		$obtained_at = self::parse_serialized_instant( $data['obtained_at'] );
+		$expires_at  = self::parse_serialized_instant( $data['expires_at'] );
 
 		$set = new self( $data['access_token'], $data['refresh_token'], $data['expires_in'], $obtained_at );
 
@@ -365,5 +378,40 @@ final class AccessTokenSet {
 		return $instant
 			->setTimezone( new DateTimeZone( self::SERIAL_ZONE_NAME ) )
 			->format( self::SERIAL_INSTANT_FORMAT );
+	}
+
+	/**
+	 * Parses one serialized instant: exact canonical shape, honest parse.
+	 *
+	 * The shape check runs first (createFromFormat() alone accepts
+	 * non-canonical spellings); the parse must then also be
+	 * calendar-honest — createFromFormat() silently ROLLS an impossible
+	 * date (February 30 becomes March 2) with only a warning, which
+	 * would launder a corrupted payload whose two rolled instants
+	 * re-derive consistently past the strict expiry compare. A parse
+	 * error OR warning is a rejection.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $instant The serialized spelling.
+	 * @return DateTimeImmutable The parsed instant (offset-only UTC zone).
+	 * @throws InvalidArgumentException When the spelling is not exactly canonical or not calendar-valid.
+	 */
+	private static function parse_serialized_instant( string $instant ): DateTimeImmutable {
+		if ( 1 !== preg_match( self::SERIAL_INSTANT_PATTERN, $instant ) ) {
+			throw new InvalidArgumentException( 'The serialized instants must be the canonical UTC spelling exactly (YYYY-MM-DDTHH:MM:SS.ffffff+00:00) — a Z suffix, a padded fraction, surrounding whitespace, or a non-UTC offset is rejected.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a fixed format description in a developer-facing rejection; escaping belongs to the display layer.
+		}
+
+		$parsed = DateTimeImmutable::createFromFormat( self::SERIAL_INSTANT_FORMAT, $instant );
+		if ( false === $parsed ) {
+			throw new InvalidArgumentException( 'The serialized instants must match the serialization format exactly.' );
+		}
+
+		$errors = DateTimeImmutable::getLastErrors();
+		if ( false !== $errors && ( $errors['warning_count'] > 0 || $errors['error_count'] > 0 ) ) {
+			throw new InvalidArgumentException( 'The serialized instants must be calendar-valid — an impossible date is a corrupted payload, never one to roll forward.' );
+		}
+
+		return $parsed;
 	}
 }

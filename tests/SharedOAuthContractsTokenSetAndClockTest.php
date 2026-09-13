@@ -339,7 +339,22 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
             'float expires_in' => array($with(array('expires_in' => 3600.5)), 'expires_in must be an int'),
             'array refresh token' => array($with(array('refresh_token' => array())), 'refresh token must be a string or null'),
             'empty-string refresh token' => array($with(array('refresh_token' => '')), 'refresh token must be null'),
-            'atom-instant without microseconds' => array($with(array('obtained_at' => '2026-09-13T10:00:00+00:00')), 'serialization format'),
+            // t31-r1-12: the shape is judged before parseability, so the
+            // microsecond-less spelling now names the canonical-shape
+            // rejection (the superseded 'serialization format' fragment
+            // pinned the old parse-only check).
+            'atom-instant without microseconds' => array($with(array('obtained_at' => '2026-09-13T10:00:00+00:00')), 'canonical UTC spelling'),
+            'Z suffix' => array($with(array('expires_at' => '2026-09-13T11:00:00.000000Z')), 'canonical UTC spelling'),
+            'lowercase z suffix' => array($with(array('expires_at' => '2026-09-13T11:00:00.000000z')), 'canonical UTC spelling'),
+            'whitespace before offset' => array($with(array('expires_at' => '2026-09-13T11:00:00.000000 +00:00')), 'canonical UTC spelling'),
+            'one-digit fraction' => array($with(array('expires_at' => '2026-09-13T11:00:00.5+00:00')), 'canonical UTC spelling'),
+            'five-digit fraction' => array($with(array('expires_at' => '2026-09-13T11:00:00.12345+00:00')), 'canonical UTC spelling'),
+            'seven-digit fraction' => array($with(array('expires_at' => '2026-09-13T11:00:00.1234567+00:00')), 'canonical UTC spelling'),
+            'non-UTC offset' => array($with(array('expires_at' => '2026-09-13T13:00:00.000000+02:00')), 'canonical UTC spelling'),
+            'calendar-invalid date' => array($with(array(
+                'obtained_at' => '2026-02-30T10:00:00.000000+00:00',
+                'expires_at' => '2026-02-30T11:00:00.000000+00:00',
+            )), 'calendar-valid'),
             'non-string instant' => array($with(array('expires_at' => 1757757600)), 'instants must be strings'),
             'whitespace access token' => array($with(array('access_token' => '   ')), 'non-whitespace string'),
             'inconsistent expiry' => array(
