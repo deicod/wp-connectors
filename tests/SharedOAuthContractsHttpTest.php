@@ -418,6 +418,62 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Fix-round pin (t31-r2-6): the control-byte rejection did not
+     * cover the bidi/override controls — U+202E RLO in a provider
+     * response header value rendered with the tail REORDERED
+     * (character-spoofing: 'ok<U+202E>evac' reads as the mirrored run
+     * 'cave ko' in a bidi-rendering viewer), the sibling of the forged
+     * line t31-r1-19 closed. The whole class joins the shared banned
+     * vocabulary: the U+202A-U+202E embeddings/overrides and the
+     * U+2066-U+2069 isolates, zero-width all, legal in no header value
+     * and (one vocabulary) in no URL either.
+     */
+    public function testBidiOverrideControlsAreRejectedInHeaderValuesInBothVos(): void
+    {
+        $hostile_values = array(
+            'RLO right-to-left override' => "ok\xE2\x80\xAEevac",
+            'LRO left-to-right override' => "ok\xE2\x80\xADevac",
+            'LRE left-to-right embedding' => "ok\xE2\x80\xAAevac",
+            'RLE right-to-left embedding' => "ok\xE2\x80\xABevac",
+            'PDF pop directional formatting' => "ok\xE2\x80\xACevac",
+            'LRI left-to-right isolate' => "ok\xE2\x81\xA6evac",
+            'RLI right-to-left isolate' => "ok\xE2\x81\xA7evac",
+            'FSI first strong isolate' => "ok\xE2\x81\xA8evac",
+            'PDI pop directional isolate' => "ok\xE2\x81\xA9evac",
+        );
+
+        foreach ($hostile_values as $label => $value) {
+            try {
+                new HttpResponse(429, array('Retry-After' => $value));
+                $this->fail(sprintf('A response header value carrying %s must be rejected.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('POST', 'https://host.example/', array('X-Test' => $value));
+                $this->fail(sprintf('A request header value carrying %s must be rejected.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * One vocabulary, two surfaces (the t31-r2-1 sharing made this the
+     * same constant): the bidi class rides out of the URL position too.
+     */
+    public function testBidiControlsAreRejectedInTheUrlSurfaceToo(): void
+    {
+        try {
+            new HttpRequest('GET', "https://api.example/cb\xE2\x80\xAEevac");
+            $this->fail('A URL carrying RLO must be rejected.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('control characters', $e->getMessage());
+        }
+    }
+
+    /**
      * Review-round pin (t31-r1-10): the case-insensitive lookup
      * returned the FIRST match with no duplicate detection — two
      * case-variant spellings made the answer depend on map order (the
