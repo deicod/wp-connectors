@@ -155,12 +155,44 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('https://host.example well/path', $spaced->redacted_url());
     }
 
-    public function testNonStringHeaderKeysAndValuesAreRejected(): void
+    /**
+     * Fix-round pin (t31-r2-4), SUPERSEDING the old non-string-key pin
+     * at this site: PHP coerces a canonical digit-string array key
+     * ('123') to an int before any loop sees it, so the is_string gate
+     * rejected legal all-digit RFC 7230 tokens ('123' => 'x' — digits
+     * are tchars) with a misleading non-string message. Digit names
+     * are accepted in their canonical string spelling now, the token
+     * grammar deciding as ever (an int key whose spelling is off-
+     * grammar would still reject through the grammar gate); the
+     * empty-string key stays rejected.
+     */
+    public function testDigitStringHeaderNamesAreAcceptedNotCoercedAway(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Header names');
+        $map = new HeaderMap(array('123' => 'x'));
 
-        new HttpRequest('POST', 'https://host.example/', array(0 => 'value'));
+        $this->assertSame('x', $map->header('123'));
+        $this->assertSame(array('123: x'), $map->rendered_lines());
+
+        // headers() carries the name's PHP-canonical array spelling —
+        // the integer key for an all-digit name (the engine re-coerces
+        // the digit string on every store; same name, canonical form).
+        $this->assertSame(array(123 => 'x'), $map->headers());
+
+        // Through the request VO, same story: lookup, render, and the
+        // canonical key in headers().
+        $request = new HttpRequest('POST', 'https://host.example/', array('456' => 'y'));
+        $this->assertSame('y', $request->header('456'));
+        $this->assertSame(array(456 => 'y'), $request->headers());
+        $this->assertStringContainsString('456: y', (string) $request);
+
+        // The grammar still owns the boundary: the empty key rejects,
+        // and a spelling a digit key cannot produce still rejects.
+        try {
+            new HeaderMap(array('' => 'value'));
+            $this->fail('The empty header name must stay rejected.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('non-empty', $e->getMessage());
+        }
     }
 
     public function testNonStringHeaderValueIsRejected(): void

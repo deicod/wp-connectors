@@ -85,13 +85,27 @@ final class HeaderMap {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param array<string, mixed> $headers Header map; non-empty string keys, string values free of control bytes (a horizontal tab is legal in a value).
+	 * @param array<string, mixed> $headers Header map; non-empty string keys (an all-digit spelling arrives here as a PHP integer key — the engine coerces canonical digit strings before this loop — and is restored to its string form, the token grammar deciding as ever), string values free of control bytes (a horizontal tab is legal in a value).
 	 * @throws InvalidArgumentException When the header map violates the contract.
 	 */
 	public function __construct( array $headers = array() ) {
 		$seen_lowercase = array();
+		$normalized     = array();
 		foreach ( $headers as $name => $value ) {
-			if ( ! is_string( $name ) || '' === $name ) {
+			// PHP coerces a canonical digit-string array key ('123') to
+			// an int before the loop body sees it — and '0' through '9'
+			// are legal RFC 7230 token characters, so an all-digit header
+			// name is a legal name the old is_string gate rejected with a
+			// misleading message (review round t31-r2-4). The integer is
+			// restored to its canonical string spelling and the NAME
+			// GRAMMAR decides — nothing about the actual grammar loosens.
+			// An array key is only ever int or string, so after the
+			// restoration the name is a string; the empty spelling is
+			// the one left to reject here.
+			if ( is_int( $name ) ) {
+				$name = (string) $name;
+			}
+			if ( '' === $name ) {
 				throw new InvalidArgumentException( 'Header names must be non-empty strings.' );
 			}
 			if ( ! is_string( $value ) ) {
@@ -119,13 +133,24 @@ final class HeaderMap {
 				throw new InvalidArgumentException( 'Header names must be unique case-insensitively — two spellings of one name make the lookup order-dependent.' );
 			}
 			$seen_lowercase[ $lowercase_name ] = $name;
+			$normalized[ $name ]               = $value;
 		}
 
-		$this->headers = $headers;
+		// Stored under the name's canonical spelling — which, for an
+		// all-digit name, PHP itself re-coerces to the integer key in
+		// any array it lands in (the engine's canonical form of the
+		// same name; lookup and render fold through (string) casts and
+		// never observe the difference).
+		$this->headers = $normalized;
 	}
 
 	/**
-	 * The header map exactly as constructed.
+	 * The header map as constructed.
+	 *
+	 * An all-digit name appears under its PHP-canonical integer key (the
+	 * engine's array spelling of the same name — unavoidable in a PHP
+	 * array, invisible to lookup and render, which both fold through
+	 * (string)).
 	 *
 	 * @since 0.1.0
 	 *
