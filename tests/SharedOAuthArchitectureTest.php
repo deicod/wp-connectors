@@ -48,8 +48,16 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
     /**
      * Static mutable state (pure value objects carry none).
+     *
+     * Covers the typed and untyped spellings with visibility on either
+     * side (the PHP 8-idiomatic `private static int $counter = 0;`
+     * bypassed the old `\bstatic\s+\$` form). `static function`/`fn`
+     * (static methods and closures — legal, immutable-state-free) are
+     * excluded; everything else from the keyword to a variable is a
+     * hit. `readonly` cannot combine with `static` (a fatal at
+     * compile time), so no exemption exists to carve.
      */
-    private const STATIC_MUTABLE_PATTERN = '/\bstatic\s+\$[A-Za-z_]/';
+    private const STATIC_MUTABLE_PATTERN = '/\bstatic(?!\s+function\b)(?!\s+fn\b)\s+[^$;={}()]*\$/';
 
     /**
      * @return list<string> Absolute paths of every PHP file under shared/src.
@@ -219,6 +227,45 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                     );
                 }
             }
+        }
+    }
+
+    /**
+     * Review-round pin (t31-r1-8): the static-mutable pattern must
+     * catch EVERY property spelling — typed, untyped, nullable, union,
+     * qualified, visibility on either side, multiline — while leaving
+     * the legal statics (methods, closures, late-static-binding) alone.
+     * Each row is a mutation: a pattern regression fails its row.
+     */
+    public function testStaticMutablePatternCatchesEveryPropertySpelling(): void
+    {
+        $pattern = (new \ReflectionClass(self::class))->getConstant('STATIC_MUTABLE_PATTERN');
+
+        $mustFlag = array(
+            'private static int $counter = 0;',
+            'private static ?string $label = null;',
+            'static $x = 1;',
+            'protected static array $cache = array();',
+            'public static int|false $flag;',
+            'private static \\Foo\\Bar $service;',
+            'static private $y;',
+            'public static int $a, $b = 2;',
+            "private static\n    int \$multiline;",
+        );
+        foreach ($mustFlag as $spelling) {
+            $this->assertSame(1, preg_match($pattern, $spelling), 'The pattern must flag: ' . $spelling);
+        }
+
+        $mustNotFlag = array(
+            'public static function mask( ?string $value ): string',
+            'static function () use ( $x ) {}',
+            'static fn($x) => $x + 1;',
+            'return static::SOME_CONST . $suffix;',
+            'new static($arg);',
+            'abstract static function f($a);',
+        );
+        foreach ($mustNotFlag as $spelling) {
+            $this->assertSame(0, preg_match($pattern, $spelling), 'The pattern must not flag: ' . $spelling);
         }
     }
 
