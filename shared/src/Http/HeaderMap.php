@@ -72,6 +72,7 @@ final class HeaderMap {
 	 * @throws InvalidArgumentException When the header map violates the contract.
 	 */
 	public function __construct( array $headers = array() ) {
+		$seen_lowercase = array();
 		foreach ( $headers as $name => $value ) {
 			if ( ! is_string( $name ) || '' === $name ) {
 				throw new InvalidArgumentException( 'Header names must be non-empty strings.' );
@@ -88,6 +89,16 @@ final class HeaderMap {
 			if ( 1 === preg_match( self::NAME_CONTROL_BYTE_PATTERN, $name ) || 1 === preg_match( self::VALUE_CONTROL_BYTE_PATTERN, $value ) ) {
 				throw new InvalidArgumentException( 'Header names and values must not contain control characters or line breaks (a horizontal tab is legal in a value).' );
 			}
+			// Case-variant spellings of one name make every
+			// case-insensitive lookup order-dependent — whichever came
+			// first wins silently (a 2-second vs 60-second Retry-After
+			// diverges on map order). Rejected at construction; a PHP
+			// array cannot carry the exact-same-case duplicate at all.
+			$lowercase_name = strtolower( $name );
+			if ( isset( $seen_lowercase[ $lowercase_name ] ) ) {
+				throw new InvalidArgumentException( 'Header names must be unique case-insensitively — two spellings of one name make the lookup order-dependent.' );
+			}
+			$seen_lowercase[ $lowercase_name ] = $name;
 		}
 
 		$this->headers = $headers;

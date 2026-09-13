@@ -232,6 +232,35 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertStringContainsString('X-Test: café', (string) $request);
     }
 
+    /**
+     * Review-round pin (t31-r1-10): the case-insensitive lookup
+     * returned the FIRST match with no duplicate detection — two
+     * case-variant spellings made the answer depend on map order (the
+     * round's repro: retry-after 2 vs Retry-After 60). Construction
+     * rejects the collision in both VOs; distinct names are unaffected.
+     */
+    public function testCaseVariantDuplicateHeaderNamesAreRejectedInBothVos(): void
+    {
+        try {
+            new HttpRequest('POST', 'https://host.example/', array('retry-after' => '2', 'Retry-After' => '60'));
+            $this->fail('Case-variant duplicate header names must be rejected by the request VO.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('case-insensitively', $e->getMessage());
+        }
+
+        try {
+            new HttpResponse(429, array('Retry-After' => '60', 'RETRY-AFTER' => '2'));
+            $this->fail('Case-variant duplicate header names must be rejected by the response VO.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('case-insensitively', $e->getMessage());
+        }
+
+        // Case-DISTINCT names coexist as ever; the lookup stays exact.
+        $response = new HttpResponse(429, array('Retry-After' => '60', 'X-RateLimit-Remaining' => '42'));
+        $this->assertSame('60', $response->header('retry-after'));
+        $this->assertSame('42', $response->header('x-ratelimit-remaining'));
+    }
+
     public function testEmptyHeaderNameIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);
