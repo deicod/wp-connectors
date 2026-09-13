@@ -100,6 +100,28 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         }
     }
 
+    /**
+     * Verifier-round pin (t31-r1-20): the serializability bound was
+     * ceiling-only — a BCE obtained-at reading (which 64-bit DateTime
+     * represents) constructed fine, to_array() rendered a SIGNED year
+     * ('-1199-02-15T...'), and from_array() rejected its own payload:
+     * a grant that saves but is permanently unloadable, the exact
+     * fail-closed-unavailability shape t31-r1-2 closed for DST. Year
+     * 0000 renders a legal four-digit spelling and stays inside.
+     */
+    public function testBceObtainedAtReadingsAreRejectedAtConstruction(): void
+    {
+        $floor = new \DateTimeImmutable('@-62167219200'); // 0000-01-01T00:00:00Z
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, $floor);
+
+        $this->assertSame('0000-01-01T01:00:00.000000+00:00', $set->expires_at()->format(AccessTokenSet::SERIAL_INSTANT_FORMAT));
+        $this->assertSame($set->to_array(), AccessTokenSet::from_array($set->to_array())->to_array());
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('serializable range');
+        new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, new \DateTimeImmutable('@-62167219201'));
+    }
+
     public function testEmptyStringRefreshTokenIsRejectedDistinctFromNull(): void
     {
         // '' is NOT the "no replacement token" spelling — null is.

@@ -106,6 +106,23 @@ final class AccessTokenSet {
 	private const SERIALIZABLE_EXPIRY_CEILING = 253402300799;
 
 	/**
+	 * The first UTC second of year 0000: the reading's floor.
+	 *
+	 * The mirror of the expiry ceiling, on the OTHER end (verifier
+	 * round t31-r1-20): a reading before year 0000 (a BCE date, which
+	 * 64-bit DateTime represents) renders a SIGNED year
+	 * ('-1199-02-15T...'), a spelling from_array() rejects — the set
+	 * would save but never reload, the permanently-unloadable-grant
+	 * shape t31-r1-2 closed for DST. Year 0000 itself renders '0000',
+	 * a legal canonical spelling, so it stays inside.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var int
+	 */
+	private const SERIALIZABLE_OBTAINED_FLOOR = -62167219200;
+
+	/**
 	 * Access token (non-empty, non-whitespace-only).
 	 *
 	 * @since 0.1.0
@@ -182,6 +199,9 @@ final class AccessTokenSet {
 		}
 		if ( $expires_in > self::SERIALIZABLE_EXPIRY_CEILING - $obtained_at->getTimestamp() ) {
 			throw new InvalidArgumentException( sprintf( 'The derived expiry must stay within the serializable range (the last UTC second of year 9999); obtained-at plus %d seconds does not.', $expires_in ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
+		}
+		if ( $obtained_at->getTimestamp() < self::SERIALIZABLE_OBTAINED_FLOOR ) {
+			throw new InvalidArgumentException( 'The obtained-at reading must stay within the serializable range (year 0000 through 9999 UTC); a BCE reading renders a signed year no payload can reload.' );
 		}
 
 		$this->access_token  = $access_token;
