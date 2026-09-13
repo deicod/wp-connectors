@@ -24,7 +24,6 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Shared\Http;
 
-use Deicod\WpConnectors\Shared\Support\SecretMask;
 use InvalidArgumentException;
 
 /**
@@ -62,13 +61,13 @@ final class HttpRequest {
 	private readonly string $url;
 
 	/**
-	 * Header map (name as given => value).
+	 * Header map (the shared owner of validation, lookup, and render).
 	 *
 	 * @since 0.1.0
 	 *
-	 * @var array<string, string>
+	 * @var HeaderMap
 	 */
-	private readonly array $headers;
+	private readonly HeaderMap $headers;
 
 	/**
 	 * Request body, or null when the request carries none.
@@ -107,25 +106,11 @@ final class HttpRequest {
 
 		$parts = $this->validated_url_parts( $url );
 
-		foreach ( $headers as $name => $value ) {
-			if ( ! is_string( $name ) || '' === $name ) {
-				throw new InvalidArgumentException( 'Header names must be non-empty strings.' );
-			}
-			if ( ! is_string( $value ) ) {
-				throw new InvalidArgumentException( 'Header values must be strings.' );
-			}
-			// Line breaks in a header line are injection material: in a
-			// NAME they forge extra header lines; in a VALUE they do the
-			// same from the second line on. Rejected at the boundary, so
-			// the debug form can never render a forged line.
-			if ( false !== strpos( $name . $value, "\r" ) || false !== strpos( $name . $value, "\n" ) ) {
-				throw new InvalidArgumentException( 'Header names and values must not contain line breaks.' );
-			}
-		}
+		$header_map = new HeaderMap( $headers );
 
 		$this->method       = $normalized_method;
 		$this->url          = $url;
-		$this->headers      = $headers;
+		$this->headers      = $header_map;
 		$this->body         = $body;
 		$this->redacted_url = $parts['scheme'] . '://' . $parts['authority'] . $parts['path'];
 	}
@@ -160,7 +145,7 @@ final class HttpRequest {
 	 * @return array<string, string>
 	 */
 	public function headers(): array {
-		return $this->headers;
+		return $this->headers->headers();
 	}
 
 	/**
@@ -172,13 +157,7 @@ final class HttpRequest {
 	 * @return string|null The value, or null when absent.
 	 */
 	public function header( string $name ): ?string {
-		foreach ( $this->headers as $header_name => $value ) {
-			if ( strtolower( (string) $header_name ) === strtolower( $name ) ) {
-				return $value;
-			}
-		}
-
-		return null;
+		return $this->headers->header( $name );
 	}
 
 	/**
@@ -215,11 +194,7 @@ final class HttpRequest {
 	 * @return string
 	 */
 	public function __toString(): string {
-		$lines = array( $this->method . ' ' . $this->redacted_url );
-		foreach ( $this->headers as $name => $value ) {
-			$rendered = SecretMask::is_sensitive_header_name( (string) $name ) ? SecretMask::mask( $value ) : $value;
-			$lines[]  = $name . ': ' . $rendered;
-		}
+		$lines   = array_merge( array( $this->method . ' ' . $this->redacted_url ), $this->headers->rendered_lines() );
 		$lines[] = '[body omitted]';
 
 		return implode( "\n", $lines );

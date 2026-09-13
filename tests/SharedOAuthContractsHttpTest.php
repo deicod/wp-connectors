@@ -12,6 +12,7 @@
 
 declare(strict_types=1);
 
+use Deicod\WpConnectors\Shared\Http\HeaderMap;
 use Deicod\WpConnectors\Shared\Http\HttpRequest;
 use Deicod\WpConnectors\Shared\Http\HttpResponse;
 use Deicod\WpConnectors\Shared\Http\HttpTransportInterface;
@@ -347,7 +348,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
 
     public function testRequestAndResponseVosAreImmutableWithNoSetters(): void
     {
-        foreach (array(HttpRequest::class, HttpResponse::class) as $class) {
+        foreach (array(HttpRequest::class, HttpResponse::class, HeaderMap::class) as $class) {
             $reflection = new \ReflectionClass($class);
             $this->assertTrue($reflection->isFinal());
             foreach ($reflection->getProperties() as $property) {
@@ -355,5 +356,44 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
                 $this->assertFalse($property->isStatic());
             }
         }
+    }
+
+    /**
+     * Review-round lockstep pin (t31-r1-5): the header-map logic — the
+     * validation loop, the case-insensitive lookup, and the masked
+     * render — was maintained near-verbatim in both VOs. All three live
+     * once on HeaderMap now; neither VO may reintroduce a hand-rolled
+     * copy (a drift there would reopen exactly the divergence class
+     * this round closed).
+     */
+    public function testBothVosRideTheSharedHeaderMapOwner(): void
+    {
+        foreach (array(HttpRequest::class, HttpResponse::class) as $class) {
+            $source = (string) file_get_contents((new \ReflectionClass($class))->getFileName());
+
+            $this->assertStringContainsString('new HeaderMap(', $source, $class . ' must embed the shared header-map owner.');
+            $this->assertStringNotContainsString('must not contain line breaks', $source, $class . ' must not hand-roll header validation.');
+            $this->assertStringNotContainsString('strtolower', $source, $class . ' must not hand-roll the case-insensitive lookup.');
+            $this->assertStringNotContainsString('is_sensitive_header_name', $source, $class . ' must not hand-roll the masked render.');
+        }
+
+        // Non-vacuity: the owner really owns all three halves.
+        $owner = (string) file_get_contents((new \ReflectionClass(HeaderMap::class))->getFileName());
+        foreach (array('must not contain line breaks', 'strtolower', 'is_sensitive_header_name', 'rendered_lines') as $fragment) {
+            $this->assertStringContainsString($fragment, $owner, 'HeaderMap must own the ' . $fragment . ' half.');
+        }
+    }
+
+    public function testHeaderMapRendersMaskedSensitiveAndVerbatimOtherLines(): void
+    {
+        $token = FakeSecrets::accessToken();
+        $map = new HeaderMap(array('Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'));
+
+        $this->assertSame(
+            array('Authorization: ' . SecretMask::MASK . substr($token, -4), 'Content-Type: application/json'),
+            $map->rendered_lines()
+        );
+        $this->assertSame('Bearer ' . $token, $map->header('authorization'));
+        $this->assertNull($map->header('absent-header'));
     }
 }
