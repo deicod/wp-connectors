@@ -197,6 +197,15 @@ final class WpConnectorsBuild
                     : self::namespaceSuffixFromSlug($slug);
                 $sharedFiles = self::collectFiles($sharedDir);
                 foreach ($sharedFiles as $relative) {
+                    // Only PHP SOURCES ship (verifier round t31-r2-18):
+                    // collectFiles() filters by excluded path names
+                    // only, so any non-PHP file committed inside
+                    // shared/src (notes, READMEs) would ride into
+                    // plugin zips byte-identical — the rewrite no-ops
+                    // on content without an open tag.
+                    if ('.php' !== substr($relative, -4)) {
+                        continue;
+                    }
                     $source = (string) file_get_contents($sharedDir . '/' . $relative);
                     $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
                     $target = $stage . '/' . $slug . '/src/Shared/' . $relative;

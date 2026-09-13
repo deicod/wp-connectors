@@ -1107,6 +1107,64 @@ FIXTURE;
         }
     }
 
+    /**
+     * Verifier-round pin (t31-r2-18): collectFiles() filters by
+     * excluded path NAMES only, so the embed collection would ship any
+     * non-PHP file committed inside shared/src (notes, READMEs)
+     * byte-identical into plugin zips — the t31-r2-12 pin proved the
+     * shared/ parent case, which the new collection root cannot see;
+     * this pin drives the INSIDE-the-source-directory case. The build
+     * root is scratch (buildPlugin resolves shared/ from
+     * dirname($distDir)), with both a dev file and a PHP source
+     * planted in its shared/src.
+     */
+    public function testEmbedSharedShipsOnlyPhpSourcesEvenFromInsideTheSourceDirectory()
+    {
+        $scratch = self::distDir() . '/.embed-scratch';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        mkdir($scratch . '/plugin', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+        file_put_contents($scratch . '/shared/src/Notes.md', "# Developer scratch notes\n");
+        file_put_contents($scratch . '/shared/src/README.md', "# shared\n");
+
+        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
+        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
+            $target = $scratch . '/plugin/example-connector/' . $relative;
+            if ($item->isDir()) {
+                mkdir($target, 0755, true);
+            } else {
+                copy($item->getPathname(), $target);
+            }
+        }
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
+            $names = array();
+            for ($i = 0; $i < $zip->numFiles; ++$i) {
+                $names[] = $zip->getNameIndex($i);
+            }
+            $zip->close();
+
+            $this->assertContains('example-connector/src/Shared/Clock/ClockInterface.php', $names, 'The PHP source inside shared/src must ship.');
+            foreach ($names as $entry) {
+                $this->assertStringNotContainsString('Notes.md', $entry, 'A dev file inside shared/src must not ship.');
+                $this->assertStringNotContainsString('README.md', $entry, 'A README inside shared/src must not ship.');
+            }
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
