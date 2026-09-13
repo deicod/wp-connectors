@@ -11,23 +11,12 @@
 
 declare( strict_types=1 );
 
+use Deicod\WpConnectors\Zai\Settings\AbstractPlanRegionSettings;
 use Deicod\WpConnectors\Zai\Settings\PlanRegionSettings;
+use Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings;
 
 final class ZaiSettingsTest extends WpConnectorsTestCase
 {
-    private const PLUGIN_FILE = __DIR__ . '/../../connectors/zai/zai.php';
-
-    private const BOOT = '\Deicod\WpConnectors\Zai\boot';
-
-    /**
-     * Boots the plugin (installs hooks) without firing init.
-     *
-     * @return void
-     */
-    private function bootPlugin()
-    {
-        $this->loadPlugin(self::PLUGIN_FILE, self::BOOT);
-    }
 
     /*
      * Defaults.
@@ -35,7 +24,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testDefaultsAreCodingPlanAndInternationalRegion()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         $this->assertSame('coding', PlanRegionSettings::get_plan());
         $this->assertSame('intl', PlanRegionSettings::get_region());
@@ -47,7 +36,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testAllFourPlanRegionCombinationsRoundTrip()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         foreach (PlanRegionSettings::PLANS as $plan) {
             foreach (PlanRegionSettings::REGIONS as $region) {
@@ -108,7 +97,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testSettingsAreRegisteredWithTheSettingsApi()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         do_action('admin_init');
 
         $plan = get_registered_settings()[PlanRegionSettings::OPTION_PLAN] ?? null;
@@ -130,7 +119,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testUnauthorizedSubmissionIsStrippedByTheGuard()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         update_option(PlanRegionSettings::OPTION_PLAN, 'coding');
 
         $this->asAnonymous();
@@ -148,9 +137,265 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertNotEmpty(WpHarness::$settings_errors);
     }
 
+    public function testAnArrayOptionPageValueIsIgnoredByTheGuard()
+    {
+        /*
+         * GLM3 #8: a mangled 'option_page[]=x' POST from any logged-in
+         * user must never reach sanitize_key() — the guard's is_string
+         * check ignores the request as not-our-form (no strip, no
+         * notice), and the sanitize_key stub now mirrors core's
+         * is_scalar() semantics, so it would answer '' for the array
+         * even if it did.
+         */
+        $this->loadZaiPlugin();
+        $this->asAnonymous();
+        $_POST = array(
+            'option_page' => array('zai_connector'),
+            PlanRegionSettings::OPTION_PLAN => 'general',
+        );
+
+        do_action('admin_init');
+
+        $this->assertSame(array('zai_connector'), $_POST['option_page'], 'Not our form: the group identifier is untouched.');
+        $this->assertArrayHasKey(PlanRegionSettings::OPTION_PLAN, $_POST, 'Not our form: the guard must not strip anything.');
+        $this->assertSame(array(), WpHarness::$settings_errors, 'No unauthorized notice for a request that is not our form.');
+    }
+
+    public function testTheUnauthorizedNoticeIsEmittedOncePerSave()
+    {
+        /*
+         * GLM2 #8: both provider settings classes hook their guard on the
+         * shared admin_init priority for the SHARED option group, so one
+         * unauthorized save ran the emission once per provider — two
+         * byte-identical 'zai_connector_unauthorized' settings errors
+         * (latent while core's options.php wp_dies before render, but any
+         * path that renders settings errors would print the notice twice).
+         * The emission is idempotent now: the strip still runs under every
+         * guard, the notice is added exactly once.
+         */
+        $this->loadZaiPlugin();
+        $this->asAnonymous();
+        $_POST = array(
+            'option_page' => 'zai_connector',
+            PlanRegionSettings::OPTION_PLAN => 'general',
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_PLAN => 'general',
+        );
+
+        do_action('admin_init');
+
+        $this->assertSame(
+            1,
+            count(array_keys(array_column(WpHarness::$settings_errors, 'code'), 'zai_connector_unauthorized')),
+            'One unauthorized save must record exactly one unauthorized settings error, not one per provider guard.'
+        );
+    }
+
+    public function testAForeignSettingsErrorWithTheSameCodeDoesNotSuppressTheNotice()
+    {
+        /*
+         * Verifier round on GLM2 #8: the dedup read is get_settings_errors()
+         * scoped to THIS group's setting slug (the core getter — its
+         * display-function sibling settings_errors() echoes HTML and
+         * returns void in real WordPress). A same-CODE error registered
+         * under a different setting (another plugin's coincidental reuse)
+         * is outside the scope and must not suppress this group's notice.
+         */
+        add_settings_error('some_other_plugin_group', 'zai_connector_unauthorized', 'unrelated notice');
+
+        $this->loadZaiPlugin();
+        $this->asAnonymous();
+        $_POST = array(
+            'option_page' => 'zai_connector',
+            PlanRegionSettings::OPTION_PLAN => 'general',
+        );
+
+        do_action('admin_init');
+
+        $ours = array_filter(
+            get_settings_errors('zai_connector'),
+            static function ($error) {
+                return is_array($error) && 'zai_connector_unauthorized' === ($error['code'] ?? null);
+            }
+        );
+
+        $this->assertCount(1, $ours, 'The dedup scope is this group alone: exactly one notice of ours is recorded despite the foreign same-code error.');
+    }
+
+    public function testUnauthorizedSubmissionStripsEveryGroupOption()
+    {
+        /*
+         * Code-review GLM1 #10: the capability-failure path stripped only
+         * the plan/region pair, leaving the group's third key — the
+         * debug-logging flag — in $_POST, contradicting the guard's
+         * documented 'nothing of ours can be persisted by any other write
+         * path in the same request' contract. The guard now strips EVERY
+         * option registered under the plugin's option group, enumerated
+         * from the group registration.
+         */
+        $this->loadZaiPlugin();
+        $this->asAnonymous();
+        $_POST = array(
+            'option_page' => 'zai_connector',
+            PlanRegionSettings::OPTION_PLAN => 'general',
+            PlanRegionSettings::OPTION_REGION => 'cn',
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_PLAN => 'general',
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_REGION => 'cn',
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED => '1',
+        );
+
+        do_action('admin_init');
+
+        foreach (array(
+            PlanRegionSettings::OPTION_PLAN,
+            PlanRegionSettings::OPTION_REGION,
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_PLAN,
+            \Deicod\WpConnectors\Zai\Settings\ZaiAnthropicPlanRegionSettings::OPTION_REGION,
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED,
+        ) as $stripped) {
+            $this->assertArrayNotHasKey($stripped, $_POST, "The guard must strip {$stripped} from the request.");
+        }
+
+        // Only OUR keys go: the group identifier itself (and anything
+        // unrelated) must survive, or the enumeration would over-strip.
+        $this->assertSame('zai_connector', $_POST['option_page']);
+
+        $this->assertNotEmpty(WpHarness::$settings_errors);
+    }
+
+    public function testSettingsInvalidationClearsTheNegativeDiscoveryMarkers()
+    {
+        /*
+         * GLM1 #6 verifier nit: the invalidation must clear the
+         * directories' negative marker. GLM8 #11: the invalidation
+         * composes through the endpoint owner now — this pin freezes
+         * the HISTORICAL formula the owner must keep producing (there
+         * is no literal mirror left to keep honest; deleting the sweep
+         * would fail the suite all the same).
+         */
+        $miss = PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl') . '_miss';
+        set_transient($miss, true, 60);
+
+        PlanRegionSettings::handle_settings_change('coding', 'general');
+
+        $this->assertFalse(get_transient($miss), 'A plan change must clear the negative discovery marker with the positive cache.');
+    }
+
+    public function testDistinctCorruptArrayPayloadsStillInvalidate()
+    {
+        /*
+         * GLM5 #9: the (string)-cast comparison raised an Array-to-string
+         * warning per side and equated two DIFFERENT arrays
+         * ('Array' === 'Array'), silently skipping the state and
+         * discovery-cache invalidation a plan change must perform. The
+         * comparison is type-aware now: distinct arrays are CHANGED (no
+         * coercion, no warning).
+         */
+        update_option(PlanRegionSettings::STATE_OPTION, array('binding' => 'stale'), false);
+        $cache = PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl');
+        set_transient($cache, array('glm-5.3'), 3600);
+
+        PlanRegionSettings::handle_settings_change(array('corrupt' => 'x'), array('corrupt' => 'y'));
+
+        $this->assertNull(get_option(PlanRegionSettings::STATE_OPTION, null), 'A change between corrupt arrays must still clear the validated state.');
+        $this->assertFalse(get_transient($cache), 'A change between corrupt arrays must still clear the discovery cache.');
+    }
+
+    public function testIdenticalArrayPayloadsSkipInvalidation()
+    {
+        // GLM5 #9: strict identity — an unchanged (if corrupt) array value
+        // is NOT a change; the invalidation stays skipped without warnings.
+        update_option(PlanRegionSettings::STATE_OPTION, array('binding' => 'keep'), false);
+
+        PlanRegionSettings::handle_settings_change(array('same' => 1), array('same' => 1));
+
+        $this->assertSame(array('binding' => 'keep'), get_option(PlanRegionSettings::STATE_OPTION), 'Identical payloads must skip the invalidation.');
+    }
+
+    public function testAMissingEndpointOwnerStillSweepsThroughItsOwnIdentifiers()
+    {
+        /*
+         * GLM12 #10: the quarantine case (GLM8 #15/GLM9 #6 — a
+         * quarantined or missing src file, detected by the
+         * class_exists() pre-check, never a caught Error) no longer
+         * SKIPS the transient sweep: master cleared these transients
+         * unconditionally after the write, and a plan switch on a
+         * partially-broken install must not leave the old combination's
+         * 12h discovery transient alive. The ids fall back to this
+         * layer's own identifier constants (the same values the
+         * endpoint children alias); the miss marker rides the shared
+         * suffix constant. Only when even ZaiDiscoveryCache is gone does
+         * the sweep degrade to the state-option deletion alone.
+         */
+        $settings = ZaiSettingsTestMissingOwnerSettings::class;
+
+        update_option($settings::STATE_OPTION, array('binding' => 'stale'), false);
+        $cache = $settings::CACHE_PREFIX . md5($settings::CACHE_SCOPE . '|coding|intl');
+        set_transient($cache, array('glm-5.3'), 3600);
+        $miss = $cache . \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX;
+        set_transient($miss, true, 60);
+
+        $settings::handle_settings_change('coding', 'general');
+
+        $this->assertNull(get_option($settings::STATE_OPTION, null), 'The state option is deletable in any owner state.');
+        $this->assertFalse(get_transient($cache), 'A missing endpoint owner still sweeps the positive discovery transient.');
+        $this->assertFalse(get_transient($miss), 'A missing endpoint owner still sweeps the negative marker.');
+    }
+
+    public function testTheFallbackSweepCompositionMatchesTheEndpointOwner()
+    {
+        /*
+         * GLM12 #10: the load-broken fallback composes the discovery
+         * ids from the settings layer's own constants — a MIRROR of the
+         * endpoint owner's formula, pinned equal for every real
+         * surface's plan × region so a formula change on either side
+         * fails here instead of silently stranding transients on broken
+         * installs only (the GLM8 #11 drift class, confined to the
+         * fallback path).
+         */
+        $pairs = array(
+            PlanRegionSettings::class => \Deicod\WpConnectors\Zai\Endpoints\ZaiEndpoint::class,
+            ZaiAnthropicPlanRegionSettings::class => \Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint::class,
+        );
+
+        foreach ($pairs as $settings => $endpoint) {
+            foreach (array('coding', 'general') as $plan) {
+                foreach (array('intl', 'cn') as $region) {
+                    $positive = $settings::CACHE_PREFIX . md5($settings::CACHE_SCOPE . '|' . $plan . '|' . $region);
+                    $expected = array(
+                        $positive,
+                        $positive . \Deicod\WpConnectors\Zai\Metadata\ZaiDiscoveryCache::NEGATIVE_CACHE_SUFFIX,
+                    );
+
+                    $this->assertSame(
+                        $expected,
+                        $endpoint::discovery_transient_ids($plan, $region),
+                        "{$settings}: the fallback composition must equal the endpoint owner's ids."
+                    );
+                }
+            }
+        }
+    }
+
+    public function testAnOwningClassLogicErrorSurfacesLoudly()
+    {
+        /*
+         * GLM9 #6 guard: the old catch (\Error) was broader than its
+         * docblock — PHP has no load-only catch type, so a TypeError (or
+         * any Error) raised by the owner's own logic was silently
+         * swallowed and the sweep skipped with no error anywhere. The
+         * class_exists() gate scopes the degradation to the load case
+         * only; an Error from a LOADABLE owner now propagates, exactly
+         * as the comment promises. (A settings child pointing at a
+         * loadable class without the method stands in for the future
+         * edit that breaks the owner's contract.)
+         */
+        $this->expectException(\Error::class);
+        ZaiSettingsTestBrokenOwnerSettings::handle_settings_change('coding', 'general');
+    }
+
     public function testAuthorizedUserWithoutValidNonceIsLeftToCoreEnforcement()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAdministrator();
         $_POST = array(
             'option_page' => 'zai_connector',
@@ -168,7 +413,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testPlanSwitchInvalidatesStateButKeepsTheStoredKey()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option('zai_connector_zai_key_state', array('binding' => 'stale'));
         update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'plan-shared-key');
@@ -185,7 +430,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testAuthorizedUserWithValidNoncePassesTheGuard()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAdministrator();
         $this->withValidNonce('zai_connector-options');
         $_POST['option_page'] = 'zai_connector';
@@ -199,7 +444,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testGuardIgnoresForeignOptionGroups()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAnonymous();
         $_POST = array('option_page' => 'some_other_group');
 
@@ -215,7 +460,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testRegionSwitchClearsStoredKeyStateCachesAndTheStoredKey()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         // Plugin-owned credential-derived state (Task 1.4), a discovery
         // cache entry (Task 1.5), and the STORED key itself: the regions use
@@ -242,7 +487,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testFirstPersistedRegionChangeOnAFreshInstallRunsTheFullInvalidation()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         // Fresh install: no region row exists (the default is served from the
         // registration), so the first save travels through core's
@@ -268,9 +513,35 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         );
     }
 
+    public function testFirstPersistedDebugFlagSaveClearsTheLogOnAFreshRow()
+    {
+        /*
+         * GLM5 #14: the add_option fresh-install companions covered
+         * plan/region only — with the debug option row missing (deleted
+         * out-of-band while log entries persist), the first persisted
+         * save of the unchecked flag fired add_option_{option} with no
+         * handler and the promised 'disable and save to clear' never
+         * ran.
+         */
+        $this->loadZaiPlugin();
+
+        delete_option(\Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED);
+        update_option(\Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_LOG, array(array(
+            'method' => 'GET', 'url' => 'https://api.z.ai/x', 'status' => 200, 'duration_ms' => 1.0, 'at' => 1,
+        )), false);
+
+        add_option(\Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED, '0');
+
+        $this->assertSame(
+            array(),
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::entries(),
+            'The first persisted save of a disabled flag must clear the log.'
+        );
+    }
+
     public function testSavingTheDefaultRegionOnAFreshInstallIsNotASwitch()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option('zai_connector_zai_key_state', array('binding' => 'keepme'));
         update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'keepme-too');
@@ -288,7 +559,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testRegionSwitchWithAPreExistingOptionRowStillInvalidates()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         // Regression: once the row exists, updates keep firing the classic
         // update_option_{$option} hook and must invalidate exactly as before.
@@ -308,7 +579,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testRegionSwitchMarksAnEnvCredentialPendingValidationForTheNewRegion()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $envKey = FakeSecrets::apiKey();
 
         try {
@@ -334,9 +605,127 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheCredentialLadderIsTheOneSharedImplementation()
+    {
+        /*
+         * GLM7 #17: the env→constant resolution sequence was hand-rolled
+         * three times (this class's mark_region_switch_pending() and the
+         * availability base's effective_key()/key_source()). One shared
+         * env_constant_ladder() in the SDK-free settings layer serves
+         * every consumer; this pins its contract: ordered non-empty
+         * rungs, empty-string sources excluded, empty when none exists.
+         */
+        try {
+            putenv('ZAI_API_KEY=');
+            $this->assertSame(array(), PlanRegionSettings::env_constant_ladder(), 'No env value and no constant: the ladder is empty.');
+
+            $envKey = FakeSecrets::apiKey();
+            putenv('ZAI_API_KEY=' . $envKey);
+            $this->assertSame(array('env' => $envKey), PlanRegionSettings::env_constant_ladder(), 'The env rung carries its source label.');
+
+            $otherKey = FakeSecrets::apiKey();
+            putenv('ZAI_ANTHROPIC_API_KEY=' . $otherKey);
+            $this->assertSame(
+                array('env' => $otherKey),
+                ZaiAnthropicPlanRegionSettings::env_constant_ladder(),
+                'Each provider reads its OWN env name through the same shared implementation.'
+            );
+            $this->assertSame(
+                array('env' => $envKey),
+                PlanRegionSettings::env_constant_ladder(),
+                'The sibling provider\'s env value must not leak into this provider\'s ladder.'
+            );
+        } finally {
+            putenv('ZAI_API_KEY');
+            putenv('ZAI_ANTHROPIC_API_KEY');
+        }
+    }
+
+    public function testTheBindingMemoKeysByTheCompleteInputTuple()
+    {
+        /*
+         * glm15-6: credential_binding() is a pure hash derived two to
+         * three times per AI request (the credential gate, the probe
+         * consult, a rejection recording), so its memo must key on the
+         * COMPLETE tuple — surface class, source, endpoint identity,
+         * and the full key value — such that a changed input can never
+         * read another credential's binding (the cross-credential
+         * poisoning class glm13-1 exists to prevent).
+         */
+        $key = FakeSecrets::apiKey();
+
+        $this->assertSame(
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            'Identical inputs derive the identical binding (the memo is a pure derivation).'
+        );
+        $this->assertNotSame(
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', FakeSecrets::apiKey()),
+            'A different key derives a different binding.'
+        );
+        $this->assertNotSame(
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            PlanRegionSettings::credential_binding('database', 'zai|coding|intl', $key),
+            'A different source derives a different binding.'
+        );
+        $this->assertNotSame(
+            PlanRegionSettings::credential_binding('env', 'zai|coding|intl', $key),
+            PlanRegionSettings::credential_binding('env', 'zai_anthropic|coding|intl', $key),
+            'A different endpoint scope (the surfaces\' provider identities) derives a different binding.'
+        );
+
+        // Source pin: the memo key rides the full tuple, never a partial one.
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/src/Settings/AbstractPlanRegionSettings.php');
+        $this->assertStringContainsString(
+            "static::class . '|' . \$source . '|' . \$cache_key . '|' . \$key",
+            $source,
+            'The binding memo key names the class, source, endpoint, and key together.'
+        );
+    }
+
+    public function testTheSurfaceIdentitySlugHasOneOwnerPerSurface()
+    {
+        /*
+         * glm15-23: the 'zai' and 'zai_anthropic' slugs each lived as
+         * three same-valued literals — PROVIDER_ID, REFUSAL_LABEL,
+         * CACHE_SCOPE — pinned equal only by reflection tests. A
+         * provider-ID rename is a 3-constant, 3-class edit where a
+         * missed alias leaves refusal labels and cache keys naming a
+         * surface core no longer registers under, and each new surface
+         * added another un-aliased literal pair by copy-paste
+         * precedent. The SDK-free settings layer owns the slug
+         * (loadable on every site, Codex R2 #3); the SDK-dependent
+         * registration and refusal constants alias it.
+         */
+        $this->assertSame('zai', PlanRegionSettings::CACHE_SCOPE, 'The zai settings layer owns its surface slug.');
+        $this->assertSame(PlanRegionSettings::CACHE_SCOPE, \Deicod\WpConnectors\Zai\Provider\ZaiProvider::PROVIDER_ID, 'The provider registration aliases the owner.');
+        $this->assertSame(PlanRegionSettings::CACHE_SCOPE, \Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::REFUSAL_LABEL, 'The refusal label aliases the owner.');
+
+        $this->assertSame('zai_anthropic', ZaiAnthropicPlanRegionSettings::CACHE_SCOPE, 'The zai_anthropic settings layer owns its surface slug.');
+        $this->assertSame(ZaiAnthropicPlanRegionSettings::CACHE_SCOPE, \Deicod\WpConnectors\Zai\Provider\ZaiAnthropicProvider::PROVIDER_ID, 'The provider registration aliases the owner.');
+        $this->assertSame(ZaiAnthropicPlanRegionSettings::CACHE_SCOPE, \Deicod\WpConnectors\Zai\Availability\ZaiAnthropicProviderAvailability::REFUSAL_LABEL, 'The refusal label aliases the owner.');
+
+        // Source pins: the alias shape — no literal slug may ride the
+        // SDK-dependent identity constants.
+        foreach (array(
+            'src/Provider/ZaiProvider.php',
+            'src/Provider/ZaiAnthropicProvider.php',
+            'src/Availability/ZaiProviderAvailability.php',
+            'src/Availability/ZaiAnthropicProviderAvailability.php',
+        ) as $relative) {
+            $source = (string) file_get_contents(dirname(__DIR__, 2) . '/connectors/zai/' . $relative);
+            $this->assertSame(
+                0,
+                preg_match("/= 'zai_anthropic';|(?<![A-Za-z-])= 'zai';/", $source),
+                "{$relative} must alias the settings owner's slug constant, not spell a literal."
+            );
+        }
+    }
+
     public function testRegionRewriteWithSameValueDoesNotInvalidate()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         update_option('zai_connector_zai_key_state', array('binding' => 'keepme'));
         update_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::KEY_OPTION, 'keepme-too');
@@ -378,6 +767,34 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('value="cn" selected=\'selected\'', $regionField);
     }
 
+    public function testTheEnumRendererResolvesLabelOverridesOnTheChild()
+    {
+        /*
+         * glm23-4 (review round 23, finding 4): render_enum_field()'s
+         * label call rode self:: (early binding) while every other
+         * extension point on the same lines rode static:: — a child
+         * override of plan_label()/region_label() (both public static,
+         * non-final) was silently bypassed in the dropdown the child
+         * registered, the exact trap the base docblock's "methods each
+         * concrete child overrides" contract sets. The renderer
+         * resolves the label on the CHILD now.
+         */
+        ob_start();
+        ZaiSettingsTestOverridingLabelSettings::render_plan_field();
+        $planField = (string) ob_get_clean();
+
+        $this->assertStringContainsString('OverridePlan-coding', $planField, 'The overriding plan labels ride the child-registered dropdown.');
+        $this->assertStringContainsString('OverridePlan-general', $planField);
+        $this->assertStringNotContainsString('Coding Plan (subscription', $planField, 'The base labels do not ride through an overriding child.');
+
+        ob_start();
+        ZaiSettingsTestOverridingLabelSettings::render_region_field();
+        $regionField = (string) ob_get_clean();
+
+        $this->assertStringContainsString('OverrideRegion-intl', $regionField, 'The overriding region labels ride the child-registered dropdown.');
+        $this->assertStringContainsString('OverrideRegion-cn', $regionField);
+    }
+
     public function testSectionDescriptionExplainsAccountAndBillingDistinction()
     {
         ob_start();
@@ -391,7 +808,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testSettingsPageIsRegisteredForAdministratorsOnly()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
 
         $this->asAnonymous();
         do_action('admin_menu');
@@ -407,7 +824,7 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
 
     public function testPageRenderRequiresManageOptions()
     {
-        $this->bootPlugin();
+        $this->loadZaiPlugin();
         $this->asAnonymous();
 
         ob_start();
@@ -415,5 +832,166 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         $output = (string) ob_get_clean();
 
         $this->assertSame('', $output, 'Unprivileged users must get no settings markup.');
+    }
+    public function testIdentifierConstantsAreChildOwnedNotInheritedDefaults()
+    {
+        /*
+         * GLM6 #12: the shared settings base ships NO provider's
+         * identifier constants (option names, section id, label, the
+         * SDK-free invalidation identifiers, the cache prefix/scope) —
+         * a future child forgetting a declaration must fail LOUD
+         * (undefined constant), never silently read and write the zai
+         * provider's options under runtime-dead base defaults. Only
+         * genuinely shared structure stays in the base.
+         *
+         * glm23-5: DEFAULT_PLAN joins the list — the one per-surface
+         * identifier whose value genuinely differs ('coding' vs
+         * 'general'); it used to ride the base as an inheritable
+         * 'coding' default, so a forgetting child silently defaulted
+         * to the zai surface's plan (review round 23, finding 5).
+         */
+        $identifiers = array(
+            'OPTION_PLAN',
+            'DEFAULT_PLAN',
+            'OPTION_REGION',
+            'SECTION_ID',
+            'PROVIDER_LABEL',
+            'STATE_OPTION',
+            'REGION_PENDING_OPTION',
+            'KEY_OPTION',
+            'KEY_ENV_NAME',
+            'CACHE_PREFIX',
+            'CACHE_SCOPE',
+            'ENDPOINT_CLASS',
+        );
+
+        $base = self::declared_constants(AbstractPlanRegionSettings::class);
+
+        $this->assertSame(array(), array_values(array_intersect($identifiers, $base)), 'The settings base must not carry provider identifiers.');
+
+        foreach (array(PlanRegionSettings::class, ZaiAnthropicPlanRegionSettings::class) as $settings) {
+            $declared = self::declared_constants($settings);
+
+            $this->assertSame(array(), array_values(array_diff($identifiers, $declared)), "{$settings} must declare every identifier constant.");
+        }
+    }
+}
+
+/**
+ * A settings child whose endpoint owner cannot load (GLM9 #6): the
+ * quarantined-or-missing-src-file case the class_exists() gate degrades
+ * for. Its identifiers are this fixture's own, never a real provider's.
+ */
+final class ZaiSettingsTestMissingOwnerSettings extends AbstractPlanRegionSettings
+{
+    public const DEFAULT_PLAN = 'general';
+
+    public const OPTION_PLAN = 'zai_settings_test_plan';
+
+    public const OPTION_REGION = 'zai_settings_test_region';
+
+    public const SECTION_ID = 'zai_settings_test';
+
+    public const PROVIDER_LABEL = 'settings test';
+
+    public const STATE_OPTION = 'zai_settings_test_key_state';
+
+    public const REGION_PENDING_OPTION = 'zai_settings_test_region_pending';
+
+    public const KEY_OPTION = 'zai_settings_test_api_key';
+
+    public const KEY_ENV_NAME = 'ZAI_SETTINGS_TEST_API_KEY';
+
+    public const CACHE_PREFIX = 'zai_settings_test_models_';
+
+    public const CACHE_SCOPE = 'zai_settings_test';
+
+    public const ENDPOINT_CLASS = 'Deicod\WpConnectors\Zai\Endpoints\ZaiSettingsTestNoSuchEndpoint';
+}
+
+/**
+ * A settings child whose endpoint owner LOADS but does not satisfy the
+ * owner contract (no discovery_transient_ids()): the Error its sweep
+ * raises must surface loudly, never be swallowed (GLM9 #6 guard).
+ */
+final class ZaiSettingsTestBrokenOwnerSettings extends AbstractPlanRegionSettings
+{
+    public const DEFAULT_PLAN = 'general';
+
+    public const OPTION_PLAN = 'zai_settings_test_plan';
+
+    public const OPTION_REGION = 'zai_settings_test_region';
+
+    public const SECTION_ID = 'zai_settings_test';
+
+    public const PROVIDER_LABEL = 'settings test';
+
+    public const STATE_OPTION = 'zai_settings_test_key_state';
+
+    public const REGION_PENDING_OPTION = 'zai_settings_test_region_pending';
+
+    public const KEY_OPTION = 'zai_settings_test_api_key';
+
+    public const KEY_ENV_NAME = 'ZAI_SETTINGS_TEST_API_KEY';
+
+    public const CACHE_PREFIX = 'zai_settings_test_models_';
+
+    public const CACHE_SCOPE = 'zai_settings_test';
+
+    public const ENDPOINT_CLASS = PlanRegionSettings::class;
+}
+
+/**
+ * A settings child OVERRIDING the translating label methods (glm23-4):
+ * the shared enum renderer must resolve them on the CHILD (static::
+ * late binding) — the pre-fix self:: early binding silently rendered
+ * the base class's labels through a child-registered dropdown.
+ */
+final class ZaiSettingsTestOverridingLabelSettings extends AbstractPlanRegionSettings
+{
+    public const DEFAULT_PLAN = 'general';
+
+    public const OPTION_PLAN = 'zai_settings_test_override_plan';
+
+    public const OPTION_REGION = 'zai_settings_test_override_region';
+
+    public const SECTION_ID = 'zai_settings_test_override';
+
+    public const PROVIDER_LABEL = 'settings override test';
+
+    public const STATE_OPTION = 'zai_settings_test_override_key_state';
+
+    public const REGION_PENDING_OPTION = 'zai_settings_test_override_region_pending';
+
+    public const KEY_OPTION = 'zai_settings_test_override_api_key';
+
+    public const KEY_ENV_NAME = 'ZAI_SETTINGS_TEST_OVERRIDE_API_KEY';
+
+    public const CACHE_PREFIX = 'zai_settings_test_override_models_';
+
+    public const CACHE_SCOPE = 'zai_settings_test_override';
+
+    public const ENDPOINT_CLASS = PlanRegionSettings::class;
+
+    /**
+     * The override under test — a distinctly-typed label.
+     *
+     * @param string $plan The plan value.
+     * @return string The overriding label.
+     */
+    public static function plan_label( string $plan ): string
+    {
+        return 'OverridePlan-' . $plan;
+    }
+
+    /**
+     * The override under test — a distinctly-typed label.
+     *
+     * @param string $region The region value.
+     * @return string The overriding label.
+     */
+    public static function region_label( string $region ): string
+    {
+        return 'OverrideRegion-' . $region;
     }
 }

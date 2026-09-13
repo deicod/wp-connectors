@@ -12,7 +12,8 @@ each record — nothing here is taken from memory or third-party summaries.
 | [0003](0003-sdk-version-guards-and-69-detection.md) | SDK version guards & WP 6.9 standalone detection | `AiClient::VERSION` guards, `Requires at least: 6.9`, runtime SDK guard |
 | [0004](0004-option-ownership.md) | Option ownership | core-owned vs plugin-owned options, multisite, uninstall |
 | [0005](0005-standalone-packaging.md) | Standalone plugin packaging | no runtime Composer, PSR-4 autoloader, build-time shared copies, artifacts |
-| [0006](0006-zai-models-evidence.md) | z.ai `/models` evidence (open question O1) | resolved: discovery works on both intl plans |
+| [0006](0006-zai-models-evidence.md) | z.ai `/models` evidence (open question O1, OpenAI surface) | resolved: discovery works on both intl plans |
+| [0007](0007-zai-anthropic-surface.md) | z.ai Anthropic surface evidence (O1 Anthropic half, route/default amendment) | resolved: `/v1/models` works on both plans; Messages routes differ per plan; coding surface cannot generate → general default |
 
 Pinned reference sources (kept outside this repository):
 

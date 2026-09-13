@@ -4,7 +4,7 @@
  * Plugin URI:        https://github.com/deicod/wp-connectors
  * Description:       Minimal production-shaped plugin used by the wp-connectors test suite and artifact-builder tests. Not a real connector.
  * Requires at least: 6.9
- * Requires PHP:      7.4
+ * Requires PHP:      8.2
  * Version:           0.1.0
  * Author:            deicod
  * Author URI:        https://github.com/deicod

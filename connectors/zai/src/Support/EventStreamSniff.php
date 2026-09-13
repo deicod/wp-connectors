@@ -1,0 +1,91 @@
+<?php
+/**
+ * Shared event-stream sniff for both z.ai surfaces (code-review GLM4 #3).
+ *
+ * A response's parser is chosen by sniff: a text/event-stream body goes to
+ * the surface's SSE aggregator, everything else to the JSON parser. The
+ * Content-Type header decides when the gateway sends it correctly — but
+ * gateways mangle or omit it, so the body's first non-whitespace bytes are
+ * the fallback signal. The GLM3 #5/#7 recognitions (a UTF-8 BOM before the
+ * first field, a legal SSE comment line) lived only in the Anthropic
+ * surface's inline copy of this mechanism; the OpenAI surface still
+ * recognized a bare leading 'data:' line, so the exact scenario those
+ * fixes cite — a mangled Content-Type plus a leading BOM or ': keepalive'
+ * comment — misrouted the stream to the JSON parser and every such
+ * generation died as a malformed payload. One helper, both surfaces: the
+ * sniff can never drift again.
+ *
+ * @since 0.2.0
+ *
+ * @package wp-connectors
+ */
+
+declare( strict_types=1 );
+
+namespace Deicod\WpConnectors\Zai\Support;
+
+/**
+ * Decides whether a response body is a server-sent-events stream.
+ *
+ * @since 0.2.0
+ */
+final class EventStreamSniff {
+
+	/**
+	 * Whether the response is an SSE event stream.
+	 *
+	 * True when the Content-Type header names text/event-stream, or when
+	 * the body's first non-whitespace bytes (after an optional UTF-8 BOM,
+	 * which the shared SseFrameBuffer also strips) begin a field or
+	 * comment only SSE framing can produce — a JSON body never starts
+	 * with one. The id:/retry: fields (GLM4 #8) close the parity gap with
+	 * the aggregators, which already tolerate both mid-frame: a
+	 * nonconforming intermediary emitting "id: …" before the first
+	 * event/data field misrouted the whole stream to the JSON parser
+	 * even though every aggregator ignores those fields.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string      $body            The raw response body.
+	 * @param string|null $content_type    The Content-Type header value, or null.
+	 * @return bool True when the body should go to the SSE aggregator.
+	 */
+	public static function matches( string $body, ?string $content_type ): bool {
+		if ( null !== $content_type && false !== stripos( $content_type, 'text/event-stream' ) ) {
+			return true;
+		}
+
+		/*
+		 * GLM8 #2: the BOM-aware prefix strip rides the ONE canonical
+		 * rule the framing below also applies —
+		 * SseFrameBuffer::strip_stream_prefix(). This sniff privately
+		 * ltrimmed and BOM-stripped, while the buffer stripped the BOM at
+		 * byte 0 only, so a whitespace-then-BOM body (or a
+		 * BOM-then-whitespace one) routed here to the SSE aggregator
+		 * whose first frame then matched no field: silently dropped,
+		 * corrupted content as success (a regression master failed
+		 * loudly). The layers cannot drift again — one composition.
+		 *
+		 * glm21-1: the canonical rule strips the PLAIN leading-
+		 * whitespace run too (the GLM6 #11 tolerance this sniff used to
+		 * add through its own ltrim), so the private ltrim is gone —
+		 * it WAS the asymmetry: a sniff-accepted ws-prefixed body
+		 * dropped its first frame below. What the sniff accepts, the
+		 * framing parses, byte for byte.
+		 */
+		$sniff = SseFrameBuffer::strip_stream_prefix( $body );
+
+		/*
+		 * glm22-13: strncmp, not strpos — each absent-needle strpos probe
+		 * scans the WHOLE body (the needles never occur in a JSON body),
+		 * ~6 full passes per non-streaming response parse on both
+		 * surfaces; a fixed-length prefix compare is O(needle) and
+		 * byte-identical in verdict (fuzz-verified over the probe set).
+		 */
+		return 0 === strncmp( $sniff, 'event:', 6 )
+			|| 0 === strncmp( $sniff, 'data:', 5 )
+			|| 0 === strncmp( $sniff, 'id:', 3 )
+			|| 0 === strncmp( $sniff, 'retry:', 6 )
+			|| 0 === strncmp( $sniff, ':', 1 );
+	}
+}

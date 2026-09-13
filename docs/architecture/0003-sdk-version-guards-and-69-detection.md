@@ -46,7 +46,7 @@ if ( ! class_exists( \WordPress\AiClient\AiClient::class ) ) {
 
 | Dimension | Contract | Enforcement in this repo |
 |-----------|----------|--------------------------|
-| PHP syntax | 7.4-compatible, runs on 7.4–8.4 (developed/tested on 8.5 host) | `php -l` over plugin trees; PHPCompatibility PHPCS rule set in the offline validation entry point |
+| PHP syntax | 8.2-compatible, runs on 8.2–8.4 (developed/tested on 8.5 host) | `php -l` over plugin trees; PHPCompatibility PHPCS rule set in the offline validation entry point |
 | WordPress | 7.0+ core; 6.9 only with the standalone SDK plugin active | `class_exists` guard + dependency notice; integration tests cover both WP 7.0 and 6.9-with-SDK fixtures (M7.2) |
 | HTTP | `wp_remote_*` only in connector code; no cURL/PHP-HTTP dependency at runtime (core's `WP_AI_Client_Http_Client` adapter provides the SDK transporter) | PHPCS + custom sniff in artifact inspection |
 | Text domains | one per plugin, English source strings, `__()`-wrapped from day one | PHPCS `WordPress.WP.I18n` + convention check |

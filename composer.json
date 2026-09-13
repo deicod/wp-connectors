@@ -25,7 +25,7 @@
         "source": "https://github.com/deicod/wp-connectors"
     },
     "require": {
-        "php": ">=7.4"
+        "php": ">=8.2"
     },
     "require-dev": {
         "ext-zip": "*",
@@ -44,7 +44,7 @@
         },
         "optimize-autoloader": true,
         "platform": {
-            "php": "7.4.33"
+            "php": "8.2.0"
         },
         "sort-packages": true
     },
@@ -66,15 +66,15 @@
         "phpcs": "phpcs -p",
         "phpcs-compat": "phpcs -p --standard=phpcs-compat.xml.dist",
         "phpstan": "phpstan analyse --memory-limit=512M --no-progress",
-        "test": "phpunit"
+        "test": "phpunit --order-by=random"
     },
     "scripts-descriptions": {
-        "check": "Full offline validation entry point: syntax lint, PHPCS (WordPress + PHP 7.4 compatibility), static analysis, convention enforcement, and the PHPUnit suite. Never contacts the network.",
+        "check": "Full offline validation entry point: syntax lint, PHPCS (WordPress + PHP 8.2 compatibility), static analysis, convention enforcement, and the PHPUnit suite. Never contacts the network.",
         "lint": "PHP syntax check (php -l) over all repository PHP sources, excluding vendor/tools/dist.",
         "conventions": "Enforce docs/CONVENTIONS.md over every plugin directory (headers, text domain, version constant, autoloader, self-containment).",
         "scan-secrets": "Scan repository sources for live-credential patterns (only the strict secrets:allow marker or recognizably fake values are exempt).",
         "phpcs": "PHP_CodeSniffer with the WordPress coding standard.",
-        "phpcs-compat": "PHPCompatibility scan pinned to the supported PHP range (7.4-8.4).",
+        "phpcs-compat": "PHPCompatibility scan pinned to the supported PHP range (8.2-8.4).",
         "phpstan": "PHPStan static analysis.",
         "test": "PHPUnit test suite (offline; outbound HTTP is blocked unless explicitly mocked)."
     }

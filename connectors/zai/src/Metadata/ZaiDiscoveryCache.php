@@ -1,0 +1,413 @@
+<?php
+/**
+ * Shared discovery-cache orchestration for both z.ai directories
+ * (code-review GLM4 #10).
+ *
+ * The discovery flow — cache-id build, positive transient read, negative
+ * (miss) marker read, try/discover/catch-to-marker-plus-plan-fallback,
+ * positive set, and the chat-filtered metadata map — was duplicated
+ * line-for-line between ZaiModelMetadataDirectory::sendListModelsRequest()
+ * and ZaiAnthropicModelMetadataDirectory::sendListModelsRequest(), so every
+ * discovery-caching change in this PR alone (the GLM1 #6 negative cache,
+ * the GLM3 #10 endpoint capture) had to land twice, and each surface was
+ * only tested against its own copy. One orchestration serves both
+ * directories now; the directories own only what genuinely differs —
+ * HOW a discovery request is made and parsed on their surface.
+ *
+ * @since 0.2.0
+ *
+ * @package wp-connectors
+ */
+
+declare( strict_types=1 );
+
+namespace Deicod\WpConnectors\Zai\Metadata;
+
+use Throwable;
+use WordPress\AiClient\Providers\Models\DTO\ModelMetadata;
+
+/**
+ * Cached model-ID discovery with the plan-partitioned static fallback.
+ *
+ * @since 0.2.0
+ */
+final class ZaiDiscoveryCache {
+
+	/**
+	 * Seconds a successful discovery response stays cached per endpoint.
+	 *
+	 * Deleted in glm19-10: the directory classes' alias constants (they were
+	 * production-dead mirrors only tests read): the TTL has one source —
+	 * HERE — and a pin forbids the directories from re-declaring the
+	 * aliases. External mirrors of the literal value are pinned
+	 * separately.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	public const DISCOVERY_TTL = 12 * HOUR_IN_SECONDS;
+
+	/**
+	 * Seconds a FAILED discovery suppresses repeat remote attempts
+	 * (code-review GLM1 #6).
+	 *
+	 * Failure is still never fatal — the plan fallback serves meanwhile —
+	 * and still retryable: after this short TTL the endpoint is probed
+	 * again, so a later valid key (or a recovered route) rediscovers
+	 * within a minute. Without it, every metadata lookup re-issued a
+	 * blocking doomed remote GET (the cn-region 404 shape on every
+	 * request).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var int
+	 */
+	public const NEGATIVE_TTL = 60;
+
+	/**
+	 * Suffix marking the negative (miss) cache entry for an endpoint key.
+	 *
+	 * GLM8 #11: every consumer that needs the marker name — the
+	 * settings invalidation, uninstall.php, and the live probe, via the
+	 * endpoint layer's discovery_transient_ids() — reads THIS constant;
+	 * no mirror composes '_miss' literally anymore. The class stays
+	 * SDK-free loadable (no SDK parent, lazy imports only) so those
+	 * callers can use it without the SDK plugin.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var string
+	 */
+	public const NEGATIVE_CACHE_SUFFIX = '_miss';
+
+	/**
+	 * The per-cache-id memoized metadata maps (GLM9 #10).
+	 *
+	 * One entry per endpoint cache id — the LAST content seen there —
+	 * so the map (metadata construction plus the newest-first sort, a
+	 * pure function of the ID list) is rebuilt only when the transient
+	 * CONTENT changes. The bound is the number of distinct cache ids
+	 * (two surfaces × plans × regions); the per-instance single-entry
+	 * memo this replaces had the same per-endpoint semantics but
+	 * thrashed whenever both directories were consulted alternately.
+	 *
+	 * glm26-6: the entry keeps the FILTERED id list itself, and a
+	 * consult over unchanged content proves it by a strict list compare
+	 * — the compare sees the fresh content every consult, so the memo
+	 * stays content-keyed under any transient mutation. glm35-5: the
+	 * md5 digest glm26-6 left beside the list (computed on every
+	 * rebuild, read by nothing since the compare replaced it) is gone.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @var array<string, array{ids: list<string>, map: array<string, ModelMetadata>}>
+	 */
+	private static $memoized_maps = array();
+
+	/**
+	 * Resolves the metadata map for one endpoint class's CURRENT settings:
+	 * the whole consult skeleton both directories spelled inline (glm26-6).
+	 *
+	 * The skeleton — endpoint resolve → discovery cache id → cached_ids() (the transient
+	 * read, negative marker, discovery, fallback) → memoized_map() was
+	 * re-stated in ZaiModelMetadataDirectory::sendListModelsRequest() and
+	 * ZaiAnthropicModelMetadataDirectory::sendListModelsRequest(), so a caching-rule
+	 * change could land on one surface only and the two silently diverge —
+	 * the drift pattern this class exists to stop, surviving GLM4 #10 at
+	 * the composition layer. One orchestrator serves both now; a directory
+	 * owns only what genuinely differs: HOW a discovery request is made
+	 * and parsed on its surface ($discover), and its optional prebuilt-map
+	 * seed ($prebuilt — evaluated at the consult exactly as the inline
+	 * form did; the memo consumes it only when it must build, and a stash
+	 * that outlives its build is ignored by its own mismatch guard).
+	 *
+	 * The plan/region options are read and the transient re-read on every
+	 * consult BY DESIGN (the glm15-6 memoization boundary: the harness
+	 * resets options and transients without firing hooks, so a
+	 * cache-id-keyed read skip is the order-dependence class glm15-1
+	 * purged); what a consult stops re-paying is the map rebuild while
+	 * the content is unchanged.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string        $endpoint_class The endpoint class resolving the current settings
+	 *                                                                   (class-string<AbstractZaiEndpoint>).
+	 * @param callable      $discover Makes the discovery request for the resolved endpoint instance; returns the discovered model IDs (list of string) or throws.
+	 * @param callable|null $prebuilt Builds the memo's map from the resolved IDs — the cold-discovery seed (callable(array): array<string, ModelMetadata>|null) — or null when the surface has none.
+	 * @return array<string, ModelMetadata> Map of model ID to metadata.
+	 */
+	public static function resolved_map( string $endpoint_class, callable $discover, ?callable $prebuilt = null ): array {
+		$endpoint = $endpoint_class::for_current_settings();
+		$cache_id = $endpoint_class::discovery_cache_id( $endpoint->plan(), $endpoint->region() );
+
+		$ids = self::cached_ids(
+			$cache_id,
+			$endpoint->plan(),
+			function () use ( $endpoint, $discover ): array {
+				return $discover( $endpoint );
+			}
+		);
+
+		return self::memoized_map( $cache_id, $ids, null === $prebuilt ? null : $prebuilt( $ids ) );
+	}
+
+	/**
+	 * Resolves the model IDs for one endpoint: cached discovery,
+	 * discovery, or the plan-specific static fallback.
+	 *
+	 * The cache is a WordPress transient scoped by the caller's cache id
+	 * (endpoint identity — provider + plan + region), so a warm cache can
+	 * never serve another endpoint's catalog after a settings change.
+	 * A discovery attempt (the $discover callback, which throws on any
+	 * failure shape — refused credential, non-2xx, malformed body,
+	 * transport) is negatively cached for NEGATIVE_TTL seconds only, so
+	 * a later valid key can still discover; the plan-partitioned static
+	 * fallback keeps the provider usable meanwhile.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string   $cache_id Endpoint-scoped transient key.
+	 * @param string   $plan     Plan for the static fallback ('coding' or 'general').
+	 * @param callable $discover Makes the discovery request; returns the
+	 *                           discovered model IDs (list of string) or
+	 *                           throws.
+	 * @return array The resolved model IDs (cached, discovered, or fallback).
+	 */
+	public static function cached_ids( string $cache_id, string $plan, callable $discover ): array {
+		$cached_ids = get_transient( $cache_id );
+
+		/*
+		 * glm23-7 (review round 23, finding 7): the 12h row must be a
+		 * NON-EMPTY list of string IDs — both surfaces' discovery
+		 * rejects an empty data list (glm13-2), so array() (or a
+		 * foreign non-string entry) under the transient is an
+		 * out-of-band or corrupt write: is_array() alone served it
+		 * verbatim, id_maps_to_metadata() filtered every entry out,
+		 * and the provider reported an EMPTY catalog for the full
+		 * DISCOVERY_TTL with no probe attempt, where the designed
+		 * absent-row path would probe and fall back. A corrupt row is
+		 * a cache MISS now — the negative-marker and plan-fallback
+		 * logic below runs exactly as for an absent row.
+		 */
+		if ( \is_array( $cached_ids ) && self::is_sound_id_row( $cached_ids ) ) {
+			return $cached_ids;
+		}
+
+		/*
+		 * GLM1 #6: a recent discovery failure serves the fallback WITHOUT
+		 * another doomed remote attempt (a 60s miss marker — see
+		 * NEGATIVE_TTL; retryability is preserved after expiry).
+		 */
+		if ( get_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX ) ) {
+			return ZaiModelCatalog::ids_for_plan( $plan );
+		}
+
+		try {
+			$ids = $discover();
+		} catch ( Throwable $e ) {
+			/*
+			 * Discovery failure is never fatal: the plan-partitioned static
+			 * fallback keeps the provider usable. It is cached only as the
+			 * short negative marker (GLM1 #6) so a later valid key can still
+			 * discover — after at most NEGATIVE_TTL seconds.
+			 */
+			set_transient( $cache_id . self::NEGATIVE_CACHE_SUFFIX, true, self::NEGATIVE_TTL );
+
+			return ZaiModelCatalog::ids_for_plan( $plan );
+		}
+
+		self::store_ids( $cache_id, $ids );
+
+		return $ids;
+	}
+
+	/**
+	 * Stores a discovered ID list as the positive discovery row
+	 * (glm25-1).
+	 *
+	 * The 12h positive row's WRITE side has one owner: this class. The
+	 * availability base's probe seed (seed_discovery_from_probe())
+	 * used to hand-sync its own transient write against the row
+	 * cached_ids() writes — a second writer the row's read side
+	 * (is_sound_id_row, glm23-7) had no way to keep honest, so a
+	 * writer-side contract change (row shape, TTL policy) could land
+	 * on the discovery flow only and leave the seed caching a row the
+	 * directories treat as a corrupt miss. Both write sites — the
+	 * discovery flow's own store and the probe seed — route through
+	 * this one method now.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string $cache_id Endpoint-scoped transient key.
+	 * @param array  $ids      The discovered model IDs (list of string).
+	 * @return void
+	 */
+	public static function store_ids( string $cache_id, array $ids ): void {
+		set_transient( $cache_id, $ids, self::DISCOVERY_TTL );
+	}
+
+	/**
+	 * Whether a cached transient row is a sound ID list: NON-EMPTY and
+	 * every entry a non-empty string the metadata map can carry (glm23-7,
+	 * narrowed by glm27-1).
+	 *
+	 * Both surfaces' discovery rejects an empty data list (glm13-2), so
+	 * a legitimate discovery never caches one — the empty array (or any
+	 * non-string entry) under the transient can only be an out-of-band
+	 * or corrupt write, and serving it would report an empty catalog
+	 * for the full DISCOVERY_TTL.
+	 *
+	 * glm27-1 (Codex R21 finding 1): the all-string rule still accepted
+	 * rows whose every entry cannot map to metadata — array(''),
+	 * array('unknown-model') — which id_maps_to_metadata() then
+	 * filtered out entirely, so the provider exposed the same empty
+	 * catalog for the 12h TTL with no probe and no fallback. Soundness
+	 * rides the ONE map rule now (id_maps_to_metadata(): non-empty
+	 * string AND recognized chat model); every in-repo writer caches
+	 * parse_decoded_chat_ids() output, which is already chat-filtered,
+	 * so no legitimate row is excluded.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $row The transient's stored value.
+	 * @return bool True when the row is a discovery-shaped ID list.
+	 */
+	private static function is_sound_id_row( array $row ): bool {
+		if ( array() === $row ) {
+			return false;
+		}
+
+		foreach ( $row as $id ) {
+			if ( ! self::id_maps_to_metadata( $id ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Returns the metadata map for one endpoint's resolved IDs, memoized
+	 * per transient CONTENT (GLM9 #10).
+	 *
+	 * The map is a pure function of the ID list, but it was rebuilt (per-ID
+	 * metadata construction plus the newest-first sort) on every
+	 * listModelMetadata()/hasModelMetadata()/getModelMetadata() call —
+	 * core resolution makes two or more per AI request. The memo the two
+	 * directories each carried as private fields (GLM7 #13 on
+	 * zai_anthropic, GLM8 #9 on zai — copy-pasted, the exact twin
+	 * pattern this class exists to stop) lives here once now: a
+	 * memo-rule change can never land on one surface only. The transient
+	 * read stays per call at the directories (cache invalidation and TTL
+	 * expiry remain authoritative); only the rebuild is skipped while
+	 * the content is unchanged.
+	 *
+	 * glm15-22: an optional PREBUILT map may ride along — the zai
+	 * surface's vendor parent forces a full metadata build inside its
+	 * discovery parse (parseResponseToModelMetadataList()), which the
+	 * directory used to discard for the IDs alone while this memo
+	 * rebuilt the identical metadata from scratch. The prebuilt map must
+	 * already carry map_from_ids()' semantics (the chat filter, the
+	 * id-keyed map shape); callers without one (the anthropic surface,
+	 * warm-cache reads) keep the rebuild.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param string                            $cache_id Endpoint-scoped transient key.
+	 * @param array                             $ids      The resolved model IDs (list of string:
+	 *                                                    fallback, cached, or discovered).
+	 * @param array<string, ModelMetadata>|null $prebuilt An id-keyed map built from exactly
+	 *                                                these IDs during discovery, or null.
+	 * @return array<string, ModelMetadata> Map of model ID to metadata.
+	 */
+	public static function memoized_map( string $cache_id, array $ids, ?array $prebuilt = null ): array {
+		/*
+		 * glm18-9: the string-only view this filter keeps is the view the
+		 * compare below judges — the digest-era md5() over the RAW list
+		 * raised an Array-to-string warning (an ErrorException out of
+		 * this documented never-throw path on hosts whose error handler
+		 * throws) on every directory lookup for a transient row carrying
+		 * a non-string entry (a foreign or corrupt write; no in-repo
+		 * writer produces one) — for the transient's whole 12h TTL.
+		 * Dropped entries cannot change the built map (map_from_ids()
+		 * drops them from it too), so the string-only list is a faithful
+		 * content identity. glm35-5: the digest itself is gone — since
+		 * glm26-6 the strict list compare alone decides, and nothing
+		 * read the digest.
+		 */
+		$string_ids = array();
+		foreach ( $ids as $id ) {
+			if ( \is_string( $id ) && '' !== $id ) {
+				$string_ids[] = $id;
+			}
+		}
+
+		/*
+		 * glm26-6: unchanged content is proven by the STRICT list compare
+		 * against the entry's stored list. The compare reads the freshly
+		 * filtered list every call, so the memo stays exactly as
+		 * content-keyed as the digest era under any transient mutation,
+		 * cross-process write, or TTL expiry.
+		 */
+		$memo = self::$memoized_maps[ $cache_id ] ?? null;
+
+		if ( null === $memo || $memo['ids'] !== $string_ids ) {
+			$memo = array(
+				'ids' => $string_ids,
+				'map' => null !== $prebuilt ? $prebuilt : self::map_from_ids( $ids ),
+			);
+
+			self::$memoized_maps[ $cache_id ] = $memo;
+		}
+
+		return $memo['map'];
+	}
+
+	/**
+	 * Whether one discovered model ID belongs in the metadata map
+	 * (glm21-13).
+	 *
+	 * The map's build rule — chat-capable models with non-empty string
+	 * IDs only — was stated twice: map_from_ids() and the zai
+	 * directory's take_discovery_built_map() hand-copy of it (the
+	 * cold-discovery prebuilt seed), which had already diverged by
+	 * dropping the stringiness guard. One predicate serves both
+	 * builders; what each keys (metadata_for() construction vs the
+	 * stash's already-built object) stays per-caller, and so does the
+	 * newest-first sort (one comparator constant,
+	 * ZaiModelCatalog::sort_callback).
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param mixed $id One resolved or built model ID.
+	 * @return bool True when the ID maps to metadata.
+	 */
+	public static function id_maps_to_metadata( $id ): bool {
+		return \is_string( $id ) && '' !== $id && ZaiModelCatalog::is_chat_model( $id );
+	}
+
+	/**
+	 * Builds the sorted metadata map for a list of model IDs.
+	 *
+	 * IDs without known chat support are dropped, so a transient warmed by
+	 * an older version can never resurface a non-chat model either.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array $ids Model IDs (fallback, cached, or discovered).
+	 * @return array<string, ModelMetadata> Map of model ID to metadata.
+	 */
+	public static function map_from_ids( array $ids ): array {
+		$models = array();
+		foreach ( $ids as $id ) {
+			if ( self::id_maps_to_metadata( $id ) ) {
+				$models[ $id ] = ZaiModelCatalog::metadata_for( $id );
+			}
+		}
+
+		uasort( $models, array( ZaiModelCatalog::class, 'sort_callback' ) );
+
+		return $models;
+	}
+}
