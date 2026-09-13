@@ -74,15 +74,31 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
-     * Lines of one file, as (trimmed line => original) pairs.
+     * Lines of one file, as (line number => line) pairs.
+     *
+     * A PCRE abort (one invalid UTF-8 byte under /\R/u) is a LOUD
+     * failure, never a no-match: the old silent `?: array()` fallback
+     * swept the file as ZERO lines, every gate skipped it, and the
+     * non-vacuity counts stayed green (the glm36-8 doctrine — a PCRE
+     * abort is a refusal — applied to the sweep's own line reader).
      *
      * @param string $path File path.
      * @return list<array{0: int, 1: string}>
      */
     private function numberedLines(string $path): array
     {
+        $split = preg_split('/\R/u', (string) file_get_contents($path));
+        if (false === $split) {
+            $this->fail(
+                sprintf(
+                    'The architecture sweep could not split %s into UTF-8 lines (PCRE abort) — a swept file must be valid UTF-8, or the sweep silently skips every gate for it.',
+                    $path
+                )
+            );
+        }
+
         $lines = array();
-        foreach (preg_split('/\R/u', (string) file_get_contents($path)) ?: array() as $index => $line) {
+        foreach ($split as $index => $line) {
             $lines[] = array($index + 1, $line);
         }
 
@@ -114,6 +130,27 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                     );
                 }
             }
+        }
+    }
+
+    /**
+     * Review-round pin (t31-r1-7): the line reader a shared/src gate
+     * rides fails LOUDLY on a file PCRE cannot decode — the old silent
+     * `?: array()` fallback swept such a file as ZERO lines, all gates
+     * skipped it, and the non-vacuity counts stayed green (reproduced
+     * with a planted add_action in a corrupted file during bring-up).
+     */
+    public function testAUtf8UndecodableFileFailsTheLineReaderLoudly(): void
+    {
+        $path = realpath(__DIR__ . '/fixtures/sweep-corruption/invalid-utf8-byte.txt');
+        $this->assertNotFalse($path, 'The corruption fixture must exist.');
+
+        try {
+            (new \ReflectionMethod($this, 'numberedLines'))->invoke($this, $path);
+            $this->fail('A file the line reader cannot decode must fail loudly, never sweep as zero lines.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('invalid-utf8-byte.txt', $e->getMessage());
+            $this->assertStringContainsString('PCRE abort', $e->getMessage());
         }
     }
 
