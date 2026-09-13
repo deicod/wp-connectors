@@ -89,6 +89,17 @@ final class HttpResponse {
 	/**
 	 * Header map as received.
 	 *
+	 * LOSS, STATED HONESTLY (review round t31-r2-13): an array-keyed
+	 * header map cannot represent REPEATED header names — a provider
+	 * sending the same name on multiple lines (Set-Cookie is the
+	 * canonical case) collapses to the single entry whichever parser
+	 * stage the binding lets win. This value object carries one value
+	 * per name by design; how a binding ought to surface repeats
+	 * (first-wins documented, folded per RFC 9110 section 5.2, or a
+	 * list-carrying shape) is the Task 3.7 transport binding's
+	 * decision to make against a live provider — re-open this seam
+	 * when that consumer exists.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, string>

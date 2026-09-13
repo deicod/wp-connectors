@@ -45,6 +45,14 @@ interface HttpTransportInterface {
 	 * status is a RESPONSE at this layer; promoting it to a typed
 	 * exception happens above the port.
 	 *
+	 * Representation limit every binding inherits (review round
+	 * t31-r2-13): the response's array-keyed header map cannot carry
+	 * REPEATED header names — a provider sending one name on multiple
+	 * lines collapses to a single entry. Each binding decides and must
+	 * document which spelling wins when it maps its client's header
+	 * representation onto this port (and Task 3.7 revisits the shape
+	 * if a consumer needs repeat semantics, Set-Cookie-style).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param HttpRequest $request The request to send.
