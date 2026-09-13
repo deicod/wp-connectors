@@ -104,6 +104,98 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
     }
 
     /* ---------------------------------------------------------------
+     * DST-proof derivation (review round t31-r1).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Review-round pin (t31-r1-1 + t31-r1-2): named-timezone readings
+     * whose lifetime crosses a DST transition — spring-forward AND
+     * fall-back, northern AND southern zones. Wall-clock arithmetic in
+     * the reading's zone drifts by the transition delta (a spring
+     * 7200-second lifetime really spans 3600 absolute seconds, so a
+     * modify()-derived expiry is an hour early and the payload's own
+     * round trip then disagrees with its re-derived expiry); the
+     * derivation is absolute elapsed time, and the serialized spelling
+     * is canonical UTC so the strict round trip never depends on zone
+     * context a payload cannot carry.
+     *
+     * @return list<array{0: string, 1: string, 2: int, 3: string, 4: string}>
+     */
+    public function dstTransitionProvider(): array
+    {
+        return array(
+            'berlin spring-forward' => array('Europe/Berlin', '2026-03-29 01:30:00.250000', 7200, '2026-03-29T00:30:00.250000+00:00', '2026-03-29T02:30:00.250000+00:00'),
+            'berlin fall-back' => array('Europe/Berlin', '2026-10-25 01:00:00', 3600, '2026-10-24T23:00:00.000000+00:00', '2026-10-25T00:00:00.000000+00:00'),
+            'new york spring-forward' => array('America/New_York', '2026-03-08 01:30:00', 7200, '2026-03-08T06:30:00.000000+00:00', '2026-03-08T08:30:00.000000+00:00'),
+            'new york fall-back' => array('America/New_York', '2026-11-01 00:30:00', 3600, '2026-11-01T04:30:00.000000+00:00', '2026-11-01T05:30:00.000000+00:00'),
+            'sydney spring-forward' => array('Australia/Sydney', '2026-10-04 01:30:00', 7200, '2026-10-03T15:30:00.000000+00:00', '2026-10-03T17:30:00.000000+00:00'),
+            'sydney fall-back' => array('Australia/Sydney', '2026-04-05 01:30:00', 3600, '2026-04-04T14:30:00.000000+00:00', '2026-04-04T15:30:00.000000+00:00'),
+        );
+    }
+
+    /**
+     * @dataProvider dstTransitionProvider
+     *
+     * @param string $zone                 Named timezone of the reading.
+     * @param string $wall_reading         Unambiguous local wall time before the transition.
+     * @param int    $expires_in           Lifetime crossing the transition.
+     * @param string $expected_obtained_utc Canonical UTC serialization of the reading.
+     * @param string $expected_expiry_utc  Canonical UTC serialization of the derived expiry.
+     */
+    public function testExpiryAcrossDstTransitionsIsAbsoluteElapsedSecondsAndRoundTrips(
+        string $zone,
+        string $wall_reading,
+        int $expires_in,
+        string $expected_obtained_utc,
+        string $expected_expiry_utc
+    ): void {
+        $obtained_at = new \DateTimeImmutable($wall_reading, new \DateTimeZone($zone));
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), null, $expires_in, $obtained_at);
+
+        // Absolute elapsed seconds, not wall-clock: the delta is exactly
+        // expires_in even though the window crosses a transition.
+        $this->assertSame(
+            $expires_in,
+            $set->expires_at()->getTimestamp() - $set->obtained_at()->getTimestamp(),
+            'The derived expiry must be exactly expires_in absolute seconds after the reading.'
+        );
+
+        // The reading's timezone stays attached to the derived expiry.
+        $this->assertSame($zone, $set->expires_at()->getTimezone()->getName());
+
+        // The serialization is canonical UTC — DST-unambiguous spellings.
+        $data = $set->to_array();
+        $this->assertSame($expected_obtained_utc, $data['obtained_at']);
+        $this->assertSame($expected_expiry_utc, $data['expires_at']);
+
+        // Exact round trip: from_array() accepts (and re-derives to) the
+        // payload to_array() produced across the transition.
+        $this->assertSame($data, AccessTokenSet::from_array($data)->to_array());
+    }
+
+    /**
+     * Review-round pin (t31-r1-2): a named-timezone set whose derivation
+     * crossed a transition must load back from its own serialization —
+     * the pre-fix from_array() rejected exactly this payload because the
+     * offset-only re-parse re-derived a different instant.
+     */
+    public function testNamedTimezoneSetSurvivesItsOwnSerializationRoundTrip(): void
+    {
+        $set = new AccessTokenSet(
+            FakeSecrets::accessToken(),
+            FakeSecrets::refreshToken(),
+            7200,
+            new \DateTimeImmutable('2026-03-29 01:30:00', new \DateTimeZone('Europe/Berlin'))
+        );
+
+        $restored = AccessTokenSet::from_array($set->to_array());
+
+        $this->assertSame($set->to_array(), $restored->to_array());
+        $this->assertEquals($set->expires_at(), $restored->expires_at());
+    }
+
+    /* ---------------------------------------------------------------
      * Refresh-token merge semantics.
      * ---------------------------------------------------------------
      */

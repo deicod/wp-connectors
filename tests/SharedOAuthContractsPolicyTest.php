@@ -124,6 +124,35 @@ final class SharedOAuthContractsPolicyTest extends WpConnectorsTestCase
         $this->assertTrue($policy->should_refresh($set, new \DateTimeImmutable('2026-09-13T15:00:00+00:00')));
     }
 
+    /**
+     * Review-round pin (t31-r1-3): the expiry-minus-skew threshold is
+     * absolute elapsed time. The spring-forward set's expiry renders in
+     * the post-transition offset; a wall-clock subtraction from it lands
+     * inside the skipped hour and normalizes an hour late, opening the
+     * refresh window late. The flip point is obtained + expires_in -
+     * skew, exactly, on both sides of every transition in the window.
+     */
+    public function testRefreshThresholdIsAbsoluteSecondsAcrossDstTransitions(): void
+    {
+        $obtained = new \DateTimeImmutable('2026-03-29 01:30:00', new \DateTimeZone('Europe/Berlin')); // 00:30Z, pre-gap
+        $expires_in = 7200; // Expiry at 02:30Z, rendered 04:30+02:00 — the window crosses the gap.
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), null, $expires_in, $obtained);
+
+        foreach (array(0, 1800, 7200) as $skew) {
+            $policy = new RefreshPolicy($skew, 1, 60);
+            $threshold_ts = $obtained->getTimestamp() + $expires_in - $skew;
+
+            $this->assertFalse(
+                $policy->should_refresh($set, new \DateTimeImmutable('@' . ($threshold_ts - 1))),
+                sprintf('Skew %d: one second before the absolute threshold must not refresh.', $skew)
+            );
+            $this->assertTrue(
+                $policy->should_refresh($set, new \DateTimeImmutable('@' . $threshold_ts)),
+                sprintf('Skew %d: the absolute threshold itself must refresh (boundary readings refresh).', $skew)
+            );
+        }
+    }
+
     /* ---------------------------------------------------------------
      * Retry-After capping (both provider forms share the cap).
      * ---------------------------------------------------------------

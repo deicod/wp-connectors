@@ -27,6 +27,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Shared\Policy;
 
 use DateTimeImmutable;
+use Deicod\WpConnectors\Shared\Support\InstantArithmetic;
 use Deicod\WpConnectors\Shared\Token\AccessTokenSet;
 use InvalidArgumentException;
 
@@ -131,6 +132,9 @@ final class RefreshPolicy {
 	 *
 	 * The expiry-minus-skew rule: true once the reading reaches
 	 * expiry minus skew (inclusive) — boundary readings refresh.
+	 * The subtraction is ABSOLUTE elapsed time (UTC projection):
+	 * a wall-clock subtraction in a DST-observing zone would shift
+	 * the window by the transition delta.
 	 *
 	 * @since 0.1.0
 	 *
@@ -139,7 +143,7 @@ final class RefreshPolicy {
 	 * @return bool True when a refresh is due.
 	 */
 	public function should_refresh( AccessTokenSet $token_set, DateTimeImmutable $now ): bool {
-		$threshold = $token_set->expires_at()->modify( sprintf( '-%d seconds', $this->refresh_skew_seconds ) );
+		$threshold = InstantArithmetic::minus_seconds( $token_set->expires_at(), $this->refresh_skew_seconds );
 
 		return $now >= $threshold;
 	}

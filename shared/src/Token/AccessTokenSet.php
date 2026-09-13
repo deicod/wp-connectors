@@ -31,6 +31,8 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Shared\Token;
 
 use DateTimeImmutable;
+use DateTimeZone;
+use Deicod\WpConnectors\Shared\Support\InstantArithmetic;
 use InvalidArgumentException;
 
 /**
@@ -47,11 +49,27 @@ final class AccessTokenSet {
 	 * instant would silently drop the sub-second part of a clock reading and
 	 * the re-derived expiry would no longer match the serialized one.
 	 *
+	 * The serialized spelling is CANONICAL UTC: to_array() renders both
+	 * instants in the UTC zone ('+00:00' offset). A named timezone's
+	 * rendering is DST-dependent — the same instant spans two offset
+	 * spellings across a transition — while the UTC spelling names the
+	 * instant unambiguously, so from_array() can re-derive and compare
+	 * without the zone context the payload cannot carry.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var string
 	 */
 	const SERIAL_INSTANT_FORMAT = 'Y-m-d\TH:i:s.uP';
+
+	/**
+	 * The zone every serialized instant renders in (canonical UTC).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	private const SERIAL_ZONE_NAME = 'UTC';
 
 	/**
 	 * Access token (non-empty, non-whitespace-only).
@@ -96,6 +114,11 @@ final class AccessTokenSet {
 	/**
 	 * Absolute expiry, derived as obtained-at plus expires_in.
 	 *
+	 * The addition is ABSOLUTE elapsed time (UTC projection), so a
+	 * reading taken in a DST-observing timezone yields the same instant
+	 * UTC arithmetic would — wall-clock addition drifts by the
+	 * transition delta. The reading's timezone stays attached.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var DateTimeImmutable
@@ -128,7 +151,7 @@ final class AccessTokenSet {
 		$this->refresh_token = $refresh_token;
 		$this->expires_in    = $expires_in;
 		$this->obtained_at   = $obtained_at;
-		$this->expires_at    = $obtained_at->modify( sprintf( '+%d seconds', $expires_in ) );
+		$this->expires_at    = InstantArithmetic::plus_seconds( $obtained_at, $expires_in );
 	}
 
 	/**
@@ -222,6 +245,14 @@ final class AccessTokenSet {
 	/**
 	 * Storage serialization (strict, round-trip exact).
 	 *
+	 * Both instants render in their CANONICAL UTC spelling — the
+	 * serialized payload must name each instant unambiguously, and a
+	 * named timezone's rendering is DST-dependent (the same instant
+	 * spans two offset spellings across a transition, which would make
+	 * the from_array() re-derivation and its strict compare
+	 * zone-context-dependent). The value objects keep their own
+	 * timezones; only the serialization is canonical.
+	 *
 	 * Carries token material BY DESIGN — this is the payload the encrypted
 	 * envelope wraps. Never a display or debug surface.
 	 *
@@ -234,8 +265,8 @@ final class AccessTokenSet {
 			'access_token'  => $this->access_token,
 			'refresh_token' => $this->refresh_token,
 			'expires_in'    => $this->expires_in,
-			'obtained_at'   => $this->obtained_at->format( self::SERIAL_INSTANT_FORMAT ),
-			'expires_at'    => $this->expires_at->format( self::SERIAL_INSTANT_FORMAT ),
+			'obtained_at'   => self::serialize_instant( $this->obtained_at ),
+			'expires_at'    => self::serialize_instant( $this->expires_at ),
 		);
 	}
 
@@ -246,7 +277,12 @@ final class AccessTokenSet {
 	 * extra keys rejected), types are never coerced (`'3600'` is not an
 	 * int), the instants must parse in the serialization format, and the
 	 * serialized expiry must equal the re-derived one — a payload whose
-	 * facts disagree is malformed, not repaired.
+	 * facts disagree is malformed, not repaired. The compare is on the
+	 * CANONICAL UTC rendering of both instants, so a payload serialized
+	 * from a named-timezone reading round-trips exactly: the re-derived
+	 * expiry is re-derived by the same absolute arithmetic, and the
+	 * parsed reading re-attaches only the offset the canonical spelling
+	 * itself carries.
 	 *
 	 * @since 0.1.0
 	 *
@@ -286,12 +322,27 @@ final class AccessTokenSet {
 
 		$set = new self( $data['access_token'], $data['refresh_token'], $data['expires_in'], $obtained_at );
 
-		// Strict instant compare: formatted strings, never loose object
-		// comparison and never identity (re-parsed instants are new objects).
-		if ( $set->expires_at()->format( self::SERIAL_INSTANT_FORMAT ) !== $expires_at->format( self::SERIAL_INSTANT_FORMAT ) ) {
+		// Strict instant compare on the canonical rendering: formatted
+		// strings, never loose object comparison and never identity
+		// (re-parsed instants are new objects).
+		if ( self::serialize_instant( $set->expires_at() ) !== self::serialize_instant( $expires_at ) ) {
 			throw new InvalidArgumentException( 'The serialized expiry does not match the serialized obtained-at plus expires_in.' );
 		}
 
 		return $set;
+	}
+
+	/**
+	 * Renders one instant in its canonical serialized spelling (UTC).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param DateTimeImmutable $instant The instant to render.
+	 * @return string The canonical UTC serialization-format spelling.
+	 */
+	private static function serialize_instant( DateTimeImmutable $instant ): string {
+		return $instant
+			->setTimezone( new DateTimeZone( self::SERIAL_ZONE_NAME ) )
+			->format( self::SERIAL_INSTANT_FORMAT );
 	}
 }
