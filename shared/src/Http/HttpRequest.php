@@ -219,7 +219,7 @@ final class HttpRequest {
 	}
 
 	/**
-	 * Parses and validates the URL, returning the parts the redacted form needs.
+	 * Parses and validates the URL via the shared owner, returning the parts the redacted form needs.
 	 *
 	 * @since 0.1.0
 	 *
@@ -228,28 +228,6 @@ final class HttpRequest {
 	 * @throws InvalidArgumentException When the URL is not absolute http(s) with a host and valid port.
 	 */
 	private function validated_url_parts( string $url ): array {
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- the WordPress helper does not exist in this provider-neutral source (WordPress is reached only through ports); parse_url's shape is adequate for constructor validation.
-		$parts = parse_url( $url );
-		if ( false === $parts || ! isset( $parts['scheme'], $parts['host'] ) ) {
-			throw new InvalidArgumentException( 'The request URL must be absolute with a scheme and host.' );
-		}
-		$scheme = strtolower( (string) $parts['scheme'] );
-		if ( 'http' !== $scheme && 'https' !== $scheme ) {
-			throw new InvalidArgumentException( 'The request URL scheme must be http or https.' );
-		}
-		if ( isset( $parts['port'] ) && ( $parts['port'] < 1 || $parts['port'] > 65535 ) ) {
-			throw new InvalidArgumentException( 'The request URL port is out of range.' );
-		}
-
-		$authority = strtolower( (string) $parts['host'] );
-		if ( isset( $parts['port'] ) ) {
-			$authority .= ':' . (int) $parts['port'];
-		}
-
-		return array(
-			'scheme'    => $scheme,
-			'authority' => $authority,
-			'path'      => isset( $parts['path'] ) && '' !== $parts['path'] ? $parts['path'] : '/',
-		);
+		return Url::parse_validated( $url );
 	}
 }
