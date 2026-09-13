@@ -86,6 +86,42 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
+     * The whole contents of one swept file, read LOUDLY.
+     *
+     * The shared read for every whole-file gate (t31-r2-5): an
+     * unreadable path AND a file_get_contents() false return both fail
+     * naming the file — a silent '' cast would sweep the file as
+     * contentless for every gate that rides this reader (the t31-r1-21
+     * doctrine, one more layer down).
+     *
+     * @param string $path File path.
+     * @return string File contents.
+     */
+    private function fileContents(string $path): string
+    {
+        if (!is_readable($path)) {
+            $this->fail(
+                sprintf(
+                    'The architecture sweep cannot read %s — an unreadable swept file must fail loudly, never sweep as contentless lines.',
+                    $path
+                )
+            );
+        }
+
+        $contents = file_get_contents($path);
+        if (false === $contents) {
+            $this->fail(
+                sprintf(
+                    'The architecture sweep cannot read %s — the read itself failed (vanished or blocked between the readability probe and the read), and a silent empty sweep is never acceptable.',
+                    $path
+                )
+            );
+        }
+
+        return $contents;
+    }
+
+    /**
      * Lines of one file, as (line number => line) pairs.
      *
      * Reading failures are LOUD, never silent: an unreadable file
@@ -242,21 +278,53 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * No static mutable state — applied to the WHOLE FILE (t31-r2-5).
+     *
+     * The old per-line application was blind to any property spelling
+     * that breaks across lines ('private static\n    int $counter;'),
+     * which the pattern (whose \s+ legitimately spans the break) then
+     * matched only as a joined string in the battery — never through
+     * the actual gate. Whole-file application closes that; a prose hit
+     * ('static …' running into a '$' before any statement punctuation)
+     * would over-block in the safe direction, the posture this pattern
+     * already carries per its ledgered residuals.
+     */
     public function testSharedSourceCarriesNoStaticMutableState(): void
     {
+        $this->assertGreaterThanOrEqual(20, count($this->sharedSourceFiles()), 'The static-mutable sweep must see the real contract tree.');
+
         foreach ($this->sharedSourceFiles() as $path) {
-            foreach ($this->numberedLines($path) as [$number, $line]) {
-                if (1 === preg_match(self::STATIC_MUTABLE_PATTERN, $line)) {
-                    $this->fail(
-                        sprintf(
-                            'Static mutable state inside shared/ (pure value objects carry none): %s:%d — %s',
-                            $path,
-                            $number,
-                            trim($line)
-                        )
-                    );
-                }
-            }
+            $this->assertCarriesNoStaticMutableState($path);
+        }
+    }
+
+    /**
+     * The static-mutable gate for ONE file: whole-content match, with
+     * the diagnostic located to the line the match starts on.
+     *
+     * Private and path-parameterized so the mutation discipline can
+     * drive the ACTUAL gate on a planted fixture (both directions).
+     *
+     * @param string $path Absolute file path.
+     * @return void
+     */
+    private function assertCarriesNoStaticMutableState(string $path): void
+    {
+        $contents = $this->fileContents($path);
+        $match = array();
+        if (1 === preg_match(self::STATIC_MUTABLE_PATTERN, $contents, $match, PREG_OFFSET_CAPTURE)) {
+            $before = substr($contents, 0, $match[0][1]);
+            $line_start = false === ($last_newline = strrpos($before, "\n")) ? 0 : $last_newline + 1;
+            $line_end = (int) strpos($contents . "\n", "\n", $line_start);
+            $this->fail(
+                sprintf(
+                    'Static mutable state inside shared/ (pure value objects carry none): %s:%d — %s',
+                    $path,
+                    substr_count($before, "\n") + 1,
+                    trim(substr($contents, $line_start, $line_end - $line_start))
+                )
+            );
         }
     }
 
@@ -298,6 +366,42 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         foreach ($mustNotFlag as $spelling) {
             $this->assertSame(0, preg_match($pattern, $spelling), 'The pattern must not flag: ' . $spelling);
         }
+    }
+
+    /**
+     * Fix-round pin (t31-r2-5), end-to-end through the ACTUAL gate: a
+     * property spelling broken across lines ('private static' and the
+     * typed variable on different lines) must fail the gate with the
+     * file and line named — the old per-line application never saw it
+     * (verified empirically at HEAD: every line of the fixture is
+     * pattern-clean; the whole file is not). The clean direction rides
+     * a real shared source file, so the gate provably runs content
+     * through, not past, the fixture class below.
+     */
+    public function testTheStaticMutableGateCatchesMultilineSpellingsEndToEnd(): void
+    {
+        $gate = new \ReflectionMethod($this, 'assertCarriesNoStaticMutableState');
+
+        $fixture = realpath(__DIR__ . '/fixtures/sweep-corruption/static-multiline.php');
+        $this->assertNotFalse($fixture, 'The multiline-static fixture must exist.');
+
+        try {
+            $gate->invoke($this, $fixture);
+            $this->fail('A multiline static-property spelling must fail the actual gate, never pass line-by-line.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('static-multiline.php:14', $e->getMessage());
+            $this->assertStringContainsString('private static', $e->getMessage());
+        }
+
+        // The legal statics of a real swept file stay clean through the
+        // same code path (Url.php spells no statics at all; HeaderMap's
+        // statics are consts and methods).
+        $gate->invoke($this, realpath(__DIR__ . '/../shared/src/Http/Url.php'));
+        $gate->invoke($this, realpath(__DIR__ . '/../shared/src/Http/HeaderMap.php'));
+
+        // And the pattern-level mutation twin, whole-file shaped: the
+        // joined string the battery pins, planted in file position.
+        $this->assertSame(1, preg_match(self::STATIC_MUTABLE_PATTERN, "class A {\n    private static\n    int \$multiline;\n}\n"));
     }
 
     public function testSharedSourceFollowsPsr4OneTypePerFile(): void
