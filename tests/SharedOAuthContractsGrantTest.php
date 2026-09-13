@@ -289,6 +289,14 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
                 return $method->getName();
             }, $reflection->getMethods())
         );
+
+        // Review-round pin (t31-r1-13): save() carries the generation
+        // precondition and reports the fence verdict as a bool — the
+        // widened shape 3.2's envelope and 3.3's coordination ride.
+        $save = new \ReflectionMethod(TokenStorageInterface::class, 'save');
+        $this->assertSame(3, $save->getNumberOfParameters());
+        $this->assertSame('bool', (string) $save->getReturnType());
+        $this->assertSame(-1, TokenStorageInterface::EXPECT_NO_GRANT);
     }
 
     public function testStorageRoundTripAndAtomicReplacement(): void
@@ -298,14 +306,57 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
 
         $this->assertNull($storage->load('fixture-provider'));
 
-        $storage->save('fixture-provider', $first);
+        $this->assertTrue($storage->save('fixture-provider', $first, TokenStorageInterface::EXPECT_NO_GRANT));
         $this->assertSame($first, $storage->load('fixture-provider'));
 
-        // Atomic replace: only the newest grant is ever visible.
+        // Atomic replace on the observed generation: only the newest
+        // grant is ever visible.
         $second = $first->with_token_set($this->tokenSet())->with_generation(4);
-        $storage->save('fixture-provider', $second);
+        $this->assertTrue($storage->save('fixture-provider', $second, 3));
         $this->assertSame($second, $storage->load('fixture-provider'));
         $this->assertSame(2, $storage->saveCount('fixture-provider'));
+    }
+
+    /**
+     * Review-round pin (t31-r1-13): the port's save is a
+     * generation-checked commit — Task 3.3's "a fencing generation
+     * checked before every refresh commit", fixed into the port BEFORE
+     * the envelope and coordination tasks pin the three-method shape.
+     * A late writer whose observed generation has been superseded
+     * commits NOTHING (the finding's shape: a refresh returning after
+     * a revoke must not silently reconnect the provider).
+     */
+    public function testStorageSaveIsFencedOnThePersistedGeneration(): void
+    {
+        $storage = new InMemoryTokenStorage();
+        $first = $this->connectedGrant(); // generation 3
+
+        $this->assertTrue($storage->save('fixture-provider', $first, TokenStorageInterface::EXPECT_NO_GRANT));
+
+        // The revoke advances the persisted generation to 4.
+        $tombstone = $first->revoke();
+        $this->assertTrue($storage->save('fixture-provider', $tombstone, 3));
+
+        // The late refresh (still holding generation-3 facts and a
+        // fresh token set) is fenced off: nothing commits.
+        $late = $first->with_token_set($this->tokenSet());
+        $this->assertFalse($storage->save('fixture-provider', $late, 3));
+
+        // The tombstone stands — no tokens resurrected, and the fenced
+        // attempt does not count as a commit.
+        $persisted = $storage->load('fixture-provider');
+        $this->assertSame(GrantState::Revoked, $persisted->state());
+        $this->assertNull($persisted->token_set());
+        $this->assertSame(2, $storage->saveCount('fixture-provider'));
+    }
+
+    public function testAbsentExpectationIsFencedOffByAnyPersistedGrant(): void
+    {
+        $storage = new InMemoryTokenStorage();
+
+        $this->assertTrue($storage->save('fixture-provider', $this->connectedGrant(), TokenStorageInterface::EXPECT_NO_GRANT));
+        $this->assertFalse($storage->save('fixture-provider', $this->connectedGrant(), TokenStorageInterface::EXPECT_NO_GRANT));
+        $this->assertSame(1, $storage->saveCount('fixture-provider'));
     }
 
     public function testStorageIsKeyedPerProvider(): void
@@ -313,7 +364,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $storage = new InMemoryTokenStorage();
         $grant = $this->connectedGrant();
 
-        $storage->save('fixture-provider', $grant);
+        $storage->save('fixture-provider', $grant, TokenStorageInterface::EXPECT_NO_GRANT);
 
         $this->assertNull($storage->load('another-provider'));
         $this->assertSame($grant, $storage->load('fixture-provider'));
@@ -326,7 +377,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $storage->delete('fixture-provider');
         $this->assertNull($storage->load('fixture-provider'));
 
-        $storage->save('fixture-provider', $this->connectedGrant());
+        $storage->save('fixture-provider', $this->connectedGrant(), TokenStorageInterface::EXPECT_NO_GRANT);
         $storage->delete('fixture-provider');
         $this->assertNull($storage->load('fixture-provider'));
     }
