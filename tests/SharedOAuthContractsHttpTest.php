@@ -293,6 +293,43 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Verifier-round pin (t31-r1-19): the control-byte rejection was
+     * byte-scoped (C0 minus tab, plus DEL), so the C1 control code
+     * points riding as VALID UTF-8 — U+009B CSI (the ANSI escape
+     * introducer), U+0085 NEL — and the Unicode line separators
+     * U+2028/U+2029 passed in values and rendered verbatim into the
+     * safe debug forms (terminal-injection and log-line-forging
+     * material in the obs-text-legal encoding). The same class also
+     * cannot reach a masked line through the tail of a binary secret
+     * anymore: such values reject at construction now.
+     */
+    public function testUtf8SpelledControlsAreRejectedInHeaderValuesInBothVos(): void
+    {
+        $hostile_values = array(
+            'CSI escape sequence' => "ok\xE2\x80\x94ok\xC2\x9B[31mred\xC2\x9B[0m",
+            'NEL' => "ok\xC2\x85newline",
+            'U+2028 line separator' => "ok\xE2\x80\xA8forged",
+            'U+2029 paragraph separator' => "ok\xE2\x80\xA9forged",
+        );
+
+        foreach ($hostile_values as $label => $value) {
+            try {
+                new HttpRequest('POST', 'https://host.example/', array('X-Test' => $value));
+                $this->fail(sprintf('A header value carrying %s must be rejected by the request VO.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+
+            try {
+                new HttpResponse(200, array('X-Test' => $value));
+                $this->fail(sprintf('A header value carrying %s must be rejected by the response VO.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+        }
+    }
+
+    /**
      * Review-round pin (t31-r1-10): the case-insensitive lookup
      * returned the FIRST match with no duplicate detection — two
      * case-variant spellings made the answer depend on map order (the

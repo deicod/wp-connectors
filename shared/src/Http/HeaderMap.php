@@ -35,14 +35,18 @@ final class HeaderMap {
 	/**
 	 * Control bytes a header VALUE may not carry: the whole C0 range
 	 * except horizontal tab — legal in field values per RFC 7230 — plus
-	 * DEL. ANSI escapes, NUL, and vertical tab rendered verbatim into
-	 * the safe debug forms otherwise (terminal-injection material).
+	 * DEL, plus the UTF-8 spellings of the C1 control code points
+	 * (U+0080-U+009F: CSI/NEL terminal-injection material that rides
+	 * as VALID UTF-8, indistinguishable from obs-text at the byte-class
+	 * level) and the Unicode line separators U+2028/U+2029 (log viewers
+	 * treat them as line breaks — forged log lines). Other high bytes
+	 * stay legal as RFC 7230 obs-text (verifier round t31-r1-19).
 	 *
 	 * @since 0.1.0
 	 *
 	 * @var string
 	 */
-	private const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]/';
+	private const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F]|\xE2\x80[\xA8\xA9]/';
 
 	/**
 	 * The RFC 7230 token grammar every header NAME must satisfy
