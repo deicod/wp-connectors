@@ -411,7 +411,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     /**
      * Whole-content pattern gate shared by every whole-file sweep:
      * matches the ENTIRE file (multiline spellings included), fails
-     * naming the file and the line the match starts on.
+     * naming the file and the line the match starts on — and a PCRE
+     * ABORT refuses the file (verifier round t31-r2-16, the glm36-8
+     * doctrine the round itself applies at the production ban gates):
+     * the static-mutable pattern's nested star exhausts the recursion
+     * limit on roughly 100 KB subjects, and the first form's
+     * `1 === preg_match(...)` read the abort's false return as
+     * "clean" — the fail-open twin of the burner-statement class
+     * glm36-8 closed, reachable only through the whole-file move
+     * (t31-r2-5; a single source line was never near the limit).
      *
      * @param string $path    Absolute file path.
      * @param string $pattern The banned-content pattern.
@@ -422,7 +430,18 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     {
         $contents = $this->fileContents($path);
         $match = array();
-        if (1 === preg_match($pattern, $contents, $match, PREG_OFFSET_CAPTURE)) {
+        $result = preg_match($pattern, $contents, $match, PREG_OFFSET_CAPTURE);
+        if (false === $result) {
+            $this->fail(
+                sprintf(
+                    '%s: the sweep could not match %s against the whole file (PCRE abort: %s) — an abort is a REFUSAL, never a clean pass.',
+                    $label,
+                    $path,
+                    preg_last_error_msg()
+                )
+            );
+        }
+        if (1 === $result) {
             $before = substr($contents, 0, $match[0][1]);
             $line_start = false === ($last_newline = strrpos($before, "\n")) ? 0 : $last_newline + 1;
             $line_end = (int) strpos($contents . "\n", "\n", $line_start);
@@ -597,6 +616,45 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
 
         $gate->invoke($this, realpath(__DIR__ . '/../shared/src/Clock/SystemClock.php'));
+    }
+
+    /**
+     * Verifier-round pin (t31-r2-16): the whole-file gate read its
+     * match as `1 === preg_match(...)` — a PCRE abort (the
+     * static-mutable pattern's nested star exhausts the recursion
+     * limit near 100 KB, a size whole-file application alone makes
+     * reachable) returned false and the file passed SILENTLY while
+     * carrying a real violation. The abort is a REFUSAL now, the
+     * glm36-8 doctrine the production ban gates already spell. The
+     * burner is generated at runtime (a ~100 KB hostile shape is not
+     * a fixture the tree should carry); the canary records its flag
+     * OUTSIDE the catch (glm29-16).
+     */
+    public function testAPcreAbortRefusesTheWholeFileGateNeverPassesIt(): void
+    {
+        $gate = new \ReflectionMethod($this, 'assertCarriesNoStaticMutableState');
+        $violation = "\nfinal class Burner\n{\n    private static\n        int \$counter;\n}\n";
+
+        $burner = tempnam(sys_get_temp_dir(), 'wpct-pcre-burner-');
+        file_put_contents($burner, '<?php' . str_pad('// ', 50000, 'x') . "\n static " . str_pad('', 50000, 'y') . $violation);
+
+        $aborted = false;
+        try {
+            $gate->invoke($this, $burner);
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $aborted = true;
+            $this->assertStringContainsString('PCRE abort', $e->getMessage(), 'The abort refusal must name itself, not masquerade as a located hit or a clean pass.');
+            $this->assertStringContainsString(basename($burner), $e->getMessage());
+        }
+        $this->assertTrue($aborted, 'A file that trips the PCRE recursion limit must be REFUSED, never swept as clean (the verifier reproduced a real violation passing silently behind a burner).');
+        unlink($burner);
+
+        // The clean direction: padding-only content of the same scale
+        // passes (the refusal is the abort, not the size).
+        $clean = tempnam(sys_get_temp_dir(), 'wpct-pcre-clean-');
+        file_put_contents($clean, '<?php' . str_pad('// prose about static behaviour and nothing else ', 10000, 'x'));
+        $gate->invoke($this, $clean);
+        unlink($clean);
     }
 
     public function testSharedSourceFollowsPsr4OneTypePerFile(): void
