@@ -18,8 +18,11 @@ already targets it, record 0005). Six commits, each suite-green:
   validation rejects empty/whitespace tokens and non-positive
   expires_in; `with_replacement_refresh_token()` encodes the Task 3.3
   merge rule (null keeps the stored token); strict
-  `to_array()`/`from_array()` storage serialization (exact key set, no
-  coercion, microsecond instants, serialized expiry must re-derive).
+  `to_array()`/`from_array()` storage serialization (the five modelled
+  keys required and strictly typed — no coercion, microsecond instants,
+  serialized expiry must re-derive — while unmodelled extra keys are
+  deliberately ignored so a newer version's payload still loads; format
+  versioning stays the encrypted envelope's job, never the payload's).
 - `ClockInterface` + `SystemClock` (Clock): the time port; the harness
   gains `DeterministicClock` for time-sensitive contract tests.
 - `OAuthRuntimeException` family (Exception): abstract base plus six
