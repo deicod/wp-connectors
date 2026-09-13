@@ -397,7 +397,30 @@ documented exception.
   fixed before 3.2/3.3 pin the shape) and token-set reads made forward-tolerant (Task
   4.4's sixth key loads on older readers) — both scope decisions and the raw
   retry-after adjudication ledgered; a two-lens verifier pass re-drove every fix
-  empirically (six findings fixed as t31-r1-16..21).
+  empirically (six findings fixed as t31-r1-16..21). Fix round t31-r2 (18
+  commits over round-2's 15 findings, 11 counted): the URL surface screened
+  with the shared control-byte vocabulary (forged-line + bidi/override classes;
+  one owner, HeaderMap's constant, covering both safe-debug surfaces); the
+  harness DeterministicClock routed through InstantArithmetic (DST/saturation
+  repro shapes pinned); the revocation tombstone structurally mint-only-by-
+  revoke() (constructor private, StoredGrant::in_state() the public entry
+  rejecting Revoked — NOTE FOR TASK 3.2: hydrating a persisted tombstone needs
+  its own deliberate producer, never the reopened constructor); all-digit
+  header names accepted as the RFC 7230 tokens they are; the architecture
+  sweep whole-file (multiline statics caught, line-located), loud on failed
+  reads under both runtime spellings, refusing PCRE aborts, and banning direct
+  clock/environment reach (the README's reached-only-through-the-ports claim
+  now enforced); header lookup on the constructor-built folded index with a
+  locale-independent ASCII fold at every fold site; one token-grammar owner
+  for names and methods; embed_shared shipping exactly the shared PHP sources
+  with a validated namespace suffix (pre-existing master bugs, fixed forward);
+  the from_array contract and the repeated-header collapse documented
+  honestly (the latter deferred to Task 3.7). A two-lens verifier pass
+  (adversarially verified per finding) held every fix-claim and confirmed
+  four findings, fixed as t31-r2-16..19 (the whole-file gate's PCRE-abort
+  fail-open — found by both lenses independently; getdate()/localtime()
+  joining the clock vocabulary; non-PHP files inside shared/src shipping;
+  the backreference-material namespace rewrite).
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

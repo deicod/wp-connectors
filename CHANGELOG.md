@@ -181,6 +181,120 @@ the DST battery extended into +30-minute and +12:45 zones), six
 findings fixed as t31-r1-16..21, below-bar notes ledgered. Suite
 1453 → 1495 tests, 42668 → 42899 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r2)
+
+Fix round over the round-2 review's 15 findings — 11 counted defects
+fixed as t31-r2-1..12 (one of them, the build.php embed_shared
+defect, a fix-now forward recommendation on pre-existing master
+code), plus three cheap halves: the repeated-header collapse
+documented honestly and deferred to Task 3.7 (t31-r2-13), the
+locale-sensitive fold hardened (t31-r2-14), and the sensitive-header
+list staying ledgered-refuted (t31-r2-15, no fix). A two-lens
+verifier pass over the whole round diff found every one of the 14
+fix-claims HELD and confirmed four new findings, fixed as
+t31-r2-16..19. Each commit suite-green:
+
+- **Control bytes cannot ride the URL surface** (t31-r2-1):
+  `Url::parse_validated()` passed the raw path/host through, so
+  U+2028/U+2029/NEL and the C0 range reached
+  `redacted_url()`/`__toString()` verbatim — the forged-log-line
+  class t31-r1-19 closed in header VALUES, reopened in the URL
+  position. The screen rides ONE vocabulary, owned by HeaderMap
+  (public constant; the header rule and the URL rule cannot drift),
+  applied before `parse_url` with abort-as-reject. The space-in-host
+  tolerance stays per the round-1 host-charset adjudication (a tab
+  normalizes to an underscore inside modern parse_url anyway).
+- **The bidi/override controls are banned** (t31-r2-6): the whole
+  class — U+202A-U+202E embeddings/overrides and U+2066-U+2069
+  isolates — joins the shared vocabulary, closing character-reorder
+  spoofing in provider header values (RLO rendering 'ok' + 'evac' as
+  a mirrored run) and, through the shared constant, the URL position
+  too.
+- **The harness clock rides the shared instant arithmetic**
+  (t31-r2-2): `DeterministicClock::advanceBy()` spelled its shift as
+  wall-clock `modify('+N seconds')` — across a DST transition +7200
+  moved 3600 real seconds, and a trillion-second advance silently
+  no-opped. It routes through `InstantArithmetic::plus_seconds()`
+  like the production expiry derivations; both repro shapes pinned
+  (absolute timestamp deltas and wall spellings, both transition
+  directions).
+- **The revocation tombstone is only ever minted by revoke()**
+  (t31-r2-3): the constructor minted `Revoked` at ANY un-advanced
+  generation — a tombstone persisted that way does not fence (an
+  in-flight refresh CAS-commits over the revoke). The constructor is
+  private now (revoke() and the immutable transitions are its only
+  callers) and a named constructor `StoredGrant::in_state()` is the
+  public entry, rejecting `Revoked` with the typed exception —
+  un-advanced tombstones are unrepresentable through every public
+  path. A tombstone transitioning back to a live state at the same
+  generation stays by adjudication (fence-neutral; terminality is
+  Task 3.3's policy), pinned with the citation. Task 3.2's hydration
+  of a persisted tombstone gets a forward note: it needs its own
+  deliberate producer, never the reopened plain constructor.
+- **All-digit header names are the legal tokens they are**
+  (t31-r2-4): PHP coerces a canonical digit-string array key ('123')
+  to an int before the `is_string` gate, so legal RFC 7230 tokens
+  were rejected with a misleading message. The int key is restored
+  to its string spelling and the token grammar decides; `headers()`
+  carries the name's PHP-canonical (integer) key.
+- **The architecture sweep is whole-file, fail-loud, and owns its
+  reads** (t31-r2-5/7/9/16/17): the static-mutable gate matches the
+  WHOLE file (multiline property spellings escaped the per-line
+  application; line-located diagnostics kept, mutation-tested
+  end-to-end through the actual gate); a new gate bans direct
+  clock/environment reach (time/microtime/hrtime/date + their
+  clock-read twins + getdate/localtime + getenv/putenv + the
+  environment superglobals — whole-file, so a call split between
+  name and paren cannot slip it; prose naming a call shape is
+  rewritten, never exempted); the line reader owns failed reads
+  under BOTH runtime spellings (false, and the empty string a PHP
+  8.5 directory read degrades to); and a PCRE abort REFUSES the
+  whole-file gate (the verifier's catch: `1 === preg_match` read the
+  recursion-limit abort as a clean pass on ~100 KB subjects — the
+  glm36-8 doctrine applied to the round's own helper). shared/README
+  now states the clock/env ban it implies.
+- **HeaderMap keeps its folded index; the fold is locale-independent**
+  (t31-r2-10/14): the constructor builds the lowercase index for the
+  duplicate fence and `header()` is one isset probe instead of a
+  rescan folding every entry per lookup; all three fold sites (fence,
+  index lookup, SecretMask's vocabulary match) ride the new
+  `Support\AsciiFold::lower()` — an explicit byte table with no
+  LC_CTYPE to consult, so a Turkish-locale process cannot make the
+  fence, the lookup, and the masking vocabulary disagree on
+  'AUTHORIZATION' (argued from the fold tables; no tr_* locale
+  exists on this host to reproduce).
+- **One token-grammar owner** (t31-r2-11): `HttpRequest::
+  METHOD_TOKEN_PATTERN` was a second verbatim copy of the tchar
+  grammar with a drifted anchor; it is a constant-expression alias
+  of `HeaderMap::NAME_TOKEN_PATTERN` now, identity-pinned.
+- **embed_shared ships exactly the shared PHP sources** (t31-r2-12/
+  18/19): the collection walked shared/'s PARENT directory (dev
+  files into plugin zips) with a global `src/` strip that mangled
+  nested segments; it now collects from shared/src, takes `.php`
+  files only, validates namespace_suffix as a namespace segment, and
+  escapes the provenance interpolation (backreference material in a
+  preg_replace replacement shipped parse errors into zips). All
+  three predate this branch (master code) — fixed here because this
+  branch populates shared/.
+- **Docs tell the truth** (t31-r2-8/13): the Unreleased Added bullet
+  states from_array()'s real contract (modelled keys required and
+  strict, unmodelled extra keys ignored for forward tolerance,
+  versioning is the envelope's); the repeated-header collapse is
+  stated at the response VO and the transport port with the
+  representation decision assigned to Task 3.7.
+
+Verifier pass: two independent lenses (correctness + security) plus
+adversarial verification per finding — every one of the 14
+fix-claims HELD (re-driven: an old-vs-new HeaderMap differential
+over every constructible input class, both clock repro shapes with
+named zones, an independent scratch-root build with a planted
+nested-src file, token-stripped docblock-only proofs). Four
+confirmed findings fixed as t31-r2-16..19: the PCRE-abort fail-open
+(both lenses independently), the getdate()/localtime() vocabulary
+gap, non-PHP files inside shared/src shipping, and the
+backreference-material namespace rewrite. Residuals ledgered. Suite
+1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
+
 ### Changed (tooling — PHP floor 8.2, user decision 2026-09-11)
 
 The supported PHP floor is **8.2**, not 7.4 — "Pff PHP 7.4 wird nicht mal
