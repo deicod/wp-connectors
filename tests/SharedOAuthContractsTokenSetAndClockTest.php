@@ -555,6 +555,51 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $clock->advanceBy(-1);
     }
 
+    /**
+     * Fix-round pin (t31-r2-2): advanceBy() spelled its shift as
+     * modify('+N seconds') — the wall-clock/saturation arithmetic
+     * InstantArithmetic was created to eliminate (t31-r1-1..3),
+     * reintroduced in the harness every time-sensitive test relies on.
+     * Advancing is ABSOLUTE elapsed time in both transition directions.
+     */
+    public function testDeterministicClockAdvancesAbsoluteSecondsAcrossDstTransitions(): void
+    {
+        // Spring forward (Europe/Berlin 2026-03-29, 02:00 CET -> 03:00
+        // CEST): the finding's repro — +7200 moved only 3600 real
+        // seconds (01:30 CET -> 03:30 CEST). Absolute: 01:30 + 2h real
+        // = 04:30 CEST.
+        $berlin = new DeterministicClock(new \DateTimeImmutable('2026-03-29 01:30:00', new \DateTimeZone('Europe/Berlin')));
+        $before = $berlin->now()->getTimestamp();
+        $berlin->advanceBy(7200);
+        $this->assertSame(7200, $berlin->now()->getTimestamp() - $before);
+        $this->assertSame('2026-03-29T04:30:00+02:00', $berlin->now()->format('Y-m-d\TH:i:sP'));
+
+        // Fall back (America/New_York 2026-11-01, 02:00 EDT -> 01:00
+        // EST): +3600 real seconds lands on the SAME wall spelling in
+        // the later offset.
+        $newYork = new DeterministicClock(new \DateTimeImmutable('2026-11-01 01:30:00', new \DateTimeZone('America/New_York')));
+        $beforeNy = $newYork->now()->getTimestamp();
+        $newYork->advanceBy(3600);
+        $this->assertSame(3600, $newYork->now()->getTimestamp() - $beforeNy);
+        $this->assertSame('2026-11-01T01:30:00-05:00', $newYork->now()->format('Y-m-d\TH:i:sP'));
+    }
+
+    /**
+     * The other repro shape of t31-r2-2: a trillion-second-scale
+     * advance silently no-opped through modify() (the reading never
+     * moved, expiry-window tests quietly testing nothing). Absolute
+     * integer-timestamp arithmetic applies the whole offset.
+     */
+    public function testDeterministicClockAppliesLargeAdvancesCompletely(): void
+    {
+        $clock = new DeterministicClock(new \DateTimeImmutable('2026-09-13T10:00:00+00:00'));
+        $before = $clock->now()->getTimestamp();
+
+        $clock->advanceBy(10000000000000);
+
+        $this->assertSame($before + 10000000000000, $clock->now()->getTimestamp());
+    }
+
     /* ---------------------------------------------------------------
      * Shared instant arithmetic (review round t31-r1).
      * ---------------------------------------------------------------

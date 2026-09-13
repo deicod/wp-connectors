@@ -14,6 +14,7 @@
 declare(strict_types=1);
 
 use Deicod\WpConnectors\Shared\Clock\ClockInterface;
+use Deicod\WpConnectors\Shared\Support\InstantArithmetic;
 
 final class DeterministicClock implements ClockInterface
 {
@@ -42,6 +43,15 @@ final class DeterministicClock implements ClockInterface
      * Moves the reading forward (never backward — cooldown/expiry tests
      * age time; rewinding is not a wall-clock behavior).
      *
+     * The shift rides the shared instant arithmetic (review round
+     * t31-r2-2): modify('+N seconds') is wall-clock arithmetic in the
+     * reading's named timezone — across a DST transition a 7200-second
+     * advance really moved 3600 absolute seconds, silently skewing
+     * every time-sensitive test that ages time across a transition —
+     * and it saturates silently for large offsets (a 1e13-second
+     * advance no-ops). Same owner the production expiry derivations
+     * ride (InstantArithmetic, t31-r1-1..3).
+     *
      * @param int $seconds Seconds to advance by (must be non-negative).
      * @return void
      */
@@ -51,6 +61,6 @@ final class DeterministicClock implements ClockInterface
             throw new InvalidArgumentException('DeterministicClock only advances; ' . $seconds . ' given.');
         }
 
-        $this->reading = $this->reading->modify(sprintf('+%d seconds', $seconds));
+        $this->reading = InstantArithmetic::plus_seconds($this->reading, $seconds);
     }
 }
