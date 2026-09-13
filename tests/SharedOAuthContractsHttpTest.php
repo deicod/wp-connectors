@@ -816,6 +816,32 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Fix-round pin (t31-r2-11), the grammar-identity pin:
+     * METHOD_TOKEN_PATTERN was a second verbatim copy of the RFC 7230
+     * tchar grammar — t31-r1-16 declared HeaderMap the single owner
+     * for NAMES, and the copy's anchor had already diverged (^ vs \A,
+     * behaviorally twin spellings without /m, but the drift direction
+     * itself was the finding). The method pattern is a
+     * constant-expression alias of the owner now: identical by
+     * construction, and a future grammar tightening cannot split the
+     * name surface from the method surface.
+     */
+    public function testTheMethodTokenPatternIsTheHeaderNameGrammar(): void
+    {
+        $this->assertSame(HeaderMap::NAME_TOKEN_PATTERN, HttpRequest::METHOD_TOKEN_PATTERN);
+        $this->assertSame(
+            (new \ReflectionClass(HeaderMap::class))->getConstant('NAME_TOKEN_PATTERN'),
+            (new \ReflectionClass(HttpRequest::class))->getConstant('METHOD_TOKEN_PATTERN'),
+            'The method grammar must be the single-owner spelling, never a re-typed copy.'
+        );
+
+        // And the shared grammar still judges both surfaces: every
+        // tchar spelling is a legal method, every off-grammar spelling
+        // is not (the invalid-method provider already pins the rejections).
+        $this->assertSame('G.E.T', (new HttpRequest('g.e.t', 'https://host.example/'))->method());
+    }
+
+    /**
      * Fix-round pin (t31-r2-10): the constructor computes each
      * lowercase name for the duplicate fence and then threw the index
      * away — every header() re-scanned the whole map with two

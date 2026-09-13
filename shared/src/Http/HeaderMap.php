@@ -70,11 +70,19 @@ final class HeaderMap {
 	 * 'Authorization '). The grammar closes the whole class: no C0
 	 * controls, no DEL, no C1-as-UTF-8, no separators, no non-ASCII.
 	 *
+	 * PUBLIC and the SINGLE OWNER of the tchar grammar (review round
+	 * t31-r2-11): an HTTP method is a token over the same RFC 7230
+	 * alphabet, and HttpRequest's METHOD_TOKEN_PATTERN had drifted
+	 * into a second verbatim copy with its own anchor spelling (^ vs
+	 * \A). The method pattern is a constant-expression alias of this
+	 * one now — the grammar lives once, and a future tightening (an
+	 * anchor, a character class) cannot diverge between the surfaces.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var string
 	 */
-	private const NAME_TOKEN_PATTERN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/';
+	const NAME_TOKEN_PATTERN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/';
 
 	/**
 	 * Header lines (name as given => value).

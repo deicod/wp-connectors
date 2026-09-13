@@ -36,11 +36,18 @@ final class HttpRequest {
 	/**
 	 * HTTP method token characters (RFC 7230 tchar).
 	 *
+	 * A constant-expression alias of the SINGLE grammar owner,
+	 * HeaderMap::NAME_TOKEN_PATTERN (review round t31-r2-11): an HTTP
+	 * method is a token over the same alphabet, and this second
+	 * verbatim copy had already drifted its anchor (^ vs \A). The name
+	 * stays for the method surface's readability; the grammar lives
+	 * once (the PROVIDER_ID/CACHE_SCOPE alias direction).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var string
 	 */
-	const METHOD_TOKEN_PATTERN = '/^[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/';
+	const METHOD_TOKEN_PATTERN = HeaderMap::NAME_TOKEN_PATTERN;
 
 	/**
 	 * Upper-cased HTTP method.
