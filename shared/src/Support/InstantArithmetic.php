@@ -7,11 +7,11 @@
  * instant's named timezone. DateTimeImmutable::modify( '+N seconds' )
  * in a DST-observing zone crosses transitions in wall time — an
  * expiry derived that way drifts by the transition delta (an hour in
- * most zones) — so every add/subtract first projects the instant into
- * UTC (fixed offset, no transitions of its own), applies the offset
- * there, and re-attaches the original timezone: same instant, same
- * zone, real elapsed seconds. Microseconds ride along untouched
- * (setTimezone() and modify() are instant-preserving where used).
+ * most zones) — and saturates silently for large offsets — so the
+ * arithmetic runs on the raw integer timestamps instead and is
+ * reconstructed with the original timezone and microseconds attached:
+ * same zone, real elapsed seconds, faithful across the whole
+ * representable range.
  *
  * Pure stateless functions, no environment access.
  *
@@ -25,24 +25,14 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Shared\Support;
 
 use DateTimeImmutable;
-use DateTimeZone;
+use InvalidArgumentException;
 
 /**
- * DST-proof second arithmetic for instants.
+ * DST-proof, saturation-proof second arithmetic for instants.
  *
  * @since 0.1.0
  */
 final class InstantArithmetic {
-
-	/**
-	 * The projection zone: UTC has no DST transitions, so arithmetic
-	 * there is absolute by construction.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
-	 */
-	private const UTC_ZONE_NAME = 'UTC';
 
 	/**
 	 * Adds absolute seconds to an instant (timezone attached unchanged).
@@ -63,7 +53,7 @@ final class InstantArithmetic {
 	 * @since 0.1.0
 	 *
 	 * @param DateTimeImmutable $instant The base instant.
-	 * @param int               $seconds Non-negative seconds to subtract.
+	 * @param int               $seconds Seconds to subtract (absolute elapsed time).
 	 * @return DateTimeImmutable The shifted instant in the original timezone.
 	 */
 	public static function minus_seconds( DateTimeImmutable $instant, int $seconds ): DateTimeImmutable {
@@ -71,20 +61,33 @@ final class InstantArithmetic {
 	}
 
 	/**
-	 * Applies the offset in UTC, then restores the original timezone.
+	 * Applies the offset to the raw timestamp, then restores the zone.
+	 *
+	 * The arithmetic is done on the INTEGER timestamp and reconstructed
+	 * ('U u' carries the microseconds), never through modify():
+	 * DateTime's relative arithmetic saturates SILENTLY far inside the
+	 * int domain — an offset near a trillion seconds applies no shift
+	 * at all, and one near PHP_INT_MAX clamps to ~1372 years — so a
+	 * modify()-based shift would hand back a confidently wrong
+	 * instant. A shift that would leave the int-timestamp domain
+	 * altogether (int overflow to float) is rejected loudly instead.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @param DateTimeImmutable $instant The base instant.
-	 * @param int               $seconds Signed seconds to apply in the UTC projection.
+	 * @param int               $seconds Signed seconds to apply.
 	 * @return DateTimeImmutable The shifted instant in the original timezone.
+	 * @throws InvalidArgumentException When the shift leaves the representable int-timestamp domain.
 	 */
 	private static function offset_in_utc( DateTimeImmutable $instant, int $seconds ): DateTimeImmutable {
-		$timezone = $instant->getTimezone();
+		$timezone  = $instant->getTimezone();
+		$timestamp = $instant->getTimestamp();
 
-		return $instant
-			->setTimezone( new DateTimeZone( self::UTC_ZONE_NAME ) )
-			->modify( sprintf( '%+d seconds', $seconds ) )
+		if ( ( $seconds > 0 && $timestamp > PHP_INT_MAX - $seconds ) || ( $seconds < 0 && $timestamp < PHP_INT_MIN - $seconds ) ) {
+			throw new InvalidArgumentException( sprintf( 'A %d-second shift leaves the representable instant range — the request is misconfigured, and the alternative is a silently wrong instant.', $seconds ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
+		}
+
+		return DateTimeImmutable::createFromFormat( 'U u', sprintf( '%d %06d', $timestamp + $seconds, (int) $instant->format( 'u' ) ) )
 			->setTimezone( $timezone );
 	}
 }

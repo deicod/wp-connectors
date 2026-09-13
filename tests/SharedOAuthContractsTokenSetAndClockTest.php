@@ -244,6 +244,22 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $this->assertEquals($set->expires_at(), $restored->expires_at());
     }
 
+    /**
+     * Follow-up pin (self-review): pre-epoch readings (negative
+     * timestamps) derive exactly and round-trip through the canonical
+     * UTC spelling — the timestamp-based arithmetic carries no
+     * epoch-origin assumption.
+     */
+    public function testPreEpochReadingDerivesExactlyAndRoundTrips(): void
+    {
+        $obtained = new \DateTimeImmutable('1900-01-01T00:00:00.250000+00:00');
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), null, 86400, $obtained);
+
+        $this->assertSame(86400, $set->expires_at()->getTimestamp() - $set->obtained_at()->getTimestamp());
+        $this->assertSame('1900-01-02T00:00:00.250000+00:00', $set->expires_at()->format(AccessTokenSet::SERIAL_INSTANT_FORMAT));
+        $this->assertSame($set->to_array(), AccessTokenSet::from_array($set->to_array())->to_array());
+    }
+
     /* ---------------------------------------------------------------
      * Refresh-token merge semantics.
      * ---------------------------------------------------------------

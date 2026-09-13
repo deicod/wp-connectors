@@ -153,6 +153,38 @@ final class SharedOAuthContractsPolicyTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * Review-round pin (t31-r1-1..3 follow-up, self-review): the
+     * shared arithmetic helper's first form still rode modify() in its
+     * UTC projection, and modify() SATURATES silently far inside the
+     * int domain — a ~trillion-second offset applied NO shift at all
+     * (and one near PHP_INT_MAX clamped to ~1372 years), so a giant
+     * but constructible skew handed should_refresh() a confidently
+     * wrong threshold. The arithmetic runs on raw integer timestamps
+     * now; the flip point is exact at every magnitude, and the one
+     * unrepresentable edge (int-domain overflow) rejects loudly.
+     */
+    public function testRefreshThresholdStaysExactAtSaturationScaleSkews(): void
+    {
+        $obtained = new \DateTimeImmutable('2026-09-13T10:00:00+00:00');
+        $expires_in = 3600;
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), null, $expires_in, $obtained);
+
+        foreach (array(31536000000 /* 1000 years */, 10000000000000 /* the old saturation shape */, PHP_INT_MAX) as $skew) {
+            $policy = new RefreshPolicy($skew, 1, 60);
+            $threshold_ts = $obtained->getTimestamp() + $expires_in - $skew;
+
+            $this->assertFalse(
+                $policy->should_refresh($set, new \DateTimeImmutable('@' . ($threshold_ts - 1))),
+                sprintf('Skew %d: one second before the true far-past threshold must not refresh.', $skew)
+            );
+            $this->assertTrue(
+                $policy->should_refresh($set, new \DateTimeImmutable('@' . $threshold_ts)),
+                sprintf('Skew %d: the true threshold itself must refresh.', $skew)
+            );
+        }
+    }
+
     /* ---------------------------------------------------------------
      * Retry-After capping (both provider forms share the cap).
      * ---------------------------------------------------------------
