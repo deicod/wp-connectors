@@ -50,6 +50,55 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         new AccessTokenSet(FakeSecrets::accessToken(), null, -1, $this->obtainedAt());
     }
 
+    /**
+     * Review-round pin (t31-r1-4): expires_in had no upper bound, and an
+     * astronomically large int saturated modify() silently to a zero
+     * delta — an expiry equal to the reading itself, stored and
+     * round-tripped with every gate green. The bound is the derived
+     * expiry's serializability: the canonical rendering carries a
+     * four-digit year, so obtained-at plus expires_in must stay within
+     * the last UTC second of year 9999. The boundary below is exact:
+     * 253402300799 seconds from the 1970 epoch reading IS that second.
+     */
+    public function testExpiresInDerivingPastTheSerializableCeilingIsRejected(): void
+    {
+        $at = new \DateTimeImmutable('1970-01-01T00:00:00.000000+00:00');
+
+        // One second past the ceiling: rejected with the documented
+        // rejection (never a silent saturation).
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('serializable range');
+        new AccessTokenSet(FakeSecrets::accessToken(), null, 253402300800, $at);
+    }
+
+    public function testExpiresInDerivingExactlyTheSerializableCeilingIsAcceptedAndRoundTrips(): void
+    {
+        $at = new \DateTimeImmutable('1970-01-01T00:00:00.000000+00:00');
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), null, 253402300799, $at);
+
+        $this->assertSame('9999-12-31T23:59:59.000000+00:00', $set->expires_at()->format(AccessTokenSet::SERIAL_INSTANT_FORMAT));
+        $this->assertSame($set->to_array(), AccessTokenSet::from_array($set->to_array())->to_array());
+
+        // The finding's shape: an int so large the old derivation
+        // saturated to a zero delta. Also rejected — as is any lifetime
+        // past the ceiling from a far-future reading.
+        foreach (array(10000000000000, PHP_INT_MAX) as $oversized) {
+            try {
+                new AccessTokenSet(FakeSecrets::accessToken(), null, $oversized, $at);
+                $this->fail(sprintf('An expires_in of %d must be rejected before the derivation saturates.', $oversized));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('serializable range', $e->getMessage());
+            }
+        }
+
+        try {
+            new AccessTokenSet(FakeSecrets::accessToken(), null, 1, new \DateTimeImmutable('9999-12-31T23:59:59.000000+00:00'));
+            $this->fail('A lifetime crossing the ceiling from a far-future reading must be rejected too.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('serializable range', $e->getMessage());
+        }
+    }
+
     public function testEmptyStringRefreshTokenIsRejectedDistinctFromNull(): void
     {
         // '' is NOT the "no replacement token" spelling — null is.

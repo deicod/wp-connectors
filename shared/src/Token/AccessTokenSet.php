@@ -72,6 +72,24 @@ final class AccessTokenSet {
 	private const SERIAL_ZONE_NAME = 'UTC';
 
 	/**
+	 * The last UTC second of year 9999: the derived expiry's ceiling.
+	 *
+	 * The canonical serialization renders a four-digit year, so an expiry
+	 * past this instant cannot round-trip. The bound is checked on the
+	 * DERIVED timestamp (obtained-at plus expires_in) rather than on
+	 * expires_in alone because a far-future reading with a modest
+	 * lifetime can cross it just as an oversized lifetime from a normal
+	 * reading can — and an unchecked derivation saturates silently
+	 * (modify() clamps astronomically large offsets to no change at all,
+	 * yielding expiry == obtained-at with every gate green).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var int
+	 */
+	private const SERIALIZABLE_EXPIRY_CEILING = 253402300799;
+
+	/**
 	 * Access token (non-empty, non-whitespace-only).
 	 *
 	 * @since 0.1.0
@@ -132,7 +150,7 @@ final class AccessTokenSet {
 	 *
 	 * @param string            $access_token  Access token; empty or whitespace-only values are rejected.
 	 * @param string|null       $refresh_token Refresh token, or null when none was issued; empty or whitespace-only strings are rejected.
-	 * @param int               $expires_in    Lifetime in seconds; must be positive (the expiry offset from obtained-at may not be zero or negative).
+	 * @param int               $expires_in    Lifetime in seconds; must be positive (the expiry offset from obtained-at may not be zero or negative) and small enough that the derived expiry stays inside the serializable range (year 9999 UTC).
 	 * @param DateTimeImmutable $obtained_at   Clock reading at issuance.
 	 * @throws InvalidArgumentException When any field violates the contract above.
 	 */
@@ -145,6 +163,9 @@ final class AccessTokenSet {
 		}
 		if ( $expires_in <= 0 ) {
 			throw new InvalidArgumentException( sprintf( 'The expires_in offset must be a positive number of seconds, %d given.', $expires_in ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
+		}
+		if ( $expires_in > self::SERIALIZABLE_EXPIRY_CEILING - $obtained_at->getTimestamp() ) {
+			throw new InvalidArgumentException( sprintf( 'The derived expiry must stay within the serializable range (the last UTC second of year 9999); obtained-at plus %d seconds does not.', $expires_in ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
 		}
 
 		$this->access_token  = $access_token;
