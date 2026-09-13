@@ -1453,72 +1453,19 @@ final class ZaiTextGenerationModel extends AbstractOpenAiCompatibleTextGeneratio
 
 		$function_declarations = $config->getFunctionDeclarations();
 		if ( \is_array( $function_declarations ) ) {
-			$declared_names = array();
-
-			foreach ( $function_declarations as $declaration ) {
-				/*
-				 * GLM12 #5 (parity with the zai_anthropic twin's Codex
-				 * R18 #2 rule): a declared tool with an EMPTY name is a
-				 * malformed identity — the encodability check below
-				 * passes it (json_encode('') succeeds), the SDK parent
-				 * ships it verbatim inside tools[].function, and the
-				 * spec-faithful endpoint rejects it (name must be 1-64
-				 * chars) as the generic misattributed 'rejected the
-				 * request' 400 — the exact misattributed-error class
-				 * GLM9 #4 fixed for tool-result ids. The DTO constructor
-				 * coerces the name to a string, so '' is the only
-				 * constructible empty identity; identity errors surface
-				 * BEFORE the encodability checks, matching the twin's
-				 * ordering.
-				 */
-				$name = $declaration->getName();
-
-				/*
-				 * glm19-5: the identity rules live on the shared
-				 * RequestShapeGuard (Codex R18 #2's empty-name rule via
-				 * the twin's parity).
-				 */
-				RequestShapeGuard::reject_empty_tool_name( $name, self::PROVIDER_LABEL );
-
-				/*
-				 * glm13-9 (parity with the twin's R18 rule, one surface
-				 * late): a returned tool_call identifies the selected
-				 * declaration ONLY by name (the SDK maps the response to
-				 * FunctionCall(id, function.name, args) — name is the
-				 * only declaration reference on the DTO), so two
-				 * declarations sharing a name make that identification
-				 * ambiguous and a name-keyed consumer dispatches against
-				 * the wrong tool. A duplicate is a typed pre-transport
-				 * rejection exactly as on the twin. glm19-5: the rule
-				 * lives on the shared RequestShapeGuard.
-				 */
-				RequestShapeGuard::reject_duplicate_tool_name( $name, $declared_names, self::PROVIDER_LABEL );
-
-				$declared_names[ $name ] = true;
-
-				/*
-				 * glm16-11 (parity with the twin's Codex R7 #3 rule, the
-				 * same error class glm13-8 fixed for this surface's
-				 * output-schema member): the SDK parent ships
-				 * FunctionDeclaration::toArray() verbatim into
-				 * tools[].function.parameters, so a LIST-root parameters
-				 * schema (['a','b']) encodes fine and rode the wire
-				 * unvalidated — the spec-faithful endpoint answers the
-				 * generic misattributed 'rejected the request' 400 with no
-				 * hint the caller's schema shape is the cause, exactly the
-				 * misattributed-error class the zai_anthropic twin rejects
-				 * typed pre-transport and this same walk rejects for the
-				 * sibling output-schema member above. Identity rules stay
-				 * first (the twin's ordering); the boundary is the twin's:
-				 * only a NON-EMPTY list rejects — null and [] keep their
-				 * pass-through (the twin normalizes them; nothing here
-				 * over-rejects what the twin accepts). glm19-5: the rule
-				 * lives on the shared RequestShapeGuard.
-				 */
-				$input_schema = $declaration->getParameters();
-
-				RequestShapeGuard::reject_list_root_parameter_schema( $input_schema, self::PROVIDER_LABEL );
-			}
+			/*
+			 * glm39-1: the declaration walk — empty name (GLM12 #5),
+			 * duplicate name (glm13-9, "one surface late"), list-root
+			 * parameter schema (glm16-11, the same one-surface-late
+			 * shape), in that order, first-bad-wins in declaration
+			 * order — is the ONE shared RequestShapeGuard scaffold the
+			 * zai_anthropic twin's prepare_tools_param() also rides;
+			 * the loop twins this replaces were exactly the drift
+			 * surface those parity records document. This surface needs
+			 * the walk's rejections only: the SDK parent assembles
+			 * tools[] from the same declarations itself.
+			 */
+			RequestShapeGuard::validate_function_declarations( $function_declarations, self::PROVIDER_LABEL );
 		}
 
 		foreach ( $prompt as $message ) {

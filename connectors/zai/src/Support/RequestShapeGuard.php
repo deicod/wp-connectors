@@ -26,6 +26,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Zai\Support;
 
 use WordPress\AiClient\Common\Exception\InvalidArgumentException;
+use WordPress\AiClient\Tools\DTO\FunctionDeclaration;
 
 /**
  * Rejects misshapen request members both z.ai surfaces share.
@@ -103,6 +104,60 @@ final class RequestShapeGuard {
 		if ( \is_array( $schema ) && array() !== $schema && JsonShape::is_list( $schema ) ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- plain message by design (GLM1 #5); escaping belongs to the display layer.
 			throw new InvalidArgumentException( sprintf( 'The %s provider requires tool parameter schemas to be a JSON object (a non-empty list was given).', $provider_label ) );
+		}
+	}
+
+	/**
+	 * Validates every declared tool function in one walk (glm39-1).
+	 *
+	 * The walk's scaffold — empty-name, duplicate-name, the
+	 * declared-names bookkeeping, then the list-root parameter-schema
+	 * rule, per declaration, first declaration first — was maintained
+	 * as near-verbatim loop twins in the two model classes while the
+	 * rules themselves already lived here (glm19-5), and the branch's
+	 * own records show exactly that drift shape firing while it was:
+	 * GLM12 #5 and glm13-9 landed the identity rules on one surface
+	 * before the twin, glm16-11 the schema rule ("one surface late").
+	 * The walk joins the rules on the guard — the glm26-7/glm30-4
+	 * composition idiom: the sequence is owned once, each surface
+	 * contributes only what genuinely diverges.
+	 *
+	 * The optional per-declaration continuation runs after every rule
+	 * for that declaration passed, in walk order: the zai_anthropic
+	 * surface builds its memoized, normalized tools entries through
+	 * it; the zai surface needs the walk's rejections only and passes
+	 * null. The walk is single-pass — a rejection throws before any
+	 * later declaration is examined (first-bad-wins in declaration
+	 * order, the identity rules before the schema rule within one
+	 * declaration). The FunctionDeclaration DTO is immutable (no
+	 * setter exists), so a continuation may read a declaration
+	 * repeatedly — as the zai_anthropic memo does — without the
+	 * walk's verdict ever going stale for it.
+	 *
+	 * @since 0.2.0
+	 *
+	 * @param array<int, FunctionDeclaration> $function_declarations Declared functions.
+	 * @param string                          $provider_label        Provider name for the messages (the surface's PROVIDER_LABEL).
+	 * @param callable|null                   $on_valid_declaration  Per-declaration continuation, invoked as ( $declaration, $name ) once that declaration passed every rule — null when the caller needs the walk's rejections only.
+	 * @return void
+	 * @throws InvalidArgumentException When a declaration carries an empty or duplicate name, or a list-root parameter schema.
+	 */
+	public static function validate_function_declarations( array $function_declarations, string $provider_label, $on_valid_declaration = null ): void {
+		$declared_names = array();
+
+		foreach ( $function_declarations as $declaration ) {
+			$name = $declaration->getName();
+
+			self::reject_empty_tool_name( $name, $provider_label );
+			self::reject_duplicate_tool_name( $name, $declared_names, $provider_label );
+
+			$declared_names[ $name ] = true;
+
+			self::reject_list_root_parameter_schema( $declaration->getParameters(), $provider_label );
+
+			if ( null !== $on_valid_declaration ) {
+				$on_valid_declaration( $declaration, $name );
+			}
 		}
 	}
 

@@ -48,6 +48,7 @@ use WordPress\AiClient\Results\DTO\GenerativeAiResult;
 use WordPress\AiClient\Results\DTO\TokenUsage;
 use WordPress\AiClient\Results\Enums\FinishReasonEnum;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
+use WordPress\AiClient\Tools\DTO\FunctionDeclaration;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
 use Deicod\WpConnectors\Zai\Authentication\SpeaksAnthropicMessagesProtocol;
 use Deicod\WpConnectors\Zai\Endpoints\ZaiAnthropicEndpoint;
@@ -693,8 +694,7 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 	 * @throws InvalidArgumentException When a parameter schema is a non-empty list.
 	 */
 	protected function prepare_tools_param( array $function_declarations ): array {
-		$tools          = array();
-		$declared_names = array();
+		$tools = array();
 
 		/*
 		 * glm16-6: memo lifecycle. The memo lives for the CURRENT
@@ -720,54 +720,37 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 
 		$memo = $this->tool_schema_memo;
 
-		foreach ( $function_declarations as $declaration ) {
-			/*
-			 * Codex R18 #2: a declared tool with an EMPTY name is the same
-			 * malformed identity the call and tool-result paths already
-			 * reject before transport (Messages requires a non-empty
-			 * identity) — the declaration path must not be the bypass that
-			 * sends it upstream to a 400. The DTO constructor coerces the
-			 * name to a string, so '' is the only constructible empty
-			 * identity. Identity errors surface BEFORE the schema checks
-			 * (first-bad-wins), matching the call path's ordering.
-			 * glm19-5: the rule lives on the shared RequestShapeGuard.
-			 */
-			$name = $declaration->getName();
-
-			RequestShapeGuard::reject_empty_tool_name( $name, self::PROVIDER_LABEL );
-
-			/*
-			 * GLM6 #9: the identity and description strings ride the
-			 * tools member verbatim and were only ever EMPTINESS-checked
-			 * — an unencodable one (invalid UTF-8 from a DB row, say)
-			 * used to detonate in the transport's whole-request encode as
-			 * the generic 500. glm15-5: that pure-encodability check
-			 * rides the request-build whole-payload net now (the
-			 * attribution walk names the member on failure); the
-			 * identity rules above and below keep their eager typed
-			 * rejection.
-			 */
-
-			/*
-			 * R18 (inline 3906485728): a returned tool_use identifies the
-			 * selected declaration ONLY by name — two declarations sharing a
-			 * name make that identification ambiguous (the caller may
-			 * validate or execute the call against the wrong tool), so a
-			 * duplicate is a typed pre-transport rejection like the empty
-			 * name above. glm19-5: the rule lives on the shared
-			 * RequestShapeGuard.
-			 */
-			RequestShapeGuard::reject_duplicate_tool_name( $name, $declared_names, self::PROVIDER_LABEL );
-
-			$declared_names[ $name ] = true;
-
+		/*
+		 * glm39-1: the declaration walk — empty and duplicate declared
+		 * names, then the list-root parameter-schema rule, per
+		 * declaration, first-bad-wins in declaration order — is the
+		 * ONE shared RequestShapeGuard scaffold both surfaces ride;
+		 * the loop twins this replaces were the drift surface for
+		 * exactly that sequence (Codex R18 #2's empty-name rule, the
+		 * R18 inline 3906485728 duplicate rule, Codex R7 #3's schema
+		 * rule — each landed on one surface first and reached the
+		 * twin late: GLM12 #5, glm13-9, glm16-11). This surface's
+		 * divergence — the memo read/store, the eager encodability
+		 * oracle, the empty-object normalization, the tools entry —
+		 * runs as the walk's per-declaration continuation.
+		 *
+		 * GLM6 #9: the identity and description strings ride the
+		 * tools member verbatim and were only ever EMPTINESS-checked
+		 * — an unencodable one (invalid UTF-8 from a DB row, say)
+		 * used to detonate in the transport's whole-request encode as
+		 * the generic 500. glm15-5: that pure-encodability check
+		 * rides the request-build whole-payload net now (the
+		 * attribution walk names the member on failure); the identity
+		 * rules keep their eager typed rejection inside the walk.
+		 */
+		$build_tool_entry = function ( FunctionDeclaration $declaration, string $name ) use ( $memo, &$tools ): void {
 			if ( $memo->offsetExists( $declaration ) ) {
 				/*
 				 * glm16-6: identity hit — the pipeline below is a pure
 				 * function of the immutable declaration, so its result for
 				 * this object can be reused as-is for every later request of
 				 * this config's lifetime (rejections never reach the memo:
-				 * they throw below before an entry is stored).
+				 * the walk's rules throw before the continuation stores).
 				 */
 				$input_schema = $memo[ $declaration ];
 			} else {
@@ -777,22 +760,15 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				 * absent schema (null) and an EMPTY array schema () normalize
 				 * to the empty-object schema; a raw empty array would
 				 * JSON-encode as [] and fail upstream validation (Codex R1
-				 * finding 5). A NON-EMPTY sequential schema (Codex R7 #3)
-				 * serializes as a JSON LIST — same failure, so it is rejected
-				 * before transport with the same surface as the
-				 * invocation-arguments validation (R4 #4), never silently
+				 * finding 5). A NON-EMPTY sequential schema (Codex R7 #3,
+				 * rejected by the shared walk before this continuation runs,
+				 * with the twin's exact boundary: only a NON-EMPTY list
+				 * rejects; null and [] normalize below)
+				 * serializes as a JSON LIST — same failure, never silently
 				 * re-shaped: the list test is exact (json_encode emits an array
 				 * only for 0-based sequential keys).
 				 */
 				$input_schema = $declaration->getParameters();
-
-				/*
-				 * glm19-5: the shape rule lives on the shared
-				 * RequestShapeGuard (Codex R7 #3's boundary: only a
-				 * NON-EMPTY list rejects; null and [] normalize to the
-				 * empty-object schema below).
-				 */
-				RequestShapeGuard::reject_list_root_parameter_schema( $input_schema, self::PROVIDER_LABEL );
 
 				/*
 				 * R20 (inline 3907008524): an unencodable schema value — NAN,
@@ -849,7 +825,9 @@ final class ZaiAnthropicTextGenerationModel extends AbstractApiBasedModel implem
 				'description'  => $declaration->getDescription(),
 				'input_schema' => $input_schema,
 			);
-		}
+		};
+
+		RequestShapeGuard::validate_function_declarations( $function_declarations, self::PROVIDER_LABEL, $build_tool_entry );
 
 		return $tools;
 	}

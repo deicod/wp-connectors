@@ -27,6 +27,7 @@ use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\Enums\MessageRoleEnum;
 use WordPress\AiClient\Providers\Models\DTO\ModelConfig;
 use WordPress\AiClient\Files\DTO\File;
+use WordPress\AiClient\Tools\DTO\FunctionDeclaration;
 
 abstract class AbstractZaiSurfaceRequestMappingTestCase extends WpConnectorsTestCase
 {
@@ -161,5 +162,60 @@ abstract class AbstractZaiSurfaceRequestMappingTestCase extends WpConnectorsTest
             ModelConfig::fromArray(array('maxTokens' => -5)),
             'maxTokens'
         );
+    }
+
+    public function testDeclarationValidationOrderIsSharedAcrossSurfaces()
+    {
+        /*
+         * glm39-1: both surfaces' declaration walks are ONE shared
+         * scaffold now (RequestShapeGuard::validate_function_declarations())
+         * — this pin holds the ORDER the hand-maintained loop twins
+         * carried and drifted by (each rule landed on one surface
+         * before the twin: GLM12 #5, glm13-9, glm16-11): within one
+         * declaration the identity rules fire BEFORE the schema rule,
+         * and across declarations the WALK order decides — an earlier
+         * declaration's defect rejects before a later one's, whatever
+         * the rule kinds. One inherited expectation, executed per
+         * surface (the glm22-6 shape): the identical verdict is the
+         * lockstep.
+         */
+        $prompt = array(new Message(MessageRoleEnum::user(), array(new MessagePart('go'))));
+
+        // Identity before schema, within ONE declaration: the empty
+        // name must reject even though the same declaration also
+        // carries a list-root schema.
+        $identityFirst = ModelConfig::fromArray(array());
+        $identityFirst->setFunctionDeclarations(array(
+            new FunctionDeclaration('', 'Nameless, and a list-root schema besides', array('a', 'b')),
+        ));
+
+        try {
+            $this->model($identityFirst)->generateTextResult($prompt);
+            $this->fail('An empty declared tool name must reject before the schema rule judges the same declaration.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('non-empty name', $e->getMessage());
+            $this->assertStringNotContainsString('JSON object', $e->getMessage(), 'The identity rule must fire first, not the schema rule.');
+        }
+
+        $this->assertNoHttpRequests();
+
+        // Walk order across declarations: an EARLIER declaration's
+        // schema defect rejects before a LATER declaration's duplicate
+        // name — declaration order decides, not the rule kind.
+        $declarationOrder = ModelConfig::fromArray(array());
+        $declarationOrder->setFunctionDeclarations(array(
+            new FunctionDeclaration('pick', 'Picks', array('a', 'b')),
+            new FunctionDeclaration('pick', 'A different tool under the same name', null),
+        ));
+
+        try {
+            $this->model($declarationOrder)->generateTextResult($prompt);
+            $this->fail('The earlier declaration\'s schema defect must reject first.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('JSON object', $e->getMessage());
+            $this->assertStringNotContainsString('unique names', $e->getMessage(), 'The earlier declaration rejects; the later duplicate is never reached.');
+        }
+
+        $this->assertNoHttpRequests();
     }
 }
