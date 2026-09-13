@@ -118,6 +118,8 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
             'too short' => array('short'),
             'bad characters' => array(str_repeat('a!', 30)),
             'empty' => array(''),
+            'trailing newline at lower bound' => array(str_repeat('a', 43) . "\n"),
+            'trailing newline at upper bound' => array(str_repeat('a', 128) . "\n"),
         );
     }
 

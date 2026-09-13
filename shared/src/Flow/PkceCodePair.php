@@ -34,7 +34,7 @@ final class PkceCodePair {
 	 *
 	 * @var string
 	 */
-	const VERIFIER_PATTERN = '/^[A-Za-z0-9-._~]{43,128}$/';
+	const VERIFIER_PATTERN = '/^[A-Za-z0-9-._~]{43,128}\z/';
 
 	/**
 	 * The code verifier (this side's secret half).

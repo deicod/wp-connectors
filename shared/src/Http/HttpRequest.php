@@ -41,7 +41,7 @@ final class HttpRequest {
 	 *
 	 * @var string
 	 */
-	const METHOD_TOKEN_PATTERN = '/^[!#$%&\'*+.^_`|~0-9A-Za-z-]+$/';
+	const METHOD_TOKEN_PATTERN = '/^[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/';
 
 	/**
 	 * Upper-cased HTTP method.
@@ -113,6 +113,13 @@ final class HttpRequest {
 			}
 			if ( ! is_string( $value ) ) {
 				throw new InvalidArgumentException( 'Header values must be strings.' );
+			}
+			// Line breaks in a header line are injection material: in a
+			// NAME they forge extra header lines; in a VALUE they do the
+			// same from the second line on. Rejected at the boundary, so
+			// the debug form can never render a forged line.
+			if ( false !== strpos( $name . $value, "\r" ) || false !== strpos( $name . $value, "\n" ) ) {
+				throw new InvalidArgumentException( 'Header names and values must not contain line breaks.' );
 			}
 		}
 

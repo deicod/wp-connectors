@@ -57,6 +57,8 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'empty' => array('', 'method token'),
             'space inside' => array('GET /path', 'method token'),
             'newline' => array("GET\r\nX-Injected: 1", 'method token'),
+            'trailing newline' => array("GET\n", 'method token'),
+            'trailing carriage return' => array("GET\r", 'method token'),
         );
     }
 
@@ -110,6 +112,58 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->expectExceptionMessage('Header values');
 
         new HttpRequest('POST', 'https://host.example/', array('Accept' => 1));
+    }
+
+    /**
+     * Review-round pin (CRLF injection): a line break inside a header
+     * NAME forges a header line in any rendered form, so it never gets
+     * past the constructor — the masked-when-sensitive debug line can
+     * only ever describe real, single-line headers.
+     */
+    public function testCrlfInHeaderNameIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('line breaks');
+
+        new HttpRequest(
+            'POST',
+            'https://host.example/',
+            array("X-Foo\r\nAuthorization" => 'Bearer ' . FakeSecrets::accessToken())
+        );
+    }
+
+    public function testCrlfInHeaderValueIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('line breaks');
+
+        new HttpRequest(
+            'POST',
+            'https://host.example/',
+            array('Content-Type' => "application/json\r\nAuthorization: Bearer " . FakeSecrets::accessToken())
+        );
+    }
+
+    public function testBareCarriageReturnInHeaderValueIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new HttpRequest('POST', 'https://host.example/', array('Accept' => "application/json\rnope"));
+    }
+
+    public function testResponseRejectsCrlfInHeaderNameToo(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('line breaks');
+
+        new HttpResponse(200, array("X-Foo\r\nSet-Cookie" => 'session=' . FakeSecrets::accessToken()));
+    }
+
+    public function testResponseRejectsCrlfInHeaderValueToo(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new HttpResponse(200, array('Content-Type' => "application/json\nSet-Cookie: x"));
     }
 
     public function testEmptyHeaderNameIsRejected(): void

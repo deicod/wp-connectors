@@ -185,6 +185,22 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $grant->with_state(GrantState::Revoked);
     }
 
+    /**
+     * Review-round pin: the transition must not mint an UN-advanced
+     * tombstone even from a token-less grant — the advanced generation
+     * is the fence a late refresh/exchange commits against, and only
+     * revoke() produces one.
+     */
+    public function testWithStateToRevokedOnTokenlessGrantIsRejectedToo(): void
+    {
+        $grant = new StoredGrant('fixture-provider', 5, GrantState::ReconnectRequired, null);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('revoke()');
+
+        $grant->with_state(GrantState::Revoked);
+    }
+
     public function testWithGenerationOnlyMovesForward(): void
     {
         $grant = $this->connectedGrant();

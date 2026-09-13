@@ -164,13 +164,22 @@ final class StoredGrant {
 	/**
 	 * Grant with a different lifecycle state (token set preserved).
 	 *
+	 * Revoked is rejected: the tombstone's defining property is its
+	 * ADVANCED generation (the fence late writers commit against), and a
+	 * plain state swap cannot advance it — revoke() is the only tombstone
+	 * producer.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param GrantState $state The new state.
 	 * @return self
-	 * @throws InvalidArgumentException When the token set is incompatible with the new state.
+	 * @throws InvalidArgumentException When the state is Revoked (use revoke()) or the token set is incompatible with the new state.
 	 */
 	public function with_state( GrantState $state ): self {
+		if ( GrantState::Revoked === $state ) {
+			throw new InvalidArgumentException( 'A revoked tombstone must be built via revoke() so the generation advances.' );
+		}
+
 		return new self( $this->provider_id, $this->generation, $state, $this->token_set );
 	}
 

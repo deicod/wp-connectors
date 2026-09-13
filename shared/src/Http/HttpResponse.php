@@ -76,6 +76,12 @@ final class HttpResponse {
 			if ( ! is_string( $value ) ) {
 				throw new InvalidArgumentException( 'Header values must be strings.' );
 			}
+			// Same boundary rule as the request VO: line breaks in a
+			// header line are injection material and never reach the
+			// debug form.
+			if ( false !== strpos( $name . $value, "\r" ) || false !== strpos( $name . $value, "\n" ) ) {
+				throw new InvalidArgumentException( 'Header names and values must not contain line breaks.' );
+			}
 		}
 
 		$this->status  = $status;
