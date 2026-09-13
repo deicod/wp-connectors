@@ -88,17 +88,29 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     /**
      * Lines of one file, as (line number => line) pairs.
      *
-     * A PCRE abort (one invalid UTF-8 byte under /\R/u) is a LOUD
-     * failure, never a no-match: the old silent `?: array()` fallback
-     * swept the file as ZERO lines, every gate skipped it, and the
-     * non-vacuity counts stayed green (the glm36-8 doctrine — a PCRE
-     * abort is a refusal — applied to the sweep's own line reader).
+     * Reading failures are LOUD, never silent: an unreadable file
+     * (chmod 000, vanished mid-sweep) and a PCRE abort (one invalid
+     * UTF-8 byte under /\R/u) both fail naming the file — the old
+     * silent fallbacks swept the file as zero-or-one contentless
+     * lines, every gate skipped it, and the non-vacuity counts stayed
+     * green (the glm36-8 doctrine applied one layer below by t31-r1-7,
+     * and one layer above by t31-r1-21: a file_get_contents() false
+     * cast to '' swept as a single contentless line).
      *
      * @param string $path File path.
      * @return list<array{0: int, 1: string}>
      */
     private function numberedLines(string $path): array
     {
+        if (!is_readable($path)) {
+            $this->fail(
+                sprintf(
+                    'The architecture sweep cannot read %s — an unreadable swept file must fail loudly, never sweep as contentless lines.',
+                    $path
+                )
+            );
+        }
+
         $split = preg_split('/\R/u', (string) file_get_contents($path));
         if (false === $split) {
             $this->fail(
@@ -151,6 +163,9 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      * `?: array()` fallback swept such a file as ZERO lines, all gates
      * skipped it, and the non-vacuity counts stayed green (reproduced
      * with a planted add_action in a corrupted file during bring-up).
+     * Verifier-round extension (t31-r1-21): an UNREADABLE file failed
+     * silently too — file_get_contents() false cast to '' swept as one
+     * contentless line, all gates skipping the file the same way.
      */
     public function testAUtf8UndecodableFileFailsTheLineReaderLoudly(): void
     {
@@ -163,6 +178,17 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
             $this->assertStringContainsString('invalid-utf8-byte.txt', $e->getMessage());
             $this->assertStringContainsString('PCRE abort', $e->getMessage());
+        }
+    }
+
+    public function testAnUnreadableFileFailsTheLineReaderLoudly(): void
+    {
+        try {
+            (new \ReflectionMethod($this, 'numberedLines'))->invoke($this, __DIR__ . '/fixtures/sweep-corruption/vanished-file.php');
+            $this->fail('A file the reader cannot open must fail loudly, never sweep as one contentless line.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('cannot read', $e->getMessage());
+            $this->assertStringContainsString('vanished-file.php', $e->getMessage());
         }
     }
 
