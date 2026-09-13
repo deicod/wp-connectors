@@ -124,7 +124,7 @@ final class SecretMask {
 	 * @return bool True when the header's value must always be masked.
 	 */
 	public static function is_sensitive_header_name( string $name ): bool {
-		return \in_array( strtolower( $name ), self::SENSITIVE_HEADER_NAMES, true );
+		return \in_array( AsciiFold::lower( $name ), self::SENSITIVE_HEADER_NAMES, true );
 	}
 
 	/**

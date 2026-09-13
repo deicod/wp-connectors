@@ -22,6 +22,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Shared\Http;
 
+use Deicod\WpConnectors\Shared\Support\AsciiFold;
 use Deicod\WpConnectors\Shared\Support\SecretMask;
 use InvalidArgumentException;
 
@@ -100,7 +101,8 @@ final class HeaderMap {
 	 * The constructor computes each lowercase name for the
 	 * case-insensitive duplicate fence anyway (review round t31-r2-10):
 	 * keeping it makes header() one isset probe instead of a rescan
-	 * with two strtolower per entry per lookup.
+	 * folding every entry again on every lookup (t31-r2-14: the fold
+	 * itself is the shared locale-independent AsciiFold).
 	 *
 	 * @since 0.1.0
 	 *
@@ -157,7 +159,7 @@ final class HeaderMap {
 			// first wins silently (a 2-second vs 60-second Retry-After
 			// diverges on map order). Rejected at construction; a PHP
 			// array cannot carry the exact-same-case duplicate at all.
-			$lowercase_name = strtolower( $name );
+			$lowercase_name = AsciiFold::lower( $name );
 			if ( isset( $seen_lowercase[ $lowercase_name ] ) ) {
 				throw new InvalidArgumentException( 'Header names must be unique case-insensitively — two spellings of one name make the lookup order-dependent.' );
 			}
@@ -205,7 +207,7 @@ final class HeaderMap {
 	 * @return string|null The value, or null when absent.
 	 */
 	public function header( string $name ): ?string {
-		$folded = strtolower( $name );
+		$folded = AsciiFold::lower( $name );
 
 		return isset( $this->headers_by_lowercase[ $folded ] ) ? $this->headers_by_lowercase[ $folded ][1] : null;
 	}

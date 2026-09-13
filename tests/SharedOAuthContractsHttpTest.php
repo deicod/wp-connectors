@@ -17,6 +17,7 @@ use Deicod\WpConnectors\Shared\Http\HttpRequest;
 use Deicod\WpConnectors\Shared\Http\HttpResponse;
 use Deicod\WpConnectors\Shared\Http\HttpTransportInterface;
 use Deicod\WpConnectors\Shared\Http\Url;
+use Deicod\WpConnectors\Shared\Support\AsciiFold;
 use Deicod\WpConnectors\Shared\Support\SecretMask;
 
 final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
@@ -795,10 +796,50 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
 
         // Non-vacuity: the owner really owns all three halves. (The
         // rejection-message fragment was superseded by t31-r1-9 when
-        // the control-byte class replaced the line-break-only check.)
+        // the control-byte class replaced the line-break-only check;
+        // the 'strtolower' fragment by t31-r2-14 when the fold became
+        // the locale-independent AsciiFold::lower.)
         $owner = (string) file_get_contents((new \ReflectionClass(HeaderMap::class))->getFileName());
-        foreach (array('must not contain control characters', 'strtolower', 'is_sensitive_header_name', 'rendered_lines') as $fragment) {
+        foreach (array('must not contain control characters', 'AsciiFold::lower', 'is_sensitive_header_name', 'rendered_lines') as $fragment) {
             $this->assertStringContainsString($fragment, $owner, 'HeaderMap must own the ' . $fragment . ' half.');
+        }
+    }
+
+    /**
+     * Fix-round pin (t31-r2-14), class-closure hardening: every
+     * header-name fold site — the duplicate fence, the folded-index
+     * lookup, the SecretMask vocabulary match — rides the ONE
+     * locale-independent fold. strtolower() consults LC_CTYPE; in a
+     * Turkish locale the ASCII capital I does not fold (its lowercase
+     * is the two-byte dotless ı), so the fence, the lookup, and the
+     * masking vocabulary would silently disagree — the divergence is
+     * argued from the fold tables (no tr_* locale is generated on
+     * this host), which is why this is hardening, not a reproduced
+     * defect.
+     */
+    public function testHeaderNameFoldingIsLocaleIndependentEverywhere(): void
+    {
+        $this->assertSame('authorization', AsciiFold::lower('AUTHORIZATION'));
+
+        // Equivalence with the C-locale fold over a hostile corpus —
+        // identical bytes here, structurally locale-free everywhere.
+        foreach (array(
+            'authorization',
+            'X-Custom_1~.+^`|!*#$%&-',
+            "MixedCase-With-Digits-0123",
+            "utf8-\xE2\x82\xAC-\xC3\x9CMLAUT",
+            "\xB1\xC3binary\x7F",
+            '',
+        ) as $value) {
+            $this->assertSame(strtolower($value), AsciiFold::lower($value), 'The ASCII fold must match the C-locale fold on: ' . addcslashes($value, "\x00..\xFF"));
+        }
+
+        // Class closure: no fold site may spell the locale-sensitive
+        // function; both folding classes carry the shared owner's call.
+        foreach (array(HeaderMap::class, SecretMask::class) as $class) {
+            $source = (string) file_get_contents((new \ReflectionClass($class))->getFileName());
+            $this->assertStringNotContainsString('strtolower', $source, $class . ' must not spell the locale-sensitive fold.');
+            $this->assertStringContainsString('AsciiFold::lower', $source, $class . ' must ride the shared ASCII fold.');
         }
     }
 
