@@ -1028,6 +1028,85 @@ FIXTURE;
         WpHarness::rrmdir(dirname($tempPlugin));
     }
 
+    /**
+     * Fix-round pin (t31-r2-12): embed_shared collected from shared/ —
+     * the PARENT of the source directory — so a plugin opting in would
+     * ship shared/'s dev files (README.md et al.) inside its zip, and
+     * the global str_replace('src/', '', ...) would mangle any nested
+     * 'src/' path segment. Fixed before the first consumer turns the
+     * flag on (the bug predates this branch — master code; fixed here
+     * because this branch populates shared/).
+     *
+     * End-to-end with a fixture plugin that opts in: only shared/src
+     * ships, every source file lands under src/Shared/ at its exact
+     * relative path, no dev file lands anywhere, and the embedded
+     * copies carry the rewritten namespace and provenance.
+     */
+    public function testEmbedSharedShipsOnlyTheSourceTreeUnderSrcShared()
+    {
+        $tempPlugin = self::distDir() . '/.embed-test/example-connector';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir(dirname($tempPlugin), 0755, true);
+        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
+        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
+            $target = $tempPlugin . '/' . $relative;
+            if ($item->isDir()) {
+                mkdir($target, 0755, true);
+            } else {
+                copy($item->getPathname(), $target);
+            }
+        }
+        file_put_contents($tempPlugin . '/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
+            $names = array();
+            for ($i = 0; $i < $zip->numFiles; ++$i) {
+                $names[] = $zip->getNameIndex($i);
+            }
+
+            // Every shared/src source file ships, at its exact relative
+            // path under src/Shared/ (the glm31-8 sweep shape — a
+            // dropped or mis-staged source file fails here, and the
+            // mapping is prefix-exact: no global segment stripping).
+            $sourceRoot = realpath(__DIR__ . '/../shared/src');
+            $sourceIterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($sourceRoot, FilesystemIterator::SKIP_DOTS)
+            );
+            $sourceCount = 0;
+            foreach ($sourceIterator as $sourceFile) {
+                $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($sourceFile->getPathname(), strlen($sourceRoot) + 1));
+                ++$sourceCount;
+                $this->assertContains('example-connector/src/Shared/' . $relative, $names, "The embedded copy of {$relative} must ship at its exact shared/src-relative path.");
+            }
+            $this->assertGreaterThanOrEqual(20, $sourceCount, 'The embed sweep must see the real shared source tree.');
+
+            // No dev file lands anywhere: the shared README (shared/'s
+            // own non-source content) is the shape the old
+            // parent-directory collection shipped.
+            foreach ($names as $entry) {
+                $this->assertStringNotContainsString('README', $entry, "No shared/ dev file may land in the zip (saw {$entry}).");
+            }
+
+            // The embedded copy is the REWRITTEN one: plugin-private
+            // namespace and the shared/src-prefixed provenance.
+            $suffix = WpConnectorsBuild::namespaceSuffixFromSlug('example-connector');
+            $embedded = (string) $zip->getFromName('example-connector/src/Shared/Http/HeaderMap.php');
+            $zip->close();
+            $this->assertStringContainsString('namespace Deicod\\WpConnectors\\' . $suffix . '\\Shared\\Http;', $embedded);
+            $this->assertStringContainsString('Generated copy of shared/src/Http/HeaderMap.php', $embedded);
+        } finally {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";

@@ -181,6 +181,13 @@ final class WpConnectorsBuild
         if (is_file($buildConfig)) {
             $config = json_decode((string) file_get_contents($buildConfig), true);
             if (is_array($config) && ! empty($config['embed_shared'])) {
+                // Collect from shared/src ITSELF (review round t31-r2-12):
+                // the old collection walked shared/ — the parent of the
+                // source directory — shipping dev files (README.md et al.)
+                // into plugin zips, and its global str_replace('src/', '')
+                // mangled any nested 'src/' path segment. From $sharedDir
+                // the relative paths need no strip at all: shared/src/X
+                // maps onto src/Shared/X by construction.
                 $sharedDir = dirname($distDir) . '/shared/src';
                 if (! is_dir($sharedDir)) {
                     throw new RuntimeException("build: {$slug} requests shared code but {$sharedDir} does not exist");
@@ -188,14 +195,14 @@ final class WpConnectorsBuild
                 $pluginSuffix = isset($config['namespace_suffix']) && '' !== (string) $config['namespace_suffix']
                     ? (string) $config['namespace_suffix']
                     : self::namespaceSuffixFromSlug($slug);
-                $sharedFiles = self::collectFiles(dirname($sharedDir));
+                $sharedFiles = self::collectFiles($sharedDir);
                 foreach ($sharedFiles as $relative) {
-                    $source = (string) file_get_contents(dirname($sharedDir) . '/' . $relative);
-                    $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/' . $relative);
-                    $target = $stage . '/' . $slug . '/src/Shared/' . str_replace('src/', '', $relative);
+                    $source = (string) file_get_contents($sharedDir . '/' . $relative);
+                    $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
+                    $target = $stage . '/' . $slug . '/src/Shared/' . $relative;
                     @mkdir(dirname($target), 0755, true);
                     self::writeNormalized($rewritten, $target);
-                    $entries[] = $slug . '/src/Shared/' . str_replace('src/', '', $relative);
+                    $entries[] = $slug . '/src/Shared/' . $relative;
                 }
             }
         }
