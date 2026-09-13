@@ -39,8 +39,11 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
     {
         update_option( 'zai_connector_zai_plan', 'general' );
         update_option( 'zai_connector_zai_region', 'cn' );
-        update_option( 'zai_connector_zai_debug', '1' );
-        update_option( 'zai_connector_zai_debug_log', 'line' );
+        // glm39-2: the debug pair plants through the owner constants — a
+        // rename must break HERE (the class-free literals the uninstall
+        // side carries are pinned against the same constants below).
+        update_option( \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED, '1' );
+        update_option( \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_LOG, 'line' );
         update_option( 'zai_connector_zai_key_state', array( 'binding' => 'x' ) );
         update_option( 'zai_connector_zai_region_pending', array( 'region' => 'cn', 'fingerprint' => 'x' ) );
         set_transient( 'zai_connector_zai_models_' . md5( 'zai|coding|intl' ), array( 'glm-5.3' ), 3600 );
@@ -73,8 +76,8 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
         foreach ( array(
             'zai_connector_zai_plan',
             'zai_connector_zai_region',
-            'zai_connector_zai_debug',
-            'zai_connector_zai_debug_log',
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED,
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_LOG,
             'zai_connector_zai_key_state',
             'zai_connector_zai_region_pending',
             'zai_connector_zai_anthropic_plan',
@@ -396,6 +399,32 @@ final class ZaiUninstallTest extends WpConnectorsTestCase
                 "'_transient_" . $settings::probe_miss_transient_prefix() . "'",
                 $source,
                 "{$settings}: the broken-install fallback literal equals '_transient_' . probe_miss_transient_prefix()."
+            );
+        }
+
+        /*
+         * glm39-2: the DebugLogger pair is the fifth and sixth
+         * class-free literals — the same hand-enumeration justification
+         * (the file must run with no plugin class loaded), but the pin
+         * above covered the settings owners' four per-surface options
+         * only, and the debug pair was hand-spelled on BOTH sides (the
+         * uninstall literals AND this suite's own plants/assertions),
+         * so a constant rename left both consistently wrong together:
+         * the suite green while the running plugin's log row (redacted
+         * request URLs) survived uninstall as an orphan. The pin
+         * derives both names from the one owner — the same shape as
+         * the settings block above, and the plants above ride the
+         * constants too, so a rename fails the source pin AND the
+         * behavioral clean-sweep in the same run.
+         */
+        foreach ( array(
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_ENABLED,
+            \Deicod\WpConnectors\Zai\Support\DebugLogger::OPTION_LOG,
+        ) as $option_name ) {
+            $this->assertStringContainsString(
+                "delete_option( '" . $option_name . "' )",
+                $source,
+                "DebugLogger: the class-free sweep deletes the owner constant's value ({$option_name})."
             );
         }
     }
