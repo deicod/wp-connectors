@@ -10,7 +10,9 @@ OAuth plugin under that plugin's namespace
   `shared/src/` (loaded by the test suite only, via a dev autoloader in
   `tests/bootstrap.php`).
 - Pure PHP 8.2 on the compat floor: no WordPress reach of any kind
-  (functions, hooks, options, globals, constants) — the host is reached
+  (functions, hooks, options, globals, constants), and no direct clock
+  or environment reads (the `time()`/`date()`/`getenv()`/superglobal
+  spellings are banned by the same sweep) — the host is reached
   only through the ports (`ClockInterface`, `HttpTransportInterface`,
   `TokenStorageInterface`). Enforced by
   `tests/SharedOAuthArchitectureTest.php`.

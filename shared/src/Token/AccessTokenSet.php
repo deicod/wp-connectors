@@ -165,7 +165,7 @@ final class AccessTokenSet {
 	/**
 	 * Absolute expiry, derived as obtained-at plus expires_in.
 	 *
-	 * The addition is ABSOLUTE elapsed time (UTC projection), so a
+	 * The addition is ABSOLUTE elapsed seconds, UTC-projected, so a
 	 * reading taken in a DST-observing timezone yields the same instant
 	 * UTC arithmetic would — wall-clock addition drifts by the
 	 * transition delta. The reading's timezone stays attached.
@@ -422,7 +422,7 @@ final class AccessTokenSet {
 	 * The shape check runs first (createFromFormat() alone accepts
 	 * non-canonical spellings); the parse must then also be
 	 * calendar-honest — createFromFormat() silently ROLLS an impossible
-	 * date (February 30 becomes March 2) with only a warning, which
+	 * date — February 30 becomes March 2 — with only a warning, which
 	 * would launder a corrupted payload whose two rolled instants
 	 * re-derive consistently past the strict expiry compare. A parse
 	 * error OR warning is a rejection.

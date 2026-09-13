@@ -132,7 +132,7 @@ final class RefreshPolicy {
 	 *
 	 * The expiry-minus-skew rule: true once the reading reaches
 	 * expiry minus skew (inclusive) — boundary readings refresh.
-	 * The subtraction is ABSOLUTE elapsed time (UTC projection):
+	 * The subtraction is ABSOLUTE elapsed seconds, UTC-projected:
 	 * a wall-clock subtraction in a DST-observing zone would shift
 	 * the window by the transition delta.
 	 *

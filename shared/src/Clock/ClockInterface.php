@@ -30,7 +30,7 @@ interface ClockInterface {
 	 * The current reading.
 	 *
 	 * Implementations must return a fresh instant per call representing the
-	 * current time (monotonicity is the wall clock's, not the port's).
+	 * current time — monotonicity is the wall clock's, not the port's.
 	 *
 	 * @since 0.1.0
 	 *

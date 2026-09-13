@@ -64,6 +64,24 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     private const STATIC_MUTABLE_PATTERN = '/\bstatic(?!\s+function\b)(?!\s+fn\b)\s+(?:[^$;={}()]|\([^)]*\))*\$/';
 
     /**
+     * Direct clock/environment reach (t31-r2-7): the PHP function
+     * spellings that read the host clock or environment directly —
+     * bypassing the clock port — plus the environment superglobals.
+     *
+     * Case-insensitive for the CALL names (PHP calls are), scoped so
+     * the superglobals stay case-sensitive ($globals is an ordinary
+     * variable, $GLOBALS the superglobal). The clock-read twins of
+     * date() ride along (gmdate/mktime/idate/strftime) and putenv joins
+     * getenv (an environment WRITE is the same seam); strtotime and
+     * date_create stay legal — they are string-parse shapes, and the
+     * 'now'-reading spellings they share are the port implementation's
+     * own (SystemClock's DateTimeImmutable('now')), which a
+     * spelling-level sweep cannot and should not ban. Prose naming a
+     * call shape is rewritten, never exempted (the floor82-2 idiom).
+     */
+    private const DIRECT_ENVIRONMENT_PATTERN = '/\b(?i:time|microtime|hrtime|date|gmdate|mktime|idate|strftime|getenv|putenv)\s*\(|\$(?:_SERVER|_ENV|GLOBALS)\b/';
+
+    /**
      * @return list<string> Absolute paths of every PHP file under shared/src.
      */
     private function sharedSourceFiles(): array
@@ -311,15 +329,54 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      */
     private function assertCarriesNoStaticMutableState(string $path): void
     {
+        $this->assertPatternAbsentWholeFile(
+            $path,
+            self::STATIC_MUTABLE_PATTERN,
+            'Static mutable state inside shared/ (pure value objects carry none)'
+        );
+    }
+
+    /**
+     * The clock/environment gate for ONE file: same whole-file shape
+     * (a call spelling may break between name and paren across lines —
+     * the t31-r2-5 lesson applies to call shapes too), same
+     * line-located diagnostic, fixture-drivable for the mutation
+     * discipline.
+     *
+     * @param string $path Absolute file path.
+     * @return void
+     */
+    private function assertNoDirectEnvironmentAccess(string $path): void
+    {
+        $this->assertPatternAbsentWholeFile(
+            $path,
+            self::DIRECT_ENVIRONMENT_PATTERN,
+            'Direct clock/environment access inside shared/ (the clock port owns time reads; configuration owns environment reads)'
+        );
+    }
+
+    /**
+     * Whole-content pattern gate shared by every whole-file sweep:
+     * matches the ENTIRE file (multiline spellings included), fails
+     * naming the file and the line the match starts on.
+     *
+     * @param string $path    Absolute file path.
+     * @param string $pattern The banned-content pattern.
+     * @param string $label   Failure label naming the violated rule.
+     * @return void
+     */
+    private function assertPatternAbsentWholeFile(string $path, string $pattern, string $label): void
+    {
         $contents = $this->fileContents($path);
         $match = array();
-        if (1 === preg_match(self::STATIC_MUTABLE_PATTERN, $contents, $match, PREG_OFFSET_CAPTURE)) {
+        if (1 === preg_match($pattern, $contents, $match, PREG_OFFSET_CAPTURE)) {
             $before = substr($contents, 0, $match[0][1]);
             $line_start = false === ($last_newline = strrpos($before, "\n")) ? 0 : $last_newline + 1;
             $line_end = (int) strpos($contents . "\n", "\n", $line_start);
             $this->fail(
                 sprintf(
-                    'Static mutable state inside shared/ (pure value objects carry none): %s:%d — %s',
+                    '%s: %s:%d — %s',
+                    $label,
                     $path,
                     substr_count($before, "\n") + 1,
                     trim(substr($contents, $line_start, $line_end - $line_start))
@@ -402,6 +459,91 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // And the pattern-level mutation twin, whole-file shaped: the
         // joined string the battery pins, planted in file position.
         $this->assertSame(1, preg_match(self::STATIC_MUTABLE_PATTERN, "class A {\n    private static\n    int \$multiline;\n}\n"));
+    }
+
+    /**
+     * Fix-round pin (t31-r2-7): shared/README claims the host is
+     * reached ONLY through the ports — but nothing banned the direct
+     * PHP clock/environment spellings (time(), microtime(), hrtime(),
+     * date(), getenv(), $_SERVER/$GLOBALS, and their twins). The tree
+     * was clean by convention; this gate keeps it so (whole-file
+     * application, so a call split between name and paren cannot
+     * slip the gate either).
+     */
+    public function testSharedSourceReachesClockAndEnvironmentOnlyThroughThePorts(): void
+    {
+        $files = $this->sharedSourceFiles();
+        $this->assertGreaterThanOrEqual(20, count($files), 'The clock/environment sweep must see the real contract tree.');
+
+        foreach ($files as $path) {
+            $this->assertNoDirectEnvironmentAccess($path);
+        }
+    }
+
+    /**
+     * The vocabulary battery (t31-r2-7), both directions: every
+     * banned spelling flags (calls case-insensitively — PHP calls are;
+     * superglobals case-sensitively — $globals is an ordinary
+     * variable), and the legal lookalikes stay clean.
+     */
+    public function testDirectEnvironmentPatternMatchesExactlyTheVocabulary(): void
+    {
+        $pattern = (new \ReflectionClass(self::class))->getConstant('DIRECT_ENVIRONMENT_PATTERN');
+
+        $mustFlag = array(
+            '$expires = time();',
+            '$t = Time();',
+            'hrtime(true)',
+            'microtime()',
+            "date( 'Y' )",
+            'getenv("PROXY_URL")',
+            'PUTENV("LC_ALL=C")',
+            'mktime(0, 0, 0)',
+            "\$_SERVER['REQUEST_TIME']",
+            '$GLOBALS[\'offenders\']',
+            '$env = $_ENV;',
+        );
+        foreach ($mustFlag as $spelling) {
+            $this->assertSame(1, preg_match($pattern, $spelling), 'The pattern must flag: ' . $spelling);
+        }
+
+        $mustNotFlag = array(
+            'runtime()',
+            'update()',
+            'strtotime($value)',
+            'date_create_from_format($format, $value)',
+            '$timestamp',
+            'DateTimeImmutable',
+            'elapsed seconds, UTC-projected,',
+        );
+        foreach ($mustNotFlag as $spelling) {
+            $this->assertSame(0, preg_match($pattern, $spelling), 'The pattern must not flag: ' . $spelling);
+        }
+    }
+
+    /**
+     * End-to-end through the ACTUAL gate (t31-r2-7): a planted time()
+     * call in a VO-shaped file fails with file:line; the port
+     * implementation's own legal spelling (SystemClock's
+     * DateTimeImmutable('now')) passes the same code path — the sweep
+     * bans the seam, not the clock itself.
+     */
+    public function testAPlantedDirectClockReadFailsTheGateEndToEnd(): void
+    {
+        $gate = new \ReflectionMethod($this, 'assertNoDirectEnvironmentAccess');
+
+        $fixture = realpath(__DIR__ . '/fixtures/sweep-corruption/planted-clock.php');
+        $this->assertNotFalse($fixture, 'The planted-clock fixture must exist.');
+
+        try {
+            $gate->invoke($this, $fixture);
+            $this->fail('A direct time() call inside a swept file must fail the gate with file:line.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('planted-clock.php:14', $e->getMessage());
+            $this->assertStringContainsString('time()', $e->getMessage());
+        }
+
+        $gate->invoke($this, realpath(__DIR__ . '/../shared/src/Clock/SystemClock.php'));
     }
 
     public function testSharedSourceFollowsPsr4OneTypePerFile(): void
