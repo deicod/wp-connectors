@@ -77,6 +77,7 @@ require_once __DIR__ . '/harness/CurlPsr18Client.php';
 require_once __DIR__ . '/harness/WpConnectorsTestCase.php';
 require_once __DIR__ . '/harness/FakeSecrets.php';
 require_once __DIR__ . '/harness/DeterministicClock.php';
+require_once __DIR__ . '/harness/InMemoryTokenStorage.php';
 require_once __DIR__ . '/harness/HttpResponseFactory.php';
 require_once __DIR__ . '/harness/SimpleArrayCache.php';
 require_once __DIR__ . '/harness/OpaqueAuthentication.php';
