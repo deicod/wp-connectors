@@ -814,4 +814,38 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('Bearer ' . $token, $map->header('authorization'));
         $this->assertNull($map->header('absent-header'));
     }
+
+    /**
+     * Fix-round pin (t31-r2-10): the constructor computes each
+     * lowercase name for the duplicate fence and then threw the index
+     * away — every header() re-scanned the whole map with two
+     * strtolower per entry. The index is kept now (name-as-given and
+     * value, folded-keyed) and the lookup is one isset probe.
+     * Structural half: the index exists and carries what the fence
+     * already computed; behavioral half: every case spelling of a
+     * name resolves identically through the probe.
+     */
+    public function testHeaderLookupRidesTheConstructorBuiltFoldedIndex(): void
+    {
+        $map = new HeaderMap(array('Retry-After' => '60', 'Content-Type' => 'application/json'));
+
+        $index = (new \ReflectionProperty(HeaderMap::class, 'headers_by_lowercase'))->getValue($map);
+        $this->assertSame(
+            array(
+                'retry-after' => array('Retry-After', '60'),
+                'content-type' => array('Content-Type', 'application/json'),
+            ),
+            $index
+        );
+
+        foreach (array('retry-after', 'Retry-After', 'RETRY-AFTER', 'rEtRy-aFtEr') as $spelling) {
+            $this->assertSame('60', $map->header($spelling), 'The folded-index lookup must resolve ' . $spelling . ' identically.');
+        }
+        $this->assertNull($map->header('retry-afterx'));
+
+        // The lookup is the probe, never a rescan: the owner spells the
+        // isset over the folded index inside header().
+        $owner = (string) file_get_contents((new \ReflectionClass(HeaderMap::class))->getFileName());
+        $this->assertStringContainsString('isset( $this->headers_by_lowercase[ $folded ] )', $owner);
+    }
 }

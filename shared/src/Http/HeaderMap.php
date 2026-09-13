@@ -86,6 +86,21 @@ final class HeaderMap {
 	private readonly array $headers;
 
 	/**
+	 * The folded-name index (lowercase name => [name as given, value]),
+	 * in construction order.
+	 *
+	 * The constructor computes each lowercase name for the
+	 * case-insensitive duplicate fence anyway (review round t31-r2-10):
+	 * keeping it makes header() one isset probe instead of a rescan
+	 * with two strtolower per entry per lookup.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var array<string, array{0: string, 1: string}>
+	 */
+	private readonly array $headers_by_lowercase;
+
+	/**
 	 * Constructor.
 	 *
 	 * @since 0.1.0
@@ -96,6 +111,7 @@ final class HeaderMap {
 	public function __construct( array $headers = array() ) {
 		$seen_lowercase = array();
 		$normalized     = array();
+		$by_lowercase   = array();
 		foreach ( $headers as $name => $value ) {
 			// PHP coerces a canonical digit-string array key ('123') to
 			// an int before the loop body sees it — and '0' through '9'
@@ -139,6 +155,7 @@ final class HeaderMap {
 			}
 			$seen_lowercase[ $lowercase_name ] = $name;
 			$normalized[ $name ]               = $value;
+			$by_lowercase[ $lowercase_name ]   = array( $name, $value );
 		}
 
 		// Stored under the name's canonical spelling — which, for an
@@ -146,7 +163,8 @@ final class HeaderMap {
 		// any array it lands in (the engine's canonical form of the
 		// same name; lookup and render fold through (string) casts and
 		// never observe the difference).
-		$this->headers = $normalized;
+		$this->headers              = $normalized;
+		$this->headers_by_lowercase = $by_lowercase;
 	}
 
 	/**
@@ -168,19 +186,20 @@ final class HeaderMap {
 	/**
 	 * One header value, looked up case-insensitively.
 	 *
+	 * An isset probe over the folded index the constructor builds
+	 * anyway (the duplicate fence's index, kept — review round
+	 * t31-r2-10): one fold of the requested name, no rescan of the
+	 * map with a fold per entry.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param string $name Header name (any case).
 	 * @return string|null The value, or null when absent.
 	 */
 	public function header( string $name ): ?string {
-		foreach ( $this->headers as $header_name => $value ) {
-			if ( strtolower( (string) $header_name ) === strtolower( $name ) ) {
-				return $value;
-			}
-		}
+		$folded = strtolower( $name );
 
-		return null;
+		return isset( $this->headers_by_lowercase[ $folded ] ) ? $this->headers_by_lowercase[ $folded ][1] : null;
 	}
 
 	/**
