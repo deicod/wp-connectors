@@ -51,13 +51,17 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      *
      * Covers the typed and untyped spellings with visibility on either
      * side (the PHP 8-idiomatic `private static int $counter = 0;`
-     * bypassed the old `\bstatic\s+\$` form). `static function`/`fn`
-     * (static methods and closures — legal, immutable-state-free) are
-     * excluded; everything else from the keyword to a variable is a
-     * hit. `readonly` cannot combine with `static` (a fatal at
-     * compile time), so no exemption exists to carve.
+     * bypassed the old `\bstatic\s+\$` form); the run also crosses one
+     * level of balanced parentheses so DNF compound types
+     * (`public static (A&B)|null $x;`, verifier round t31-r1-17)
+     * cannot hide behind the type's own punctuation. `static
+     * function`/`fn` (static methods and closures — legal,
+     * immutable-state-free) are excluded; everything else from the
+     * keyword to a variable is a hit. `readonly` cannot combine with
+     * `static` (a fatal at compile time), so no exemption exists to
+     * carve.
      */
-    private const STATIC_MUTABLE_PATTERN = '/\bstatic(?!\s+function\b)(?!\s+fn\b)\s+[^$;={}()]*\$/';
+    private const STATIC_MUTABLE_PATTERN = '/\bstatic(?!\s+function\b)(?!\s+fn\b)\s+(?:[^$;={}()]|\([^)]*\))*\$/';
 
     /**
      * @return list<string> Absolute paths of every PHP file under shared/src.
@@ -250,6 +254,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             'private static \\Foo\\Bar $service;',
             'static private $y;',
             'public static int $a, $b = 2;',
+            'public static (A&B)|null $dnf = null;',
             "private static\n    int \$multiline;",
         );
         foreach ($mustFlag as $spelling) {
