@@ -1828,8 +1828,19 @@ function wp_connectors_autoloader_violations($pluginDir)
  * (verifier round t31-r2-18: non-PHP files inside shared/src are not
  * sources; review round t31-r3-9: a '.PHP'-spelled source is one).
  *
+ * A symlink REFUSES the walk loudly (review round t31-r4-7): the old
+ * silent skip was the no-symlinks doctrine's quiet half — a symlinked
+ * directory under shared/src loaded in development (the dev autoloader
+ * maps class names straight onto paths, link and all), was invisible
+ * to the architecture sweep, and missed every zip (reproduced; zero
+ * symlinks in the tree today, so this is the doctrine made loud, not a
+ * live incident). The build embed and the sweep share this ONE
+ * collector, so the refusal fires in every channel that touches the
+ * source tree.
+ *
  * @param string $dir Absolute source-only directory (shared/src).
  * @return list<string> Sorted relative .php file paths.
+ * @throws RuntimeException When the tree carries a symlink.
  */
 function wp_connectors_php_source_files($dir)
 {
@@ -1840,9 +1851,14 @@ function wp_connectors_php_source_files($dir)
     );
     foreach ($iterator as $file) {
         /** @var SplFileInfo $file */
-        // Same no-symlinks doctrine as the plugin collector: a link
-        // inside the source tree must not ship out-of-tree content.
-        if ($file->isLink() || ! $file->isFile()) {
+        if ($file->isLink()) {
+            throw new RuntimeException(sprintf(
+                'shared source tree carries a symlink (%s -> %s) — the no-symlinks doctrine refuses the walk instead of silently skipping a source that loads in development and misses the zip',
+                $file->getPathname(),
+                (string) $file->getLinkTarget()
+            ));
+        }
+        if (! $file->isFile()) {
             continue;
         }
         $relative = str_replace($dir . '/', '', $file->getPathname());

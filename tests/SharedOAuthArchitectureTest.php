@@ -926,6 +926,66 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
+     * Fix-round pin (t31-r4-7): a symlink inside the shared source tree
+     * REFUSES the collector's walk loudly. The old silent skip was the
+     * no-symlinks doctrine's quiet half — a symlinked directory under
+     * shared/src loaded in development (the dev autoloader maps class
+     * names straight onto paths), was invisible to this sweep (same
+     * walk), and missed every zip (reproduced). Both link shapes
+     * refuse, naming the link and its target.
+     */
+    public function testASymlinkInTheSharedSourceTreeRefusesTheCollectorLoudly(): void
+    {
+        $scratch = tempnam(sys_get_temp_dir(), 'wpct-symlink-src-');
+        unlink($scratch);
+        mkdir($scratch . '/Clock', 0755, true);
+        mkdir($scratch . '/Linked', 0755, true);
+
+        try {
+            file_put_contents($scratch . '/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+            file_put_contents($scratch . '/Linked/LinkedSource.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Linked;\ninterface LinkedSource {}\n");
+
+            // Clean direction first: no links, plain collection.
+            $this->assertSame(
+                array('Clock/ClockInterface.php', 'Linked/LinkedSource.php'),
+                wp_connectors_php_source_files($scratch),
+                'A link-free source tree collects unchanged.'
+            );
+
+            // A symlinked FILE refuses, naming link and target.
+            symlink($scratch . '/Linked/LinkedSource.php', $scratch . '/LinkedFile.php');
+            try {
+                wp_connectors_php_source_files($scratch);
+                $this->fail('A symlinked file inside the shared source tree must refuse the walk, never skip silently.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('symlink', $e->getMessage());
+                $this->assertStringContainsString('LinkedFile.php', $e->getMessage());
+                $this->assertStringContainsString('LinkedSource.php', $e->getMessage());
+            }
+            unlink($scratch . '/LinkedFile.php');
+
+            // A symlinked DIRECTORY refuses the same way — this is the
+            // reproduced shape: loads in dev, invisible to the sweep,
+            // missing from every zip.
+            symlink($scratch . '/Linked', $scratch . '/LinkedDir');
+            try {
+                wp_connectors_php_source_files($scratch);
+                $this->fail('A symlinked directory inside the shared source tree must refuse the walk, never skip silently.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('symlink', $e->getMessage());
+                $this->assertStringContainsString('LinkedDir', $e->getMessage());
+            }
+        } finally {
+            // The linked DIRECTORY must go as a link (unlink), never as a
+            // directory — rrmdir walks into it otherwise.
+            if (is_link($scratch . '/LinkedDir')) {
+                unlink($scratch . '/LinkedDir');
+            }
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r3-8), end-to-end through the ACTUAL gate: the
      * WP-reach and provider-name patterns were still applied per line
      * while the static/clock gates moved to whole-file application

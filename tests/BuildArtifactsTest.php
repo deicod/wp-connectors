@@ -1775,6 +1775,46 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r4-7), the build channel: a symlinked
+     * directory in shared/src REFUSES the embed build loudly — the old
+     * silent skip shipped a library whose linked class loads in
+     * development (the dev autoloader resolves link paths) and fatals
+     * in the shipped plugin, with the sweep equally blind (same
+     * collector). The refusal rides the staging try: no zip, no staging
+     * residue, the previous good artifact set untouched.
+     */
+    public function testASymlinkInTheSharedSourceTreeRefusesTheEmbedBuild(): void
+    {
+        $scratch = self::distDir() . '/.embed-symlink';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/shared/src/Linked', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+        file_put_contents($scratch . '/shared/src/Linked/LinkedSource.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Linked;\ninterface LinkedSource {}\n");
+        symlink($scratch . '/shared/src/Linked', $scratch . '/shared/src/LinkedDir');
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A symlinked directory inside shared/src must refuse the embed build, never ship a library that silently drops it.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('symlink', $e->getMessage());
+                $this->assertStringContainsString('LinkedDir', $e->getMessage());
+            }
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build must leave no zip behind.');
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * The legal namespace-suffix shapes the rewrite soundness sweep rides:
      * the ordinary derivation, the digit-initial underscored derivation
      * (t31-r3-5), and an explicit all-caps segment — each a validated,
