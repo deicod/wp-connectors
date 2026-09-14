@@ -1426,16 +1426,24 @@ FIXTURE;
     }
 
     /**
-     * Fix-round pin (t31-r3-5), end-to-end through the build: the
-     * derivation legally produced digit-initial suffixes
-     * ('3cx-oauth' -> '3cxOauth') that the namespace-segment validator
-     * rejects — a PHP label may not start with a digit, so the DERIVED
-     * spelling was never a declarable namespace. The derivation
-     * underscores digit-initial suffixes ('_3cxOauth'), the validator's
-     * label law is unchanged, and a digit-initial slug now builds: the
-     * conventions gates pass, the autoloader prefix matches the
-     * derivation, and the embedded shared copy carries the legal,
-     * lint-clean namespace.
+     * Fix-round pin (t31-r3-5), end-to-end through the build, extended
+     * by t31-r5-8: the derivation legally produced digit-initial
+     * suffixes ('3cx-oauth' -> '3cxOauth') that the namespace-segment
+     * validator rejects — a PHP label may not start with a digit, so
+     * the DERIVED spelling was never a declarable namespace. The
+     * derivation underscores digit-initial suffixes ('_3cxOauth'), the
+     * validator's label law is unchanged, and a digit-initial slug now
+     * builds: the conventions gates pass, the autoloader prefix
+     * matches the derivation, and the embedded shared copy carries
+     * the legal, lint-clean namespace. t31-r5-8 completes the
+     * agreement on the VERSION CONSTANT half: the naive constant name
+     * ('3CX_OAUTH_VERSION') is bare-code-unreachable (definable
+     * through define(), but every bare spelling is a lexer error —
+     * parse verified) while the gate matched it happily; the constant
+     * derivation underscores digit-initial names the same way, the
+     * main file defines and REFERENCES '_3CX_OAUTH_VERSION', and the
+     * generated main file parses (php -l) with the constant genuinely
+     * referenceable.
      */
     public function testADigitInitialSlugDerivesAndBuildsALegalNamespace()
     {
@@ -1450,7 +1458,8 @@ FIXTURE;
         $plugin = $scratch . '/plugin/3cx-oauth';
         mkdir($plugin . '/src', 0755, true);
         $head = "Plugin Name:       3cx-oauth\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       3cx-oauth\nAuthor:            x\n";
-        file_put_contents($plugin . '/3cx-oauth.php', "<?php\n/**\n * {$head} */\ndefine( '3CX_OAUTH_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n");
+        $main = "<?php\n/**\n * {$head} */\ndefine( '_3CX_OAUTH_VERSION', '1.0.0' );\nif ( _3CX_OAUTH_VERSION !== '1.0.0' ) {\n\treturn;\n}\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        file_put_contents($plugin . '/3cx-oauth.php', $main);
         $suffix = wp_connectors_namespace_suffix_from_slug('3cx-oauth');
         $this->assertSame('_3cxOauth', $suffix);
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\{$suffix}\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
@@ -1462,11 +1471,21 @@ FIXTURE;
             // slug (headers, version constant, the derivation-matched
             // autoloader prefix) — the derivation and the validator agree.
             $this->assertSame(array(), wp_connectors_autoloader_violations($plugin));
+            $this->assertSame(array(), wp_connectors_version_constant_violations($plugin, wp_connectors_parse_plugin_headers($plugin . '/3cx-oauth.php')));
+
+            // The naive (non-underscored) constant spelling the old
+            // derivation pinned is a mismatch now — the gate derives the
+            // legal, referenceable name.
+            $naive = str_replace("define( '_3CX_OAUTH_VERSION', '1.0.0' );", "define( '3CX_OAUTH_VERSION', '1.0.0' );", $main);
+            file_put_contents($plugin . '/3cx-oauth.php', $naive);
+            $this->assertNotSame(array(), wp_connectors_version_constant_violations($plugin, wp_connectors_parse_plugin_headers($plugin . '/3cx-oauth.php')));
+            file_put_contents($plugin . '/3cx-oauth.php', $main);
 
             $zipPath = WpConnectorsBuild::buildPlugin($plugin, $scratch . '/dist');
             $zip = new ZipArchive();
             $this->assertTrue($zip->open($zipPath));
             $embedded = (string) $zip->getFromName('3cx-oauth/src/Shared/Clock/ClockInterface.php');
+            $shippedMain = (string) $zip->getFromName('3cx-oauth/3cx-oauth.php');
             $zip->close();
             $this->assertStringContainsString('namespace Deicod\\WpConnectors\\_3cxOauth\\Shared\\Clock;', $embedded);
 
@@ -1478,6 +1497,23 @@ FIXTURE;
             $exit = 0;
             exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($lintTarget) . ' 2>&1', $output, $exit);
             $this->assertSame(0, $exit, 'The embedded copy under a digit-initial slug must lint: ' . implode("\n", $output));
+
+            // t31-r5-8 end-to-end: the SHIPPED main file parses with the
+            // bare-code reference, and the constant is genuinely
+            // referenceable (the reference reads the defined value).
+            $probe = $scratch . '/probe';
+            mkdir($probe . '/src', 0755, true);
+            $mainTarget = $probe . '/shipped-main.php';
+            file_put_contents($mainTarget, $shippedMain);
+            file_put_contents($probe . '/src/autoload.php', "<?php\n// stub for the main file's require_once\n");
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($mainTarget) . ' 2>&1', $output, $exit);
+            $this->assertSame(0, $exit, 'The shipped main file under a digit-initial slug must parse with its bare constant reference: ' . implode("\n", $output));
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg("require " . var_export($mainTarget, true) . "; exit( _3CX_OAUTH_VERSION === '1.0.0' ? 0 : 1 );") . ' 2>&1', $output, $exit);
+            $this->assertSame(0, $exit, 'The underscored version constant must be referenceable in bare code: ' . implode("\n", $output));
         } finally {
             WpHarness::rrmdir($scratch);
         }

@@ -2011,6 +2011,20 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
     }
     $source = (string) file_get_contents($mainFile);
     $constantName = strtoupper(str_replace('-', '_', $slug)) . '_VERSION';
+    /*
+     * Legal-label agreement (review round t31-r5-8, the t31-r3-5
+     * namespace rule's twin): a digit-initial slug's naive constant
+     * name ('3CX_OAUTH_VERSION') is not a legal bare identifier —
+     * define() accepts the string, but every bare reference is a lexer
+     * error, so the constant is unreachable in code (parse error
+     * verified) while the gate matched the define happily. The
+     * derivation underscores it exactly like the namespace derivation
+     * underscores its digit-initial suffix: the main file must define
+     * and reference '_3CX_OAUTH_VERSION'.
+     */
+    if (ctype_digit($constantName[0])) {
+        $constantName = '_' . $constantName;
+    }
     if (! preg_match('/define\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/', $source, $constantMatch)) {
         $violations[] = sprintf('%s: main file must define constant %s.', $slug, $constantName);
     } elseif (isset($headers['version']) && $constantMatch[1] !== $headers['version']) {
