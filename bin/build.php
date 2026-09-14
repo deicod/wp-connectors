@@ -76,6 +76,15 @@ final class WpConnectorsBuild
      * the build refuses and what the sweep flags cannot drift (one
      * vocabulary, two consumers).
      *
+     * Honest boundary (verifier round t31-r4, ledgered): SPLIT-composed
+     * spellings — the namespace assembled at runtime from concatenated
+     * or interpolated string pieces — are outside a spelling-level
+     * scan's charter (the pieces are ordinary string fragments; only
+     * their runtime VALUE names the namespace). No shared source
+     * composes the namespace dynamically today; re-open if one ever
+     * does (the fix shape is a no-dynamic-class-resolution gate, not a
+     * wider pattern).
+     *
      * @var string
      */
     const SHARED_NAMESPACE_SURVIVOR_PATTERN = '/(?<![A-Za-z0-9_])Deicod\\s*\\\\\\s*WpConnectors\\s*\\\\\\s*(?:Shared(?![A-Za-z0-9_])|\\{(?:[^;]*?[\\s,{])?Shared(?![A-Za-z0-9_]))/i';
@@ -178,13 +187,17 @@ final class WpConnectorsBuild
          * rewrite, the postcondition, and the sweep's whitelist
          * byte-identical (reproduced). Members are relative to the
          * prefix, so the rewrite inserts the suffix at the member's
-         * leading Shared segment; an 'as' alias is never rewritten (an
-         * alias legitimately named Shared — `Clock as Shared` — must
-         * survive untouched), and only the member-LEADING segment counts
-         * (`X\Shared` is a different namespace). Flat bodies only: a
-         * NESTED brace group is exotic enough that the postcondition
-         * below refuses it loudly rather than this rewriter guessing
-         * member structure.
+         * leading Shared segment; only the member-LEADING segment counts
+         * (`X\Shared` is a different namespace), and an 'as' alias is
+         * never REWRITTEN — a member aliased exactly as 'Shared'
+         * (`Clock as Shared`, importing the DIFFERENT namespace
+         * Deicod\WpConnectors\Clock) still REFUSES the build: the total
+         * scan below cannot distinguish the alias's member-boundary
+         * position from the namespace segment, so the doctrine is
+         * fail-loud — rename the alias (verifier note t31-r4, pinned as
+         * a refusal). Flat bodies only: a NESTED brace group is exotic
+         * enough that the postcondition refuses it loudly rather than
+         * this rewriter guessing member structure.
          */
         $rewritten = self::replaceOrThrow(
             preg_replace_callback(

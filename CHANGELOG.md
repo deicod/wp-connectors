@@ -295,6 +295,106 @@ gap, non-PHP files inside shared/src shipping, and the
 backreference-material namespace rewrite. Residuals ledgered. Suite
 1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r4)
+
+Fix round over round-4's 13 counted findings, executed as two
+structural class-kills plus eleven single-finding commits — the
+per-spelling regex patching strategy was declared exhausted (the same
+seams had been closed "one spelling away" twice already) and the round
+kills the CLASSES instead: 15 commits t31-r4-K1/K2/3/7/8/9/10/11/12/
+13/14, then a two-lens verifier pass (independent correctness +
+security, every finding adversarially re-driven before fixing) whose
+all-11 fix-claims HELD and whose four confirmed defects are fixed as
+t31-r4-15..18:
+
+- **The rewrite postcondition is a TOTAL scan** (t31-r4-K1, findings
+  4+5): after rewriting a shared source, the build asserts the output
+  contains ZERO occurrences of the source namespace
+  `Deicod\WpConnectors\Shared` — case-insensitive (PHP namespaces
+  are; the ledgered case-variant acceptance is closed by totality,
+  refused loudly now), whitespace-tolerant between segments (a
+  string/docblock spelling may break the line — the shape that
+  defeated every contiguous probe and the sweep's per-line whitelist
+  end-to-end at exit 0), and brace-aware (a group-use member carries
+  `Shared` at a member position where the substring never appears
+  contiguously). The rewriter additionally OWNS the group-use member
+  spelling now (suffix inserted at the member's leading `Shared`
+  segment; aliases never rewritten — though a member aliased exactly
+  `Shared` refuses, fail-loud); sound by construction (the rewritten
+  target `…\WpConnectors\<Suffix>\Shared` cannot contain the source
+  spelling — verified empirically over the whole real tree and pinned
+  per suffix shape); the architecture sweep's namespace gate went
+  whole-file on the SAME pattern (token-blanked rewritable statements,
+  one vocabulary, two consumers).
+- **The build.json seam is a CLOSED SCHEMA** (t31-r4-K2, findings
+  1+2+6): unknown keys refuse (a typo silently meant no-embed),
+  `embed_shared` must be a JSON boolean (the string `"false"` was
+  truthy and embedded while reading as no-embed), `namespace_suffix`
+  is typed before any use (a JSON array cast to `'Array'` and PASSED
+  the segment check, building under `…\Array\Shared`; an object
+  fataled with an uncaught Error), and an explicit suffix must EQUAL
+  the slug-derived autoloader prefix the plugin actually maps — a
+  custom suffix shipped an unloadable library with every gate green.
+- **Release-artifact integrity** (t31-r4-3/8/15): a failed zip
+  finalization refuses the build (close()'s false return was ignored
+  after OVERWRITE had already destroyed the previous good zip — the
+  sidecar carried a blank checksum at exit 0); the checksum manifest
+  is per-run-atomic (the CLI's pre-run wipe dropped every other
+  plugin's entry on a `--slug` rebuild and left the manifest gone
+  after a failing rebuild, sidecars orphaned — each run now merges
+  only its own entry and lands it temp+rename); and every publication
+  write is checked (the sidecar write was the one unchecked artifact
+  seam — a blocked `.sha256` path shipped a sidecar-less zip with
+  exit 0).
+- **The collectors refuse symlinks loudly** (t31-r4-7/16): a symlinked
+  directory in shared/src — and, per the verifier, a symlinked source
+  in the plugin tree — loaded in development, was invisible to (or
+  scanned through by) the gates, and missed every zip: an unloadable
+  artifact at exit 0. Both collectors refuse the build naming link
+  and target.
+- **One case-insensitive php-extension owner** (t31-r4-9/18): collect
+  (the shared-source vocabulary), strip (the PSR-4 type-name stem),
+  and classify (the self-containment walker, the unused-import
+  scanner, the inspector's syntax loop, the lint gate) all ride
+  `wp_connectors_is_php_source()` — a `.PHP` file can no longer be
+  collected by one gate, mis-stemmed by another, skipped by a third,
+  and linted by none.
+- **Gate vocabulary debts** (t31-r4-10/11): the PSR-4 type vocabulary
+  covers `trait` and `readonly class` (a class+trait file passed as
+  "exactly one type"; a readonly class counted as no type); the
+  WP-reach stems match their `_`-suffixed twins
+  (`apply_filters_ref_array`/`do_action_ref_array` — `\b` treats `_`
+  as a word character) and the obviously-conditional/admin surface
+  (`is_admin`, `get_bloginfo`, `is_user_logged_in`, `get_locale`)
+  joins the curated list, the curation doctrine itself now ledgered.
+- **URL validation closes two divergences** (t31-r4-12/13,
+  t31-r4-12 ADJUDICATED FIX, ledgered): parse_url() silently truncates
+  a malformed raw port (`:443x` reads as 443) while `url()` carries
+  the raw text — the raw port segment must be fully digits now
+  (userinfo colons are not ports; leading zeros stay legal); and the
+  whole URL must be valid UTF-8 — a lone raw C1 byte (0x85/0x9B)
+  passed the UTF-8-spelling-only control screen verbatim into the
+  debug forms, where json_encode of the log line returned FALSE (the
+  t31-r1-6 dropped-log-line failure mode).
+- **Abort-as-reject at the rewrite seams** (t31-r4-14): the
+  `(string)` casts on preg_replace results turned a PCRE abort's null
+  into an empty file inside the zip — every seam refuses loudly now.
+
+Verifier pass: both lenses over the whole round diff, every claim
+empirically re-driven (the pre-round code A/B'd through scratch
+scaffolds; a REAL PCRE abort driven through the use-rewrite on a
+300k-segment subject; a real failing close() driven at the seam). All
+11 fix-claims HELD (six HELD_WITH_NOTES, none falsified); four
+confirmed defects fixed as t31-r4-15..18 (the unchecked sidecar
+write; the plugin-tree symlink skip; build.json-as-directory and
+duplicate-key silent-no-embed; the exact-case lint/inspect extension
+checks letting a broken `.PHP` entry ship and pass inspection).
+Residuals adjudicated and ledgered — headlined by the K1 honest
+boundary: split-composed namespace spellings (runtime
+concatenation/interpolation) are outside a spelling-level scan's
+charter. Suite 1521 → 1538 tests, 43256 → 43498 assertions, 2 skipped
+unchanged; green in default and random order throughout.
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r3)
 
 Fix round over round-3's 14 counted findings. The reviewer's own

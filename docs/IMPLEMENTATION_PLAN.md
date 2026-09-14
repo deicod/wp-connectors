@@ -450,7 +450,38 @@ documented exception.
   defects, fixed as t31-r3-15/16 (the build.json array-top-level
   silent skip — found independently by both lenses; the failed
   build's orphaned-checksum state). Suite 1513 → 1521 tests, 43122 →
-  43256 assertions, 2 skipped unchanged.
+  43256 assertions, 2 skipped unchanged. Fix round t31-r4 (18 commits
+  over round-4's 13 findings, the two biggest as structural
+  class-kills — per-spelling patching declared exhausted): the rewrite
+  postcondition became a TOTAL scan (zero occurrences of the source
+  namespace in the rewritten output, case-insensitive, whitespace-
+  tolerant, brace-aware — the group-use member spelling the rewriter
+  now owns, the multiline string/docblock spelling that defeated every
+  contiguous probe, and the case-variant posture the ledger had
+  accepted; the sweep's namespace gate whole-file on the same
+  pattern), and build.json became a CLOSED SCHEMA (unknown keys,
+  non-boolean embed_shared, non-string suffixes, duplicate keys, a
+  non-regular file, and a suffix mismatching the slug-derived
+  autoloader prefix each refuse loudly — the silent-no-embed and
+  unloadable-library classes killed). Artifact integrity closed at
+  every seam: checked zip finalization (a failed close after OVERWRITE
+  destroyed the previous good zip), a per-run-atomic checksum manifest
+  (the CLI pre-run wipe dropped other plugins' entries and left the
+  manifest gone on failing rebuilds), and checked publication writes
+  (a blocked sidecar path shipped a sidecar-less zip at exit 0). Both
+  source collectors refuse symlinks loudly (dev-loads/zip-misses
+  divergence); one case-insensitive php-extension owner serves
+  collect/strip/classify/lint/inspect; the PSR-4 vocabulary covers
+  trait and readonly class; the WP-reach stems match _-suffixed twins
+  with the curation doctrine ledgered; Url rejects truncated raw ports
+  (adjudicated fix, ledgered with the empty-port narrowing) and
+  requires whole-URL UTF-8 (a raw C1 byte made json_encode of the log
+  line return false). A two-lens verifier pass held all 11 fix-claims
+  and confirmed four defects, fixed as t31-r4-15..18; residuals
+  adjudicated and ledgered (headline: split-composed namespace
+  spellings — runtime concatenation/interpolation — are outside a
+  spelling-level scan's charter). Suite 1521 → 1538 tests, 43256 →
+  43498 assertions, 2 skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
