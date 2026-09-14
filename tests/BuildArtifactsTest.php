@@ -1143,7 +1143,11 @@ FIXTURE;
      * seam now, before any filesystem mutation: a trailing comma (the
      * repro), an empty file, and a non-object top level each refuse the
      * build loudly, and the valid opt-in still builds through the same
-     * seam.
+     * seam. Verifier round t31-r3-15: the ARRAY top level joins the
+     * battery — the assoc decode + is_array() gate accepted a decoded
+     * list, so '["embed_shared"]' shipped a zip with no shared library
+     * and exit 0 (reproduced by both verifier lenses); the gate is
+     * object-typed now.
      */
     public function testAMalformedBuildJsonRefusesTheBuildLoudly()
     {
@@ -1162,6 +1166,9 @@ FIXTURE;
                 'trailing comma' => "{\"embed_shared\": true,\n}\n",
                 'empty file' => '',
                 'scalar top level' => "\"yes\"\n",
+                'array top level' => "[\"embed_shared\"]\n",
+                'array of objects' => "[{\"embed_shared\": true}]\n",
+                'empty array' => "[]\n",
             ) as $label => $payload) {
                 file_put_contents($scratch . '/plugin/example-connector/build.json', $payload);
                 try {

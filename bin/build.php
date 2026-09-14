@@ -240,13 +240,24 @@ final class WpConnectorsBuild
             if (false === $rawConfig) {
                 throw new RuntimeException("build: cannot read {$buildConfig}");
             }
-            $config = json_decode($rawConfig, true);
-            if (! is_array($config)) {
-                $reason = JSON_ERROR_NONE === json_last_error()
-                    ? 'the top-level value is not a JSON object'
-                    : json_last_error_msg();
-                throw new RuntimeException("build: {$slug}: build.json is malformed ({$reason}) — refusing instead of silently skipping the embed_shared configuration");
+            /*
+             * Verifier round t31-r3-15: the assoc decode + is_array() gate
+             * accepted a top-level JSON ARRAY too (a decoded list IS a PHP
+             * array), so '["embed_shared"]' and '[]' silently skipped the
+             * embed and shipped a zip without the shared library, exit 0 —
+             * the exact defect class the seam exists to close, one
+             * spelling away. The decode is object-typed now: the top
+             * level must decode to a JSON OBJECT, and the object cast
+             * (whose keys are always strings) feeds the embed decision.
+             */
+            $decoded = json_decode($rawConfig);
+            if (JSON_ERROR_NONE !== json_last_error()) {
+                throw new RuntimeException("build: {$slug}: build.json is malformed (" . json_last_error_msg() . ") — refusing instead of silently skipping the embed_shared configuration");
             }
+            if (! is_object($decoded)) {
+                throw new RuntimeException("build: {$slug}: build.json is malformed (the top-level value is not a JSON object) — refusing instead of silently skipping the embed_shared configuration");
+            }
+            $config = (array) $decoded;
             if (! empty($config['embed_shared'])) {
                 // Collect from shared/src ITSELF (review round t31-r2-12):
                 // the old collection walked shared/ — the parent of the
