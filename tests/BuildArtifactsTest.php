@@ -1561,6 +1561,60 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r5-1): a plugin that owns a file at an embed
+     * destination had its copy silently REPLACED by the generated
+     * embed copy — the author's class overwritten inside the zip, no
+     * warning, exit 0 (reproduced: the shipped src/Shared file was the
+     * rewritten shared source, the plugin's own bytes gone). The
+     * collision refuses the build now, naming the path; a plugin-owned
+     * Shared path is a configuration mistake, never something to
+     * silently override. (The build-seam property battery drives the
+     * same state; this is the per-fix pin with the control.)
+     */
+    public function testAPluginOwnedSharedPathCollisionRefusesTheBuild(): void
+    {
+        $scratch = self::distDir() . '/.embed-collision';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+        mkdir($scratch . '/plugin/example-connector/src/Shared/Clock', 0755, true);
+        file_put_contents(
+            $scratch . '/plugin/example-connector/src/Shared/Clock/ClockInterface.php',
+            "<?php\n// the plugin author's own copy — silently replaced pre-fix\n"
+        );
+
+        try {
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A plugin-owned path colliding with an embed destination must refuse the build, never silently replace the author\'s file.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('collision', $e->getMessage());
+                $this->assertStringContainsString('src/Shared/Clock/ClockInterface.php', $e->getMessage());
+            }
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build must leave no zip behind.');
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+
+            // Control: a plugin-owned file OUTSIDE the generated subtree
+            // builds fine beside the embed.
+            unlink($scratch . '/plugin/example-connector/src/Shared/Clock/ClockInterface.php');
+            mkdir($scratch . '/plugin/example-connector/src/Own', 0755, true);
+            file_put_contents($scratch . '/plugin/example-connector/src/Own/Note.php', "<?php\n// plugin-owned, outside src/Shared\n");
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $names = $this->zipEntryNames($zipPath);
+            $this->assertContains('example-connector/src/Own/Note.php', $names, 'A plugin-owned path outside src/Shared ships normally.');
+            $this->assertContains('example-connector/src/Shared/Clock/ClockInterface.php', $names, 'The embed destination is untouched by the control.');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
