@@ -564,9 +564,46 @@ final class WpConnectorsBuild
         $manifest = self::manifestLinesWithout($manifestPath, $zipName);
         $manifest[] = $zipName . '  ' . $checksum;
         sort($manifest, SORT_STRING);
-        file_put_contents($manifestPath, implode("\n", $manifest) . "\n");
+        self::writeManifestAtomically($manifestPath, $manifest);
 
         return $zipPath;
+    }
+
+    /**
+     * Lands the checksum manifest atomically (review round t31-r4-8).
+     *
+     * The manifest is PER-RUN-ATOMIC: a run updates only the entries of
+     * the plugin(s) it built (manifestLinesWithout() keeps every other
+     * line byte-for-byte) and lands the result with temp + rename, so a
+     * crash or a mid-write failure can never leave a half-written
+     * manifest behind — and never deletes one either. The CLI's old
+     * pre-run unlink dropped EVERY other plugin's entry on a --slug
+     * rebuild and left the manifest gone after a failing rebuild, its
+     * sidecars orphaned (reproduced) — the t31-r3-16 invariant was
+     * false at the CLI seam. An empty line set removes the manifest
+     * outright (a blank manifest file is not a state worth keeping —
+     * the removeManifestEntry contract, now riding the same writer).
+     *
+     * @param string        $manifestPath Absolute checksums.txt path.
+     * @param list<string>  $lines        Entry lines, sorted, non-empty.
+     * @return void
+     * @throws RuntimeException When the manifest cannot be written.
+     */
+    private static function writeManifestAtomically($manifestPath, array $lines)
+    {
+        if ($lines === array()) {
+            @unlink($manifestPath);
+
+            return;
+        }
+        $temp = $manifestPath . '.tmp';
+        if (false === file_put_contents($temp, implode("\n", $lines) . "\n")) {
+            throw new RuntimeException("build: cannot write the checksum manifest staging file {$temp}");
+        }
+        if (! rename($temp, $manifestPath)) {
+            @unlink($temp);
+            throw new RuntimeException("build: cannot finalize the checksum manifest at {$manifestPath}");
+        }
     }
 
     /**
@@ -611,13 +648,10 @@ final class WpConnectorsBuild
         if (! is_file($manifestPath)) {
             return;
         }
-        $remaining = self::manifestLinesWithout($manifestPath, $zipName);
-        if ($remaining === array()) {
-            @unlink($manifestPath);
-
-            return;
-        }
-        file_put_contents($manifestPath, implode("\n", $remaining) . "\n");
+        // The removal rides the same atomic writer as the success path
+        // (t31-r4-8): a manifest the removal empties is removed outright,
+        // one with survivors lands whole — never half-written.
+        self::writeManifestAtomically($manifestPath, self::manifestLinesWithout($manifestPath, $zipName));
     }
 
     /**
@@ -778,8 +812,16 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
         exit(0);
     }
 
-    // Remove stale manifest so checksums.txt always reflects exactly this run.
-    @unlink($distDir . '/checksums.txt');
+    /*
+     * No pre-run manifest wipe (review round t31-r4-8): the manifest is
+     * PER-RUN-ATOMIC. The old unlink dropped every OTHER plugin's entry
+     * on a --slug rebuild and left the manifest gone after a failing
+     * rebuild, its sidecars orphaned (reproduced). Each buildPlugin()
+     * run merges only its own zip's entry into whatever manifest exists
+     * and lands the result atomically (temp + rename), so checksums.txt
+     * always describes exactly the artifacts that exist — across
+     * partial rebuilds and failed runs alike.
+     */
 
     $failed = false;
     foreach ($targets as $target) {

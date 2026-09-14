@@ -1815,6 +1815,92 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r4-8), the partial-rebuild shape: the CLI wiped
+     * dist/checksums.txt before building, so a --slug rebuild dropped
+     * every OTHER plugin's manifest entry (reproduced) — the manifest
+     * must be per-run-atomic: a run updates only the entries of the
+     * plugin(s) it built, and every other entry survives byte-for-byte.
+     */
+    public function testASlugRebuildKeepsEveryOtherPluginsManifestEntry(): void
+    {
+        $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));
+
+        try {
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' 2>&1', $output, $exit);
+            $this->assertSame(0, $exit, "The full run must build cleanly:\n" . implode("\n", $output));
+
+            $manifestPath = $repo . '/dist/checksums.txt';
+            $fullManifest = (string) file_get_contents($manifestPath);
+            $this->assertStringContainsString('connectors-alpha-demo-1.0.0.zip', $fullManifest);
+            $this->assertStringContainsString('connectors-beta-demo-1.0.0.zip', $fullManifest);
+
+            // The partial rebuild: only alpha's entry may change; beta's
+            // entry (and sidecar, and zip) must survive untouched.
+            $betaZip = $repo . '/dist/connectors-beta-demo-1.0.0.zip';
+            $betaSidecarBefore = (string) file_get_contents($betaZip . '.sha256');
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=alpha-demo 2>&1', $output, $exit);
+            $this->assertSame(0, $exit);
+
+            $rebuiltManifest = (string) file_get_contents($manifestPath);
+            $this->assertStringContainsString('connectors-alpha-demo-1.0.0.zip', $rebuiltManifest, 'The rebuilt plugin keeps its own entry.');
+            $this->assertStringContainsString('connectors-beta-demo-1.0.0.zip', $rebuiltManifest, 'The unbuilt plugin keeps its entry (the old pre-run wipe dropped it).');
+            $this->assertSame($betaSidecarBefore, (string) file_get_contents($betaZip . '.sha256'), 'The unbuilt plugin\'s sidecar survives byte-for-byte.');
+            $this->assertFileExists($betaZip, 'The unbuilt plugin\'s zip survives.');
+        } finally {
+            WpHarness::rrmdir($repo);
+        }
+    }
+
+    /**
+     * Fix-round pin (t31-r4-8), the failing-rebuild shape: the CLI wipe
+     * ran BEFORE the loop, so a failing rebuild left the manifest gone
+     * with every sidecar orphaned (reproduced) — t31-r3-16's
+     * last-good-artifact invariant was false at the CLI seam. A failed
+     * run must leave the previous manifest and sidecars exactly as the
+     * last successful run wrote them.
+     */
+    public function testAFailingRebuildLeavesTheManifestAndSidecarsIntact(): void
+    {
+        $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));
+
+        try {
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' 2>&1', $output, $exit);
+            $this->assertSame(0, $exit, "The full run must build cleanly:\n" . implode("\n", $output));
+
+            $manifestPath = $repo . '/dist/checksums.txt';
+            $manifestBefore = (string) file_get_contents($manifestPath);
+            $alphaZip = $repo . '/dist/connectors-alpha-demo-1.0.0.zip';
+            $betaZip = $repo . '/dist/connectors-beta-demo-1.0.0.zip';
+            $alphaSidecarBefore = (string) file_get_contents($alphaZip . '.sha256');
+            $betaSidecarBefore = (string) file_get_contents($betaZip . '.sha256');
+
+            // Break beta AFTER the successful run: its main file loses
+            // the Plugin Name header, so the rebuild refuses it.
+            file_put_contents($repo . '/connectors/beta-demo/beta-demo.php', "<?php\necho 'header lost';\n");
+
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' 2>&1', $output, $exit);
+            $this->assertSame(1, $exit, 'The failing rebuild must exit non-zero.');
+            $this->assertStringContainsString('no main plugin file', implode("\n", $output));
+
+            // The last good release survives the failed rebuild whole:
+            // manifest byte-identical (alpha rebuilds deterministically to
+            // the same checksum before beta refuses), zips and sidecars
+            // all present and unchanged.
+            $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'A failed rebuild must leave the manifest exactly as the last successful run wrote it.');
+            $this->assertFileExists($alphaZip);
+            $this->assertFileExists($betaZip);
+            $this->assertSame($alphaSidecarBefore, (string) file_get_contents($alphaZip . '.sha256'));
+            $this->assertSame($betaSidecarBefore, (string) file_get_contents($betaZip . '.sha256'));
+        } finally {
+            WpHarness::rrmdir($repo);
+        }
+    }
+
+    /**
      * The legal namespace-suffix shapes the rewrite soundness sweep rides:
      * the ordinary derivation, the digit-initial underscored derivation
      * (t31-r3-5), and an explicit all-caps segment — each a validated,
