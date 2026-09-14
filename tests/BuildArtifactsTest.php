@@ -1702,6 +1702,79 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r4-3): ZipArchive::close()'s false return was
+     * ignored — a failed finalization took no catch path while OVERWRITE
+     * had already destroyed the previous good zip, so the run continued
+     * to hash_file() on a zip that was never written, wrote a
+     * blank-checksum sidecar, and exited 0 (the t31-r3-16 invariant
+     * failing at the seam its re-open clause anticipated). Finalization
+     * is its own checked seam now, driven here with a REAL failed
+     * close(): on this runtime an addFile()'d source that is unreadable
+     * at read time makes close() return false (libzip defers the read —
+     * empirically confirmed), which is the deterministic external
+     * spelling of the failure. The clean direction finalizes a real
+     * archive through the same seam. (No external input reaches a
+     * failed close() through buildPlugin() itself — every staged file is
+     * written and chmod 0644 by the same synchronous call — so the seam
+     * is pinned directly, the removeManifestEntry idiom.)
+     */
+    public function testAFailedZipFinalizationRefusesTheBuild(): void
+    {
+        $finalize = new ReflectionMethod(WpConnectorsBuild::class, 'closeArchiveOrThrow');
+
+        // Clean direction: a real archive with one entry finalizes.
+        $good = tempnam(sys_get_temp_dir(), 'wpct-zip-good-');
+        try {
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($good, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+            $zip->addFromString('entry.txt', 'data');
+            $finalize->invoke(null, $zip, 'good.zip');
+            $this->assertFileExists($good, 'A finalized archive lands on disk.');
+        } finally {
+            @unlink($good);
+        }
+
+        // Failing direction: the staged source is unreadable at close()
+        // time, so finalization fails for real. libzip warns through the
+        // engine on the failed read; the pin collects the warning (it is
+        // the evidence the failure is a real close() failure, not a stub)
+        // instead of letting PHPUnit's handler turn it into a test error.
+        $staged = tempnam(sys_get_temp_dir(), 'wpct-zip-staged-');
+        $bad = tempnam(sys_get_temp_dir(), 'wpct-zip-bad-');
+        try {
+            file_put_contents($staged, 'staged content');
+            chmod($staged, 0000);
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($bad, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+            $this->assertTrue($zip->addFile($staged, 'staged.txt'));
+
+            $warnings = array();
+            set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
+                $warnings[] = $errstr;
+
+                return true;
+            });
+            $refused = null;
+            try {
+                $finalize->invoke(null, $zip, 'bad.zip');
+            } catch (RuntimeException $e) {
+                $refused = $e->getMessage();
+            } finally {
+                restore_error_handler();
+            }
+
+            $this->assertNotNull($refused, 'A failed finalization must refuse the build, never fall through to a blank-checksum sidecar and exit 0.');
+            $this->assertStringContainsString('cannot finalize', $refused);
+            $this->assertStringContainsString('bad.zip', $refused);
+            $this->assertNotSame(array(), $warnings, 'The pin must drive a REAL close() failure (libzip\'s own read warning is the evidence), not a stubbed one.');
+        } finally {
+            @chmod($staged, 0644);
+            @unlink($staged);
+            @unlink($bad);
+        }
+    }
+
+    /**
      * The legal namespace-suffix shapes the rewrite soundness sweep rides:
      * the ordinary derivation, the digit-initial underscored derivation
      * (t31-r3-5), and an explicit all-caps segment — each a validated,

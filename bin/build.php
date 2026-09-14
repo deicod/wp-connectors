@@ -458,6 +458,7 @@ final class WpConnectorsBuild
 
         $zip = null;
         $zipOpened = false;
+        $zipOverwritten = false;
         try {
             $licenseFile = dirname($distDir) . '/LICENSE';
             $entries = array();
@@ -496,13 +497,30 @@ final class WpConnectorsBuild
                 throw new RuntimeException("build: cannot create {$zipPath}");
             }
             $zipOpened = true;
+            $zipOverwritten = true;
             foreach ($entries as $entry) {
                 if (true !== $zip->addFile($stage . '/' . $entry, $entry)) {
                     throw new RuntimeException("build: cannot add {$entry} to {$zipName}");
                 }
             }
-            $zip->close();
+            /*
+             * Finalization is CHECKED (t31-r4-3): close() writes the
+             * archive and returns FALSE on a failed write (an unreadable
+             * staged source at read time, a destination that stopped
+             * accepting) — after OVERWRITE already destroyed any
+             * previous good zip at the path. The unchecked close() let
+             * the failure fall through to hash_file() on a zip that was
+             * not written and a blank-checksum sidecar with exit 0,
+             * precisely the t31-r3-16 invariant failing at the seam its
+             * re-open clause anticipated. The release flag is cleared
+             * BEFORE the call: a FAILED close() has already torn the
+             * archive object down (a second close() is a ValueError on
+             * this runtime, empirically confirmed), while the artifact
+             * set stays corrupted — the $zipOverwritten cleanup below
+             * owns that half.
+             */
             $zipOpened = false;
+            self::closeArchiveOrThrow($zip, $zipName);
         } catch (RuntimeException $buildFailure) {
             /*
              * Scope the artifact cleanup to what THIS run wrote
@@ -518,10 +536,17 @@ final class WpConnectorsBuild
              * good release survives a failed rebuild); a failure after
              * open() has corrupted the archive, so the partial zip, its
              * sidecar, and its manifest entry all go together.
+             *
+             * t31-r4-3: the release and the artifact cleanup are
+             * separate facts — the release runs only while the object
+             * is still open (a failed close() already destroyed it), the
+             * cleanup whenever the path was overwritten.
              */
             if ($zipOpened && $zip instanceof ZipArchive) {
                 // Release the half-written archive before removing it.
                 $zip->close();
+            }
+            if ($zipOverwritten) {
                 @unlink($zipPath);
                 @unlink($zipPath . '.sha256');
                 self::removeManifestEntry($distDir . '/checksums.txt', $zipName);
@@ -608,6 +633,41 @@ final class WpConnectorsBuild
     public static function namespaceSuffixFromSlug($slug)
     {
         return wp_connectors_namespace_suffix_from_slug($slug);
+    }
+
+    /**
+     * Finalizes the archive, refusing the build when finalization fails
+     * (review round t31-r4-3).
+     *
+     * ZipArchive::close() is the step that WRITES the archive — libzip
+     * defers the staged sources' reads here — and it returns false on a
+     * failed write (an unreadable staged source, a destination that
+     * stopped accepting) while the previous good zip at the same path
+     * was already destroyed by OVERWRITE at open(). The unchecked
+     * $zip->close() let that failure fall through to hash_file() on a
+     * zip that was never written and a blank-checksum sidecar with
+     * exit 0 — the t31-r3-16 last-good-artifact invariant failing at
+     * exactly the seam its re-open clause anticipated.
+     *
+     * A failed close() tears the archive object down with it (a second
+     * close() is a ValueError on this runtime, empirically confirmed),
+     * so the caller clears its release flag BEFORE calling and never
+     * re-closes on this path.
+     *
+     * Private and seam-shaped so the pin can drive a REAL failed
+     * close() through it (a staged source that is unreadable at read
+     * time — the deterministic external spelling on this runtime).
+     *
+     * @param ZipArchive $zip     The open archive.
+     * @param string     $zipName Zip basename (diagnostics only).
+     * @return void
+     * @throws RuntimeException When the archive cannot be finalized.
+     */
+    private static function closeArchiveOrThrow($zip, $zipName)
+    {
+        if (true !== $zip->close()) {
+            throw new RuntimeException("build: cannot finalize {$zipName} — writing the archive failed (a staged source or the destination became unreadable mid-write); refusing instead of checksumming a zip that was never written");
+        }
     }
 
     /**
