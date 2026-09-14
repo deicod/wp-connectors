@@ -328,11 +328,16 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
     public function testSharedSourceSpellsItsNamespaceOnlyOnRewritableLines(): void
     {
-        // bin/build.php's rewrite touches exactly two spellings: the
-        // namespace declaration and `use Deicod\WpConnectors\Shared\...`
-        // imports. Any OTHER occurrence of the FQ namespace would
-        // survive the rewrite pointing at a namespace that no longer
-        // exists inside the plugin copy.
+        // bin/build.php's rewrite touches exactly two line shapes: the
+        // namespace declaration and `use ...` imports — EVERY legal use
+        // spelling (plain, aliased, function, const, fully qualified,
+        // exact, brace-group; the rewriter's spelling battery is pinned
+        // in BuildArtifactsTest::testSharedNamespaceRewrite), and its
+        // postcondition refuses any spelling the patterns do not know
+        // (review round t31-r3-2), so nothing whitelisted here can ship
+        // un-rewritten. Any OTHER occurrence of the FQ namespace would
+        // survive pointing at a namespace that no longer exists inside
+        // the plugin copy.
         foreach ($this->sharedSourceFiles() as $path) {
             foreach ($this->numberedLines($path) as [$number, $line]) {
                 if (false === strpos($line, 'Deicod\\WpConnectors\\Shared')) {

@@ -69,11 +69,19 @@ final class WpConnectorsBuild
      * replacement-safe by construction) and the provenance string's
      * replacement metacharacters are escaped.
      *
+     * Review round t31-r3-2: the use-rewrite covers EVERY legal spelling
+     * of the shared namespace — plain, aliased, 'use function'/'use
+     * const', fully qualified, exact (no sub-segment), and the
+     * brace-group form — and a postcondition REFUSES the rewrite when
+     * any spelling survives the patterns (a spelling the rewriter does
+     * not know ships broken imports otherwise; silent survival was the
+     * round's defect).
+     *
      * @param string $source        PHP source from shared/src.
      * @param string $pluginSuffix  Namespace segment, e.g. 'OpenAiOauth'.
      * @param string $sourceVersion Provenance string (repo-relative path/rev).
      * @return string Rewritten source ready for src/Shared/.
-     * @throws RuntimeException When the namespace suffix is not a legal namespace segment.
+     * @throws RuntimeException When the namespace suffix is not a legal namespace segment, or when a spelling of the shared namespace survives the rewrite patterns.
      */
     public static function rewriteSharedNamespace($source, $pluginSuffix, $sourceVersion)
     {
@@ -85,12 +93,38 @@ final class WpConnectorsBuild
             '$1Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared$2',
             $source
         );
-        // use statements referencing the shared namespace.
+        /*
+         * use statements referencing the shared namespace, in EVERY legal
+         * spelling (review round t31-r3-2): the old pattern required a
+         * trailing separator after Shared, so the EXACT-namespace import
+         * ('use Deicod\WpConnectors\Shared;'), its aliased form
+         * ('... as SharedNs;'), and every 'use function/const' spelling
+         * survived byte-identical — the embedded copy imported the source
+         * namespace, which no longer exists inside the plugin: a
+         * class-not-found fatal on load. One pattern carries the optional
+         * function/const kind, the optional leading backslash (a fully
+         * qualified import), the exact-or-sub-segmented name, the optional
+         * alias, and the brace-group tail (group members are relative —
+         * rewriting the prefix before '{' rewrites every member).
+         */
         $rewritten = (string) preg_replace(
-            '/(use\s+)Deicod\\\\WpConnectors\\\\Shared\\\\/',
-            '$1Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared\\\\',
+            '/(?<![A-Za-z0-9_])((?:use\s+(?:function\s+|const\s+)?)\\\\?)Deicod\\\\WpConnectors\\\\Shared((?:\\\\[A-Za-z0-9_]+)*)(\s+as\s+[A-Za-z0-9_]+)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
+            '${1}Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared${2}${3}${4};',
             $rewritten
         );
+        /*
+         * Postcondition (t31-r3-2): the rewrite's contract is that NO
+         * spelling of the source namespace survives. The patterns above
+         * cover every legal shape this rewriter knows; anything else — a
+         * comment-interrupted use line, a nested brace group — REFUSES the
+         * build loudly instead of shipping a broken import (silent
+         * survival was the defect this round closed). A LONGER name
+         * ('...SharedStorage') is a different namespace, not a spelling
+         * of this one, and the negative lookahead keeps it untouched.
+         */
+        if (1 === preg_match('/Deicod\\\\WpConnectors\\\\Shared(?![A-Za-z0-9_])/', $rewritten)) {
+            throw new RuntimeException("build: a spelling of Deicod\\WpConnectors\\Shared survived the rewrite in {$sourceVersion} — extend rewriteSharedNamespace() for the spelling; every legal use form is rewritten here or the build refuses");
+        }
 
         // Insert provenance directly after the open tag (never before it).
         return (string) preg_replace(
