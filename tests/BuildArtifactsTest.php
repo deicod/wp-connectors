@@ -1337,17 +1337,19 @@ FIXTURE;
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The seam refusal must leave no zip.');
 
             // (b) A throw that lands MID-BUILD, after the stage tree and
-            // entries exist: the zip cannot be created because a
-            // directory sits at the zip path. The catch/finally must
-            // remove the staging tree (the old code leaked it).
+            // entries exist: the zip cannot land because a directory
+            // sits at the destination path. The pre-flight lands nothing
+            // (the old shape failed at open() with OVERWRITE; the
+            // t31-r5-S shape produces every byte at a temp path first
+            // and refuses the landing before any rename).
             file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
             $blockedZip = $scratch . '/dist/connectors-example-connector-0.1.0.zip';
             mkdir($blockedZip, 0755, true);
             try {
                 WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
-                $this->fail('An un-creatable zip path must fail the build.');
+                $this->fail('An un-landable zip path must fail the build.');
             } catch (RuntimeException $e) {
-                $this->assertStringContainsString('cannot create', $e->getMessage());
+                $this->assertStringContainsString('not a regular file', $e->getMessage());
             }
             $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'A mid-build throw must tear the staging tree down.');
 
@@ -1358,14 +1360,14 @@ FIXTURE;
             $this->assertFileExists($zipPath);
             $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'The success path must tear the staging tree down too.');
 
-            // (d) Verifier-round pin (t31-r3-16): a mid-build failure
-            // BEFORE the archive is opened must leave the previous
-            // successful build's artifact set EXACTLY as found — the old
-            // catch unlinked the zip it never wrote, orphaning its
-            // .sha256 sidecar and its checksums.txt entry
-            // (verifier-reproduced: sidecar and manifest survived the
-            // deleted zip). A shared source that trips the rewrite
-            // postcondition throws mid-build, before open().
+            // (d) Verifier-round pin (t31-r3-16), restated for t31-r5-S:
+            // a mid-build failure must leave the previous successful
+            // build's artifact set EXACTLY as found — the old catch
+            // unlinked the zip it never wrote, orphaning its .sha256
+            // sidecar and its checksums.txt entry (verifier-reproduced:
+            // sidecar and manifest survived the deleted zip). A shared
+            // source that trips the rewrite postcondition throws
+            // mid-staging, before anything is staged for publication.
             $manifestPath = $scratch . '/dist/checksums.txt';
             $zipBefore = (string) file_get_contents($zipPath);
             $sidecarBefore = (string) file_get_contents($zipPath . '.sha256');
@@ -1382,24 +1384,22 @@ FIXTURE;
             $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The sidecar must survive with the zip it describes.');
             $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'The manifest entry must stay consistent with the surviving artifact.');
 
-            // The after-open half of the same contract (the corrupted
-            // archive, its sidecar, and its manifest entry go together)
-            // is not deterministically reachable from outside — libzip
-            // defers file reads to close(), so addFile() never returns
-            // false on a vanished staged file — so the entry-removal
-            // helper the catch rides is driven directly, both branches:
-            // an entry among others is removed in place ...
-            file_put_contents($manifestPath, "connectors-other-demo-1.0.0.zip  " . str_repeat('a', 64) . "\n" . $manifestBefore);
-            $removeEntry = new ReflectionMethod(WpConnectorsBuild::class, 'removeManifestEntry');
-            $removeEntry->invoke(null, $manifestPath, basename($zipPath));
-            $scrubbed = (string) file_get_contents($manifestPath);
-            $this->assertStringNotContainsString(basename($zipPath), $scrubbed, 'The scrub must remove the failed artifact\'s entry.');
-            $this->assertStringContainsString('connectors-other-demo-1.0.0.zip', $scrubbed, 'The scrub must keep the entries it does not name.');
-            // ... and a manifest the removal empties is removed outright.
-            $soloManifest = $scratch . '/dist/solo-checksums.txt';
-            file_put_contents($soloManifest, basename($zipPath) . "  " . str_repeat('b', 64) . "\n");
-            $removeEntry->invoke(null, $soloManifest, basename($zipPath));
-            $this->assertFileDoesNotExist($soloManifest, 'A manifest left empty must be removed, never written blank.');
+            // (e) t31-r5-S pin: the staging archive path is refuse-able
+            // too (leftover junk at the temp path), and that production
+            // failure likewise leaves the previous good set untouched.
+            $stagingArchive = $scratch . '/dist/.connectors-example-connector-0.1.0.zip.tmp-' . getmypid();
+            unlink($scratch . '/shared/src/Broken.php');
+            mkdir($stagingArchive, 0755, true);
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An un-creatable staging archive path must fail the build.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('cannot create the staging archive', $e->getMessage());
+            }
+            $this->assertSame($zipBefore, (string) file_get_contents($zipPath), 'A production failure must not touch the previous good zip.');
+            $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The sidecar survives every pre-landing failure byte-for-byte.');
+            $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'The manifest survives every pre-landing failure byte-for-byte.');
+            rmdir($stagingArchive);
         } finally {
             WpHarness::rrmdir($scratch);
         }
@@ -1738,7 +1738,7 @@ FIXTURE;
      * archive through the same seam. (No external input reaches a
      * failed close() through buildPlugin() itself — every staged file is
      * written and chmod 0644 by the same synchronous call — so the seam
-     * is pinned directly, the removeManifestEntry idiom.)
+     * is pinned directly, the reflection-driven-seam idiom.)
      */
     public function testAFailedZipFinalizationRefusesTheBuild(): void
     {
@@ -1988,15 +1988,18 @@ FIXTURE;
     }
 
     /**
-     * Verifier-round pin (t31-r4-15): the sidecar write was the one
-     * unchecked artifact seam — a blocked .sha256 path shipped a
-     * sidecar-less zip with exit 0 (reproduced) while the round's
-     * charter says a failed artifact write never exits 0 with a
-     * half-described artifact set. Every publication write is checked
-     * now, and a failure takes the whole artifact set for the zip
-     * together (partial zip, sidecar, manifest entry), exiting non-zero.
+     * Verifier-round pin (t31-r4-15), restated for the t31-r5-S
+     * publication seam: a blocked artifact path must never exit 0 with a
+     * half-described artifact set — and under the staged-then-landed
+     * shape the stronger contract holds by construction: the refusal
+     * lands NOTHING and leaves any previous good set byte-untouched.
+     * (The r4-15 shape had already overwritten the zip when the sidecar
+     * write failed, so its cleanup REMOVED the artifact set; producing
+     * every byte at a temp path first makes that whole compensation
+     * class unconstructible — the landing pre-flight refuses a
+     * non-file destination before the first rename.)
      */
-    public function testAFailingPublicationWriteRefusesTheBuildAndTakesTheArtifactSet(): void
+    public function testAFailingPublicationLandsNothingAndKeepsThePreviousGoodSet(): void
     {
         $scratch = self::distDir() . '/.publish-check';
         if (is_dir($scratch)) {
@@ -2006,18 +2009,20 @@ FIXTURE;
         $this->copyFixturePlugin($scratch . '/plugin/example-connector');
 
         try {
-            // (a) The sidecar path blocked: the write fails, the run
-            // refuses, and the half-published artifact set goes together.
+            // (a) The sidecar landing path blocked: the pre-flight
+            // refuses before anything lands — no zip, no manifest, the
+            // blocking directory untouched.
             mkdir($scratch . '/dist/connectors-example-connector-0.1.0.zip.sha256');
             try {
                 WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
-                $this->fail('A failing sidecar write must refuse the build, never exit 0 with a sidecar-less zip.');
+                $this->fail('A blocked sidecar landing must refuse the build, never exit 0 with a half-described artifact set.');
             } catch (RuntimeException $e) {
-                $this->assertStringContainsString('cannot write the checksum sidecar', $e->getMessage());
+                $this->assertStringContainsString('not a regular file', $e->getMessage());
+                $this->assertStringContainsString('connectors-example-connector-0.1.0.zip.sha256', $e->getMessage());
             }
+            $this->assertFileDoesNotExist($scratch . '/dist/connectors-example-connector-0.1.0.zip', 'Nothing lands when the pre-flight refuses.');
+            $this->assertFileDoesNotExist($scratch . '/dist/checksums.txt', 'No manifest may land beside a refused landing.');
             rmdir($scratch . '/dist/connectors-example-connector-0.1.0.zip.sha256');
-            $this->assertFileDoesNotExist($scratch . '/dist/connectors-example-connector-0.1.0.zip', 'The half-published zip must go with its failed publication.');
-            $this->assertFileDoesNotExist($scratch . '/dist/checksums.txt', 'No manifest entry may survive the refused publication.');
 
             // Control: the same inputs build cleanly once the blocker is
             // gone (nothing the failed run left behind collides).
@@ -2025,19 +2030,35 @@ FIXTURE;
             $this->assertFileExists($zipPath);
             $this->assertFileExists($zipPath . '.sha256');
 
-            // (b) The manifest staging path blocked:
-            // writeManifestAtomically() refuses, the artifact set goes
-            // together.
-            mkdir($scratch . '/dist/checksums.txt.tmp');
+            // (b) The previous good set survives a refused rebuild
+            // byte-for-byte: block the manifest LANDING (a directory at
+            // checksums.txt cannot coexist with a prior manifest file,
+            // so the prior set is snapshotted first and restored after
+            // the blocker is planted).
+            $manifestPath = $scratch . '/dist/checksums.txt';
+            $zipBefore = (string) file_get_contents($zipPath);
+            $sidecarBefore = (string) file_get_contents($zipPath . '.sha256');
+            $manifestBefore = (string) file_get_contents($manifestPath);
+            unlink($manifestPath);
+            mkdir($manifestPath, 0755, true);
             try {
                 WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
-                $this->fail('A failing manifest write must refuse the build too.');
+                $this->fail('A blocked manifest landing must refuse the build too.');
             } catch (RuntimeException $e) {
-                $this->assertStringContainsString('checksum manifest', $e->getMessage());
+                $this->assertStringContainsString('not a regular file', $e->getMessage());
+                $this->assertStringContainsString('checksums.txt', $e->getMessage());
             }
-            rmdir($scratch . '/dist/checksums.txt.tmp');
-            $this->assertFileDoesNotExist($zipPath, 'The rebuilt zip must go with its failed manifest publication.');
-            $this->assertFileDoesNotExist($zipPath . '.sha256');
+            $this->assertSame($zipBefore, (string) file_get_contents($zipPath), 'The previous good zip survives a refused landing byte-for-byte.');
+            $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The previous good sidecar survives a refused landing byte-for-byte.');
+            rmdir($manifestPath);
+            file_put_contents($manifestPath, $manifestBefore);
+
+            // Recovery: the same inputs rebuild cleanly once the blocker
+            // is gone (the refused landing left nothing behind).
+            $rebuilt = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertFileExists($rebuilt);
+            $this->assertFileExists($rebuilt . '.sha256');
+            $this->assertStringContainsString(basename($rebuilt), (string) file_get_contents($manifestPath));
         } finally {
             WpHarness::rrmdir($scratch);
         }

@@ -551,24 +551,44 @@ final class WpConnectorsBuild
         $zipName = "connectors-{$slug}-{$version}.zip";
         $zipPath = $distDir . '/' . $zipName;
 
-        // Stage the plugin into a normalized temp tree. The WHOLE staging
-        // lifecycle — tree creation, copy, embed rewrite, and the zip —
-        // runs inside one try/catch/finally (review round t31-r3-6): the
-        // per-file suffix validation used to throw AFTER the stage tree
-        // existed and rrmdir() only ran on the success path, so any
-        // mid-build failure leaked both the staging tree and a partial
-        // zip into dist/ (reproduced with an 'Evil$1' suffix). The catch
-        // releases a half-written archive, removes the partial zip, and
-        // rethrows; the finally tears the stage down on EVERY path.
+        /*
+         * The publication seam (t31-r5-S, subsuming t31-r3-6, t31-r3-16,
+         * t31-r4-3, and t31-r4-15): every byte of the artifact set is
+         * produced and verified at a TEMP path first — the archive is
+         * zipped, closed, and checksummed at a staging path; the sidecar
+         * is written beside it; the manifest is merged and staged under a
+         * unique tempnam — and the previous good release is replaced only
+         * by checked RENAMES at the very end (descriptors first, the
+         * archive LAST). Every failure this run can construct then
+         * leaves the prior artifact set byte-untouched BY CONSTRUCTION:
+         * the half-built product lives at a temp path the finally below
+         * releases on every exit, never at the destination. That deletes
+         * the compensating apparatus the catch-based shape needed (the
+         * $zipOpened/$zipOverwritten flags deciding which artifact
+         * half-state a given throw had left behind, and the entry-scrub
+         * catch whose own message-preservation bug history spans
+         * t31-r3-16 → t31-r4-3 → this round); the one precondition the
+         * renames owe — a landing target that is absent or a regular
+         * file — is pre-flighted over all three targets BEFORE anything
+         * lands, so the constructible landing blocker (a directory at a
+         * destination path) also refuses with nothing landed. The renames
+         * themselves are checked: a rename that fails after an earlier
+         * one landed is loud (exit != 0), leaves every not-yet-landed
+         * temp cleaned, and every landed member COMPLETE (each was
+         * verified whole at its staging path — the half-written-member
+         * class cannot exist on this side of the seam); EIO/ENOSPC-class
+         * rename failures past the pre-flight are the honest boundary.
+         */
         $stage = $distDir . '/.stage-' . $slug;
         if (is_dir($stage)) {
             self::rrmdir($stage);
         }
         mkdir($stage . '/' . $slug, 0755, true);
 
-        $zip = null;
-        $zipOpened = false;
-        $zipOverwritten = false;
+        $zipTemp = $distDir . '/.' . $zipName . '.tmp-' . getmypid();
+        $sidecarTemp = $zipTemp . '.sha256';
+        $manifestPath = $distDir . '/checksums.txt';
+        $manifestTemp = false;
         try {
             $licenseFile = dirname($distDir) . '/LICENSE';
             $entries = array();
@@ -601,85 +621,40 @@ final class WpConnectorsBuild
 
             sort($entries, SORT_STRING);
 
-            // Zip deterministically: fixed order, mtimes already normalized.
+            // The archive itself is built at its staging path (fixed
+            // order, mtimes already normalized): open() here can only
+            // fail on the temp path, never on the previous good zip.
             $zip = new ZipArchive();
-            if (true !== $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)) {
-                throw new RuntimeException("build: cannot create {$zipPath}");
+            if (true !== $zip->open($zipTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE)) {
+                throw new RuntimeException("build: cannot create the staging archive {$zipTemp} for {$zipName}");
             }
-            $zipOpened = true;
-            $zipOverwritten = true;
-            foreach ($entries as $entry) {
-                if (true !== $zip->addFile($stage . '/' . $entry, $entry)) {
-                    throw new RuntimeException("build: cannot add {$entry} to {$zipName}");
+            try {
+                foreach ($entries as $entry) {
+                    if (true !== $zip->addFile($stage . '/' . $entry, $entry)) {
+                        throw new RuntimeException("build: cannot add {$entry} to {$zipName}");
+                    }
                 }
+            } catch (RuntimeException $addFailure) {
+                // Release the half-written staging archive before its
+                // removal; the finally below owns that. (A close() that
+                // fails here is equally fatal — the temp goes either way.)
+                $zip->close();
+                throw $addFailure;
             }
             /*
              * Finalization is CHECKED (t31-r4-3): close() writes the
              * archive and returns FALSE on a failed write (an unreadable
-             * staged source at read time, a destination that stopped
-             * accepting) — after OVERWRITE already destroyed any
-             * previous good zip at the path. The unchecked close() let
-             * the failure fall through to hash_file() on a zip that was
-             * not written and a blank-checksum sidecar with exit 0,
-             * precisely the t31-r3-16 invariant failing at the seam its
-             * re-open clause anticipated. The release flag is cleared
-             * BEFORE the call: a FAILED close() has already torn the
-             * archive object down (a second close() is a ValueError on
-             * this runtime, empirically confirmed), while the artifact
-             * set stays corrupted — the $zipOverwritten cleanup below
-             * owns that half.
+             * staged source at read time — libzip defers the reads — or
+             * a staging destination that stopped accepting). The old
+             * unchecked close() let the failure fall through to
+             * hash_file() on a zip that was not written and a
+             * blank-checksum sidecar with exit 0. The failure now
+             * happens at the TEMP path: the finally releases it and the
+             * previous good artifact set was never touched.
              */
-            $zipOpened = false;
             self::closeArchiveOrThrow($zip, $zipName);
-        } catch (RuntimeException $buildFailure) {
-            /*
-             * Scope the artifact cleanup to what THIS run wrote
-             * (verifier round t31-r3-16): the old shape unlinked
-             * $zipPath on every throw, so a mid-build failure BEFORE the
-             * archive was opened deleted a PREVIOUS successful build's
-             * zip at the same path while its .sha256 sidecar and
-             * checksums.txt entry kept advertising it — an orphaned
-             * checksum for an artifact that no longer exists
-             * (verifier-reproduced: sidecar and manifest survived the
-             * deleted zip). A failure before open() never touched the
-             * artifact set and leaves it exactly as found (the last
-             * good release survives a failed rebuild); a failure after
-             * open() has corrupted the archive, so the partial zip, its
-             * sidecar, and its manifest entry all go together.
-             *
-             * t31-r4-3: the release and the artifact cleanup are
-             * separate facts — the release runs only while the object
-             * is still open (a failed close() already destroyed it), the
-             * cleanup whenever the path was overwritten.
-             */
-            if ($zipOpened && $zip instanceof ZipArchive) {
-                // Release the half-written archive before removing it.
-                $zip->close();
-            }
-            if ($zipOverwritten) {
-                @unlink($zipPath);
-                @unlink($zipPath . '.sha256');
-                self::removeManifestEntry($distDir . '/checksums.txt', $zipName);
-            }
-            throw $buildFailure;
-        } finally {
-            self::rrmdir($stage);
-        }
 
-        /*
-         * Checksums: per-zip sidecar file + refreshed manifest entry.
-         * Every write in the publication block is CHECKED (verifier round
-         * t31-r4-15): the sidecar write was the one unchecked artifact
-         * seam — a blocked .sha256 path shipped a sidecar-less zip with
-         * exit 0 (reproduced), the round's artifact-integrity charter
-         * failing one write past t31-r4-3's checked finalization. A
-         * failure here takes the whole artifact set for this zip — the
-         * archive was already overwritten, so the partial zip, its
-         * sidecar, and its manifest entry go together (the t31-r3-16
-         * after-open contract), and the run exits non-zero.
-         */
-        try {
-            $checksum = hash_file('sha256', $zipPath);
+            $checksum = hash_file('sha256', $zipTemp);
             if (false === $checksum) {
                 throw new RuntimeException("build: cannot checksum {$zipName} — refusing to publish a sidecar for an artifact that cannot be read");
             }
@@ -687,72 +662,117 @@ final class WpConnectorsBuild
             // the failed write); the FAILED RETURN is owned below — the
             // glm17-16 idiom, so a blocked path refuses through this
             // check instead of aborting through the engine's warning.
-            if (false === @file_put_contents($zipPath . '.sha256', $checksum . '  ' . $zipName . "\n")) {
+            if (false === @file_put_contents($sidecarTemp, $checksum . '  ' . $zipName . "\n")) {
                 throw new RuntimeException("build: cannot write the checksum sidecar for {$zipName} — a failed artifact write never exits 0 with a half-described artifact set");
             }
+            $manifestTemp = self::stageManifest($distDir, $manifestPath, $zipName, $checksum);
 
-            $manifestPath = $distDir . '/checksums.txt';
-            $manifest = self::manifestLinesWithout($manifestPath, $zipName);
-            $manifest[] = $zipName . '  ' . $checksum;
-            sort($manifest, SORT_STRING);
-            self::writeManifestAtomically($manifestPath, $manifest);
-        } catch (RuntimeException $publicationFailure) {
-            @unlink($zipPath);
-            @unlink($zipPath . '.sha256');
-            self::removeManifestEntry($distDir . '/checksums.txt', $zipName);
-            throw $publicationFailure;
+            // Pre-flight every landing target before anything lands: the
+            // one constructible rename blocker is a non-file at a
+            // destination, and it must refuse while the prior set is
+            // still whole (a failure one landing later would strand a
+            // descriptor beside the old release it does not describe).
+            foreach (array( $zipPath, $zipPath . '.sha256', $manifestPath ) as $landingTarget) {
+                if (file_exists($landingTarget) && ! is_file($landingTarget)) {
+                    throw new RuntimeException("build: cannot publish {$zipName} — the landing target {$landingTarget} is not a regular file");
+                }
+            }
+
+            // Landing: descriptors first, the archive LAST.
+            self::landArtifact($sidecarTemp, $zipPath . '.sha256', "the checksum sidecar for {$zipName}");
+            self::landArtifact($manifestTemp, $manifestPath, "the checksum manifest for {$zipName}");
+            self::landArtifact($zipTemp, $zipPath, "the archive {$zipName}");
+        } finally {
+            self::rrmdir($stage);
+            @unlink($zipTemp);
+            @unlink($sidecarTemp);
+            if (false !== $manifestTemp) {
+                @unlink($manifestTemp);
+            }
         }
 
         return $zipPath;
     }
 
     /**
-     * Lands the checksum manifest atomically (review round t31-r4-8).
+     * Stages the merged checksum manifest at a UNIQUE temp path (t31-r5-S
+     * over t31-r4-8's atomic writer).
      *
-     * The manifest is PER-RUN-ATOMIC: a run updates only the entries of
-     * the plugin(s) it built (manifestLinesWithout() keeps every other
-     * line byte-for-byte) and lands the result with temp + rename, so a
-     * crash or a mid-write failure can never leave a half-written
-     * manifest behind — and never deletes one either. The CLI's old
-     * pre-run unlink dropped EVERY other plugin's entry on a --slug
-     * rebuild and left the manifest gone after a failing rebuild, its
-     * sidecars orphaned (reproduced) — the t31-r3-16 invariant was
-     * false at the CLI seam. An empty line set removes the manifest
-     * outright (a blank manifest file is not a state worth keeping —
-     * the removeManifestEntry contract, now riding the same writer).
+     * The manifest stays per-run-atomic — a run updates only the entries
+     * of the plugin(s) it built (manifestLinesWithout() keeps every other
+     * line byte-for-byte) and lands whole — but the staging file is now
+     * tempnam()-unique: the fixed '<manifest>.tmp' spelling made two
+     * concurrent builds interleave their stage writes (the round's
+     * two-process race), whichever rename landed last shipping a mix of
+     * both runs' lines. A unique stage breaks the interleaving; the final
+     * rename is still atomic, so a crash can never leave a half-written
+     * manifest behind, and never deletes one either (the t31-r4-8
+     * no-pre-run-wipe contract, unchanged). tempnam() creates 0600; the
+     * manifest is a published artifact and lands 0644 like the sidecar.
      *
-     * @param string        $manifestPath Absolute checksums.txt path.
-     * @param list<string>  $lines        Entry lines, sorted, non-empty.
-     * @return void
-     * @throws RuntimeException When the manifest cannot be written.
+     * @param string $distDir      Absolute dist directory (staging home).
+     * @param string $manifestPath Absolute checksums.txt path.
+     * @param string $zipName      Zip basename the new entry names.
+     * @param string $checksum     The staged archive's SHA-256.
+     * @return string The staging path (caller lands it by rename).
+     * @throws RuntimeException When the manifest cannot be staged.
      */
-    private static function writeManifestAtomically($manifestPath, array $lines)
+    private static function stageManifest($distDir, $manifestPath, $zipName, $checksum)
     {
-        if ($lines === array()) {
-            @unlink($manifestPath);
-
-            return;
-        }
-        $temp = $manifestPath . '.tmp';
+        $manifest = self::manifestLinesWithout($manifestPath, $zipName);
+        $manifest[] = $zipName . '  ' . $checksum;
+        sort($manifest, SORT_STRING);
         // @: the diagnostic is suppressed, the failed return owned below
         // (glm17-16) — a blocked path refuses through the check.
-        if (false === @file_put_contents($temp, implode("\n", $lines) . "\n")) {
+        $temp = @tempnam($distDir, '.checksums-');
+        if (false === $temp) {
+            throw new RuntimeException("build: cannot stage the checksum manifest for {$zipName} in {$distDir}");
+        }
+        if (false === @file_put_contents($temp, implode("\n", $manifest) . "\n")) {
+            @unlink($temp);
             throw new RuntimeException("build: cannot write the checksum manifest staging file {$temp}");
         }
-        if (! rename($temp, $manifestPath)) {
+        if (! @chmod($temp, 0644)) {
             @unlink($temp);
-            throw new RuntimeException("build: cannot finalize the checksum manifest at {$manifestPath}");
+            throw new RuntimeException("build: cannot normalize the permissions of the checksum manifest staging file {$temp}");
+        }
+
+        return $temp;
+    }
+
+    /**
+     * Lands a fully-staged artifact member at its destination by rename
+     * (t31-r5-S): the caller pre-flighted the target (absent or a
+     * regular file), so this is a metadata move of bytes that were
+     * already written and verified — the last instant at which the
+     * previous good member can be replaced, and the first at which the
+     * new one exists at its published path.
+     *
+     * @param string $temp  The staging path (gone after the rename).
+     * @param string $final The destination path.
+     * @param string $what  Human label (diagnostics).
+     * @return void
+     * @throws RuntimeException When the rename fails.
+     */
+    private static function landArtifact($temp, $final, $what)
+    {
+        // @: the diagnostic is suppressed, the failed return owned below
+        // (glm17-16) — the failure is loud, never an engine warning.
+        if (! @rename($temp, $final)) {
+            throw new RuntimeException("build: cannot land {$what} at {$final} — every byte was verified at the staging path {$temp} and the publication rename refused");
         }
     }
 
     /**
      * The manifest's lines minus one zip's entry (and blanks).
      *
-     * The ONE entry filter (verifier round t31-r3-16) shared by the
-     * success path (which appends a fresh entry after the filter) and
-     * the mid-build failure path (which removes the entry together with
-     * the corrupted artifact it described) — the two cannot drift on
-     * what counts as an entry line.
+     * The ONE entry filter the publication merge rides (verifier round
+     * t31-r3-16): a run rewrites only its own zip's entry and keeps
+     * every other line byte-for-byte, so the two halves of the merge
+     * cannot drift on what counts as an entry line. (The mid-build
+     * failure-path consumer — the entry scrub that removed a corrupted
+     * artifact's entry after the fact — died with t31-r5-S: a failure
+     * now never touches the manifest the run did not land.)
      *
      * @param string $manifestPath Absolute checksums.txt path.
      * @param string $zipName      Zip basename the entry names.
@@ -774,26 +794,6 @@ final class WpConnectorsBuild
     }
 
     /**
-     * Removes one zip's manifest entry — and a manifest the removal
-     * empties, outright (a blank manifest file is not a state worth
-     * keeping).
-     *
-     * @param string $manifestPath Absolute checksums.txt path.
-     * @param string $zipName      Zip basename the entry names.
-     * @return void
-     */
-    private static function removeManifestEntry($manifestPath, $zipName)
-    {
-        if (! is_file($manifestPath)) {
-            return;
-        }
-        // The removal rides the same atomic writer as the success path
-        // (t31-r4-8): a manifest the removal empties is removed outright,
-        // one with survivors lands whole — never half-written.
-        self::writeManifestAtomically($manifestPath, self::manifestLinesWithout($manifestPath, $zipName));
-    }
-
-    /**
      * Derives the plugin namespace suffix from the slug (openai-oauth -> OpenAiOauth).
      *
      * Delegates to the ONE shared derivation in bin/lib/plugin-tools.php so
@@ -810,22 +810,22 @@ final class WpConnectorsBuild
 
     /**
      * Finalizes the archive, refusing the build when finalization fails
-     * (review round t31-r4-3).
+     * (review round t31-r4-3; restructured by t31-r5-S).
      *
      * ZipArchive::close() is the step that WRITES the archive — libzip
      * defers the staged sources' reads here — and it returns false on a
      * failed write (an unreadable staged source, a destination that
-     * stopped accepting) while the previous good zip at the same path
-     * was already destroyed by OVERWRITE at open(). The unchecked
-     * $zip->close() let that failure fall through to hash_file() on a
-     * zip that was never written and a blank-checksum sidecar with
-     * exit 0 — the t31-r3-16 last-good-artifact invariant failing at
-     * exactly the seam its re-open clause anticipated.
+     * stopped accepting). The unchecked $zip->close() once let that
+     * failure fall through to hash_file() on a zip that was never
+     * written and a blank-checksum sidecar with exit 0 — after OVERWRITE
+     * had already destroyed the previous good zip at the destination.
+     * The archive is produced at its STAGING path now, so a failed
+     * close() leaves a temp file the finally releases and the previous
+     * good artifact set untouched by construction.
      *
      * A failed close() tears the archive object down with it (a second
      * close() is a ValueError on this runtime, empirically confirmed),
-     * so the caller clears its release flag BEFORE calling and never
-     * re-closes on this path.
+     * so the caller never re-closes on this path.
      *
      * Private and seam-shaped so the pin can drive a REAL failed
      * close() through it (a staged source that is unreadable at read
