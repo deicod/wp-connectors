@@ -201,6 +201,17 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 },
                 'fragment' => 'non-canonical extension',
             ),
+            'shared-source-near-source-spelling' => array(
+                // t31-r5-14: a trailing space or dot hides the extension
+                // — the file read as a PHP source was invisible to every
+                // gate: built clean, shipped nowhere, its class a
+                // not-found fatal.
+                'expect' => 'LOUD',
+                'apply' => static function (array $scratch): void {
+                    file_put_contents($scratch['shared'] . '/ClockMath.php ', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
+                },
+                'fragment' => 'NEAR-SOURCE',
+            ),
             'shared-tree-symlink-dir' => array(
                 'expect' => 'LOUD',
                 'apply' => static function (array $scratch): void {

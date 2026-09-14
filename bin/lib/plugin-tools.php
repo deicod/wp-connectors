@@ -1967,6 +1967,29 @@ function wp_connectors_php_source_files($dir)
         // spelling REFUSES — the shipped autoloader probes '.php'
         // lowercase, so any other casing ships a class nothing loads.
         if (! wp_connectors_is_php_source($relative)) {
+            /*
+             * Near-source spellings refuse first (verifier round
+             * t31-r5-14): a name whose trailing whitespace or dot
+             * hides the extension ('ClockMath.php ', 'ClockMath.php.')
+             * is a file a human READS as a PHP source while every gate
+             * — this collector, the sweep, the dev autoloader's
+             * class-to-path map — judges it as not one: it builds
+             * clean, ships nowhere, and a class declared inside it is
+             * a class-not-found fatal with build and inspect green
+             * (adversarially confirmed) — the exact silently-invisible
+             * ship the r5-3 doctrine claims never happens. Refusing
+             * closes the neighborhood at the ONE owner. (Names that
+             * are merely DIFFERENT — 'ClockMath.phpé', 'Notes.md' —
+             * stay out of scope: nothing loads them in development
+             * either, so no divergence exists.)
+             */
+            $trimmedTail = rtrim(basename($relative), " \t.");
+            if ('' !== $trimmedTail && wp_connectors_is_php_source($trimmedTail)) {
+                throw new RuntimeException(sprintf(
+                    'shared source %s is a NEAR-SOURCE spelling (trailing whitespace or dot hides the extension) — it reads as a PHP source but is invisible to every gate and absent from every ship; rename it to the canonical .php',
+                    $dir . '/' . $relative
+                ));
+            }
             continue;
         }
         if ('.php' !== substr($relative, -4)) {
