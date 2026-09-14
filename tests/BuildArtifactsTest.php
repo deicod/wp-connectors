@@ -1256,6 +1256,49 @@ FIXTURE;
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $this->assertFileExists($zipPath);
             $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'The success path must tear the staging tree down too.');
+
+            // (d) Verifier-round pin (t31-r3-16): a mid-build failure
+            // BEFORE the archive is opened must leave the previous
+            // successful build's artifact set EXACTLY as found — the old
+            // catch unlinked the zip it never wrote, orphaning its
+            // .sha256 sidecar and its checksums.txt entry
+            // (verifier-reproduced: sidecar and manifest survived the
+            // deleted zip). A shared source that trips the rewrite
+            // postcondition throws mid-build, before open().
+            $manifestPath = $scratch . '/dist/checksums.txt';
+            $zipBefore = (string) file_get_contents($zipPath);
+            $sidecarBefore = (string) file_get_contents($zipPath . '.sha256');
+            $manifestBefore = (string) file_get_contents($manifestPath);
+            file_put_contents($scratch . '/shared/src/Broken.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock /* interrupted */ as C;\ninterface Broken {}\n");
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A postcondition-tripping shared source must fail the build mid-staging.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('survived the rewrite', $e->getMessage());
+            }
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'Every failure path tears the staging tree down.');
+            $this->assertSame($zipBefore, (string) file_get_contents($zipPath), 'A failure before the archive opens must not delete the previous good zip.');
+            $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The sidecar must survive with the zip it describes.');
+            $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'The manifest entry must stay consistent with the surviving artifact.');
+
+            // The after-open half of the same contract (the corrupted
+            // archive, its sidecar, and its manifest entry go together)
+            // is not deterministically reachable from outside — libzip
+            // defers file reads to close(), so addFile() never returns
+            // false on a vanished staged file — so the entry-removal
+            // helper the catch rides is driven directly, both branches:
+            // an entry among others is removed in place ...
+            file_put_contents($manifestPath, "connectors-other-demo-1.0.0.zip  " . str_repeat('a', 64) . "\n" . $manifestBefore);
+            $removeEntry = new ReflectionMethod(WpConnectorsBuild::class, 'removeManifestEntry');
+            $removeEntry->invoke(null, $manifestPath, basename($zipPath));
+            $scrubbed = (string) file_get_contents($manifestPath);
+            $this->assertStringNotContainsString(basename($zipPath), $scrubbed, 'The scrub must remove the failed artifact\'s entry.');
+            $this->assertStringContainsString('connectors-other-demo-1.0.0.zip', $scrubbed, 'The scrub must keep the entries it does not name.');
+            // ... and a manifest the removal empties is removed outright.
+            $soloManifest = $scratch . '/dist/solo-checksums.txt';
+            file_put_contents($soloManifest, basename($zipPath) . "  " . str_repeat('b', 64) . "\n");
+            $removeEntry->invoke(null, $soloManifest, basename($zipPath));
+            $this->assertFileDoesNotExist($soloManifest, 'A manifest left empty must be removed, never written blank.');
         } finally {
             WpHarness::rrmdir($scratch);
         }

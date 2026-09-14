@@ -348,11 +348,28 @@ final class WpConnectorsBuild
             $zip->close();
             $zipOpened = false;
         } catch (RuntimeException $buildFailure) {
+            /*
+             * Scope the artifact cleanup to what THIS run wrote
+             * (verifier round t31-r3-16): the old shape unlinked
+             * $zipPath on every throw, so a mid-build failure BEFORE the
+             * archive was opened deleted a PREVIOUS successful build's
+             * zip at the same path while its .sha256 sidecar and
+             * checksums.txt entry kept advertising it — an orphaned
+             * checksum for an artifact that no longer exists
+             * (verifier-reproduced: sidecar and manifest survived the
+             * deleted zip). A failure before open() never touched the
+             * artifact set and leaves it exactly as found (the last
+             * good release survives a failed rebuild); a failure after
+             * open() has corrupted the archive, so the partial zip, its
+             * sidecar, and its manifest entry all go together.
+             */
             if ($zipOpened && $zip instanceof ZipArchive) {
                 // Release the half-written archive before removing it.
                 $zip->close();
+                @unlink($zipPath);
+                @unlink($zipPath . '.sha256');
+                self::removeManifestEntry($distDir . '/checksums.txt', $zipName);
             }
-            @unlink($zipPath);
             throw $buildFailure;
         } finally {
             self::rrmdir($stage);
@@ -363,6 +380,29 @@ final class WpConnectorsBuild
         file_put_contents($zipPath . '.sha256', $checksum . '  ' . $zipName . "\n");
 
         $manifestPath = $distDir . '/checksums.txt';
+        $manifest = self::manifestLinesWithout($manifestPath, $zipName);
+        $manifest[] = $zipName . '  ' . $checksum;
+        sort($manifest, SORT_STRING);
+        file_put_contents($manifestPath, implode("\n", $manifest) . "\n");
+
+        return $zipPath;
+    }
+
+    /**
+     * The manifest's lines minus one zip's entry (and blanks).
+     *
+     * The ONE entry filter (verifier round t31-r3-16) shared by the
+     * success path (which appends a fresh entry after the filter) and
+     * the mid-build failure path (which removes the entry together with
+     * the corrupted artifact it described) — the two cannot drift on
+     * what counts as an entry line.
+     *
+     * @param string $manifestPath Absolute checksums.txt path.
+     * @param string $zipName      Zip basename the entry names.
+     * @return list<string> The surviving lines.
+     */
+    private static function manifestLinesWithout($manifestPath, $zipName)
+    {
         $manifest = array();
         if (is_file($manifestPath)) {
             foreach (explode("\n", (string) file_get_contents($manifestPath)) as $line) {
@@ -372,11 +412,31 @@ final class WpConnectorsBuild
                 $manifest[] = $line;
             }
         }
-        $manifest[] = $zipName . '  ' . $checksum;
-        sort($manifest, SORT_STRING);
-        file_put_contents($manifestPath, implode("\n", $manifest) . "\n");
 
-        return $zipPath;
+        return $manifest;
+    }
+
+    /**
+     * Removes one zip's manifest entry — and a manifest the removal
+     * empties, outright (a blank manifest file is not a state worth
+     * keeping).
+     *
+     * @param string $manifestPath Absolute checksums.txt path.
+     * @param string $zipName      Zip basename the entry names.
+     * @return void
+     */
+    private static function removeManifestEntry($manifestPath, $zipName)
+    {
+        if (! is_file($manifestPath)) {
+            return;
+        }
+        $remaining = self::manifestLinesWithout($manifestPath, $zipName);
+        if ($remaining === array()) {
+            @unlink($manifestPath);
+
+            return;
+        }
+        file_put_contents($manifestPath, implode("\n", $remaining) . "\n");
     }
 
     /**
