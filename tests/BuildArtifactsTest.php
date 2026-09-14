@@ -343,7 +343,13 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             new RecursiveDirectoryIterator($extractDir, FilesystemIterator::SKIP_DOTS)
         );
         foreach ($iterator as $file) {
-            if ($file->getExtension() !== 'php') {
+            // The extension judgment rides the ONE owner (t31-r5-9): the
+            // exact-case getExtension() check skipped '.PHP' entries while
+            // every gate had migrated to the shared judgment — a false
+            // green for exactly the parse-broken-.PHP class (the sibling
+            // spellings at the enumeration and src/Shared-only sweeps
+            // rode hand-rolled strtolower variants of the same drift).
+            if (! wp_connectors_is_php_source($file->getPathname())) {
                 continue;
             }
             ++$count;
@@ -1058,7 +1064,7 @@ FIXTURE;
             $sourceCount = 0;
             foreach ($sourceIterator as $sourceFile) {
                 $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($sourceFile->getPathname(), strlen($sourceRoot) + 1));
-                if ('.php' !== strtolower(substr($relative, -4))) {
+                if (! wp_connectors_is_php_source($relative)) {
                     continue;
                 }
                 ++$sourceCount;
@@ -1073,7 +1079,7 @@ FIXTURE;
             // collection shipped).
             foreach ($names as $entry) {
                 if (false !== strpos($entry, 'src/Shared/')) {
-                    $this->assertSame('.php', strtolower(substr($entry, -4)), "Only PHP sources may ship under src/Shared/ (saw {$entry}).");
+                    $this->assertTrue(wp_connectors_is_php_source($entry), "Only PHP sources may ship under src/Shared/ (saw {$entry}).");
                 }
                 $this->assertStringNotContainsString('README', $entry, "No shared/ dev file may land in the zip (saw {$entry}).");
             }
