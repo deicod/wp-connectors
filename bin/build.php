@@ -77,9 +77,7 @@ final class WpConnectorsBuild
      */
     public static function rewriteSharedNamespace($source, $pluginSuffix, $sourceVersion)
     {
-        if (1 !== preg_match('/\A[A-Za-z_][A-Za-z0-9_]*\z/', (string) $pluginSuffix)) {
-            throw new RuntimeException("build: namespace_suffix must be a namespace segment (letters, digits, underscores; it may not start with a digit): '{$pluginSuffix}' given");
-        }
+        self::assertNamespaceSegment($pluginSuffix);
         $escapedVersion = str_replace(array('\\', '$'), array('\\\\', '\\$'), (string) $sourceVersion);
         $provenance = "/**\n * Generated copy of {$escapedVersion} for this plugin's private namespace.\n * Do not edit here; change the shared source and rebuild.\n */\n";
         $rewritten = (string) preg_replace(
@@ -101,6 +99,27 @@ final class WpConnectorsBuild
             $rewritten,
             1
         );
+    }
+
+    /**
+     * Validates a namespace suffix as a legal namespace segment.
+     *
+     * The ONE check (review round t31-r3-6) the config seam runs up
+     * front — before any filesystem mutation — and rewriteSharedNamespace()
+     * keeps as defense in depth: a suffix of letters, digits, and
+     * underscores (never digit-initial) is a legal namespace segment AND
+     * replacement-safe by construction (it carries no backreference
+     * meaning inside a preg_replace replacement, the t31-r2-19 rule).
+     *
+     * @param string $pluginSuffix Namespace segment to validate.
+     * @return void
+     * @throws RuntimeException When the suffix is not a legal namespace segment.
+     */
+    private static function assertNamespaceSegment($pluginSuffix)
+    {
+        if (1 !== preg_match('/\A[A-Za-z_][A-Za-z0-9_]*\z/', (string) $pluginSuffix)) {
+            throw new RuntimeException("build: namespace_suffix must be a namespace segment (letters, digits, underscores; it may not start with a digit): '{$pluginSuffix}' given");
+        }
     }
 
     /**
@@ -209,6 +228,7 @@ final class WpConnectorsBuild
                 $pluginSuffix = isset($config['namespace_suffix']) && '' !== (string) $config['namespace_suffix']
                     ? (string) $config['namespace_suffix']
                     : self::namespaceSuffixFromSlug($slug);
+                self::assertNamespaceSegment($pluginSuffix);
                 $embedShared = true;
             }
         }
@@ -220,63 +240,84 @@ final class WpConnectorsBuild
         $zipName = "connectors-{$slug}-{$version}.zip";
         $zipPath = $distDir . '/' . $zipName;
 
-        // Stage the plugin into a normalized temp tree.
+        // Stage the plugin into a normalized temp tree. The WHOLE staging
+        // lifecycle — tree creation, copy, embed rewrite, and the zip —
+        // runs inside one try/catch/finally (review round t31-r3-6): the
+        // per-file suffix validation used to throw AFTER the stage tree
+        // existed and rrmdir() only ran on the success path, so any
+        // mid-build failure leaked both the staging tree and a partial
+        // zip into dist/ (reproduced with an 'Evil$1' suffix). The catch
+        // releases a half-written archive, removes the partial zip, and
+        // rethrows; the finally tears the stage down on EVERY path.
         $stage = $distDir . '/.stage-' . $slug;
         if (is_dir($stage)) {
             self::rrmdir($stage);
         }
         mkdir($stage . '/' . $slug, 0755, true);
 
-        $licenseFile = dirname($distDir) . '/LICENSE';
-        $entries = array();
-        foreach (self::collectFiles($pluginDir) as $relative) {
-            self::copyNormalized($pluginDir . '/' . $relative, $stage . '/' . $slug . '/' . $relative);
-            $entries[] = $slug . '/' . $relative;
-        }
-        if (is_file($licenseFile) && ! in_array($slug . '/LICENSE', $entries, true)) {
-            self::copyNormalized($licenseFile, $stage . '/' . $slug . '/LICENSE');
-            $entries[] = $slug . '/LICENSE';
-        }
+        $zip = null;
+        $zipOpened = false;
+        try {
+            $licenseFile = dirname($distDir) . '/LICENSE';
+            $entries = array();
+            foreach (self::collectFiles($pluginDir) as $relative) {
+                self::copyNormalized($pluginDir . '/' . $relative, $stage . '/' . $slug . '/' . $relative);
+                $entries[] = $slug . '/' . $relative;
+            }
+            if (is_file($licenseFile) && ! in_array($slug . '/LICENSE', $entries, true)) {
+                self::copyNormalized($licenseFile, $stage . '/' . $slug . '/LICENSE');
+                $entries[] = $slug . '/LICENSE';
+            }
 
-        // Embed the shared OAuth library when the plugin opts in (the
-        // build.json the opt-in rode was already validated at the config
-        // seam above — no decode, no embed decision, happens down here).
-        if ($embedShared) {
-            $sharedFiles = self::collectFiles($sharedDir);
-            foreach ($sharedFiles as $relative) {
-                // Only PHP SOURCES ship (verifier round t31-r2-18):
-                // collectFiles() filters by excluded path names
-                // only, so any non-PHP file committed inside
-                // shared/src (notes, READMEs) would ride into
-                // plugin zips byte-identical — the rewrite no-ops
-                // on content without an open tag.
-                if ('.php' !== substr($relative, -4)) {
-                    continue;
+            // Embed the shared OAuth library when the plugin opts in (the
+            // build.json the opt-in rode was already validated at the config
+            // seam above — no decode, no embed decision, happens down here).
+            if ($embedShared) {
+                $sharedFiles = self::collectFiles($sharedDir);
+                foreach ($sharedFiles as $relative) {
+                    // Only PHP SOURCES ship (verifier round t31-r2-18):
+                    // collectFiles() filters by excluded path names
+                    // only, so any non-PHP file committed inside
+                    // shared/src (notes, READMEs) would ride into
+                    // plugin zips byte-identical — the rewrite no-ops
+                    // on content without an open tag.
+                    if ('.php' !== substr($relative, -4)) {
+                        continue;
+                    }
+                    $source = (string) file_get_contents($sharedDir . '/' . $relative);
+                    $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
+                    $target = $stage . '/' . $slug . '/src/Shared/' . $relative;
+                    @mkdir(dirname($target), 0755, true);
+                    self::writeNormalized($rewritten, $target);
+                    $entries[] = $slug . '/src/Shared/' . $relative;
                 }
-                $source = (string) file_get_contents($sharedDir . '/' . $relative);
-                $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
-                $target = $stage . '/' . $slug . '/src/Shared/' . $relative;
-                @mkdir(dirname($target), 0755, true);
-                self::writeNormalized($rewritten, $target);
-                $entries[] = $slug . '/src/Shared/' . $relative;
             }
-        }
 
-        sort($entries, SORT_STRING);
+            sort($entries, SORT_STRING);
 
-        // Zip deterministically: fixed order, mtimes already normalized.
-        $zip = new ZipArchive();
-        if (true !== $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)) {
-            throw new RuntimeException("build: cannot create {$zipPath}");
-        }
-        foreach ($entries as $entry) {
-            if (true !== $zip->addFile($stage . '/' . $entry, $entry)) {
+            // Zip deterministically: fixed order, mtimes already normalized.
+            $zip = new ZipArchive();
+            if (true !== $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)) {
+                throw new RuntimeException("build: cannot create {$zipPath}");
+            }
+            $zipOpened = true;
+            foreach ($entries as $entry) {
+                if (true !== $zip->addFile($stage . '/' . $entry, $entry)) {
+                    throw new RuntimeException("build: cannot add {$entry} to {$zipName}");
+                }
+            }
+            $zip->close();
+            $zipOpened = false;
+        } catch (RuntimeException $buildFailure) {
+            if ($zipOpened && $zip instanceof ZipArchive) {
+                // Release the half-written archive before removing it.
                 $zip->close();
-                throw new RuntimeException("build: cannot add {$entry} to {$zipName}");
             }
+            @unlink($zipPath);
+            throw $buildFailure;
+        } finally {
+            self::rrmdir($stage);
         }
-        $zip->close();
-        self::rrmdir($stage);
 
         // Checksums: per-zip sidecar file + refreshed manifest entry.
         $checksum = hash_file('sha256', $zipPath);

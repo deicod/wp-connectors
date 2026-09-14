@@ -1235,6 +1235,79 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r3-6): the staging lifecycle leaked on failure —
+     * the per-file namespace-suffix validation threw AFTER the
+     * dist/.stage-<slug> tree existed (rrmdir only ran on the success
+     * path), and a zip open/addFile failure left a partial zip plus the
+     * staging tree (reproduced at HEAD with an 'Evil$1' suffix). The
+     * suffix is validated ONCE at the config seam — before any
+     * filesystem mutation — and the whole staging lifecycle runs inside
+     * one try/catch/finally that tears the stage down and removes a
+     * partial zip on every throw.
+     */
+    public function testAFailingBuildLeavesNoStagingResidueBehind()
+    {
+        $scratch = self::distDir() . '/.embed-residue';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+
+        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
+        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
+            $target = $scratch . '/plugin/example-connector/' . $relative;
+            if ($item->isDir()) {
+                mkdir($target, 0755, true);
+            } else {
+                copy($item->getPathname(), $target);
+            }
+        }
+
+        try {
+            // (a) An illegal namespace_suffix refuses at the seam: the
+            // throw precedes every filesystem mutation, so no stage tree
+            // and no zip ever exist.
+            file_put_contents($scratch . '/plugin/example-connector/build.json', '{"embed_shared": true, "namespace_suffix": "Evil$1"}');
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An illegal namespace_suffix must refuse the build.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('namespace segment', $e->getMessage());
+            }
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'The seam refusal must precede the staging tree.');
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The seam refusal must leave no zip.');
+
+            // (b) A throw that lands MID-BUILD, after the stage tree and
+            // entries exist: the zip cannot be created because a
+            // directory sits at the zip path. The catch/finally must
+            // remove the staging tree (the old code leaked it).
+            file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+            $blockedZip = $scratch . '/dist/connectors-example-connector-0.1.0.zip';
+            mkdir($blockedZip, 0755, true);
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An un-creatable zip path must fail the build.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('cannot create', $e->getMessage());
+            }
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'A mid-build throw must tear the staging tree down.');
+
+            // Recovery: the same inputs build cleanly once the blocker
+            // is gone (the failed run left nothing behind to collide).
+            rmdir($blockedZip);
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertFileExists($zipPath);
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'The success path must tear the staging tree down too.');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
