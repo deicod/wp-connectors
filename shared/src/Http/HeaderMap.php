@@ -86,23 +86,21 @@ final class HeaderMap {
 	const NAME_TOKEN_PATTERN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/';
 
 	/**
-	 * Header lines (name as given => value).
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var array<string, string>
-	 */
-	private readonly array $headers;
-
-	/**
 	 * The folded-name index (lowercase name => [name as given, value]),
-	 * in construction order.
+	 * in construction order — the ONE structure (review round
+	 * t31-r3-14).
 	 *
 	 * The constructor computes each lowercase name for the
 	 * case-insensitive duplicate fence anyway (review round t31-r2-10):
 	 * keeping it makes header() one isset probe instead of a rescan
 	 * folding every entry again on every lookup (t31-r2-14: the fold
-	 * itself is the shared locale-independent AsciiFold).
+	 * itself is the shared locale-independent AsciiFold). A second,
+	 * parallel name-as-given structure used to carry the same pairs —
+	 * two readonly copies of one fact, and every future field would
+	 * have had to land in both; headers() and rendered_lines() derive
+	 * from this index alone (array_column / pair iteration), in
+	 * construction order, with the all-digit name's PHP-canonical
+	 * integer key emerging exactly as it did from the old structure.
 	 *
 	 * @since 0.1.0
 	 *
@@ -120,7 +118,6 @@ final class HeaderMap {
 	 */
 	public function __construct( array $headers = array() ) {
 		$seen_lowercase = array();
-		$normalized     = array();
 		$by_lowercase   = array();
 		foreach ( $headers as $name => $value ) {
 			// PHP coerces a canonical digit-string array key ('123') to
@@ -164,16 +161,14 @@ final class HeaderMap {
 				throw new InvalidArgumentException( 'Header names must be unique case-insensitively — two spellings of one name make the lookup order-dependent.' );
 			}
 			$seen_lowercase[ $lowercase_name ] = $name;
-			$normalized[ $name ]               = $value;
 			$by_lowercase[ $lowercase_name ]   = array( $name, $value );
 		}
 
-		// Stored under the name's canonical spelling — which, for an
-		// all-digit name, PHP itself re-coerces to the integer key in
-		// any array it lands in (the engine's canonical form of the
-		// same name; lookup and render fold through (string) casts and
-		// never observe the difference).
-		$this->headers              = $normalized;
+		// The folded index is the ONE structure (t31-r3-14): the
+		// name-as-given spelling rides each pair, and an all-digit name
+		// re-emerges under its PHP-canonical integer key wherever a PHP
+		// array lands it (headers() below rebuilds through array_column,
+		// the engine coercing exactly as the old parallel structure did).
 		$this->headers_by_lowercase = $by_lowercase;
 	}
 
@@ -183,14 +178,15 @@ final class HeaderMap {
 	 * An all-digit name appears under its PHP-canonical integer key (the
 	 * engine's array spelling of the same name — unavoidable in a PHP
 	 * array, invisible to lookup and render, which both fold through
-	 * (string)).
+	 * (string)). Derived from the folded index (t31-r3-14) — one
+	 * structure, construction order preserved.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, string>
 	 */
 	public function headers(): array {
-		return $this->headers;
+		return array_column( $this->headers_by_lowercase, 1, 0 );
 	}
 
 	/**
@@ -226,8 +222,8 @@ final class HeaderMap {
 	 */
 	public function rendered_lines(): array {
 		$lines = array();
-		foreach ( $this->headers as $name => $value ) {
-			$rendered = SecretMask::is_sensitive_header_name( (string) $name ) ? SecretMask::mask( $value ) : $value;
+		foreach ( $this->headers_by_lowercase as [ $name, $value ] ) {
+			$rendered = SecretMask::is_sensitive_header_name( $name ) ? SecretMask::mask( $value ) : $value;
 			$lines[]  = $name . ': ' . $rendered;
 		}
 
