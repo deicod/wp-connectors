@@ -2587,6 +2587,7 @@ FIXTURE;
             'group-use member carrying a sibling (t31-r7-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock, Zai\\Api};\nclass GroupSiblingStore\n{\n}\n",
             'double-backslash class-string, judged by value (t31-r7-4)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass ClassStringStore\n{\n    public function name(): string\n    {\n        return 'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
             'bare vendor-prefix import' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors;\nclass BarePrefixStore\n{\n}\n",
+            'dangling as eats the next reference (t31-r7-7)' => "<?php\nnamespace A;\nuse Foo\\Bar as;\n\$x = \\Deicod\\WpConnectors\\Shared\\Clock::class;\n",
         );
         foreach ($survivors as $label => $hostile) {
             try {

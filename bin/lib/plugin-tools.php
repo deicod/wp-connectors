@@ -433,6 +433,17 @@ function wp_connectors_php_name_references($source)
                     $use_open = false;
                     $group_prefix = null;
                     $group_brace_depth = 0;
+                    /*
+                     * The alias skip dies with its statement (verifier
+                     * round t31-r7-7): a dangling `as` (invalid PHP, but
+                     * the walk owes totality independent of lint) armed
+                     * the skip, and leaving it armed past the ';' let it
+                     * silently EAT the next name run anywhere in the file
+                     * — a family reference in that position became
+                     * invisible to both gates (adversarially confirmed:
+                     * pre-round REFUSE, round exit-0 ship).
+                     */
+                    $skip_alias = false;
                 } elseif ('{' === $token) {
                     ++$group_brace_depth;
                 } elseif ('}' === $token) {
@@ -443,6 +454,7 @@ function wp_connectors_php_name_references($source)
                     if ($group_brace_depth <= 0) {
                         $group_prefix = null;
                         $group_brace_depth = 0;
+                        $skip_alias = false;
                     }
                 } elseif (T_AS === $id) {
                     $skip_alias = true;
