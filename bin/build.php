@@ -679,6 +679,7 @@ final class WpConnectorsBuild
         $sidecarTemp = $zipTemp . '.sha256';
         $manifestPath = $distDir . '/checksums.txt';
         $manifestTemp = false;
+        $manifestLock = null;
         try {
             $licenseFile = dirname($distDir) . '/LICENSE';
             $entries = array();
@@ -769,6 +770,28 @@ final class WpConnectorsBuild
             if (false === @file_put_contents($sidecarTemp, $checksum . '  ' . $zipName . "\n")) {
                 throw new RuntimeException("build: cannot write the checksum sidecar for {$zipName} — a failed artifact write never exits 0 with a half-described artifact set");
             }
+            /*
+             * The manifest merge is a read-modify-write of a SHARED file
+             * (verifier round t31-r5-11): t31-r5-S's unique temp names
+             * closed the WRITE interleave, but two concurrent builds of
+             * DIFFERENT plugins could still read the same pre-merge
+             * manifest and the last landing silently DROPPED the other
+             * run's entry — both runs exiting 0 while the manifest
+             * described only one (adversarially confirmed, 30/72
+             * synchronized trials). The whole read→land span now holds
+             * an exclusive flock on a dedicated lock file: a concurrent
+             * run blocks here and merges from the LANDED state instead
+             * of racing it. The lock file is persistent dist furniture
+             * (the coordination primitive, not an artifact).
+             */
+            $manifestLock = @fopen($distDir . '/.checksums.lock', 'c');
+            if (false === $manifestLock) {
+                throw new RuntimeException("build: cannot open the checksum manifest lock {$distDir}/.checksums.lock — a merge that cannot be made safe refuses");
+            }
+            if (! @flock($manifestLock, LOCK_EX)) {
+                fclose($manifestLock);
+                throw new RuntimeException("build: cannot lock the checksum manifest for {$zipName} — a failed lock never merges blindly");
+            }
             $manifestTemp = self::stageManifest($distDir, $manifestPath, $zipName, $checksum);
 
             // Pre-flight every landing target before anything lands: the
@@ -787,6 +810,10 @@ final class WpConnectorsBuild
             self::landArtifact($manifestTemp, $manifestPath, "the checksum manifest for {$zipName}");
             self::landArtifact($zipTemp, $zipPath, "the archive {$zipName}");
         } finally {
+            if (is_resource($manifestLock)) {
+                @flock($manifestLock, LOCK_UN);
+                @fclose($manifestLock);
+            }
             self::rrmdir($stage);
             @unlink($zipTemp);
             @unlink($sidecarTemp);

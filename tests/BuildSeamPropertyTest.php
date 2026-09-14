@@ -321,7 +321,11 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     glob($scratch['dist'] . '/.checksums-*') ?: array(),
                     glob($scratch['dist'] . '/.*.tmp-*') ?: array()
                 ),
-                $planted
+                $planted,
+                // The manifest lock (t31-r5-11) is persistent dist
+                // furniture — the merge's coordination primitive, not
+                // residue from this run.
+                array( $scratch['dist'] . '/.checksums.lock' )
             );
             if ($residue !== array()) {
                 return array('class' => 'FAIL', 'why' => 'the refusal left staging residue behind: ' . implode(', ', $residue));

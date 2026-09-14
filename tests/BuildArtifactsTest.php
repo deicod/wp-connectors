@@ -1988,6 +1988,59 @@ FIXTURE;
         }
     }
 
+    /**
+     * Verifier-round pin (t31-r5-11): the manifest merge's read-modify-
+     * write raced across processes — two concurrent builds of DIFFERENT
+     * plugins both exited 0 while the landed checksums.txt described
+     * only one of them (adversarially confirmed, 30/72 synchronized
+     * trials pre-fix; t31-r5-S's unique temp names had closed the write
+     * interleave, not the lost update). The read→land span holds an
+     * exclusive flock on dist/.checksums.lock now: concurrent runs
+     * serialize the merge and every entry survives.
+     */
+    public function testConcurrentBuildsOfDifferentPluginsKeepEveryManifestEntry(): void
+    {
+        $connectors = array(
+            'race-a-demo' => true,
+            'race-b-demo' => true,
+            'race-c-demo' => true,
+            'race-d-demo' => true,
+            'race-e-demo' => true,
+            'race-f-demo' => true,
+        );
+        $repo = $this->makeBuildCliRepo($connectors);
+
+        try {
+            // Fire every build simultaneously; each is a full CLI run
+            // against the same dist/ and the same manifest.
+            $handles = array();
+            foreach (array_keys($connectors) as $slug) {
+                $handles[ $slug ] = proc_open(
+                    escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=' . escapeshellarg($slug),
+                    array( 0 => array( 'pipe', 'r' ), 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
+                    $pipes
+                );
+                fclose($pipes[0]);
+            }
+
+            foreach ($handles as $slug => $handle) {
+                $exit = proc_close($handle);
+                $this->assertSame(0, $exit, "The concurrent build of {$slug} must succeed.");
+            }
+
+            $manifest = (string) file_get_contents($repo . '/dist/checksums.txt');
+            foreach (array_keys($connectors) as $slug) {
+                $this->assertStringContainsString(
+                    "connectors-{$slug}-1.0.0.zip  ",
+                    $manifest,
+                    "Every concurrent run's manifest entry must survive the raced landings (lost {$slug})."
+                );
+            }
+        } finally {
+            WpHarness::rrmdir($repo);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
