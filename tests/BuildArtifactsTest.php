@@ -97,13 +97,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
                 $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-zai'));
 
-                $zip = new ZipArchive();
-                $this->assertTrue($zip->open($zipPath));
-                $names = array();
-                for ($i = 0; $i < $zip->numFiles; ++$i) {
-                    $names[] = $zip->getNameIndex($i);
-                }
-                $zip->close();
+                $names = $this->zipEntryNames($zipPath);
 
                 foreach (array(
                     'zai/assets/zai.svg',
@@ -1001,17 +995,7 @@ FIXTURE;
             WpHarness::rrmdir(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
-        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
-        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
-            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
-            $target = $tempPlugin . '/' . $relative;
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        $this->copyFixturePlugin($tempPlugin);
         $mainPath = $tempPlugin . '/example-connector.php';
         $main = (string) file_get_contents($mainPath);
         $main = str_replace('Version:           0.1.0', 'Version:           0.2.0', $main);
@@ -1053,28 +1037,13 @@ FIXTURE;
             WpHarness::rrmdir(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
-        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
-        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
-            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
-            $target = $tempPlugin . '/' . $relative;
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        $this->copyFixturePlugin($tempPlugin);
         file_put_contents($tempPlugin . '/build.json', "{\"embed_shared\": true}\n");
 
         try {
             $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
 
-            $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
-            $names = array();
-            for ($i = 0; $i < $zip->numFiles; ++$i) {
-                $names[] = $zip->getNameIndex($i);
-            }
+            $names = $this->zipEntryNames($zipPath);
 
             // Every shared/src PHP SOURCE ships, at its exact relative
             // path under src/Shared/ (the glm31-8 sweep shape — a
@@ -1112,6 +1081,8 @@ FIXTURE;
             // The embedded copy is the REWRITTEN one: plugin-private
             // namespace and the shared/src-prefixed provenance.
             $suffix = WpConnectorsBuild::namespaceSuffixFromSlug('example-connector');
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
             $embedded = (string) $zip->getFromName('example-connector/src/Shared/Http/HeaderMap.php');
             $zip->close();
             $this->assertStringContainsString('namespace Deicod\\WpConnectors\\' . $suffix . '\\Shared\\Http;', $embedded);
@@ -1145,29 +1116,13 @@ FIXTURE;
         file_put_contents($scratch . '/shared/src/Notes.md', "# Developer scratch notes\n");
         file_put_contents($scratch . '/shared/src/README.md', "# shared\n");
 
-        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
-        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
-            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
-            $target = $scratch . '/plugin/example-connector/' . $relative;
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
         file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
 
         try {
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
 
-            $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
-            $names = array();
-            for ($i = 0; $i < $zip->numFiles; ++$i) {
-                $names[] = $zip->getNameIndex($i);
-            }
-            $zip->close();
+            $names = $this->zipEntryNames($zipPath);
 
             $this->assertContains('example-connector/src/Shared/Clock/ClockInterface.php', $names, 'The PHP source inside shared/src must ship.');
             foreach ($names as $entry) {
@@ -1200,17 +1155,7 @@ FIXTURE;
         mkdir($scratch . '/dist', 0755, true);
         file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
 
-        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
-        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
-            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
-            $target = $scratch . '/plugin/example-connector/' . $relative;
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
 
         try {
             foreach (array(
@@ -1236,14 +1181,11 @@ FIXTURE;
             // Control: the valid opt-in still embeds through the seam.
             file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
-            $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
-            $found = false;
-            for ($i = 0; $i < $zip->numFiles; ++$i) {
-                $found = $found || 'example-connector/src/Shared/Clock/ClockInterface.php' === $zip->getNameIndex($i);
-            }
-            $zip->close();
-            $this->assertTrue($found, 'The control build (valid build.json) must still embed the shared source.');
+            $this->assertContains(
+                'example-connector/src/Shared/Clock/ClockInterface.php',
+                $this->zipEntryNames($zipPath),
+                'The control build (valid build.json) must still embed the shared source.'
+            );
         } finally {
             WpHarness::rrmdir($scratch);
         }
@@ -1270,17 +1212,7 @@ FIXTURE;
         mkdir($scratch . '/dist', 0755, true);
         file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
 
-        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
-        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
-            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
-            $target = $scratch . '/plugin/example-connector/' . $relative;
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
 
         try {
             // (a) An illegal namespace_suffix refuses at the seam: the
@@ -1414,29 +1346,13 @@ FIXTURE;
         // inside shared/src still never ship (the t31-r2-18 rule).
         file_put_contents($scratch . '/shared/src/Notes.md', "# Developer scratch notes\n");
 
-        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
-        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
-            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
-            $target = $scratch . '/plugin/example-connector/' . $relative;
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
         file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
 
         try {
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
 
-            $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
-            $names = array();
-            for ($i = 0; $i < $zip->numFiles; ++$i) {
-                $names[] = $zip->getNameIndex($i);
-            }
-            $zip->close();
+            $names = $this->zipEntryNames($zipPath);
 
             $this->assertContains('example-connector/src/Shared/Clock/ClockInterface.php', $names, 'An ordinary shared source must ship.');
             foreach (array('Tools', 'Tests', 'Dist', 'Vendor') as $excludedName) {
@@ -1473,28 +1389,15 @@ FIXTURE;
         file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
         file_put_contents($scratch . '/shared/src/ClockMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
 
-        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
-        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
-            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
-            $target = $scratch . '/plugin/example-connector/' . $relative;
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
         file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
 
         try {
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
 
+            $names = $this->zipEntryNames($zipPath);
             $zip = new ZipArchive();
             $this->assertTrue($zip->open($zipPath));
-            $names = array();
-            for ($i = 0; $i < $zip->numFiles; ++$i) {
-                $names[] = $zip->getNameIndex($i);
-            }
             $embedded = (string) $zip->getFromName('example-connector/src/Shared/ClockMath.PHP');
             $zip->close();
 
@@ -1656,30 +1559,14 @@ FIXTURE;
             WpHarness::rrmdir(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
-        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
-        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
-            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
-            $target = $tempPlugin . '/' . $relative;
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        $this->copyFixturePlugin($tempPlugin);
         $secretOutside = dirname($tempPlugin) . '/outside-secret.txt';
         file_put_contents($secretOutside, 'not-packaged');
         symlink($secretOutside, $tempPlugin . '/leaked-config.txt');
 
         $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
 
-        $zip = new ZipArchive();
-        $zip->open($zipPath);
-        $names = array();
-        for ($i = 0; $i < $zip->numFiles; ++$i) {
-            $names[] = $zip->getNameIndex($i);
-        }
-        $zip->close();
+        $names = $this->zipEntryNames($zipPath);
 
         unlink($zipPath);
         unlink($zipPath . '.sha256');
@@ -1688,6 +1575,59 @@ FIXTURE;
 
         $this->assertNotContains('example-connector/leaked-config.txt', $names, 'Symlinked files must never be packaged.');
         $this->assertContains('example-connector/example-connector.php', $names);
+    }
+
+    /**
+     * Copies the example-connector fixture plugin into a target directory.
+     *
+     * t31-r3-12: the 11-line fixture-copy loop was already a verbatim
+     * quadruple (the stale-version and symlink tests predate the branch;
+     * the embed pair copied it again) and this round accrued four more —
+     * one helper now, so a fixture-layout change (a new source file, a
+     * renamed asset) rides one site.
+     *
+     * @param string $targetDir Absolute target directory (the plugin root
+     *                          inside it is created as needed).
+     * @return string The target directory, for call-site chaining.
+     */
+    private function copyFixturePlugin(string $targetDir): string
+    {
+        $fixtureRoot = __DIR__ . '/fixtures/plugins/' . self::FIXTURE;
+        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
+            $target = $targetDir . '/' . $relative;
+            if ($item->isDir()) {
+                mkdir($target, 0755, true);
+            } else {
+                copy($item->getPathname(), $target);
+            }
+        }
+
+        return $targetDir;
+    }
+
+    /**
+     * The entry names of a zip, in zip order.
+     *
+     * t31-r3-12: the numFiles loop had one verbatim copy per
+     * zip-inspecting test; one helper owns the open/read/close shape
+     * (and the loud open failure) now.
+     *
+     * @param string $zipPath Absolute zip path.
+     * @return list<string> Entry names.
+     */
+    private function zipEntryNames(string $zipPath): array
+    {
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($zipPath), "The built zip must open: {$zipPath}");
+        $names = array();
+        for ($i = 0; $i < $zip->numFiles; ++$i) {
+            $names[] = $zip->getNameIndex($i);
+        }
+        $zip->close();
+
+        return $names;
     }
 
     /**
