@@ -40,56 +40,6 @@ final class WpConnectorsBuild
     const FIXED_MTIME = 946684800;
 
     /**
-     * The rewrite postcondition's ONE survivor pattern (round t31-r4, K1).
-     *
-     * TOTAL by construction — it is not a list of spellings the rewriter
-     * knows, it is the negation of the ONE property the rewrite owes:
-     * after rewriting, the output contains ZERO occurrences of the
-     * source namespace `Deicod\WpConnectors\Shared`, in ANY spelling.
-     * Three totality dimensions, each closing a round-3/4 defect class:
-     *
-     * - Case-INsensitive (`/i`): PHP namespaces resolve case-insensitively,
-     *   so `use deicod\wpconnectors\shared\Clock;` is the source namespace
-     *   at runtime while no exact-case probe ever saw it (the t31-r3-2
-     *   consciously-accepted posture, closed by totality).
-     * - Whitespace-tolerant BETWEEN the segments: a string-literal or
-     *   docblock spelling may break the line (`…\WpConnectors\` + newline
-     *   + `Shared\…`), which defeats every contiguous probe and the
-     *   sweep's per-line whitelist alike (t31-r4-5, reproduced
-     *   end-to-end at exit 0).
-     * - Brace-aware: a group-use MEMBER carries `Shared` at a member
-     *   position (`use Deicod\WpConnectors\{Shared\Clock};`, t31-r4-4)
-     *   where the namespace substring never appears contiguously. The
-     *   brace alternative matches `Shared` only at a member boundary
-     *   (immediately after `{` or after a member separator), so the
-     *   REWRITTEN member (`{<Suffix>\Shared\…}` — `Shared` preceded by
-     *   the suffix's backslash) never re-trips it.
-     *
-     * The property is sound by construction because the rewritten target
-     * `…\WpConnectors\<Suffix>\Shared` cannot contain the source
-     * spelling: the validated, non-empty `<Suffix>` segment always sits
-     * between `WpConnectors\` and `Shared` (pinned empirically over the
-     * whole shared tree by the rewrite soundness test).
-     *
-     * PUBLIC and single-owner: the architecture sweep's
-     * no-cross-namespace-reference gate rides the same pattern, so what
-     * the build refuses and what the sweep flags cannot drift (one
-     * vocabulary, two consumers).
-     *
-     * Honest boundary (verifier round t31-r4, ledgered): SPLIT-composed
-     * spellings — the namespace assembled at runtime from concatenated
-     * or interpolated string pieces — are outside a spelling-level
-     * scan's charter (the pieces are ordinary string fragments; only
-     * their runtime VALUE names the namespace). No shared source
-     * composes the namespace dynamically today; re-open if one ever
-     * does (the fix shape is a no-dynamic-class-resolution gate, not a
-     * wider pattern).
-     *
-     * @var string
-     */
-    const SHARED_NAMESPACE_SURVIVOR_PATTERN = '/(?<![A-Za-z0-9_])Deicod\\s*\\\\\\s*WpConnectors\\s*\\\\\\s*(?:Shared(?![A-Za-z0-9_])|\\{(?:[^;]*?[\\s,{])?Shared(?![A-Za-z0-9_]))/i';
-
-    /**
      * Rewrites shared-source namespace into a plugin-private namespace.
      *
      * The provenance docblock is inserted AFTER the open tag so the generated
@@ -116,12 +66,29 @@ final class WpConnectorsBuild
      * round's defect).
      *
      * Review round t31-r4 (K1): the postcondition is a TOTAL scan now
-     * (SHARED_NAMESPACE_SURVIVOR_PATTERN), not a spelling list — zero
+     * (then SHARED_NAMESPACE_SURVIVOR_PATTERN), not a spelling list — zero
      * occurrences of the source namespace in the output, case-insensitive,
      * whitespace-tolerant, brace-aware — and the rewrite extends to
      * group-use MEMBER spellings (t31-r4-4). The patterns do the work;
      * the total scan guarantees that what they miss refuses the build
      * instead of shipping.
+     *
+     * Review round t31-r7 (the terminal fix): the postcondition is a
+     * TOKEN walk (wp_connectors_shared_family_references(), shared with
+     * the architecture sweep's namespace gate), not a regex over bytes —
+     * three rounds had each closed the seam one spelling away. Names are
+     * reassembled across comments and whitespace (a comment can
+     * INTERRUPT a name run but never contribute bytes to it, so the
+     * comment-interrupted spelling dies by construction); string
+     * literals are judged by their UNESCAPED runtime value (the
+     * double-backslash class-string spelling); and a SIBLING under the
+     * vendor prefix (Deicod\WpConnectors\<Other>…, anything not Shared
+     * and not the rewritten target) refuses exactly like the source
+     * namespace itself — the rewriter owns no sibling spelling, so one
+     * ships pointing at a namespace that does not exist inside the
+     * plugin. The patterns above remain the MECHANISM for every legal
+     * spelling this rewriter owns; the token walk is the AUTHORITY that
+     * guarantees what they miss refuses the build instead of shipping.
      *
      * @param string $source        PHP source from shared/src.
      * @param string $pluginSuffix  Namespace segment, e.g. 'OpenAiOauth'.
@@ -236,28 +203,51 @@ final class WpConnectorsBuild
         );
 
         /*
-         * Postcondition (t31-r4 K1, superseding the t31-r3-2 per-spelling
-         * probe): the rewrite's contract is ONE total property — the
-         * OUTPUT contains zero occurrences of the source namespace, in
-         * any spelling (see SHARED_NAMESPACE_SURVIVOR_PATTERN for the
-         * three totality dimensions). The patterns above do the work for
-         * every legal spelling this rewriter knows; anything they miss —
-         * a comment-interrupted use line, a nested brace group, a
-         * case-variant, a string-literal or docblock reference — REFUSES
-         * the build loudly with the file and byte offset, instead of
-         * shipping an import that points at a namespace which no longer
-         * exists inside the plugin (silent survival was the defect class
-         * this closes; per-spelling patching had missed the same seam
-         * twice already). A PCRE abort refuses too (glm36-8: an abort is
-         * never a clean pass). The scan runs over the FINAL bytes —
-         * provenance included — so nothing that ships escapes it.
+         * Postcondition (t31-r4 K1's regex scan, superseded by round
+         * t31-r7's TOKEN detector — the terminal fix after the same seam
+         * stayed "one spelling away" through three regex rounds): the
+         * rewrite's contract is ONE total property — the OUTPUT
+         * references the shared-namespace family ONLY under the
+         * rewritten target prefix. The detector
+         * (wp_connectors_shared_family_references(), the ONE
+         * implementation this postcondition and the architecture
+         * sweep's namespace gate both ride — one vocabulary, two
+         * consumers) walks the token stream: name runs are reassembled
+         * across comments and whitespace, so a comment can only
+         * INTERRUPT a name, never hide one (the comment-interrupted use
+         * spelling dies by construction, t31-r7-1); string literals are
+         * judged by their UNESCAPED runtime VALUE (the double-backslash
+         * class-string spelling, t31-r7-4); and every family reference
+         * that is not the rewritten target — the source namespace
+         * itself, or a SIBLING under Deicod\WpConnectors\<Other>…
+         * (t31-r7-2; the rewriter owns no sibling spelling, so one
+         * ships pointing at a namespace that does not exist inside the
+         * plugin) — REFUSES the build loudly with the file, the byte
+         * offset, the resolved name, and the position kind. Comments
+         * and inline HTML refuse in every spelling: the provenance
+         * docblock inserted above is family-free, so nothing
+         * legitimate is lost. A PCRE abort in the detector's text lens
+         * refuses too (glm36-8: an abort is never a clean pass). The
+         * scan runs over the FINAL bytes — provenance included — so
+         * nothing that ships escapes it.
          */
-        $survivor = preg_match(self::SHARED_NAMESPACE_SURVIVOR_PATTERN, $final, $hit, PREG_OFFSET_CAPTURE);
-        if (false === $survivor) {
-            throw new RuntimeException("build: the survivor scan aborted (PCRE) while rewriting {$sourceVersion} — an abort refuses the rewrite, never passes it");
-        }
-        if (1 === $survivor) {
-            throw new RuntimeException("build: a spelling of Deicod\\WpConnectors\\Shared survived the rewrite in {$sourceVersion} at byte offset {$hit[0][1]} — every legal use form is rewritten here or the build refuses; a survivor means a spelling the patterns do not know, never an import that ships broken");
+        $target_lower = strtolower('Deicod\\WpConnectors\\' . $pluginSuffix . '\\Shared');
+        foreach (wp_connectors_shared_family_references($final) as $reference) {
+            if ('pcre-abort' === $reference['kind']) {
+                throw new RuntimeException("build: the namespace-reference scan aborted (PCRE) while rewriting {$sourceVersion} — an abort refuses the rewrite, never passes it");
+            }
+            $is_target = $reference['lower'] === $target_lower || 0 === strpos($reference['lower'], $target_lower . '\\');
+            if ($is_target && ('declaration' === $reference['kind'] || 'use' === $reference['kind'] || 'code' === $reference['kind'] || 'string' === $reference['kind'])) {
+                continue;
+            }
+            throw new RuntimeException(sprintf(
+                'build: the reference %s (%s position) survived the rewrite in %s at byte offset %d — after the rewrite the embedded copy may reference only the plugin-private target Deicod\\WpConnectors\\%s\\Shared…, so every other reference to the shared-namespace family points at a namespace that does not exist inside the plugin; every legal use form is rewritten here or the build refuses, never an import that ships broken',
+                $reference['name'],
+                $reference['kind'],
+                $sourceVersion,
+                $reference['offset'],
+                $pluginSuffix
+            ));
         }
 
         return $final;

@@ -183,6 +183,643 @@ function wp_connectors_file_code_views($path)
 }
 
 /**
+ * The shared source's own namespace — the tree the build's namespace
+ * rewriter owns (record 0005): `Deicod\WpConnectors\Shared`.
+ *
+ * ONE owner for the family vocabulary (review round t31-r7): the build's
+ * rewrite postcondition, the architecture sweep's namespace gate, and the
+ * token detector below all derive the vendor prefix
+ * (`Deicod\WpConnectors`) and the own-tree root from THIS spelling, so
+ * the three can never drift about what counts as the shared family.
+ *
+ * @return string The shared source namespace (the pre-rewrite side).
+ */
+function wp_connectors_shared_source_namespace()
+{
+    return 'Deicod\\WpConnectors\\Shared';
+}
+
+/**
+ * The shared-namespace SPELLING pattern — the text lens of the round-7
+ * token detector (formerly bin/build.php's
+ * WpConnectorsBuild::SHARED_NAMESPACE_SURVIVOR_PATTERN, rounds t31-r3-2 →
+ * t31-r4 K1 → t31-r6).
+ *
+ * THREE totality dimensions, each closing an earlier defect class:
+ * case-INsensitive (`/i` — PHP namespaces resolve case-insensitively, the
+ * t31-r3-2 posture closed by t31-r4 K1); whitespace-tolerant BETWEEN the
+ * segments (a string-literal spelling may break the line, t31-r4-5); and
+ * brace-aware (a group-use MEMBER carries `Shared` at a member position,
+ * t31-r4-4 — including a member ALIASED exactly `Shared`, which this
+ * lens refuses rather than narrowing, per the t31-r4 fail-loud pin).
+ *
+ * ROUND 7 SCOPES IT TO NON-CODE TEXT (t31-r7): the pattern is applied to
+ * comment/docblock, string-literal, and inline-HTML token TEXT — never to
+ * code, whose name positions the token walk
+ * (wp_connectors_php_name_references()) owns structurally: a comment can
+ * INTERRUPT a code name, but the walk reassembles the run and the comment
+ * dies by construction, so the pattern never needs to see code bytes
+ * (where the rewritable forms legitimately carry the spelling). A PCRE
+ * abort is a finding (kind 'pcre-abort'), never a pass — the glm36-8
+ * doctrine at the detector's own seams.
+ *
+ * @return string PCRE pattern matching a spelling of the source namespace.
+ */
+function wp_connectors_shared_namespace_pattern()
+{
+    return '/(?<![A-Za-z0-9_])Deicod\\s*\\\\\\s*WpConnectors\\s*\\\\\\s*(?:Shared(?![A-Za-z0-9_])|\\{(?:[^;]*?[\\s,{])?Shared(?![A-Za-z0-9_]))/i';
+}
+
+/**
+ * The index of the first non-trivia token at or after a position, or null.
+ *
+ * Trivia = the tokens the PHP grammar skips inside statements
+ * (whitespace, comments, docblocks). The name walk below consults this to
+ * decide what FOLLOWS a keyword or a name run without caring how the
+ * trivia was spelled.
+ *
+ * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
+ * @param int                                             $from   Index to start at.
+ * @return int|null The next code-token index, or null at the end.
+ */
+function wp_connectors_next_code_token_index(array $tokens, $from)
+{
+    for ($count = count($tokens), $i = $from; $i < $count; ++$i) {
+        $id = is_array($tokens[ $i ]) ? $tokens[ $i ][0] : null;
+        if (null !== $id && (T_WHITESPACE === $id || T_COMMENT === $id || T_DOC_COMMENT === $id)) {
+            continue;
+        }
+
+        return $i;
+    }
+
+    return null;
+}
+
+/**
+ * Whether a token id may begin (or continue) an assembled name run.
+ *
+ * @param int $id Token id.
+ * @return bool True for T_STRING and every T_NAME_* token.
+ */
+function wp_connectors_is_name_token_id($id)
+{
+    return T_STRING === $id || T_NAME_QUALIFIED === $id || T_NAME_FULLY_QUALIFIED === $id || T_NAME_RELATIVE === $id;
+}
+
+/**
+ * Assembles the maximal NAME RUN starting at a token index.
+ *
+ * A run is one T_STRING or T_NAME_* token plus every separator-joined
+ * continuation: a T_NS_SEPARATOR (with trivia allowed around it — PHP's
+ * lexer only emits single T_NAME_* tokens for UNINTERRUPTED names, so an
+ * interrupted spelling arrives as pieces the run reconstitutes) or a
+ * T_NAME_FULLY_QUALIFIED directly after trivia (the lexer bakes the
+ * leading backslash into the piece that follows an interruption). The
+ * assembled name is the concatenation of the run's name and separator
+ * token texts with every trivia token dropped — comments and whitespace
+ * can INTERRUPT a run, but never contribute bytes to it, which is what
+ * makes the comment-interrupted spelling of a namespace visible to the
+ * walk by construction (t31-r7: the defect class three regex rounds
+ * chased one spelling at a time).
+ *
+ * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
+ * @param int                                             $start  Index of the run's first token.
+ * @return array{end: int, name: string} The index of the run's last token
+ *         and the assembled name (leading backslashes NOT stripped).
+ */
+function wp_connectors_name_run(array $tokens, $start)
+{
+    $count = count($tokens);
+    $is_trivia = static function ($token): bool {
+        $id = is_array($token) ? $token[0] : null;
+
+        return null !== $id && (T_WHITESPACE === $id || T_COMMENT === $id || T_DOC_COMMENT === $id);
+    };
+
+    $end = $start;
+    $name = '';
+    $j = $start;
+    while (true) {
+        $token = $tokens[ $j ];
+        $id = is_array($token) ? $token[0] : null;
+        if (T_NS_SEPARATOR === $id) {
+            $name .= $token[1];
+        } elseif (wp_connectors_is_name_token_id($id)) {
+            $name .= $token[1];
+        }
+
+        // Continuation 1: trivia* then a fully-qualified piece (the lexer
+        // baked the leading backslash into it — appending is exact).
+        $k = $j + 1;
+        while ($k < $count && $is_trivia($tokens[ $k ])) {
+            ++$k;
+        }
+        if ($k < $count && T_NAME_FULLY_QUALIFIED === (is_array($tokens[ $k ]) ? $tokens[ $k ][0] : null)) {
+            $j = $k;
+            continue;
+        }
+        // Continuation 2: trivia* T_NS_SEPARATOR trivia* name-part.
+        if ($k < $count && T_NS_SEPARATOR === (is_array($tokens[ $k ]) ? $tokens[ $k ][0] : null)) {
+            $m = $k + 1;
+            while ($m < $count && $is_trivia($tokens[ $m ])) {
+                ++$m;
+            }
+            if ($m < $count && wp_connectors_is_name_token_id(is_array($tokens[ $m ]) ? $tokens[ $m ][0] : null)) {
+                $j = $m;
+                continue;
+            }
+        }
+        break;
+    }
+
+    return array('end' => $j, 'name' => $name);
+}
+
+/**
+ * Every assembled NAME in a PHP source, with the position kind that
+ * decides what the reference may legally be (review round t31-r7's
+ * terminal fix: namespace-reference detection at the TOKEN level, not the
+ * regex level).
+ *
+ * One walk over token_get_all() output yields each name with one of
+ * three kinds:
+ *
+ * - 'declaration' — the name of a `namespace X;` statement (the bare
+ *   T_NAMESPACE keyword is always a declaration in PHP 8; the relative
+ *   `namespace\Foo` operator is its own T_NAME_RELATIVE token and never a
+ *   keyword);
+ * - 'use' — a name inside a `use` import statement, closure lexical
+ *   `use (...)` excluded; a group statement's prefix (the name before
+ *   `{`) is not reported itself, its MEMBERS are reported composed with
+ *   the prefix (`use Deicod\WpConnectors\{Shared\Clock}` reports
+ *   `Deicod\WpConnectors\Shared\Clock`); `as` aliases are not references
+ *   and are not reported;
+ * - 'code' — every other name position (inline references, catch
+ *   clauses, attributes, `::class`, call names).
+ *
+ * Names are reassembled across whitespace and comments
+ * (wp_connectors_name_run()), so a spelling interrupted mid-name is seen
+ * exactly like its contiguous twin — PHP 8's parser refuses such
+ * spellings in lintable code, but the walk owes totality independent of
+ * any lint precondition (the build's postcondition judges rewritten bytes
+ * before any lint gate runs).
+ *
+ * @param string $source PHP source bytes.
+ * @return list<array{name: string, lower: string, kind: string, offset: int, line: int}>
+ *         Assembled names (leading backslashes stripped), lowercased
+ *         twin, position kind, and 0-based byte offset / 1-based line of
+ *         the run's first token.
+ */
+function wp_connectors_php_name_references($source)
+{
+    $tokens = token_get_all($source);
+    $count = count($tokens);
+    $references = array();
+    $offset = 0;
+    $use_open = false;
+    $group_prefix = null;
+    $group_prefix_display = '';
+    $group_brace_depth = 0;
+    $awaiting_group_prefix = false;
+    $skip_alias = false;
+    $declaration_pending = false;
+
+    for ($i = 0; $i < $count; ++$i) {
+        $token = $tokens[ $i ];
+        $id = is_array($token) ? $token[0] : null;
+        $text = is_array($token) ? $token[1] : $token;
+        $token_offset = $offset;
+        $offset += strlen($text);
+
+        if (T_USE === $id) {
+            // A closure's lexical `use (` is not a namespace import; every
+            // other `use` opens an import statement whose FIRST name is
+            // the group-prefix candidate.
+            $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
+            $use_open = null !== $follower && '(' !== $tokens[ $follower ];
+            $group_prefix = null;
+            $group_brace_depth = 0;
+            $awaiting_group_prefix = true;
+            $skip_alias = false;
+
+            continue;
+        }
+        if (T_NAMESPACE === $id) {
+            $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
+            $declaration_pending = null !== $follower && wp_connectors_is_name_token_id(is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null);
+
+            continue;
+        }
+
+        if (null === $id || ! wp_connectors_is_name_token_id($id)) {
+            if ($use_open) {
+                if (';' === $token) {
+                    $use_open = false;
+                    $group_prefix = null;
+                    $group_brace_depth = 0;
+                } elseif ('{' === $token) {
+                    ++$group_brace_depth;
+                } elseif ('}' === $token) {
+                    // A NESTED close (a brace group inside the members) keeps
+                    // the statement's prefix; only the matching close of the
+                    // group itself retires it.
+                    --$group_brace_depth;
+                    if ($group_brace_depth <= 0) {
+                        $group_prefix = null;
+                        $group_brace_depth = 0;
+                    }
+                } elseif (T_AS === $id) {
+                    $skip_alias = true;
+                }
+                // Whitespace, comments, commas, and the `function`/`const`
+                // kind keywords of an import are trivia to this walk.
+                $declaration_pending = false;
+
+                continue;
+            }
+
+            continue;
+        }
+
+        // A name run: assemble it whole before classifying. The offset
+        // counter advances over EVERY token the run consumed — trivia
+        // included — so it stays true to the stream.
+        $run = wp_connectors_name_run($tokens, $i);
+        $display = ltrim($run['name'], '\\');
+        $offset = $token_offset;
+        for ($k = $i; $k <= $run['end']; ++$k) {
+            $offset += strlen(is_array($tokens[ $k ]) ? $tokens[ $k ][1] : $tokens[ $k ]);
+        }
+        $i = $run['end'];
+
+        if ($skip_alias) {
+            $skip_alias = false;
+
+            continue;
+        }
+
+        $kind = 'code';
+        if ($use_open) {
+            // Only the statement's FIRST name can be the GROUP PREFIX —
+            // the name a `{` follows (`use Prefix\{members};`). A later
+            // run followed by `{` is a member of a NESTED brace group
+            // (unparseable PHP, judged anyway — totality over validity),
+            // never a new prefix.
+            $is_prefix_candidate = $awaiting_group_prefix;
+            $awaiting_group_prefix = false;
+            if ($is_prefix_candidate) {
+                $brace = wp_connectors_next_code_token_index($tokens, $i + 1);
+                if (null !== $brace && T_NS_SEPARATOR === (is_array($tokens[ $brace ]) ? $tokens[ $brace ][0] : null)) {
+                    $brace = wp_connectors_next_code_token_index($tokens, $brace + 1);
+                }
+                if (null !== $brace && '{' === $tokens[ $brace ]) {
+                    $group_prefix = strtolower($display);
+                    $group_prefix_display = $display;
+
+                    continue;
+                }
+            }
+            $kind = 'use';
+            if (null !== $group_prefix) {
+                $display = $group_prefix_display . '\\' . $display;
+            }
+        } elseif ($declaration_pending) {
+            $kind = 'declaration';
+        }
+        $declaration_pending = false;
+
+        $references[] = array(
+            'name' => $display,
+            'lower' => strtolower($display),
+            'kind' => $kind,
+            'offset' => $token_offset,
+            'line' => substr_count($source, "\n", 0, $token_offset) + 1,
+        );
+    }
+
+    return $references;
+}
+
+/**
+ * Every use-statement name of a PHP source, composed and resolved.
+ *
+ * The thin filter over wp_connectors_php_name_references(): what a file
+ * IMPORTS (plain and group-use members alike, aliases dropped), for the
+ * import-vocabulary enumeration pins the architecture sweep rides.
+ *
+ * @param string $source PHP source bytes.
+ * @return list<string> The import names, original case, in source order.
+ */
+function wp_connectors_use_statement_names($source)
+{
+    $names = array();
+    foreach (wp_connectors_php_name_references($source) as $reference) {
+        if ('use' === $reference['kind']) {
+            $names[] = $reference['name'];
+        }
+    }
+
+    return $names;
+}
+
+/**
+ * The runtime value of a static string literal's inner text.
+ *
+ * Round 7's string lens (t31-r7): a literal whose VALUE names a namespace
+ * — most dangerously the double-backslash class-string spelling
+ * ('Deicod\\WpConnectors\\Shared\\Clock', whose bytes never spell the
+ * single-backslash name) — is judged by what PHP computes from it, not by
+ * its bytes. Single-quoted literals resolve \' and \\ only; double-quoted
+ * (and heredoc) literals resolve the full escape table (octal, hex,
+ * \u{...}, and the standard one-character escapes; an unknown escape
+ * keeps both bytes). Nowdoc bodies never resolve escapes — pass the
+ * raw inner text with the single-quote semantics of "nothing to do".
+ *
+ * @param string $quote The literal's quote character ("'" or '"').
+ * @param string $inner The literal's inner text (quotes stripped).
+ * @return string The value PHP would compute for the literal.
+ */
+function wp_connectors_unescape_php_string_literal($quote, $inner)
+{
+    if ("'" === $quote) {
+        $value = '';
+        $length = strlen($inner);
+        for ($i = 0; $i < $length; ++$i) {
+            if ('\\' === $inner[ $i ] && $i + 1 < $length && ("'" === $inner[ $i + 1 ] || '\\' === $inner[ $i + 1 ])) {
+                $value .= $inner[ ++$i ];
+
+                continue;
+            }
+            $value .= $inner[ $i ];
+        }
+
+        return $value;
+    }
+
+    $simple = array('n' => "\n", 'r' => "\r", 't' => "\t", 'v' => "\v", 'f' => "\f", 'e' => "\x1b", '\\' => '\\', '$' => '$', '"' => '"');
+    $value = '';
+    $length = strlen($inner);
+    for ($i = 0; $i < $length; ++$i) {
+        $char = $inner[ $i ];
+        if ('\\' !== $char || $i + 1 >= $length) {
+            $value .= $char;
+
+            continue;
+        }
+        $next = $inner[ ++$i ];
+        if (isset($simple[ $next ])) {
+            $value .= $simple[ $next ];
+
+            continue;
+        }
+        if ('x' === $next || 'X' === $next) {
+            $hex = '';
+            while ($i + 1 < $length && strlen($hex) < 2 && false !== stripos('0123456789abcdef', $inner[ $i + 1 ])) {
+                $hex .= $inner[ ++$i ];
+            }
+            if ('' !== $hex) {
+                $value .= chr((int) hexdec($hex));
+
+                continue;
+            }
+            $value .= '\\' . $next;
+
+            continue;
+        }
+        if ('u' === $next && $i + 1 < $length && '{' === $inner[ $i + 1 ]) {
+            $close = strpos($inner, '}', $i + 2);
+            if (false !== $close) {
+                $codepoint = (int) hexdec(substr($inner, $i + 2, $close - $i - 2));
+                if ($codepoint > 0 && $codepoint <= 0x10ffff) {
+                    // UTF-8 encoded in place (mbstring is not a dependency
+                    // of this tooling; the encoder is four ranges).
+                    if ($codepoint < 0x80) {
+                        $value .= chr($codepoint);
+                    } elseif ($codepoint < 0x800) {
+                        $value .= chr(0xc0 | ($codepoint >> 6)) . chr(0x80 | ($codepoint & 0x3f));
+                    } elseif ($codepoint < 0x10000) {
+                        $value .= chr(0xe0 | ($codepoint >> 12)) . chr(0x80 | (($codepoint >> 6) & 0x3f)) . chr(0x80 | ($codepoint & 0x3f));
+                    } else {
+                        $value .= chr(0xf0 | ($codepoint >> 18)) . chr(0x80 | (($codepoint >> 12) & 0x3f)) . chr(0x80 | (($codepoint >> 6) & 0x3f)) . chr(0x80 | ($codepoint & 0x3f));
+                    }
+                    $i = $close;
+
+                    continue;
+                }
+            }
+            $value .= '\\' . $next;
+
+            continue;
+        }
+        if (false !== strpos('01234567', $next)) {
+            $octal = $next;
+            while ($i + 1 < $length && strlen($octal) < 3 && false !== strpos('01234567', $inner[ $i + 1 ])) {
+                $octal .= $inner[ ++$i ];
+            }
+            $value .= chr((int) octdec($octal));
+
+            continue;
+        }
+        // An unrecognized escape keeps both bytes, exactly as PHP does.
+        $value .= '\\' . $next;
+    }
+
+    return $value;
+}
+
+/**
+ * Every reference to the shared-namespace FAMILY in a PHP source, by
+ * token — the ONE detector both namespace gates ride (t31-r7's terminal
+ * fix; one implementation, two consumers: bin/build.php's rewrite
+ * postcondition and the architecture sweep's namespace gate).
+ *
+ * The family is the vendor prefix `Deicod\WpConnectors` and everything
+ * under it; a reference is reported with a five-way position kind that
+ * carries what each consumer needs to judge it:
+ *
+ * - 'declaration' / 'use' / 'code' — from the name walk
+ *   (wp_connectors_php_name_references()); comments are structurally
+ *   invisible to it (a comment can only INTERRUPT a name run, never carry
+ *   one), so the comment-interrupted spelling dies by construction;
+ * - 'string' — a string literal (quoted, heredoc, or nowdoc) whose TEXT
+ *   spells the family (the whitespace-tolerant pattern, so a value broken
+ *   across lines still refuses, t31-r4-5's doctrine) OR whose runtime
+ *   VALUE names it (unescaped first — the double-backslash class-string
+ *   spelling, finding 4). Interpolated literals are judged on their text
+ *   chunks only: their values are runtime-built, the ledgered K1
+ *   split-composed boundary, unchanged;
+ * - 'comment' — a comment/docblock spelling the family, raw or
+ *   double-backslash (a docblock @throws is a finding either way);
+ * - 'inline-html' — the family spelled in bytes outside PHP tags;
+ * - 'pcre-abort' — a text-lens match aborted (glm36-8: an abort is a
+ *   finding, never a pass).
+ *
+ * @param string $source PHP source bytes.
+ * @return list<array{name: string, lower: string, kind: string, offset: int, line: int}>
+ *         Family references in source order (name as spelled, lowercased
+ *         twin, position kind, 0-based byte offset, 1-based line).
+ */
+function wp_connectors_shared_family_references($source)
+{
+    $own_lower = strtolower(wp_connectors_shared_source_namespace());
+    // The vendor prefix is everything of the own namespace before its
+    // final segment — derived, never spelled twice.
+    $vendor_lower = substr($own_lower, 0, (int) strrpos($own_lower, '\\'));
+    $is_family = static function (string $lower) use ($vendor_lower): bool {
+        return $lower === $vendor_lower || 0 === strpos($lower, $vendor_lower . '\\');
+    };
+
+    $references = array();
+    foreach (wp_connectors_php_name_references($source) as $reference) {
+        if ($is_family($reference['lower'])) {
+            $references[] = $reference;
+        }
+    }
+
+    $pattern = wp_connectors_shared_namespace_pattern();
+    $push_text_finding = function (string $kind, int $offset, string $spelling) use (&$references, $source): void {
+        $references[] = array(
+            'name' => $spelling,
+            'lower' => 'pcre-abort' === $kind ? '' : strtolower(ltrim($spelling, '\\')),
+            'kind' => $kind,
+            'offset' => $offset,
+            'line' => substr_count($source, "\n", 0, $offset) + 1,
+        );
+    };
+    /*
+     * The TEXT lens: the ONE pattern over the token's raw text, then over
+     * its backslash-unescaped twin (which also catches single-backslash
+     * spellings — the normalization is a no-op for them, so the second
+     * view alone carries both spellings). A match on the RAW view is
+     * reported at its exact byte offset; a match that only the unescaped
+     * view yields is reported at the TOKEN's offset — the two views have
+     * different lengths, so the unescaped match offset would be a
+     * different byte than the source carries (the token-level position
+     * stays honest either way). An abort is a finding, never a pass.
+     */
+    $text_lens = function (string $kind, string $text, int $offset) use ($pattern, $push_text_finding): void {
+        $hit = array();
+        $result = preg_match($pattern, $text, $hit, PREG_OFFSET_CAPTURE);
+        if (false === $result) {
+            $push_text_finding('pcre-abort', $offset, 'the shared-namespace text lens aborted (PCRE: ' . preg_last_error_msg() . ')');
+
+            return;
+        }
+        if (1 === $result) {
+            $push_text_finding($kind, $offset + $hit[0][1], $hit[0][0]);
+
+            return;
+        }
+        $unescaped = str_replace('\\\\', '\\', $text);
+        if ($unescaped !== $text) {
+            $result = preg_match($pattern, $unescaped, $hit, PREG_OFFSET_CAPTURE);
+            if (false === $result) {
+                $push_text_finding('pcre-abort', $offset, 'the shared-namespace text lens aborted (PCRE: ' . preg_last_error_msg() . ')');
+
+                return;
+            }
+            if (1 === $result) {
+                $push_text_finding($kind, $offset, $hit[0][0]);
+            }
+        }
+    };
+
+    $tokens = token_get_all($source);
+    $count = count($tokens);
+    $offset = 0;
+    $in_heredoc = false;
+    $heredoc_dynamic = false;
+    $heredoc_chunks = array();
+    $heredoc_offset = 0;
+    $heredoc_quote = '"';
+    for ($i = 0; $i < $count; ++$i) {
+        $token = $tokens[ $i ];
+        $id = is_array($token) ? $token[0] : null;
+        $text = is_array($token) ? $token[1] : $token;
+        $token_offset = $offset;
+        $offset += strlen($text);
+
+        if (T_CONSTANT_ENCAPSED_STRING === $id) {
+            // Text lens: the raw token (whitespace-tolerant, so a value
+            // broken across lines refuses — t31-r4-5's doctrine holds).
+            $text_lens('string', $text, $token_offset);
+            // Value lens: what PHP computes from the literal (finding 4:
+            // the double-backslash class-string spelling).
+            $quote = $text[0];
+            $value = wp_connectors_unescape_php_string_literal($quote, substr($text, 1, -1));
+            if ($is_family(strtolower($value))) {
+                $push_text_finding('string', $token_offset, $value);
+            }
+
+            continue;
+        }
+        if (T_START_HEREDOC === $id) {
+            $in_heredoc = true;
+            $heredoc_dynamic = false;
+            $heredoc_chunks = array();
+            $heredoc_offset = $token_offset;
+            $heredoc_quote = false !== strpos($text, "'") ? "'" : '"';
+
+            continue;
+        }
+        if (T_END_HEREDOC === $id) {
+            $in_heredoc = false;
+            foreach ($heredoc_chunks as $chunk) {
+                $text_lens('string', $chunk[0], $chunk[1]);
+            }
+            // Value lens over the whole body: a heredoc resolves the
+            // double-quoted escape table, a nowdoc resolves nothing. An
+            // interpolated piece anywhere makes the value runtime-built —
+            // the ledgered K1 split-composed boundary (the TEXT lens above
+            // still judged every chunk).
+            if (! $heredoc_dynamic) {
+                $body = '';
+                foreach ($heredoc_chunks as $chunk) {
+                    $body .= $chunk[0];
+                }
+                $value = "'" === $heredoc_quote ? $body : wp_connectors_unescape_php_string_literal('"', $body);
+                if ($is_family(strtolower($value))) {
+                    $push_text_finding('string', $heredoc_offset, $value);
+                }
+            }
+            $heredoc_chunks = array();
+            $heredoc_dynamic = false;
+
+            continue;
+        }
+        if (T_ENCAPSED_AND_WHITESPACE === $id) {
+            if ($in_heredoc) {
+                $heredoc_chunks[] = array($text, $token_offset);
+            } else {
+                // A chunk of an INTERPOLATED string: its value is
+                // runtime-built (the ledgered boundary), but its TEXT is
+                // still judged — byte parity with K1's whole-file scan.
+                $text_lens('string', $text, $token_offset);
+            }
+
+            continue;
+        }
+        // Interpolation pieces inside a heredoc mark its value dynamic.
+        if ($in_heredoc && (T_VARIABLE === $id || T_CURLY_OPEN === $id || T_DOLLAR_OPEN_CURLY_BRACES === $id)) {
+            $heredoc_dynamic = true;
+        }
+        if (T_COMMENT === $id || T_DOC_COMMENT === $id) {
+            $text_lens('comment', $text, $token_offset);
+
+            continue;
+        }
+        if (T_INLINE_HTML === $id) {
+            $text_lens('inline-html', $text, $token_offset);
+
+            continue;
+        }
+    }
+
+    return $references;
+}
+
+/**
  * Reads a plugin file's leading bytes (glm25-9, glm25-12).
  *
  * The main-file discovery, the header parser, and the duplicate-header

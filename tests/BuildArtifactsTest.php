@@ -2533,40 +2533,57 @@ FIXTURE;
         $this->assertStringContainsString('use const Deicod\\WpConnectors\\OpenAiOauth\\Shared\\TTL;', $battery, "A 'use const' spelling is rewritten.");
         $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Http\\{HeaderMap, Url as U};', $battery, 'The brace-group form is rewritten (members are relative — the prefix carries them).');
 
-        // Fix-round pin (t31-r4 K1 / t31-r4-4): group-use MEMBER
-        // spellings — the prefix before '{' is Deicod\WpConnectors
-        // itself and the members carry the Shared segment — survived
-        // every earlier pattern and every gate silently (reproduced
-        // pre-fix: the embedded import pointed at the source namespace,
-        // a class-not-found fatal on load). The rewriter inserts the
-        // suffix at the member's LEADING Shared segment; a mid-member
-        // Shared ('Other\Shared') is a different namespace and stays
-        // untouched.
-        $groupUse = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock, Shared\\Storage\\Widget as W};\nuse Deicod\\WpConnectors\\{function Shared\\Clock\\now, const Shared\\TTL as T};\nuse Deicod\\WpConnectors\\{Other\\Shared as O, SharedStorage\\Widget};\nclass GroupUseStore\n{\n}\n";
+        /*
+         * Fix-round pin (t31-r4 K1 / t31-r4-4), restructured by t31-r7:
+         * group-use MEMBER spellings — the prefix before '{' is
+         * Deicod\WpConnectors itself and the members carry the Shared
+         * segment — are rewritten at the member's LEADING Shared segment
+         * (mixed-kind members included). The round-7 sibling doctrine
+         * SUPERSEDES the old battery's third row ('{Other\Shared as O,
+         * SharedStorage\Widget}' was pinned untouched-legal; those are
+         * SIBLINGS under the vendor prefix now and refuse in the
+         * survivors battery below): the rewriter owns no sibling
+         * spelling, so one ships pointing at a namespace that does not
+         * exist inside the plugin — the terminal-fix decision, ledgered
+         * with the spelling history that motivated it.
+         */
+        $groupUse = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock, Shared\\Storage\\Widget as W};\nuse Deicod\\WpConnectors\\{function Shared\\Clock\\now, const Shared\\TTL as T};\nclass GroupUseStore\n{\n}\n";
         $groupRewritten = WpConnectorsBuild::rewriteSharedNamespace($groupUse, 'OpenAiOauth', 'shared/src/GroupUseStore.php');
         $this->assertStringContainsString('use Deicod\\WpConnectors\\{OpenAiOauth\\Shared\\Clock, OpenAiOauth\\Shared\\Storage\\Widget as W};', $groupRewritten, 'A group-use member carrying the Shared segment is rewritten at its leading segment.');
         $this->assertStringContainsString('use Deicod\\WpConnectors\\{function OpenAiOauth\\Shared\\Clock\\now, const OpenAiOauth\\Shared\\TTL as T};', $groupRewritten, 'Mixed-kind group members rewrite too (the kind prefix rides along).');
-        $this->assertStringContainsString('use Deicod\\WpConnectors\\{Other\\Shared as O, SharedStorage\\Widget};', $groupRewritten, 'A mid-member Shared and a SharedStorage-prefixed member are NOT the namespace — untouched.');
         $this->assertStringNotContainsString('Deicod\\WpConnectors\\{Shared', $groupRewritten, 'No unrewritten group member may survive.');
 
-        // The total postcondition: spellings the patterns do not know
-        // REFUSE the build loudly with the file and byte offset — the
-        // nested brace group, the case-variant spelling (PHP namespaces
-        // are case-insensitive; the exact-case probes and the old
-        // postcondition were not), the multiline string-literal
-        // reference (t31-r4-5: the contiguous substring never appears,
-        // so every contiguous probe and the sweep's per-line whitelist
-        // were blind; reproduced end-to-end at exit 0 pre-fix), and a
-        // group member ALIASED as 'Shared' — a legal but pathological
-        // spelling whose member boundary the total scan cannot
-        // distinguish from the namespace segment, so the build refuses
-        // it (fail-loud: rename the alias) rather than narrow the scan.
+        /*
+         * The total postcondition (the token detector, t31-r7): a family
+         * reference the rewrite does not own REFUSES the build loudly
+         * with the file, byte offset, resolved name, and position kind.
+         * The t31-r4 rows stay (the nested brace group, the case-variant
+         * spelling, the multiline string reference, the docblock
+         * @throws, the group member ALIASED as 'Shared' — caught now as
+         * the sibling its member composes to); the round-7 rows close
+         * the shapes three regex rounds were each one spelling away
+         * from: the comment-interrupted use (a comment can only
+         * INTERRUPT the token run, never hide the name — the bytes
+         * defeat every contiguous probe, including the r4-K1 survivor
+         * regex), the SIBLING imports (the rewrite owns nothing under
+         * the vendor prefix but Shared, and a plugin's private tree
+         * loads nothing else — the SharedStorage spelling the old
+         * battery pinned untouched-legal flips with the doctrine), the
+         * double-backslash class-string (judged by its unescaped VALUE,
+         * not its bytes), and the bare vendor-prefix import.
+         */
         $survivors = array(
             'nested brace group' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\{Clock}};\nclass NestedGroupStore\n{\n}\n",
             'case-variant use' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse deicod\\wpconnectors\\shared\\Clock;\nclass CaseVariantStore\n{\n}\n",
             'multiline string reference' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass MultilineStore\n{\n    public function name(): string\n    {\n        return 'Deicod\\WpConnectors\\\nShared\\Clock';\n    }\n}\n",
             'docblock @throws reference' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\Shared\\Exception\\OAuthRuntimeException\n */\nclass DocblockStore\n{\n}\n",
             'group member aliased as Shared' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Clock as Shared};\nclass AliasedMemberStore\n{\n}\n",
+            'comment-interrupted use, between the segments (t31-r7-1)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod/* pick one */\\WpConnectors\\Shared\\Clock;\nclass InterruptedStore\n{\n}\n",
+            'sibling import under the vendor prefix (t31-r7-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Zai\\ApiClient;\nclass SiblingStore\n{\n}\n",
+            'SharedStorage-prefixed sibling (the r4 pin, flipped by the r7 doctrine)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\SharedStorage\\Widget;\nclass SharedStorageStore\n{\n}\n",
+            'group-use member carrying a sibling (t31-r7-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock, Zai\\Api};\nclass GroupSiblingStore\n{\n}\n",
+            'double-backslash class-string, judged by value (t31-r7-4)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass ClassStringStore\n{\n    public function name(): string\n    {\n        return 'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
+            'bare vendor-prefix import' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors;\nclass BarePrefixStore\n{\n}\n",
         );
         foreach ($survivors as $label => $hostile) {
             try {
@@ -2579,34 +2596,60 @@ FIXTURE;
             }
         }
 
-        // Soundness of the total scan (the round's design mandate,
-        // verified empirically then pinned): the rewritten target
-        // namespace …\WpConnectors\<Suffix>\Shared cannot contain the
-        // source spelling — the validated, non-empty suffix always sits
-        // between WpConnectors\ and Shared — so scanning the REAL tree's
-        // rewrites must stay clean for every legal suffix shape. A false
-        // positive here would make every embed build refuse; a silent
-        // survivor would ship a broken import. Both directions pin.
+        /*
+         * Soundness of the total scan (the round's design mandate,
+         * verified empirically then pinned): scanning the REAL tree's
+         * rewrites must stay clean for every legal suffix shape. A false
+         * positive here would make every embed build refuse; a silent
+         * survivor would ship a broken import. The r7 belt rides the
+         * token walk over the REWRITTEN output (the mandate's
+         * "verifiable via the token walk on the rewritten output"):
+         * rewriteSharedNamespace()'s own postcondition already refuses
+         * any survivor, and this loop additionally asserts every family
+         * reference in the output is the rewritten TARGET — kinds
+         * included — so the detector and the rewriter provably agree on
+         * the whole legal tree, suffix shape by suffix shape.
+         */
         foreach ($this->fixtureSuffixes() as $suffix) {
             $rewritten_count = 0;
             $root = realpath(__DIR__ . '/../shared/src');
+            $target_lower = strtolower('Deicod\\WpConnectors\\' . $suffix . '\\Shared');
             foreach (wp_connectors_php_source_files($root) as $relative) {
-                WpConnectorsBuild::rewriteSharedNamespace(
+                $rewritten_output = WpConnectorsBuild::rewriteSharedNamespace(
                     (string) file_get_contents($root . '/' . $relative),
                     $suffix,
                     'shared/src/' . $relative
                 );
+                foreach (wp_connectors_shared_family_references($rewritten_output) as $reference) {
+                    $this->assertContains($reference['kind'], array('declaration', 'use', 'code', 'string'), "The rewritten target may appear in every value position ({$relative}).");
+                    $this->assertTrue(
+                        $reference['lower'] === $target_lower || 0 === strpos($reference['lower'], $target_lower . '\\'),
+                        "Every family reference in a rewritten output must be the target prefix ({$relative}, suffix {$suffix}): {$reference['name']}"
+                    );
+                }
                 ++$rewritten_count;
             }
             $this->assertGreaterThanOrEqual(20, $rewritten_count, "The soundness sweep must see the real tree (suffix {$suffix}).");
         }
 
-        // A DIFFERENT namespace that merely starts with 'Shared'
-        // ('SharedStorage') is neither rewritten nor refused: the
-        // postcondition's lookahead keeps longer names out of scope.
+        /*
+         * A DIFFERENT namespace that merely starts with 'Shared'
+         * ('SharedStorage') REFUSES now (t31-r7's sibling doctrine,
+         * superseding the r4-era pin that kept it untouched): it is a
+         * sibling under the vendor prefix, the rewriter owns no sibling
+         * spelling, and a plugin's private tree loads nothing under
+         * Deicod\WpConnectors but its own <Suffix>\Shared target. The
+         * same flip applies to the old group battery's '{Other\Shared
+         * as O}' member — both now ride the survivors battery above.
+         */
         $foreign = "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\nuse Deicod\\WpConnectors\\SharedStorage\\Widget;\nclass WidgetStore\n{\n}\n";
-        $foreignRewritten = WpConnectorsBuild::rewriteSharedNamespace($foreign, 'OpenAiOauth', 'shared/src/Storage/WidgetStore.php');
-        $this->assertStringContainsString('use Deicod\\WpConnectors\\SharedStorage\\Widget;', $foreignRewritten, 'A Shared-prefixed FOREIGN namespace stays untouched.');
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($foreign, 'OpenAiOauth', 'shared/src/Storage/WidgetStore.php');
+            $this->fail('A Shared-prefixed SIBLING namespace must refuse the rewrite (the r7 sibling doctrine), never stay untouched.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('survived the rewrite', $e->getMessage());
+            $this->assertStringContainsString('WidgetStore.php', $e->getMessage());
+        }
 
         // The postcondition: a spelling the pattern does not know (a
         // comment-interrupted use line) refuses the rewrite loudly —
@@ -3061,6 +3104,9 @@ FIXTURE;
         $hostile_sources = array(
             'nested group' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\{Clock}};\nclass NestedGroupHostile\n{\n}\n",
             'multiline reference' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass MultilineHostile\n{\n    public function name(): string\n    {\n        return 'Deicod\\WpConnectors\\\nShared\\Clock';\n    }\n}\n",
+            'sibling import (t31-r7-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Zai\\ApiClient;\nclass SiblingHostile\n{\n}\n",
+            'comment-interrupted use (t31-r7-1)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod/* pick one */\\WpConnectors\\Shared\\Clock;\nclass InterruptedHostile\n{\n}\n",
+            'double-backslash class-string (t31-r7-4)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass ClassStringHostile\n{\n    public function name(): string\n    {\n        return 'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
         );
 
         try {

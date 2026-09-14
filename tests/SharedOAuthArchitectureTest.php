@@ -12,10 +12,14 @@
  * - Provider neutrality: no provider names in code, defaults, or docs
  *   of the generic classes (provider config belongs to the per-plugin
  *   directories).
- * - Rewrite safety: the build-time namespace rewrite (record 0005)
- *   touches only `namespace` and `use` lines, so the source may spell
- *   its own namespace ONLY on those lines — an inline fully-qualified
- *   reference would survive the rewrite broken.
+ * - Rewrite safety (round t31-r7, token-level): the build-time
+ *   namespace rewrite (record 0005) touches only `namespace` and `use`
+ *   statements, so the source may reference the Deicod\WpConnectors
+ *   family ONLY as its own namespace tree and ONLY in those two
+ *   rewritable positions — detected by the ONE token detector the
+ *   build's postcondition also rides (names reassembled across
+ *   comments, string literals judged by their unescaped value,
+ *   siblings under the vendor prefix banned outright).
  * - No static mutable state (pure value objects).
  * - PSR-4 discipline: one type per file, path matching namespace, file
  *   name matching the declared type name.
@@ -378,87 +382,191 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
-     * The namespace gate, whole-file (t31-r4 K1 / t31-r4-5).
+     * The namespace gate, at the TOKEN level (t31-r7's terminal fix,
+     * superseding t31-r4 K1's blank-then-regex gate and its
+     * every-use-statement whitelist).
      *
-     * The old per-line whitelist ('use '-prefixed lines are rewritable,
-     * everything else fails) was blind to any spelling that breaks across
-     * lines — '…\WpConnectors\' + newline + 'Shared\…' matched no single
-     * line and shipped past the sweep at exit 0 (reproduced end-to-end;
-     * the t31-r3-8 whole-file doctrine was never applied to this gate).
-     * The whole-file shape blanks the REWRITABLE forms — every namespace
-     * declaration and every use statement, multiline included, located
-     * by token — then asserts the ONE K1 property over everything that
-     * remains, through the SAME survivor pattern the build's
-     * postcondition rides (one vocabulary, two consumers: what the sweep
-     * flags and what the build refuse cannot drift).
+     * The sweep's charter, restated over the ONE detector the build's
+     * rewrite postcondition also rides
+     * (wp_connectors_shared_family_references(), one vocabulary, two
+     * consumers — what the sweep flags and what the build refuses
+     * cannot drift): a shared source may reference the
+     * Deicod\WpConnectors family ONLY as its OWN namespace tree
+     * (Deicod\WpConnectors\Shared…) and ONLY in the two rewritable
+     * positions (a namespace declaration, a use statement). Everything
+     * else fails the gate loudly:
      *
-     * Layering note: a case-variant use line ('use deicod\…') is a use
-     * statement, so THIS gate whitelists it — the build's postcondition
-     * (case-insensitive) still refuses it at build time. The sweep is
-     * the dev-time hygiene gate; the total scan is the release
-     * guarantee.
+     * - a SIBLING under the vendor prefix (Deicod\WpConnectors\<Other>…,
+     *   the bare vendor prefix included — finding 5 narrows the old
+     *   whitelist, which blanked EVERY use statement, to what the
+     *   rewriter actually owns: the rewrite never touches a sibling
+     *   import, so it ships pointing at a namespace that does not exist
+     *   inside the plugin);
+     * - the own namespace in a NON-rewritable position (code, string,
+     *   comment, inline HTML — a comment can no longer hide the
+     *   spelling: the token walk reassembles name runs across comments,
+     *   and the comment's own TEXT is judged too);
+     * - a string literal whose runtime VALUE names the family (the
+     *   double-backslash class-string spelling, judged unescaped).
+     *
+     * The build's postcondition is the release guarantee over the same
+     * findings (zero family references outside the rewritten target
+     * prefix); this gate is the dev-time hygiene half.
      */
-    public function testSharedSourceSpellsItsNamespaceOnlyInRewritableForms(): void
+    public function testSharedSourceReferencesItsNamespaceTreeOnlyInRewritableForms(): void
     {
-        $this->assertGreaterThanOrEqual(20, count($this->sharedSourceFiles()), 'The namespace gate must see the real contract tree.');
+        $files = $this->sharedSourceFiles();
+        $this->assertGreaterThanOrEqual(20, count($files), 'The namespace gate must see the real contract tree.');
 
-        foreach ($this->sharedSourceFiles() as $path) {
-            $this->assertNamespaceAbsentOutsideRewritableForms($path);
+        // Non-vacuity, both directions: the tree really carries family
+        // references (every file DECLARES its namespace; most import
+        // siblings of their own tree), and every one of them is an
+        // own-rooted declaration or import.
+        $family = 0;
+        foreach ($files as $path) {
+            $this->assertFamilyReferencesStayRewritable($path);
+            foreach (wp_connectors_shared_family_references($this->fileContents($path)) as $reference) {
+                ++$family;
+            }
         }
+        $this->assertGreaterThanOrEqual(count($files), $family, 'Every swept file must declare its own namespace — the gate judges real family references, not an empty set.');
     }
 
     /**
-     * Fix-round pin (t31-r4 K1 / t31-r4-5), end-to-end through the
-     * ACTUAL gate, both directions: a namespace spelling broken across
-     * lines OUTSIDE a rewritable statement (a string literal carrying
-     * '…\WpConnectors\' + newline + 'Shared\…') must fail the gate with
-     * the file and line named — the old per-line whitelist never saw one
-     * line containing the full substring, and the same spelling shipped
-     * through the build at exit 0 (reproduced pre-fix through
-     * rewriteSharedNamespace). The whitelist direction: a group-use
-     * import — whose member carries `Shared` at a member position the
-     * rewriter now owns — and an ordinary multiline use statement both
-     * stay clean through the same code path (they are rewritable forms,
-     * blanked whole), and a real swept source passes.
+     * The enumerated import vocabulary of the legal tree (t31-r7: "the
+     * current shared tree is the ground truth for what's legal —
+     * enumerate and pin").
+     *
+     * Beyond the family, a shared source may import ONLY the platform
+     * classes the tree already uses. A new import — a vendor package, a
+     * WordPress shim, anything — fails this pin until it is
+     * deliberately added here (fail-loud curation, the WP-reach
+     * vocabulary's own doctrine), keeping the shared source
+     * dependency-free by construction rather than by recall.
      */
-    public function testTheNamespaceGateCatchesMultilineSpellingsEndToEnd(): void
+    public function testTheSharedTreeSImportVocabularyIsTheEnumeratedLegalSet(): void
     {
-        $gate = new \ReflectionMethod($this, 'assertNamespaceAbsentOutsideRewritableForms');
+        $legal_platform = array('DateTimeImmutable', 'DateTimeZone', 'InvalidArgumentException', 'RuntimeException', 'Throwable');
+        $own_lower = strtolower(wp_connectors_shared_source_namespace());
 
+        $platform = array();
+        $own = 0;
+        foreach ($this->sharedSourceFiles() as $path) {
+            foreach (wp_connectors_use_statement_names($this->fileContents($path)) as $name) {
+                $lower = strtolower($name);
+                if ($lower === $own_lower || 0 === strpos($lower, $own_lower . '\\')) {
+                    ++$own;
+
+                    continue;
+                }
+                $platform[] = $name;
+            }
+        }
+        sort($platform);
+
+        $this->assertNotSame(array(), $platform, 'The enumeration pin must be non-vacuous: the legal tree carries platform imports.');
+        $this->assertSame(
+            array(),
+            array_values(array_diff($platform, $legal_platform)),
+            sprintf(
+                'A shared source imports beyond the enumerated platform set (%s): found %s. A new import joins the tree only by being deliberately pinned here — the same fail-loud curation the WP-reach vocabulary rides.',
+                implode(', ', $legal_platform),
+                implode(', ', array_values(array_unique(array_diff($platform, $legal_platform))))
+            )
+        );
+        $this->assertGreaterThan(0, $own, 'The own-tree import count must be non-vacuous.');
+    }
+
+    /**
+     * Round-7 pin, end-to-end through the ACTUAL gate, both directions:
+     * every spelling class the regex rounds missed one-at-a-time now
+     * fails at the token level — the t31-r4-5 multiline string (still
+     * failing, now via the string lens), the comment-interrupted use
+     * (t31-r7-1: the comment can only interrupt the run, never hide the
+     * name), the sibling import and the group-use member carrying one
+     * (t31-r7-2), the double-backslash class-string (t31-r7-4, judged by
+     * its unescaped VALUE), the docblock @throws (the comment's own text
+     * judged), the inline FQCN and the bare vendor-prefix import (the
+     * narrowed whitelist, t31-r7-5). The clean direction: everything the
+     * rewriter OWNS stays clean — own declarations and imports, group
+     * members, platform imports — and a real swept source passes.
+     */
+    public function testTheNamespaceGateCatchesEveryUnownedFamilyReferenceEndToEnd(): void
+    {
+        $gate = new \ReflectionMethod($this, 'assertFamilyReferencesStayRewritable');
+
+        // The carried-forward t31-r4-5 fixture: a string literal broken
+        // across lines, still failing with the file and line named.
         $fixture = realpath(__DIR__ . '/fixtures/sweep-corruption/namespace-multiline.php');
         $this->assertNotFalse($fixture, 'The namespace-multiline fixture must exist.');
 
         try {
             $gate->invoke($this, $fixture);
-            $this->fail('A namespace spelling broken across lines outside a rewritable statement must fail the gate, never pass line-by-line.');
+            $this->fail('A namespace spelling broken across lines outside a rewritable statement must fail the gate.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
             $this->assertStringContainsString('namespace-multiline.php:24', $e->getMessage());
             $this->assertStringContainsString("return 'Deicod\\WpConnectors\\", $e->getMessage());
         }
 
+        $offenders = array(
+            'comment-interrupted use' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod/* pick one */\\WpConnectors\\Shared\\Clock;\ninterface InterruptedFixture\n{\n}\n",
+            'sibling import' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Zai\\ApiClient;\ninterface SiblingFixture\n{\n}\n",
+            'double-backslash class-string' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface ClassStringFixture\n{\n    public function name(): string;\n}\nfinal class Carrier\n{\n    public function name(): string\n    {\n        return 'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
+            'group-use member carrying a sibling' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock, Zai\\Api};\ninterface GroupSiblingFixture\n{\n}\n",
+            'docblock @throws reference' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\Shared\\Exception\\OAuthRuntimeException\n */\ninterface DocblockFixture\n{\n}\n",
+            'inline fully-qualified reference' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface InlineFixture\n{\n    public function name(): string;\n}\nfinal class InlineCarrier\n{\n    public function name(): string\n    {\n        return \\Deicod\\WpConnectors\\Shared\\Clock::class;\n    }\n}\n",
+            'bare vendor-prefix import' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors;\ninterface BarePrefixFixture\n{\n}\n",
+        );
         /*
-         * The whitelist direction, through the same blanking helper: a
-         * group-use import and a multiline plain import are rewritable
-         * STATEMENTS — blanked whole, never flagged by this gate (the
-         * rewriter's postcondition owns what they ship; the sweep's
-         * charter is exactly "only rewritable forms carry the
-         * namespace").
+         * One FRESH scratch path per shape: the shared loud reader caches
+         * contents per path (t31-r3-13), so rewriting one path across
+         * iterations would judge every later shape against the FIRST
+         * shape's cached bytes — the loop would prove nothing past row
+         * one.
          */
-        $scratch = tempnam(sys_get_temp_dir(), 'wpct-ns-forms-');
-        try {
-            file_put_contents($scratch, "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock, Shared\\Storage\\Widget as W};\nuse Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap, Url as U};\nuse Deicod\\WpConnectors\n;\ninterface FormsFixture\n{\n}\n");
-            $gate->invoke($this, $scratch);
-        } finally {
-            unlink($scratch);
+        foreach ($offenders as $label => $source) {
+            $scratch = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-');
+            try {
+                file_put_contents($scratch, $source);
+                try {
+                    $gate->invoke($this, $scratch);
+                    $this->fail("A family reference the rewrite does not own ({$label}) must fail the gate, never ride the old every-use-statement whitelist.");
+                } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                    $this->assertStringContainsString('Deicod\\WpConnectors', $e->getMessage(), "The refusal must name the reference ({$label}).");
+                    $this->assertStringContainsString(basename($scratch), $e->getMessage(), "The refusal must name the file ({$label}).");
+                }
+            } finally {
+                unlink($scratch);
+            }
         }
 
-        // Clean direction: a real swept source passes the same gate.
+        // The clean direction, through the same gate on its own fresh
+        // path: everything the rewriter owns (own declaration,
+        // plain/group/function own imports) plus the enumerated platform
+        // imports and a relative `namespace\` operator — no finding.
+        $clean = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-clean-');
+        try {
+            file_put_contents(
+                $clean,
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock;\nuse Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap, Url as U};\nuse function Deicod\\WpConnectors\\Shared\\Clock\\now;\nuse DateTimeImmutable;\nuse InvalidArgumentException;\ninterface FormsFixture\n{\n    public function now(): \\DateTimeImmutable;\n    public function self(): namespace\\FormsFixture;\n}\n"
+            );
+            $gate->invoke($this, $clean);
+        } finally {
+            unlink($clean);
+        }
+
+        // A real swept source passes the same gate.
         $gate->invoke($this, (string) realpath(__DIR__ . '/../shared/src/Http/HeaderMap.php'));
     }
 
     /**
-     * The namespace gate for ONE file: blank the rewritable statements,
-     * then require the K1 survivor pattern to find nothing.
+     * The namespace gate for ONE file, two layers over the ONE detector:
+     * every family reference must be an own-namespace declaration or
+     * import (the position/rooting policy below), and the file must
+     * REWRITE clean through the build's own postcondition (the ownership
+     * half — a use statement is legal exactly when the rewrite DID
+     * rewrite it). Anything else fails with the file, line, reference,
+     * and the reason named.
      *
      * Private and path-parameterized so the mutation discipline can
      * drive the ACTUAL gate on planted fixtures (both directions).
@@ -466,108 +574,72 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      * @param string $path Absolute file path.
      * @return void
      */
-    private function assertNamespaceAbsentOutsideRewritableForms(string $path): void
+    private function assertFamilyReferencesStayRewritable(string $path): void
     {
         $contents = $this->fileContents($path);
-        $blanked = $this->contentsWithoutRewritableStatements($contents);
-        $result = preg_match(WpConnectorsBuild::SHARED_NAMESPACE_SURVIVOR_PATTERN, $blanked, $hit, PREG_OFFSET_CAPTURE);
-        if (false === $result) {
-            $this->fail(
-                sprintf(
-                    'A namespace spelling outside rewritable forms breaks the build-time rewrite: %s — the survivor scan aborted (PCRE), and an abort is a REFUSAL, never a clean pass.',
-                    $path
-                )
-            );
-        }
-        if (1 === $result) {
-            $before = (string) substr($blanked, 0, $hit[0][1]);
-            $line = substr_count($before, "\n") + 1;
+        $own_lower = strtolower(wp_connectors_shared_source_namespace());
+
+        foreach (wp_connectors_shared_family_references($contents) as $reference) {
+            if ('pcre-abort' === $reference['kind']) {
+                $this->fail(
+                    sprintf(
+                        'The namespace gate aborted (PCRE) on %s — an abort is a REFUSAL, never a clean pass.',
+                        $path
+                    )
+                );
+            }
+
+            $reason = '';
+            if ('declaration' !== $reference['kind'] && 'use' !== $reference['kind']) {
+                $reason = sprintf('the %s position is not rewritable (only namespace declarations and use statements are rewritten)', $reference['kind']);
+            } elseif ($reference['lower'] !== $own_lower && 0 !== strpos($reference['lower'], $own_lower . '\\')) {
+                $reason = sprintf('%s is not the shared tree\'s own namespace — a sibling (or the bare vendor prefix) under Deicod\\WpConnectors, which the rewrite never touches and whose classes do not exist inside a plugin\'s private tree', $reference['name']);
+            }
+            if ('' === $reason) {
+                continue;
+            }
+
             $original_line = '';
             foreach ($this->numberedLines($path) as [$number, $text]) {
-                if ($number === $line) {
+                if ($number === $reference['line']) {
                     $original_line = trim($text);
                     break;
                 }
             }
             $this->fail(
                 sprintf(
-                    'A namespace spelling outside rewritable forms breaks the build-time rewrite (only namespace/use statements are rewritten): %s:%d — %s',
+                    'A shared-namespace-family reference the rewrite does not own breaks the build-time rewrite: %s:%d — %s (%s): %s',
                     $path,
-                    $line,
+                    $reference['line'],
+                    $reference['name'],
+                    $reference['kind'],
                     $original_line
                 )
             );
         }
-    }
 
-    /**
-     * The file contents with every REWRITABLE namespace statement blanked
-     * — length- and line-preserving (the strip_comments idiom: every
-     * byte becomes a space except the line terminators, so offsets and
-     * line numbers computed on the blanked copy are true of the
-     * original).
-     *
-     * Rewritable = the two statement shapes bin/build.php's rewriter
-     * owns: `namespace …;` declarations and `use …;` imports (multiline
-     * included — a use statement is keyword-to-semicolon, so a member
-     * broken across lines is whitelisted as a whole). Located by TOKEN,
-     * so a 'use' or 'namespace' spelled inside a string literal or
-     * comment is not a statement and never whitelists anything. A
-     * closure's lexical-import `use (…)` is not a namespace import and
-     * stays verbatim; `namespace\` used as the relative operator is
-     * likewise not a declaration.
-     *
-     * @param string $contents PHP source (valid PHP — the swept tree is linted).
-     * @return string Same-length blanked copy (line terminators kept).
-     */
-    private function contentsWithoutRewritableStatements(string $contents): string
-    {
-        $tokens = token_get_all($contents);
-        $count = count($tokens);
-        $blanked = '';
-        for ($i = 0; $i < $count; ++$i) {
-            $token = $tokens[ $i ];
-            $id = is_array($token) ? $token[0] : null;
-            $text = is_array($token) ? $token[1] : $token;
-
-            if (T_NAMESPACE !== $id && T_USE !== $id) {
-                $blanked .= $text;
-                continue;
-            }
-
-            // What FOLLOWS decides whether this keyword opens a
-            // rewritable statement: a name (namespace declaration /
-            // import — a single T_STRING or one of PHP 8's whole-name
-            // tokens) does; '(' (closure lexical import) does not. The
-            // relative 'namespace\Foo' operator is its own T_NAME_RELATIVE
-            // token in PHP 8, so a bare T_NAMESPACE here is always a
-            // declaration.
-            $j = $i + 1;
-            while ($j < $count && is_array($tokens[ $j ]) && T_WHITESPACE === $tokens[ $j ][0]) {
-                ++$j;
-            }
-            $follower = $j < $count ? $tokens[ $j ] : null;
-            $follower_id = is_array($follower) ? $follower[0] : null;
-            $is_name = T_STRING === $follower_id || T_NAME_QUALIFIED === $follower_id || T_NAME_FULLY_QUALIFIED === $follower_id || T_NAME_RELATIVE === $follower_id;
-            $is_import_or_declaration = T_NAMESPACE === $id ? $is_name : ($is_name || T_FUNCTION === $follower_id || T_CONST === $follower_id);
-            if (! $is_import_or_declaration) {
-                $blanked .= $text;
-                continue;
-            }
-
-            // Blank the whole statement (keyword through the terminating
-            // ';'), keeping line terminators so line numbers stay true.
-            for ($k = $i; $k < $count; ++$k) {
-                $chunk = is_array($tokens[ $k ]) ? $tokens[ $k ][1] : $tokens[ $k ];
-                $blanked .= preg_replace('/[^\r\n]/', ' ', $chunk);
-                if (! is_array($tokens[ $k ]) && ';' === $tokens[ $k ]) {
-                    break;
-                }
-            }
-            $i = $k;
+        /*
+         * The OWNERSHIP half of the narrowed whitelist (t31-r7-5): a use
+         * statement is legal exactly when the rewrite DID rewrite it —
+         * verified by REWRITING and holding the build's own
+         * postcondition over the output (the token walk on the rewritten
+         * bytes). This makes the sweep and the build give ONE verdict by
+         * construction: a use spelling the rewriter's patterns miss (a
+         * comment-interrupted import, say) fails here at dev time with
+         * the same refusal the build would raise, instead of riding a
+         * whitelist that never asked whether the rewrite succeeds.
+         */
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($contents, 'ExampleConnector', $path);
+        } catch (\RuntimeException $e) {
+            $this->fail(
+                sprintf(
+                    'A namespace spelling the rewriter does not own breaks the build-time rewrite (the sweep and the build give one verdict): %s — %s',
+                    $path,
+                    $e->getMessage()
+                )
+            );
         }
-
-        return $blanked;
     }
 
     /**
