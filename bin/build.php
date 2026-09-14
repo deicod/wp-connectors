@@ -418,8 +418,25 @@ final class WpConnectorsBuild
              * a composer path repo, an npm .bin shim — refused a build
              * whose zip would have been byte-identical to one without
              * the link (excluded paths ship nothing either way).
+             *
+             * The segment judgment rides the ONE comparison owner and
+             * folds CASE (review round t31-r6-3): the byte-exact
+             * array_intersect let 'Tests/', 'Build.json', and 'VENDOR'
+             * ship in release zips while the inspector — byte-exact
+             * itself — accepted the same entries (both gates agreed on
+             * the wrong verdict, so the one-verdict check never fired);
+             * on a case-insensitive extraction target every such name
+             * folds onto the dev entry it is one case away from.
              */
-            if (array_intersect($parts, wp_connectors_development_entry_names()) !== array()) {
+            $excluded = false;
+            foreach ($parts as $part) {
+                if (wp_connectors_is_development_entry($part)) {
+                    $excluded = true;
+
+                    break;
+                }
+            }
+            if ($excluded) {
                 continue;
             }
             /*

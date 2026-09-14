@@ -2153,6 +2153,80 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r6-3): the ONE development-entry vocabulary
+     * (t31-r5-10) was compared byte-exactly by BOTH consumers — the
+     * builder's array_intersect and the inspector's in_array — so a
+     * case-variant segment ('Tests/', 'Build.json', 'VENDOR') was no
+     * development entry to either gate: it shipped in the release zip
+     * AND passed inspection (reproduced; both gates agreed on the
+     * wrong verdict, so the one-verdict check never fired), while on
+     * a case-insensitive extraction target every such name folds onto
+     * the dev entry it is one case away from. ONE comparison owner
+     * (wp_connectors_is_development_entry()) folds case for both
+     * gates now: the build excludes the segment, the inspector
+     * rejects the entry, one verdict in every casing.
+     */
+    public function testTheDevelopmentEntryVocabularyFoldsCaseForBothGates(): void
+    {
+        $tempPlugin = self::distDir() . '/.deventry-case-test/example-connector';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir(dirname($tempPlugin), 0755, true);
+        $this->copyFixturePlugin($tempPlugin);
+        // Case-variant spellings of three vocabulary members: a
+        // directory segment ('tests'), a root file ('build.json'), and
+        // the heaviest one ('vendor' — dependency trees).
+        mkdir($tempPlugin . '/Tests', 0755, true);
+        file_put_contents($tempPlugin . '/Tests/Bootstrap.php', "<?php\n// dev bootstrap, case-variant segment\n");
+        file_put_contents($tempPlugin . '/Build.json', "{}\n");
+        mkdir($tempPlugin . '/VENDOR', 0755, true);
+        file_put_contents($tempPlugin . '/VENDOR/lib.php', "<?php\n// vendored dev shim, case-variant segment\n");
+
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+            foreach ($this->zipEntryNames($zipPath) as $entry) {
+                $this->assertStringNotContainsString('Tests/', $entry, 'A case-variant tests segment must not ship.');
+                $this->assertStringNotContainsString('Build.json', $entry, 'A case-variant build.json must not ship.');
+                $this->assertStringNotContainsString('VENDOR/', $entry, 'A case-variant vendor segment must not ship.');
+            }
+
+            // ONE verdict, this direction: the artifact the doctrine
+            // ships is the artifact the inspector accepts.
+            $this->assertSame(
+                array(),
+                wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-deventry-case'),
+                'Build and inspect must agree on the case-folded vocabulary.'
+            );
+
+            // ONE verdict, the reverse: a HAND-CRAFTED zip carrying the
+            // same case-variant spellings rejects, naming them.
+            $hostileZip = self::distDir() . '/connectors-deventrycase-demo-1.0.0.zip';
+            $hostile = new ZipArchive();
+            $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $head = "Plugin Name:       deventrycase-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       deventrycase-demo\nAuthor:            x\n";
+            $hostile->addFromString('deventrycase-demo/deventrycase-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'DEVENTRYCASE_DEMO_VERSION', '1.0.0' );\n");
+            foreach (array( 'deventrycase-demo/Tests/Bootstrap.php', 'deventrycase-demo/Build.json', 'deventrycase-demo/VENDOR/lib.php' ) as $entry) {
+                $hostile->addFromString($entry, 'x');
+            }
+            $hostile->close();
+            try {
+                $violations = wp_connectors_inspect_artifact($hostileZip, self::distDir() . '/.inspect-deventry-case-hostile');
+                $this->assertNotSame(array(), $violations, 'A crafted zip carrying a case-variant development entry must reject.');
+                $report = implode("\n", $violations);
+                $this->assertStringContainsString('Tests/Bootstrap.php', $report);
+                $this->assertStringContainsString('Build.json', $report);
+                $this->assertStringContainsString('VENDOR/lib.php', $report);
+            } finally {
+                @unlink($hostileZip);
+                @unlink($hostileZip . '.sha256');
+            }
+        } finally {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r5-11): the manifest merge's read-modify-
      * write raced across processes — two concurrent builds of DIFFERENT
      * plugins both exited 0 while the landed checksums.txt described

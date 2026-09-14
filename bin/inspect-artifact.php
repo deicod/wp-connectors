@@ -49,12 +49,14 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 
     // Forbidden entries are matched on whole path segments/files, so entries
     // like "assets/latest/x.png" are never false-rejected. The vocabulary
-    // is the ONE shared development-entry list (t31-r5-10) — the builder's
-    // collector and this inspector cannot drift on what a dev entry is
-    // (they had: the dotless 'phpunit.cache' shipped through builds the
-    // inspector rejected). A basename is a segment, so one any-part check
-    // covers both the former segment and file lists.
-    $developmentEntries = wp_connectors_development_entry_names();
+    // and its CASE FOLDING are the ONE shared development-entry judgment
+    // (t31-r5-10, t31-r6-3) — the builder's collector and this inspector
+    // cannot drift on what a dev entry is (they had: the dotless
+    // 'phpunit.cache' shipped through builds the inspector rejected; and
+    // the byte-exact comparison let case variants — 'Tests/', 'Build.json',
+    // 'VENDOR' — ship AND pass inspection, both gates agreeing on the wrong
+    // verdict). A basename is a segment, so one any-part check covers both
+    // the former segment and file lists.
 
     $topDirs = array();
     $sawDirectoryEntry = false;
@@ -98,11 +100,14 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * judges every entry, embedded or not.
          */
         $isEmbeddedShared = 0 === strpos($name, $parts[0] . '/src/Shared/');
-        // Segment check (whole path components; a basename is one).
+        // Segment check (whole path components; a basename is one),
+        // judged by the ONE comparison owner — case-insensitively
+        // (t31-r6-3), the same fold the builder's collector excludes
+        // by, so the two gates give ONE verdict in every casing.
         $isForbidden = false;
         if (! $isEmbeddedShared) {
             foreach ($parts as $part) {
-                if (in_array($part, $developmentEntries, true)) {
+                if (wp_connectors_is_development_entry($part)) {
                     $isForbidden = true;
 
                     break;

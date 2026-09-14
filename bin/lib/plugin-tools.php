@@ -1888,7 +1888,10 @@ function wp_connectors_basename_without_php_extension($path)
  * these names as a segment, and the inspector rejects any entry
  * carrying one as a segment (its former separate basename list is
  * subsumed — a basename is a segment). A name joins the list only
- * when a dev tool actually starts dropping it in plugin trees.
+ * when a dev tool actually starts dropping it in plugin trees. The
+ * segment COMPARISON is owned by wp_connectors_is_development_entry()
+ * below (case-insensitive, t31-r6-3) — never in_array/array_intersect
+ * at a consumer.
  *
  * @return list<string> Sorted development-entry names (segments and files).
  */
@@ -1905,6 +1908,39 @@ function wp_connectors_development_entry_names()
         'webpack.config.js', 'vite.config.js',
         'build.json', '.distignore',
     );
+}
+
+/**
+ * Whether a path segment names a development entry, CASE-INSENSITIVELY
+ * (review round t31-r6-3).
+ *
+ * The ONE comparison owner for the vocabulary above: both release
+ * gates compared segments byte-exactly — the builder's collector by
+ * array_intersect, the inspector by in_array — so a case-variant
+ * spelling ('Tests/Bootstrap.php', 'Build.json', 'VENDOR') was no
+ * development entry to EITHER gate: it shipped in the release zip AND
+ * passed inspection (reproduced; both gates agreed on the wrong
+ * verdict, so the one-verdict checks never fired), while on a
+ * case-insensitive extraction target (Windows/macOS hosts) every one
+ * of those names folds onto the dev entry it is one case away from —
+ * the t31-r5-16 collision doctrine applied to the vocabulary. The
+ * judgment folds case now: what the gates exclude is the vocabulary
+ * in any casing, and build and inspect give ONE verdict both
+ * directions — the build excludes the segment, the inspector rejects
+ * the entry.
+ *
+ * @param string $segment One path segment (a basename is one).
+ * @return bool True when the segment matches a vocabulary name in any case.
+ */
+function wp_connectors_is_development_entry($segment)
+{
+    foreach (wp_connectors_development_entry_names() as $development_entry) {
+        if (0 === strcasecmp((string) $segment, $development_entry)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
