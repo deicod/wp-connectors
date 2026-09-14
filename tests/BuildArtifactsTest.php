@@ -1308,6 +1308,64 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r3-5), end-to-end through the build: the
+     * derivation legally produced digit-initial suffixes
+     * ('3cx-oauth' -> '3cxOauth') that the namespace-segment validator
+     * rejects — a PHP label may not start with a digit, so the DERIVED
+     * spelling was never a declarable namespace. The derivation
+     * underscores digit-initial suffixes ('_3cxOauth'), the validator's
+     * label law is unchanged, and a digit-initial slug now builds: the
+     * conventions gates pass, the autoloader prefix matches the
+     * derivation, and the embedded shared copy carries the legal,
+     * lint-clean namespace.
+     */
+    public function testADigitInitialSlugDerivesAndBuildsALegalNamespace()
+    {
+        $scratch = self::distDir() . '/.digit-slug';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+
+        $plugin = $scratch . '/plugin/3cx-oauth';
+        mkdir($plugin . '/src', 0755, true);
+        $head = "Plugin Name:       3cx-oauth\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       3cx-oauth\nAuthor:            x\n";
+        file_put_contents($plugin . '/3cx-oauth.php', "<?php\n/**\n * {$head} */\ndefine( '3CX_OAUTH_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n");
+        $suffix = wp_connectors_namespace_suffix_from_slug('3cx-oauth');
+        $this->assertSame('_3cxOauth', $suffix);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\{$suffix}\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($plugin . '/src/autoload.php', $autoload);
+        file_put_contents($plugin . '/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            // The conventions gates the build rides accept the digit-initial
+            // slug (headers, version constant, the derivation-matched
+            // autoloader prefix) — the derivation and the validator agree.
+            $this->assertSame(array(), wp_connectors_autoloader_violations($plugin));
+
+            $zipPath = WpConnectorsBuild::buildPlugin($plugin, $scratch . '/dist');
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
+            $embedded = (string) $zip->getFromName('3cx-oauth/src/Shared/Clock/ClockInterface.php');
+            $zip->close();
+            $this->assertStringContainsString('namespace Deicod\\WpConnectors\\_3cxOauth\\Shared\\Clock;', $embedded);
+
+            // The embedded copy is declarable PHP, not just a string the
+            // zip accepted: the underscored namespace lints clean.
+            $lintTarget = $scratch . '/embedded-copy.php';
+            file_put_contents($lintTarget, $embedded);
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($lintTarget) . ' 2>&1', $output, $exit);
+            $this->assertSame(0, $exit, 'The embedded copy under a digit-initial slug must lint: ' . implode("\n", $output));
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
@@ -1366,8 +1424,19 @@ FIXTURE;
         $this->assertSame('Zai', wp_connectors_namespace_suffix_from_slug('zai'));
         $this->assertSame('ExampleConnector', wp_connectors_namespace_suffix_from_slug('example-connector'));
 
+        // Fix-round pin (t31-r3-5): a digit-initial slug is a legal plugin
+        // slug whose naive derivation ('3cx-oauth' -> '3cxOauth') is NOT a
+        // legal PHP label — the validator rejected what the derivation
+        // produced. The derivation underscores it: a legal segment, the
+        // same one for the conventions checker, the builder, and the dev
+        // autoloader.
+        $this->assertSame('_3cxOauth', wp_connectors_namespace_suffix_from_slug('3cx-oauth'));
+        $this->assertSame('_42', wp_connectors_namespace_suffix_from_slug('42'));
+        $this->assertSame('X3Dev', wp_connectors_namespace_suffix_from_slug('x3-dev'), 'Only a digit-INITIAL derivation is underscored.');
+
         // bin/build.php delegates to the same derivation (one source of truth).
         $this->assertSame('OpenAiOauth', WpConnectorsBuild::namespaceSuffixFromSlug('openai-oauth'));
+        $this->assertSame('_3cxOauth', WpConnectorsBuild::namespaceSuffixFromSlug('3cx-oauth'));
 
         // A correctly named future openai-oauth plugin must therefore pass
         // the conventions autoloader check (it previously would have been

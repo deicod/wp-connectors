@@ -1820,6 +1820,14 @@ function wp_connectors_autoloader_violations($pluginDir)
  * known acronyms, which keep their documented casing ('openai' -> 'OpenAi',
  * per docs/CONVENTIONS.md).
  *
+ * A DIGIT-INITIAL slug derives a digit-initial suffix — and a PHP label
+ * may not start with a digit, so '3cx-oauth' -> '3cxOauth' was a suffix
+ * no namespace could ever declare while build's validator (correctly)
+ * rejected it (review round t31-r3-5: derivation and validation must
+ * agree). The mechanical spelling that IS a legal segment is the
+ * underscored one: '3cx-oauth' -> '_3cxOauth'. Every consumer of this
+ * derivation gets the same legal segment by construction.
+ *
  * @param string $slug Plugin slug.
  * @return string
  */
@@ -1831,8 +1839,10 @@ function wp_connectors_namespace_suffix_from_slug($slug)
     foreach (explode('-', strtolower((string) $slug)) as $segment) {
         $parts[] = isset($acronyms[ $segment ]) ? $acronyms[ $segment ] : ucfirst($segment);
     }
+    $suffix = implode('', $parts);
 
-    return implode('', $parts);
+    // Legal-label fix (t31-r3-5): underscore a digit-initial derivation.
+    return '' !== $suffix && ctype_digit($suffix[0]) ? '_' . $suffix : $suffix;
 }
 
 /**

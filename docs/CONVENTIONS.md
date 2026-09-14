@@ -20,6 +20,12 @@ Namespace-to-path is strict PSR-4: `Deicod\WpConnectors\Zai\Provider\X` lives at
 `connectors/zai/src/Provider/X.php`. The namespace segment after
 `WpConnectors\` is fixed per plugin (`Zai`, `OpenAiOauth`, `XaiOauth`,
 `AnthropicOauth`) and must appear in that plugin's `src/autoload.php` prefix.
+The segment is derived from the slug (hyphen-separated segments capitalized,
+documented acronyms keeping their casing); a **digit-initial slug** (a legal
+plugin slug, e.g. `3cx-oauth`) derives an underscored segment (`_3cxOauth`),
+because a PHP namespace label may not start with a digit — the derivation in
+`bin/lib/plugin-tools.php` is the one source shared by the conventions check,
+the builder, and the test bootstrap.
 Generated shared copies use `Deicod\WpConnectors\<Ns>\Shared\` (record 0005).
 
 ## Plugin anatomy rules (checked)
