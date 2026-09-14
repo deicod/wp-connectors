@@ -1580,17 +1580,23 @@ FIXTURE;
 
         // The rewritten file must be valid PHP (provenance placement must not
         // precede the open tag / strict_types) and must load without output.
+        // Scratch hygiene (t31-r3-11): the lint/load scratch matches no
+        // tearDown glob, so its lifecycle rides try/finally — an assertion
+        // failure between write and unlink must not leak it into dist/.
         $temp = self::distDir() . '/.rewrite-test-' . getmypid() . '.php';
-        file_put_contents($temp, $rewritten);
-        $output = array();
-        $exit = 0;
-        exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($temp) . ' 2>&1', $output, $exit);
-        $this->assertSame(0, $exit, 'Rewritten shared source must pass php -l: ' . implode("\n", $output));
+        try {
+            file_put_contents($temp, $rewritten);
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($temp) . ' 2>&1', $output, $exit);
+            $this->assertSame(0, $exit, 'Rewritten shared source must pass php -l: ' . implode("\n", $output));
 
-        ob_start();
-        require $temp;
-        $emitted = ob_get_clean();
-        unlink($temp);
+            ob_start();
+            require $temp;
+            $emitted = ob_get_clean();
+        } finally {
+            @unlink($temp);
+        }
         $this->assertSame('', $emitted, 'Loading a rewritten shared file must not emit output.');
         $this->assertTrue(class_exists('Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Storage\\TokenStore'));
     }

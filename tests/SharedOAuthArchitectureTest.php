@@ -654,26 +654,38 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $gate = new \ReflectionMethod($this, 'assertCarriesNoStaticMutableState');
         $violation = "\nfinal class Burner\n{\n    private static\n        int \$counter;\n}\n";
 
+        /*
+         * Scratch hygiene (t31-r3-11): the burner and the clean twin are
+         * tempnam files whose names match NO tearDown glob — an assertion
+         * failure between creation and unlink leaked them into /tmp. The
+         * lifecycles ride try/finally now, on every exit path.
+         */
         $burner = tempnam(sys_get_temp_dir(), 'wpct-pcre-burner-');
-        file_put_contents($burner, '<?php' . str_pad('// ', 50000, 'x') . "\n static " . str_pad('', 50000, 'y') . $violation);
-
-        $aborted = false;
         try {
-            $gate->invoke($this, $burner);
-        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $aborted = true;
-            $this->assertStringContainsString('PCRE abort', $e->getMessage(), 'The abort refusal must name itself, not masquerade as a located hit or a clean pass.');
-            $this->assertStringContainsString(basename($burner), $e->getMessage());
+            file_put_contents($burner, '<?php' . str_pad('// ', 50000, 'x') . "\n static " . str_pad('', 50000, 'y') . $violation);
+
+            $aborted = false;
+            try {
+                $gate->invoke($this, $burner);
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $aborted = true;
+                $this->assertStringContainsString('PCRE abort', $e->getMessage(), 'The abort refusal must name itself, not masquerade as a located hit or a clean pass.');
+                $this->assertStringContainsString(basename($burner), $e->getMessage());
+            }
+            $this->assertTrue($aborted, 'A file that trips the PCRE recursion limit must be REFUSED, never swept as clean (the verifier reproduced a real violation passing silently behind a burner).');
+        } finally {
+            unlink($burner);
         }
-        $this->assertTrue($aborted, 'A file that trips the PCRE recursion limit must be REFUSED, never swept as clean (the verifier reproduced a real violation passing silently behind a burner).');
-        unlink($burner);
 
         // The clean direction: padding-only content of the same scale
         // passes (the refusal is the abort, not the size).
         $clean = tempnam(sys_get_temp_dir(), 'wpct-pcre-clean-');
-        file_put_contents($clean, '<?php' . str_pad('// prose about static behaviour and nothing else ', 10000, 'x'));
-        $gate->invoke($this, $clean);
-        unlink($clean);
+        try {
+            file_put_contents($clean, '<?php' . str_pad('// prose about static behaviour and nothing else ', 10000, 'x'));
+            $gate->invoke($this, $clean);
+        } finally {
+            unlink($clean);
+        }
     }
 
     /**
