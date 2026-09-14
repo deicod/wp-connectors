@@ -481,7 +481,40 @@ documented exception.
   adjudicated and ledgered (headline: split-composed namespace
   spellings — runtime concatenation/interpolation — are outside a
   spelling-level scan's charter). Suite 1521 → 1538 tests, 43256 →
-  43498 assertions, 2 skipped unchanged.
+  43498 assertions, 2 skipped unchanged. Fix round t31-r5 (18
+  commits over round-5's counted findings, executed as the
+  round's own class-killer mandate): the publication seam
+  restructured so every byte of the artifact set — zip, sidecar,
+  manifest — is produced and verified at temp paths first (the
+  archive PID-unique, the manifest tempnam-unique) and landed by
+  checked renames behind a landing pre-flight, deleting the
+  catch-based compensating apparatus and its bug history; a
+  build-seam property battery (tests/BuildSeamPropertyTest.php)
+  enumerating the adversarial build states and asserting the
+  invariant — exit 0 means a complete, sound, inspector-accepted
+  artifact; any failure means a loud refusal with the previous
+  good set byte-untouched — authored red-first (8 states failing
+  pre-fix); the embed seam's reads made loud at both collection
+  points (the ledgered t31-r3 unreadable-file note's reopen
+  condition consumed: 0-byte ships refuse); the plugin-owned
+  src/Shared collision refusing (case-folded); the source-less
+  shared tree refusing; the shared-source collector accepting only
+  the canonical lowercase .php casing plus a near-source fence
+  (doctrine change recorded); the inspector's forbidden-entry
+  vocabulary scoped to plugin-owned paths and then unified with
+  the builder's into one shared list; build.json duplicate keys
+  counted on DECODED top-level keys (an escaped duplicate was
+  last-wins no-embed at exit 0); the collector's exclusion filter
+  ordered before the symlink refusal; the version-constant
+  derivation extended to digit-initial and dotted slugs (legal,
+  bare-code-reachable labels both). A two-lens verifier pass held
+  all 11 fix-claims (the battery proven non-vacuous by mutation)
+  and confirmed 7 findings, fixed as t31-r5-10..16 — headlined by
+  the manifest merge's concurrent lost update (now flock-guarded
+  across read-through-landing), the unreadable-manifest silent
+  entry destruction, and the Version-header traversal staging.
+  Suite 1538 → 1549 tests, 43498 → 43676 assertions, 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

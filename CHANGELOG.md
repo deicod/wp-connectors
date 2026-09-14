@@ -295,6 +295,117 @@ gap, non-PHP files inside shared/src shipping, and the
 backreference-material namespace rewrite. Residuals ledgered. Suite
 1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r5)
+
+Fix round over round-5's counted findings, executed per the round's own
+mandate: the "silent library-less / 0-byte / broken zip at exit 0"
+class had survived four targeted rounds, so this round killed it with
+a STRUCTURAL restructure plus a PROPERTY BATTERY instead of more
+per-spelling pins — 18 commits t31-r5-S/B/1..9, then a two-lens
+verifier pass (independent correctness + security agents, every raised
+finding adversarially re-driven by a third before fixing) whose
+all-11 fix-claims HELD and whose 7 confirmed findings are fixed as
+t31-r5-10..16:
+
+- **The artifact set is staged whole at temp paths and landed by
+  checked rename, LAST** (t31-r5-S, the structural restructure): the
+  zip is built, closed, and checksummed at a PID-unique staging path;
+  the sidecar writes beside it; the manifest merges under a
+  tempnam()-unique stage (closing the two-process write interleave);
+  and the previous good release is replaced only by checked renames —
+  descriptors first, the archive LAST — behind a landing pre-flight
+  that refuses any non-file destination across all three targets
+  before the first rename. Every constructible failure leaves the
+  prior artifact set byte-untouched BY CONSTRUCTION, deleting the
+  compensating apparatus (the $zipOpened/$zipOverwritten flags, the
+  publication catch, removeManifestEntry, writeManifestAtomically) and
+  its bug history (t31-r3-16 → t31-r4-3 → this round's catch-path
+  findings).
+- **The build-seam property battery** (t31-r5-B, the round's
+  centerpiece, the SseAggregatorMutationPropertyTest idiom): for every
+  ENUMERATED adversarial build state — unreadable/whitespace-only
+  sources, the empty shared tree, malformed/escaped-duplicate/
+  wrongly-typed build.json, the plugin-owned src/Shared collision (and
+  its case variant), the .PHP-cased and near-source spellings, the
+  shared-tree symlink, the excluded-path symlink (CLEAN), blocked
+  sidecar/manifest/zip/staging paths, the unreadable manifest, the
+  traversal-spelled Version header, and the unmutated control — a run
+  is exactly CLEAN (success AND the artifact complete and sound:
+  entries present and non-empty, every PHP entry parsing after
+  extraction, sidecar/manifest consistent, the embedded tree exactly
+  the shared PHP-source set, the inspector accepting) or LOUD
+  (refusal AND the previous good artifact set byte-untouched, nothing
+  landed, no residue) — never the silent third. Authored red-first:
+  8 states failed against the pre-fix tree, each fixed by its finding.
+- **The embed seam reads loudly at both collection points**
+  (t31-r5-2, the sanctioned reopen of the ledgered t31-r3 note — its
+  own reopen condition met): a failed read laundered through (string)
+  shipped an unreadable shared source as a 0-byte library file and an
+  unreadable plugin file as a 0-byte zip entry at exit 0, and a
+  whitespace-only source shipped the same with no read failure; all
+  three refuse naming the file. A plugin-owned src/Shared path
+  colliding with an embed destination REFUSES instead of silently
+  replacing the author's file (t31-r5-1), the fence folding case
+  (t31-r5-16); a source-less shared tree refuses — a library-less zip
+  is never silently built (t31-r5-4).
+- **The shared-source collector accepts only the canonical lowercase
+  '.php' casing** (t31-r5-3, a recorded doctrine change superseding
+  the r3-9/r4-9 collect-any-case posture for shared/src): a .PHP-cased
+  source shipped rewritten while the shipped autoloader probes
+  lowercase '.php' — an unreachable class with build AND inspect green
+  (verified through the real shipped autoloader). Refusing is
+  strictly stronger than both earlier postures; the case-insensitive
+  JUDGMENT owner is unchanged for plugin-tree gates, and near-source
+  spellings (trailing space/dot hiding the extension) refuse too
+  (t31-r5-14).
+- **The inspector's forbidden-entry vocabulary is scoped to
+  plugin-owned paths** (t31-r5-5, an adjudicated doctrine alignment):
+  the generated <slug>/src/Shared/ subtree is exempt from the segment
+  check (shared/src has no exclusion concepts — the r3-4 doctrine the
+  embed ships by) so build and inspect give ONE verdict, while
+  traversal, syntax, secret, and self-containment checks still judge
+  every entry. The builder's and the inspector's development-entry
+  lists had drifted (the dotless 'phpunit.cache' shipped through
+  builds the inspector rejected — verifier-confirmed) and now ride ONE
+  shared vocabulary (t31-r5-10).
+- **build.json duplicate keys refuse on the DECODED key**
+  (t31-r5-6): a \u-escaped duplicate is the same key once decoded, so
+  the raw-text spelling count let last-wins silently mean no-embed at
+  exit 0; a depth-1 object-frame scanner counts decoded keys, any two
+  spellings that decode alike refusing.
+- **Scoped refusals and legal labels**: the plugin collector's
+  exclusion filter runs BEFORE the symlink refusal, so a
+  vendor/node_modules link (a composer path repo, an npm .bin shim)
+  no longer refuses a build whose zip would be byte-identical
+  (t31-r5-7); the version-constant derivation underscores digit-initial
+  slugs like the namespace derivation, the shipped main file parsing
+  with its bare '_3CX_OAUTH_VERSION' reference (t31-r5-8), and dotted
+  slugs derive legal labels for both ('my.plugin' → 'MY_PLUGIN_VERSION'
+  / 'MyPlugin' — t31-r5-12); the test file's extension judgments ride
+  the one owner (t31-r5-9).
+- **Verifier-pass findings** (all adversarially confirmed before
+  fixing): the manifest merge's read-merge-write lost update across
+  concurrent builds now holds an exclusive flock across
+  read-through-landing (t31-r5-11 — the tempnam had closed the write
+  interleave, not the lost entry, 30/72 synchronized trials pre-fix);
+  an unreadable checksums.txt refuses instead of silently landing a
+  one-entry replacement that destroyed every other plugin's checksum
+  (t31-r5-13); and the Version header must be a version TOKEN — its
+  bytes reached the artifact filename and staging paths unchecked, a
+  traversal spelling staging the archive and sidecar outside dist/
+  (t31-r5-15).
+
+Verifier pass: both lenses over the whole round diff, every claim
+empirically re-driven (the battery proven non-vacuous by three
+independent mutations of bin/build.php, each turning exactly its
+encoded rows red; the scanner probed over 30+ hostile-but-valid JSON
+shapes; the pre-round code A/B'd for the escaped-duplicate, the
+excluded-path symlink, and the traversal-version shapes). All 11
+fix-claims HELD (six HELD_WITH_NOTES); 7 findings raised, all 7
+CONFIRMED and fixed as t31-r5-10..16; residuals adjudicated and
+ledgered. Suite 1538 → 1549 tests, 43498 → 43676 assertions, 2
+skipped unchanged; green in default and random order throughout.
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r4)
 
 Fix round over round-4's 13 counted findings, executed as two
