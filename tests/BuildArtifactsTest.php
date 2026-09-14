@@ -3205,6 +3205,15 @@ FIXTURE;
     private function copyFixturePlugin(string $targetDir): string
     {
         $fixtureRoot = __DIR__ . '/fixtures/plugins/' . self::FIXTURE;
+        // The plugin root is created BEFORE the copy loop (verifier
+        // round t31-r6-7): the loop relied on a subdirectory
+        // (assets/src) being yielded before the first root-level FILE
+        // — its mkdir(..., true) was what created the root — so on a
+        // filesystem whose readdir order yields readme.txt first (a
+        // tmpfs clone demonstrated it), copy() failed against a root
+        // that did not exist yet and every fixture-copy test errored
+        // in setup. Directory-entry order is not a contract.
+        mkdir($targetDir, 0755, true);
         $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
         foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
             $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());

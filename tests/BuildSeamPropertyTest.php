@@ -655,6 +655,11 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         );
 
         $plugin = $root . '/plugin/example-connector';
+        // The plugin root exists before the copy loop rides it
+        // (t31-r6-7): the loop's first mkdir came from a subdirectory
+        // entry, so a readdir order yielding a root FILE first broke
+        // the copy — directory-entry order is not a contract.
+        mkdir($plugin, 0755, true);
         $fixtureRoot = realpath(__DIR__ . '/fixtures/plugins/example-connector');
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS),
