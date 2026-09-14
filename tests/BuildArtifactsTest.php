@@ -1615,6 +1615,87 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r5-2, the sanctioned reopen of the t31-r3
+     * verifier note): both collection points read LOUDLY now. A failed
+     * read laundered through (string)/(unchecked copy) shipped 0-byte
+     * content at exit 0 — the shared source as an empty library file
+     * (sidecar+manifest published, survivor scan passes on empty
+     * bytes), the plugin file as a 0-byte zip entry — and the
+     * whitespace-only twin shipped the same without any read failure.
+     * Each shape refuses the build naming the file, and the previous
+     * good artifact set survives byte-for-byte (the t31-r5-S contract).
+     */
+    public function testUnreadableAndEmptySourcesRefuseTheBuildLoudly(): void
+    {
+        $scratch = self::distDir() . '/.read-seam';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        $sharedSource = $scratch . '/shared/src/Clock/ClockInterface.php';
+        $pluginSource = $scratch . '/plugin/example-connector/src/Provider/ExampleProvider.php';
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $zipBefore = (string) file_get_contents($zipPath);
+            $sidecarBefore = (string) file_get_contents($zipPath . '.sha256');
+            $manifestBefore = (string) file_get_contents($scratch . '/dist/checksums.txt');
+
+            // (a) An unreadable shared source (non-root chmod spelling).
+            chmod($sharedSource, 0000);
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An unreadable shared source must refuse the build, never ship as a 0-byte library file.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('unreadable shared source', $e->getMessage());
+                $this->assertStringContainsString('ClockInterface.php', $e->getMessage());
+            }
+            chmod($sharedSource, 0644);
+
+            // (b) The whitespace-only twin: no read failure, same ship.
+            $sourceBefore = (string) file_get_contents($sharedSource);
+            file_put_contents($sharedSource, " \n\t\n");
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A whitespace-only shared source must refuse the build, never rewrite to an empty file.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('no bytes', $e->getMessage());
+                $this->assertStringContainsString('ClockInterface.php', $e->getMessage());
+            }
+            file_put_contents($sharedSource, $sourceBefore);
+
+            // (c) The other collection point: an unreadable PLUGIN file.
+            chmod($pluginSource, 0000);
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An unreadable plugin file must refuse the build, never ship a 0-byte zip entry.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('cannot copy', $e->getMessage());
+                $this->assertStringContainsString('ExampleProvider.php', $e->getMessage());
+            }
+            chmod($pluginSource, 0644);
+
+            // Every refusal above left the seeded good set untouched.
+            $this->assertSame($zipBefore, (string) file_get_contents($zipPath), 'The previous good zip survives every read refusal byte-for-byte.');
+            $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The sidecar survives with the zip it describes.');
+            $this->assertSame($manifestBefore, (string) file_get_contents($scratch . '/dist/checksums.txt'), 'The manifest stays consistent with the surviving artifact.');
+
+            // Control: the same inputs build cleanly once readable again.
+            $rebuilt = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertFileExists($rebuilt);
+        } finally {
+            @chmod($sharedSource, 0644);
+            @chmod($pluginSource, 0644);
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";

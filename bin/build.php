@@ -624,7 +624,7 @@ final class WpConnectorsBuild
                     if (in_array($destination, $entries, true)) {
                         throw new RuntimeException("build: {$slug} owns {$destination} — a collision with the generated embed copy; src/Shared/ is build-generated (build.json embed_shared), so remove or rename the plugin's own file");
                     }
-                    $source = (string) file_get_contents($sharedDir . '/' . $relative);
+                    $source = self::readSharedSource($sharedDir, $relative);
                     $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
                     $target = $stage . '/' . $slug . '/src/Shared/' . $relative;
                     @mkdir(dirname($target), 0755, true);
@@ -860,15 +860,58 @@ final class WpConnectorsBuild
     /**
      * Copies a file into the staging tree with normalized mtime/perms.
      *
+     * The read is OWNED (review round t31-r5-2): copy()'s silent false
+     * shipped an unreadable plugin file as a 0-byte zip entry at exit 0
+     * (the t31-r3 verifier note's shape — the natural fix shape it
+     * named, a loud read seam at the collection point, applied here).
+     * The @ suppresses only the diagnostic (the errno notice of the
+     * failed read); the FAILED RETURN is owned below (glm17-16).
+     *
      * @param string $from Absolute source path.
      * @param string $to   Absolute target path.
      * @return void
+     * @throws RuntimeException When the source cannot be read.
      */
     private static function copyNormalized($from, $to)
     {
         @mkdir(dirname($to), 0755, true);
-        copy($from, $to);
+        if (! @copy($from, $to)) {
+            throw new RuntimeException("build: cannot copy {$from} into the staging tree — an unreadable plugin file refuses the build, never ships as a 0-byte entry");
+        }
         self::normalize($to);
+    }
+
+    /**
+     * The embed collection's loud read seam (review round t31-r5-2).
+     *
+     * A failed file_get_contents() laundered through (string) shipped
+     * an unreadable shared source as a 0-byte PHP file — the survivor
+     * scan passes on empty bytes, so the sidecar and manifest
+     * published a library-less zip at exit 0 (sanctioned reopen of the
+     * t31-r3 verifier note, reproduced as non-root with chmod 000).
+     * The empty twin rides the same seam: a whitespace-only source
+     * rewrites to '' without throwing (no open tag → no provenance),
+     * the same silent ship without a read failure at all. Both refuse
+     * the build loudly now, naming the file.
+     *
+     * @param string $sharedDir Absolute shared/src root.
+     * @param string $relative  The source's shared/src-relative path.
+     * @return string The source bytes.
+     * @throws RuntimeException When the source cannot be read or carries no bytes.
+     */
+    private static function readSharedSource($sharedDir, $relative)
+    {
+        // @: the diagnostic is suppressed, the failed return owned below
+        // (glm17-16) — the refusal is the build's own message.
+        $source = @file_get_contents($sharedDir . '/' . $relative);
+        if (false === $source) {
+            throw new RuntimeException("build: cannot read the shared source {$sharedDir}/{$relative} — an unreadable shared source refuses the build, never ships as a 0-byte library file");
+        }
+        if ('' === trim($source)) {
+            throw new RuntimeException("build: the shared source shared/src/{$relative} carries no bytes — an empty (or whitespace-only) source refuses the build, never ships as a 0-byte library file");
+        }
+
+        return $source;
     }
 
     /**
