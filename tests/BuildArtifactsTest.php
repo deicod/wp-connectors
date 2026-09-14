@@ -1716,6 +1716,58 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r5-4): is_dir($sharedDir) guarded the embed
+     * with no non-empty-tree check — an empty (or source-less)
+     * shared/src embedded NOTHING and the run built and published a
+     * library-less zip at exit 0 (reproduced). The seam collects the
+     * shared sources up front now (with the symlink/casing doctrines
+     * riding the same walk) and refuses on zero collected PHP
+     * sources; the refusal precedes every filesystem mutation.
+     */
+    public function testAnEmptySharedSourceTreeRefusesTheEmbed(): void
+    {
+        $scratch = self::distDir() . '/.embed-empty-tree';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        // A tree that exists, carries a non-PHP file, and no sources.
+        file_put_contents($scratch . '/shared/src/README.md', "# no sources here\n");
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An embed requested against a source-less shared tree must refuse the build, never ship a library-less zip.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('no PHP sources', $e->getMessage());
+                $this->assertStringContainsString('shared/src', $e->getMessage());
+            }
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'A refused build must leave no zip behind.');
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'The seam refusal must precede the staging tree.');
+
+            // The wholly empty directory refuses the same way.
+            unlink($scratch . '/shared/src/README.md');
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An embed requested against an empty shared tree must refuse the build too.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('no PHP sources', $e->getMessage());
+            }
+
+            // Control: one source is enough — the embed builds.
+            file_put_contents($scratch . '/shared/src/GrantInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface GrantInterface {}\n");
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertContains('example-connector/src/Shared/GrantInterface.php', $this->zipEntryNames($zipPath), 'A non-empty shared tree embeds normally.');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";

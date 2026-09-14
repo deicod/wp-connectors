@@ -424,6 +424,7 @@ final class WpConnectorsBuild
          */
         $embedShared = false;
         $sharedDir = '';
+        $sharedSources = array();
         $pluginSuffix = '';
         $buildConfig = $pluginDir . '/build.json';
         if (file_exists($buildConfig)) {
@@ -520,6 +521,19 @@ final class WpConnectorsBuild
                     throw new RuntimeException("build: {$slug} requests shared code but {$sharedDir} does not exist");
                 }
                 /*
+                 * The empty-tree fence (review round t31-r5-4): is_dir()
+                 * alone let an empty (or source-less) shared/src embed
+                 * NOTHING — a library-less zip built and published at
+                 * exit 0 (reproduced; the collector also runs here so
+                 * the symlink and casing doctrines fire at the seam,
+                 * before any filesystem mutation, and the embed loop
+                 * below reuses the walk instead of re-collecting).
+                 */
+                $sharedSources = wp_connectors_php_source_files($sharedDir);
+                if ($sharedSources === array()) {
+                    throw new RuntimeException("build: {$slug} requests the shared library but {$sharedDir} carries no PHP sources — a library-less zip is never silently built");
+                }
+                /*
                  * Autoloader cross-check (K2 / t31-r4-2): the suffix must
                  * agree with the prefix the plugin will actually map.
                  * The shipped autoloader (src/autoload.php, exactly the
@@ -609,7 +623,7 @@ final class WpConnectorsBuild
             // dist-tree exclusion list deliberately does NOT apply here
             // (t31-r3-4), and non-PHP files are not sources (t31-r2-18).
             if ($embedShared) {
-                foreach (wp_connectors_php_source_files($sharedDir) as $relative) {
+                foreach ($sharedSources as $relative) {
                     /*
                      * Destination collision REFUSES the build (review
                      * round t31-r5-1): a plugin that owns a file at an
