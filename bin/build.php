@@ -137,10 +137,14 @@ final class WpConnectorsBuild
         self::assertNamespaceSegment($pluginSuffix);
         $escapedVersion = str_replace(array('\\', '$'), array('\\\\', '\\$'), (string) $sourceVersion);
         $provenance = "/**\n * Generated copy of {$escapedVersion} for this plugin's private namespace.\n * Do not edit here; change the shared source and rebuild.\n */\n";
-        $rewritten = (string) preg_replace(
-            '/(namespace\s+)Deicod\\\\WpConnectors\\\\Shared((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
-            '$1Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared$2',
-            $source
+        $rewritten = self::replaceOrThrow(
+            preg_replace(
+                '/(namespace\s+)Deicod\\\\WpConnectors\\\\Shared((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
+                '$1Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared$2',
+                $source
+            ),
+            'namespace declaration rewrite',
+            $sourceVersion
         );
         /*
          * use statements referencing the shared namespace, in EVERY legal
@@ -156,10 +160,14 @@ final class WpConnectorsBuild
          * alias, and the brace-group tail (group members are relative —
          * rewriting the prefix before '{' rewrites every member).
          */
-        $rewritten = (string) preg_replace(
-            '/(?<![A-Za-z0-9_])((?:use\s+(?:function\s+|const\s+)?)\\\\?)Deicod\\\\WpConnectors\\\\Shared((?:\\\\[A-Za-z0-9_]+)*)(\s+as\s+[A-Za-z0-9_]+)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
-            '${1}Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared${2}${3}${4};',
-            $rewritten
+        $rewritten = self::replaceOrThrow(
+            preg_replace(
+                '/(?<![A-Za-z0-9_])((?:use\s+(?:function\s+|const\s+)?)\\\\?)Deicod\\\\WpConnectors\\\\Shared((?:\\\\[A-Za-z0-9_]+)*)(\s+as\s+[A-Za-z0-9_]+)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
+                '${1}Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared${2}${3}${4};',
+                $rewritten
+            ),
+            'use-statement rewrite',
+            $sourceVersion
         );
         /*
          * Group-use MEMBER spellings (round t31-r4, K1's t31-r4-4 half):
@@ -178,40 +186,52 @@ final class WpConnectorsBuild
          * below refuses it loudly rather than this rewriter guessing
          * member structure.
          */
-        $rewritten = (string) preg_replace_callback(
-            '/((?<![A-Za-z0-9_])use\s+(?:function\s+|const\s+)?\\\\?Deicod\\\\WpConnectors\\\\)\s*(\{)([^{}]*)(\})\s*;/',
-            static function ($matches) use ($pluginSuffix) {
-                $members = array();
-                foreach (explode(',', $matches[3]) as $member) {
-                    $member = trim($member);
-                    $tail = '';
-                    if (1 === preg_match('/^(.+?)\s+as\s+([A-Za-z0-9_]+)$/', $member, $alias_parts)) {
-                        $member = $alias_parts[1];
-                        $tail = ' as ' . $alias_parts[2];
+        $rewritten = self::replaceOrThrow(
+            preg_replace_callback(
+                '/((?<![A-Za-z0-9_])use\s+(?:function\s+|const\s+)?\\\\?Deicod\\\\WpConnectors\\\\)\s*(\{)([^{}]*)(\})\s*;/',
+                static function ($matches) use ($pluginSuffix, $sourceVersion) {
+                    $members = array();
+                    foreach (explode(',', $matches[3]) as $member) {
+                        $member = trim($member);
+                        $tail = '';
+                        if (1 === preg_match('/^(.+?)\s+as\s+([A-Za-z0-9_]+)$/', $member, $alias_parts)) {
+                            $member = $alias_parts[1];
+                            $tail = ' as ' . $alias_parts[2];
+                        }
+                        $kind = '';
+                        if (1 === preg_match('/^(?:function|const)\s+/', $member, $member_kind)) {
+                            $kind = $member_kind[0];
+                            $member = (string) substr($member, strlen($member_kind[0]));
+                        }
+                        $members[] = $kind . self::replaceOrThrow(
+                            preg_replace(
+                                '/^Shared(?![A-Za-z0-9_])/',
+                                $pluginSuffix . '\\\\Shared',
+                                $member
+                            ),
+                            'group-use member rewrite',
+                            $sourceVersion
+                        ) . $tail;
                     }
-                    $kind = '';
-                    if (1 === preg_match('/^(?:function|const)\s+/', $member, $member_kind)) {
-                        $kind = $member_kind[0];
-                        $member = (string) substr($member, strlen($member_kind[0]));
-                    }
-                    $members[] = $kind . (string) preg_replace(
-                        '/^Shared(?![A-Za-z0-9_])/',
-                        $pluginSuffix . '\\\\Shared',
-                        $member
-                    ) . $tail;
-                }
 
-                return $matches[1] . $matches[2] . implode(', ', $members) . $matches[4] . ';';
-            },
-            $rewritten
+                    return $matches[1] . $matches[2] . implode(', ', $members) . $matches[4] . ';';
+                },
+                $rewritten
+            ),
+            'group-use member rewrite',
+            $sourceVersion
         );
 
         // Insert provenance directly after the open tag (never before it).
-        $final = (string) preg_replace(
-            '/^<\?php\b\s*/',
-            "<?php\n\n" . $provenance . "\n",
-            $rewritten,
-            1
+        $final = self::replaceOrThrow(
+            preg_replace(
+                '/^<\?php\b\s*/',
+                "<?php\n\n" . $provenance . "\n",
+                $rewritten,
+                1
+            ),
+            'provenance insertion',
+            $sourceVersion
         );
 
         /*
@@ -240,6 +260,38 @@ final class WpConnectorsBuild
         }
 
         return $final;
+    }
+
+    /**
+     * A preg_replace result that must be a string, never a silent cast
+     * (review round t31-r4-14).
+     *
+     * PCRE aborts (backtrack-limit exhaustion, a bad UTF-8 subject under
+     * a /u pattern) make preg_replace()/preg_replace_callback() return
+     * null; the (string) casts at the rewrite seams turned that into ''
+     * — an EMPTY file written into the zip, fail-open against the
+     * glm36-8 abort-as-reject doctrine (the trigger is unproven on
+     * these linear patterns, but the shape was wrong: the doctrine owns
+     * the seam, not the odds). Null refuses the build loudly now, named
+     * with the step and the file. K1's survivor postcondition would
+     * catch most empty-file outcomes afterwards, but the refuse happens
+     * here, at the seam where the abort occurred — and an empty file
+     * whose source carried no rewritable spelling would pass the
+     * postcondition clean.
+     *
+     * @param string|null $result        The preg_replace() return.
+     * @param string      $step          Which rewrite step (diagnostics).
+     * @param string      $sourceVersion Provenance string (diagnostics).
+     * @return string The replacement result, guaranteed a string.
+     * @throws RuntimeException When the replacement aborted.
+     */
+    private static function replaceOrThrow($result, $step, $sourceVersion)
+    {
+        if (null === $result) {
+            throw new RuntimeException("build: the {$step} aborted (PCRE) while rewriting {$sourceVersion} — an abort refuses the rewrite, never writes an empty file");
+        }
+
+        return $result;
     }
 
     /**

@@ -1934,6 +1934,38 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r4-14): the rewrite seams' (string) casts turned
+     * a PCRE abort's null return into '' — an EMPTY file written into
+     * the zip, fail-open against the glm36-8 abort-as-reject doctrine
+     * (trigger unproven on these linear patterns; the shape was wrong).
+     * Every rewrite seam rides replaceOrThrow() now: a null result
+     * refuses the build loudly, named with the step and the file. The
+     * helper is driven directly (the deterministic trigger does not
+     * exist — a forced abort needs inputs these anchored, linear
+     * patterns do not accept); the seams' shape is the fix.
+     */
+    public function testAnAbortingReplacementRefusesTheRewriteNeverCasts(): void
+    {
+        $guard = new ReflectionMethod(WpConnectorsBuild::class, 'replaceOrThrow');
+
+        // The abort spelling: preg_replace()'s null.
+        try {
+            $guard->invoke(null, null, 'namespace declaration rewrite', 'shared/src/Http/Url.php');
+            $this->fail('A null preg_replace result must refuse the rewrite, never cast to an empty file.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('aborted (PCRE)', $e->getMessage());
+            $this->assertStringContainsString('namespace declaration rewrite', $e->getMessage());
+            $this->assertStringContainsString('shared/src/Http/Url.php', $e->getMessage());
+        }
+
+        // The healthy spelling passes through byte-identical.
+        $this->assertSame(
+            'rewritten bytes',
+            $guard->invoke(null, 'rewritten bytes', 'use-statement rewrite', 'shared/src/Http/Url.php')
+        );
+    }
+
+    /**
      * The legal namespace-suffix shapes the rewrite soundness sweep rides:
      * the ordinary derivation, the digit-initial underscored derivation
      * (t31-r3-5), and an explicit all-caps segment — each a validated,
