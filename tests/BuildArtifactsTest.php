@@ -1245,6 +1245,13 @@ FIXTURE;
                 // below.
                 'duplicate embed_shared' => array('{"embed_shared": true, "embed_shared": false}', '2 times'),
                 'duplicate namespace_suffix' => array('{"embed_shared": true, "namespace_suffix": "ExampleConnector", "namespace_suffix": "Custom"}', '2 times'),
+                // t31-r5-6: an ESCAPED duplicate decodes to the same key,
+                // so the raw-text spelling count saw two distinct quoted
+                // strings and last-wins silently meant no-embed at exit 0
+                // (verified on 8.5). The fence counts DECODED keys now.
+                'escaped duplicate embed_shared' => array('{"embed_shared": true, "\u0065mbed_shared": false}', '2 times'),
+                'escaped duplicate beside valid' => array('{"embed_shared": true, "namespace_suffix": "ExampleConnector", "namesp\u0061ce_suffix": "Custom"}', '2 times'),
+                'escaped duplicate, both escaped' => array('{"\u0065mbed_shared": true, "\u0065mbed\u005fshared": false}', '2 times'),
             );
             foreach ($refusals as $label => [$payload, $fragment]) {
                 file_put_contents($scratch . '/plugin/example-connector/build.json', $payload);
@@ -1254,6 +1261,19 @@ FIXTURE;
                 } catch (RuntimeException $e) {
                     $this->assertStringContainsString($fragment, $e->getMessage(), "The refusal must say why ({$label}): {$e->getMessage()}");
                 }
+            }
+
+            // t31-r5-6 control: the fence counts DECODED TOP-LEVEL keys
+            // only — a nested object reusing the schema name lives in
+            // its own frame and is not a duplicate, so this config
+            // refuses through the unknown-key clause ('noted'), never
+            // through the duplicate fence.
+            file_put_contents($scratch . '/plugin/example-connector/build.json', '{"embed_shared": true, "noted": {"embed_shared": "nested"}}');
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An unknown top-level key must refuse as unknown, never ride the duplicate fence.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('unknown key', $e->getMessage(), 'The nested same-name key must not count as a duplicate: ' . $e->getMessage());
             }
 
             // The seam fires before any filesystem mutation: no zip (or

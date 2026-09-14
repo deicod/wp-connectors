@@ -308,6 +308,80 @@ final class WpConnectorsBuild
     }
 
     /**
+     * Counts the DECODED top-level object keys of a JSON text (review
+     * round t31-r5-6).
+     *
+     * The duplicate-key fence's one scanner: raw-text spellings cannot
+     * see that 'embed_shared' and 'embed_shared' are the same key, so
+     * the fence counts what json_decode() would actually keep. The
+     * walk needs no error handling of its own — it runs only over text
+     * that already decoded successfully (the malformed shapes refused
+     * earlier at the seam). A string token is a KEY exactly when it
+     * sits at nesting depth 1, inside an OBJECT frame, directly after
+     * '{' or ',' — in valid JSON, ':' follows only keys, so a string
+     * VALUE (''included'') is never counted; nested objects and arrays
+     * push their own frames, so their keys and strings stay out of the
+     * count. Each key token is json_decode()d whole, resolving every
+     * escape spelling to the key it names.
+     *
+     * @param string $rawJson The raw build.json text (must already decode).
+     * @return array<string, int> Decoded top-level key => occurrence count.
+     */
+    private static function decodedTopLevelKeyCounts($rawJson)
+    {
+        $counts = array();
+        $length = strlen($rawJson);
+        $frames = array();
+        $await_key = false;
+        for ($i = 0; $i < $length; ++$i) {
+            $byte = $rawJson[ $i ];
+            if ('"' === $byte) {
+                // Scan the whole string token (escape-aware: '\\"' and
+                // '\\\\' never close it early).
+                $j = $i + 1;
+                $escaped = false;
+                while ($j < $length) {
+                    $char = $rawJson[ $j ];
+                    if ($escaped) {
+                        $escaped = false;
+                    } elseif ('\\' === $char) {
+                        $escaped = true;
+                    } elseif ('"' === $char) {
+                        break;
+                    }
+                    ++$j;
+                }
+                if ($await_key && 1 === count($frames) && '{' === end($frames)) {
+                    $decoded_key = json_decode(substr($rawJson, $i, $j - $i + 1));
+                    if (is_string($decoded_key)) {
+                        $counts[ $decoded_key ] = ($counts[ $decoded_key ] ?? 0) + 1;
+                    }
+                    $await_key = false;
+                }
+                $i = $j;
+
+                continue;
+            }
+            if ('{' === $byte) {
+                $frames[] = '{';
+                $await_key = true;
+            } elseif ('[' === $byte) {
+                $frames[] = '[';
+                $await_key = false;
+            } elseif ('}' === $byte || ']' === $byte) {
+                array_pop($frames);
+                $await_key = false;
+            } elseif (',' === $byte) {
+                $await_key = 1 === count($frames) && '{' === end($frames);
+            } elseif (':' === $byte) {
+                $await_key = false;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
      * Validates a namespace suffix as a legal namespace segment.
      *
      * The ONE check (review round t31-r3-6) the config seam runs up
@@ -490,21 +564,22 @@ final class WpConnectorsBuild
                 self::assertNamespaceSegment($config['namespace_suffix']);
             }
             /*
-             * Duplicate keys refuse (verifier round t31-r4-17): json_decode
-             * keeps the LAST spelling silently, so '{"embed_shared": true,
-             * "embed_shared": false}' meant no-embed with exit 0
-             * (reproduced) — the divergent-duplicate shape of the
-             * silent-no-embed class. Counted over the RAW text AFTER the
-             * type checks: in a config whose values passed validation the
-             * quoted key spellings can only be real keys (a namespace
-             * segment cannot carry a quote, and the booleans are
-             * literals), so a second spelling is a duplicate by
-             * construction.
+             * Duplicate keys refuse on the DECODED key (verifier round
+             * t31-r4-17, whose raw-text fence this supersedes — review
+             * round t31-r5-6): json_decode() keeps the LAST spelling
+             * silently, so a divergent duplicate is the silent-no-embed
+             * class; counting quoted RAW spellings let an escaped
+             * duplicate ('{"embed_shared": true, "embed_shared":
+             * false}' — the same key once decoded) last-win the config
+             * into no-embed at exit 0 (verified on 8.5). The scan walks
+             * the already-successfully-decoded text once, collecting
+             * every TOP-LEVEL object key with its escapes resolved, so
+             * any two spellings that decode alike refuse — the fence now
+             * owns the class, not the spellings.
              */
-            foreach (array('embed_shared', 'namespace_suffix') as $schema_key) {
-                $key_spellings = substr_count($rawConfig, '"' . $schema_key . '"');
-                if ($key_spellings > 1) {
-                    throw new RuntimeException('build: ' . $slug . ": build.json carries the key \"{$schema_key}\" {$key_spellings} times — JSON keeps the last spelling silently, and a divergent duplicate is the silent-no-embed class this seam refuses");
+            foreach (self::decodedTopLevelKeyCounts($rawConfig) as $decoded_key => $key_count) {
+                if ($key_count > 1) {
+                    throw new RuntimeException('build: ' . $slug . ": build.json carries the top-level key \"{$decoded_key}\" {$key_count} times — JSON keeps the last spelling silently (spellings that DECODE to the same key count as duplicates), and a divergent duplicate is the silent-no-embed class this seam refuses");
                 }
             }
             $embedShared = true === ($config['embed_shared'] ?? false);
