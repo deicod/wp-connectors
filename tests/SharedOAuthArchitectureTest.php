@@ -86,6 +86,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
     /**
      * @return list<string> Absolute paths of every PHP file under shared/src.
+     *
+     * The file vocabulary is the ONE shared-source collector
+     * (wp_connectors_php_source_files(), review round t31-r3-9): the
+     * sweep judges exactly the file set the build's embed collection
+     * ships — case-insensitive extension, no exclusion segments — so a
+     * '.PHP'-spelled source can no longer be invisible to every gate
+     * while development loads it, and a source under shared/src/tools/
+     * can no longer sweep clean while the zip drops it (t31-r3-4's
+     * class). One vocabulary, two consumers, no drift.
      */
     private function sharedSourceFiles(): array
     {
@@ -93,15 +102,9 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $this->assertNotFalse($root, 'shared/src must exist — the contracts live there.');
 
         $files = array();
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($iterator as $file) {
-            if ($file->isFile() && '.php' === substr($file->getPathname(), -4)) {
-                $files[] = $file->getPathname();
-            }
+        foreach (wp_connectors_php_source_files($root) as $relative) {
+            $files[] = $root . '/' . $relative;
         }
-        sort($files, SORT_STRING);
 
         return $files;
     }
@@ -661,6 +664,57 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         file_put_contents($clean, '<?php' . str_pad('// prose about static behaviour and nothing else ', 10000, 'x'));
         $gate->invoke($this, $clean);
         unlink($clean);
+    }
+
+    /**
+     * Fix-round pin (t31-r3-9), both directions: the sweep's file
+     * vocabulary was its own case-SENSITIVE '.php' filter — the same
+     * spelling the build's embed filter used — so a '.PHP'-spelled
+     * source was silently skipped from embeds and never judged by any
+     * gate (no gate ever saw it). The vocabulary is the ONE shared
+     * collector now (case-insensitive extension, no exclusions): a
+     * .PHP-spelled source IS collected and IS judged — a planted clock
+     * read inside one fails the actual gate, and a clean one passes
+     * through the same code path.
+     */
+    public function testTheSweepVocabularyJudgesUpperCaseSpelledPhpSources(): void
+    {
+        $scratch = tempnam(sys_get_temp_dir(), 'wpct-phpcase-');
+        unlink($scratch);
+        mkdir($scratch, 0755, true);
+
+        try {
+            file_put_contents($scratch . '/ClockMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {\n    public function stamp(): int {\n        return time();\n    }\n}\n");
+            file_put_contents($scratch . '/Notes.md', "# developer notes\n");
+
+            // The vocabulary: the .PHP source is collected (any case
+            // spelling); the non-PHP note is not (t31-r2-18 unchanged).
+            $this->assertSame(array('ClockMath.PHP'), wp_connectors_php_source_files($scratch));
+
+            // And the actual gate judges the collected file: the planted
+            // time() call inside the .PHP-spelled source fails.
+            $gate = new \ReflectionMethod($this, 'assertNoDirectEnvironmentAccess');
+            try {
+                $gate->invoke($this, $scratch . '/ClockMath.PHP');
+                $this->fail('A direct clock read inside a .PHP-spelled source must fail the gate, never ride past the vocabulary.');
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $this->assertStringContainsString('ClockMath.PHP', $e->getMessage());
+                $this->assertStringContainsString('time()', $e->getMessage());
+            }
+
+            // Clean direction through the same gate: a violation-free
+            // .PHP-spelled source passes (the extension case, not the
+            // content, is what the fix admits).
+            file_put_contents($scratch . '/CleanMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class CleanMath {\n    public function stamp(): int {\n        return 0;\n    }\n}\n");
+            $gate->invoke($this, $scratch . '/CleanMath.PHP');
+            $this->assertSame(
+                array('CleanMath.PHP', 'ClockMath.PHP'),
+                wp_connectors_php_source_files($scratch),
+                'Both .PHP spellings share the vocabulary with .php (sorted, case-preserving paths).'
+            );
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
     }
 
     public function testSharedSourceFollowsPsr4OneTypePerFile(): void

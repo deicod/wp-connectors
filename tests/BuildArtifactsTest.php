@@ -1440,6 +1440,59 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r3-9), the build half: the '.php' extension
+     * filter was case-sensitive, so a ClockMath.PHP source was silently
+     * skipped from embeds — a class development loads (any extension
+     * case resolves) that the shipped plugin fatals on. The extension
+     * match is case-insensitive in the ONE shared collector the embed
+     * rides: the .PHP-spelled source ships like any other, rewritten.
+     */
+    public function testAnUpperCaseSpelledPhpSourceShipsInTheEmbed()
+    {
+        $scratch = self::distDir() . '/.embed-phpcase';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+        file_put_contents($scratch . '/shared/src/ClockMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
+
+        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
+        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
+            $target = $scratch . '/plugin/example-connector/' . $relative;
+            if ($item->isDir()) {
+                mkdir($target, 0755, true);
+            } else {
+                copy($item->getPathname(), $target);
+            }
+        }
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
+            $names = array();
+            for ($i = 0; $i < $zip->numFiles; ++$i) {
+                $names[] = $zip->getNameIndex($i);
+            }
+            $embedded = (string) $zip->getFromName('example-connector/src/Shared/ClockMath.PHP');
+            $zip->close();
+
+            $this->assertContains('example-connector/src/Shared/ClockMath.PHP', $names, 'A .PHP-spelled source must ship at its exact path.');
+            $this->assertContains('example-connector/src/Shared/Clock/ClockInterface.php', $names, 'The ordinary .php spelling keeps shipping.');
+            $suffix = WpConnectorsBuild::namespaceSuffixFromSlug('example-connector');
+            $this->assertStringContainsString('namespace Deicod\\WpConnectors\\' . $suffix . '\\Shared;', $embedded, 'The .PHP-spelled copy must be the REWRITTEN one.');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";

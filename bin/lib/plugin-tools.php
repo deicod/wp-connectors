@@ -1824,8 +1824,9 @@ function wp_connectors_autoloader_violations($pluginDir)
  * the zip: the shipped plugin fataled on the missing class. Exclusions
  * are a DIST-TREE concept (dev files a plugin directory carries);
  * shared/src is a source-only tree whose PHP sources ALL ship. The only
- * filter is the PHP-source extension (verifier round t31-r2-18: non-PHP
- * files inside shared/src are not sources).
+ * filter is the PHP-source extension, matched case-insensitively
+ * (verifier round t31-r2-18: non-PHP files inside shared/src are not
+ * sources; review round t31-r3-9: a '.PHP'-spelled source is one).
  *
  * @param string $dir Absolute source-only directory (shared/src).
  * @return list<string> Sorted relative .php file paths.
@@ -1845,7 +1846,14 @@ function wp_connectors_php_source_files($dir)
             continue;
         }
         $relative = str_replace($dir . '/', '', $file->getPathname());
-        if ('.php' !== substr($relative, -4)) {
+        // Case-INSENSITIVE extension match (review round t31-r3-9): a
+        // '.PHP'-spelled source is as loadable as a '.php'-spelled one
+        // (PHP resolves includes by any case), and the case-sensitive
+        // filter let such a file be silently skipped by the embed
+        // collection AND go unseen by the architecture sweep's identical
+        // filter — no gate ever judged it. The build and the sweep ride
+        // THIS one comparison, so they cannot disagree.
+        if ('.php' !== strtolower(substr($relative, -4))) {
             continue;
         }
         $files[] = $relative;
