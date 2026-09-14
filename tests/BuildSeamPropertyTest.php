@@ -201,6 +201,20 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 },
                 'fragment' => 'non-canonical extension',
             ),
+            'plugin-owned-src-shared-collision-case-variant' => array(
+                // t31-r5-16: a case-variant plugin path ('src/shared/')
+                // shipped BOTH entries — on case-insensitive extraction
+                // the author's un-rewritten copy overwrote the embed.
+                'expect' => 'LOUD',
+                'apply' => static function (array $scratch): void {
+                    mkdir($scratch['plugin'] . '/src/shared/Clock', 0755, true);
+                    file_put_contents(
+                        $scratch['plugin'] . '/src/shared/Clock/ClockInterface.php',
+                        "<?php\n// the plugin author's case-variant own copy\n"
+                    );
+                },
+                'fragment' => 'case-insensitive collision',
+            ),
             'shared-source-near-source-spelling' => array(
                 // t31-r5-14: a trailing space or dot hides the extension
                 // — the file read as a PHP source was invisible to every

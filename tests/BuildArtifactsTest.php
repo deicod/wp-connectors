@@ -1728,6 +1728,23 @@ FIXTURE;
             $names = $this->zipEntryNames($zipPath);
             $this->assertContains('example-connector/src/Own/Note.php', $names, 'A plugin-owned path outside src/Shared ships normally.');
             $this->assertContains('example-connector/src/Shared/Clock/ClockInterface.php', $names, 'The embed destination is untouched by the control.');
+
+            // t31-r5-16: the fence folds case — a case-variant plugin
+            // path ('src/shared/…') is the same collision, because on a
+            // case-insensitive extraction target the author's
+            // un-rewritten copy extracts second (sort order) and
+            // overwrites the generated, sweep-gated embed.
+            mkdir($scratch . '/plugin/example-connector/src/shared/Clock', 0755, true);
+            file_put_contents(
+                $scratch . '/plugin/example-connector/src/shared/Clock/ClockInterface.php',
+                "<?php\n// the plugin author's case-variant own copy\n"
+            );
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A case-variant plugin path folding onto an embed destination must refuse the build.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('case-insensitive collision', $e->getMessage());
+            }
         } finally {
             WpHarness::rrmdir($scratch);
         }
