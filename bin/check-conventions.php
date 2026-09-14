@@ -127,7 +127,9 @@ function wp_connectors_unused_import_violations(string $root): int
             // passes the extension gate below (glm17-10).
             continue;
         }
-        if ($file->getExtension() !== 'php') {
+        // The extension judgment rides the ONE case-insensitive owner
+        // (t31-r4-9) — a '.PHP'-spelled source is judged like any other.
+        if (! wp_connectors_is_php_source($file->getPathname())) {
             continue;
         }
 

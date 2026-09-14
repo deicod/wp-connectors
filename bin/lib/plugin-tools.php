@@ -1668,7 +1668,12 @@ function wp_connectors_self_containment_violations($pluginDir)
     try {
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
-            if ($file->getExtension() !== 'php') {
+            // The extension judgment rides the ONE case-insensitive owner
+            // (t31-r4-9): a '.PHP'-spelled file in a plugin tree ships in
+            // the zip (collectFiles has no extension filter) and must be
+            // scanned here — the exact-case check let it escape every
+            // self-containment gate (build and inspect alike).
+            if (! wp_connectors_is_php_source($file->getPathname())) {
                 continue;
             }
             $path = $file->getPathname();
@@ -1812,6 +1817,48 @@ function wp_connectors_autoloader_violations($pluginDir)
 }
 
 /**
+ * Whether a path names a PHP source, by extension, CASE-INSENSITIVELY
+ * (review round t31-r4-9).
+ *
+ * The ONE owner of the is-a-php-source judgment: PHP resolves includes
+ * by any extension case ('.PHP' is as loadable as '.php'), so a
+ * case-sensitive check made gates disagree — the sweep collected a
+ * .PHP source (t31-r3-9) while the PSR-4 gate's basename($path, '.php')
+ * never stripped the extension and the self-containment walker skipped
+ * the file entirely. Every consumer that judges the extension rides
+ * this predicate (the shared-source collector below, the PSR-4 gate's
+ * type-name stem, the self-containment and unused-import walkers), so
+ * collect, strip, and classify can never disagree again.
+ *
+ * @param string $path File path or name (only the tail is judged).
+ * @return bool True when the name ends in '.php' in any case.
+ */
+function wp_connectors_is_php_source($path)
+{
+    return '.php' === strtolower(substr((string) $path, -4));
+}
+
+/**
+ * The basename with the (any-case) '.php' extension stripped — the ONE
+ * extension-strip owner (review round t31-r4-9).
+ *
+ * basename($path, '.php') strips only the exact-case suffix, so a
+ * '.PHP'-spelled source kept its extension and the PSR-4 gate compared
+ * a type name against 'ClockMath.PHP' — a misleading failure naming
+ * the wrong defect. A name that is not a PHP source (per the ONE
+ * predicate above) returns its basename unchanged.
+ *
+ * @param string $path File path or name.
+ * @return string The basename, extension-stripped when it is a '.php' in any case.
+ */
+function wp_connectors_basename_without_php_extension($path)
+{
+    $basename = basename((string) $path);
+
+    return wp_connectors_is_php_source($basename) ? substr($basename, 0, -4) : $basename;
+}
+
+/**
  * Collects every PHP source file (relative paths) under a source-only tree.
  *
  * The shared/src file vocabulary's ONE owner (review round t31-r3-4):
@@ -1869,7 +1916,11 @@ function wp_connectors_php_source_files($dir)
         // collection AND go unseen by the architecture sweep's identical
         // filter — no gate ever judged it. The build and the sweep ride
         // THIS one comparison, so they cannot disagree.
-        if ('.php' !== strtolower(substr($relative, -4))) {
+        // The extension judgment rides the ONE case-insensitive owner
+        // (t31-r4-9): collect, strip, and classify share wp_connectors_
+        // is_php_source(), so no gate can disagree about what counts as
+        // a PHP source.
+        if (! wp_connectors_is_php_source($relative)) {
             continue;
         }
         $files[] = $relative;

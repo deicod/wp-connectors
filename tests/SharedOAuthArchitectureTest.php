@@ -926,6 +926,53 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
+     * Fix-round pin (t31-r4-9): ONE case-insensitive owner judges the
+     * php extension — wp_connectors_is_php_source() for collect and
+     * classify, wp_connectors_basename_without_php_extension() for the
+     * strip — so the sweep vocabulary, the PSR-4 gate's type-name stem,
+     * and the self-containment walker can never disagree about what
+     * counts as a PHP source (the exact-case spellings let a '.PHP'
+     * file be collected by one gate, mis-stemmed by another, and skipped
+     * by a third).
+     */
+    public function testThePhpExtensionJudgmentHasOneCaseInsensitiveOwner(): void
+    {
+        // The predicate: extension '.php' in ANY case, and nothing else.
+        foreach (array('Url.php', 'Url.PHP', 'Url.Php', 'Url.pHp', 'dir/Url.PHP') as $is_source) {
+            $this->assertTrue(wp_connectors_is_php_source($is_source), "{$is_source} is a PHP source in every extension case.");
+        }
+        foreach (array('Notes.md', 'Url.phps', 'Url.php5', 'php', 'Url.pph', '') as $not_source) {
+            $this->assertFalse(wp_connectors_is_php_source($not_source), "{$not_source} is not a PHP source.");
+        }
+
+        // The stem: any-case extension stripped, non-sources unchanged.
+        $this->assertSame('ClockMath', wp_connectors_basename_without_php_extension('shared/src/ClockMath.PHP'));
+        $this->assertSame('Url', wp_connectors_basename_without_php_extension('Http/Url.php'));
+        $this->assertSame('notes.md', wp_connectors_basename_without_php_extension('/x/y/notes.md'), 'A non-source keeps its basename.');
+
+        // End-to-end consistency on one tree: a '.PHP'-spelled source is
+        // COLLECTED by the vocabulary, its stem STRIPS the extension, and
+        // the declared type matches the stem — collect, strip, and
+        // classify agree on the same file.
+        $scratch = tempnam(sys_get_temp_dir(), 'wpct-phpowner-');
+        unlink($scratch);
+        mkdir($scratch, 0755, true);
+        try {
+            file_put_contents($scratch . '/ClockMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath\n{\n}\n");
+            $collected = wp_connectors_php_source_files($scratch);
+            $this->assertSame(array('ClockMath.PHP'), $collected, 'The vocabulary collects the .PHP spelling.');
+
+            $path = $scratch . '/' . $collected[0];
+            $this->assertSame('ClockMath', wp_connectors_basename_without_php_extension($path), 'The stem strips the .PHP extension.');
+            $typeMatches = array();
+            $this->assertSame(1, preg_match_all('/^(?:abstract\s+|final\s+)?(?:class|interface|enum)\s+([A-Za-z0-9_]+)/m', $this->fileContents($path), $typeMatches));
+            $this->assertSame(wp_connectors_basename_without_php_extension($path), $typeMatches[1][0], 'The PSR-4 type-name comparison rides the same stem.');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r4-7): a symlink inside the shared source tree
      * REFUSES the collector's walk loudly. The old silent skip was the
      * no-symlinks doctrine's quiet half — a symlinked directory under
@@ -1076,7 +1123,12 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             $typeMatches = array();
             preg_match_all('/^(?:abstract\s+|final\s+)?(?:class|interface|enum)\s+([A-Za-z0-9_]+)/m', $contents, $typeMatches);
             $this->assertCount(1, $typeMatches[0], $relative . ' must declare exactly one type (one type per file).');
-            $this->assertSame(basename($path, '.php'), $typeMatches[1][0], $relative . ': the type name must match the file name.');
+            // The extension strip rides the ONE case-insensitive owner
+            // (t31-r4-9): basename($path, '.php') never strips a '.PHP'
+            // spelling, so the gate compared a type name against
+            // 'ClockMath.PHP' — a misleading failure naming the wrong
+            // defect while the vocabulary collected the file fine.
+            $this->assertSame(wp_connectors_basename_without_php_extension($path), $typeMatches[1][0], $relative . ': the type name must match the file name.');
         }
 
         $this->assertGreaterThanOrEqual(20, $scanned);

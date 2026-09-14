@@ -1901,6 +1901,39 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r4-9), the classify half: the self-containment
+     * walker's exact-case extension check skipped a '.PHP'-spelled file
+     * in a plugin tree — while the zip ships it (collectFiles has no
+     * extension filter), so an escaping include inside one escaped every
+     * self-containment gate (build and inspect alike). The walker rides
+     * the ONE case-insensitive owner now: the violation fires.
+     */
+    public function testTheSelfContainmentWalkerJudgesUpperCaseSpelledPhpSources(): void
+    {
+        $tempPlugin = self::distDir() . '/.phpcase-containment/upper-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        $head = "Plugin Name:       upper-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       upper-demo\nAuthor:            x\n";
+        file_put_contents($tempPlugin . '/upper-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'UPPER_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n");
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\UpperDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+        // The escaping include rides the '.PHP' spelling the exact-case
+        // check used to skip.
+        file_put_contents($tempPlugin . '/escape.PHP', "<?php\nrequire __DIR__ . '/../../outside/bootstrap.php';\n");
+
+        try {
+            $violations = wp_connectors_self_containment_violations($tempPlugin);
+            $this->assertNotSame(array(), $violations, 'A .PHP-spelled source must be scanned, never skipped by the extension judgment.');
+            $this->assertStringContainsString('escape.PHP', implode("\n", $violations));
+            $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
+        } finally {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+    }
+
+    /**
      * The legal namespace-suffix shapes the rewrite soundness sweep rides:
      * the ordinary derivation, the digit-initial underscored derivation
      * (t31-r3-5), and an explicit all-caps segment — each a validated,
