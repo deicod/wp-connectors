@@ -913,7 +913,23 @@ final class WpConnectorsBuild
     {
         $manifest = array();
         if (is_file($manifestPath)) {
-            foreach (explode("\n", (string) file_get_contents($manifestPath)) as $line) {
+            /*
+             * The read is OWNED (verifier round t31-r5-13): the (string)
+             * cast laundered a failed read (a chmod-000 manifest) into an
+             * EMPTY line set, so the merge landed a manifest carrying
+             * only this run's entry — every other plugin's checksum
+             * silently destroyed at exit 0 (adversarially confirmed).
+             * An unreadable manifest refuses the build instead; the
+             * refusal precedes every landing, so the unreadable file
+             * itself is left exactly as found.
+             */
+            // @: the diagnostic is suppressed, the failed return owned
+            // below (glm17-16).
+            $raw = @file_get_contents($manifestPath);
+            if (false === $raw) {
+                throw new RuntimeException("build: cannot read the checksum manifest {$manifestPath} — an unreadable manifest refuses the build, never silently drops every other plugin's entry");
+            }
+            foreach (explode("\n", $raw) as $line) {
                 if ($line === '' || strpos($line, $zipName . '  ') === 0) {
                     continue;
                 }

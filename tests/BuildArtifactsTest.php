@@ -2106,6 +2106,57 @@ FIXTURE;
         }
     }
 
+    /**
+     * Verifier-round pin (t31-r5-13): the manifest merge's unchecked
+     * read laundered a chmod-000 checksums.txt into an EMPTY line set —
+     * the next build landed a manifest carrying only its own entry,
+     * silently destroying every other plugin's checksum at exit 0
+     * (adversarially confirmed). The read is owned now: an unreadable
+     * manifest refuses the build before any landing, the surviving
+     * zip/sidecar stay byte-identical, and the unreadable file is left
+     * exactly as found.
+     */
+    public function testAnUnreadableManifestRefusesTheBuildAndKeepsEveryEntry(): void
+    {
+        $scratch = self::distDir() . '/.manifest-read';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+
+        $manifestPath = $scratch . '/dist/checksums.txt';
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            // A sibling plugin's entry rides the manifest.
+            file_put_contents($manifestPath, "connectors-other-demo-1.0.0.zip  " . str_repeat('a', 64) . "\n" . (string) file_get_contents($manifestPath));
+            $manifestBefore = (string) file_get_contents($manifestPath);
+            $zipBefore = (string) file_get_contents($zipPath);
+            $sidecarBefore = (string) file_get_contents($zipPath . '.sha256');
+
+            chmod($manifestPath, 0000);
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An unreadable manifest must refuse the build, never land a one-entry replacement.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('cannot read the checksum manifest', $e->getMessage());
+            }
+            $this->assertSame($zipBefore, (string) file_get_contents($zipPath), 'The previous good zip survives the refused merge byte-for-byte.');
+            $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The sidecar survives the refused merge byte-for-byte.');
+            $this->assertFileExists($manifestPath, 'The unreadable manifest is left exactly as found.');
+
+            // Recovery: readable again, the merge keeps every entry.
+            chmod($manifestPath, 0644);
+            WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $rebuilt = (string) file_get_contents($manifestPath);
+            $this->assertStringContainsString('connectors-other-demo-1.0.0.zip', $rebuilt, "The sibling plugin's entry survives the recovered merge.");
+            $this->assertStringContainsString('connectors-example-connector-0.1.0.zip', $rebuilt);
+        } finally {
+            @chmod($manifestPath, 0644);
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";

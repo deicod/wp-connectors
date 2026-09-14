@@ -239,6 +239,17 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 },
                 'fragment' => 'not a regular file',
             ),
+            'manifest-unreadable' => array(
+                // t31-r5-13: the merge's unchecked read laundered a
+                // chmod-000 manifest into an empty line set — the landed
+                // manifest carried only this run's entry, every other
+                // plugin's checksum destroyed at exit 0.
+                'expect' => 'LOUD',
+                'apply' => static function (array $scratch): void {
+                    chmod($scratch['dist'] . '/checksums.txt', 0000);
+                },
+                'fragment' => 'cannot read the checksum manifest',
+            ),
             'zip-staging-path-blocked' => array(
                 // t31-r5-S: leftover junk at the (PID-unique) staging
                 // path is a production failure, not a landing one.
@@ -273,11 +284,13 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
 
             // Apply the adversarial state, then snapshot what the run must
             // leave byte-untouched (the mutation itself may remove a member
-            // to block a landing — the snapshot sees the post-mutation set).
+            // to block a landing — the snapshot sees the post-mutation set;
+            // an unreadable member snapshots as its unreadability, so a
+            // state like manifest-unreadable compares like-for-like).
             ($state['apply'])($scratch);
-            $snapZip = is_file($scratch['zip']) ? (string) file_get_contents($scratch['zip']) : null;
-            $snapSidecar = is_file($scratch['zip'] . '.sha256') ? (string) file_get_contents($scratch['zip'] . '.sha256') : null;
-            $snapManifest = is_file($scratch['dist'] . '/checksums.txt') ? (string) file_get_contents($scratch['dist'] . '/checksums.txt') : null;
+            $snapZip = $this->readMemberOrMarker($scratch['zip']);
+            $snapSidecar = $this->readMemberOrMarker($scratch['zip'] . '.sha256');
+            $snapManifest = $this->readMemberOrMarker($scratch['dist'] . '/checksums.txt');
             // Dot-file state the state itself planted (a staging-path
             // blocker) is not build residue; anything NEW is.
             $planted = array_merge(
@@ -310,9 +323,9 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
 
             // The previous good artifact set: byte-untouched, nothing
             // landed, no staging residue.
-            $nowZip = is_file($scratch['zip']) ? (string) file_get_contents($scratch['zip']) : null;
-            $nowSidecar = is_file($scratch['zip'] . '.sha256') ? (string) file_get_contents($scratch['zip'] . '.sha256') : null;
-            $nowManifest = is_file($scratch['dist'] . '/checksums.txt') ? (string) file_get_contents($scratch['dist'] . '/checksums.txt') : null;
+            $nowZip = $this->readMemberOrMarker($scratch['zip']);
+            $nowSidecar = $this->readMemberOrMarker($scratch['zip'] . '.sha256');
+            $nowManifest = $this->readMemberOrMarker($scratch['dist'] . '/checksums.txt');
             if ($nowZip !== $snapZip || $nowSidecar !== $snapSidecar || $nowManifest !== $snapManifest) {
                 return array('class' => 'FAIL', 'why' => 'the refusal touched the previous good artifact set (zip/sidecar/manifest diverged from the post-mutation snapshot)');
             }
@@ -594,6 +607,24 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             'shared' => $root . '/shared/src',
             'zip' => $root . '/dist/connectors-example-connector-0.1.0.zip',
         );
+    }
+
+    /**
+     * One artifact member's byte snapshot, or a marker for its absence
+     * or unreadability (the manifest-unreadable state must compare
+     * like-for-like across the run).
+     *
+     * @param string $path Absolute member path.
+     * @return string|null Bytes, a marker, or null when absent.
+     */
+    private function readMemberOrMarker(string $path): ?string
+    {
+        if (! is_file($path)) {
+            return null;
+        }
+        $bytes = @file_get_contents($path);
+
+        return false === $bytes ? '__UNREADABLE__' : $bytes;
     }
 
     /**
