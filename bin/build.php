@@ -223,21 +223,34 @@ final class WpConnectorsBuild
          * (t31-r7-2; the rewriter owns no sibling spelling, so one
          * ships pointing at a namespace that does not exist inside the
          * plugin) — REFUSES the build loudly with the file, the byte
-         * offset, the resolved name, and the position kind. Comments
-         * and inline HTML refuse in every spelling: the provenance
-         * docblock inserted above is family-free, so nothing
-         * legitimate is lost. A PCRE abort in the detector's text lens
-         * refuses too (glm36-8: an abort is never a clean pass). The
-         * scan runs over the FINAL bytes — provenance included — so
-         * nothing that ships escapes it.
+         * offset, the resolved name, and the position kind. The target
+         * prefix is legal ONLY in the two positions the rewrite itself
+         * produces — declarations and use statements (verifier round
+         * t31-r7-8: the r7-K postcondition waved target-rooted CODE and
+         * STRING references through, so a hand-authored source spelling
+         * the building plugin's own target prefix — a dangling class
+         * reference — shipped at exit 0 while the sweep refused the
+         * same file, verdict drift; measured over the real tree ×
+         * every suffix shape, rewritten outputs carry ONLY declaration
+         * and use kinds, so the code/string allow kinds had no
+         * legitimate producer). The detector also judges the TARGET
+         * spelling at its text lens (the prefix is passed in), so a
+         * docblock naming the target refuses too. Comments and inline
+         * HTML refuse in every spelling: the provenance docblock
+         * inserted above is family-free, so nothing legitimate is
+         * lost. A PCRE abort in the detector's text lens refuses too
+         * (glm36-8: an abort is never a clean pass). The scan runs
+         * over the FINAL bytes — provenance included — so nothing that
+         * ships escapes it.
          */
-        $target_lower = strtolower('Deicod\\WpConnectors\\' . $pluginSuffix . '\\Shared');
-        foreach (wp_connectors_shared_family_references($final) as $reference) {
+        $target = 'Deicod\\WpConnectors\\' . $pluginSuffix . '\\Shared';
+        $target_lower = strtolower($target);
+        foreach (wp_connectors_shared_family_references($final, $target) as $reference) {
             if ('pcre-abort' === $reference['kind']) {
                 throw new RuntimeException("build: the namespace-reference scan aborted (PCRE) while rewriting {$sourceVersion} — an abort refuses the rewrite, never passes it");
             }
             $is_target = $reference['lower'] === $target_lower || 0 === strpos($reference['lower'], $target_lower . '\\');
-            if ($is_target && ('declaration' === $reference['kind'] || 'use' === $reference['kind'] || 'code' === $reference['kind'] || 'string' === $reference['kind'])) {
+            if ($is_target && ('declaration' === $reference['kind'] || 'use' === $reference['kind'])) {
                 continue;
             }
             throw new RuntimeException(sprintf(

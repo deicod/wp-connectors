@@ -519,6 +519,8 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             'inline fully-qualified reference' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface InlineFixture\n{\n    public function name(): string;\n}\nfinal class InlineCarrier\n{\n    public function name(): string\n    {\n        return \\Deicod\\WpConnectors\\Shared\\Clock::class;\n    }\n}\n",
             'bare vendor-prefix import' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors;\ninterface BarePrefixFixture\n{\n}\n",
             'dangling as eats the next reference (t31-r7-7)' => "<?php\nnamespace A;\nuse Foo\\Bar as;\n\$x = \\Deicod\\WpConnectors\\Shared\\Clock::class;\n",
+            'source-spelled TARGET-rooted code reference (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface TargetCodeFixture\n{\n    public function name(): string;\n}\nfinal class TargetCodeCarrier\n{\n    public function name(): string\n    {\n        return \\class_exists(\\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost::class);\n    }\n}\n",
+            'docblock naming the rewrite TARGET (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost\n */\ninterface TargetDocblockFixture\n{\n}\n",
         );
         /*
          * One FRESH scratch path per shape: the shared loud reader caches

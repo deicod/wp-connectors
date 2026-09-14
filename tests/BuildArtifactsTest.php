@@ -2588,6 +2588,9 @@ FIXTURE;
             'double-backslash class-string, judged by value (t31-r7-4)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass ClassStringStore\n{\n    public function name(): string\n    {\n        return 'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
             'bare vendor-prefix import' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors;\nclass BarePrefixStore\n{\n}\n",
             'dangling as eats the next reference (t31-r7-7)' => "<?php\nnamespace A;\nuse Foo\\Bar as;\n\$x = \\Deicod\\WpConnectors\\Shared\\Clock::class;\n",
+            'source-spelled TARGET-rooted code reference (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface TargetCodeFixture\n{\n    public function name(): string;\n}\nfinal class TargetCodeCarrier\n{\n    public function name(): string\n    {\n        return \\class_exists(\\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\Ghost::class);\n    }\n}\n",
+            'source-spelled TARGET-rooted class-string (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface TargetStringFixture\n{\n    public function name(): string;\n}\nfinal class TargetStringCarrier\n{\n    public function name(): string\n    {\n        return 'Deicod\\\\WpConnectors\\\\OpenAiOauth\\\\Shared\\\\Clock\\\\Ghost';\n    }\n}\n",
+            'docblock naming the TARGET (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\Ghost\n */\ninterface TargetDocblockFixture\n{\n}\n",
         );
         foreach ($survivors as $label => $hostile) {
             try {
@@ -2624,8 +2627,8 @@ FIXTURE;
                     $suffix,
                     'shared/src/' . $relative
                 );
-                foreach (wp_connectors_shared_family_references($rewritten_output) as $reference) {
-                    $this->assertContains($reference['kind'], array('declaration', 'use', 'code', 'string'), "The rewritten target may appear in every value position ({$relative}).");
+                foreach (wp_connectors_shared_family_references($rewritten_output, 'Deicod\\WpConnectors\\' . $suffix . '\\Shared') as $reference) {
+                    $this->assertContains($reference['kind'], array('declaration', 'use'), "The rewrite produces the target spelling ONLY in declarations and use statements ({$relative}; verifier t31-r7-8's measured allow-set).");
                     $this->assertTrue(
                         $reference['lower'] === $target_lower || 0 === strpos($reference['lower'], $target_lower . '\\'),
                         "Every family reference in a rewritten output must be the target prefix ({$relative}, suffix {$suffix}): {$reference['name']}"
@@ -3222,6 +3225,7 @@ FIXTURE;
             'sibling import (t31-r7-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Zai\\ApiClient;\nclass SiblingHostile\n{\n}\n",
             'comment-interrupted use (t31-r7-1)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod/* pick one */\\WpConnectors\\Shared\\Clock;\nclass InterruptedHostile\n{\n}\n",
             'double-backslash class-string (t31-r7-4)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass ClassStringHostile\n{\n    public function name(): string\n    {\n        return 'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
+            'target-spelled references — the drift shape (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost\n */\ninterface TargetHostile\n{\n    public function name(): string;\n}\nfinal class TargetHostileCarrier\n{\n    public function name(): string\n    {\n        return \\class_exists(\\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost::class)\n            ? 'Deicod\\\\WpConnectors\\\\ExampleConnector\\\\Shared\\\\Clock\\\\Ghost'\n            : '';\n    }\n}\n",
         );
 
         try {
