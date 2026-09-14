@@ -1751,6 +1751,81 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r6-1): the LICENSE injection and the embed
+     * collision fence rode different case doctrines — the fence folds
+     * case (t31-r5-16, strcasecmp over the collected entries) while
+     * the injection's in_array was exact-case, so a plugin carrying
+     * 'license'/'License' at its root shipped BOTH entries (its own
+     * file AND the injected repo copy) at exit 0, inspection green,
+     * and on a case-insensitive extraction target the plugin's copy
+     * extracted second (sort order) and silently overwrote the repo
+     * license (reproduced). One doctrine, two territories: the
+     * generated embed destinations refuse a plugin-owned collision,
+     * while the injected repo LICENSE DEFERS to the plugin's own file
+     * — its license wins in any casing and the repo copy is never
+     * injected beside it, so the both-entries overwrite is
+     * unconstructible.
+     */
+    public function testAPluginOwnedCaseVariantLicenseWinsAndTheRepoCopyIsNeverInjectedBesideIt(): void
+    {
+        $scratch = self::distDir() . '/.license-case';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/LICENSE', "REPO LICENSE BYTES\n");
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+
+        $licenseEntries = function (array $names): array {
+            return array_values(array_filter($names, static function (string $entry): bool {
+                return 0 === strcasecmp($entry, 'example-connector/LICENSE');
+            }));
+        };
+        $entryBytes = static function (string $zipPath, string $entry): string {
+            $zip = new ZipArchive();
+            $zip->open($zipPath);
+            $bytes = (string) $zip->getFromName($entry);
+            $zip->close();
+
+            return $bytes;
+        };
+
+        try {
+            // Control: with no plugin-owned license the repo copy
+            // injects, and the artifact inspection-accepts.
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertSame(array( 'example-connector/LICENSE' ), $licenseEntries($this->zipEntryNames($zipPath)), 'The repo LICENSE injects when the plugin owns no license.');
+            $this->assertSame("REPO LICENSE BYTES\n", $entryBytes($zipPath, 'example-connector/LICENSE'));
+            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/.inspect-license'));
+
+            // The pin: a case-variant plugin-owned license is the same
+            // destination one case-folding away — the plugin's file
+            // wins, the repo copy is not injected beside it, and the
+            // silent overwrite on case-insensitive extraction targets
+            // has no two entries to happen between.
+            file_put_contents($scratch . '/plugin/example-connector/license', "PLUGIN OWN LICENSE BYTES\n");
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $names = $this->zipEntryNames($zipPath);
+            $this->assertSame(array( 'example-connector/license' ), $licenseEntries($names), 'Exactly ONE license-folded entry may ship: the plugin\'s own.');
+            $this->assertNotContains('example-connector/LICENSE', $names, 'The repo copy must not be injected beside a plugin-owned license in any casing.');
+            $this->assertSame("PLUGIN OWN LICENSE BYTES\n", $entryBytes($zipPath, 'example-connector/license'));
+            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/.inspect-license'), 'Build and inspect give ONE verdict on the single-license artifact.');
+
+            // The exact-case control (the pre-existing skip, pinned the
+            // same way): the plugin's own 'LICENSE' ships its own
+            // bytes, never the repo's.
+            unlink($scratch . '/plugin/example-connector/license');
+            file_put_contents($scratch . '/plugin/example-connector/LICENSE', "PLUGIN OWN LICENSE BYTES\n");
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertSame(array( 'example-connector/LICENSE' ), $licenseEntries($this->zipEntryNames($zipPath)));
+            $this->assertSame("PLUGIN OWN LICENSE BYTES\n", $entryBytes($zipPath, 'example-connector/LICENSE'));
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r5-2, the sanctioned reopen of the t31-r3
      * verifier note): both collection points read LOUDLY now. A failed
      * read laundered through (string)/(unchecked copy) shipped 0-byte

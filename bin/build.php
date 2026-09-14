@@ -687,9 +687,37 @@ final class WpConnectorsBuild
                 self::copyNormalized($pluginDir . '/' . $relative, $stage . '/' . $slug . '/' . $relative);
                 $entries[] = $slug . '/' . $relative;
             }
-            if (is_file($licenseFile) && ! in_array($slug . '/LICENSE', $entries, true)) {
-                self::copyNormalized($licenseFile, $stage . '/' . $slug . '/LICENSE');
-                $entries[] = $slug . '/LICENSE';
+            /*
+             * The repo LICENSE injects only where the plugin does not
+             * already own the destination — CASE-INSENSITIVELY (review
+             * round t31-r6-1, folding the check into the collision
+             * doctrine the embed fence below established in
+             * t31-r5-16): the exact-case in_array let a case-variant
+             * plugin 'license'/'License' ship BESIDE the injected
+             * 'LICENSE' — both entries in the zip, inspection green,
+             * and on a case-insensitive extraction target the plugin's
+             * copy extracted second (sort order) and silently
+             * overwrote the repo license (reproduced). One doctrine,
+             * two territories, one comparison (strcasecmp over the
+             * collected entries): generated destinations REFUSE a
+             * plugin-owned collision, while this injected convenience
+             * DEFERS to the plugin's own file — its license wins in
+             * any casing and the repo copy is never injected beside
+             * it, so the both-entries overwrite is unconstructible.
+             */
+            if (is_file($licenseFile)) {
+                $pluginOwnsLicense = false;
+                foreach ($entries as $existing_entry) {
+                    if (0 === strcasecmp($existing_entry, $slug . '/LICENSE')) {
+                        $pluginOwnsLicense = true;
+
+                        break;
+                    }
+                }
+                if (! $pluginOwnsLicense) {
+                    self::copyNormalized($licenseFile, $stage . '/' . $slug . '/LICENSE');
+                    $entries[] = $slug . '/LICENSE';
+                }
             }
 
             // Embed the shared OAuth library when the plugin opts in (the
