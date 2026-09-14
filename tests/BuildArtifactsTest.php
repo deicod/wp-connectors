@@ -1238,6 +1238,13 @@ FIXTURE;
                 // t31-r4-2: the suffix must match the autoloader the
                 // plugin actually maps.
                 'mismatched suffix' => array('{"embed_shared": true, "namespace_suffix": "CustomSuffix"}', 'autoloader prefix'),
+                // t31-r4-17: a build.json that is not a regular file, and
+                // duplicate keys (json_decode keeps the last spelling
+                // silently) — both reproduced as silent-no-embed at
+                // exit 0 pre-fix. The directory row plants the directory
+                // below.
+                'duplicate embed_shared' => array('{"embed_shared": true, "embed_shared": false}', '2 times'),
+                'duplicate namespace_suffix' => array('{"embed_shared": true, "namespace_suffix": "ExampleConnector", "namespace_suffix": "Custom"}', '2 times'),
             );
             foreach ($refusals as $label => [$payload, $fragment]) {
                 file_put_contents($scratch . '/plugin/example-connector/build.json', $payload);
@@ -1253,6 +1260,21 @@ FIXTURE;
             // staging residue) may exist after the refused runs.
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'A refused build must leave no zip behind.');
             $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+
+            // t31-r4-17's directory row: a build.json that is not a
+            // regular file slipped the old is_file() gate entirely (the
+            // seam never ran; a library-less zip shipped with exit 0,
+            // reproduced).
+            unlink($scratch . '/plugin/example-connector/build.json');
+            mkdir($scratch . '/plugin/example-connector/build.json');
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A build.json that is not a regular file must refuse the build, never slip the seam silently.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('not a regular file', $e->getMessage());
+            }
+            rmdir($scratch . '/plugin/example-connector/build.json');
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build must leave no zip behind.');
 
             // Controls, through the same seam: the explicit-equal suffix
             // and the explicit opt-out both build, each with exactly the

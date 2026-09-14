@@ -413,7 +413,18 @@ final class WpConnectorsBuild
         $sharedDir = '';
         $pluginSuffix = '';
         $buildConfig = $pluginDir . '/build.json';
-        if (is_file($buildConfig)) {
+        if (file_exists($buildConfig)) {
+            /*
+             * A build.json that is not a REGULAR FILE refuses (verifier
+             * round t31-r4-17): a directory at the path slipped the old
+             * is_file() gate entirely — the seam never ran, the embed was
+             * silently skipped, and a library-less zip shipped with exit 0
+             * (reproduced) — the silent-no-embed class the seam exists to
+             * kill, one spelling further out than the array top level.
+             */
+            if (! is_file($buildConfig)) {
+                throw new RuntimeException("build: {$slug}: build.json is not a regular file — refusing instead of silently skipping the embed_shared configuration");
+            }
             $rawConfig = file_get_contents($buildConfig);
             if (false === $rawConfig) {
                 throw new RuntimeException("build: cannot read {$buildConfig}");
@@ -463,6 +474,24 @@ final class WpConnectorsBuild
                     throw new RuntimeException('build: ' . $slug . ': build.json namespace_suffix must be a string — ' . gettype($config['namespace_suffix']) . " given (a JSON array casts to 'Array', which passes the segment check and builds under a …\\Array\\Shared namespace; an object fataled with an uncaught Error at the cast)");
                 }
                 self::assertNamespaceSegment($config['namespace_suffix']);
+            }
+            /*
+             * Duplicate keys refuse (verifier round t31-r4-17): json_decode
+             * keeps the LAST spelling silently, so '{"embed_shared": true,
+             * "embed_shared": false}' meant no-embed with exit 0
+             * (reproduced) — the divergent-duplicate shape of the
+             * silent-no-embed class. Counted over the RAW text AFTER the
+             * type checks: in a config whose values passed validation the
+             * quoted key spellings can only be real keys (a namespace
+             * segment cannot carry a quote, and the booleans are
+             * literals), so a second spelling is a duplicate by
+             * construction.
+             */
+            foreach (array('embed_shared', 'namespace_suffix') as $schema_key) {
+                $key_spellings = substr_count($rawConfig, '"' . $schema_key . '"');
+                if ($key_spellings > 1) {
+                    throw new RuntimeException('build: ' . $slug . ": build.json carries the key \"{$schema_key}\" {$key_spellings} times — JSON keeps the last spelling silently, and a divergent duplicate is the silent-no-embed class this seam refuses");
+                }
             }
             $embedShared = true === ($config['embed_shared'] ?? false);
             if ($embedShared) {
