@@ -295,6 +295,83 @@ gap, non-PHP files inside shared/src shipping, and the
 backreference-material namespace rewrite. Residuals ledgered. Suite
 1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r6)
+
+Fix round over round-6's three counted findings — one theme: the
+case-insensitivity doctrine this branch established (t31-r5-16:
+comparisons that gate what ships vs what collides fold case, because
+zip extraction on Windows/macOS targets folds case) was applied
+inconsistently in the build tooling. Three commits t31-r6-1..3, then
+a proportionate two-lens verifier pass (correctness + security) that
+held all three fix-claims (each pin proven red under its pre-fix
+predicate by mutation) and raised ten findings, four fixed in-round
+as t31-r6-4..7, the rest adjudicated and ledgered with repros and
+fix shapes:
+
+- **The repo-LICENSE injection rides the collision fence's case
+  doctrine** (t31-r6-1): the exact-case in_array let a plugin carrying
+  'license'/'License' at its root ship BOTH entries — its own file AND
+  the injected repo copy, inspection green — and on a case-insensitive
+  extraction target the plugin's copy extracted second (sort order)
+  and silently overwrote the repo license. One doctrine, two
+  territories, one comparison (strcasecmp over the collected entries):
+  generated embed destinations refuse a plugin-owned collision
+  (t31-r5-16), while the injected convenience DEFERS — the plugin's
+  license wins in any casing and the repo copy is never injected
+  beside it. The pre-existing exact-case skip is pinned the same way,
+  and the inspector agrees on the single-license artifact.
+- **The near-source fence owns both edges of every byte class**
+  (t31-r6-2, completed by the verifier follow-up t31-r6-4): r5-14's
+  tail strip was " \t." — 'ClockMath.php\n' (a trailing newline IN THE
+  FILENAME) was silently neither collected nor refused, the exact
+  silently-invisible-ship class r5-14 claims closed; r6-2's first
+  widening still missed the C0 controls and DEL
+  ('ClockMath.php\x01'), and the LEADING side was unfenced entirely —
+  ' ClockMath.php', '.ClockMath.php', and a 'Clock /' directory
+  segment COLLECTED and SHIPPED while the shipped autoloader maps
+  class names onto label-shaped paths, a dead entry with build and
+  inspect green (class_exists false through the real shipped
+  autoloader). The edge-junk byte class is owned ONCE
+  (wp_connectors_path_edge_junk(): every byte 0x00-0x20, DEL, and the
+  dot): the tail strip rides it, and every segment of a collected
+  source's path must survive its own edge strip. The ledgered
+  merely-different boundary ('ClockMath.phpé', 'Notes.md') stays
+  silent.
+- **The development-entry vocabulary folds case at ONE comparison
+  owner — trailing junk included** (t31-r6-3, extended by the
+  verifier follow-up t31-r6-5): the ONE vocabulary (t31-r5-10) was
+  compared byte-exactly by BOTH gates, so 'Tests/Bootstrap.php',
+  'Build.json', and 'VENDOR' shipped in release zips AND passed
+  inspection — both gates agreeing on the wrong verdict. The
+  comparison owner (wp_connectors_is_development_entry()) now folds
+  case over the trailing-junk-stripped segment (Windows path
+  normalization strips trailing dots and spaces per component, so
+  'vendor '/'.git ' fold onto the real dev entries at extraction —
+  and still carry dev content on hosts that preserve the odd
+  spelling); the leading side is deliberately not stripped, since the
+  vocabulary's own members may begin with a dot.
+- **Verifier follow-ups** (all adversarially re-driven before
+  fixing): the collision fences' "unconstructible" claims scoped to
+  the both-FILES overwrite they close, the file-vs-directory fold
+  residual named at the fence (t31-r6-6); the fixture-copy loops
+  create the plugin root explicitly — they relied on readdir order
+  yielding a subdirectory before the first root file, demonstrated
+  broken on a tmpfs clone (t31-r6-7).
+
+Verifier pass: both lenses over the whole round diff, every claim
+empirically re-driven (scratch fixtures through the real build and
+inspector, the shipped autoloader probed for the dead-ship claims,
+each committed pin proven red under its pre-fix predicate in a cloned
+tree). All three fix-claims HELD; ten findings raised — the two that
+falsified this round's own fixes' claims (the C0/DEL tails and the
+leading edge; the dev-entry fold's sibling byte-class) fixed as
+t31-r6-4/5 with two hygiene items, the remaining seven adjudicated
+and ledgered with repros and fix shapes (headlined by the secret
+scanner pruning the very subtree the embed ships by design, and the
+case-variant 'Plugin Name:'/build.json spellings). Suite 1549 → 1552
+tests, 43676 → 43763 assertions, 2 skipped unchanged; green in
+default and random order throughout.
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r5)
 
 Fix round over round-5's counted findings, executed per the round's own

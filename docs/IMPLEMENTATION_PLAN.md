@@ -514,6 +514,26 @@ documented exception.
   across read-through-landing), the unreadable-manifest silent
   entry destruction, and the Version-header traversal staging.
   Suite 1538 → 1549 tests, 43498 → 43676 assertions, 2 skipped
+  unchanged. Fix round t31-r6 (7 commits over round-6's three
+  counted findings — one theme: the branch's case-insensitivity
+  doctrine applied inconsistently in the build tooling): the
+  repo-LICENSE injection rides the collision fence's case
+  comparison (a case-variant plugin license deferred to, never
+  shipped beside the injected copy); the near-source fence's
+  edge-junk byte class owned once and applied to BOTH edges
+  (a trailing C0/DEL byte hid the extension; a leading edge byte
+  or junk directory segment shipped a dead, unautoloadable
+  entry); the development-entry vocabulary compared
+  case-insensitively over the trailing-junk-stripped segment at
+  ONE owner serving builder and inspector. A proportionate
+  two-lens verifier pass held all three fix-claims (each pin
+  mutation-proven red) and raised ten findings — four fixed
+  in-round (the two falsifying the round's own claims plus two
+  hygiene items), the remaining seven adjudicated and ledgered
+  with repros and fix shapes (headlined by the secret scanner
+  pruning the subtree the embed ships by design, and the
+  case-variant 'Plugin Name:'/build.json spellings). Suite
+  1549 → 1552 tests, 43676 → 43763 assertions, 2 skipped
   unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
