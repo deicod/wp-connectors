@@ -1120,17 +1120,102 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             $this->assertSame($expectedNamespace, $namespaceMatches[1][0], $relative . ' must follow PSR-4 (namespace matches path).');
 
             // ... and exactly one type whose name matches the file name.
-            $typeMatches = array();
-            preg_match_all('/^(?:abstract\s+|final\s+)?(?:class|interface|enum)\s+([A-Za-z0-9_]+)/m', $contents, $typeMatches);
-            $this->assertCount(1, $typeMatches[0], $relative . ' must declare exactly one type (one type per file).');
-            // The extension strip rides the ONE case-insensitive owner
-            // (t31-r4-9): basename($path, '.php') never strips a '.PHP'
-            // spelling, so the gate compared a type name against
-            // 'ClockMath.PHP' — a misleading failure naming the wrong
-            // defect while the vocabulary collected the file fine.
-            $this->assertSame(wp_connectors_basename_without_php_extension($path), $typeMatches[1][0], $relative . ': the type name must match the file name.');
+            $this->assertOneTypeMatchingFileName($path, $relative);
         }
 
         $this->assertGreaterThanOrEqual(20, $scanned);
+    }
+
+    /**
+     * The one-type-per-file gate for ONE file (t31-r4-10: the type
+     * vocabulary is class, readonly class, interface, trait, and enum).
+     *
+     * The old pattern knew only (abstract|final) class/interface/enum:
+     * a `trait` declaration was invisible — a class+trait file passed
+     * as "exactly one type" — and a `readonly class` (legal since PHP
+     * 8.2, this repo's floor) counted as no type at all. The modifier
+     * run is a `*` over (abstract|final|readonly) in any order and
+     * count; off-vocabulary combinations are lint's domain, the sweep
+     * counts declared TYPES. The name comparison rides the ONE
+     * case-insensitive extension-strip owner (t31-r4-9).
+     *
+     * Private and path-parameterized so the mutation discipline drives
+     * the ACTUAL gate on planted fixtures (both directions).
+     *
+     * @param string $path     Absolute file path.
+     * @param string $relative Path relative to the swept root (diagnostics).
+     * @return void
+     */
+    private function assertOneTypeMatchingFileName(string $path, string $relative): void
+    {
+        $contents = $this->fileContents($path);
+        $typeMatches = array();
+        $result = preg_match_all('/^(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum)\s+([A-Za-z0-9_]+)/m', $contents, $typeMatches);
+        $this->assertNotFalse($result, $relative . ': the type scan aborted (PCRE) — an abort is a REFUSAL, never a clean count.');
+        $this->assertCount(1, $typeMatches[0], $relative . ' must declare exactly one type (one type per file).');
+        $this->assertSame(wp_connectors_basename_without_php_extension($path), $typeMatches[1][0], $relative . ': the type name must match the file name.');
+    }
+
+    /**
+     * Fix-round pin (t31-r4-10): the type vocabulary covers every type
+     * spelling — each declaration counts as exactly one type and
+     * captures its name — and the gate enforces one-type-per-file
+     * through the ACTUAL helper: a class+trait file fails (the trait
+     * was invisible to the old pattern), a trait-only and a
+     * readonly-class source pass with the file-name match intact (the
+     * readonly spelling counted as no type before).
+     */
+    public function testTheTypeVocabularyCoversEveryTypeSpelling(): void
+    {
+        $pattern = '/^(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum)\s+([A-Za-z0-9_]+)/m';
+
+        $spellings = array(
+            'class' => 'class ClockMath',
+            'abstract class' => 'abstract class ClockMath',
+            'final class' => 'final class ClockMath',
+            'readonly class' => 'readonly class ClockMath',
+            'final readonly class' => 'final readonly class ClockMath',
+            'readonly final class' => 'readonly final class ClockMath',
+            'interface' => 'interface ClockMath',
+            'trait' => 'trait ClockMath',
+            'enum' => 'enum ClockMath',
+        );
+        foreach ($spellings as $label => $declaration) {
+            $matches = array();
+            $this->assertSame(1, preg_match_all($pattern, $declaration . "\n{\n}\n", $matches), "The vocabulary must count the spelling exactly once: {$label}.");
+            $this->assertSame('ClockMath', $matches[1][0], "The vocabulary must capture the type name: {$label}.");
+        }
+
+        // Column-0 lookalikes that are not type declarations.
+        foreach (array('classified text', 'classified;') as $not_a_type) {
+            $this->assertSame(0, preg_match_all($pattern, $not_a_type . "\n"), "A non-declaration must not count: {$not_a_type}.");
+        }
+
+        // End-to-end through the ACTUAL gate.
+        $gate = new \ReflectionMethod($this, 'assertOneTypeMatchingFileName');
+        $scratch = tempnam(sys_get_temp_dir(), 'wpct-type-vocab-');
+        unlink($scratch);
+        mkdir($scratch, 0755, true);
+        try {
+            file_put_contents($scratch . '/Token.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nreadonly class Token\n{\n}\n");
+            $gate->invoke($this, $scratch . '/Token.php', 'Token.php');
+
+            // The '.PHP' spelling rides the same gate (t31-r4-9's stem).
+            file_put_contents($scratch . '/ClockTrait.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait ClockTrait\n{\n}\n");
+            $gate->invoke($this, $scratch . '/ClockTrait.PHP', 'ClockTrait.PHP');
+
+            // A class PLUS a trait in one file fails one-type-per-file —
+            // the trait was invisible to the old vocabulary.
+            file_put_contents($scratch . '/Mate.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass Mate\n{\n}\ntrait MateHelpers\n{\n}\n");
+            try {
+                $gate->invoke($this, $scratch . '/Mate.php', 'Mate.php');
+                $this->fail('A class+trait file must fail one-type-per-file now that the vocabulary sees traits.');
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $this->assertStringContainsString('exactly one type', $e->getMessage());
+                $this->assertStringContainsString('Mate.php', $e->getMessage());
+            }
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
     }
 }
