@@ -328,15 +328,18 @@ final class WpConnectorsBuild
         }
 
         /*
-         * Config seam (review round t31-r3-1): build.json is resolved and
-         * validated ONCE, before any filesystem mutation. The old shape
-         * decoded it inline inside the staging block, so a malformed
-         * build.json (a trailing comma → json_decode() null → is_array()
-         * false) SILENTLY skipped the embed_shared block — the zip shipped
-         * without the shared library and the run exited 0 with a checksum,
-         * a plugin that fatals on install. A build.json the loader touches
-         * is a contract now: readable, and a JSON object — anything else
-         * refuses the build loudly.
+         * Config seam (review round t31-r3-1, verifier round t31-r3-15,
+         * then review round t31-r4 K2): build.json is resolved and
+         * validated ONCE, before any filesystem mutation — and the
+         * validation is a CLOSED SCHEMA, not container shape. The seam
+         * had closed "silently skips the embed" one spelling at a time
+         * (the decode failure, then the array top level); K2 closes the
+         * CLASS: every key is known, every value is typed, and the
+         * derived/explicit suffix agrees with the autoloader the plugin
+         * will actually load through. Anything else refuses the build
+         * loudly — a config the loader touches is a contract, and a
+         * library-less or unloadable zip with exit 0 is the failure
+         * mode every clause below exists to make impossible.
          */
         $embedShared = false;
         $sharedDir = '';
@@ -347,16 +350,6 @@ final class WpConnectorsBuild
             if (false === $rawConfig) {
                 throw new RuntimeException("build: cannot read {$buildConfig}");
             }
-            /*
-             * Verifier round t31-r3-15: the assoc decode + is_array() gate
-             * accepted a top-level JSON ARRAY too (a decoded list IS a PHP
-             * array), so '["embed_shared"]' and '[]' silently skipped the
-             * embed and shipped a zip without the shared library, exit 0 —
-             * the exact defect class the seam exists to close, one
-             * spelling away. The decode is object-typed now: the top
-             * level must decode to a JSON OBJECT, and the object cast
-             * (whose keys are always strings) feeds the embed decision.
-             */
             $decoded = json_decode($rawConfig);
             if (JSON_ERROR_NONE !== json_last_error()) {
                 throw new RuntimeException("build: {$slug}: build.json is malformed (" . json_last_error_msg() . ") — refusing instead of silently skipping the embed_shared configuration");
@@ -365,7 +358,46 @@ final class WpConnectorsBuild
                 throw new RuntimeException("build: {$slug}: build.json is malformed (the top-level value is not a JSON object) — refusing instead of silently skipping the embed_shared configuration");
             }
             $config = (array) $decoded;
-            if (! empty($config['embed_shared'])) {
+            /*
+             * Closed vocabulary (K2 / t31-r4-6): unknown keys refuse the
+             * build. The container-shape checks accepted any object, so
+             * {"embed_shard": true} — a typo — silently meant no-embed
+             * and shipped a library-less zip with exit 0 (reproduced);
+             * the JSON-boolean check below is the same class: the string
+             * "false" is TRUTHY to empty(), so it embedded while reading
+             * as no-embed (reproduced). Only an explicit JSON false or
+             * absence opts out now.
+             */
+            $unknown_keys = array();
+            foreach (array_keys($config) as $config_key) {
+                if ('embed_shared' !== $config_key && 'namespace_suffix' !== $config_key) {
+                    $unknown_keys[] = (string) $config_key;
+                }
+            }
+            if ($unknown_keys !== array()) {
+                throw new RuntimeException('build: ' . $slug . ': build.json carries unknown key(s) ' . implode(', ', $unknown_keys) . " — the closed schema is embed_shared (a JSON boolean) and namespace_suffix (a string); a typo would otherwise silently mean no-embed and ship a library-less zip with exit 0");
+            }
+            if (array_key_exists('embed_shared', $config) && ! is_bool($config['embed_shared'])) {
+                throw new RuntimeException('build: ' . $slug . ': build.json embed_shared must be a JSON boolean (true or false) — ' . var_export($config['embed_shared'], true) . ' given (the string "false" is truthy to the old empty() check and embedded while reading as no-embed)');
+            }
+            /*
+             * namespace_suffix is typed BEFORE any use (K2 / t31-r4-1):
+             * the old (string) cast fed a JSON array through as 'Array'
+             * — which PASSES the namespace-segment check and built under
+             * a …\Array\Shared namespace (reproduced) — and a JSON
+             * object fataled with an uncaught Error at the cast. A
+             * present key must be a string AND a legal segment, whether
+             * or not the embed is on (a present-but-invalid key is a
+             * config error even when currently inert).
+             */
+            if (array_key_exists('namespace_suffix', $config)) {
+                if (! is_string($config['namespace_suffix'])) {
+                    throw new RuntimeException('build: ' . $slug . ': build.json namespace_suffix must be a string — ' . gettype($config['namespace_suffix']) . " given (a JSON array casts to 'Array', which passes the segment check and builds under a …\\Array\\Shared namespace; an object fataled with an uncaught Error at the cast)");
+                }
+                self::assertNamespaceSegment($config['namespace_suffix']);
+            }
+            $embedShared = true === ($config['embed_shared'] ?? false);
+            if ($embedShared) {
                 // Collect from shared/src ITSELF (review round t31-r2-12):
                 // the old collection walked shared/ — the parent of the
                 // source directory — shipping dev files (README.md et al.)
@@ -377,11 +409,28 @@ final class WpConnectorsBuild
                 if (! is_dir($sharedDir)) {
                     throw new RuntimeException("build: {$slug} requests shared code but {$sharedDir} does not exist");
                 }
-                $pluginSuffix = isset($config['namespace_suffix']) && '' !== (string) $config['namespace_suffix']
-                    ? (string) $config['namespace_suffix']
-                    : self::namespaceSuffixFromSlug($slug);
+                /*
+                 * Autoloader cross-check (K2 / t31-r4-2): the suffix must
+                 * agree with the prefix the plugin will actually map.
+                 * The shipped autoloader (src/autoload.php, exactly the
+                 * example connector's shape — one spl_autoload_register
+                 * bound to the slug-derived prefix, enforced by
+                 * wp_connectors_autoloader_violations() at this very
+                 * gate) is the ONLY loader, and the build emits no
+                 * autoloader of its own — so a custom suffix embedded
+                 * the library under Deicod\WpConnectors\<Custom>\Shared,
+                 * a namespace nothing loads: every gate stayed green and
+                 * the plugin fataled on install (reproduced). The
+                 * invariant is explicit now: an explicit namespace_suffix
+                 * must equal the slug-derived segment, or the build
+                 * refuses.
+                 */
+                $derivedSuffix = self::namespaceSuffixFromSlug($slug);
+                $pluginSuffix = array_key_exists('namespace_suffix', $config) ? $config['namespace_suffix'] : $derivedSuffix;
+                if ($pluginSuffix !== $derivedSuffix) {
+                    throw new RuntimeException("build: {$slug}: build.json namespace_suffix '{$pluginSuffix}' does not match the slug-derived autoloader prefix Deicod\\WpConnectors\\{$derivedSuffix}\\ the plugin ships (src/autoload.php binds it, the conventions gate enforces it, and the build emits no autoloader of its own) — the shared library would embed under Deicod\\WpConnectors\\{$pluginSuffix}\\Shared, a namespace nothing loads: every gate green, the plugin fataled on install. Set namespace_suffix to '{$derivedSuffix}' or drop the key");
+                }
                 self::assertNamespaceSegment($pluginSuffix);
-                $embedShared = true;
             }
         }
 

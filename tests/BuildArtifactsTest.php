@@ -1199,6 +1199,85 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r4 K2), end-to-end through the seam: build.json
+     * is a CLOSED SCHEMA now, not container shape. The seam had closed
+     * "silently skips the embed" one spelling at a time (the decode
+     * failure, then the array top level); this round closes the class —
+     * every key known, every value typed, the suffix agreeing with the
+     * autoloader the plugin will actually load through. Each row below
+     * built a broken artifact with exit 0 pre-fix (the typo shipped a
+     * library-less zip; the string "false" embedded while reading as
+     * no-embed; the JSON array built under a …\Array\Shared namespace;
+     * the JSON object fataled with an uncaught Error; the custom suffix
+     * shipped an unloadable library with every gate green).
+     */
+    public function testABuildJsonOutsideTheClosedSchemaRefusesTheBuildLoudly(): void
+    {
+        $scratch = self::distDir() . '/.embed-schema';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+
+        try {
+            $refusals = array(
+                // t31-r4-6: unknown keys and untyped booleans.
+                'typo key' => array('{"embed_shard": true}', 'unknown key'),
+                'typo key beside valid' => array('{"embed_shared": true, "namespace_sufix": "ExampleConnector"}', 'unknown key'),
+                'string boolean' => array('{"embed_shared": "false"}', 'JSON boolean'),
+                'integer boolean' => array('{"embed_shared": 1}', 'JSON boolean'),
+                // t31-r4-1: namespace_suffix typed before any use.
+                'array suffix' => array('{"embed_shared": true, "namespace_suffix": ["OpenAiOauth"]}', 'must be a string'),
+                'object suffix' => array('{"embed_shared": true, "namespace_suffix": {"segment": "OpenAiOauth"}}', 'must be a string'),
+                'number suffix' => array('{"embed_shared": true, "namespace_suffix": 42}', 'must be a string'),
+                'empty suffix' => array('{"embed_shared": true, "namespace_suffix": ""}', 'namespace segment'),
+                // t31-r4-2: the suffix must match the autoloader the
+                // plugin actually maps.
+                'mismatched suffix' => array('{"embed_shared": true, "namespace_suffix": "CustomSuffix"}', 'autoloader prefix'),
+            );
+            foreach ($refusals as $label => [$payload, $fragment]) {
+                file_put_contents($scratch . '/plugin/example-connector/build.json', $payload);
+                try {
+                    WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                    $this->fail("A build.json outside the closed schema ({$label}) must refuse the build, never ship its consequence.");
+                } catch (RuntimeException $e) {
+                    $this->assertStringContainsString($fragment, $e->getMessage(), "The refusal must say why ({$label}): {$e->getMessage()}");
+                }
+            }
+
+            // The seam fires before any filesystem mutation: no zip (or
+            // staging residue) may exist after the refused runs.
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'A refused build must leave no zip behind.');
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+
+            // Controls, through the same seam: the explicit-equal suffix
+            // and the explicit opt-out both build, each with exactly the
+            // embed state the config names.
+            $derived = WpConnectorsBuild::namespaceSuffixFromSlug('example-connector');
+            file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true, \"namespace_suffix\": \"{$derived}\"}\n");
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertContains(
+                'example-connector/src/Shared/Clock/ClockInterface.php',
+                $this->zipEntryNames($zipPath),
+                'An explicit suffix equal to the derivation must still embed.'
+            );
+
+            file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": false}\n");
+            $optOut = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $optOutEntries = $this->zipEntryNames($optOut);
+            foreach ($optOutEntries as $entry) {
+                $this->assertStringNotContainsString('src/Shared/', $entry, 'An explicit false must not embed the shared library.');
+            }
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r3-6): the staging lifecycle leaked on failure —
      * the per-file namespace-suffix validation threw AFTER the
      * dist/.stage-<slug> tree existed (rrmdir only ran on the success
