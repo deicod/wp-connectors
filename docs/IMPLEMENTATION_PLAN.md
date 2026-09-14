@@ -420,7 +420,37 @@ documented exception.
   four findings, fixed as t31-r2-16..19 (the whole-file gate's PCRE-abort
   fail-open — found by both lenses independently; getdate()/localtime()
   joining the clock vocabulary; non-PHP files inside shared/src shipping;
-  the backreference-material namespace rewrite).
+  the backreference-material namespace rewrite). Fix round t31-r3 (16
+  commits over round-3's 14 findings, the embed pipeline's six landed as
+  ONE coherent seam — config validation first, staging try/finally,
+  rewrite/whitelist/collect vocabularies agreeing, one PHP-sources-only
+  assertion): build.json validated once at a config seam before any
+  filesystem mutation (readable JSON OBJECT — trailing comma, empty,
+  scalar, and the verifier-caught top-level ARRAY each refuse; the
+  old shape silently shipped a library-less zip with exit 0); the
+  staging lifecycle try/catch/finally with the failure cleanup scoped
+  to what the run wrote (a failed build keeps the last good zip,
+  sidecar, and manifest entry consistent, and a corrupted archive
+  takes its sidecar and entry with it); every shared PHP source ships
+  from anywhere in the source tree (no exclusion segments,
+  case-insensitive extension, ONE collector vocabulary shared by the
+  build and the architecture sweep); every shared-namespace use
+  spelling rewritten (plain/aliased/function/const/fully-qualified/
+  exact/brace-group) with a survivor-refusing postcondition; the
+  namespace derivation producing legal labels for digit-initial slugs
+  ('3cx-oauth' → '_3cxOauth', documented in CONVENTIONS.md);
+  should_refresh total at the extreme corners (the unrepresentable
+  threshold decided deterministically inside the predicate); the
+  WP-reach and provider-name gates whole-file (multiline spellings
+  caught, abort = refusal, mutation-tested end to end); the method
+  fold locale-independent (AsciiFold::upper, class-closure pinned);
+  HeaderMap single-structure (the folded index alone); the sweep
+  loud-read and cached per run. A two-lens verifier pass (each finding
+  adversarially verified) held all 14 fix-claims and confirmed two
+  defects, fixed as t31-r3-15/16 (the build.json array-top-level
+  silent skip — found independently by both lenses; the failed
+  build's orphaned-checksum state). Suite 1513 → 1521 tests, 43122 →
+  43256 assertions, 2 skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

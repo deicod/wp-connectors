@@ -295,6 +295,111 @@ gap, non-PHP files inside shared/src shipping, and the
 backreference-material namespace rewrite. Residuals ledgered. Suite
 1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r3)
+
+Fix round over round-3's 14 counted findings. The reviewer's own
+structural read — findings 1–6 are one theme, the embed_shared
+pipeline's failure modes being silent or leaky — was executed as one
+coherent seam design: validate the configuration ONCE before any
+filesystem mutation, wrap the staging lifecycle in try/catch/finally,
+make the rewrite/whitelist/collect vocabularies agree, and keep the
+ONE assertion (PHP sources only) in the test pair. 14 commits
+t31-r3-1..14, then a two-lens verifier pass whose every fix-claim
+HELD and whose two confirmed defects are fixed as t31-r3-15/16:
+
+- **The embed pipeline fails loud and ships total** (t31-r3-1/4/9/15):
+  build.json is resolved and validated once at a config seam BEFORE
+  any filesystem mutation — readable, a JSON OBJECT (trailing comma,
+  empty file, scalar, and — the verifier's catch, found by both
+  lenses — a top-level ARRAY each refuse the build; the array shape
+  silently skipped embed_shared and shipped a library-less zip with
+  exit 0); the embed collection rides ONE shared-source collector
+  (no exclusion-name segments — a source under shared/src/tools/
+  loads in development and must ship, or the plugin fatals on the
+  missing class; case-insensitive `.php` extension, so a
+  `.PHP`-spelled source ships instead of riding past every gate) —
+  and the architecture sweep's file vocabulary is that same
+  collector, so what ships and what is judged cannot drift.
+- **A failed build leaks nothing and destroys nothing**
+  (t31-r3-6/16): the namespace suffix is validated once at the seam
+  (`assertNamespaceSegment()`, kept as defense in depth inside the
+  rewriter), the whole staging lifecycle — tree, copy, embed rewrite,
+  zip — runs inside one try/catch/finally (the stage tree is torn
+  down and a half-written archive released on every throw), and the
+  artifact cleanup is scoped to what THIS run wrote: a failure
+  before the archive opens leaves the previous good zip, its sidecar,
+  and its manifest entry byte-for-byte intact (the verifier
+  reproduced the old shape orphaning a checksum for a deleted zip),
+  while a failure after open removes the corrupted zip, sidecar, and
+  manifest entry together.
+- **Every shared-namespace use spelling is rewritten**
+  (t31-r3-2): the rewriter's use-pattern required a trailing
+  separator, so `use …Shared;`, its aliased form, and every
+  `use function/const` spelling survived byte-identical — the
+  embedded copy imported a namespace that no longer exists
+  (class-not-found fatal). One pattern covers plain, aliased,
+  function, const, fully-qualified, exact, and brace-group spellings,
+  and a postcondition REFUSES the build when any spelling survives
+  (a comment-interrupted use line names its file); a
+  Shared-prefixed foreign namespace (`SharedStorage`) stays
+  untouched. The sweep's use-line whitelist states the honest
+  contract it rides, and the spelling battery is pinned end to end.
+- **The namespace derivation produces legal labels** (t31-r3-5): a
+  digit-initial slug (`3cx-oauth`, a legal plugin slug) derived
+  `3cxOauth` — not a declarable PHP label, rejected by the suffix
+  validator while all three consumers (conventions checker, builder,
+  dev autoloader) derived it. The ONE derivation underscores
+  digit-initial suffixes (`_3cxOauth`); a 3cx-oauth plugin builds
+  end to end with embed_shared, its embedded copy lint-clean.
+  Documented in CONVENTIONS.md beside the enforcing check.
+- **`should_refresh()` is a total predicate** (t31-r3-3): a
+  year-0000-floor obtained_at plus a saturation-scale skew (both
+  legal) drove expiry-minus-skew out of the representable range and
+  a global `InvalidArgumentException` escaped the bool predicate —
+  an unhandled type Task 3.3's coordinator would crash on. The
+  corner is decided inside the predicate from the arithmetic's own
+  meaning (a threshold before every representable instant is reached
+  by every reading — refresh due), with the largest skew whose
+  threshold stays representable keeping the exact flip point.
+- **The sweep is whole-file, loud, and cheap** (t31-r3-8/13): the
+  WP-reach and provider-name gates apply to the whole file through
+  the shared helper (multiline spellings caught — `$saved = __` /
+  `( 'save' );` evaded every per-line pass — and a PCRE abort
+  refuses), mutation-tested end to end; the PSR-4 gate reads through
+  the loud `fileContents()` reader; the walk and successful reads
+  are cached per run (the sweep re-walked shared/src 7×/re-read each
+  file ~6×).
+- **The method fold is locale-independent** (t31-r3-10): the HTTP
+  method's normalization rode the locale-sensitive byte upper-case
+  mapping — under the Turkish dotted-I rule `'post'` would stop being
+  a method in exactly the processes whose locale folds it (argued
+  from the fold tables, no tr_* locale on this host).
+  `AsciiFold::upper()` (the byte-table twin of `lower()`) owns it,
+  pinned by the same class-closure posture as t31-r2-14.
+- **`HeaderMap` carries one structure** (t31-r3-14): the folded index
+  alone — `headers()` derives via `array_column` (digit-key
+  canonicalization unchanged), `rendered_lines()` iterates the pairs.
+- **Test hygiene** (t31-r3-7/11/12): the embed test pair states the
+  ONE contract (PHP sources ship at exact paths; every `src/Shared/`
+  entry is a PHP source); the PCRE-burner and rewrite-lint scratch
+  lifecycles ride try/finally (no tearDown glob matched either
+  shape); `copyFixturePlugin()`/`zipEntryNames()` own the two shapes
+  every zip-inspecting test had copied verbatim (the master-era
+  sites included).
+
+Verifier pass: two independent lenses (correctness + security, each
+finding adversarially verified) over the whole round diff — every one
+of the 14 fix-claims HELD (several HELD_WITH_NOTES, none falsified;
+the seam re-driven against a non-existent dist, the rewrite battery
+extended with FQ/group/newline spellings and PCRE-abort attempts, the
+policy pre-check driven byte-identical to the arithmetic guard at
+every boundary, HeaderMap's derivation proven key-identical over
+digit/leading-zero maps, the caches audited for write-after-read).
+Two confirmed defects fixed as t31-r3-15/16: the build.json
+array-top-level silent skip (found independently by both lenses) and
+the failed build's orphaned-checksum state. Residuals ledgered. Suite
+1513 → 1521 tests, 43122 → 43256 assertions, 2 skipped unchanged.
+
 ### Changed (tooling — PHP floor 8.2, user decision 2026-09-11)
 
 The supported PHP floor is **8.2**, not 7.4 — "Pff PHP 7.4 wird nicht mal
