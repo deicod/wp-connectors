@@ -295,6 +295,74 @@ gap, non-PHP files inside shared/src shipping, and the
 backreference-material namespace rewrite. Residuals ledgered. Suite
 1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r7)
+
+Fix round over round-7's five counted findings — all in the
+build/rewrite seam, and all one more spelling of the class the seam had
+carried since t31-r4: the K1 survivor surface was still "one spelling
+away" for the third time. THE TERMINAL FIX replaces text-level
+namespace detection with TOKEN-level detection; one more commit fixes
+the unchecked generated-member write; a two-lens verifier pass over the
+round diff raised four findings (all adversarially confirmed with
+end-to-end repros — two of them genuine regressions the round itself
+introduced), fixed as t31-r7-6/7/8:
+
+- **Token-based namespace reference detection — one detector, two
+  consumers** (t31-r7-K, findings 1/2/4/5): a comment between a use
+  name's segments, a sibling `Deicod\WpConnectors\*` import, and a
+  double-backslash class-string literal each shipped past both gates at
+  exit 0 (all reproduced red under the pre-fix code before the
+  commit). `wp_connectors_shared_family_references()`
+  (bin/lib/plugin-tools.php — loadable by the build, the sweep, and
+  the conventions tooling alike) reassembles name runs across comments
+  and whitespace (a comment can only INTERRUPT a run, never carry
+  one), composes group-use members with their prefix, judges string
+  literals by their unescaped RUNTIME VALUE (quoted, heredoc, nowdoc —
+  the static half of the ledgered K1 split-composed boundary, closed),
+  and judges comment/docblock/inline-HTML text with the former
+  survivor pattern, now GENERATED from any family spelling
+  (byte-identical for the source side). The build's postcondition
+  refuses every family reference that is not the rewritten target
+  prefix; the sweep's namespace gate allows own-namespace
+  declarations and imports only and verifies OWNERSHIP by rewriting
+  each swept file through the build's own postcondition — the sweep
+  and the build give one verdict by construction, and the old
+  every-use-statement whitelist is gone. The legal tree's import
+  vocabulary is enumerated and pinned (DateTimeImmutable, DateTimeZone,
+  InvalidArgumentException, RuntimeException, Throwable — a new import
+  joins only by being pinned). Doctrine flips ledgered with the
+  spelling history: the SharedStorage spelling, the `{Other\Shared}`
+  group member, and the bare vendor-prefix import move from
+  untouched-legal pins to sibling refusals.
+- **The generated-member write is checked and the staged bytes
+  verified** (t31-r7-3): `writeNormalized()` ignored
+  `file_put_contents()`'s return, so a short write staged a truncated
+  PHP file that zip close() happily packed and published at exit 0 —
+  the t31-r5-S "verified whole at its staging path" claim was false
+  for generated members. The write layer's word is checked (false or
+  short → loud refusal naming file + expected bytes) and what landed
+  is re-read and length-compared before the archive opens; pinned at
+  the reflection seam with a REAL forced short write (a stream
+  wrapper driving PHP's own "Only X of Y bytes written" write loop).
+- **Verifier follow-ups** (each adversarially confirmed, each pin
+  proven red under the pre-fix code): the run assembly dropped the
+  separator byte on trivia-after-separator joins, making the
+  whitespace-interrupted spellings the r4-era regex REFUSED into
+  exit-0 ships under the token walk — a genuine regression, raised
+  independently by both lenses (t31-r7-6); the alias skip survived its
+  use statement's end and silently ate the next name run anywhere in
+  the file, laundering a family reference with nothing family in the
+  hostile statement itself (t31-r7-7); the postcondition waved
+  target-rooted CODE/STRING references through — a hand-spelled
+  dangling reference to the building plugin's own prefix shipped at
+  exit 0 while the sweep refused the same file, verdict drift — and
+  the text lens was blind to target spellings entirely; the allow-list
+  narrows to the two positions the rewrite produces, measured over
+  the real tree × every suffix shape (t31-r7-8).
+
+Suite 1552 → 1554 tests, 43763 → 44107 assertions, 2 skipped
+unchanged; green in default and random order throughout.
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r6)
 
 Fix round over round-6's three counted findings — one theme: the

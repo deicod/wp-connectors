@@ -534,7 +534,38 @@ documented exception.
   pruning the subtree the embed ships by design, and the
   case-variant 'Plugin Name:'/build.json spellings). Suite
   1549 → 1552 tests, 43676 → 43763 assertions, 2 skipped
-  unchanged.
+  unchanged. Fix round t31-r7 (5 commits over round-7's five
+  counted findings, all in the build/rewrite seam — the K1
+  survivor surface one spelling away for the third time): THE
+  TERMINAL FIX, replacing text-level namespace detection with
+  TOKEN-level detection in one shared detector
+  (wp_connectors_shared_family_references(), one implementation
+  the build's rewrite postcondition and the sweep's namespace
+  gate both ride — name runs reassembled across comments and
+  whitespace so the interrupted spelling dies by construction,
+  string literals judged by their unescaped runtime value
+  closing the ledgered K1 boundary's static half, siblings
+  under the vendor prefix banned outright with the r4-era
+  "foreign namespace" pins flipped, the sweep verifying
+  ownership by rewriting through the build's own
+  postcondition so the two gates give one verdict by
+  construction, and the legal tree's import vocabulary
+  enumerated and pinned); plus the generated-member write
+  made checked and staged-verified (writeNormalized owns
+  file_put_contents' return and re-reads the landed bytes —
+  the r5-S verified-whole claim now holds for generated
+  members). A two-lens verifier pass (every finding
+  adversarially re-derived before fixing, all four CONFIRMED)
+  falsified the round's own implementation three times —
+  the run assembly dropped the separator byte on
+  trivia-after-separator joins (a genuine regression: the
+  whitespace spellings the r4 regex refused became exit-0
+  ships), the alias skip survived its statement's end and
+  ate the next name run, and target-rooted code/string
+  references shipped as dangling spellings the sweep
+  refused — fixed as t31-r7-6/7/8, each pin red under the
+  pre-fix code. Suite 1552 → 1554 tests, 43763 → 44107
+  assertions, 2 skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
