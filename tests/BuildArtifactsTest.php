@@ -2157,6 +2157,60 @@ FIXTURE;
         }
     }
 
+    /**
+     * Verifier-round pin (t31-r5-15): the Version header's bytes flowed
+     * unchecked into the artifact filename and the staging paths — a
+     * traversal spelling ('0.1/../../../vsec-precious', with the version
+     * constant matching so both gates passed) staged the archive and
+     * sidecar OUTSIDE dist/ on runtimes whose write paths lexically
+     * collapse '..', stranding valid-artifact bytes past the cleanup's
+     * raw-spelling unlinks (adversarially confirmed; the pre-round code
+     * had published the whole set at the escaped path at exit 0). The
+     * header gate requires a version TOKEN now — no separators — at the
+     * ONE gate conventions, build, and inspect all ride.
+     */
+    public function testATraversalSpelledVersionHeaderRefusesTheBuild(): void
+    {
+        $tempPlugin = self::distDir() . '/.version-token/example-connector';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir(dirname($tempPlugin), 0755, true);
+        $this->copyFixturePlugin($tempPlugin);
+        $mainPath = $tempPlugin . '/example-connector.php';
+        $main = (string) file_get_contents($mainPath);
+
+        try {
+            // Both the header and the constant carry the spelling (the
+            // version-constant gate requires them to match).
+            $traversal = '0.1/../../../vsec-precious';
+            file_put_contents($mainPath, str_replace(array('Version:           0.1.0', "'0.1.0'"), array("Version:           {$traversal}", "'{$traversal}'"), $main));
+            try {
+                WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+                $this->fail('A traversal-spelled Version header must refuse the build at the header gate.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('version token', $e->getMessage());
+                $this->assertStringContainsString($traversal, $e->getMessage());
+            }
+
+            // Control: the ordinary version shape still builds, and the
+            // token charset's legal specials (dot, plus) pass the gate.
+            file_put_contents($mainPath, str_replace(array("Version:           {$traversal}", "'{$traversal}'"), array('Version:           0.1.0', "'0.1.0'"), $main));
+            $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+            $this->assertFileExists($zipPath);
+
+            foreach (array('1.0.0-beta.1', '1.0+build.2') as $legal) {
+                file_put_contents($mainPath, str_replace(array('Version:           0.1.0', "'0.1.0'"), array("Version:           {$legal}", "'{$legal}'"), $main));
+                $legalZip = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+                @unlink($legalZip);
+                @unlink($legalZip . '.sha256');
+            }
+            @unlink(self::distDir() . '/checksums.txt');
+        } finally {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";

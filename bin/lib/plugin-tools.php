@@ -379,6 +379,20 @@ function wp_connectors_header_violations(array $headers, $slug)
     if (isset($headers['requires at least']) && '6.9' !== $headers['requires at least']) {
         $violations[] = sprintf('%s: "Requires at least" must be 6.9, found "%s".', $slug, $headers['requires at least']);
     }
+    /*
+     * The Version header is a version TOKEN (verifier round t31-r5-15):
+     * its bytes flow unchecked into the artifact filename and the
+     * staging paths, and a traversal spelling ('0.1/../../../vsec')
+     * staged the archive and sidecar OUTSIDE dist/ on runtimes whose
+     * write paths lexically collapse '..' — residue stranded past the
+     * cleanup's raw-spelling unlinks (adversarially confirmed; the
+     * pre-round shape published the whole set at the escaped path at
+     * exit 0). A token charset with no separators closes the class at
+     * the ONE header gate every consumer rides.
+     */
+    if (isset($headers['version']) && 1 !== preg_match('/\A[A-Za-z0-9._+-]+\z/', $headers['version'])) {
+        $violations[] = sprintf('%s: "Version" must be a version token (letters, digits, dots, underscores, hyphens, plus — no separators), found "%s".', $slug, $headers['version']);
+    }
     if (isset($headers['requires php']) && '8.2' !== $headers['requires php']) {
         $violations[] = sprintf('%s: "Requires PHP" must be 8.2, found "%s".', $slug, $headers['requires php']);
     }

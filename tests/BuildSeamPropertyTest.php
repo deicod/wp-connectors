@@ -250,6 +250,18 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 },
                 'fragment' => 'not a regular file',
             ),
+            'version-header-traversal' => array(
+                // t31-r5-15: the header's bytes reached the artifact
+                // filename and staging paths unchecked — a traversal
+                // spelling staged the archive and sidecar OUTSIDE dist/.
+                'expect' => 'LOUD',
+                'apply' => static function (array $scratch): void {
+                    $mainPath = $scratch['plugin'] . '/example-connector.php';
+                    $traversal = '0.1/../../../vsec-precious';
+                    file_put_contents($mainPath, str_replace(array('Version:           0.1.0', "'0.1.0'"), array("Version:           {$traversal}", "'{$traversal}'"), (string) file_get_contents($mainPath)));
+                },
+                'fragment' => 'version token',
+            ),
             'manifest-unreadable' => array(
                 // t31-r5-13: the merge's unchecked read laundered a
                 // chmod-000 manifest into an empty line set — the landed
