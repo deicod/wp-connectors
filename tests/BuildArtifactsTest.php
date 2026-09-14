@@ -1680,23 +1680,25 @@ FIXTURE;
     }
 
     /**
-     * Fix-round pin (t31-r6-2): the near-source fence's tail strip was
-     * " \t." — every trailing byte OUTSIDE that set hid the extension
-     * for free, so 'ClockMath.php\n' (a trailing newline IN THE
-     * FILENAME) was silently neither collected nor refused: it built
-     * clean, shipped in no zip, and a class declared inside it was a
-     * class-not-found fatal with build and inspect green (reproduced)
-     * — the exact silently-invisible-ship class t31-r5-14 claims
-     * closed. The fence now judges on the basename stripped of ALL
-     * trailing whitespace, control bytes, and the dot (the full
-     * rtrim charlist), so a filename hiding the extension behind any
-     * trailing byte refuses loudly. The r5-14 spellings still refuse,
-     * and the ledgered merely-different boundary ('ClockMath.phpé',
-     * 'Notes.md') stays silent.
+     * Fix-round pin (t31-r6-2, completed by the verifier follow-up
+     * t31-r6-4): the near-source fence's tail strip was " \t." — and
+     * r6-2's own widened literal still missed the C0 controls and
+     * DEL, so 'ClockMath.php\x01' was silently neither collected nor
+     * refused. The LEADING side was unfenced entirely: ' ClockMath.php'
+     * (or '.ClockMath.php', or a 'Clock /' directory segment) COLLECTED
+     * and SHIPPED while the shipped autoloader maps class names onto
+     * label-shaped paths — a dead entry with build and inspect green
+     * (reproduced both edges, verifier-confirmed). The fence now rides
+     * ONE edge-junk owner (every byte 0x00-0x20, DEL, and the dot) on
+     * BOTH sides: a tail that hides the extension refuses (invisible
+     * ship), and a collected source whose path segment carries a
+     * leading/trailing edge byte refuses (dead ship). The r5-14
+     * spellings still refuse, and the ledgered merely-different
+     * boundary ('ClockMath.phpé', 'Notes.md') stays silent.
      */
-    public function testANearSourceTailOfAnyTrailingByteRefusesTheCollector(): void
+    public function testANearSourceSpellingOfAnyEdgeByteRefusesTheCollector(): void
     {
-        $scratch = self::distDir() . '/.nearsource-tails';
+        $scratch = self::distDir() . '/.nearsource-edges';
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -1704,10 +1706,11 @@ FIXTURE;
         file_put_contents($scratch . '/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface ClockInterface {}\n");
 
         try {
-            // The bytes r5-14's charlist missed: \n, \r, \v (\x0B),
-            // \f (\x0C) — each hides the extension the same way the
-            // ledgered space and dot do.
-            foreach (array( "\n", "\r", "\x0B", "\x0C" ) as $tail) {
+            // Tails: the bytes r5-14's charlist missed (\n \r \v \f),
+            // the bytes r6-2's own literal still missed (the rest of
+            // the C0 controls and DEL), and r5-14's own space/dot —
+            // each hides the extension from the collector.
+            foreach (array( "\n", "\r", "\x0B", "\x0C", "\x01", "\x1F", "\x7F", ' ', '.', "\t" ) as $tail) {
                 file_put_contents(
                     $scratch . '/ClockMath.php' . $tail,
                     "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n"
@@ -1722,18 +1725,38 @@ FIXTURE;
                 unlink($scratch . '/ClockMath.php' . $tail);
             }
 
-            // r5-14's own spellings still refuse under the widened
-            // charlist (the fence is widened, never narrowed).
-            foreach (array( ' ', '.' ) as $tail) {
-                file_put_contents($scratch . '/ClockMath.php' . $tail, "<?php\n// r5-14's own spelling\n");
+            // Leading bytes on the basename: the file COLLECTS (its
+            // extension is visible) but ships DEAD — the autoloader
+            // maps class names onto label-shaped paths — so it refuses
+            // as the same near-source neighborhood (t31-r6-4).
+            foreach (array( ' ', "\t", '.' ) as $lead) {
+                file_put_contents(
+                    $scratch . '/' . $lead . 'ClockMath.php',
+                    "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n"
+                );
                 try {
                     wp_connectors_php_source_files($scratch);
-                    $this->fail("The trailing-{$tail} spelling is r5-14's own and must still refuse.");
+                    $this->fail('A leading-0x' . bin2hex($lead) . ' near-source spelling must refuse the collector.');
                 } catch (RuntimeException $e) {
                     $this->assertStringContainsString('NEAR-SOURCE', $e->getMessage());
+                    $this->assertStringContainsString('ClockMath.php', $e->getMessage(), 'The refusal must name the file.');
                 }
-                unlink($scratch . '/ClockMath.php' . $tail);
+                unlink($scratch . '/' . $lead . 'ClockMath.php');
             }
+
+            // The same edge junk on a DIRECTORY segment kills every
+            // namespaced class under it — the fence judges every
+            // segment of a collected source's path.
+            mkdir($scratch . '/Clock ', 0755, true);
+            file_put_contents($scratch . '/Clock /Math.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\nfinal class Math {}\n");
+            try {
+                wp_connectors_php_source_files($scratch);
+                $this->fail('A directory segment carrying a trailing edge byte must refuse the collector.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('NEAR-SOURCE', $e->getMessage());
+                $this->assertStringContainsString('Math.php', $e->getMessage(), 'The refusal must name the file under the junk segment.');
+            }
+            WpHarness::rrmdir($scratch . '/Clock ');
 
             // Control: the ledgered merely-different boundary stays
             // silent — nothing loads those names in development

@@ -1873,6 +1873,29 @@ function wp_connectors_basename_without_php_extension($path)
 }
 
 /**
+ * The byte class no path-segment EDGE may carry (verifier round
+ * t31-r6-4, extending t31-r6-2): every C0 control byte, DEL, and the
+ * dot — the complete set, owned once.
+ *
+ * ONE owner for the edge-junk class the path judgments strip. The
+ * shared-source collector's near-source fence strips it on BOTH
+ * sides (a tail hides the extension from the collector; a leading or
+ * trailing byte on a collected source's path segment ships a class
+ * no label-shaped autoload path can address). The
+ * development-entry comparison strips its TRAILING side only (its
+ * vocabulary's own members may begin with a dot, and Windows path
+ * normalization strips trailing dots and spaces per component, so
+ * 'vendor '/'.git ' fold onto the real dev entries at extraction).
+ * rtrim/ltrim/trim all take this list verbatim.
+ *
+ * @return string The strip charlist.
+ */
+function wp_connectors_path_edge_junk()
+{
+    return implode('', array_map('chr', range(0, 0x20))) . ".\x7F";
+}
+
+/**
  * The ONE development-entry vocabulary both release gates judge by
  * (verifier round t31-r5-10).
  *
@@ -1986,8 +2009,10 @@ function wp_connectors_is_development_entry($segment)
  *
  * @param string $dir Absolute source-only directory (shared/src).
  * @return list<string> Sorted relative .php file paths.
- * @throws RuntimeException When the tree carries a symlink or a
- *                          non-canonical extension casing.
+ * @throws RuntimeException When the tree carries a symlink, a
+ *                          non-canonical extension casing, or a
+ *                          near-source spelling (an edge byte hiding
+ *                          the extension or riding a path segment).
  */
 function wp_connectors_php_source_files($dir)
 {
@@ -2033,20 +2058,19 @@ function wp_connectors_php_source_files($dir)
              * stay out of scope: nothing loads them in development
              * either, so no divergence exists.)
              *
-             * The tail strip is the FULL whitespace/control set plus
-             * the dot (review round t31-r6-2): r5-14's charlist
-             * (" \t.") missed \n/\r/\v/\f, so 'ClockMath.php\n' — a
-             * trailing newline IN THE FILENAME — was neither collected
-             * nor refused: invisible to every gate, absent from every
-             * zip, its class a not-found fatal (reproduced) — the
-             * exact silently-invisible-ship class r5-14 claims closed.
-             * A filename hiding the extension behind ANY trailing
-             * whitespace, control byte, or dot is the same
-             * near-source spelling and refuses the same way. (NUL
-             * cannot occur in a filename, so the strip's \0 member is
-             * inert belt-and-braces.)
+             * The tail strip rides the ONE edge-junk owner
+             * (wp_connectors_path_edge_junk()): r5-14's charlist
+             * (" \t.") missed \n/\r/\v/\f (review round t31-r6-2), and
+             * r6-2's own literal still missed the rest of the C0
+             * controls and DEL — 'ClockMath.php\x01' was STILL
+             * neither collected nor refused (verifier round
+             * t31-r6-4, reproduced) — so the class is owned once,
+             * completely: every byte 0x00-0x20, DEL, and the dot. A
+             * filename hiding the extension behind ANY trailing byte
+             * is the same near-source spelling and refuses the same
+             * way.
              */
-            $trimmedTail = rtrim(basename($relative), " \t\n\r\0\x0B\x0C.");
+            $trimmedTail = rtrim(basename($relative), wp_connectors_path_edge_junk());
             if ('' !== $trimmedTail && wp_connectors_is_php_source($trimmedTail)) {
                 throw new RuntimeException(sprintf(
                     'shared source %s is a NEAR-SOURCE spelling (trailing whitespace, control byte, or dot hides the extension) — it reads as a PHP source but is invisible to every gate and absent from every ship; rename it to the canonical .php',
@@ -2054,6 +2078,29 @@ function wp_connectors_php_source_files($dir)
                 ));
             }
             continue;
+        }
+        /*
+         * Near-source spellings, the LEADING side (verifier round
+         * t31-r6-4): the fence above guards names whose TAIL hides
+         * the extension from the collector; the mirror defect is a
+         * COLLECTED source whose path segment carries an edge byte —
+         * ' ClockMath.php', '.ClockMath.php', 'Clock /Math.php'. It
+         * collects and ships while the shipped autoloader maps class
+         * names onto LABEL-SHAPED paths (class names carry no
+         * whitespace, control bytes, or dots), so the file ships a
+         * class no loader can address (reproduced: class_exists
+         * through the real shipped autoloader false, build and
+         * inspect green) — the t31-r5-3 dead-ship class, from the
+         * other edge. Every segment of a collected source's path
+         * must survive its own edge strip.
+         */
+        foreach (explode('/', $relative) as $segment) {
+            if ($segment !== trim($segment, wp_connectors_path_edge_junk())) {
+                throw new RuntimeException(sprintf(
+                    'shared source %s is a NEAR-SOURCE spelling (a path segment carries a leading or trailing whitespace, control byte, or dot) — it collects and ships, but the shipped autoloader maps class names onto label-shaped paths, so its class is a class no loader can address; rename the segment',
+                    $dir . '/' . $relative
+                ));
+            }
         }
         if ('.php' !== substr($relative, -4)) {
             throw new RuntimeException(sprintf(
