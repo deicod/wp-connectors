@@ -1516,6 +1516,42 @@ FIXTURE;
             foreach ($names as $entry) {
                 $this->assertStringNotContainsString('Notes.md', $entry, 'A non-PHP file inside shared/src must still not ship.');
             }
+
+            /*
+             * t31-r5-5, the agreement half: the inspector's forbidden-
+             * entry vocabulary is scoped to PLUGIN-OWNED paths, so the
+             * same artifact the doctrine ships is the artifact the
+             * inspector ACCEPTS — pre-fix, build and inspect gave
+             * contradictory verdicts no CI run could satisfy (the
+             * embedded src/Shared/tools/... entry was rejected as a
+             * 'development entry', reproduced). Traversal/syntax/
+             * secret/self-containment still judge the embedded subtree
+             * (pinned by the parse-after-extraction and
+             * self-containment sweeps over the real zips).
+             */
+            $this->assertSame(
+                array(),
+                wp_connectors_inspect_artifact($zipPath, $scratch . '/dist/.inspect-excluded-names'),
+                'Build and inspect must give ONE verdict on the embedded src/Shared subtree.'
+            );
+
+            // The exemption is scoped to the forbidden-entry VOCABULARY:
+            // a traversal entry under src/Shared/ still rejects (host
+            // safety judges every entry, embedded or not).
+            $hostileZip = $scratch . '/dist/connectors-hostile-shared-1.0.0.zip';
+            $hostile = new ZipArchive();
+            $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $hostile->addFromString('hostile-shared/hostile-shared.php', "<?php\n/**\n * Plugin Name:       hostile-shared\n * Version:           1.0.0\n */\n");
+            $hostile->addFromString('hostile-shared/src/Shared/../../escape.php', "<?php\necho 'outside';\n");
+            $hostile->close();
+            try {
+                $hostileViolations = wp_connectors_inspect_artifact($hostileZip, $scratch . '/dist/.inspect-hostile-shared');
+                $this->assertNotSame(array(), $hostileViolations, 'A traversal entry under src/Shared/ must still reject.');
+                $this->assertStringContainsString('escapes the extraction directory', implode("\n", $hostileViolations));
+            } finally {
+                @unlink($hostileZip);
+                @unlink($hostileZip . '.sha256');
+            }
         } finally {
             WpHarness::rrmdir($scratch);
         }

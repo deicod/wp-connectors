@@ -14,7 +14,11 @@
  *   - missing/invalid plugin headers, version-constant mismatch, wrong text
  *     domain (same rules as bin/check-conventions.php),
  *   - repo-relative includes or shared/ references (self-containment),
- *   - development files inside the zip (vendor/, tests/, composer files...),
+ *   - development files inside the zip (vendor/, tests/, composer files...)
+ *     on PLUGIN-OWNED paths — the generated <slug>/src/Shared/ subtree is
+ *     exempt from that vocabulary (t31-r5-5: shared/src has no exclusion
+ *     concepts; build and inspect give ONE verdict), while traversal,
+ *     syntax, secret, and self-containment checks still judge it,
  *   - any PHP file that does not pass `php -l` after extraction.
  *
  * @package wp-connectors
@@ -71,21 +75,44 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         // No entry may carry a '..' path segment anywhere: extracting such
         // an entry writes outside the work dir (host traversal). Backslash
         // separators are rejected too — harmless literal characters on Linux,
-        // but path separators under PHP on Windows.
+        // but path separators under PHP on Windows. (Applies to EVERY entry,
+        // embedded or not — this is host safety, not a tree doctrine.)
         if (in_array('..', $parts, true) || strpos($name, '\\') !== false) {
             $traversalEntries[] = $name;
         }
+        /*
+         * The forbidden-entry vocabulary is a PLUGIN-OWNED-path concept
+         * (review round t31-r5-5): the generated <slug>/src/Shared/
+         * subtree is embedded from shared/src, which has NO exclusion
+         * concepts (the t31-r3-4 doctrine — every PHP source ships,
+         * wherever it lives, and the architecture sweep gates that
+         * tree) — so a shared source under shared/src/tools/ shipped by
+         * design was rejected here, and build and inspect gave
+         * contradictory verdicts no CI run could satisfy (reproduced).
+         * ONE verdict now: the segment/file check exempts the embedded
+         * subtree. No attack path opens: a plugin hiding its own code
+         * under src/Shared/tools/ cannot reach a zip through the build
+         * (collectFiles drops excluded segments; a plugin-owned Shared
+         * path colliding with an embed destination refuses the build,
+         * t31-r5-1), and the embedded copy is generated from
+         * sweep-gated shared/src. Every OTHER check — traversal,
+         * headers, syntax (php -l), secrets, self-containment — still
+         * judges every entry, embedded or not.
+         */
+        $isEmbeddedShared = 0 === strpos($name, $parts[0] . '/src/Shared/');
         // Segment check (whole path components) and exact file-name check.
         $isForbidden = false;
-        foreach ($parts as $part) {
-            if (in_array($part, $forbiddenSegments, true)) {
-                $isForbidden = true;
+        if (! $isEmbeddedShared) {
+            foreach ($parts as $part) {
+                if (in_array($part, $forbiddenSegments, true)) {
+                    $isForbidden = true;
 
-                break;
+                    break;
+                }
             }
-        }
-        if (! $isForbidden && in_array($parts[ count($parts) - 1 ], $forbiddenFiles, true)) {
-            $isForbidden = true;
+            if (! $isForbidden && in_array($parts[ count($parts) - 1 ], $forbiddenFiles, true)) {
+                $isForbidden = true;
+            }
         }
         if ($isForbidden) {
             $violations[] = sprintf('inspect: zip contains development entry "%s".', $name);
