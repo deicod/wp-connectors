@@ -39,6 +39,47 @@ final class WpConnectorsBuild
     /** Fixed zip timestamp epoch (2000-01-01 UTC). */
     const FIXED_MTIME = 946684800;
 
+    /**
+     * The rewrite postcondition's ONE survivor pattern (round t31-r4, K1).
+     *
+     * TOTAL by construction — it is not a list of spellings the rewriter
+     * knows, it is the negation of the ONE property the rewrite owes:
+     * after rewriting, the output contains ZERO occurrences of the
+     * source namespace `Deicod\WpConnectors\Shared`, in ANY spelling.
+     * Three totality dimensions, each closing a round-3/4 defect class:
+     *
+     * - Case-INsensitive (`/i`): PHP namespaces resolve case-insensitively,
+     *   so `use deicod\wpconnectors\shared\Clock;` is the source namespace
+     *   at runtime while no exact-case probe ever saw it (the t31-r3-2
+     *   consciously-accepted posture, closed by totality).
+     * - Whitespace-tolerant BETWEEN the segments: a string-literal or
+     *   docblock spelling may break the line (`…\WpConnectors\` + newline
+     *   + `Shared\…`), which defeats every contiguous probe and the
+     *   sweep's per-line whitelist alike (t31-r4-5, reproduced
+     *   end-to-end at exit 0).
+     * - Brace-aware: a group-use MEMBER carries `Shared` at a member
+     *   position (`use Deicod\WpConnectors\{Shared\Clock};`, t31-r4-4)
+     *   where the namespace substring never appears contiguously. The
+     *   brace alternative matches `Shared` only at a member boundary
+     *   (immediately after `{` or after a member separator), so the
+     *   REWRITTEN member (`{<Suffix>\Shared\…}` — `Shared` preceded by
+     *   the suffix's backslash) never re-trips it.
+     *
+     * The property is sound by construction because the rewritten target
+     * `…\WpConnectors\<Suffix>\Shared` cannot contain the source
+     * spelling: the validated, non-empty `<Suffix>` segment always sits
+     * between `WpConnectors\` and `Shared` (pinned empirically over the
+     * whole shared tree by the rewrite soundness test).
+     *
+     * PUBLIC and single-owner: the architecture sweep's
+     * no-cross-namespace-reference gate rides the same pattern, so what
+     * the build refuses and what the sweep flags cannot drift (one
+     * vocabulary, two consumers).
+     *
+     * @var string
+     */
+    const SHARED_NAMESPACE_SURVIVOR_PATTERN = '/(?<![A-Za-z0-9_])Deicod\\s*\\\\\\s*WpConnectors\\s*\\\\\\s*(?:Shared(?![A-Za-z0-9_])|\\{(?:[^;]*?[\\s,{])?Shared(?![A-Za-z0-9_]))/i';
+
     /** Development paths never shipped inside a plugin zip. */
     const EXCLUDED_PATHS = array(
         '.git', '.github', '.gitignore', '.gitattributes', '.editorconfig',
@@ -77,11 +118,19 @@ final class WpConnectorsBuild
      * not know ships broken imports otherwise; silent survival was the
      * round's defect).
      *
+     * Review round t31-r4 (K1): the postcondition is a TOTAL scan now
+     * (SHARED_NAMESPACE_SURVIVOR_PATTERN), not a spelling list — zero
+     * occurrences of the source namespace in the output, case-insensitive,
+     * whitespace-tolerant, brace-aware — and the rewrite extends to
+     * group-use MEMBER spellings (t31-r4-4). The patterns do the work;
+     * the total scan guarantees that what they miss refuses the build
+     * instead of shipping.
+     *
      * @param string $source        PHP source from shared/src.
      * @param string $pluginSuffix  Namespace segment, e.g. 'OpenAiOauth'.
      * @param string $sourceVersion Provenance string (repo-relative path/rev).
      * @return string Rewritten source ready for src/Shared/.
-     * @throws RuntimeException When the namespace suffix is not a legal namespace segment, or when a spelling of the shared namespace survives the rewrite patterns.
+     * @throws RuntimeException When the namespace suffix is not a legal namespace segment, or when any spelling of the shared namespace survives the rewrite.
      */
     public static function rewriteSharedNamespace($source, $pluginSuffix, $sourceVersion)
     {
@@ -113,26 +162,84 @@ final class WpConnectorsBuild
             $rewritten
         );
         /*
-         * Postcondition (t31-r3-2): the rewrite's contract is that NO
-         * spelling of the source namespace survives. The patterns above
-         * cover every legal shape this rewriter knows; anything else — a
-         * comment-interrupted use line, a nested brace group — REFUSES the
-         * build loudly instead of shipping a broken import (silent
-         * survival was the defect this round closed). A LONGER name
-         * ('...SharedStorage') is a different namespace, not a spelling
-         * of this one, and the negative lookahead keeps it untouched.
+         * Group-use MEMBER spellings (round t31-r4, K1's t31-r4-4 half):
+         * the prefix before '{' is Deicod\WpConnectors itself and the
+         * members carry the Shared segment — `use Deicod\WpConnectors\{
+         * Shared\Clock};` matched no pattern above (the namespace
+         * substring never appears contiguously), so it survived the
+         * rewrite, the postcondition, and the sweep's whitelist
+         * byte-identical (reproduced). Members are relative to the
+         * prefix, so the rewrite inserts the suffix at the member's
+         * leading Shared segment; an 'as' alias is never rewritten (an
+         * alias legitimately named Shared — `Clock as Shared` — must
+         * survive untouched), and only the member-LEADING segment counts
+         * (`X\Shared` is a different namespace). Flat bodies only: a
+         * NESTED brace group is exotic enough that the postcondition
+         * below refuses it loudly rather than this rewriter guessing
+         * member structure.
          */
-        if (1 === preg_match('/Deicod\\\\WpConnectors\\\\Shared(?![A-Za-z0-9_])/', $rewritten)) {
-            throw new RuntimeException("build: a spelling of Deicod\\WpConnectors\\Shared survived the rewrite in {$sourceVersion} — extend rewriteSharedNamespace() for the spelling; every legal use form is rewritten here or the build refuses");
-        }
+        $rewritten = (string) preg_replace_callback(
+            '/((?<![A-Za-z0-9_])use\s+(?:function\s+|const\s+)?\\\\?Deicod\\\\WpConnectors\\\\)\s*(\{)([^{}]*)(\})\s*;/',
+            static function ($matches) use ($pluginSuffix) {
+                $members = array();
+                foreach (explode(',', $matches[3]) as $member) {
+                    $member = trim($member);
+                    $tail = '';
+                    if (1 === preg_match('/^(.+?)\s+as\s+([A-Za-z0-9_]+)$/', $member, $alias_parts)) {
+                        $member = $alias_parts[1];
+                        $tail = ' as ' . $alias_parts[2];
+                    }
+                    $kind = '';
+                    if (1 === preg_match('/^(?:function|const)\s+/', $member, $member_kind)) {
+                        $kind = $member_kind[0];
+                        $member = (string) substr($member, strlen($member_kind[0]));
+                    }
+                    $members[] = $kind . (string) preg_replace(
+                        '/^Shared(?![A-Za-z0-9_])/',
+                        $pluginSuffix . '\\\\Shared',
+                        $member
+                    ) . $tail;
+                }
+
+                return $matches[1] . $matches[2] . implode(', ', $members) . $matches[4] . ';';
+            },
+            $rewritten
+        );
 
         // Insert provenance directly after the open tag (never before it).
-        return (string) preg_replace(
+        $final = (string) preg_replace(
             '/^<\?php\b\s*/',
             "<?php\n\n" . $provenance . "\n",
             $rewritten,
             1
         );
+
+        /*
+         * Postcondition (t31-r4 K1, superseding the t31-r3-2 per-spelling
+         * probe): the rewrite's contract is ONE total property — the
+         * OUTPUT contains zero occurrences of the source namespace, in
+         * any spelling (see SHARED_NAMESPACE_SURVIVOR_PATTERN for the
+         * three totality dimensions). The patterns above do the work for
+         * every legal spelling this rewriter knows; anything they miss —
+         * a comment-interrupted use line, a nested brace group, a
+         * case-variant, a string-literal or docblock reference — REFUSES
+         * the build loudly with the file and byte offset, instead of
+         * shipping an import that points at a namespace which no longer
+         * exists inside the plugin (silent survival was the defect class
+         * this closes; per-spelling patching had missed the same seam
+         * twice already). A PCRE abort refuses too (glm36-8: an abort is
+         * never a clean pass). The scan runs over the FINAL bytes —
+         * provenance included — so nothing that ships escapes it.
+         */
+        $survivor = preg_match(self::SHARED_NAMESPACE_SURVIVOR_PATTERN, $final, $hit, PREG_OFFSET_CAPTURE);
+        if (false === $survivor) {
+            throw new RuntimeException("build: the survivor scan aborted (PCRE) while rewriting {$sourceVersion} — an abort refuses the rewrite, never passes it");
+        }
+        if (1 === $survivor) {
+            throw new RuntimeException("build: a spelling of Deicod\\WpConnectors\\Shared survived the rewrite in {$sourceVersion} at byte offset {$hit[0][1]} — every legal use form is rewritten here or the build refuses; a survivor means a spelling the patterns do not know, never an import that ships broken");
+        }
+
+        return $final;
     }
 
     /**

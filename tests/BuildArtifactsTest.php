@@ -1512,6 +1512,74 @@ FIXTURE;
         $this->assertStringContainsString('use const Deicod\\WpConnectors\\OpenAiOauth\\Shared\\TTL;', $battery, "A 'use const' spelling is rewritten.");
         $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Http\\{HeaderMap, Url as U};', $battery, 'The brace-group form is rewritten (members are relative — the prefix carries them).');
 
+        // Fix-round pin (t31-r4 K1 / t31-r4-4): group-use MEMBER
+        // spellings — the prefix before '{' is Deicod\WpConnectors
+        // itself and the members carry the Shared segment — survived
+        // every earlier pattern and every gate silently (reproduced
+        // pre-fix: the embedded import pointed at the source namespace,
+        // a class-not-found fatal on load). The rewriter inserts the
+        // suffix at the member's LEADING Shared segment; a mid-member
+        // Shared ('Other\Shared') is a different namespace and stays
+        // untouched.
+        $groupUse = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock, Shared\\Storage\\Widget as W};\nuse Deicod\\WpConnectors\\{function Shared\\Clock\\now, const Shared\\TTL as T};\nuse Deicod\\WpConnectors\\{Other\\Shared as O, SharedStorage\\Widget};\nclass GroupUseStore\n{\n}\n";
+        $groupRewritten = WpConnectorsBuild::rewriteSharedNamespace($groupUse, 'OpenAiOauth', 'shared/src/GroupUseStore.php');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\{OpenAiOauth\\Shared\\Clock, OpenAiOauth\\Shared\\Storage\\Widget as W};', $groupRewritten, 'A group-use member carrying the Shared segment is rewritten at its leading segment.');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\{function OpenAiOauth\\Shared\\Clock\\now, const OpenAiOauth\\Shared\\TTL as T};', $groupRewritten, 'Mixed-kind group members rewrite too (the kind prefix rides along).');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\{Other\\Shared as O, SharedStorage\\Widget};', $groupRewritten, 'A mid-member Shared and a SharedStorage-prefixed member are NOT the namespace — untouched.');
+        $this->assertStringNotContainsString('Deicod\\WpConnectors\\{Shared', $groupRewritten, 'No unrewritten group member may survive.');
+
+        // The total postcondition: spellings the patterns do not know
+        // REFUSE the build loudly with the file and byte offset — the
+        // nested brace group, the case-variant spelling (PHP namespaces
+        // are case-insensitive; the exact-case probes and the old
+        // postcondition were not), the multiline string-literal
+        // reference (t31-r4-5: the contiguous substring never appears,
+        // so every contiguous probe and the sweep's per-line whitelist
+        // were blind; reproduced end-to-end at exit 0 pre-fix), and a
+        // group member ALIASED as 'Shared' — a legal but pathological
+        // spelling whose member boundary the total scan cannot
+        // distinguish from the namespace segment, so the build refuses
+        // it (fail-loud: rename the alias) rather than narrow the scan.
+        $survivors = array(
+            'nested brace group' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\{Clock}};\nclass NestedGroupStore\n{\n}\n",
+            'case-variant use' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse deicod\\wpconnectors\\shared\\Clock;\nclass CaseVariantStore\n{\n}\n",
+            'multiline string reference' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass MultilineStore\n{\n    public function name(): string\n    {\n        return 'Deicod\\WpConnectors\\\nShared\\Clock';\n    }\n}\n",
+            'docblock @throws reference' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\Shared\\Exception\\OAuthRuntimeException\n */\nclass DocblockStore\n{\n}\n",
+            'group member aliased as Shared' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Clock as Shared};\nclass AliasedMemberStore\n{\n}\n",
+        );
+        foreach ($survivors as $label => $hostile) {
+            try {
+                WpConnectorsBuild::rewriteSharedNamespace($hostile, 'OpenAiOauth', 'shared/src/Hostile.php');
+                $this->fail("A shared-namespace spelling the rewriter does not know ({$label}) must refuse the rewrite, never survive it.");
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('survived the rewrite', $e->getMessage());
+                $this->assertStringContainsString('Hostile.php', $e->getMessage(), "The refusal must name the file ({$label}).");
+                $this->assertStringContainsString('byte offset', $e->getMessage(), "The refusal must locate the survivor ({$label}).");
+            }
+        }
+
+        // Soundness of the total scan (the round's design mandate,
+        // verified empirically then pinned): the rewritten target
+        // namespace …\WpConnectors\<Suffix>\Shared cannot contain the
+        // source spelling — the validated, non-empty suffix always sits
+        // between WpConnectors\ and Shared — so scanning the REAL tree's
+        // rewrites must stay clean for every legal suffix shape. A false
+        // positive here would make every embed build refuse; a silent
+        // survivor would ship a broken import. Both directions pin.
+        foreach ($this->fixtureSuffixes() as $suffix) {
+            $rewritten_count = 0;
+            $root = realpath(__DIR__ . '/../shared/src');
+            foreach (wp_connectors_php_source_files($root) as $relative) {
+                WpConnectorsBuild::rewriteSharedNamespace(
+                    (string) file_get_contents($root . '/' . $relative),
+                    $suffix,
+                    'shared/src/' . $relative
+                );
+                ++$rewritten_count;
+            }
+            $this->assertGreaterThanOrEqual(20, $rewritten_count, "The soundness sweep must see the real tree (suffix {$suffix}).");
+        }
+
         // A DIFFERENT namespace that merely starts with 'Shared'
         // ('SharedStorage') is neither rewritten nor refused: the
         // postcondition's lookahead keeps longer names out of scope.
@@ -1552,6 +1620,95 @@ FIXTURE;
         }
         $this->assertSame('', $emitted, 'Loading a rewritten shared file must not emit output.');
         $this->assertTrue(class_exists('Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Storage\\TokenStore'));
+    }
+
+    /**
+     * The legal namespace-suffix shapes the rewrite soundness sweep rides:
+     * the ordinary derivation, the digit-initial underscored derivation
+     * (t31-r3-5), and an explicit all-caps segment — each a validated,
+     * non-empty namespace segment, so the survivor scan's soundness
+     * argument (the target never contains the source spelling) holds for
+     * each by construction.
+     *
+     * @return list<string>
+     */
+    private function fixtureSuffixes(): array
+    {
+        return array(
+            WpConnectorsBuild::namespaceSuffixFromSlug('example-connector'),
+            WpConnectorsBuild::namespaceSuffixFromSlug('3cx-oauth'),
+            'OPENAIOAUTH',
+        );
+    }
+
+    /**
+     * Fix-round pin (t31-r4 K1), end-to-end through the build: a shared
+     * source carrying a namespace spelling the rewriter does not know
+     * must REFUSE the build loudly with the file named — never package a
+     * zip whose embedded copy imports a namespace that no longer exists
+     * inside the plugin. Both round-4 shapes are planted in a scratch
+     * shared/src (the group-use member, t31-r4-4; the multiline string
+     * reference, t31-r4-5): pre-fix, each built to exit 0 with a broken
+     * import inside the zip (reproduced through this exact scaffold).
+     */
+    public function testASharedSourceWithAnUnrewritableSpellingRefusesTheBuild(): void
+    {
+        $scratch = self::distDir() . '/.rewrite-refuse';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        $hostile_sources = array(
+            'nested group' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\{Clock}};\nclass NestedGroupHostile\n{\n}\n",
+            'multiline reference' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass MultilineHostile\n{\n    public function name(): string\n    {\n        return 'Deicod\\WpConnectors\\\nShared\\Clock';\n    }\n}\n",
+        );
+
+        try {
+            // First, the shape the rewriter now OWNS (t31-r4-4): a
+            // group-use member builds, and the embedded copy carries the
+            // REWRITTEN member — the round's defect was this exact source
+            // building to exit 0 with the import still pointing at the
+            // source namespace.
+            $suffix = WpConnectorsBuild::namespaceSuffixFromSlug('example-connector');
+            file_put_contents($scratch . '/shared/src/GroupUse.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock\\ClockInterface};\nclass GroupUseHostile\n{\n}\n");
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
+            $embedded = (string) $zip->getFromName('example-connector/src/Shared/GroupUse.php');
+            $zip->close();
+            $this->assertStringContainsString('use Deicod\\WpConnectors\\{' . $suffix . '\\Shared\\Clock\\ClockInterface};', $embedded, 'A group-use member must ship REWRITTEN, never pointing at the source namespace.');
+            unlink($scratch . '/shared/src/GroupUse.php');
+
+            foreach ($hostile_sources as $label => $source) {
+                file_put_contents($scratch . '/shared/src/Hostile.php', $source);
+                try {
+                    WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                    $this->fail("A shared source carrying an unrewritable namespace spelling ({$label}) must refuse the build, never package it.");
+                } catch (RuntimeException $e) {
+                    $this->assertStringContainsString('survived the rewrite', $e->getMessage(), "The refusal must say what happened ({$label}).");
+                    $this->assertStringContainsString('shared/src/Hostile.php', $e->getMessage(), "The refusal must name the offending file ({$label}).");
+                }
+                // The refusal fires during staging, BEFORE the archive
+                // opens — the previous good zip survives it byte-for-byte
+                // (the t31-r3-16 artifact-preservation contract).
+                $this->assertFileExists($zipPath, "A pre-open refusal must leave the previous good zip ({$label}).");
+                $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', "The staging tree must tear down on every refusal ({$label}).");
+            }
+
+            // Control: remove the hostile source and the same inputs
+            // build through the total scan cleanly.
+            unlink($scratch . '/shared/src/Hostile.php');
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertFileExists($zipPath);
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
     }
 
     public function testNamespaceDerivationPreservesTheOpenAiAcronym()

@@ -31,6 +31,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../bin/build.php';
+
 final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 {
     /**
@@ -356,38 +358,197 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
     }
 
-    public function testSharedSourceSpellsItsNamespaceOnlyOnRewritableLines(): void
+    /**
+     * The namespace gate, whole-file (t31-r4 K1 / t31-r4-5).
+     *
+     * The old per-line whitelist ('use '-prefixed lines are rewritable,
+     * everything else fails) was blind to any spelling that breaks across
+     * lines — '…\WpConnectors\' + newline + 'Shared\…' matched no single
+     * line and shipped past the sweep at exit 0 (reproduced end-to-end;
+     * the t31-r3-8 whole-file doctrine was never applied to this gate).
+     * The whole-file shape blanks the REWRITABLE forms — every namespace
+     * declaration and every use statement, multiline included, located
+     * by token — then asserts the ONE K1 property over everything that
+     * remains, through the SAME survivor pattern the build's
+     * postcondition rides (one vocabulary, two consumers: what the sweep
+     * flags and what the build refuse cannot drift).
+     *
+     * Layering note: a case-variant use line ('use deicod\…') is a use
+     * statement, so THIS gate whitelists it — the build's postcondition
+     * (case-insensitive) still refuses it at build time. The sweep is
+     * the dev-time hygiene gate; the total scan is the release
+     * guarantee.
+     */
+    public function testSharedSourceSpellsItsNamespaceOnlyInRewritableForms(): void
     {
-        // bin/build.php's rewrite touches exactly two line shapes: the
-        // namespace declaration and `use ...` imports — EVERY legal use
-        // spelling (plain, aliased, function, const, fully qualified,
-        // exact, brace-group; the rewriter's spelling battery is pinned
-        // in BuildArtifactsTest::testSharedNamespaceRewrite), and its
-        // postcondition refuses any spelling the patterns do not know
-        // (review round t31-r3-2), so nothing whitelisted here can ship
-        // un-rewritten. Any OTHER occurrence of the FQ namespace would
-        // survive pointing at a namespace that no longer exists inside
-        // the plugin copy.
-        foreach ($this->sharedSourceFiles() as $path) {
-            foreach ($this->numberedLines($path) as [$number, $line]) {
-                if (false === strpos($line, 'Deicod\\WpConnectors\\Shared')) {
-                    continue;
-                }
-                $trimmed = ltrim($line);
-                if (0 === strpos($trimmed, 'namespace ') || 0 === strpos($trimmed, 'use ')) {
-                    continue;
-                }
+        $this->assertGreaterThanOrEqual(20, count($this->sharedSourceFiles()), 'The namespace gate must see the real contract tree.');
 
-                $this->fail(
-                    sprintf(
-                        'Inline namespace spelling breaks the build-time rewrite (only namespace/use lines are rewritten): %s:%d — %s',
-                        $path,
-                        $number,
-                        trim($line)
-                    )
-                );
-            }
+        foreach ($this->sharedSourceFiles() as $path) {
+            $this->assertNamespaceAbsentOutsideRewritableForms($path);
         }
+    }
+
+    /**
+     * Fix-round pin (t31-r4 K1 / t31-r4-5), end-to-end through the
+     * ACTUAL gate, both directions: a namespace spelling broken across
+     * lines OUTSIDE a rewritable statement (a string literal carrying
+     * '…\WpConnectors\' + newline + 'Shared\…') must fail the gate with
+     * the file and line named — the old per-line whitelist never saw one
+     * line containing the full substring, and the same spelling shipped
+     * through the build at exit 0 (reproduced pre-fix through
+     * rewriteSharedNamespace). The whitelist direction: a group-use
+     * import — whose member carries `Shared` at a member position the
+     * rewriter now owns — and an ordinary multiline use statement both
+     * stay clean through the same code path (they are rewritable forms,
+     * blanked whole), and a real swept source passes.
+     */
+    public function testTheNamespaceGateCatchesMultilineSpellingsEndToEnd(): void
+    {
+        $gate = new \ReflectionMethod($this, 'assertNamespaceAbsentOutsideRewritableForms');
+
+        $fixture = realpath(__DIR__ . '/fixtures/sweep-corruption/namespace-multiline.php');
+        $this->assertNotFalse($fixture, 'The namespace-multiline fixture must exist.');
+
+        try {
+            $gate->invoke($this, $fixture);
+            $this->fail('A namespace spelling broken across lines outside a rewritable statement must fail the gate, never pass line-by-line.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('namespace-multiline.php:24', $e->getMessage());
+            $this->assertStringContainsString("return 'Deicod\\WpConnectors\\", $e->getMessage());
+        }
+
+        /*
+         * The whitelist direction, through the same blanking helper: a
+         * group-use import and a multiline plain import are rewritable
+         * STATEMENTS — blanked whole, never flagged by this gate (the
+         * rewriter's postcondition owns what they ship; the sweep's
+         * charter is exactly "only rewritable forms carry the
+         * namespace").
+         */
+        $scratch = tempnam(sys_get_temp_dir(), 'wpct-ns-forms-');
+        try {
+            file_put_contents($scratch, "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock, Shared\\Storage\\Widget as W};\nuse Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap, Url as U};\nuse Deicod\\WpConnectors\n;\ninterface FormsFixture\n{\n}\n");
+            $gate->invoke($this, $scratch);
+        } finally {
+            unlink($scratch);
+        }
+
+        // Clean direction: a real swept source passes the same gate.
+        $gate->invoke($this, (string) realpath(__DIR__ . '/../shared/src/Http/HeaderMap.php'));
+    }
+
+    /**
+     * The namespace gate for ONE file: blank the rewritable statements,
+     * then require the K1 survivor pattern to find nothing.
+     *
+     * Private and path-parameterized so the mutation discipline can
+     * drive the ACTUAL gate on planted fixtures (both directions).
+     *
+     * @param string $path Absolute file path.
+     * @return void
+     */
+    private function assertNamespaceAbsentOutsideRewritableForms(string $path): void
+    {
+        $contents = $this->fileContents($path);
+        $blanked = $this->contentsWithoutRewritableStatements($contents);
+        $result = preg_match(WpConnectorsBuild::SHARED_NAMESPACE_SURVIVOR_PATTERN, $blanked, $hit, PREG_OFFSET_CAPTURE);
+        if (false === $result) {
+            $this->fail(
+                sprintf(
+                    'A namespace spelling outside rewritable forms breaks the build-time rewrite: %s — the survivor scan aborted (PCRE), and an abort is a REFUSAL, never a clean pass.',
+                    $path
+                )
+            );
+        }
+        if (1 === $result) {
+            $before = (string) substr($blanked, 0, $hit[0][1]);
+            $line = substr_count($before, "\n") + 1;
+            $original_line = '';
+            foreach ($this->numberedLines($path) as [$number, $text]) {
+                if ($number === $line) {
+                    $original_line = trim($text);
+                    break;
+                }
+            }
+            $this->fail(
+                sprintf(
+                    'A namespace spelling outside rewritable forms breaks the build-time rewrite (only namespace/use statements are rewritten): %s:%d — %s',
+                    $path,
+                    $line,
+                    $original_line
+                )
+            );
+        }
+    }
+
+    /**
+     * The file contents with every REWRITABLE namespace statement blanked
+     * — length- and line-preserving (the strip_comments idiom: every
+     * byte becomes a space except the line terminators, so offsets and
+     * line numbers computed on the blanked copy are true of the
+     * original).
+     *
+     * Rewritable = the two statement shapes bin/build.php's rewriter
+     * owns: `namespace …;` declarations and `use …;` imports (multiline
+     * included — a use statement is keyword-to-semicolon, so a member
+     * broken across lines is whitelisted as a whole). Located by TOKEN,
+     * so a 'use' or 'namespace' spelled inside a string literal or
+     * comment is not a statement and never whitelists anything. A
+     * closure's lexical-import `use (…)` is not a namespace import and
+     * stays verbatim; `namespace\` used as the relative operator is
+     * likewise not a declaration.
+     *
+     * @param string $contents PHP source (valid PHP — the swept tree is linted).
+     * @return string Same-length blanked copy (line terminators kept).
+     */
+    private function contentsWithoutRewritableStatements(string $contents): string
+    {
+        $tokens = token_get_all($contents);
+        $count = count($tokens);
+        $blanked = '';
+        for ($i = 0; $i < $count; ++$i) {
+            $token = $tokens[ $i ];
+            $id = is_array($token) ? $token[0] : null;
+            $text = is_array($token) ? $token[1] : $token;
+
+            if (T_NAMESPACE !== $id && T_USE !== $id) {
+                $blanked .= $text;
+                continue;
+            }
+
+            // What FOLLOWS decides whether this keyword opens a
+            // rewritable statement: a name (namespace declaration /
+            // import — a single T_STRING or one of PHP 8's whole-name
+            // tokens) does; '(' (closure lexical import) does not. The
+            // relative 'namespace\Foo' operator is its own T_NAME_RELATIVE
+            // token in PHP 8, so a bare T_NAMESPACE here is always a
+            // declaration.
+            $j = $i + 1;
+            while ($j < $count && is_array($tokens[ $j ]) && T_WHITESPACE === $tokens[ $j ][0]) {
+                ++$j;
+            }
+            $follower = $j < $count ? $tokens[ $j ] : null;
+            $follower_id = is_array($follower) ? $follower[0] : null;
+            $is_name = T_STRING === $follower_id || T_NAME_QUALIFIED === $follower_id || T_NAME_FULLY_QUALIFIED === $follower_id || T_NAME_RELATIVE === $follower_id;
+            $is_import_or_declaration = T_NAMESPACE === $id ? $is_name : ($is_name || T_FUNCTION === $follower_id || T_CONST === $follower_id);
+            if (! $is_import_or_declaration) {
+                $blanked .= $text;
+                continue;
+            }
+
+            // Blank the whole statement (keyword through the terminating
+            // ';'), keeping line terminators so line numbers stay true.
+            for ($k = $i; $k < $count; ++$k) {
+                $chunk = is_array($tokens[ $k ]) ? $tokens[ $k ][1] : $tokens[ $k ];
+                $blanked .= preg_replace('/[^\r\n]/', ' ', $chunk);
+                if (! is_array($tokens[ $k ]) && ';' === $tokens[ $k ]) {
+                    break;
+                }
+            }
+            $i = $k;
+        }
+
+        return $blanked;
     }
 
     /**
