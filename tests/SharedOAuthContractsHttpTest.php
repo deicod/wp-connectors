@@ -102,6 +102,58 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Fix-round pin (t31-r4-12): parse_url() silently truncates a
+     * malformed raw port — 'https://host.example:443x/' parses as port
+     * 443 (reproduced) — while url() still carries ':443x': a
+     * port/authority divergence INSIDE the value object, distinct from
+     * the ledgered host-charset acceptance (no divergence there). The
+     * raw port substring from the authority must be fully digits before
+     * parse_url's port is trusted; the userinfo colon is not a port,
+     * and digit spellings (a leading zero included — parse_url's int
+     * value is the authority's) stay legal.
+     */
+    public function testAMalformedRawPortIsRejectedInsteadOfTruncated(): void
+    {
+        $hostile_urls = array(
+            'truncated tail' => 'https://host.example:443x/token',
+            'alpha port' => 'https://host.example:8a/',
+            'empty port' => 'https://host.example:/token',
+            'userinfo does not hide it' => 'https://user:pw@host.example:443x/',
+            'float port' => 'https://host.example:44.3/',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A malformed raw port (%s) must be rejected by the shared URL owner, never truncated to parse_url\'s prefix.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('port must be digits', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A malformed raw port (%s) must be rejected by the request VO too.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('port must be digits', $e->getMessage());
+            }
+        }
+
+        // The divergence the fix closes, pinned as the pre-fix behavior:
+        // ':443x' used to construct with authority 'host.example:443'
+        // while url() carried the raw ':443x'. Digits stay legal, and
+        // the userinfo colon is not a port.
+        $userinfo = new HttpRequest('GET', 'https://user:pw@host.example/token');
+        $this->assertSame('host.example', Url::parse_validated('https://user:pw@host.example/token')['authority'], 'A colon in userinfo is not a port.');
+        $this->assertSame('https://host.example/token', $userinfo->redacted_url(), 'Userinfo drops from the redacted form; the host carries no port.');
+
+        $ported = new HttpRequest('GET', 'https://host.example:8443/token');
+        $this->assertSame('https://host.example:8443/token', $ported->redacted_url(), 'A digit port keeps flowing into the authority.');
+
+        $leading_zero = Url::parse_validated('https://host.example:0443/');
+        $this->assertSame('host.example:443', $leading_zero['authority'], 'A leading-zero port is digits: accepted, spelled by its int value.');
+    }
+
+    /**
      * Fix-round pin (t31-r2-1): parse_url passed U+2028/U+2029, the
      * C1 controls riding as valid UTF-8, and the C0 range through to
      * redacted_url()/__toString() verbatim — the forged-log-line class

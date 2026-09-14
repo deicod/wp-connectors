@@ -61,6 +61,35 @@ final class Url {
 		if ( 'http' !== $scheme && 'https' !== $scheme ) {
 			throw new InvalidArgumentException( 'The URL scheme must be http or https.' );
 		}
+
+		/*
+		 * Review round t31-r4-12: the RAW port segment must be fully
+		 * digits before parse_url's port is trusted. parse_url() silently
+		 * truncates a malformed port — 'https://host:443x/' parses as
+		 * port 443 (reproduced) — while url() still carries ':443x', a
+		 * port/authority divergence INSIDE the value object: the debug
+		 * forms report :443, the caller holds the raw string. The raw
+		 * substring from the authority is validated instead (userinfo
+		 * stripped after the last '@'; the port colon is the first ':'
+		 * after any IPv6 ']'), and anything not fully digits — ':443x',
+		 * ':8a', and the empty ':/' — rejects: the built authority and
+		 * the URL the caller holds must agree. The abort-as-reject rule
+		 * (glm36-8) rides the same check: a PCRE failure refuses the
+		 * URL, never passes it.
+		 */
+		$after_scheme = (string) substr( $url, (int) strpos( $url, '://' ) + 3 );
+		$authority    = (string) substr( $after_scheme, 0, strcspn( $after_scheme, '/?#' ) );
+		$at           = strrpos( $authority, '@' );
+		$host_port    = false === $at ? $authority : (string) substr( $authority, $at + 1 );
+		$bracket_end  = strrpos( $host_port, ']' );
+		$colon        = strpos( $host_port, ':', false === $bracket_end ? 0 : (int) $bracket_end + 1 );
+		if ( false !== $colon ) {
+			$raw_port = (string) substr( $host_port, $colon + 1 );
+			if ( 1 !== preg_match( '/\A[0-9]+\z/', $raw_port ) ) {
+				throw new InvalidArgumentException( 'The URL port must be digits — parse_url() truncates a malformed port silently (":443x" reads as 443) while the URL string carries the raw text, and the two must agree.' );
+			}
+		}
+
 		if ( isset( $parts['port'] ) && ( $parts['port'] < 1 || $parts['port'] > 65535 ) ) {
 			throw new InvalidArgumentException( 'The URL port is out of range.' );
 		}
