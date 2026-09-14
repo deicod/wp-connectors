@@ -167,6 +167,52 @@ final class WpConnectorsBuild
             throw new RuntimeException("build: refusing to package {$slug}:\n - " . implode("\n - ", $violations));
         }
 
+        /*
+         * Config seam (review round t31-r3-1): build.json is resolved and
+         * validated ONCE, before any filesystem mutation. The old shape
+         * decoded it inline inside the staging block, so a malformed
+         * build.json (a trailing comma → json_decode() null → is_array()
+         * false) SILENTLY skipped the embed_shared block — the zip shipped
+         * without the shared library and the run exited 0 with a checksum,
+         * a plugin that fatals on install. A build.json the loader touches
+         * is a contract now: readable, and a JSON object — anything else
+         * refuses the build loudly.
+         */
+        $embedShared = false;
+        $sharedDir = '';
+        $pluginSuffix = '';
+        $buildConfig = $pluginDir . '/build.json';
+        if (is_file($buildConfig)) {
+            $rawConfig = file_get_contents($buildConfig);
+            if (false === $rawConfig) {
+                throw new RuntimeException("build: cannot read {$buildConfig}");
+            }
+            $config = json_decode($rawConfig, true);
+            if (! is_array($config)) {
+                $reason = JSON_ERROR_NONE === json_last_error()
+                    ? 'the top-level value is not a JSON object'
+                    : json_last_error_msg();
+                throw new RuntimeException("build: {$slug}: build.json is malformed ({$reason}) — refusing instead of silently skipping the embed_shared configuration");
+            }
+            if (! empty($config['embed_shared'])) {
+                // Collect from shared/src ITSELF (review round t31-r2-12):
+                // the old collection walked shared/ — the parent of the
+                // source directory — shipping dev files (README.md et al.)
+                // into plugin zips, and its global str_replace('src/', '')
+                // mangled any nested 'src/' path segment. From $sharedDir
+                // the relative paths need no strip at all: shared/src/X
+                // maps onto src/Shared/X by construction.
+                $sharedDir = dirname($distDir) . '/shared/src';
+                if (! is_dir($sharedDir)) {
+                    throw new RuntimeException("build: {$slug} requests shared code but {$sharedDir} does not exist");
+                }
+                $pluginSuffix = isset($config['namespace_suffix']) && '' !== (string) $config['namespace_suffix']
+                    ? (string) $config['namespace_suffix']
+                    : self::namespaceSuffixFromSlug($slug);
+                $embedShared = true;
+            }
+        }
+
         $version = $headers['version'];
         if (! is_dir($distDir)) {
             mkdir($distDir, 0755, true);
@@ -192,43 +238,27 @@ final class WpConnectorsBuild
             $entries[] = $slug . '/LICENSE';
         }
 
-        // Embed the shared OAuth library when the plugin opts in.
-        $buildConfig = $pluginDir . '/build.json';
-        if (is_file($buildConfig)) {
-            $config = json_decode((string) file_get_contents($buildConfig), true);
-            if (is_array($config) && ! empty($config['embed_shared'])) {
-                // Collect from shared/src ITSELF (review round t31-r2-12):
-                // the old collection walked shared/ — the parent of the
-                // source directory — shipping dev files (README.md et al.)
-                // into plugin zips, and its global str_replace('src/', '')
-                // mangled any nested 'src/' path segment. From $sharedDir
-                // the relative paths need no strip at all: shared/src/X
-                // maps onto src/Shared/X by construction.
-                $sharedDir = dirname($distDir) . '/shared/src';
-                if (! is_dir($sharedDir)) {
-                    throw new RuntimeException("build: {$slug} requests shared code but {$sharedDir} does not exist");
+        // Embed the shared OAuth library when the plugin opts in (the
+        // build.json the opt-in rode was already validated at the config
+        // seam above — no decode, no embed decision, happens down here).
+        if ($embedShared) {
+            $sharedFiles = self::collectFiles($sharedDir);
+            foreach ($sharedFiles as $relative) {
+                // Only PHP SOURCES ship (verifier round t31-r2-18):
+                // collectFiles() filters by excluded path names
+                // only, so any non-PHP file committed inside
+                // shared/src (notes, READMEs) would ride into
+                // plugin zips byte-identical — the rewrite no-ops
+                // on content without an open tag.
+                if ('.php' !== substr($relative, -4)) {
+                    continue;
                 }
-                $pluginSuffix = isset($config['namespace_suffix']) && '' !== (string) $config['namespace_suffix']
-                    ? (string) $config['namespace_suffix']
-                    : self::namespaceSuffixFromSlug($slug);
-                $sharedFiles = self::collectFiles($sharedDir);
-                foreach ($sharedFiles as $relative) {
-                    // Only PHP SOURCES ship (verifier round t31-r2-18):
-                    // collectFiles() filters by excluded path names
-                    // only, so any non-PHP file committed inside
-                    // shared/src (notes, READMEs) would ride into
-                    // plugin zips byte-identical — the rewrite no-ops
-                    // on content without an open tag.
-                    if ('.php' !== substr($relative, -4)) {
-                        continue;
-                    }
-                    $source = (string) file_get_contents($sharedDir . '/' . $relative);
-                    $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
-                    $target = $stage . '/' . $slug . '/src/Shared/' . $relative;
-                    @mkdir(dirname($target), 0755, true);
-                    self::writeNormalized($rewritten, $target);
-                    $entries[] = $slug . '/src/Shared/' . $relative;
-                }
+                $source = (string) file_get_contents($sharedDir . '/' . $relative);
+                $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
+                $target = $stage . '/' . $slug . '/src/Shared/' . $relative;
+                @mkdir(dirname($target), 0755, true);
+                self::writeNormalized($rewritten, $target);
+                $entries[] = $slug . '/src/Shared/' . $relative;
             }
         }
 

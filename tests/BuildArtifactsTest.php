@@ -1165,6 +1165,76 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r3-1): a malformed build.json silently disabled
+     * embed_shared — json_decode() null → is_array() false → the block
+     * skipped → the zip shipped WITHOUT the shared library while the run
+     * exited 0 with a checksum (reproduced at HEAD with a trailing
+     * comma). build.json is resolved and validated ONCE at the config
+     * seam now, before any filesystem mutation: a trailing comma (the
+     * repro), an empty file, and a non-object top level each refuse the
+     * build loudly, and the valid opt-in still builds through the same
+     * seam.
+     */
+    public function testAMalformedBuildJsonRefusesTheBuildLoudly()
+    {
+        $scratch = self::distDir() . '/.embed-malformed';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+
+        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
+        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
+            $target = $scratch . '/plugin/example-connector/' . $relative;
+            if ($item->isDir()) {
+                mkdir($target, 0755, true);
+            } else {
+                copy($item->getPathname(), $target);
+            }
+        }
+
+        try {
+            foreach (array(
+                'trailing comma' => "{\"embed_shared\": true,\n}\n",
+                'empty file' => '',
+                'scalar top level' => "\"yes\"\n",
+            ) as $label => $payload) {
+                file_put_contents($scratch . '/plugin/example-connector/build.json', $payload);
+                try {
+                    WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                    $this->fail("A malformed build.json ({$label}) must refuse the build, never silently skip embed_shared.");
+                } catch (RuntimeException $e) {
+                    $this->assertStringContainsString('malformed', $e->getMessage());
+                    $this->assertStringContainsString('build.json', $e->getMessage());
+                }
+            }
+
+            // The seam fires before any filesystem mutation: no zip (or
+            // staging residue) may exist after the refused runs.
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'A refused build must leave no zip behind.');
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+
+            // Control: the valid opt-in still embeds through the seam.
+            file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
+            $found = false;
+            for ($i = 0; $i < $zip->numFiles; ++$i) {
+                $found = $found || 'example-connector/src/Shared/Clock/ClockInterface.php' === $zip->getNameIndex($i);
+            }
+            $zip->close();
+            $this->assertTrue($found, 'The control build (valid build.json) must still embed the shared source.');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
