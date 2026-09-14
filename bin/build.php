@@ -330,10 +330,26 @@ final class WpConnectorsBuild
         );
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
-            // Never follow symlinks: a link inside the plugin directory must
-            // not package out-of-tree file contents into the zip.
+            /*
+             * A symlink REFUSES the build loudly (verifier round
+             * t31-r4-16, extending t31-r4-7's doctrine from the shared
+             * tree to the plugin tree): the old silent skip left a
+             * divergence — a symlinked plugin source loads in development
+             * (the dev autoloader resolves link paths) and is scanned
+             * through by the self-containment walker, but silently missed
+             * the zip, so the shipped plugin fataled on the missing class
+             * at exit 0 (reproduced) — the same loads-in-dev/invisible/
+             * missing-from-every-zip class, plus the leak half the old
+             * skip pinned (out-of-tree content never packaged). Zero
+             * symlinks in the tree today; this is the doctrine made loud
+             * at both collectors.
+             */
             if ($file->isLink()) {
-                continue;
+                throw new RuntimeException(sprintf(
+                    'plugin tree carries a symlink (%s -> %s) — the no-symlinks doctrine refuses the build instead of silently skipping a source that loads in development and misses the zip',
+                    $file->getPathname(),
+                    (string) $file->getLinkTarget()
+                ));
             }
             $relative = str_replace($pluginDir . '/', '', $file->getPathname());
             $parts = explode('/', $relative);

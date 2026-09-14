@@ -2156,10 +2156,19 @@ FIXTURE;
         WpHarness::rrmdir(dirname($tempPlugin));
     }
 
-    public function testBuildNeverFollowsSymlinks()
+    /**
+     * Verifier-round pin (t31-r4-16, superseding the master-era
+     * leak-only pin): a symlink inside the PLUGIN tree refuses the
+     * build loudly. The old silent skip pinned only the leak half
+     * (out-of-tree content never packaged) while leaving the divergence
+     * half open — a symlinked plugin source loaded in development, was
+     * scanned through by the self-containment walker, and silently
+     * missed the zip: an unloadable artifact at exit 0 (reproduced).
+     * The refusal closes both halves at once (nothing linked is ever
+     * packaged, because nothing linked is ever built past).
+     */
+    public function testASymlinkInThePluginTreeRefusesTheBuild()
     {
-        // Copy the fixture plugin, add a symlink pointing outside the tree,
-        // and prove the built zip does not contain the linked file's entry.
         $tempPlugin = self::distDir() . '/.symlink-test/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
@@ -2170,17 +2179,19 @@ FIXTURE;
         file_put_contents($secretOutside, 'not-packaged');
         symlink($secretOutside, $tempPlugin . '/leaked-config.txt');
 
-        $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
-
-        $names = $this->zipEntryNames($zipPath);
-
-        unlink($zipPath);
-        unlink($zipPath . '.sha256');
-        @unlink(self::distDir() . '/checksums.txt');
-        WpHarness::rrmdir(dirname($tempPlugin));
-
-        $this->assertNotContains('example-connector/leaked-config.txt', $names, 'Symlinked files must never be packaged.');
-        $this->assertContains('example-connector/example-connector.php', $names);
+        try {
+            try {
+                WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+                $this->fail('A symlink inside the plugin tree must refuse the build, never skip it silently.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('symlink', $e->getMessage());
+                $this->assertStringContainsString('leaked-config.txt', $e->getMessage());
+                $this->assertStringContainsString('outside-secret.txt', $e->getMessage(), 'The refusal names the link target — the leak half stays visible in the diagnostic.');
+            }
+            $this->assertSame(array(), glob(self::distDir() . '/connectors-example-connector-0.1.0.zip*') ?: array(), 'The refused build must leave no artifact behind.');
+        } finally {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
     }
 
     /**
