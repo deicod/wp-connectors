@@ -1824,6 +1824,55 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r5-7): the plugin collector's symlink refusal
+     * fired BEFORE the exclusion filter, so a vendor/node_modules
+     * symlink (a composer path repo, an npm .bin shim) refused a build
+     * whose zip would have been byte-identical to one without the link
+     * — the doctrine policing a path that ships nothing. The exclusion
+     * filter runs first now; the refusal is scoped to paths that would
+     * ship (a linked ASSET still refuses — that half is t31-r4-16's,
+     * pinned there and re-pinned here for the ordering).
+     */
+    public function testASymlinkInAnExcludedPathBuildsWhileAShippedSymlinkStillRefuses(): void
+    {
+        $tempPlugin = self::distDir() . '/.symlink-order-test/example-connector';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir(dirname($tempPlugin), 0755, true);
+        $this->copyFixturePlugin($tempPlugin);
+        $outside = dirname($tempPlugin) . '/outside-tool';
+        file_put_contents($outside, "#!/bin/sh\ntrue\n");
+
+        try {
+            // (a) Excluded-path links build clean: the composer path-repo
+            // shape under vendor/, and npm's .bin shim shape.
+            mkdir($tempPlugin . '/vendor/bin', 0755, true);
+            symlink($outside, $tempPlugin . '/vendor/bin/tool');
+            mkdir($tempPlugin . '/node_modules/.bin', 0755, true);
+            symlink($outside, $tempPlugin . '/node_modules/.bin/shim');
+            $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+            foreach ($this->zipEntryNames($zipPath) as $entry) {
+                $this->assertStringNotContainsString('vendor/', $entry, 'The excluded link tree must not ship.');
+                $this->assertStringNotContainsString('node_modules/', $entry, 'The excluded link tree must not ship.');
+            }
+
+            // (b) A link on a path that WOULD ship still refuses (the
+            // t31-r4-16 doctrine, unchanged by the reorder).
+            symlink($outside, $tempPlugin . '/assets/linked-asset.svg');
+            try {
+                WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+                $this->fail('A symlink on a shipped path must still refuse the build.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('symlink', $e->getMessage());
+                $this->assertStringContainsString('linked-asset.svg', $e->getMessage());
+            }
+        } finally {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";

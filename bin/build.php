@@ -417,10 +417,24 @@ final class WpConnectorsBuild
         );
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
+            $relative = str_replace($pluginDir . '/', '', $file->getPathname());
+            $parts = explode('/', $relative);
+            /*
+             * The exclusion filter runs FIRST (review round t31-r5-7):
+             * what never ships never judges the build. The symlink
+             * refusal fired before it, so a vendor/node_modules link —
+             * a composer path repo, an npm .bin shim — refused a build
+             * whose zip would have been byte-identical to one without
+             * the link (excluded paths ship nothing either way).
+             */
+            if (array_intersect($parts, self::EXCLUDED_PATHS) !== array()) {
+                continue;
+            }
             /*
              * A symlink REFUSES the build loudly (verifier round
              * t31-r4-16, extending t31-r4-7's doctrine from the shared
-             * tree to the plugin tree): the old silent skip left a
+             * tree to the plugin tree) — scoped, since t31-r5-7, to the
+             * paths that would SHIP: the old silent skip left a
              * divergence — a symlinked plugin source loads in development
              * (the dev autoloader resolves link paths) and is scanned
              * through by the self-containment walker, but silently missed
@@ -437,11 +451,6 @@ final class WpConnectorsBuild
                     $file->getPathname(),
                     (string) $file->getLinkTarget()
                 ));
-            }
-            $relative = str_replace($pluginDir . '/', '', $file->getPathname());
-            $parts = explode('/', $relative);
-            if (array_intersect($parts, self::EXCLUDED_PATHS) !== array()) {
-                continue;
             }
             if (! $file->isFile()) {
                 continue;
