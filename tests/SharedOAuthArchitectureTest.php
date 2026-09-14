@@ -510,6 +510,8 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
         $offenders = array(
             'comment-interrupted use' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod/* pick one */\\WpConnectors\\Shared\\Clock;\ninterface InterruptedFixture\n{\n}\n",
+            'whitespace-interrupted use, after the separator (t31-r7-6)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\\nShared\\Clock;\ninterface WhitespaceFixture\n{\n}\n",
+            'whitespace-interrupted code reference, after the separator (t31-r7-6)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface WhitespaceCodeFixture\n{\n    public function name(): string;\n}\nfinal class WhitespaceCodeCarrier\n{\n    public function name(): string\n    {\n        return \\Deicod\\WpConnectors\\\nShared\\Clock::class;\n    }\n}\n",
             'sibling import' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Zai\\ApiClient;\ninterface SiblingFixture\n{\n}\n",
             'double-backslash class-string' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface ClassStringFixture\n{\n    public function name(): string;\n}\nfinal class Carrier\n{\n    public function name(): string\n    {\n        return 'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
             'group-use member carrying a sibling' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock, Zai\\Api};\ninterface GroupSiblingFixture\n{\n}\n",

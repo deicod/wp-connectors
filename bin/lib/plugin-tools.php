@@ -319,13 +319,28 @@ function wp_connectors_name_run(array $tokens, $start)
             $j = $k;
             continue;
         }
-        // Continuation 2: trivia* T_NS_SEPARATOR trivia* name-part.
+        /*
+         * Continuation 2: trivia* T_NS_SEPARATOR trivia* name-part. The
+         * separator's OWN byte is appended with the join — a standalone
+         * T_NS_SEPARATOR (the shape trivia-after-separator lexes to) carries
+         * the '\' the assembled name needs, and skipping it corrupts the
+         * assembly ('Deicod\WpConnectors\' + newline + 'Shared\Clock'
+         * assembled as 'Deicod\WpConnectorsShared\Clock', a name no family
+         * predicate can match — verifier round t31-r7-6: the whitespace
+         * spellings the r4-era regex postcondition refused had become
+         * exit-0 ships under the token walk). A fully-qualified name part
+         * bakes its own leading backslash in, so its join adds nothing.
+         */
         if ($k < $count && T_NS_SEPARATOR === (is_array($tokens[ $k ]) ? $tokens[ $k ][0] : null)) {
             $m = $k + 1;
             while ($m < $count && $is_trivia($tokens[ $m ])) {
                 ++$m;
             }
-            if ($m < $count && wp_connectors_is_name_token_id(is_array($tokens[ $m ]) ? $tokens[ $m ][0] : null)) {
+            $part_id = $m < $count && is_array($tokens[ $m ]) ? $tokens[ $m ][0] : null;
+            if ($m < $count && wp_connectors_is_name_token_id($part_id)) {
+                if (T_NAME_FULLY_QUALIFIED !== $part_id) {
+                    $name .= $tokens[ $k ][1];
+                }
                 $j = $m;
                 continue;
             }
