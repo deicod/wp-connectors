@@ -1099,14 +1099,60 @@ final class WpConnectorsBuild
     /**
      * Writes content into the staging tree with normalized mtime/perms.
      *
+     * Review round t31-r7-3: the write is CHECKED and the staged bytes
+     * VERIFIED. file_put_contents()'s return was ignored, so a short or
+     * failed write staged a truncated PHP file that zip close() happily
+     * packed and published at exit 0 — making the t31-r5-S claim
+     * ("every landed member was verified whole at its staging path")
+     * FALSE for generated members (copied plugin files already ride
+     * copyNormalized's checked copy; the archive is hashed after the
+     * fact, but a truncated MEMBER inside a successfully written zip
+     * checksums fine). The write layer's own word is checked now —
+     * false, or a byte count short of the content (PHP folds a short
+     * total into false with its "Only X of Y bytes written" diagnostic,
+     * which the @ suppresses per the glm17-16 idiom) — and what LANDED
+     * is re-read and length-compared, so the verified-whole claim holds
+     * at the staging path for generated members exactly as it already
+     * did for copied ones.
+     *
      * @param string $content File content.
      * @param string $to      Absolute target path.
      * @return void
+     * @throws RuntimeException When the write refuses, falls short, or
+     *         lands fewer bytes than it was handed.
      */
     private static function writeNormalized($content, $to)
     {
         @mkdir(dirname($to), 0755, true);
-        file_put_contents($to, $content);
+        // @: the diagnostic is suppressed, the failed return owned below
+        // (glm17-16) — the refusal is the build's own message.
+        $written = @file_put_contents($to, $content);
+        $expected = strlen($content);
+        if (false === $written || $written !== $expected) {
+            throw new RuntimeException(sprintf(
+                'build: cannot write the generated file %s whole — %d bytes expected, %s; a truncated generated file never enters the archive',
+                $to,
+                $expected,
+                false === $written ? 'the write refused or fell short (the write layer reported failure)' : "{$written} written"
+            ));
+        }
+        /*
+         * The staged-bytes verification (the r5-S claim made true): the
+         * write layer reported success — the FILESYSTEM's word is the
+         * size on disk, re-read past the stat cache. A filesystem that
+         * accepted the bytes but kept fewer (an ENOSPC flush, a
+         * truncated overlay) refuses here, before the archive opens.
+         */
+        clearstatcache(true, $to);
+        $staged = filesize($to);
+        if (false === $staged || $staged !== $expected) {
+            throw new RuntimeException(sprintf(
+                'build: the generated file %s did not land whole — %d bytes expected, %s on disk; a truncated generated file never enters the archive',
+                $to,
+                $expected,
+                false === $staged ? 'the staged file is unreadable' : "{$staged} bytes"
+            ));
+        }
         self::normalize($to);
     }
 

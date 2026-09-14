@@ -2760,6 +2760,117 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r7-3): writeNormalized()'s file_put_contents()
+     * return was ignored — a short write (an ENOSPC-style prefix write:
+     * the write layer accepts part of the buffer, then reports failure)
+     * staged a truncated PHP file that zip close() happily packed and
+     * published at exit 0, and the t31-r5-S "verified whole at its
+     * staging path" claim was FALSE for generated members.
+     *
+     * No external input reaches a failed generated write through
+     * buildPlugin() itself — every staged path is created fresh inside
+     * the run, before any input can block it — so the seam is pinned
+     * directly (the reflection-driven-seam idiom, the t31-r4-3
+     * closeArchiveOrThrow precedent), with the artifact-set contract
+     * asserted around it. Both runtime spellings drive a REAL
+     * file_put_contents failure, not a stub: a stream wrapper whose
+     * stream_write accepts half the buffer makes PHP's own write loop
+     * fall short (its "Only X of Y bytes written" diagnostic is the
+     * evidence, collected the way the close() pin collects libzip's
+     * warning), and a directory at the target is the plain false.
+     */
+    public function testAShortOrFailedGeneratedWriteRefusesTheBuildAndKeepsTheArtifactSet(): void
+    {
+        $write = new ReflectionMethod(WpConnectorsBuild::class, 'writeNormalized');
+
+        /*
+         * Seed a previous GOOD artifact set: the refusal must leave it
+         * byte-untouched (the t31-r5-S publication contract — every
+         * failure this seam can construct happens at the staging path,
+         * before the archive opens).
+         */
+        $scratch = self::distDir() . '/.write-normalized-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            $seedZip = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertFileExists($seedZip);
+            $zipBefore = (string) file_get_contents($seedZip);
+            $sidecarBefore = (string) file_get_contents($seedZip . '.sha256');
+            $manifestBefore = (string) file_get_contents($scratch . '/dist/checksums.txt');
+
+            // (a) The SHORT-WRITE spelling, through the real write layer:
+            // the wrapper's stream_write accepts half of every chunk, so
+            // PHP's write loop falls short and file_put_contents fails.
+            $payload = str_repeat('x', 1000);
+            $this->assertTrue(stream_wrapper_register('wpctshortwrite', WpctShortWriteStream::class), 'The short-write wrapper must register.');
+            try {
+                $warnings = array();
+                set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
+                    $warnings[] = $errstr;
+
+                    return true;
+                });
+                $refused = null;
+                try {
+                    $write->invoke(null, $payload, 'wpctshortwrite://short');
+                } catch (RuntimeException $e) {
+                    $refused = $e->getMessage();
+                } finally {
+                    restore_error_handler();
+                }
+
+                $this->assertNotNull($refused, 'A short write must refuse the build, never stage a truncated file the zip would happily pack.');
+                $this->assertStringContainsString('wpctshortwrite://short', $refused, 'The refusal must name the file.');
+                $this->assertStringContainsString('1000 bytes expected', $refused, 'The refusal must name the expected byte count.');
+                $this->assertNotSame(array(), array_filter($warnings, static function (string $w): bool {
+                    return false !== strpos($w, 'bytes written');
+                }), 'The pin must drive a REAL short write (PHP\'s own "Only X of Y bytes written" diagnostic is the evidence), not a stubbed one.');
+            } finally {
+                stream_wrapper_unregister('wpctshortwrite');
+            }
+
+            // (b) The FALSE spelling: a directory at the target refuses
+            // the same way, naming the file.
+            $blocked = $scratch . '/dist/blocked-target';
+            mkdir($blocked, 0755, true);
+            $refused = null;
+            try {
+                $write->invoke(null, 'generated content', $blocked);
+            } catch (RuntimeException $e) {
+                $refused = $e->getMessage();
+            }
+            $this->assertNotNull($refused, 'A refused write must refuse the build loudly.');
+            $this->assertStringContainsString($blocked, $refused);
+            $this->assertStringContainsString('17 bytes expected', $refused);
+
+            // Clean direction through the same seam: a real write to a
+            // real staging path lands whole (and its staged size is
+            // verified by the seam itself).
+            $good = $scratch . '/dist/good-target.php';
+            $write->invoke(null, $payload, $good);
+            $this->assertSame($payload, (string) file_get_contents($good));
+            $this->assertSame(1000, filesize($good));
+
+            // The artifact-set contract: both refusals happened at the
+            // seam (staging-path-shaped), and the previous good set is
+            // byte-untouched.
+            $this->assertSame($zipBefore, (string) file_get_contents($seedZip));
+            $this->assertSame($sidecarBefore, (string) file_get_contents($seedZip . '.sha256'));
+            $this->assertSame($manifestBefore, (string) file_get_contents($scratch . '/dist/checksums.txt'));
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r4-7), the build channel: a symlinked
      * directory in shared/src REFUSES the embed build loudly — the old
      * silent skip shipped a library whose linked class loads in
@@ -3371,5 +3482,81 @@ FIXTURE;
         }
 
         return $repo;
+    }
+}
+
+/**
+ * The short-write stream wrapper for the t31-r7-3 seam pin.
+ *
+ * stream_write() accepts half of every chunk it is handed, so PHP's own
+ * file_put_contents() write loop falls short of the buffer and reports
+ * failure with its "Only X of Y bytes written" diagnostic — a REAL
+ * short write through the real write API, the deterministic driver for
+ * the checked-write pin (no ENOSPC filesystem required). Registered and
+ * unregistered by the test that drives it; never exposed on a path any
+ * other code touches.
+ */
+final class WpctShortWriteStream
+{
+    /** @var resource|null The stream context (required by the wrapper protocol). */
+    public $context;
+
+    /**
+     * Accepts the path unconditionally.
+     *
+     * @param string     $path         The opened path.
+     * @param string     $mode         The open mode.
+     * @param int        $options      Stream options.
+     * @param string|null $opened_path Receives the opened path.
+     * @return bool Always true.
+     */
+    public function stream_open(string $path, string $mode, int $options, ?string &$opened_path): bool
+    {
+        return true;
+    }
+
+    /**
+     * Accepts half of the chunk — the short count that makes the real
+     * write loop fall short.
+     *
+     * @param string $data The chunk to (partly) accept.
+     * @return int The accepted byte count.
+     */
+    public function stream_write(string $data): int
+    {
+        return (int) floor(strlen($data) / 2);
+    }
+
+    /**
+     * @return bool Always true (nothing to flush).
+     */
+    public function stream_flush(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @return void
+     */
+    public function stream_close(): void
+    {
+    }
+
+    /**
+     * @return bool Always at EOF.
+     */
+    public function stream_eof(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @param string $path The stat target.
+     * @param int    $flags Stat flags.
+     * @return array<int|string, int|string> An empty stat.
+     */
+    public function url_stat(string $path, int $flags): array
+    {
+        return array();
     }
 }
