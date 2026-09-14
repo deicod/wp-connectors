@@ -2007,7 +2007,11 @@ function wp_connectors_namespace_suffix_from_slug($slug)
     $acronyms = array( 'openai' => 'OpenAi' );
 
     $parts = array();
-    foreach (explode('-', strtolower((string) $slug)) as $segment) {
+    // '-' AND '.' separate slug segments (t31-r5-12): a dotted slug's
+    // naive suffix ('my.plugin' -> 'My.plugin') is not a legal namespace
+    // segment, so the derivation treats '.' as a separator like '-' and
+    // every derived segment stays a label.
+    foreach (preg_split('/[-.]/', strtolower((string) $slug)) ?: array() as $segment) {
         $parts[] = isset($acronyms[ $segment ]) ? $acronyms[ $segment ] : ucfirst($segment);
     }
     $suffix = implode('', $parts);
@@ -2045,18 +2049,16 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
         return array( sprintf('%s: no main plugin file found.', $slug) );
     }
     $source = (string) file_get_contents($mainFile);
-    $constantName = strtoupper(str_replace('-', '_', $slug)) . '_VERSION';
     /*
-     * Legal-label agreement (review round t31-r5-8, the t31-r3-5
-     * namespace rule's twin): a digit-initial slug's naive constant
-     * name ('3CX_OAUTH_VERSION') is not a legal bare identifier —
-     * define() accepts the string, but every bare reference is a lexer
-     * error, so the constant is unreachable in code (parse error
-     * verified) while the gate matched the define happily. The
-     * derivation underscores it exactly like the namespace derivation
-     * underscores its digit-initial suffix: the main file must define
-     * and reference '_3CX_OAUTH_VERSION'.
+     * The label agreement spans every slug spelling whose naive name is
+     * not a legal identifier: '.' becomes '_' like '-' (t31-r5-12 —
+     * 'my.plugin' derived 'MY.PLUGIN_VERSION', bare-code-unreachable at
+     * exit 0), and a digit-initial result is underscored exactly like
+     * the namespace derivation (t31-r5-8, the t31-r3-5 rule's twin:
+     * '3CX_OAUTH_VERSION' defined fine but every bare reference was a
+     * lexer error).
      */
+    $constantName = strtoupper(str_replace(array( '-', '.' ), '_', $slug)) . '_VERSION';
     if (ctype_digit($constantName[0])) {
         $constantName = '_' . $constantName;
     }

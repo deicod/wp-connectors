@@ -2041,6 +2041,71 @@ FIXTURE;
         }
     }
 
+    /**
+     * Verifier-round pin (t31-r5-12): a dotted slug ('my.plugin' — legal
+     * to the slug regex and the text-domain gate) derived the constant
+     * 'MY.PLUGIN_VERSION' and the namespace suffix 'My.plugin' — both
+     * bare-code-unreachable (every bare spelling of either is a lexer
+     * error) while every gate passed and the artifact shipped green
+     * (adversarially confirmed, parse error driven). Both derivations
+     * treat '.' as a separator now: the constant maps it to '_' like
+     * '-' ('MY_PLUGIN_VERSION') and the suffix capitalizes per segment
+     * ('MyPlugin'), so a dotted slug builds with labels code can
+     * actually spell.
+     */
+    public function testADottedSlugDerivesLegalLabelsForConstantAndNamespace(): void
+    {
+        $this->assertSame('MyPlugin', wp_connectors_namespace_suffix_from_slug('my.plugin'));
+        $this->assertSame('MyPlugin', wp_connectors_namespace_suffix_from_slug('my-plugin'), "Dot and dash separate the same segments.");
+
+        $tempPlugin = self::distDir() . '/.dot-slug/my.plugin';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir($tempPlugin . '/src', 0755, true);
+        $head = "Plugin Name:       my.plugin\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       my.plugin\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'MY_PLUGIN_VERSION', '1.0.0' );\nif ( MY_PLUGIN_VERSION !== '1.0.0' ) {\n\treturn;\n}\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        file_put_contents($tempPlugin . '/my.plugin.php', $main);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\MyPlugin\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+
+        try {
+            // The gates the build rides agree with the derivations.
+            $this->assertSame(array(), wp_connectors_autoloader_violations($tempPlugin));
+            $this->assertSame(array(), wp_connectors_version_constant_violations($tempPlugin, wp_connectors_parse_plugin_headers($tempPlugin . '/my.plugin.php')));
+
+            // The naive dotted spellings the pre-fix derivation produced
+            // are mismatches now.
+            $naive = str_replace("define( 'MY_PLUGIN_VERSION', '1.0.0' );", "define( 'MY.PLUGIN_VERSION', '1.0.0' );", $main);
+            file_put_contents($tempPlugin . '/my.plugin.php', $naive);
+            file_put_contents($tempPlugin . '/src/autoload.php', str_replace('MyPlugin', 'My.plugin', $autoload));
+            $this->assertNotSame(array(), wp_connectors_version_constant_violations($tempPlugin, wp_connectors_parse_plugin_headers($tempPlugin . '/my.plugin.php')));
+            $this->assertNotSame(array(), wp_connectors_autoloader_violations($tempPlugin));
+            file_put_contents($tempPlugin . '/my.plugin.php', $main);
+            file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
+
+            // End-to-end: the artifact builds and the shipped main file
+            // parses with its bare constant reference.
+            $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
+            $shippedMain = (string) $zip->getFromName('my.plugin/my.plugin.php');
+            $zip->close();
+            $probe = self::distDir() . '/.dot-slug/probe-main.php';
+            file_put_contents($probe, $shippedMain);
+            try {
+                $output = array();
+                $exit = 0;
+                exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($probe) . ' 2>&1', $output, $exit);
+                $this->assertSame(0, $exit, 'The shipped main file under a dotted slug must parse with its bare constant reference: ' . implode("\n", $output));
+            } finally {
+                @unlink($probe);
+            }
+        } finally {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
