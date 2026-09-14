@@ -1950,15 +1950,24 @@ function wp_connectors_development_entry_names()
  * judgment folds case now: what the gates exclude is the vocabulary
  * in any casing, and build and inspect give ONE verdict both
  * directions — the build excludes the segment, the inspector rejects
- * the entry.
+ * the entry. The comparison also strips the segment's TRAILING edge
+ * junk (verifier round t31-r6-5, the case fold's sibling byte-class):
+ * Windows path normalization strips trailing dots and spaces per
+ * component, so 'vendor '/'.git '/'tests\t' fold onto the real dev
+ * entries at extraction — and still carry dev content on hosts that
+ * preserve the odd spelling. The junk class is the ONE edge-junk
+ * owner's; the LEADING side is deliberately not stripped (the
+ * vocabulary's own members may begin with a dot — ltrim would
+ * destroy the '.git' family).
  *
  * @param string $segment One path segment (a basename is one).
  * @return bool True when the segment matches a vocabulary name in any case.
  */
 function wp_connectors_is_development_entry($segment)
 {
+    $segment = rtrim((string) $segment, wp_connectors_path_edge_junk());
     foreach (wp_connectors_development_entry_names() as $development_entry) {
-        if (0 === strcasecmp((string) $segment, $development_entry)) {
+        if (0 === strcasecmp($segment, $development_entry)) {
             return true;
         }
     }

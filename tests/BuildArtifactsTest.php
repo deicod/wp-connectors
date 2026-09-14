@@ -2205,6 +2205,13 @@ FIXTURE;
         file_put_contents($tempPlugin . '/Build.json', "{}\n");
         mkdir($tempPlugin . '/VENDOR', 0755, true);
         file_put_contents($tempPlugin . '/VENDOR/lib.php', "<?php\n// vendored dev shim, case-variant segment\n");
+        // The sibling byte-class (verifier round t31-r6-5): Windows
+        // path normalization strips trailing dots and spaces per
+        // component, so 'vendor ' folds onto the real dev entry at
+        // extraction — and still carries dev content on hosts that
+        // preserve the odd spelling.
+        mkdir($tempPlugin . '/vendor /acme', 0755, true);
+        file_put_contents($tempPlugin . '/vendor /acme/DevDependency.php', "<?php\n// dev dependency, trailing-space segment\n");
 
         try {
             $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
@@ -2212,6 +2219,7 @@ FIXTURE;
                 $this->assertStringNotContainsString('Tests/', $entry, 'A case-variant tests segment must not ship.');
                 $this->assertStringNotContainsString('Build.json', $entry, 'A case-variant build.json must not ship.');
                 $this->assertStringNotContainsString('VENDOR/', $entry, 'A case-variant vendor segment must not ship.');
+                $this->assertStringNotContainsString('vendor /', $entry, 'A trailing-junk vendor segment must not ship.');
             }
 
             // ONE verdict, this direction: the artifact the doctrine
@@ -2229,7 +2237,7 @@ FIXTURE;
             $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
             $head = "Plugin Name:       deventrycase-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       deventrycase-demo\nAuthor:            x\n";
             $hostile->addFromString('deventrycase-demo/deventrycase-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'DEVENTRYCASE_DEMO_VERSION', '1.0.0' );\n");
-            foreach (array( 'deventrycase-demo/Tests/Bootstrap.php', 'deventrycase-demo/Build.json', 'deventrycase-demo/VENDOR/lib.php' ) as $entry) {
+            foreach (array( 'deventrycase-demo/Tests/Bootstrap.php', 'deventrycase-demo/Build.json', 'deventrycase-demo/VENDOR/lib.php', 'deventrycase-demo/vendor /acme/DevDependency.php' ) as $entry) {
                 $hostile->addFromString($entry, 'x');
             }
             $hostile->close();
@@ -2240,6 +2248,7 @@ FIXTURE;
                 $this->assertStringContainsString('Tests/Bootstrap.php', $report);
                 $this->assertStringContainsString('Build.json', $report);
                 $this->assertStringContainsString('VENDOR/lib.php', $report);
+                $this->assertStringContainsString('vendor /acme/DevDependency.php', $report, 'A trailing-junk vendor entry must reject too.');
             } finally {
                 @unlink($hostileZip);
                 @unlink($hostileZip . '.sha256');
