@@ -1966,6 +1966,62 @@ FIXTURE;
     }
 
     /**
+     * Verifier-round pin (t31-r4-15): the sidecar write was the one
+     * unchecked artifact seam — a blocked .sha256 path shipped a
+     * sidecar-less zip with exit 0 (reproduced) while the round's
+     * charter says a failed artifact write never exits 0 with a
+     * half-described artifact set. Every publication write is checked
+     * now, and a failure takes the whole artifact set for the zip
+     * together (partial zip, sidecar, manifest entry), exiting non-zero.
+     */
+    public function testAFailingPublicationWriteRefusesTheBuildAndTakesTheArtifactSet(): void
+    {
+        $scratch = self::distDir() . '/.publish-check';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+
+        try {
+            // (a) The sidecar path blocked: the write fails, the run
+            // refuses, and the half-published artifact set goes together.
+            mkdir($scratch . '/dist/connectors-example-connector-0.1.0.zip.sha256');
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A failing sidecar write must refuse the build, never exit 0 with a sidecar-less zip.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('cannot write the checksum sidecar', $e->getMessage());
+            }
+            rmdir($scratch . '/dist/connectors-example-connector-0.1.0.zip.sha256');
+            $this->assertFileDoesNotExist($scratch . '/dist/connectors-example-connector-0.1.0.zip', 'The half-published zip must go with its failed publication.');
+            $this->assertFileDoesNotExist($scratch . '/dist/checksums.txt', 'No manifest entry may survive the refused publication.');
+
+            // Control: the same inputs build cleanly once the blocker is
+            // gone (nothing the failed run left behind collides).
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertFileExists($zipPath);
+            $this->assertFileExists($zipPath . '.sha256');
+
+            // (b) The manifest staging path blocked:
+            // writeManifestAtomically() refuses, the artifact set goes
+            // together.
+            mkdir($scratch . '/dist/checksums.txt.tmp');
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A failing manifest write must refuse the build too.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('checksum manifest', $e->getMessage());
+            }
+            rmdir($scratch . '/dist/checksums.txt.tmp');
+            $this->assertFileDoesNotExist($zipPath, 'The rebuilt zip must go with its failed manifest publication.');
+            $this->assertFileDoesNotExist($zipPath . '.sha256');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * The legal namespace-suffix shapes the rewrite soundness sweep rides:
      * the ordinary derivation, the digit-initial underscored derivation
      * (t31-r3-5), and an explicit all-caps segment — each a validated,

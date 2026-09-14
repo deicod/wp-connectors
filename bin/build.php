@@ -608,15 +608,42 @@ final class WpConnectorsBuild
             self::rrmdir($stage);
         }
 
-        // Checksums: per-zip sidecar file + refreshed manifest entry.
-        $checksum = hash_file('sha256', $zipPath);
-        file_put_contents($zipPath . '.sha256', $checksum . '  ' . $zipName . "\n");
+        /*
+         * Checksums: per-zip sidecar file + refreshed manifest entry.
+         * Every write in the publication block is CHECKED (verifier round
+         * t31-r4-15): the sidecar write was the one unchecked artifact
+         * seam — a blocked .sha256 path shipped a sidecar-less zip with
+         * exit 0 (reproduced), the round's artifact-integrity charter
+         * failing one write past t31-r4-3's checked finalization. A
+         * failure here takes the whole artifact set for this zip — the
+         * archive was already overwritten, so the partial zip, its
+         * sidecar, and its manifest entry go together (the t31-r3-16
+         * after-open contract), and the run exits non-zero.
+         */
+        try {
+            $checksum = hash_file('sha256', $zipPath);
+            if (false === $checksum) {
+                throw new RuntimeException("build: cannot checksum {$zipName} — refusing to publish a sidecar for an artifact that cannot be read");
+            }
+            // The @ suppresses only the diagnostic (the errno notice of
+            // the failed write); the FAILED RETURN is owned below — the
+            // glm17-16 idiom, so a blocked path refuses through this
+            // check instead of aborting through the engine's warning.
+            if (false === @file_put_contents($zipPath . '.sha256', $checksum . '  ' . $zipName . "\n")) {
+                throw new RuntimeException("build: cannot write the checksum sidecar for {$zipName} — a failed artifact write never exits 0 with a half-described artifact set");
+            }
 
-        $manifestPath = $distDir . '/checksums.txt';
-        $manifest = self::manifestLinesWithout($manifestPath, $zipName);
-        $manifest[] = $zipName . '  ' . $checksum;
-        sort($manifest, SORT_STRING);
-        self::writeManifestAtomically($manifestPath, $manifest);
+            $manifestPath = $distDir . '/checksums.txt';
+            $manifest = self::manifestLinesWithout($manifestPath, $zipName);
+            $manifest[] = $zipName . '  ' . $checksum;
+            sort($manifest, SORT_STRING);
+            self::writeManifestAtomically($manifestPath, $manifest);
+        } catch (RuntimeException $publicationFailure) {
+            @unlink($zipPath);
+            @unlink($zipPath . '.sha256');
+            self::removeManifestEntry($distDir . '/checksums.txt', $zipName);
+            throw $publicationFailure;
+        }
 
         return $zipPath;
     }
@@ -649,7 +676,9 @@ final class WpConnectorsBuild
             return;
         }
         $temp = $manifestPath . '.tmp';
-        if (false === file_put_contents($temp, implode("\n", $lines) . "\n")) {
+        // @: the diagnostic is suppressed, the failed return owned below
+        // (glm17-16) — a blocked path refuses through the check.
+        if (false === @file_put_contents($temp, implode("\n", $lines) . "\n")) {
             throw new RuntimeException("build: cannot write the checksum manifest staging file {$temp}");
         }
         if (! rename($temp, $manifestPath)) {
@@ -870,9 +899,12 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
      * on a --slug rebuild and left the manifest gone after a failing
      * rebuild, its sidecars orphaned (reproduced). Each buildPlugin()
      * run merges only its own zip's entry into whatever manifest exists
-     * and lands the result atomically (temp + rename), so checksums.txt
-     * always describes exactly the artifacts that exist — across
-     * partial rebuilds and failed runs alike.
+     * and lands the result atomically (temp + rename), so entries
+     * survive partial rebuilds and failed runs whole. The manifest is a
+     * record of what was built and checksummed, not an inventory: a zip
+     * deleted out-of-band leaves its entry behind (verifier note,
+     * ledgered) — the two pinned invariants are that no run destroys an
+     * entry it did not build and no failure leaves a half-written file.
      */
 
     $failed = false;
