@@ -193,6 +193,19 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         return $lines;
     }
 
+    /**
+     * ZERO WordPress reach — applied to the WHOLE FILE (t31-r3-8).
+     *
+     * The old per-line application (the shape the static/clock gates
+     * left behind in t31-r2-5/16) was blind to any spelling that breaks
+     * across lines ('$saved = __' / '( 'save' );' — the pattern's \s*
+     * legitimately spans the break), and a PCRE abort read as a clean
+     * file (`1 === preg_match` sees the abort's false as "no match").
+     * Whole-file application through the shared helper closes both:
+     * multiline spellings match, aborts refuse (t31-r2-16's doctrine),
+     * and the diagnostic still names the file and the line the match
+     * starts on.
+     */
     public function testSharedSourceContainsZeroWordPressReach(): void
     {
         $files = $this->sharedSourceFiles();
@@ -206,18 +219,11 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
 
         foreach ($files as $path) {
-            foreach ($this->numberedLines($path) as [$number, $line]) {
-                if (1 === preg_match(self::WP_TOKEN_PATTERN, $line, $matches)) {
-                    $this->fail(
-                        sprintf(
-                            'WordPress reach inside shared/ (WordPress is reached only through the ports): %s:%d — %s',
-                            $path,
-                            $number,
-                            trim($line)
-                        )
-                    );
-                }
-            }
+            $this->assertPatternAbsentWholeFile(
+                $path,
+                self::WP_TOKEN_PATTERN,
+                'WordPress reach inside shared/ (WordPress is reached only through the ports)'
+            );
         }
     }
 
@@ -305,24 +311,23 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * Provider neutrality — whole-file like every other gate (t31-r3-8),
+     * so the provider-name pattern cannot be the one gate a PCRE abort
+     * reads as clean, and the shared/README.md ride-along is judged by
+     * the same code path as the sources.
+     */
     public function testSharedSourceAndReadmeNameNoProviders(): void
     {
         $paths = array_merge($this->sharedSourceFiles(), array(realpath(__DIR__ . '/../shared/README.md')));
         $this->assertGreaterThanOrEqual(21, count($paths));
 
         foreach ($paths as $path) {
-            foreach ($this->numberedLines((string) $path) as [$number, $line]) {
-                if (1 === preg_match(self::PROVIDER_NAME_PATTERN, $line)) {
-                    $this->fail(
-                        sprintf(
-                            'Provider name in the provider-neutral shared source (provider config belongs to the per-plugin directories): %s:%d — %s',
-                            $path,
-                            $number,
-                            trim($line)
-                        )
-                    );
-                }
-            }
+            $this->assertPatternAbsentWholeFile(
+                (string) $path,
+                self::PROVIDER_NAME_PATTERN,
+                'Provider name in the provider-neutral shared source (provider config belongs to the per-plugin directories)'
+            );
         }
     }
 
@@ -720,6 +725,67 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         } finally {
             WpHarness::rrmdir($scratch);
         }
+    }
+
+    /**
+     * Fix-round pin (t31-r3-8), end-to-end through the ACTUAL gate: the
+     * WP-reach and provider-name patterns were still applied per line
+     * while the static/clock gates moved to whole-file application
+     * (t31-r2-5/16) — a translation call split between name and argument
+     * list ('$saved = __' / '( 'save' );', demonstrated during the
+     * round) matched NO single line and a PCRE abort read as clean.
+     * Both gates ride the shared whole-file helper now; the multiline
+     * spelling fails with file:line, the planted provider name fails
+     * the same way, and the clean real sources pass through the same
+     * code path.
+     */
+    public function testTheWpReachAndProviderGatesCatchMultilineSpellingsEndToEnd(): void
+    {
+        $wpFixture = realpath(__DIR__ . '/fixtures/sweep-corruption/wp-reach-multiline.php');
+        $this->assertNotFalse($wpFixture, 'The multiline WP-reach fixture must exist.');
+
+        try {
+            $this->assertPatternAbsentWholeFile(
+                $wpFixture,
+                self::WP_TOKEN_PATTERN,
+                'WordPress reach inside shared/ (WordPress is reached only through the ports)'
+            );
+            $this->fail('A WordPress reach spelled across lines must fail the actual gate, never pass line-by-line.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('wp-reach-multiline.php:16', $e->getMessage());
+            $this->assertStringContainsString('$saved = __', $e->getMessage());
+        }
+
+        // Clean direction through the same gate: a real swept source
+        // with no WordPress reach passes.
+        $this->assertPatternAbsentWholeFile(
+            (string) realpath(__DIR__ . '/../shared/src/Token/AccessTokenSet.php'),
+            self::WP_TOKEN_PATTERN,
+            'WordPress reach inside shared/ (WordPress is reached only through the ports)'
+        );
+
+        $providerFixture = realpath(__DIR__ . '/fixtures/sweep-corruption/provider-name.php');
+        $this->assertNotFalse($providerFixture, 'The provider-name fixture must exist.');
+
+        try {
+            $this->assertPatternAbsentWholeFile(
+                $providerFixture,
+                self::PROVIDER_NAME_PATTERN,
+                'Provider name in the provider-neutral shared source (provider config belongs to the per-plugin directories)'
+            );
+            $this->fail('A planted provider name must fail the provider gate.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('provider-name.php:15', $e->getMessage());
+            $this->assertStringContainsString('claude', $e->getMessage());
+        }
+
+        // Clean direction: the provider-neutral real source passes the
+        // same gate.
+        $this->assertPatternAbsentWholeFile(
+            (string) realpath(__DIR__ . '/../shared/src/Token/AccessTokenSet.php'),
+            self::PROVIDER_NAME_PATTERN,
+            'Provider name in the provider-neutral shared source (provider config belongs to the per-plugin directories)'
+        );
     }
 
     public function testSharedSourceFollowsPsr4OneTypePerFile(): void
