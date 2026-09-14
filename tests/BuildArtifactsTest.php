@@ -1037,10 +1037,14 @@ FIXTURE;
      * flag on (the bug predates this branch — master code; fixed here
      * because this branch populates shared/).
      *
-     * End-to-end with a fixture plugin that opts in: only shared/src
-     * ships, every source file lands under src/Shared/ at its exact
-     * relative path, no dev file lands anywhere, and the embedded
-     * copies carry the rewritten namespace and provenance.
+     * End-to-end with a fixture plugin that opts in, under the ONE
+     * assertion the pair carries (t31-r3-7, per t31-r2-18's design):
+     * shared/src's PHP SOURCES ship — each at its exact relative path
+     * under src/Shared/, rewritten — and nothing else does (every
+     * src/Shared/ entry is a PHP source; no dev file lands anywhere).
+     * The old 'everything under shared/src ships' sweep re-encoded the
+     * invariant t31-r2-18 removed and contradicted the sibling
+     * PHP-sources-only pin; the pair states one contract now.
      */
     public function testEmbedSharedShipsOnlyTheSourceTreeUnderSrcShared()
     {
@@ -1072,10 +1076,12 @@ FIXTURE;
                 $names[] = $zip->getNameIndex($i);
             }
 
-            // Every shared/src source file ships, at its exact relative
+            // Every shared/src PHP SOURCE ships, at its exact relative
             // path under src/Shared/ (the glm31-8 sweep shape — a
             // dropped or mis-staged source file fails here, and the
             // mapping is prefix-exact: no global segment stripping).
+            // The enumeration is independent of the build's collector
+            // (a raw tree walk) so the two cannot agree by construction.
             $sourceRoot = realpath(__DIR__ . '/../shared/src');
             $sourceIterator = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator($sourceRoot, FilesystemIterator::SKIP_DOTS)
@@ -1083,15 +1089,23 @@ FIXTURE;
             $sourceCount = 0;
             foreach ($sourceIterator as $sourceFile) {
                 $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($sourceFile->getPathname(), strlen($sourceRoot) + 1));
+                if ('.php' !== strtolower(substr($relative, -4))) {
+                    continue;
+                }
                 ++$sourceCount;
                 $this->assertContains('example-connector/src/Shared/' . $relative, $names, "The embedded copy of {$relative} must ship at its exact shared/src-relative path.");
             }
             $this->assertGreaterThanOrEqual(20, $sourceCount, 'The embed sweep must see the real shared source tree.');
 
-            // No dev file lands anywhere: the shared README (shared/'s
-            // own non-source content) is the shape the old
-            // parent-directory collection shipped.
+            // PHP sources ONLY: every src/Shared/ entry is one — a
+            // non-PHP file inside shared/src (or anywhere else) never
+            // ships (t31-r2-18's rule, stated against the real tree;
+            // the shared README is the shape the old parent-directory
+            // collection shipped).
             foreach ($names as $entry) {
+                if (false !== strpos($entry, 'src/Shared/')) {
+                    $this->assertSame('.php', strtolower(substr($entry, -4)), "Only PHP sources may ship under src/Shared/ (saw {$entry}).");
+                }
                 $this->assertStringNotContainsString('README', $entry, "No shared/ dev file may land in the zip (saw {$entry}).");
             }
 
