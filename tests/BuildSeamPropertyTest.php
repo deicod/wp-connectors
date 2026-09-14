@@ -428,6 +428,17 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             WpHarness::rrmdir($extract);
         }
 
+        // Soundness includes the RELEASE gate's verdict: the artifact the
+        // doctrine ships is the artifact the inspector accepts (added with
+        // t31-r5-10 — the round's own vocabulary-drift finding was exactly
+        // a build-clean/inspect-rejected contradiction).
+        $inspect = $scratch['root'] . '/.battery-inspect';
+        $this->assertSame(
+            array(),
+            wp_connectors_inspect_artifact($zipPath, $inspect),
+            'A CLEAN artifact must pass the inspector — build and inspect give ONE verdict.'
+        );
+
         // Consistency: the sidecar and manifest describe THIS zip.
         $checksum = hash_file('sha256', $zipPath);
         $sidecar = (string) file_get_contents($zipPath . '.sha256');

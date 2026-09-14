@@ -1915,6 +1915,79 @@ FIXTURE;
         }
     }
 
+    /**
+     * Verifier-round pin (t31-r5-10): the builder's exclusion list and
+     * the inspector's forbidden-entry list had drifted — the DOTLESS
+     * 'phpunit.cache' segment shipped through the build at exit 0 while
+     * the inspector rejected the same zip (adversarially confirmed),
+     * the t31-r5-5 contradiction class one spelling outside the
+     * embedded-subtree exemption. One vocabulary owner
+     * (wp_connectors_development_entry_names()) serves both gates now:
+     * a plugin tree carrying any of the drifted spellings ships NONE of
+     * them, and the artifact the doctrine ships is the artifact the
+     * inspector accepts.
+     */
+    public function testTheDevelopmentEntryVocabularyIsOneListForBothGates(): void
+    {
+        $tempPlugin = self::distDir() . '/.deventry-test/example-connector';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+        mkdir(dirname($tempPlugin), 0755, true);
+        $this->copyFixturePlugin($tempPlugin);
+        // The drifted spellings: the dotless cache dir (shipped pre-fix),
+        // the dotted twin, and the bundler configs the inspector missed.
+        mkdir($tempPlugin . '/phpunit.cache', 0755, true);
+        file_put_contents($tempPlugin . '/phpunit.cache/cached.xml', '<c/>');
+        mkdir($tempPlugin . '/.phpunit.cache', 0755, true);
+        file_put_contents($tempPlugin . '/.phpunit.cache/cached.xml', '<c/>');
+        file_put_contents($tempPlugin . '/webpack.config.js', 'module.exports = {};\n');
+        file_put_contents($tempPlugin . '/vite.config.js', 'export default {};\n');
+
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+            foreach ($this->zipEntryNames($zipPath) as $entry) {
+                $this->assertStringNotContainsString('phpunit.cache', $entry, 'No cache spelling may ship.');
+                $this->assertStringNotContainsString('webpack.config.js', $entry, 'No bundler config may ship.');
+                $this->assertStringNotContainsString('vite.config.js', $entry, 'No bundler config may ship.');
+            }
+
+            // ONE verdict: the inspector accepts exactly what the doctrine
+            // ships (the pre-fix contradiction, re-driven by the verifier).
+            $this->assertSame(
+                array(),
+                wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-deventry'),
+                'Build and inspect must agree on the development-entry vocabulary.'
+            );
+
+            // The reverse direction still judges: a HAND-CRAFTED zip
+            // carrying any of the spellings rejects (the inspector keeps
+            // its own teeth; the shared list only aligned them).
+            $hostileZip = self::distDir() . '/connectors-deventry-demo-1.0.0.zip';
+            $hostile = new ZipArchive();
+            $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $head = "Plugin Name:       deventry-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       deventry-demo\nAuthor:            x\n";
+            $hostile->addFromString('deventry-demo/deventry-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'DEVENTRY_DEMO_VERSION', '1.0.0' );\n");
+            foreach (array('deventry-demo/phpunit.cache/cached.xml', 'deventry-demo/.phpunit.cache/cached.xml', 'deventry-demo/webpack.config.js') as $entry) {
+                $hostile->addFromString($entry, 'x');
+            }
+            $hostile->close();
+            try {
+                $violations = wp_connectors_inspect_artifact($hostileZip, self::distDir() . '/.inspect-deventry-hostile');
+                $this->assertNotSame(array(), $violations, 'A crafted zip carrying any development-entry spelling must reject.');
+                $report = implode("\n", $violations);
+                $this->assertStringContainsString('phpunit.cache/cached.xml', $report);
+                $this->assertStringContainsString('.phpunit.cache/cached.xml', $report);
+                $this->assertStringContainsString('webpack.config.js', $report);
+            } finally {
+                @unlink($hostileZip);
+                @unlink($hostileZip . '.sha256');
+            }
+        } finally {
+            WpHarness::rrmdir(dirname($tempPlugin));
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";

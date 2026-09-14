@@ -89,17 +89,9 @@ final class WpConnectorsBuild
      */
     const SHARED_NAMESPACE_SURVIVOR_PATTERN = '/(?<![A-Za-z0-9_])Deicod\\s*\\\\\\s*WpConnectors\\s*\\\\\\s*(?:Shared(?![A-Za-z0-9_])|\\{(?:[^;]*?[\\s,{])?Shared(?![A-Za-z0-9_]))/i';
 
-    /** Development paths never shipped inside a plugin zip. */
-    const EXCLUDED_PATHS = array(
-        '.git', '.github', '.gitignore', '.gitattributes', '.editorconfig',
-        'vendor', 'node_modules', 'dist', 'tools', 'tests', 'test',
-        'composer.json', 'composer.lock', 'phpunit.xml', 'phpunit.xml.dist',
-        'phpcs.xml', 'phpcs.xml.dist', 'phpstan.neon', 'phpstan.neon.dist',
-        '.phpunit.result.cache', '.phpcs-cache.json', 'phpcs-cache.json',
-        '.phpunit.cache', 'package.json', 'package-lock.json', 'Makefile',
-        'webpack.config.js', 'vite.config.js',
-        'build.json', '.distignore',
-    );
+    /** Development paths never shipped inside a plugin zip — ONE shared
+     *  vocabulary with the inspector (t31-r5-10); see
+     *  wp_connectors_development_entry_names(). */
 
     /**
      * Rewrites shared-source namespace into a plugin-private namespace.
@@ -427,7 +419,7 @@ final class WpConnectorsBuild
              * whose zip would have been byte-identical to one without
              * the link (excluded paths ship nothing either way).
              */
-            if (array_intersect($parts, self::EXCLUDED_PATHS) !== array()) {
+            if (array_intersect($parts, wp_connectors_development_entry_names()) !== array()) {
                 continue;
             }
             /*

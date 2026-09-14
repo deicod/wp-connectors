@@ -1859,6 +1859,41 @@ function wp_connectors_basename_without_php_extension($path)
 }
 
 /**
+ * The ONE development-entry vocabulary both release gates judge by
+ * (verifier round t31-r5-10).
+ *
+ * What the build's collector excludes from a plugin tree and what the
+ * artifact inspector rejects as a development entry were two
+ * hand-maintained lists — and they had drifted: the inspector forbade
+ * the DOTLESS 'phpunit.cache' segment while the builder excluded only
+ * '.phpunit.cache', so a plugin carrying a phpunit.cache/ directory
+ * shipped through the build at exit 0 and the same zip failed
+ * inspection (adversarially confirmed) — the t31-r5-5 contradiction
+ * class, one spelling outside the embedded-subtree exemption. ONE
+ * owner now: the builder's collector drops any path carrying one of
+ * these names as a segment, and the inspector rejects any entry
+ * carrying one as a segment (its former separate basename list is
+ * subsumed — a basename is a segment). A name joins the list only
+ * when a dev tool actually starts dropping it in plugin trees.
+ *
+ * @return list<string> Sorted development-entry names (segments and files).
+ */
+function wp_connectors_development_entry_names()
+{
+    return array(
+        '.git', '.github', '.gitignore', '.gitattributes', '.editorconfig',
+        'vendor', 'node_modules', 'dist', 'tools', 'tests', 'test',
+        'composer.json', 'composer.lock', 'phpunit.xml', 'phpunit.xml.dist',
+        'phpcs.xml', 'phpcs.xml.dist', 'phpstan.neon', 'phpstan.neon.dist',
+        '.phpunit.result.cache', '.phpcs-cache.json', 'phpcs-cache.json',
+        '.phpunit.cache', 'phpunit.cache',
+        'package.json', 'package-lock.json', 'Makefile',
+        'webpack.config.js', 'vite.config.js',
+        'build.json', '.distignore',
+    );
+}
+
+/**
  * Collects every PHP source file (relative paths) under a source-only tree.
  *
  * The shared/src file vocabulary's ONE owner (review round t31-r3-4):

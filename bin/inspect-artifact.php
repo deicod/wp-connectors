@@ -48,15 +48,13 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     }
 
     // Forbidden entries are matched on whole path segments/files, so entries
-    // like "assets/latest/x.png" are never false-rejected.
-    $forbiddenSegments = array( 'vendor', '.git', '.github', 'tests', 'test', 'tools', 'dist', 'node_modules', 'phpunit.cache' );
-    $forbiddenFiles = array(
-        'composer.json', 'composer.lock', 'phpunit.xml', 'phpunit.xml.dist',
-        'phpcs.xml', 'phpcs.xml.dist', 'phpstan.neon', 'phpstan.neon.dist',
-        'package.json', 'package-lock.json', 'Makefile', 'build.json',
-        '.phpunit.result.cache', '.phpcs-cache.json', 'phpcs-cache.json',
-        '.gitignore', '.gitattributes', '.editorconfig', '.distignore',
-    );
+    // like "assets/latest/x.png" are never false-rejected. The vocabulary
+    // is the ONE shared development-entry list (t31-r5-10) — the builder's
+    // collector and this inspector cannot drift on what a dev entry is
+    // (they had: the dotless 'phpunit.cache' shipped through builds the
+    // inspector rejected). A basename is a segment, so one any-part check
+    // covers both the former segment and file lists.
+    $developmentEntries = wp_connectors_development_entry_names();
 
     $topDirs = array();
     $sawDirectoryEntry = false;
@@ -100,18 +98,15 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * judges every entry, embedded or not.
          */
         $isEmbeddedShared = 0 === strpos($name, $parts[0] . '/src/Shared/');
-        // Segment check (whole path components) and exact file-name check.
+        // Segment check (whole path components; a basename is one).
         $isForbidden = false;
         if (! $isEmbeddedShared) {
             foreach ($parts as $part) {
-                if (in_array($part, $forbiddenSegments, true)) {
+                if (in_array($part, $developmentEntries, true)) {
                     $isForbidden = true;
 
                     break;
                 }
-            }
-            if (! $isForbidden && in_array($parts[ count($parts) - 1 ], $forbiddenFiles, true)) {
-                $isForbidden = true;
             }
         }
         if ($isForbidden) {
