@@ -95,18 +95,29 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      * while development loads it, and a source under shared/src/tools/
      * can no longer sweep clean while the zip drops it (t31-r3-4's
      * class). One vocabulary, two consumers, no drift.
+     *
+     * Cached per process run (t31-r3-13): the sweep's consumers
+     * re-walked shared/src up to seven times per run (every gate test
+     * calls this). The tree is repo content, immutable for the
+     * process's lifetime, so the walk happens once and every consumer
+     * sees the same list.
      */
     private function sharedSourceFiles(): array
     {
+        static $cached = null;
+
         $root = realpath(__DIR__ . '/../shared/src');
         $this->assertNotFalse($root, 'shared/src must exist — the contracts live there.');
 
-        $files = array();
-        foreach (wp_connectors_php_source_files($root) as $relative) {
-            $files[] = $root . '/' . $relative;
+        if (null === $cached) {
+            $files = array();
+            foreach (wp_connectors_php_source_files($root) as $relative) {
+                $files[] = $root . '/' . $relative;
+            }
+            $cached = $files;
         }
 
-        return $files;
+        return $cached;
     }
 
     /**
@@ -118,11 +129,25 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      * contentless for every gate that rides this reader (the t31-r1-21
      * doctrine, one more layer down).
      *
+     * Successful reads are cached per path per process run (t31-r3-13):
+     * the gates re-read each swept file roughly six times per run, and
+     * the content a gate judges must be the same content every gate
+     * judges — one read, one cached copy. Failed reads never cache (a
+     * re-invocation re-probes, which is what the loud-failure pins
+     * drive); scratch files are written before their first read, so no
+     * path serves stale bytes.
+     *
      * @param string $path File path.
      * @return string File contents.
      */
     private function fileContents(string $path): string
     {
+        /** @var array<string, string> $readCache */
+        static $readCache = array();
+
+        if (isset($readCache[$path])) {
+            return $readCache[$path];
+        }
         if (!is_readable($path)) {
             $this->fail(
                 sprintf(
@@ -152,7 +177,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             );
         }
 
-        return $contents;
+        return $readCache[$path] = $contents;
     }
 
     /**
@@ -808,7 +833,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         foreach ($this->sharedSourceFiles() as $path) {
             ++$scanned;
             $relative = substr($path, strlen($root) + 1);
-            $contents = (string) file_get_contents($path);
+            // The read rides the shared LOUD reader (t31-r3-13): the raw
+            // (string) file_get_contents() degraded an unreadable swept
+            // file to '' — one contentless namespace match, a quiet
+            // assertCount failure at best, never the named-file failure
+            // every other gate in this sweep reports (the t31-r2-9
+            // doctrine, one layer up from the line reader).
+            $contents = $this->fileContents($path);
 
             // Exactly one namespace declaration ...
             $namespaceMatches = array();
