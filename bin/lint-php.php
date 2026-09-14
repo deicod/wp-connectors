@@ -13,6 +13,8 @@ declare(strict_types=1);
 error_reporting(E_ALL);
 ini_set('display_errors', '1');
 
+require_once __DIR__ . '/lib/plugin-tools.php';
+
 $roots = array(__DIR__ . '/../connectors', __DIR__ . '/../shared', __DIR__ . '/../bin', __DIR__ . '/../tests');
 $exclude = array('vendor', 'tools', 'dist', 'node_modules', '.git', '.phpunit.cache');
 
@@ -26,7 +28,10 @@ foreach ($roots as $root) {
     );
     foreach ($iterator as $file) {
         /** @var SplFileInfo $file */
-        if ($file->getExtension() !== 'php') {
+        // The extension judgment rides the ONE case-insensitive owner
+        // (verifier note on t31-r4-9): a '.PHP'-spelled source is as
+        // loadable as any other and must not escape the lint gate.
+        if (! wp_connectors_is_php_source($file->getPathname())) {
             continue;
         }
         $parts = explode(DIRECTORY_SEPARATOR, $file->getPathname());

@@ -2044,6 +2044,38 @@ FIXTURE;
     }
 
     /**
+     * Verifier-round pin (t31-r4-18): the artifact inspector's
+     * post-extraction syntax loop and the repo's lint gate both used the
+     * exact-case extension check — a parse-broken '.PHP' entry shipped
+     * into a zip at exit 0 and the inspector ACCEPTED it with zero
+     * violations (reproduced), the release gate weaker than the build's
+     * own classify gate for the spelling. Both consumers ride the ONE
+     * case-insensitive owner now.
+     */
+    public function testTheInspectorSyntaxChecksUpperCaseSpelledPhpEntries(): void
+    {
+        $zipPath = self::distDir() . '/connectors-phplint-demo-1.0.0.zip';
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $head = "Plugin Name:       phplint-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       phplint-demo\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'PHPLINT_DEMO_VERSION', '1.0.0' );\n";
+        $zip->addFromString('phplint-demo/phplint-demo.php', $main);
+        // The parse error rides the '.PHP' spelling the exact-case check skipped.
+        $zip->addFromString('phplint-demo/src/Broken.PHP', "<?php\nnamespace Deicod\\WpConnectors\\PhplintDemo\\;\nclass Broken {\n");
+        $zip->close();
+
+        try {
+            $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-phplint');
+            $this->assertNotSame(array(), $violations, 'A parse-broken .PHP entry must fail inspection, never ride the extension case past the syntax loop.');
+            $this->assertStringContainsString('failed php -l', implode("\n", $violations));
+            $this->assertStringContainsString('Broken.PHP', implode("\n", $violations));
+        } finally {
+            @unlink($zipPath);
+            @unlink($zipPath . '.sha256');
+        }
+    }
+
+    /**
      * The legal namespace-suffix shapes the rewrite soundness sweep rides:
      * the ordinary derivation, the digit-initial underscored derivation
      * (t31-r3-5), and an explicit all-caps segment — each a validated,

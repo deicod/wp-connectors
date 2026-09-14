@@ -173,7 +173,12 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         );
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
-            if ($file->getExtension() !== 'php') {
+            // The extension judgment rides the ONE case-insensitive owner
+            // (verifier note on t31-r4-9): a '.PHP'-spelled entry ships in
+            // the zip and must pass the post-extraction syntax check like
+            // any other source — the exact-case check let a parse-broken
+            // .PHP file through inspection clean.
+            if (! wp_connectors_is_php_source($file->getPathname())) {
                 continue;
             }
             $output = array();
