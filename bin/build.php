@@ -272,18 +272,12 @@ final class WpConnectorsBuild
             // Embed the shared OAuth library when the plugin opts in (the
             // build.json the opt-in rode was already validated at the config
             // seam above — no decode, no embed decision, happens down here).
+            // The file vocabulary is the ONE shared-source collector: every
+            // PHP source under shared/src ships, wherever it lives — the
+            // dist-tree exclusion list deliberately does NOT apply here
+            // (t31-r3-4), and non-PHP files are not sources (t31-r2-18).
             if ($embedShared) {
-                $sharedFiles = self::collectFiles($sharedDir);
-                foreach ($sharedFiles as $relative) {
-                    // Only PHP SOURCES ship (verifier round t31-r2-18):
-                    // collectFiles() filters by excluded path names
-                    // only, so any non-PHP file committed inside
-                    // shared/src (notes, READMEs) would ride into
-                    // plugin zips byte-identical — the rewrite no-ops
-                    // on content without an open tag.
-                    if ('.php' !== substr($relative, -4)) {
-                        continue;
-                    }
+                foreach (wp_connectors_php_source_files($sharedDir) as $relative) {
                     $source = (string) file_get_contents($sharedDir . '/' . $relative);
                     $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
                     $target = $stage . '/' . $slug . '/src/Shared/' . $relative;

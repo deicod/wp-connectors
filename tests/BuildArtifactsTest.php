@@ -1366,6 +1366,80 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r3-4): the embed collection reused
+     * collectFiles(), whose EXCLUDED_PATHS dropped any shared/src
+     * subdirectory named tests/tools/dist/vendor — a shared source
+     * living there loaded in development (the dev autoloader walks the
+     * whole tree), passed the architecture sweep (same walk), and then
+     * silently missed the zip, so the shipped plugin fataled on the
+     * missing class (the inverse of t31-r2-12's dev-files-shipping
+     * class). The shared-source collector applies NO exclusion
+     * segments: every PHP source under shared/src ships, wherever it
+     * lives; non-PHP files still do not.
+     */
+    public function testEverySharedPhpSourceShipsEvenFromExcludedNamedSubdirectories()
+    {
+        $scratch = self::distDir() . '/.embed-excluded-names';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+        // One PHP source in EVERY excluded-name subdirectory: each must ship.
+        foreach (array('tools', 'tests', 'dist', 'vendor') as $excludedName) {
+            $type = ucfirst($excludedName) . 'Source';
+            mkdir($scratch . '/shared/src/' . $excludedName, 0755, true);
+            file_put_contents(
+                $scratch . '/shared/src/' . $excludedName . '/' . $type . '.php',
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared\\{$excludedName};\ninterface {$type} {}\n"
+            );
+        }
+        // The PHP-source filter itself is unchanged: non-PHP dev files
+        // inside shared/src still never ship (the t31-r2-18 rule).
+        file_put_contents($scratch . '/shared/src/Notes.md', "# Developer scratch notes\n");
+
+        $fixtureRoot = __DIR__ . '/fixtures/plugins/example-connector';
+        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
+        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
+            $target = $scratch . '/plugin/example-connector/' . $relative;
+            if ($item->isDir()) {
+                mkdir($target, 0755, true);
+            } else {
+                copy($item->getPathname(), $target);
+            }
+        }
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+
+            $zip = new ZipArchive();
+            $this->assertTrue($zip->open($zipPath));
+            $names = array();
+            for ($i = 0; $i < $zip->numFiles; ++$i) {
+                $names[] = $zip->getNameIndex($i);
+            }
+            $zip->close();
+
+            $this->assertContains('example-connector/src/Shared/Clock/ClockInterface.php', $names, 'An ordinary shared source must ship.');
+            foreach (array('Tools', 'Tests', 'Dist', 'Vendor') as $excludedName) {
+                $this->assertContains(
+                    'example-connector/src/Shared/' . strtolower($excludedName) . '/' . $excludedName . 'Source.php',
+                    $names,
+                    "A PHP source inside shared/src/{$excludedName}/ must ship — exclusions are a dist-tree concept, not a shared-source concept."
+                );
+            }
+            foreach ($names as $entry) {
+                $this->assertStringNotContainsString('Notes.md', $entry, 'A non-PHP file inside shared/src must still not ship.');
+            }
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";

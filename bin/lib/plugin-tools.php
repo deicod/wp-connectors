@@ -1812,6 +1812,50 @@ function wp_connectors_autoloader_violations($pluginDir)
 }
 
 /**
+ * Collects every PHP source file (relative paths) under a source-only tree.
+ *
+ * The shared/src file vocabulary's ONE owner (review round t31-r3-4):
+ * what the build's embed collection ships and what the architecture
+ * sweep judges must be the same file set. The embed collection reused
+ * collectFiles() — whose EXCLUDED_PATHS drop any subdirectory named
+ * tests/tools/dist/vendor — so a shared source living under
+ * shared/src/tools/ loaded in development (the dev autoloader walks the
+ * whole tree), passed the sweep (same walk), and then silently missed
+ * the zip: the shipped plugin fataled on the missing class. Exclusions
+ * are a DIST-TREE concept (dev files a plugin directory carries);
+ * shared/src is a source-only tree whose PHP sources ALL ship. The only
+ * filter is the PHP-source extension (verifier round t31-r2-18: non-PHP
+ * files inside shared/src are not sources).
+ *
+ * @param string $dir Absolute source-only directory (shared/src).
+ * @return list<string> Sorted relative .php file paths.
+ */
+function wp_connectors_php_source_files($dir)
+{
+    $files = array();
+    $dir = rtrim((string) $dir, '/');
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)
+    );
+    foreach ($iterator as $file) {
+        /** @var SplFileInfo $file */
+        // Same no-symlinks doctrine as the plugin collector: a link
+        // inside the source tree must not ship out-of-tree content.
+        if ($file->isLink() || ! $file->isFile()) {
+            continue;
+        }
+        $relative = str_replace($dir . '/', '', $file->getPathname());
+        if ('.php' !== substr($relative, -4)) {
+            continue;
+        }
+        $files[] = $relative;
+    }
+    sort($files, SORT_STRING);
+
+    return $files;
+}
+
+/**
  * Derives the plugin namespace segment from the slug (openai-oauth -> OpenAiOauth).
  *
  * The ONE derivation shared by bin/build.php (shared-code namespace
