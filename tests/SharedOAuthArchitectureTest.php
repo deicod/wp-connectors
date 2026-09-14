@@ -39,8 +39,27 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      * Banned WordPress reach: functions, hooks, options, globals,
      * constants — everything that would smuggle a host dependency into
      * the shared source. Case-insensitive (PHP calls are).
+     *
+     * Review round t31-r4-11, the mechanism half: the closed stems end
+     * in a LETTER-aware lookahead, not '\b' — '\b' treats '_' as a word
+     * character, so the stems could never match their own '_'-suffixed
+     * twins (apply_filters_ref_array/do_action_ref_array are the WP
+     * spellings; the mechanism bug was verified, not curated). The
+     * lookahead still refuses letter-extended lookalikes
+     * ('apply_filterss' stays clean) and the leading '\b' still fences
+     * prefixed names ('my_apply_filters' stays clean); '_' extensions
+     * over-block in the safe direction (a dev rephrases).
+     *
+     * Review round t31-r4-11, the curation half (adjudicated): the
+     * obviously-WP-conditional/admin surface functions a source could
+     * plausibly reach for — is_admin, get_bloginfo, is_user_logged_in,
+     * get_locale — join the vocabulary now; the REST of the curation
+     * posture is the t31-r2-7 doctrine (spelling-curated, a spelling
+     * joins when someone writes one), recorded in the ledger for this
+     * round. wp_-prefixed names need no closed stem (the open
+     * '\bwp_[a-z0-9_]+' class owns them).
      */
-    private const WP_TOKEN_PATTERN = '/(?:\bwp_[a-z0-9_]+|\b(?:apply_filters|do_action|add_action|add_filter|remove_action|remove_filter|_doing_it_wrong|current_time|current_user_can|get_current_user_id|get_current_blog_id|is_multisite|is_wp_error|get_option|update_option|add_option|delete_option|get_blog_option|update_blog_option|delete_blog_option|get_site_option|update_site_option|delete_site_option|switch_to_blog|restore_current_blog|get_transient|set_transient|delete_transient|get_user_meta|update_user_meta|register_setting|add_settings_(?:section|field)|add_submenu_page|register_(?:activation|deactivation|uninstall)_hook|plugin_dir_path|plugins_url|admin_url|network_admin_url|self_admin_url|site_url|home_url|get_site_url|get_home_url|add_query_arg|remove_query_arg|load_plugin_textdomain|check_admin_referer|check_ajax_referer|esc_[a-z0-9_]+|sanitize_[a-z0-9_]+|wpdb|wp_error)\b|\b__\s*\(|\b(?:AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|AUTH_SALT|SECURE_AUTH_SALT|LOGGED_IN_SALT|NONCE_SALT|ABSPATH|WPINC|WP_CONTENT_DIR|WP_PLUGIN_DIR|WPMU_PLUGIN_DIR)\b)/i';
+    private const WP_TOKEN_PATTERN = '/(?:\bwp_[a-z0-9_]+|\b(?:apply_filters|do_action|add_action|add_filter|remove_action|remove_filter|_doing_it_wrong|current_time|current_user_can|get_current_user_id|get_current_blog_id|is_admin|is_multisite|is_user_logged_in|is_wp_error|get_bloginfo|get_locale|get_option|update_option|add_option|delete_option|get_blog_option|update_blog_option|delete_blog_option|get_site_option|update_site_option|delete_site_option|switch_to_blog|restore_current_blog|get_transient|set_transient|delete_transient|get_user_meta|update_user_meta|register_setting|add_settings_(?:section|field)|add_submenu_page|register_(?:activation|deactivation|uninstall)_hook|plugin_dir_path|plugins_url|admin_url|network_admin_url|self_admin_url|site_url|home_url|get_site_url|get_home_url|add_query_arg|remove_query_arg|load_plugin_textdomain|check_admin_referer|check_ajax_referer|esc_[a-z0-9_]+|sanitize_[a-z0-9_]+|wpdb|wp_error)(?![A-Za-z])|\b__\s*\(|\b(?:AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|AUTH_SALT|SECURE_AUTH_SALT|LOGGED_IN_SALT|NONCE_SALT|ABSPATH|WPINC|WP_CONTENT_DIR|WP_PLUGIN_DIR|WPMU_PLUGIN_DIR)\b)/i';
 
     /**
      * Provider names the generic classes must not carry (word-bounded,
@@ -1091,6 +1110,70 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             self::PROVIDER_NAME_PATTERN,
             'Provider name in the provider-neutral shared source (provider config belongs to the per-plugin directories)'
         );
+    }
+
+    /**
+     * Fix-round pin (t31-r4-11), the mechanism half: the closed stems
+     * end in a letter-aware lookahead, not '\b' — '\b' treats '_' as a
+     * word character, so apply_filters/do_action could never match
+     * their own ref_array twins (verified mechanism bug: the WP
+     * spellings bypassed the gate while the plain stems stayed
+     * flagged). '_' extensions over-block in the safe direction
+     * (is_admin matches is_admin_bar_showing — a WP function besides);
+     * letter extensions and prefixed names stay clean. The curation
+     * half (is_admin, get_bloginfo, is_user_logged_in, get_locale
+     * added; the spelling-curated posture ledgered) rides the same
+     * pattern.
+     */
+    public function testTheWpReachStemsMatchTheirSuffixedTwins(): void
+    {
+        $pattern = (new \ReflectionClass(self::class))->getConstant('WP_TOKEN_PATTERN');
+
+        $mustFlag = array(
+            'apply_filters_ref_array' => 'apply_filters_ref_array( \'x\', array() );',
+            'do_action_ref_array' => 'do_action_ref_array( \'x\', array() );',
+            'DO_ACTION_REF_ARRAY' => 'DO_ACTION_REF_ARRAY( \'x\', array() );',
+            'apply_filters plain' => 'apply_filters( \'x\', 1 );',
+            'is_admin' => 'if ( is_admin() ) {}',
+            'get_bloginfo' => '$n = get_bloginfo( \'name\' );',
+            'is_user_logged_in' => 'if ( is_user_logged_in() ) {}',
+            'get_locale' => '$locale = get_locale();',
+            'is_admin_bar_showing (the twin over-match, safe direction)' => 'if ( is_admin_bar_showing() ) {}',
+        );
+        foreach ($mustFlag as $label => $code) {
+            $this->assertSame(1, preg_match($pattern, $code), "The WP-reach vocabulary must flag: {$label}.");
+        }
+
+        $mustNotFlag = array(
+            'prefixed name' => 'my_apply_filters( $value );',
+            'letter-suffixed name' => 'apply_filterss( $value );',
+            'embedded stem' => 'reapply_filters( $value );',
+            'admin_url with letter tail' => '$u = admin_urlish( $path );',
+            'unrelated similar call' => 'apply_the_filters( $value );',
+        );
+        foreach ($mustNotFlag as $label => $code) {
+            $this->assertSame(0, preg_match($pattern, $code), "The vocabulary must not flag: {$label}.");
+        }
+
+        // End-to-end through the ACTUAL whole-file gate: a planted
+        // ref_array twin in a swept-shaped file fails with file:line.
+        $scratch = tempnam(sys_get_temp_dir(), 'wpct-ref-array-');
+        try {
+            file_put_contents($scratch, "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class RefArrayFixture\n{\n    public function fan_out(): void\n    {\n        apply_filters_ref_array( 'shared_hook', array( 1 ) );\n    }\n}\n");
+            try {
+                $this->assertPatternAbsentWholeFile(
+                    $scratch,
+                    self::WP_TOKEN_PATTERN,
+                    'WordPress reach inside shared/ (WordPress is reached only through the ports)'
+                );
+                $this->fail('A _-suffixed twin of a banned stem must fail the actual gate, never ride the \\b boundary past it.');
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $this->assertStringContainsString('apply_filters_ref_array', $e->getMessage());
+                $this->assertStringContainsString(basename($scratch), $e->getMessage());
+            }
+        } finally {
+            unlink($scratch);
+        }
     }
 
     public function testSharedSourceFollowsPsr4OneTypePerFile(): void
