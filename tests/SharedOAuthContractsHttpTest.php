@@ -841,6 +841,26 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $this->assertStringNotContainsString('strtolower', $source, $class . ' must not spell the locale-sensitive fold.');
             $this->assertStringContainsString('AsciiFold::lower', $source, $class . ' must ride the shared ASCII fold.');
         }
+
+        /*
+         * Fix-round extension (t31-r3-10), same class-closure framing:
+         * the method token's normalization is the one case-RAISING
+         * surface, and it rode the locale-sensitive strtoupper() — the
+         * Turkish dotted-I rule maps ASCII 'i' to the two-byte 'İ',
+         * bytes the ASCII-only method grammar would then REJECT, so
+         * 'post' would stop being a method in exactly the processes
+         * whose locale folds it (argued from the fold tables, like the
+         * lower() half: no tr_* locale on this host). The upper fold
+         * rides the same owner.
+         */
+        $this->assertSame('POST', AsciiFold::upper('post'));
+        foreach (array('post', 'g.e.t', "MixedCase-\xE2\x82\xAC-0123", '') as $value) {
+            $this->assertSame(strtoupper($value), AsciiFold::upper($value), 'The ASCII upper fold must match the C-locale fold on: ' . addcslashes($value, "\x00..\xFF"));
+        }
+        $request = (string) file_get_contents((new \ReflectionClass(HttpRequest::class))->getFileName());
+        $this->assertStringNotContainsString('strtoupper', $request, 'HttpRequest must not spell the locale-sensitive upper fold.');
+        $this->assertStringContainsString('AsciiFold::upper', $request, 'HttpRequest method normalization must ride the shared ASCII upper fold.');
+        $this->assertSame('POST', (new HttpRequest('post', 'https://host.example/'))->method());
     }
 
     public function testHeaderMapRendersMaskedSensitiveAndVerbatimOtherLines(): void

@@ -24,6 +24,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Shared\Http;
 
+use Deicod\WpConnectors\Shared\Support\AsciiFold;
 use InvalidArgumentException;
 
 /**
@@ -106,7 +107,15 @@ final class HttpRequest {
 	 * @throws InvalidArgumentException When the method, URL, or header map violates the contract.
 	 */
 	public function __construct( string $method, string $url, array $headers = array(), ?string $body = null ) {
-		$normalized_method = strtoupper( $method );
+		// The method fold is the LOCALE-INDEPENDENT one (review round
+		// t31-r3-10): the C-library byte upper-case mapping consults
+		// LC_CTYPE, and under the Turkish dotted-I rule an ASCII 'i'
+		// upper-cases to the two-byte 'İ' — bytes the ASCII-only method
+		// grammar would then reject, so 'post' would stop being a method
+		// in exactly the processes whose locale folds it. Same
+		// class-closure posture as the header-name fold (t31-r2-14),
+		// one owner.
+		$normalized_method = AsciiFold::upper( $method );
 		if ( 1 !== preg_match( self::METHOD_TOKEN_PATTERN, $normalized_method ) ) {
 			throw new InvalidArgumentException( 'The HTTP method must be a non-empty method token.' );
 		}
