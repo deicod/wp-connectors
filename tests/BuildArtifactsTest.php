@@ -1680,6 +1680,78 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r6-2): the near-source fence's tail strip was
+     * " \t." — every trailing byte OUTSIDE that set hid the extension
+     * for free, so 'ClockMath.php\n' (a trailing newline IN THE
+     * FILENAME) was silently neither collected nor refused: it built
+     * clean, shipped in no zip, and a class declared inside it was a
+     * class-not-found fatal with build and inspect green (reproduced)
+     * — the exact silently-invisible-ship class t31-r5-14 claims
+     * closed. The fence now judges on the basename stripped of ALL
+     * trailing whitespace, control bytes, and the dot (the full
+     * rtrim charlist), so a filename hiding the extension behind any
+     * trailing byte refuses loudly. The r5-14 spellings still refuse,
+     * and the ledgered merely-different boundary ('ClockMath.phpé',
+     * 'Notes.md') stays silent.
+     */
+    public function testANearSourceTailOfAnyTrailingByteRefusesTheCollector(): void
+    {
+        $scratch = self::distDir() . '/.nearsource-tails';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch, 0755, true);
+        file_put_contents($scratch . '/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface ClockInterface {}\n");
+
+        try {
+            // The bytes r5-14's charlist missed: \n, \r, \v (\x0B),
+            // \f (\x0C) — each hides the extension the same way the
+            // ledgered space and dot do.
+            foreach (array( "\n", "\r", "\x0B", "\x0C" ) as $tail) {
+                file_put_contents(
+                    $scratch . '/ClockMath.php' . $tail,
+                    "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n"
+                );
+                try {
+                    wp_connectors_php_source_files($scratch);
+                    $this->fail('A trailing-0x' . bin2hex($tail) . ' near-source tail must refuse the collector.');
+                } catch (RuntimeException $e) {
+                    $this->assertStringContainsString('NEAR-SOURCE', $e->getMessage());
+                    $this->assertStringContainsString('ClockMath.php', $e->getMessage(), 'The refusal must name the file.');
+                }
+                unlink($scratch . '/ClockMath.php' . $tail);
+            }
+
+            // r5-14's own spellings still refuse under the widened
+            // charlist (the fence is widened, never narrowed).
+            foreach (array( ' ', '.' ) as $tail) {
+                file_put_contents($scratch . '/ClockMath.php' . $tail, "<?php\n// r5-14's own spelling\n");
+                try {
+                    wp_connectors_php_source_files($scratch);
+                    $this->fail("The trailing-{$tail} spelling is r5-14's own and must still refuse.");
+                } catch (RuntimeException $e) {
+                    $this->assertStringContainsString('NEAR-SOURCE', $e->getMessage());
+                }
+                unlink($scratch . '/ClockMath.php' . $tail);
+            }
+
+            // Control: the ledgered merely-different boundary stays
+            // silent — nothing loads those names in development
+            // either, so no loads-in-dev/misses-the-zip divergence
+            // exists — while the canonical source still collects.
+            file_put_contents($scratch . '/ClockMath.phpé', "<?php\n// merely different\n");
+            file_put_contents($scratch . '/Notes.md', "# notes\n");
+            $this->assertSame(
+                array( 'ClockInterface.php' ),
+                wp_connectors_php_source_files($scratch),
+                'The canonical source collects; the merely-different names stay silently out of scope (r5-14\'s ledgered boundary).'
+            );
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r5-1): a plugin that owns a file at an embed
      * destination had its copy silently REPLACED by the generated
      * embed copy — the author's class overwritten inside the zip, no

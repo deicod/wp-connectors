@@ -226,6 +226,18 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 },
                 'fragment' => 'NEAR-SOURCE',
             ),
+            'shared-source-near-source-spelling-newline-tail' => array(
+                // t31-r6-2: r5-14's tail charlist (" \t.") missed
+                // \n/\r/\v/\f — 'ClockMath.php\n' (the newline IN THE
+                // FILENAME) was neither collected nor refused:
+                // invisible to every gate, absent from every zip, its
+                // class a not-found fatal (reproduced).
+                'expect' => 'LOUD',
+                'apply' => static function (array $scratch): void {
+                    file_put_contents($scratch['shared'] . "/ClockMath.php\n", "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
+                },
+                'fragment' => 'NEAR-SOURCE',
+            ),
             'shared-tree-symlink-dir' => array(
                 'expect' => 'LOUD',
                 'apply' => static function (array $scratch): void {

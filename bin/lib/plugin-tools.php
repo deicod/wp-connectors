@@ -1996,11 +1996,24 @@ function wp_connectors_php_source_files($dir)
              * are merely DIFFERENT — 'ClockMath.phpé', 'Notes.md' —
              * stay out of scope: nothing loads them in development
              * either, so no divergence exists.)
+             *
+             * The tail strip is the FULL whitespace/control set plus
+             * the dot (review round t31-r6-2): r5-14's charlist
+             * (" \t.") missed \n/\r/\v/\f, so 'ClockMath.php\n' — a
+             * trailing newline IN THE FILENAME — was neither collected
+             * nor refused: invisible to every gate, absent from every
+             * zip, its class a not-found fatal (reproduced) — the
+             * exact silently-invisible-ship class r5-14 claims closed.
+             * A filename hiding the extension behind ANY trailing
+             * whitespace, control byte, or dot is the same
+             * near-source spelling and refuses the same way. (NUL
+             * cannot occur in a filename, so the strip's \0 member is
+             * inert belt-and-braces.)
              */
-            $trimmedTail = rtrim(basename($relative), " \t.");
+            $trimmedTail = rtrim(basename($relative), " \t\n\r\0\x0B\x0C.");
             if ('' !== $trimmedTail && wp_connectors_is_php_source($trimmedTail)) {
                 throw new RuntimeException(sprintf(
-                    'shared source %s is a NEAR-SOURCE spelling (trailing whitespace or dot hides the extension) — it reads as a PHP source but is invisible to every gate and absent from every ship; rename it to the canonical .php',
+                    'shared source %s is a NEAR-SOURCE spelling (trailing whitespace, control byte, or dot hides the extension) — it reads as a PHP source but is invisible to every gate and absent from every ship; rename it to the canonical .php',
                     $dir . '/' . $relative
                 ));
             }
