@@ -185,6 +185,61 @@ final class SharedOAuthContractsPolicyTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * Fix-round pin (t31-r3-3): the predicate is TOTAL — it returns
+     * bool for every constructible policy × token set. The extreme
+     * corners combine legally (verified by execution at HEAD): a
+     * year-0000-floor obtained-at reading with a PHP_INT_MAX skew
+     * drove expiry-minus-skew below the representable instant range,
+     * and a global InvalidArgumentException escaped the bool predicate
+     * (outside the OAuth family, no @throws — Task 3.3's coordinator
+     * would crash on an unhandled type). The corner is decided inside
+     * the predicate now (a threshold before every representable
+     * instant is a threshold every reading has reached), and the
+     * largest skew whose threshold STAYS representable keeps the exact
+     * flip point.
+     */
+    public function testThePredicateIsTotalAtTheExtremeCorners(): void
+    {
+        // Direction one: the unrepresentable threshold. Obtained-at at
+        // the year-0000 serialization floor (the earliest constructible
+        // reading) with a PHP_INT_MAX skew — the arithmetic's overflow
+        // guard would throw; the predicate answers deterministically.
+        $floorTimestamp = -62167219200;
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, new \DateTimeImmutable('@' . $floorTimestamp));
+        $policy = new RefreshPolicy(PHP_INT_MAX, 1, 60);
+
+        $this->assertTrue(
+            $policy->should_refresh($set, new \DateTimeImmutable('@' . $floorTimestamp)),
+            'A threshold below every representable instant is reached by every reading — refresh due, never a throw.'
+        );
+        $this->assertTrue($policy->should_refresh($set, new \DateTimeImmutable('2026-09-14T00:00:00+00:00')));
+
+        // The same floor with a REPRESENTABLE threshold keeps the exact
+        // rule (the corner decision must not widen past its boundary).
+        $zeroSkew = new RefreshPolicy(0, 1, 60);
+        $this->assertFalse($zeroSkew->should_refresh($set, new \DateTimeImmutable('@' . ($floorTimestamp + 3599))));
+        $this->assertTrue($zeroSkew->should_refresh($set, new \DateTimeImmutable('@' . ($floorTimestamp + 3600))));
+
+        // Direction two: the largest skew whose threshold stays
+        // representable from the LATEST legal expiry (obtained-at so
+        // the derived expiry lands exactly on the year-9999 ceiling) —
+        // the flip point is exact, boundary readings refresh.
+        $latestObtained = 253402300799 - 3600;
+        $latest = new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, new \DateTimeImmutable('@' . $latestObtained));
+        $edgePolicy = new RefreshPolicy(PHP_INT_MAX, 1, 60);
+        $thresholdTimestamp = $latestObtained + 3600 - PHP_INT_MAX;
+
+        $this->assertFalse(
+            $edgePolicy->should_refresh($latest, new \DateTimeImmutable('@' . ($thresholdTimestamp - 1))),
+            'One second before the true far-past threshold must not refresh.'
+        );
+        $this->assertTrue(
+            $edgePolicy->should_refresh($latest, new \DateTimeImmutable('@' . $thresholdTimestamp)),
+            'The true threshold itself must refresh (boundary readings refresh).'
+        );
+    }
+
     /* ---------------------------------------------------------------
      * Retry-After capping (both provider forms share the cap).
      * ---------------------------------------------------------------

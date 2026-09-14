@@ -136,6 +136,19 @@ final class RefreshPolicy {
 	 * a wall-clock subtraction in a DST-observing zone would shift
 	 * the window by the transition delta.
 	 *
+	 * TOTAL by construction (review round t31-r3-3): the constructible
+	 * corners combine legally — a pre-1970 obtained-at reading (legal
+	 * down to the year-0000 floor) with a saturation-scale skew (legal,
+	 * merely non-negative) drives expiry minus skew below the
+	 * representable instant range, and InstantArithmetic rejects that
+	 * shift with an InvalidArgumentException a bool predicate may never
+	 * leak (verified by execution at HEAD; an unhandled global
+	 * InvalidArgumentException outside the OAuth family would crash
+	 * Task 3.3's coordinator). The corner is decided HERE, from the
+	 * arithmetic's own meaning: a threshold below every representable
+	 * instant is a threshold every representable reading has reached,
+	 * so the answer is deterministically true — refresh due.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param AccessTokenSet    $token_set The token set to judge.
@@ -143,7 +156,19 @@ final class RefreshPolicy {
 	 * @return bool True when a refresh is due.
 	 */
 	public function should_refresh( AccessTokenSet $token_set, DateTimeImmutable $now ): bool {
-		$threshold = InstantArithmetic::minus_seconds( $token_set->expires_at(), $this->refresh_skew_seconds );
+		$expires_at = $token_set->expires_at();
+
+		/*
+		 * The unrepresentable corner, checked in the same arithmetic the
+		 * helper guards (a skew so large the subtraction would leave the
+		 * int-timestamp domain): the threshold lies before every
+		 * representable instant, so every reading is at or past it.
+		 */
+		if ( $expires_at->getTimestamp() < PHP_INT_MIN + $this->refresh_skew_seconds ) {
+			return true;
+		}
+
+		$threshold = InstantArithmetic::minus_seconds( $expires_at, $this->refresh_skew_seconds );
 
 		return $now >= $threshold;
 	}
