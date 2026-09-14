@@ -894,17 +894,23 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
-     * Fix-round pin (t31-r3-9), both directions: the sweep's file
-     * vocabulary was its own case-SENSITIVE '.php' filter — the same
-     * spelling the build's embed filter used — so a '.PHP'-spelled
-     * source was silently skipped from embeds and never judged by any
-     * gate (no gate ever saw it). The vocabulary is the ONE shared
-     * collector now (case-insensitive extension, no exclusions): a
-     * .PHP-spelled source IS collected and IS judged — a planted clock
-     * read inside one fails the actual gate, and a clean one passes
-     * through the same code path.
+     * Fix-round pin (t31-r3-9), SUPERSEDED by t31-r5-3's casing
+     * doctrine and restated: the sweep's file vocabulary was its own
+     * case-SENSITIVE '.php' filter, so a '.PHP'-spelled source was
+     * silently skipped from embeds and never judged by any gate (no
+     * gate ever saw it). r3-9/r4-9 made the shared collector accept
+     * any casing; t31-r5-3 narrows THIS tree again — the collector
+     * refuses the non-canonical casing loudly (the shipped autoloader
+     * probes lowercase '.php', so a shipped .PHP copy is a class no
+     * loader reaches), which is strictly stronger than both the
+     * silently-skipped and the silently-dead ships. The CONTENT-gate
+     * half of the r3-9 pin survives unchanged below: the gates that
+     * judge EXISTING files (driven directly here, as the
+     * self-containment walker drives them in plugin trees) still judge
+     * any casing — the refusal is a collector doctrine, not a
+     * classifier blind spot.
      */
-    public function testTheSweepVocabularyJudgesUpperCaseSpelledPhpSources(): void
+    public function testTheSweepVocabularyRefusesNonCanonicalExtensionCasing(): void
     {
         $scratch = tempnam(sys_get_temp_dir(), 'wpct-phpcase-');
         unlink($scratch);
@@ -914,30 +920,39 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             file_put_contents($scratch . '/ClockMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {\n    public function stamp(): int {\n        return time();\n    }\n}\n");
             file_put_contents($scratch . '/Notes.md', "# developer notes\n");
 
-            // The vocabulary: the .PHP source is collected (any case
-            // spelling); the non-PHP note is not (t31-r2-18 unchanged).
-            $this->assertSame(array('ClockMath.PHP'), wp_connectors_php_source_files($scratch));
+            // The vocabulary refuses the non-canonical casing loudly,
+            // naming the file — never silently skipped (r3-9's defect),
+            // never silently shipped-dead (r5-3's defect).
+            try {
+                wp_connectors_php_source_files($scratch);
+                $this->fail('A non-canonical extension casing must refuse the shared-source vocabulary, never ride it silently in either direction.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('non-canonical extension', $e->getMessage());
+                $this->assertStringContainsString('ClockMath.PHP', $e->getMessage());
+            }
 
-            // And the actual gate judges the collected file: the planted
-            // time() call inside the .PHP-spelled source fails.
+            // The content gates stay case-insensitive for EXISTING files
+            // (the classify half of the r3-9/r4-9 owner, driven the way
+            // the plugin-tree walkers drive it): a planted clock read
+            // inside the .PHP-spelled file still fails the gate.
             $gate = new \ReflectionMethod($this, 'assertNoDirectEnvironmentAccess');
             try {
                 $gate->invoke($this, $scratch . '/ClockMath.PHP');
-                $this->fail('A direct clock read inside a .PHP-spelled source must fail the gate, never ride past the vocabulary.');
+                $this->fail('A direct clock read inside a .PHP-spelled file must fail the gate — the refusal doctrine never blinds the classifier.');
             } catch (\PHPUnit\Framework\AssertionFailedError $e) {
                 $this->assertStringContainsString('ClockMath.PHP', $e->getMessage());
                 $this->assertStringContainsString('time()', $e->getMessage());
             }
 
-            // Clean direction through the same gate: a violation-free
-            // .PHP-spelled source passes (the extension case, not the
-            // content, is what the fix admits).
-            file_put_contents($scratch . '/CleanMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class CleanMath {\n    public function stamp(): int {\n        return 0;\n    }\n}\n");
-            $gate->invoke($this, $scratch . '/CleanMath.PHP');
+            // Clean direction through the same gate, and the canonical
+            // spelling collects normally beside the note (t31-r2-18).
+            file_put_contents($scratch . '/CleanMath.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class CleanMath {\n    public function stamp(): int {\n        return 0;\n    }\n}\n");
+            $gate->invoke($this, $scratch . '/CleanMath.php');
+            unlink($scratch . '/ClockMath.PHP');
             $this->assertSame(
-                array('CleanMath.PHP', 'ClockMath.PHP'),
+                array('CleanMath.php'),
                 wp_connectors_php_source_files($scratch),
-                'Both .PHP spellings share the vocabulary with .php (sorted, case-preserving paths).'
+                'The canonical spelling collects; the non-PHP note does not.'
             );
         } finally {
             WpHarness::rrmdir($scratch);
@@ -969,20 +984,24 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $this->assertSame('Url', wp_connectors_basename_without_php_extension('Http/Url.php'));
         $this->assertSame('notes.md', wp_connectors_basename_without_php_extension('/x/y/notes.md'), 'A non-source keeps its basename.');
 
-        // End-to-end consistency on one tree: a '.PHP'-spelled source is
-        // COLLECTED by the vocabulary, its stem STRIPS the extension, and
-        // the declared type matches the stem — collect, strip, and
-        // classify agree on the same file.
+        // End-to-end consistency on one tree (restated for t31-r5-3's
+        // casing doctrine): the canonical spelling collects, its stem
+        // strips the extension, and the declared type matches the stem
+        // — collect, strip, and classify agree on the same file. The
+        // '.PHP' spelling no longer collects (the shared tree refuses
+        // it loudly); the stem/predicate legs above keep proving the
+        // JUDGMENT owner stays case-insensitive for the gates that
+        // judge existing files.
         $scratch = tempnam(sys_get_temp_dir(), 'wpct-phpowner-');
         unlink($scratch);
         mkdir($scratch, 0755, true);
         try {
-            file_put_contents($scratch . '/ClockMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath\n{\n}\n");
+            file_put_contents($scratch . '/ClockMath.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath\n{\n}\n");
             $collected = wp_connectors_php_source_files($scratch);
-            $this->assertSame(array('ClockMath.PHP'), $collected, 'The vocabulary collects the .PHP spelling.');
+            $this->assertSame(array('ClockMath.php'), $collected, 'The vocabulary collects the canonical spelling.');
 
             $path = $scratch . '/' . $collected[0];
-            $this->assertSame('ClockMath', wp_connectors_basename_without_php_extension($path), 'The stem strips the .PHP extension.');
+            $this->assertSame('ClockMath', wp_connectors_basename_without_php_extension($path), 'The stem strips the extension.');
             $typeMatches = array();
             $this->assertSame(1, preg_match_all('/^(?:abstract\s+|final\s+)?(?:class|interface|enum)\s+([A-Za-z0-9_]+)/m', $this->fileContents($path), $typeMatches));
             $this->assertSame(wp_connectors_basename_without_php_extension($path), $typeMatches[1][0], 'The PSR-4 type-name comparison rides the same stem.');

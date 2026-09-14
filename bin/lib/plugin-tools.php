@@ -1870,10 +1870,24 @@ function wp_connectors_basename_without_php_extension($path)
  * whole tree), passed the sweep (same walk), and then silently missed
  * the zip: the shipped plugin fataled on the missing class. Exclusions
  * are a DIST-TREE concept (dev files a plugin directory carries);
- * shared/src is a source-only tree whose PHP sources ALL ship. The only
- * filter is the PHP-source extension, matched case-insensitively
- * (verifier round t31-r2-18: non-PHP files inside shared/src are not
- * sources; review round t31-r3-9: a '.PHP'-spelled source is one).
+ * shared/src is a source-only tree whose PHP sources ALL ship.
+ *
+ * The extension CASING doctrine (review round t31-r5-3, superseding
+ * t31-r3-9/t31-r4-9's collect-any-case posture for THIS tree): the
+ * collector accepts only the canonical lowercase '.php' spelling and
+ * REFUSES any other casing loudly, naming the file. The shipped
+ * autoloader (src/autoload.php — the only loader, bound to the
+ * slug-derived prefix) maps class names onto paths by appending the
+ * lowercase '.php' literal, so a '.PHP'-spelled source shipped through
+ * the embed is a class NO loader can reach on a case-sensitive
+ * filesystem — it built, shipped rewritten, and passed inspection
+ * while the plugin fataled on the missing class (verified through the
+ * real shipped autoloader). Refusing is strictly stronger than the old
+ * silently-dead ship and the t31-r3-9 silently-skipped ship both: the
+ * file is never invisible. The case-insensitive JUDGMENT owner
+ * (wp_connectors_is_php_source) is unchanged and keeps serving the
+ * gates that judge EXISTING files in plugin trees (self-containment,
+ * unused imports, the inspector's syntax loop, the lint gate).
  *
  * A symlink REFUSES the walk loudly (review round t31-r4-7): the old
  * silent skip was the no-symlinks doctrine's quiet half — a symlinked
@@ -1887,7 +1901,8 @@ function wp_connectors_basename_without_php_extension($path)
  *
  * @param string $dir Absolute source-only directory (shared/src).
  * @return list<string> Sorted relative .php file paths.
- * @throws RuntimeException When the tree carries a symlink.
+ * @throws RuntimeException When the tree carries a symlink or a
+ *                          non-canonical extension casing.
  */
 function wp_connectors_php_source_files($dir)
 {
@@ -1909,19 +1924,21 @@ function wp_connectors_php_source_files($dir)
             continue;
         }
         $relative = str_replace($dir . '/', '', $file->getPathname());
-        // Case-INSENSITIVE extension match (review round t31-r3-9): a
-        // '.PHP'-spelled source is as loadable as a '.php'-spelled one
-        // (PHP resolves includes by any case), and the case-sensitive
-        // filter let such a file be silently skipped by the embed
-        // collection AND go unseen by the architecture sweep's identical
-        // filter — no gate ever judged it. The build and the sweep ride
-        // THIS one comparison, so they cannot disagree.
         // The extension judgment rides the ONE case-insensitive owner
-        // (t31-r4-9): collect, strip, and classify share wp_connectors_
-        // is_php_source(), so no gate can disagree about what counts as
-        // a PHP source.
+        // (t31-r4-9): nothing is silently skipped by a casing the
+        // judgment cannot see. For THIS tree the judgment is then
+        // narrowed by the casing doctrine (t31-r5-3): a source that is
+        // a PHP file by any case but not by the canonical lowercase
+        // spelling REFUSES — the shipped autoloader probes '.php'
+        // lowercase, so any other casing ships a class nothing loads.
         if (! wp_connectors_is_php_source($relative)) {
             continue;
+        }
+        if ('.php' !== substr($relative, -4)) {
+            throw new RuntimeException(sprintf(
+                'shared source %s carries a non-canonical extension casing — the shipped autoloader maps class names onto lowercase ".php" paths, so any other casing ships a class no loader reaches on a case-sensitive filesystem; rename the source',
+                $dir . '/' . $relative
+            ));
         }
         $files[] = $relative;
     }

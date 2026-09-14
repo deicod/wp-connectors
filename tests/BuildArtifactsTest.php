@@ -1522,14 +1522,23 @@ FIXTURE;
     }
 
     /**
-     * Fix-round pin (t31-r3-9), the build half: the '.php' extension
-     * filter was case-sensitive, so a ClockMath.PHP source was silently
-     * skipped from embeds — a class development loads (any extension
-     * case resolves) that the shipped plugin fatals on. The extension
-     * match is case-insensitive in the ONE shared collector the embed
-     * rides: the .PHP-spelled source ships like any other, rewritten.
+     * Fix-round pin (t31-r3-9), SUPERSEDED by t31-r5-3's casing
+     * doctrine, restated honestly: the '.php' extension filter was
+     * case-sensitive, so a ClockMath.PHP source was silently SKIPPED
+     * from embeds (r3-9's defect); r3-9/r4-9 then made the filter
+     * case-insensitive so the source SHIPPED, rewritten — but the
+     * shipped autoloader probes lowercase '.php' (the only loader,
+     * slug-prefix-bound), so on a case-sensitive filesystem the .PHP
+     * copy was a class NOTHING could reach: it built, shipped, and
+     * passed inspection while the plugin fataled on the missing class
+     * (verified through the real shipped autoloader — the r5-3
+     * finding). The shared-source collector refuses the non-canonical
+     * casing loudly now, naming the file — never invisible, never
+     * silently dead. The case-insensitive JUDGMENT owner itself is
+     * unchanged (plugin-tree gates still judge any casing; pinned in
+     * SharedOAuthArchitectureTest).
      */
-    public function testAnUpperCaseSpelledPhpSourceShipsInTheEmbed()
+    public function testAnUpperCaseSpelledSharedSourceRefusesTheEmbed()
     {
         $scratch = self::distDir() . '/.embed-phpcase';
         if (is_dir($scratch)) {
@@ -1544,18 +1553,29 @@ FIXTURE;
         file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
 
         try {
-            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A non-canonical extension casing in shared/src must refuse the build, never ship a class no loader reaches.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('non-canonical extension', $e->getMessage());
+                $this->assertStringContainsString('ClockMath.PHP', $e->getMessage(), 'The refusal must name the file.');
+            }
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build must leave no zip behind.');
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
 
+            // Control: the canonical spelling of the same source ships,
+            // rewritten, at its exact path.
+            unlink($scratch . '/shared/src/ClockMath.PHP');
+            file_put_contents($scratch . '/shared/src/ClockMath.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $names = $this->zipEntryNames($zipPath);
             $zip = new ZipArchive();
             $this->assertTrue($zip->open($zipPath));
-            $embedded = (string) $zip->getFromName('example-connector/src/Shared/ClockMath.PHP');
+            $embedded = (string) $zip->getFromName('example-connector/src/Shared/ClockMath.php');
             $zip->close();
-
-            $this->assertContains('example-connector/src/Shared/ClockMath.PHP', $names, 'A .PHP-spelled source must ship at its exact path.');
-            $this->assertContains('example-connector/src/Shared/Clock/ClockInterface.php', $names, 'The ordinary .php spelling keeps shipping.');
+            $this->assertContains('example-connector/src/Shared/ClockMath.php', $names, 'The canonically-spelled source ships at its exact path.');
             $suffix = WpConnectorsBuild::namespaceSuffixFromSlug('example-connector');
-            $this->assertStringContainsString('namespace Deicod\\WpConnectors\\' . $suffix . '\\Shared;', $embedded, 'The .PHP-spelled copy must be the REWRITTEN one.');
+            $this->assertStringContainsString('namespace Deicod\\WpConnectors\\' . $suffix . '\\Shared;', $embedded, 'The canonically-spelled copy is the REWRITTEN one.');
         } finally {
             WpHarness::rrmdir($scratch);
         }
