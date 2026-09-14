@@ -28,8 +28,19 @@ final class Url {
 	/**
 	 * Parses and validates an absolute http(s) URL.
 	 *
+	 * The whole URL must be VALID UTF-8 first (review round t31-r4-13):
+	 * the control-byte screen below bans the UTF-8 SPELLINGS of the
+	 * C1/bidi vocabulary, but a lone RAW byte (0x85/0x9B) is invalid
+	 * UTF-8 the pattern cannot see — it rode parse_url verbatim into the
+	 * safe debug forms, and json_encode() of the log line then returned
+	 * false (the t31-r1-6 failure mode: the line is dropped, not
+	 * degraded). With the whole URL valid UTF-8, the raw and the encoded
+	 * spellings collapse — a raw C1 byte cannot appear outside a
+	 * multibyte sequence, and every multibyte spelling the vocabulary
+	 * can ride is banned by the shared pattern.
+	 *
 	 * The whole URL surface is screened against the shared control-byte
-	 * vocabulary FIRST (review round t31-r2-1): parse_url accepts
+	 * vocabulary SECOND (review round t31-r2-1): parse_url accepts
 	 * U+2028/U+2029, the C1 controls riding as valid UTF-8, and the C0
 	 * range verbatim, and those bytes reached redacted_url()/__toString()
 	 * unfiltered — reopening in the URL position exactly the forged
@@ -43,9 +54,20 @@ final class Url {
 	 *
 	 * @param string $url URL.
 	 * @return array{scheme: string, authority: string, path: string} Lower-cased scheme and authority; path defaults to '/'.
-	 * @throws InvalidArgumentException When the URL carries control bytes, or is not absolute http(s) with a host and valid port.
+	 * @throws InvalidArgumentException When the URL is not valid UTF-8, carries control bytes, or is not absolute http(s) with a host and valid port.
 	 */
 	public static function parse_validated( string $url ): array {
+		/*
+		 * Valid UTF-8 for the whole URL (t31-r4-13). The empty pattern
+		 * with the /u modifier is the cheap total probe: it matches
+		 * every valid UTF-8 subject and returns false (PCRE's
+		 * bad-UTF-8 error) on any invalid one — 1 !== covers both the
+		 * no-match and the abort, the abort-as-reject rule (glm36-8).
+		 */
+		if ( 1 !== preg_match( '//u', $url ) ) {
+			throw new InvalidArgumentException( 'The URL must be valid UTF-8 — a raw control byte rides parse_url verbatim into the safe debug forms and makes their json_encode fail outright (the log line is dropped, not degraded).' );
+		}
+
 		// Abort-as-reject (glm36-8): a PCRE failure refuses the URL,
 		// never passes it.
 		if ( 0 !== preg_match( HeaderMap::VALUE_CONTROL_BYTE_PATTERN, $url ) ) {

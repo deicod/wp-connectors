@@ -154,6 +154,53 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Fix-round pin (t31-r4-13): the C1 screen banned only the UTF-8
+     * SPELLINGS of the control vocabulary, so a lone RAW byte (0x85
+     * NEL, 0x9B CSI lead) — invalid UTF-8 — passed parse_url verbatim
+     * into the safe debug forms, and json_encode() of the log line
+     * returned false (the t31-r1-6 failure mode: the line is dropped,
+     * not degraded). The whole URL must be valid UTF-8 now (the raw and
+     * the encoded spellings collapse: a raw C1 byte cannot appear
+     * outside a multibyte sequence, and the multibyte spellings are the
+     * shared pattern's), and every accepted URL's debug form must
+     * json_encode to a string, never false.
+     */
+    public function testARawControlByteInAUrlRejectsAndTheDebugFormStaysJsonEncodable(): void
+    {
+        $hostile_urls = array(
+            'raw NEL in path' => "https://api.example/cb\x85tail",
+            'raw CSI lead in path' => "https://api.example/cb\x9Btail",
+            'raw NEL in host' => "https://api\x85.evil/callback",
+            'truncated two-byte lead' => "https://api.example/cb\xC2",
+            'truncated three-byte lead' => "https://api.example/cb\xE2\x80",
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A URL carrying %s must be rejected by the shared URL owner.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('valid UTF-8', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A URL carrying %s must be rejected by the request VO too.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('valid UTF-8', $e->getMessage());
+            }
+        }
+
+        // The round trip the gate exists to keep: every accepted URL's
+        // debug form encodes — json_encode never returns false (the
+        // pre-fix raw-0x85 shape constructed and then DROPPED its log
+        // line at the encoder).
+        $vo = new HttpRequest('GET', 'https://api.example/callback?next=%2Fx', array('Accept' => 'application/json'));
+        $this->assertNotFalse(json_encode((string) $vo), 'The safe debug form of an accepted URL must json_encode.');
+        $this->assertNotFalse(json_encode($vo->redacted_url()), 'The redacted URL of an accepted request must json_encode.');
+    }
+
+    /**
      * Fix-round pin (t31-r2-1): parse_url passed U+2028/U+2029, the
      * C1 controls riding as valid UTF-8, and the C0 range through to
      * redacted_url()/__toString() verbatim — the forged-log-line class
