@@ -89,10 +89,6 @@ final class WpConnectorsBuild
      */
     const SHARED_NAMESPACE_SURVIVOR_PATTERN = '/(?<![A-Za-z0-9_])Deicod\\s*\\\\\\s*WpConnectors\\s*\\\\\\s*(?:Shared(?![A-Za-z0-9_])|\\{(?:[^;]*?[\\s,{])?Shared(?![A-Za-z0-9_]))/i';
 
-    /** Development paths never shipped inside a plugin zip — ONE shared
-     *  vocabulary with the inspector (t31-r5-10); see
-     *  wp_connectors_development_entry_names(). */
-
     /**
      * Rewrites shared-source namespace into a plugin-private namespace.
      *
@@ -720,7 +716,15 @@ final class WpConnectorsBuild
              * plugin-owned collision, while this injected convenience
              * DEFERS to the plugin's own file — its license wins in
              * any casing and the repo copy is never injected beside
-             * it, so the both-entries overwrite is unconstructible.
+             * it, so the both-FILES overwrite is unconstructible.
+             * (Honest boundary, verifier round t31-r6: both collision
+             * fences compare collected FILE entries only — a
+             * case-folding plugin DIRECTORY beside an injected or
+             * generated file, 'license/notes.txt' next to the
+             * injected LICENSE, still ships and fails extraction as a
+             * file-vs-directory conflict on folding targets; the same
+             * blind spot the r5-16 embed fence carries. Ledgered with
+             * the zip-wide prefix-folding class for a future round.)
              */
             if (is_file($licenseFile)) {
                 $pluginOwnsLicense = false;
