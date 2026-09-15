@@ -497,10 +497,18 @@ function wp_connectors_name_run(array $tokens, $start)
  *   keyword);
  * - 'use' — a name inside a `use` import statement, closure lexical
  *   `use (...)` excluded; a group statement's prefix (the name before
- *   `{`) is not reported itself, its MEMBERS are reported composed with
+ *   `\{`) is not reported itself, its MEMBERS are reported composed with
  *   the prefix (`use Deicod\WpConnectors\{Shared\Clock}` reports
  *   `Deicod\WpConnectors\Shared\Clock`); `as` aliases are not references
- *   and are not reported;
+ *   and are not reported; a TRAIT-ADAPTATION block (`use SomeTrait {…}`
+ *   — the brace glued to the clause with NO separator, multi-trait
+ *   `use A, B {…}` lists included) is not an import at all: its first
+ *   clause and every member name report as 'code' positions,
+ *   un-composed (round t31-r10-1: the r8-noted misparse read the
+ *   adaptation clause as a group prefix and composed the members against
+ *   the TRAIT name, so a fully-qualified family reference inside the
+ *   braces produced zero carriers — laundered past the detector, the
+ *   build postcondition, and the sweep, reproduced as an exit-0 ship);
  * - 'code' — every other name position (inline references, catch
  *   clauses, attributes, `::class`, call names).
  *
@@ -556,6 +564,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
     $awaiting_group_prefix = false;
     $skip_alias = false;
     $declaration_pending = false;
+    $adaptation_block = false;
 
     for ($i = 0; $i < $count; ++$i) {
         $token = $tokens[ $i ];
@@ -574,6 +583,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             $group_brace_depth = 0;
             $awaiting_group_prefix = true;
             $skip_alias = false;
+            $adaptation_block = false;
 
             continue;
         }
@@ -621,6 +631,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                     $use_open = false;
                     $group_prefix = null;
                     $group_brace_depth = 0;
+                    $adaptation_block = false;
                     /*
                      * The alias skip dies with its statement (verifier
                      * round t31-r7-7): a dangling `as` (invalid PHP, but
@@ -633,6 +644,23 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                      */
                     $skip_alias = false;
                 } elseif ('{' === $token) {
+                    /*
+                     * A brace NO group prefix owns (round t31-r10-1) opens
+                     * an ADAPTATION block: the grammar's group use always
+                     * braces after its prefix (`use Prefix\{`), so a
+                     * depth-0 brace with no prefix set is the trait
+                     * adaptation's own — multi-trait `use A, B {…}`
+                     * included, where the clause list reported as imports
+                     * above ends and the adaptation members begin. Every
+                     * member name reports as a code position, un-composed
+                     * (the name-run branch below); the rewriter owns no
+                     * adaptation spelling, so the sweep and the build
+                     * postcondition refuse a family member in lockstep —
+                     * no laundering, no verdict drift.
+                     */
+                    if (0 === $group_brace_depth && null === $group_prefix) {
+                        $adaptation_block = true;
+                    }
                     ++$group_brace_depth;
                 } elseif ('}' === $token) {
                     // A NESTED close (a brace group inside the members) keeps
@@ -642,10 +670,20 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                     if ($group_brace_depth <= 0) {
                         $group_prefix = null;
                         $group_brace_depth = 0;
+                        $adaptation_block = false;
                         $skip_alias = false;
                     }
                 } elseif (T_AS === $id) {
-                    $skip_alias = true;
+                    /*
+                     * An adaptation block's `as` renames a METHOD (an
+                     * alias the import walk would skip), but the walk's
+                     * totality owes the invalid qualified spelling after
+                     * it a report, not a skip (t31-r10-1) — the skip arms
+                     * for import statements only.
+                     */
+                    if (! $adaptation_block) {
+                        $skip_alias = true;
+                    }
                 }
                 // Whitespace, comments, commas, and the `function`/`const`
                 // kind keywords of an import are trivia to this walk.
@@ -679,28 +717,44 @@ function wp_connectors_name_references_from_tokens(array $tokens)
 
         $kind = 'code';
         if ($use_open) {
-            // Only the statement's FIRST name can be the GROUP PREFIX —
-            // the name a `{` follows (`use Prefix\{members};`). A later
-            // run followed by `{` is a member of a NESTED brace group
-            // (unparseable PHP, judged anyway — totality over validity),
-            // never a new prefix.
+            /*
+             * Only the statement's FIRST name can be the GROUP PREFIX —
+             * the name a `\{` follows (`use Prefix\{members};`), the
+             * grammar's ONLY brace-after-prefix shape: the separator is
+             * part of the prefix. A brace glued DIRECTLY to the clause
+             * (`use SomeTrait {…}`) is the trait-ADAPTATION spelling
+             * (round t31-r10-1): the clause is a trait REFERENCE, not a
+             * prefix — it reports below as a code position, the members
+             * report un-composed, and the group-prefix composition never
+             * runs. A later run followed by `{` is a member of a NESTED
+             * brace group (unparseable PHP, judged anyway — totality over
+             * validity), never a new prefix.
+             */
             $is_prefix_candidate = $awaiting_group_prefix;
             $awaiting_group_prefix = false;
-            if ($is_prefix_candidate) {
+            if ($is_prefix_candidate && ! $adaptation_block) {
                 $brace = wp_connectors_next_code_token_index($tokens, $i + 1);
-                if (null !== $brace && T_NS_SEPARATOR === (is_array($tokens[ $brace ]) ? $tokens[ $brace ][0] : null)) {
+                $separator_before_brace = null !== $brace && T_NS_SEPARATOR === (is_array($tokens[ $brace ]) ? $tokens[ $brace ][0] : null);
+                if ($separator_before_brace) {
                     $brace = wp_connectors_next_code_token_index($tokens, $brace + 1);
                 }
                 if (null !== $brace && '{' === $tokens[ $brace ]) {
-                    $group_prefix = strtolower($display);
-                    $group_prefix_display = $display;
+                    if ($separator_before_brace) {
+                        $group_prefix = strtolower($display);
+                        $group_prefix_display = $display;
 
-                    continue;
+                        continue;
+                    }
+                    // The adaptation block: mark it and report the clause
+                    // as the code reference it is (the fall-through below).
+                    $adaptation_block = true;
                 }
             }
-            $kind = 'use';
-            if (null !== $group_prefix) {
-                $display = $group_prefix_display . '\\' . $display;
+            if (! $adaptation_block) {
+                $kind = 'use';
+                if (null !== $group_prefix) {
+                    $display = $group_prefix_display . '\\' . $display;
+                }
             }
         } elseif ($declaration_pending) {
             $kind = 'declaration';

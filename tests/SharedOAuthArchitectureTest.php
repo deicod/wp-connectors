@@ -524,6 +524,9 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             'docblock naming a sibling (t31-r8-3)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\Zai\\ApiClient\n */\ninterface DocSiblingFixture\n{\n}\n",
             'source-spelled TARGET-rooted code reference (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface TargetCodeFixture\n{\n    public function name(): string;\n}\nfinal class TargetCodeCarrier\n{\n    public function name(): string\n    {\n        return \\class_exists(\\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost::class);\n    }\n}\n",
             'docblock naming the rewrite TARGET (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost\n */\ninterface TargetDocblockFixture\n{\n}\n",
+            'trait-adaptation block carrying a fully-qualified family reference (t31-r10-1)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait AdaptFixtureTrait\n{\n}\nfinal class AdaptCarrier\n{\n    use AdaptFixtureTrait {\n        \\Deicod\\WpConnectors\\Shared\\Clock::now insteadof AdaptFixtureTrait;\n    }\n}\n",
+            'trait-adaptation clause naming the family itself (t31-r10-1)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClauseCarrier\n{\n    use Deicod\\WpConnectors\\Shared\\ClockFamily { tick as tock; }\n}\n",
+            'multi-trait adaptation carrying a family member (t31-r10-1)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait MultiA { public function s(): void {} }\ntrait MultiB { public function s(): void {} }\nfinal class MultiCarrier\n{\n    use MultiA, MultiB {\n        MultiA::s insteadof MultiB;\n        \\Deicod\\WpConnectors\\Shared\\Ghost::s insteadof MultiA;\n    }\n}\n",
         );
         /*
          * One FRESH scratch path per shape: the shared loud reader caches
@@ -555,12 +558,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // (t31-r8-2 makes that operator LOAD-BEARING: it resolves
         // against the own-root declaration and adapts through the
         // rewrite, so it must stay clean while its escaping twin above
-        // refuses).
+        // refuses). A LEGAL trait adaptation (single- and multi-trait,
+        // insteadof and as members, t31-r10-1) rides along clean: the
+        // adaptation's names are code positions now, and none of them
+        // spells the family.
         $clean = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-clean-');
         try {
             file_put_contents(
                 $clean,
-                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock;\nuse Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap, Url as U};\nuse function Deicod\\WpConnectors\\Shared\\Clock\\now;\nuse DateTimeImmutable;\nuse InvalidArgumentException;\ninterface FormsFixture\n{\n    public function now(): \\DateTimeImmutable;\n    public function self(): namespace\\FormsFixture;\n}\n"
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock;\nuse Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap, Url as U};\nuse function Deicod\\WpConnectors\\Shared\\Clock\\now;\nuse DateTimeImmutable;\nuse InvalidArgumentException;\ninterface FormsFixture\n{\n    public function now(): \\DateTimeImmutable;\n    public function self(): namespace\\FormsFixture;\n}\ntrait FirstHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\ntrait SecondHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\nfinal class AdaptFormsUser\n{\n    use FirstHelper, SecondHelper {\n        FirstHelper::shared_step insteadof SecondHelper;\n        shared_step as run_step;\n    }\n}\n"
             );
             $gate->invoke($this, $clean);
         } finally {
