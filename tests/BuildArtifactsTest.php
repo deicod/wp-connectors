@@ -2497,6 +2497,38 @@ FIXTURE;
             WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist');
 
             $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-stage-demo-' . $live_pid, 'A stage tree whose owning process died is reclaimed by the next build of the plugin.');
+
+            /*
+             * Part 4, the symlink legs (verifier round t31-r10-10): a
+             * matching-named SYMLINK at a dead pid is never deleted
+             * THROUGH (is_dir follows links; the sweep would have
+             * emptied the target tree, reproduced end-to-end by the
+             * verifier), and a link at the run's OWN stage name refuses
+             * the build loudly.
+             */
+            $victim = $scratch . '/victim';
+            mkdir($victim . '/inner', 0755, true);
+            file_put_contents($victim . '/inner/keep.txt', 'survivor');
+            file_put_contents($victim . '/keep2.txt', 'survivor');
+            symlink($victim, $scratch . '/dist/.stage-stage-demo-999999998');
+
+            WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist');
+
+            $this->assertFileExists($victim . '/inner/keep.txt', 'The sweep never deletes through a symlink — the target tree must survive intact.');
+            $this->assertFileExists($victim . '/keep2.txt', 'The sweep never deletes through a symlink — the target tree must survive intact.');
+            $this->assertTrue(is_link($scratch . '/dist/.stage-stage-demo-999999998'), 'The sweep leaves a symlinked stage-shaped entry standing (it is never this code\'s product).');
+
+            // The own-name leg: a link at THIS run's stage name refuses.
+            symlink($victim, $scratch . '/dist/.stage-stage-demo-' . getmypid());
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist');
+                $this->fail('A symlink at the run\'s own stage name must refuse the build, never stage through the link.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('symlink', $e->getMessage());
+            }
+            unlink($scratch . '/dist/.stage-stage-demo-999999998');
+            unlink($scratch . '/dist/.stage-stage-demo-' . getmypid());
+            $this->assertFileExists($victim . '/keep2.txt', 'The refused build never touched the link target either.');
         } finally {
             if (null !== $live && is_resource($live)) {
                 proc_terminate($live);

@@ -757,6 +757,14 @@ final class WpConnectorsBuild
          * SAME plugin — a live run's tree is never touched.
          */
         $stage = $distDir . '/.stage-' . $slug . '-' . getmypid();
+        if (is_link($stage)) {
+            // A LINK at this run's own stage name is never this code's
+            // product (the build mkdirs real directories) — deleting
+            // through it would destroy the TARGET tree (verifier round
+            // t31-r10-10), and building through it would scatter the
+            // stage into a tree the build does not own. Refuse loudly.
+            throw new RuntimeException("build: {$stage} is a symlink — the staging tree must be a real directory this build owns; remove the link");
+        }
         if (is_dir($stage)) {
             // Own-name only (no other live process can hold this pid):
             // a same-pid leftover from a recycled pid of a crashed run.
@@ -1318,12 +1326,16 @@ final class WpConnectorsBuild
      * of the same plugin disjoint, at the cost of a crashed run leaving
      * its tree behind — the sweep closes that: every
      * `.stage-<slug>-<pid>` whose process is DEAD is removed; a LIVE
-     * run's tree is never touched; foreign-shaped names (the pid-less
-     * pre-r10 spelling included) are left alone — nothing running this
-     * code creates them, so their lifecycle is not this sweep's to
-     * guess. A dead pid REUSED by an unrelated live process keeps its
-     * orphan until that process dies (the conservative direction: never
-     * delete a possibly-live run's tree).
+     * run's tree is never touched; a SYMLINK never is (verifier round
+     * t31-r10-10: is_dir() follows links, and rrmdir through a
+     * matching-named link deleted the TARGET tree's contents — a link
+     * is never this code's product, and the sweep leaves it exactly
+     * where it stands); foreign-shaped names (the pid-less pre-r10
+     * spelling included) are left alone — nothing running this code
+     * creates them, so their lifecycle is not this sweep's to guess. A
+     * dead pid REUSED by an unrelated live process keeps its orphan
+     * until that process dies (the conservative direction: never delete
+     * a possibly-live run's tree).
      *
      * @param string $distDir Absolute dist directory (staging home).
      * @param string $slug    Plugin slug whose stage dirs get swept.
@@ -1341,6 +1353,12 @@ final class WpConnectorsBuild
         try {
             while (false !== ($entry = readdir($dir))) {
                 if (! preg_match($pattern, $entry, $pid_match) || ! is_dir($distDir . '/' . $entry)) {
+                    continue;
+                }
+                // The no-symlinks doctrine at the sweep seam: a link is
+                // never a run's stage tree, and deleting through one
+                // destroys its target (t31-r10-10).
+                if (is_link($distDir . '/' . $entry)) {
                     continue;
                 }
                 $pid = (int) $pid_match[1];
