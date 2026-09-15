@@ -156,8 +156,7 @@ final class HeaderMap {
 	 * @throws InvalidArgumentException When the header map violates the contract.
 	 */
 	public function __construct( array $headers = array() ) {
-		$seen_lowercase = array();
-		$by_lowercase   = array();
+		$by_lowercase = array();
 		foreach ( $headers as $name => $value ) {
 			// PHP coerces a canonical digit-string array key ('123') to
 			// an int before the loop body sees it — and '0' through '9'
@@ -195,12 +194,19 @@ final class HeaderMap {
 			// first wins silently (a 2-second vs 60-second Retry-After
 			// diverges on map order). Rejected at construction; a PHP
 			// array cannot carry the exact-same-case duplicate at all.
+			//
+			// The fence probes THE ONE FOLDED INDEX ITSELF (t31-r10-7):
+			// $seen_lowercase used to parallel $by_lowercase's keys —
+			// two copies of one fact, and a future one-sided edit would
+			// have silently weakened the fence. The probe is exact: an
+			// isset with a canonical digit-string key ('123') coerces
+			// to the same int slot the store below lands in, so an
+			// all-digit name's fence is the same fence by construction.
 			$lowercase_name = AsciiFold::lower( $name );
-			if ( isset( $seen_lowercase[ $lowercase_name ] ) ) {
+			if ( isset( $by_lowercase[ $lowercase_name ] ) ) {
 				throw new InvalidArgumentException( 'Header names must be unique case-insensitively — two spellings of one name make the lookup order-dependent.' );
 			}
-			$seen_lowercase[ $lowercase_name ] = $name;
-			$by_lowercase[ $lowercase_name ]   = array( $name, $value );
+			$by_lowercase[ $lowercase_name ] = array( $name, $value );
 		}
 
 		// The folded index is the ONE structure (t31-r3-14): the

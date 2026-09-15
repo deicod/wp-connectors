@@ -771,6 +771,16 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $response = new HttpResponse(429, array('Retry-After' => '60', 'X-RateLimit-Remaining' => '42'));
         $this->assertSame('60', $response->header('retry-after'));
         $this->assertSame('42', $response->header('x-ratelimit-remaining'));
+
+        // Directly on the owner (t31-r10-7: the fence probes the ONE
+        // folded index now — the $seen_lowercase parallel is gone, so
+        // the pin drives the fence where it lives).
+        try {
+            new HeaderMap(array('accept' => 'a', 'ACCEPT' => 'b'));
+            $this->fail('The duplicate fence must hold on the HeaderMap owner itself.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('case-insensitively', $e->getMessage());
+        }
     }
 
     public function testEmptyHeaderNameIsRejected(): void
