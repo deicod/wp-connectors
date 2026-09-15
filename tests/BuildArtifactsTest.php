@@ -507,14 +507,18 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     /**
      * Verifier-round pin (t31-r12-19, the security lens): the
      * extraction refusal interpolates the CAPTURED ENGINE WARNING,
-     * which itself interpolates archive-controlled text — the lens's
-     * forged-name spelling (a NAME_MAX-breaking entry-name component
-     * with an embedded newline / ANSI escape) does not reproduce on
-     * this runtime (this libzip build sanitizes control bytes in entry
-     * names on BOTH the write and the read side — verified), so the
-     * seam is hardening, not a reproduced defect: another libzip build
-     * passes raw bytes, and the captured diagnostic is engine-provided
-     * text either way. The reason renders through the ONE printable
+     * which itself interpolates archive-controlled text. The r12 round
+     * read this as "this libzip build sanitizes control bytes in entry
+     * names on BOTH the write and the read side" — t31-r13-1's repro
+     * falsified that premise (an entry name survives getNameIndex()
+     * BYTE-EXACT, and addFromString keeps it too; both sides probed),
+     * but THIS arm's spelling still does not reproduce here for its
+     * own reason: the ENGINE DIAGNOSTIC the capture reads is
+     * libzip-rendered text, and this build's renderer omits the
+     * control bytes — the seam is load-bearing for the verdict lines
+     * that interpolate the names themselves (t31-r13-1, reproduced)
+     * and hardening for captured engine text on builds whose renderer
+     * passes raw bytes. The reason renders through the ONE printable
      * seam — every C0 control and DEL becomes a space — pinned at the
      * seam itself (drivable with real control bytes) and end to end
      * (the refusal line carries none, whatever the runtime hands the
@@ -552,6 +556,114 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('cannot extract', $violations[0]);
         $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violations[0]), 'The refusal line carries no raw control byte — no forged line, no ANSI ride.');
         $this->assertStringContainsString(str_repeat('a', 40), $violations[0], 'The printable body of the reason still names the offending entry.');
+    }
+
+    /**
+     * Round-13 pin (t31-r13-1, the security lens, REPRODUCED): every
+     * verdict line that interpolates archive-controlled text renders
+     * through the ONE printable seam. The r12 ledger's boundary claim
+     * ("this libzip build sanitizes control bytes in entry names on
+     * BOTH the write and the read side") is FALSE on this runtime — a
+     * raw stored zip's entry name survives getNameIndex() BYTE-EXACT
+     * with its newline (addFromString keeps it too; both sides probed
+     * again this round), so the six unguarded verdict lines printed a
+     * FORGED verdict line beside the real REJECTED one (the driver's
+     * exact repro: entry name
+     * '…/vendor/x\ninspect: FORGED-LINE-ACCEPTED (0 violations)\n.php'
+     * put "inspect: FORGED-LINE-ACCEPTED (0 violations)" on STDERR as
+     * its own line while the verdict was REJECTED). Every arm drives a
+     * real raw-stored zip through the inspector and pins three things:
+     * the real verdict stands, no line carries a control byte, and the
+     * printable body still names the offending entry.
+     */
+    public function testVerdictLinesInterpolateEntryTextThroughThePrintableSeam(): void
+    {
+        $slug = 'forgeline-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'FORGELINE_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\ForgelineDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        $forged = "x\ninspect: FORGED-LINE-ACCEPTED (0 violations)\n";
+        $key = 'AKIA' . strtoupper(bin2hex(random_bytes(8)));
+
+        // (a) The driver's exact repro: the dev-entry verdict interpolates
+        // the hostile entry name; the verdict is REJECTED, the forged
+        // ACCEPTED line renders nowhere, and the NEUTRALIZED body still
+        // names the entry (space for the newline — the seam's render).
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/vendor/{$forged}.php", "<?php\n"),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('development entry', $flat, 'The real verdict stands: the vendor-segment entry rejects.');
+        $this->assertStringContainsString("vendor/x inspect: FORGED-LINE-ACCEPTED (0 violations) .php", $flat, 'The neutralized body still names the offending entry.');
+        foreach ($violations as $violation) {
+            $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "No verdict line carries a control byte — no forged line, no ANSI ride: {$violation}");
+        }
+
+        // (b) The top-dir list: two top-level directories, one hostile.
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.1.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array('a/x.txt', 'x'),
+            array("{$forged}dir/y.txt", 'y'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('exactly one top-level plugin directory', $flat);
+        foreach ($violations as $violation) {
+            $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "The top-dir list cannot forge a line: {$violation}");
+        }
+
+        // (c) The invalid-slug refusal: the hostile name IS the sole
+        // top-level directory, and it fails the slug grammar — the
+        // refusal prints the bytes that failed, neutralized.
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.2.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$forged}dir/y.txt", 'y'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('invalid top-level plugin directory name', $flat);
+        foreach ($violations as $violation) {
+            $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "The invalid-slug refusal cannot forge a line: {$violation}");
+        }
+
+        // (d) The traversal refusal: the escaping entry's name carries
+        // the forged text; the refusal names it neutralized, and no
+        // extraction ever runs (the refusal returns first).
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.3.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/sub/../evil{$forged}.txt", 'x'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('escapes the extraction directory', $flat);
+        foreach ($violations as $violation) {
+            $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "The traversal refusal cannot forge a line: {$violation}");
+        }
+
+        // (e) The post-extraction lines: a newline-bearing LANDED
+        // filename (Linux filesystems keep the entry's bytes byte-exact)
+        // rides both the php -l failure line — whose engine output
+        // interpolates the same path — and the secret-finding line.
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.4.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/assets/broken{$forged}.php", "<?php this is not php\n"),
+            array("{$slug}/assets/keys{$forged}.txt", "aws = {$key}\n"),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('failed php -l', $flat, 'The parse-broken landed file still rejects.');
+        $this->assertStringContainsString('aws-key', $flat, 'The live key under a newline-bearing landed name still rejects.');
+        foreach ($violations as $violation) {
+            $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "Neither post-extraction line can forge a line — path or engine output: {$violation}");
+        }
     }
 
     /**

@@ -157,7 +157,25 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
             }
         }
         if ($isForbidden) {
-            $violations[] = sprintf('inspect: zip contains development entry "%s".', $name);
+            /*
+             * Every verdict line that interpolates archive-controlled
+             * text renders through the ONE printable seam (round
+             * t31-r13-1, the security lens, reproduced): an entry name
+             * survives getNameIndex() BYTE-EXACT — newline included —
+             * on this runtime (neither ZipArchive side sanitizes
+             * control bytes in names; probed again this round, and the
+             * r12 ledger's sanitization premise corrected), so a raw
+             * interpolation printed a FORGED verdict line beside the
+             * real REJECTED one (the driver's repro: entry name
+             * '…/vendor/x\ninspect: FORGED-LINE-ACCEPTED (0
+             * violations)\n.php'). The dev-entry line here, the
+             * top-dir list, the invalid-slug and traversal refusals,
+             * the not-a-plugin-directory refusal, the php -l failure,
+             * and the secret findings all interpolate entry-derived
+             * bytes and all ride the seam now; the printable body
+             * still names the offending entry.
+             */
+            $violations[] = sprintf('inspect: zip contains development entry "%s".', wp_connectors_printable($name));
         }
     }
     $zip->close();
@@ -165,7 +183,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     if (count($topDirs) !== 1) {
         $violations[] = sprintf(
             'inspect: zip must contain exactly one top-level plugin directory, found: %s.',
-            implode(', ', array_keys($topDirs))
+            implode(', ', array_map('wp_connectors_printable', array_keys($topDirs)))
         );
 
         return $violations;
@@ -181,13 +199,15 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     // paths outside the extraction dir, so every check below would traverse
     // (and extraction would write) outside the work dir.
     if ($slug === '.' || $slug === '..' || ! preg_match('/^[A-Za-z0-9_.-]+$/', $slug)) {
-        $violations[] = sprintf('inspect: invalid top-level plugin directory name "%s".', $slug);
+        // The name that FAILED the grammar prints through the seam (see
+        // the dev-entry site): pre-grammar, its bytes are unjudged.
+        $violations[] = sprintf('inspect: invalid top-level plugin directory name "%s".', wp_connectors_printable($slug));
 
         return $violations;
     }
     if ($traversalEntries !== array()) {
         foreach ($traversalEntries as $name) {
-            $violations[] = sprintf('inspect: zip entry "%s" escapes the extraction directory.', $name);
+            $violations[] = sprintf('inspect: zip entry "%s" escapes the extraction directory.', wp_connectors_printable($name));
         }
 
         return $violations;
@@ -273,7 +293,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 
         $pluginDir = $workDir . '/' . $slug;
         if (! is_dir($pluginDir)) {
-            $violations[] = sprintf('inspect: the single top-level entry "%s" is not a plugin directory.', $slug);
+            $violations[] = sprintf('inspect: the single top-level entry "%s" is not a plugin directory.', wp_connectors_printable($slug));
 
             return $violations;
         }
@@ -310,7 +330,11 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
             $exit = 0;
             exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($file->getPathname())), $output, $exit);
             if ($exit !== 0) {
-                $violations[] = sprintf('inspect: %s failed php -l: %s', str_replace($workDir . '/', '', $file->getPathname()), implode(' ', $output));
+                // Both interpolations carry the LANDED entry bytes (a
+                // newline is a legal filename character here, and the
+                // engine's own diagnostic echoes the same path) — both
+                // ride the seam (see the dev-entry site).
+                $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($workDir . '/', '', $file->getPathname())), wp_connectors_printable(implode(' ', $output)));
             }
         }
 
@@ -331,7 +355,9 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * identical key one directory up rejected (reproduced).
          */
         foreach (wp_connectors_scan_paths(array( $pluginDir ), false) as $secretFinding) {
-            $violations[] = 'inspect: ' . str_replace($workDir . '/', '', $secretFinding);
+            // The finding's path carries the landed entry bytes (see the
+            // dev-entry site for the seam doctrine).
+            $violations[] = 'inspect: ' . wp_connectors_printable(str_replace($workDir . '/', '', $secretFinding));
         }
 
         return $violations;
