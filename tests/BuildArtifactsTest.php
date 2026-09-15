@@ -2645,6 +2645,17 @@ FIXTURE;
      * '-' ('MY_PLUGIN_VERSION') and the suffix capitalizes per segment
      * ('MyPlugin'), so a dotted slug builds with labels code can
      * actually spell.
+     *
+     * Verifier round t31-r11-4: the end-to-end build ran against the
+     * REAL dist/ with no preservation — the dotted-slug zip and sidecar
+     * ('connectors-my.plugin-1.0.0.zip' — matched by neither of
+     * tearDown's glob patterns) leaked permanently, a zip whose checksum
+     * the restored manifest records nowhere (verified by execution on
+     * the leak the round found in dist/). The build rides
+     * withArtifactStatePreserved() now — zip, sidecar, and manifest
+     * snapshotted and restored byte-for-byte on every exit path, the
+     * introduced zip removed — so the real dist/ is identical after the
+     * run.
      */
     public function testADottedSlugDerivesLegalLabelsForConstantAndNamespace(): void
     {
@@ -2677,23 +2688,37 @@ FIXTURE;
             file_put_contents($tempPlugin . '/my.plugin.php', $main);
             file_put_contents($tempPlugin . '/src/autoload.php', $autoload);
 
-            // End-to-end: the artifact builds and the shipped main file
-            // parses with its bare constant reference.
-            $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
-            $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
-            $shippedMain = (string) $zip->getFromName('my.plugin/my.plugin.php');
-            $zip->close();
-            $probe = self::distDir() . '/.dot-slug/probe-main.php';
-            file_put_contents($probe, $shippedMain);
-            try {
-                $output = array();
-                $exit = 0;
-                exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($probe) . ' 2>&1', $output, $exit);
-                $this->assertSame(0, $exit, 'The shipped main file under a dotted slug must parse with its bare constant reference: ' . implode("\n", $output));
-            } finally {
-                @unlink($probe);
-            }
+            /*
+             * End-to-end through the artifact-state machinery: the
+             * artifact builds and the shipped main file parses with its
+             * bare constant reference, and the real dist/ state around
+             * it is preserved byte-for-byte.
+             */
+            $this->withArtifactStatePreserved(
+                'connectors-my.plugin-1.0.0.zip',
+                function (string $zipPath) use ($tempPlugin): void {
+                    $built = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
+                    $this->assertSame($zipPath, $built);
+                    $zip = new ZipArchive();
+                    $this->assertTrue($zip->open($zipPath));
+                    $shippedMain = (string) $zip->getFromName('my.plugin/my.plugin.php');
+                    $zip->close();
+                    $probe = self::distDir() . '/.dot-slug/probe-main.php';
+                    file_put_contents($probe, $shippedMain);
+                    try {
+                        $output = array();
+                        $exit = 0;
+                        exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($probe) . ' 2>&1', $output, $exit);
+                        $this->assertSame(0, $exit, 'The shipped main file under a dotted slug must parse with its bare constant reference: ' . implode("\n", $output));
+                    } finally {
+                        @unlink($probe);
+                    }
+                },
+                function (string $sidecarPrevious, string $manifestPrevious, string $sidecarPath, string $manifestPath): void {
+                    $this->assertSame($sidecarPrevious, (string) file_get_contents($sidecarPath), 'The real checksum sidecar must survive the dotted-slug build byte-for-byte.');
+                    $this->assertSame($manifestPrevious, (string) file_get_contents($manifestPath), 'The real checksum manifest must survive the dotted-slug build byte-for-byte — a leaked zip whose checksum is recorded nowhere is a corruption, not a build.');
+                }
+            );
         } finally {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
