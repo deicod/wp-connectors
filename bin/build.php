@@ -187,17 +187,43 @@ final class WpConnectorsBuild
             $sourceVersion
         );
 
-        // Insert provenance directly after the open tag (never before it).
+        /*
+         * Insert provenance directly after the open tag (never before
+         * it). Review round t31-r9-6: the insertion pattern was case-
+         * and BOM-sensitive with no zero-match guard — '<?PHP' (a legal
+         * PHP open tag; the engine matches the tag case-insensitively)
+         * and a BOM-prefixed source matched nothing and shipped
+         * BANNER-LESS silently (reproduced), and the "Do not edit here"
+         * marker is load-bearing provenance: every generated file
+         * carries it or the build says why it cannot.
+         *
+         * The doctrine is BANNER-IN-PLACE, not loud refusal (chosen and
+         * documented): the opener's spelling and a leading BOM are the
+         * source's own bytes — not the rewriter's to rewrite — and
+         * every legal PHP opener can carry the marker, so the pattern
+         * matches an optional BOM then the open tag case-insensitively
+         * and PRESERVES the matched opener bytes verbatim (captures +
+         * backreferences; only the whitespace run after the tag
+         * normalizes to the banner's own \n\n, as it always did). A
+         * ZERO-MATCH — a source with no open tag at the head at all —
+         * refuses loudly at this seam (the postcondition's token walk
+         * would only catch such a file incidentally, when its bytes
+         * happen to spell the family; the banner gate owes its own
+         * refusal).
+         */
         $final = self::replaceOrThrow(
             preg_replace(
-                '/^<\?php\b\s*/',
-                "<?php\n\n" . $provenance . "\n",
+                '/^(\xEF\xBB\xBF)?(<\?php\b)\s*/i',
+                '${1}${2}' . "\n\n" . $provenance . "\n",
                 $rewritten,
                 1
             ),
             'provenance insertion',
             $sourceVersion
         );
+        if ($final === $rewritten) {
+            throw new RuntimeException("build: cannot insert the provenance banner into {$sourceVersion} — the file carries no PHP open tag at its head, and the \"Do not edit here\" marker is load-bearing provenance that never ships silently absent");
+        }
 
         /*
          * Postcondition (t31-r4 K1's regex scan, superseded by round

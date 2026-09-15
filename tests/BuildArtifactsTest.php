@@ -2553,6 +2553,55 @@ FIXTURE;
         }
     }
 
+    /**
+     * Fix-round pin (t31-r9-6): the provenance-banner insertion was
+     * case- and BOM-sensitive with no zero-match guard — '<?PHP' (a
+     * legal PHP open tag) and a BOM-prefixed source matched nothing,
+     * rewrote clean, and shipped BANNER-LESS silently (reproduced
+     * pre-fix on both spellings), and the "Do not edit here" marker is
+     * load-bearing provenance. The doctrine, chosen and documented at
+     * the seam: BANNER-IN-PLACE — the pattern matches an optional BOM
+     * then the open tag case-insensitively, PRESERVES the matched
+     * opener bytes verbatim (the source's own spelling is not the
+     * rewriter's to rewrite), and a ZERO-MATCH (no open tag at the
+     * head) refuses loudly at the banner seam itself — the token-walk
+     * postcondition only ever caught such a file incidentally, when
+     * its bytes happened to spell the family.
+     */
+    public function testEveryLegalOpenerCarriesTheProvenanceBannerAndATaglessSourceRefuses(): void
+    {
+        $declaration = 'namespace Deicod\\WpConnectors\\Shared\\Clock;';
+
+        // The canonical opener keeps its exact head shape (regression
+        // guard for the insertion itself).
+        $canonical = WpConnectorsBuild::rewriteSharedNamespace("<?php\n" . $declaration . "\nclass A {}\n", 'OpenAiOauth', 'shared/src/Clock/A.php');
+        $this->assertStringStartsWith("<?php\n\n/**\n * Generated copy of shared/src/Clock/A.php", $canonical);
+
+        // '<?PHP' is a legal opener: bannered IN PLACE, the original
+        // spelling preserved byte-for-byte.
+        $upper = WpConnectorsBuild::rewriteSharedNamespace("<?PHP\n" . $declaration . "\nclass A {}\n", 'OpenAiOauth', 'shared/src/Clock/A.php');
+        $this->assertStringContainsString('Do not edit here', $upper, 'An uppercase opener must carry the provenance banner.');
+        $this->assertStringStartsWith("<?PHP\n\n/**", $upper, 'The banner follows the opener verbatim — the spelling is the source\'s own.');
+
+        // A BOM-prefixed opener: bannered after the tag, the BOM stays
+        // exactly where the source carried it.
+        $bom = WpConnectorsBuild::rewriteSharedNamespace("\xEF\xBB\xBF<?php\n" . $declaration . "\nclass A {}\n", 'OpenAiOauth', 'shared/src/Clock/A.php');
+        $this->assertStringContainsString('Do not edit here', $bom, 'A BOM-prefixed opener must carry the provenance banner.');
+        $this->assertStringStartsWith("\xEF\xBB\xBF<?php\n\n/**", $bom, 'The BOM stays at the head, the banner follows the tag.');
+
+        // A source with no open tag at the head REFUSES at the banner
+        // seam, loudly, naming the file.
+        $refused = null;
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace("no tag here\n" . $declaration . "\nclass A {}\n", 'OpenAiOauth', 'shared/src/Clock/A.php');
+            $this->fail('A source with no PHP open tag must refuse — its generated copy would ship without the load-bearing provenance marker.');
+        } catch (RuntimeException $e) {
+            $refused = $e->getMessage();
+        }
+        $this->assertStringContainsString('provenance banner', $refused);
+        $this->assertStringContainsString('shared/src/Clock/A.php', $refused);
+    }
+
     public function testSharedNamespaceRewrite()
     {
         $source = "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\nuse Deicod\\WpConnectors\\Shared\\Clock;\n\nclass TokenStore\n{\n}\n";
