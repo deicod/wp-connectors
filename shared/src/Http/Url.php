@@ -172,10 +172,43 @@ final class Url {
 			$authority .= ':' . (int) $parts['port'];
 		}
 
+		self::assert_authority_still_valid_utf8( $authority );
+
 		return array(
 			'scheme'    => $scheme,
 			'authority' => $authority,
 			'path'      => isset( $parts['path'] ) && '' !== $parts['path'] ? $parts['path'] : '/',
 		);
+	}
+
+	/**
+	 * Post-parse re-validation of the rebuilt authority (review round
+	 * t31-r12-8, the noted-class hardening that kills the class for
+	 * three lines).
+	 *
+	 * The whole-URL UTF-8 probe at entry guarantees the INPUT bytes;
+	 * this re-check guarantees the OUTPUT side — the parsed host plus
+	 * the case fold — never mangles them. The engine's byte folds are
+	 * locale-independent since PHP 8.2 (the strtolower-ascii RFC — this
+	 * project's floor), so no spelling reaches here mangled today; the
+	 * 8-bit-LC_CTYPE mangler the screen guards against is real C-library
+	 * behavior (verified on this host: ctype_lower(0xE3) flips under a
+	 * manufactured tr_TR.ISO-8859-9 while strtolower(0xC3) stays put —
+	 * the exact tolower(0xC3)=0xE3 mapping that would break a UTF-8
+	 * host's second byte), and any future transformation between entry
+	 * and the rebuilt authority meets the abort-as-reject probe
+	 * instead of flowing into the json_encode-false log-drop class the
+	 * r4-13 entry gate exists to kill.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $authority The rebuilt (lowercased host[:port]) authority.
+	 * @return void
+	 * @throws InvalidArgumentException When the rebuilt authority is not valid UTF-8.
+	 */
+	private static function assert_authority_still_valid_utf8( string $authority ): void {
+		if ( 1 !== preg_match( '//u', $authority ) ) {
+			throw new InvalidArgumentException( 'The URL authority must stay valid UTF-8 after parsing — a host the parse or the case fold mangled refuses loudly instead of flowing into log lines whose json_encode then fails outright (the line is dropped, not degraded).' );
+		}
 	}
 }

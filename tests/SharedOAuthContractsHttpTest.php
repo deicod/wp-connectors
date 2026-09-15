@@ -259,6 +259,106 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Review-round pin (t31-r12-8): the post-parse host re-check. The
+     * whole-URL UTF-8 probe at entry guarantees the INPUT bytes; the
+     * rebuilt authority (parsed host + case fold) is re-validated on
+     * the way out, so a mangling fold refuses loudly instead of
+     * flowing into the json_encode-false log-drop class. The mangler
+     * the screen guards against is real C-library behavior — on an
+     * 8-bit LC_CTYPE, tolower(0xC3)=0xE3 breaks the second byte of a
+     * UTF-8 host — so the pin MANUFACTURES tr_TR.ISO-8859-9 (localedef
+     * into a private LOCPATH, per the r11-6 attempt-and-restore shape)
+     * and proves the invariant under pressure: the multibyte host
+     * validates byte-identically (the engine folds have been
+     * locale-independent since PHP 8.2, the strtolower-ascii RFC —
+     * this project's floor), and the guard itself fires on the exact
+     * mangled spelling the pre-8.2 fold produced (driven through the
+     * private probe, the closeArchiveOrThrow precedent).
+     */
+    public function testAPostParseMangledHostRefusesUnderManufacturedLocalePressure(): void
+    {
+        // The mangled spelling the screen kills: a UTF-8 host whose
+        // second byte an 8-bit fold broke ('ü' 0xC3 0xBC -> 0xE3 0xBC).
+        // (Private-method reflection needs no setAccessible() since
+        // PHP 8.1, and the call deprecates on this runtime.)
+        $probe = new \ReflectionMethod(Url::class, 'assert_authority_still_valid_utf8');
+        try {
+            $probe->invoke(null, 'm' . "\xE3\xBC" . 'nchen.example');
+            $this->fail('A rebuilt authority that is not valid UTF-8 must refuse loudly.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('must stay valid UTF-8', $e->getMessage());
+        }
+        $probe->invoke(null, 'münchen.example:8443');
+
+        // The legal repro pinned once under the C fold for the
+        // byte-identity comparison below.
+        $utf8_url = 'https://münchen.example/token';
+        $c_locale_authority = Url::parse_validated($utf8_url)['authority'];
+
+        /*
+         * Manufacture the 8-bit locale (localedef into a private
+         * LOCPATH). Everything is attempted and restored (r11-6's
+         * shape): a host without localedef or without the tr_TR source
+         * rides the spelling pins above instead.
+         */
+        $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
+        @mkdir($locpath, 0755, true);
+        $manufactured = false;
+        exec('localedef -i tr_TR -f ISO-8859-9 ' . escapeshellarg($locpath . '/tr_TR.ISO-8859-9') . ' 2>/dev/null', $localedefOutput, $localedefExit);
+        if (0 === $localedefExit) {
+            $manufactured = true;
+        }
+
+        $previous = setlocale(LC_CTYPE, null);
+        $previousLocpath = getenv('LOCPATH');
+        try {
+            if ($manufactured) {
+                putenv('LOCPATH=' . $locpath);
+                $this->assertNotFalse(setlocale(LC_CTYPE, 'tr_TR.ISO-8859-9'), 'The manufactured locale must install.');
+
+                // The locale is LIVE (ctype consults it) — the pressure
+                // is real, not a setlocale that silently fell back.
+                $this->assertTrue(ctype_lower("\xE3"), 'ctype consults the manufactured 8-bit LC_CTYPE (0xE3 is a lowercase letter in ISO-8859-9) — the pressure is live.');
+
+                // The invariant: the multibyte host validates and the
+                // rebuilt authority is byte-identical to the C-locale
+                // parse — the fold stayed UTF-8-clean under pressure,
+                // and the re-check is the guard that keeps it so.
+                $parts = Url::parse_validated($utf8_url);
+                $this->assertSame($c_locale_authority, $parts['authority'], 'The multibyte authority is byte-identical under the 8-bit LC_CTYPE.');
+                $this->assertSame('https://münchen.example/token', (new HttpRequest('GET', $utf8_url))->redacted_url());
+            }
+        } finally {
+            /*
+             * LOCPATH is restored BEFORE the locale, and the locale
+             * restore is CHECKED: glibc resolves the restore THROUGH
+             * LOCPATH, and while LOCPATH pointed at the private locale
+             * dir (which does not carry the original locale's name) the
+             * restore of the original returned FALSE with the locale
+             * left as the manufactured Turkish one — a leak that broke
+             * every later test's case-insensitive matching in the same
+             * process (the /i fold consults the active locale on this
+             * runtime: 'DO_ACTION_REF_ARRAY' stopped matching under tr_*)
+             * — a random-order flake, ~1 run in 3, caught by the round's
+             * own verifier pass. The checked restore falls back to 'C'
+             * rather than ever leaving the pressure behind.
+             */
+            putenv(false === $previousLocpath ? 'LOCPATH' : 'LOCPATH=' . $previousLocpath);
+            if (false === setlocale(LC_CTYPE, $previous)) {
+                setlocale(LC_CTYPE, 'C');
+            }
+            WpHarness::rrmdir($locpath);
+        }
+
+        // The r4-13 outcome holds on the safe-debug side regardless of
+        // the locale: every accepted multibyte host's debug form
+        // json_encodes to a string, never false.
+        $vo = new HttpRequest('GET', $utf8_url);
+        $this->assertNotFalse(json_encode((string) $vo));
+        $this->assertNotFalse(json_encode($vo->redacted_url()));
+    }
+
+    /**
      * Fix-round pin (t31-r4-13): the C1 screen banned only the UTF-8
      * SPELLINGS of the control vocabulary, so a lone RAW byte (0x85
      * NEL, 0x9B CSI lead) — invalid UTF-8 — passed parse_url verbatim
