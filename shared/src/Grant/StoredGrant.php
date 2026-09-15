@@ -26,6 +26,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Shared\Grant;
 
+use Deicod\WpConnectors\Shared\Http\HeaderMap;
 use Deicod\WpConnectors\Shared\Token\AccessTokenSet;
 use InvalidArgumentException;
 
@@ -99,6 +100,19 @@ final class StoredGrant {
 		if ( '' === trim( $provider_id ) ) {
 			throw new InvalidArgumentException( 'The provider id must be a non-empty string.' );
 		}
+
+		/*
+		 * The ONE control-byte guard on the grant's free-text label
+		 * (t31-r13-2): the trim screen alone let a '\n'-bearing
+		 * provider id construct, and print_r() of the grant — whose
+		 * token set renders masked — forged a line BESIDE the masked
+		 * secrets (reproduced). PendingAuthorization's label rides
+		 * HeaderMap's guard (t31-r12-5); this constructor joins the
+		 * SAME callable, not a copy of it — every public spelling
+		 * (in_state, the immutable transitions, revoke()) funnels
+		 * through here, so no produced grant carries the channel.
+		 */
+		HeaderMap::assert_no_control_bytes( $provider_id, 'The provider id' );
 		if ( $generation < 0 ) {
 			throw new InvalidArgumentException( sprintf( 'The grant generation must be non-negative, %d given.', $generation ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
 		}

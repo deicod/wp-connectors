@@ -75,6 +75,45 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         StoredGrant::in_state('  ', 0, GrantState::ReconnectRequired, null);
     }
 
+    /**
+     * Fix-round pin (t31-r13-2): the stored grant's provider label is
+     * the free-text string PendingAuthorization already guards — with
+     * only the non-empty screen it constructed, and print_r() of the
+     * grant forged a line BESIDE THE MASKED TOKEN SET (reproduced: a
+     * '\n'-bearing provider id rendered its own line in the safe
+     * debug form, the exact forged-log-line channel the r12-5 guard
+     * closed on the pending flow's label). The constructor joins the
+     * SAME guard — one callable at the vocabulary owner, no copy —
+     * and every public spelling (in_state, the immutable transitions,
+     * revoke()) funnels through it, so no produced grant carries the
+     * channel; the exact legal labels stay green.
+     */
+    public function testControlBytesInTheProviderIdRefuseLoudly(): void
+    {
+        $hostile_ids = array(
+            'CRLF-bearing label' => "zai\r\nAuthorization: Bearer x",
+            'newline-bearing label' => "zai\ninjected: [GENERATION 3 TOKENS LIVE]",
+            'NUL-bearing label' => "za\x00i",
+            'C1 NEL spelling' => "zai\xC2\x85",
+            'U+2028 spelling' => "zai\xE2\x80\xA8",
+        );
+        foreach ($hostile_ids as $label => $provider_id) {
+            try {
+                StoredGrant::in_state($provider_id, 3, GrantState::Connected, $this->tokenSet());
+                $this->fail("A control-byte-bearing provider id ({$label}) must refuse.");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not contain control characters', $e->getMessage());
+            }
+        }
+
+        // The exact legal labels stay green — the plain fixture
+        // spelling included — and the safe debug form of a legal grant
+        // carries no forged-line material.
+        $grant = StoredGrant::in_state('fixture-provider', 3, GrantState::Connected, $this->tokenSet());
+        $this->assertSame('fixture-provider', $grant->provider_id());
+        $this->assertStringNotContainsString("\r", print_r($grant, true), 'The legal dump carries no carriage return — no forged line material.');
+    }
+
     public function testNegativeGenerationIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);
