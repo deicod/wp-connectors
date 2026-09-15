@@ -67,6 +67,20 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         return __DIR__ . '/../dist';
     }
 
+    /**
+     * Asserts the plugin's staging tree is gone — ANY pid spelling
+     * (t31-r10-4 renamed the stage `.stage-<slug>-<pid>`; assertions
+     * pinned to the old pid-less name would pass vacuously forever).
+     *
+     * @param string $distDir Absolute dist directory.
+     * @param string $slug    Plugin slug.
+     * @param string $message Failure message.
+     * @return void
+     */
+    private static function assertNoStageTree( string $distDir, string $slug, string $message = '' ): void {
+        self::assertSame( array(), glob( $distDir . '/.stage-' . $slug . '*' ) ?: array(), $message );
+    }
+
     private function buildFixture(): string
     {
         $zipPath = WpConnectorsBuild::buildPlugin(
@@ -1189,7 +1203,7 @@ FIXTURE;
             // The seam fires before any filesystem mutation: no zip (or
             // staging residue) may exist after the refused runs.
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'A refused build must leave no zip behind.');
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector');
 
             // Control: the valid opt-in still embeds through the seam.
             file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
@@ -1285,7 +1299,7 @@ FIXTURE;
             // The seam fires before any filesystem mutation: no zip (or
             // staging residue) may exist after the refused runs.
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'A refused build must leave no zip behind.');
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector');
 
             // t31-r4-17's directory row: a build.json that is not a
             // regular file slipped the old is_file() gate entirely (the
@@ -1725,7 +1739,7 @@ FIXTURE;
                 $this->assertStringContainsString('ClockMath.PHP', $e->getMessage(), 'The refusal must name the file.');
             }
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build must leave no zip behind.');
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector');
 
             // Control: the canonical spelling of the same source ships,
             // rewritten, at its exact path.
@@ -1878,7 +1892,7 @@ FIXTURE;
                 $this->assertStringContainsString('src/Shared/Clock/ClockInterface.php', $e->getMessage());
             }
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build must leave no zip behind.');
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector');
 
             // Control: a plugin-owned file OUTSIDE the generated subtree
             // builds fine beside the embed.
@@ -2380,6 +2394,115 @@ FIXTURE;
             }
         } finally {
             WpHarness::rrmdir($repo);
+        }
+    }
+
+    /**
+     * Fix-round pin (t31-r10-4): the stage tree was named
+     * `.stage-<slug>` — SHARED between concurrent builds of the same
+     * plugin, so run B's startup/finally rrmdir deleted run A's
+     * in-flight stage tree and A refused loudly on a spurious
+     * "cannot add … to" (build survival, not artifact correctness —
+     * t31-r5-11 adjudicated the manifest race and named this fix: "then
+     * the stage dir wants the PID too"). The stage is PID-named now
+     * (`.stage-<slug>-<pid>`), the finally releases exactly the run's
+     * own tree, and the startup sweep reclaims only DEAD-process
+     * orphans of the SAME plugin — a live run's tree is never touched.
+     */
+    public function testConcurrentSamePluginBuildsKeepTheirStageTreesAndDeadOnesAreSwept(): void
+    {
+        // Part 1, end-to-end through the CLI entry: two synchronized
+        // builds of the SAME plugin both exit 0 and no stage tree of
+        // any pid survives the pair (pre-fix, the shared name made the
+        // pair racy — B's startup rrmdir of A's in-flight tree).
+        $repo = $this->makeBuildCliRepo(array('race-same-demo' => true));
+
+        try {
+            $handles = array();
+            for ($i = 0; $i < 2; ++$i) {
+                $handles[] = proc_open(
+                    escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=race-same-demo',
+                    array( 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
+                    $pipes
+                );
+            }
+
+            foreach ($handles as $handle) {
+                $this->assertSame(0, proc_close($handle), 'A concurrent same-plugin build must survive its sibling: the stage trees are pid-disjoint.');
+            }
+            $this->assertSame(array(), glob($repo . '/dist/.stage-race-same-demo*') ?: array(), 'No stage tree of any pid may survive the pair.');
+            $this->assertStringContainsString('connectors-race-same-demo-1.0.0.zip  ', (string) file_get_contents($repo . '/dist/checksums.txt'));
+        } finally {
+            WpHarness::rrmdir($repo);
+        }
+
+        // Part 2, the sweep, deterministic: a LIVE foreign run's stage
+        // tree is never touched by a sibling build; a DEAD-pid orphan of
+        // the same plugin is reclaimed by the next build; foreign-slug
+        // and pid-less spellings are left to their owners.
+        $scratch = tempnam(sys_get_temp_dir(), 'wpct-stage-sweep-');
+        unlink($scratch);
+        mkdir($scratch . '/dist', 0755, true);
+        mkdir($scratch . '/plugin/stage-demo/src', 0755, true);
+        $head = "Plugin Name:       stage-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       stage-demo\nAuthor:            x\n";
+        file_put_contents($scratch . '/plugin/stage-demo/stage-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'STAGE_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n");
+        file_put_contents($scratch . '/plugin/stage-demo/src/autoload.php', "<?php\nspl_autoload_register( static function ( string \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\StageDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n");
+
+        $pid_file = $scratch . '/live-pid.txt';
+        $live = proc_open(
+            'exec ' . escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('file_put_contents(' . var_export($pid_file, true) . ', (string) getmypid()); sleep(60);'),
+            array( 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
+            $live_pipes
+        );
+
+        try {
+            $deadline = microtime(true) + 10.0;
+            while (! is_file($pid_file) && microtime(true) < $deadline) {
+                usleep(10000);
+            }
+            $this->assertFileExists($pid_file, 'The spawned live run must publish its pid.');
+            $live_pid = (int) file_get_contents($pid_file);
+
+            // The live sibling's in-flight tree, a dead-pid orphan of the
+            // same plugin (999999999 exceeds every Linux pid_max), a
+            // pid-less foreign spelling, and another plugin's dead-pid
+            // orphan.
+            mkdir($scratch . '/dist/.stage-stage-demo-' . $live_pid . '/stage-demo', 0755, true);
+            file_put_contents($scratch . '/dist/.stage-stage-demo-' . $live_pid . '/stage-demo/inflight.txt', 'run A mid-flight');
+            mkdir($scratch . '/dist/.stage-stage-demo-999999999', 0755, true);
+            mkdir($scratch . '/dist/.stage-stage-demo', 0755, true);
+            mkdir($scratch . '/dist/.stage-other-demo-999999999', 0755, true);
+
+            // Run "B": builds green BESIDE the live sibling.
+            WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist');
+
+            $this->assertFileExists($scratch . '/dist/.stage-stage-demo-' . $live_pid . '/stage-demo/inflight.txt', 'A live run\'s stage tree is never touched by a sibling build.');
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-stage-demo-999999999', 'A dead-pid orphan of the plugin is swept by the next build — never orphaned forever.');
+            $this->assertDirectoryExists($scratch . '/dist/.stage-stage-demo', 'A pid-less foreign spelling is left alone (nothing running this code creates it).');
+            $this->assertDirectoryExists($scratch . '/dist/.stage-other-demo-999999999', 'Another plugin\'s stage dirs are that plugin\'s sweep\'s to reclaim.');
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-stage-demo-' . getmypid(), 'The run\'s own stage tree tears down on success.');
+
+            // Part 3: once the sibling's process is dead (terminated and
+            // reaped), its leftover tree is reclaimed by the next build.
+            proc_terminate($live);
+            proc_close($live);
+            $live = null;
+            if (is_dir('/proc')) {
+                $deadline = microtime(true) + 10.0;
+                while (is_dir('/proc/' . $live_pid) && microtime(true) < $deadline) {
+                    usleep(10000);
+                }
+            }
+
+            WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist');
+
+            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-stage-demo-' . $live_pid, 'A stage tree whose owning process died is reclaimed by the next build of the plugin.');
+        } finally {
+            if (null !== $live && is_resource($live)) {
+                proc_terminate($live);
+                proc_close($live);
+            }
+            WpHarness::rrmdir($scratch);
         }
     }
 
@@ -3349,7 +3472,7 @@ FIXTURE;
                 $this->assertStringContainsString('LinkedDir', $e->getMessage());
             }
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build must leave no zip behind.');
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector');
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector');
         } finally {
             WpHarness::rrmdir($scratch);
         }
@@ -3695,7 +3818,7 @@ FIXTURE;
                 // opens — the previous good zip survives it byte-for-byte
                 // (the t31-r3-16 artifact-preservation contract).
                 $this->assertFileExists($zipPath, "A pre-open refusal must leave the previous good zip ({$label}).");
-                $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', "The staging tree must tear down on every refusal ({$label}).");
+                $this->assertNoStageTree($scratch . '/dist', 'example-connector', "The staging tree must tear down on every refusal ({$label}).");
             }
 
             // Control: remove the hostile source and the same inputs

@@ -743,10 +743,26 @@ final class WpConnectorsBuild
          * class cannot exist on this side of the seam); EIO/ENOSPC-class
          * rename failures past the pre-flight are the honest boundary.
          */
-        $stage = $distDir . '/.stage-' . $slug;
+        /*
+         * The stage tree is PID-named (round t31-r10-4, the reopen the
+         * t31-r5-11 ledger entry names): `.stage-<slug>` was SHARED
+         * between concurrent builds of the same plugin, so run B's
+         * startup/finally rrmdir deleted run A's in-flight stage tree
+         * and A refused loudly on a spurious "cannot add … to" — build
+         * survival, not artifact correctness (r5-11 adjudicated the
+         * manifest, and called exactly this fix: "then the stage dir
+         * wants the PID too"). `.stage-<slug>-<pid>` is unique per run;
+         * the finally below releases exactly this run's tree, and the
+         * startup sweep beside it reclaims only dead-PID orphans of the
+         * SAME plugin — a live run's tree is never touched.
+         */
+        $stage = $distDir . '/.stage-' . $slug . '-' . getmypid();
         if (is_dir($stage)) {
+            // Own-name only (no other live process can hold this pid):
+            // a same-pid leftover from a recycled pid of a crashed run.
             self::rrmdir($stage);
         }
+        self::sweepStaleStageDirs($distDir, $slug);
         mkdir($stage . '/' . $slug, 0755, true);
 
         $zipTemp = $distDir . '/.' . $zipName . '.tmp-' . getmypid();
@@ -1292,6 +1308,76 @@ final class WpConnectorsBuild
             }
         }
         rmdir($dir);
+    }
+
+    /**
+     * Reclaims this plugin's stale stage trees before a new build stages
+     * its own (round t31-r10-4).
+     *
+     * The PID-named stage (`.stage-<slug>-<pid>`) makes concurrent builds
+     * of the same plugin disjoint, at the cost of a crashed run leaving
+     * its tree behind — the sweep closes that: every
+     * `.stage-<slug>-<pid>` whose process is DEAD is removed; a LIVE
+     * run's tree is never touched; foreign-shaped names (the pid-less
+     * pre-r10 spelling included) are left alone — nothing running this
+     * code creates them, so their lifecycle is not this sweep's to
+     * guess. A dead pid REUSED by an unrelated live process keeps its
+     * orphan until that process dies (the conservative direction: never
+     * delete a possibly-live run's tree).
+     *
+     * @param string $distDir Absolute dist directory (staging home).
+     * @param string $slug    Plugin slug whose stage dirs get swept.
+     * @return void
+     */
+    private static function sweepStaleStageDirs($distDir, $slug)
+    {
+        // @: an unusable dist is the mkdir below's loud failure to own,
+        // never this sweep's.
+        $dir = @opendir($distDir);
+        if (false === $dir) {
+            return;
+        }
+        $pattern = '/^\.stage-' . preg_quote($slug, '/') . '-(\d+)$/';
+        try {
+            while (false !== ($entry = readdir($dir))) {
+                if (! preg_match($pattern, $entry, $pid_match) || ! is_dir($distDir . '/' . $entry)) {
+                    continue;
+                }
+                $pid = (int) $pid_match[1];
+                if ($pid !== (int) getmypid() && ! self::processIsAlive($pid)) {
+                    self::rrmdir($distDir . '/' . $entry);
+                }
+            }
+        } finally {
+            closedir($dir);
+        }
+    }
+
+    /**
+     * Whether a process id is alive — the sweep's liveness check.
+     *
+     * /proc when the platform carries it, a signal-0 probe through posix
+     * when it does not (EPERM counts as alive: the process exists, it
+     * just is not ours), and ALIVE when neither mechanism exists — a
+     * sweep that cannot tell never deletes.
+     *
+     * @param int $pid Process id.
+     * @return bool True when the process is alive or liveness is undeterminable.
+     */
+    private static function processIsAlive($pid)
+    {
+        if ($pid <= 0) {
+            return false;
+        }
+        if (is_dir('/proc')) {
+            return is_dir('/proc/' . $pid);
+        }
+        if (function_exists('posix_kill')) {
+            // 1 = EPERM: exists, not ours to signal.
+            return @posix_kill($pid, 0) || 1 === posix_get_last_error();
+        }
+
+        return true;
     }
 }
 

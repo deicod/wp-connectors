@@ -420,7 +420,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             if ($residue !== array()) {
                 return array('class' => 'FAIL', 'why' => 'the refusal left staging residue behind: ' . implode(', ', $residue));
             }
-            if (is_dir($scratch['dist'] . '/.stage-example-connector')) {
+            if ((glob($scratch['dist'] . '/.stage-example-connector*') ?: array()) !== array()) {
                 return array('class' => 'FAIL', 'why' => 'the refusal left the staging tree behind');
             }
 
