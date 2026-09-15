@@ -2635,6 +2635,42 @@ FIXTURE;
     }
 
     /**
+     * Verifier-round pin (t31-r11-6): the slug→identifier core folds
+     * through the LOCALE-INDEPENDENT ASCII tables, never
+     * strtolower()/ucfirst()/strtoupper(). The C-library folds consult
+     * LC_CTYPE, and under a Turkish tr_* locale the dotted-I rule makes
+     * 'zai' derive 'ZAİ_VERSION' (two-byte İ, U+0130) and 'zai-oauth'
+     * derive 'İnkOauth'-shaped spellings — derived IDENTIFIERS, the
+     * keyed vocabulary every plugin file and hand-written autoloader
+     * prefix must match bare, so they must be identical in every
+     * process (the r2-14 BY-SCOPE doctrine covers comparison keys,
+     * which stay consistent under any locale; these do not). The pin
+     * sets the locale when the host carries it; this development host
+     * does not (locale -a: C, C.utf8, en_US.utf8, POSIX — setlocale
+     * fails), so on it the divergence is argued from the fold tables
+     * like AsciiFold's own docblock argues it — the spelling pins hold
+     * everywhere, the locale pressure rides wherever the locale exists.
+     * setlocale is process-global: attempted and restored in a finally
+     * so no other test sees it.
+     */
+    public function testTheSlugToIdentifierFoldIsLocaleIndependent(): void
+    {
+        $previous = setlocale(LC_CTYPE, null);
+        try {
+            setlocale(LC_CTYPE, 'tr_TR.UTF-8');
+
+            $this->assertSame('ZAI', wp_connectors_identifier_from_slug('zai', '_'), "The constant stem folds 'zai' to all-caps ASCII — never the dotted-I 'ZAİ' a tr_* locale's strtoupper() derives.");
+            $this->assertSame('ZAI_VERSION', wp_connectors_identifier_from_slug('zai', '_') . '_VERSION');
+            $this->assertSame('ZaiOauth', wp_connectors_namespace_suffix_from_slug('zai-oauth'), "The namespace segment capitalizes per segment in ASCII — never an 'İnk'-shaped spelling.");
+            $this->assertSame('MyPlugin', wp_connectors_namespace_suffix_from_slug('MY.PLUGIN'), 'The lower fold that splits the segments is ASCII too: dot and dash separate the same segments under every locale.');
+            $this->assertSame('MY_PLUGIN_VERSION', wp_connectors_identifier_from_slug('My.Plugin', '_') . '_VERSION');
+            $this->assertSame('_3CX_OAUTH_VERSION', wp_connectors_identifier_from_slug('3cx-oauth', '_') . '_VERSION', 'The digit rule rides the same ASCII fold.');
+        } finally {
+            setlocale(LC_CTYPE, $previous);
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r5-12): a dotted slug ('my.plugin' — legal
      * to the slug regex and the text-domain gate) derived the constant
      * 'MY.PLUGIN_VERSION' and the namespace suffix 'My.plugin' — both

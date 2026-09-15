@@ -3358,17 +3358,62 @@ function wp_connectors_php_source_files($dir)
 }
 
 /**
+ * Locale-independent ASCII case folds for the tooling (verifier round
+ * t31-r11-6) — the bin-side twins of the shared tree's AsciiFold
+ * (shared/src/Support/AsciiFold.php, the r2-14 owner). This file is
+ * standalone tooling: it loads without the autoloader into build and
+ * check processes, so it cannot reach the shared class — the byte
+ * tables are spelled here instead, and the two owners share the
+ * doctrine, not a require.
+ *
+ * WHY the tooling needs them: strtolower()/strtoupper()/ucfirst() map
+ * each byte through the C library's tolower()/toupper(), which glibc
+ * resolves through the process LC_CTYPE locale — under a Turkish
+ * tr_* locale the ASCII 'i' upper-cases to the two-byte 'İ' (U+0130)
+ * and 'I' lower-cases to the dotless 'ı' (U+0131). The slug→identifier
+ * core is exactly the surface that must not consult a locale: its
+ * output IS the keyed vocabulary (the version-constant name a plugin
+ * file must spell bare, the namespace segment every hand-written
+ * autoloader prefix repeats) — under tr_TR the slug 'zai' derived
+ * 'ZAİ_VERSION' / 'İnkOauth', spellings no bare code reference and no
+ * hand-spelled prefix can ever match again (the r2-14 BY-SCOPE
+ * doctrine does not transfer: those folds were comparison keys
+ * consistent under any locale; these are DERIVED IDENTIFIERS that
+ * must be identical in every process). An explicit byte-table fold has
+ * no locale to consult.
+ *
+ * @param string $value The bytes to fold.
+ * @return string The folded bytes — identical in every locale.
+ */
+function wp_connectors_ascii_lower($value)
+{
+    return strtr((string) $value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
+}
+
+/**
+ * The upper twin of wp_connectors_ascii_lower() — see its doctrine.
+ *
+ * @param string $value The bytes to fold.
+ * @return string The folded bytes — identical in every locale.
+ */
+function wp_connectors_ascii_upper($value)
+{
+    return strtr((string) $value, 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+}
+
+/**
  * The slug's identifier segments: lowercased, '-' AND '.' separated
  * (t31-r5-12 — a dotted slug's naive spellings are not legal labels, so
  * the dot separates like the dash and every derived segment stays a
- * label).
+ * label). The lower-case fold is the LOCALE-INDEPENDENT one
+ * (wp_connectors_ascii_lower(), t31-r11-6).
  *
  * @param string $slug Plugin slug.
  * @return list<string> The lowercased segments, in slug order.
  */
 function wp_connectors_slug_segments($slug)
 {
-    return preg_split('/[-.]/', strtolower((string) $slug)) ?: array();
+    return preg_split('/[-.]/', wp_connectors_ascii_lower((string) $slug)) ?: array();
 }
 
 /**
@@ -3390,7 +3435,11 @@ function wp_connectors_slug_segments($slug)
  * dot separator) before this core existed; a future rule change lands
  * once here and both spellings follow by construction. The underscore
  * glue upper-cases its segments (the constant stem is all-caps; the
- * acronym casing folds away under it).
+ * acronym casing folds away under it). Every case fold is the
+ * LOCALE-INDEPENDENT ASCII one (t31-r11-6): ucfirst() and strtoupper()
+ * consult LC_CTYPE exactly like strtolower(), and the derived spellings
+ * are keyed vocabulary — 'zai' must derive 'ZAI_VERSION'/'ZaiOauth' in
+ * every process, Turkish dotted-I rule included.
  *
  * @param string $slug Plugin slug.
  * @param string $glue Join between segments ('' for the camel-cased
@@ -3403,10 +3452,13 @@ function wp_connectors_identifier_from_slug($slug, $glue)
 
     $parts = array();
     foreach (wp_connectors_slug_segments($slug) as $segment) {
-        $parts[] = isset($acronyms[ $segment ]) ? $acronyms[ $segment ] : ucfirst($segment);
+        // The locale-independent ucfirst: the segment is ASCII-folded
+        // already, so upper-casing its FIRST BYTE through the explicit
+        // table is the whole operation (t31-r11-6).
+        $parts[] = isset($acronyms[ $segment ]) ? $acronyms[ $segment ] : wp_connectors_ascii_upper(substr($segment, 0, 1)) . substr($segment, 1);
     }
     if ('_' === $glue) {
-        $parts = array_map('strtoupper', $parts);
+        $parts = array_map('wp_connectors_ascii_upper', $parts);
     }
     $identifier = implode($glue, $parts);
 
