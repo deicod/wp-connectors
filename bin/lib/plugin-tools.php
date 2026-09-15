@@ -560,6 +560,9 @@ function wp_connectors_name_references_from_tokens(array $tokens)
     $use_open = false;
     $group_prefix = null;
     $group_prefix_display = '';
+    $group_prefix_offset = 0;
+    $group_prefix_line = 0;
+    $group_member_seen = false;
     $group_brace_depth = 0;
     $awaiting_group_prefix = false;
     $skip_alias = false;
@@ -580,6 +583,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
             $use_open = null !== $follower && '(' !== $tokens[ $follower ];
             $group_prefix = null;
+            $group_member_seen = false;
             $group_brace_depth = 0;
             $awaiting_group_prefix = true;
             $skip_alias = false;
@@ -628,8 +632,18 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                  * whichever side of it the walk stands.
                  */
                 if (';' === $token || T_CLOSE_TAG === $id || T_OPEN_TAG === $id || T_OPEN_TAG_WITH_ECHO === $id) {
+                    if (null !== $group_prefix && ! $group_member_seen) {
+                        $references[] = array(
+                            'name' => $group_prefix_display,
+                            'lower' => $group_prefix,
+                            'kind' => 'use',
+                            'offset' => $group_prefix_offset,
+                            'line' => $group_prefix_line,
+                        );
+                    }
                     $use_open = false;
                     $group_prefix = null;
+                    $group_member_seen = false;
                     $group_brace_depth = 0;
                     $adaptation_block = false;
                     /*
@@ -668,7 +682,32 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                     // group itself retires it.
                     --$group_brace_depth;
                     if ($group_brace_depth <= 0) {
+                        if (null !== $group_prefix && ! $group_member_seen) {
+                            /*
+                             * THE EMPTY-BODY FENCE (verifier round
+                             * t31-r10-9): `use Deicod\WpConnectors\{};`
+                             * reported NOTHING — the prefix is not
+                             * reported itself and an empty body carries
+                             * no member — a zero-carrier spelling through
+                             * the whole detector (the group body is the
+                             * one import position whose emptiness is
+                             * legal PHP's parse error and the walk's
+                             * silence). An empty group statement reports
+                             * its prefix; every legal body (a member, an
+                             * aliased member, a function/const member)
+                             * reports at least one name and never trips
+                             * the fence.
+                             */
+                            $references[] = array(
+                                'name' => $group_prefix_display,
+                                'lower' => $group_prefix,
+                                'kind' => 'use',
+                                'offset' => $group_prefix_offset,
+                                'line' => $group_prefix_line,
+                            );
+                        }
                         $group_prefix = null;
+                        $group_member_seen = false;
                         $group_brace_depth = 0;
                         $adaptation_block = false;
                         $skip_alias = false;
@@ -709,10 +748,29 @@ function wp_connectors_name_references_from_tokens(array $tokens)
         }
         $i = $run['end'];
 
+        /*
+         * The run's RAW spelling decides its composition rights (verifier
+         * round t31-r10-9): an ABSOLUTE run (leading backslash) never
+         * resolves against a group prefix — composing it produced
+         * `Prefix\Deicod\WpConnectors\…`, a name no family predicate can
+         * match, and the reference laundered to zero carriers (reproduced
+         * end-to-end: the build shipped a group member importing the
+         * source namespace verbatim, exit 0). A QUALIFIED run (any
+         * backslash) can never be an `as` ALIAS either — an alias is a
+         * bare identifier — so the alias skip eats only bare runs and
+         * the invalid qualified post-`as` spelling is REPORTED, the
+         * totality principle t31-r10-1 stated for adaptation blocks,
+         * owed on the import side too.
+         */
+        $is_absolute_run = '\\' === ($run['name'][0] ?? '');
+        $is_qualified_run = false !== strpos((string) $run['name'], '\\');
+        $alias_position = false;
         if ($skip_alias) {
             $skip_alias = false;
-
-            continue;
+            if (! $is_qualified_run) {
+                continue;
+            }
+            $alias_position = true;
         }
 
         $kind = 'code';
@@ -742,6 +800,9 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                     if ($separator_before_brace) {
                         $group_prefix = strtolower($display);
                         $group_prefix_display = $display;
+                        $group_prefix_offset = $token_offset;
+                        $group_prefix_line = $token_line;
+                        $group_member_seen = false;
 
                         continue;
                     }
@@ -752,7 +813,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             }
             if (! $adaptation_block) {
                 $kind = 'use';
-                if (null !== $group_prefix) {
+                if (null !== $group_prefix && ! $is_absolute_run && ! $alias_position) {
                     $display = $group_prefix_display . '\\' . $display;
                 }
             }
@@ -760,6 +821,12 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             $kind = 'declaration';
         }
         $declaration_pending = false;
+
+        // A reported name inside an open group statement is a MEMBER —
+        // the empty-body fence below rides the flag.
+        if ($use_open && null !== $group_prefix && ! $adaptation_block) {
+            $group_member_seen = true;
+        }
 
         $references[] = array(
             'name' => $display,

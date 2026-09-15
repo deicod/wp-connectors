@@ -2882,6 +2882,10 @@ FIXTURE;
             'b-prefixed class-string, double-quoted, judged by value (t31-r10-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BPrefixStore\n{\n    public function name(): string\n    {\n        return b\"Deicod\\\\WpConnectors\\\\Shared\\\\Clock\";\n    }\n}\n",
             'B-prefixed class-string, single-quoted, judged by value (t31-r10-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BPrefixStore\n{\n    public function name(): string\n    {\n        return B'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
             'b-prefixed hex-escaped class-string, judged by value (t31-r10-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BPrefixStore\n{\n    public function name(): string\n    {\n        return b\"\\x44eicod\\\\WpConnectors\\\\Shared\\\\Clock\";\n    }\n}\n",
+            'fully-qualified group member against a non-family prefix (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\Stuff\\{ \\Deicod\\WpConnectors\\Shared\\Clock };\nclass FqMemberStore\n{\n}\n",
+            'qualified name after as, plain use (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\X as \\Deicod\\WpConnectors\\Shared\\Clock;\nclass FqAliasStore\n{\n}\n",
+            'qualified name after as, group body (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\Stuff\\{ Y as \\Deicod\\WpConnectors\\Shared\\Clock };\nclass FqGroupAliasStore\n{\n}\n",
+            'empty group body naming the vendor prefix (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{};\nclass EmptyGroupStore\n{\n}\n",
         );
         foreach ($survivors as $label => $hostile) {
             try {
