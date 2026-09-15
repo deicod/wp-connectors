@@ -744,7 +744,65 @@ documented exception.
   glued class (159 visible-ASCII spellings misread
   identically by parse_url). Suite 1572 → 1581
   tests, 44418 → 44539 assertions, 2 skipped
-  unchanged.
+  unchanged. Fix round t31-r12 (20 commits over
+  round-12's ten counted findings, executed per the
+  driver's two adjudications — the r6 ledger line's
+  secret-scanner pruning owned as this round's
+  material, and `location` re-opened on RFC 6749
+  §4.1.2 vendor-doc proof): the inspector's partial
+  extraction refuses loudly (both zip returns owned,
+  the captured engine warning silenced and surfaced
+  as the reason, no content check over a partial
+  tree); a lone `]` refuses and the bracket pair
+  wraps the whole host non-empty; artifact secret
+  scans run unpruned (the r6 HIGH closed — the
+  prune is a repo-walk concept, and the src/Shared
+  dev-entry exemption composes as classification-
+  only); `location` joins the one sensitive-header
+  catalog; device/user codes and the pending flow's
+  provider id ride ONE control-byte guard at the
+  vocabulary owner; the success line's digest and
+  the checksums manifest are both guarded honestly
+  (a blank sha256= never prints at exit 0;
+  regeneration drops entries whose artifact is gone
+  — the manifest is an inventory now); the rebuilt
+  authority is re-validated post-parse (locale-
+  independent folds since the 8.2 floor, the guard
+  is the class-killer, the manufactured-locale pin
+  restores LOCPATH before the locale with a checked
+  restore); the lint gate's exclusions ride the ONE
+  development-entry vocabulary root-relative; the
+  embed destination prefix has ONE owner with two
+  fold roles (the writer's fence folds, the
+  inspector's exemption stays canonical); the CLI
+  guard + diagnostics idiom is ONE helper on the
+  auto-global argv (scan-secrets.php ledgered for
+  its own round); the embed postcondition walks the
+  subtree anchored at the composed root; the HTTP
+  VOs' header facade is ONE trait; buildPlugin's
+  docblock states the shared-source layout coupling.
+  The round's two-lens verifier pass raised SIX
+  findings — a HIGH (byte-exact duplicate entry
+  names extracting last-wins: the unlanded copy's
+  webshell and live key shipped green, reproduced
+  end-to-end; the inspector fences byte-exact and
+  case-fold duplicates now, the r6 collision line's
+  inspector half consumed), two MEDIUM regressions
+  of the round's own first cuts (the folded embed
+  exemption went REJECTED→ACCEPTED on hostile zips
+  and is canonical again; the CLI guard read
+  $_SERVER['argv'], a silent exit-0 no-op under
+  variables_order=GPC), and three hardening items
+  with stated runtime boundaries (the printable
+  seam for captured diagnostics, the whole-host
+  bracket wrap, the exception-safe capture restore)
+  — all six fixed in-round as t31-r12-15..20, and
+  the pass also caught the round's own locale pin
+  leaking the manufactured locale into the suite
+  (glibc resolves the restore through LOCPATH; a
+  random-order flake, ~1 run in 3, fixed in-place).
+  Suite 1581 → 1596 tests, 44540 → 44708
+  assertions, 2 skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

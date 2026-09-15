@@ -6,6 +6,165 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, review round t31-r12)
+
+Fix round over round-12's ten counted findings (four correctness, six
+cleanup; two struck, two noted), fixed as t31-r12-1..14 — one commit
+per finding, the full offline check green after every commit, a
+regression per fix proven red under its pre-fix predicate (mutation or
+revert) — executing two driver adjudications: the r6 ledger line's
+secret-scanner pruning owned as this round's material, and `location`
+re-opened on RFC 6749 §4.1.2 vendor-doc proof. Sequencing per the
+driver: the HTTP facade trait (r12-13) landed before the masking
+changes (r12-4/5), and the embed-prefix owner (r12-10) before the
+scoped postcondition (r12-12). A two-lens verifier pass (independent
+correctness + security agents over the whole round diff, every raised
+finding adversarially re-derived and — where drivable — empirically
+reproduced) raised six findings, all six fixed in-round as
+t31-r12-15..20. Suite 1581 → 1596 tests, 44540 → 44708 assertions,
+2 skipped unchanged.
+
+- **A partial extraction refuses loudly, never inspects green
+  (t31-r12-1)**: the inspector's second zip open()/extractTo() pair
+  was unchecked — a >NAME_MAX entry made extractTo() return false
+  mid-tree, the engine warning leaked raw to output, and every check
+  ran over whatever subset HAD extracted while the never-extracted
+  remainder (webshell, live key) was judged by nobody: ACCEPTED at
+  exit 0 (reproduced). Extraction failure is a refusal naming the
+  captured reason (silenced, never leaked raw), and no content check
+  runs over a partial tree — the artifact is judged whole or not at
+  all.
+- **A lone `]` refuses; the bracket pair wraps the whole host
+  (t31-r12-2 + r12-18)**: the glued-bracket screen trusted the last
+  `]` as the IPv6 closer without asking for its opener —
+  `http://host:44x]/p` was accepted with authority `host:44` (the
+  port truncated at the raw bracket; url() and the redacted form
+  diverged inside the VO). The pair leg now enforces the RFC 3986
+  host grammar whole: exactly one `[` at the host's first byte, one
+  `]`, non-empty literal between — the verifier round closed the
+  under-enforcement (the empty literal `[]` and mid-host pairs
+  `a[b]`/`x[y]:8080` constructed against the rule's own claim).
+- **Artifact secret scans run unpruned — the r6-owned HIGH closed
+  (t31-r12-3)**: the scanner's dev-segment prune applied to extracted
+  artifacts too, so a live key at `<slug>/src/Shared/vendor/keys.txt`
+  inspected ACCEPTED while the identical key one directory up
+  rejected (reproduced — the r6 ledger line's named defect). The
+  prune is now a parameter, a repo-walk concept: the inspector scans
+  the shipped tree unpruned, closing the composition with the
+  src/Shared dev-entry exemption (classification exempts, content
+  still judges every shipped file).
+- **`location` joins the sensitive-header catalog, on vendor-doc
+  proof (t31-r12-4)**: RFC 6749 §4.1.2 carries the authorization code
+  in the 3xx redirect's Location query — a 302's Location IS a
+  credential-bearing surface by specification, and it rendered
+  verbatim through every safe debug form (reproduced). One owner, the
+  catalog; the value masks like any bearer surface, and the
+  HttpResponse contract prose names its own credential channel now.
+- **Provider-supplied codes ride the ONE control-byte guard
+  (t31-r12-5)**: device_code/user_code constructed with a raw CRLF
+  and print_r forged lines in the MASKED debug tail (the mask keeps
+  the last four characters, controls included — reproduced); the
+  pending authorization's provider id rendered raw through a flow
+  dump. HeaderMap::assert_no_control_bytes() — the vocabulary owner's
+  own callable, no new vocabulary — gates all three (a future
+  code/state field on the VO joins the same guard, not a copy).
+- **The success line's digest is guarded (t31-r12-6)**: the CLI echo
+  interpolated hash_file() unchecked, so a zip unreadable between
+  buildPlugin() returning and the echo printed `sha256=` BLANK at
+  exit 0. The guarded helper owns the digest — same shape as the
+  sidecar seam's own refusal.
+- **checksums.txt regeneration prunes (t31-r12-7)**: the merge kept
+  every other line forever, so a deleted connector's zip left a stale
+  line that failed verification on every future check while builds
+  exited 0 (reproduced). Regeneration drops entries whose artifact no
+  longer sits beside the manifest (inside the merge lock; malformed
+  lines die by the same rule), superseding the old "deleted
+  out-of-band leaves its entry behind" note — the manifest is an
+  inventory whose every line names an existing artifact.
+- **The rebuilt authority is re-validated post-parse (t31-r12-8)**:
+  the entry gate guarantees the INPUT bytes; nothing re-checked the
+  OUTPUT side (parsed host + case fold). The mangler it guards
+  against is real C-library behavior (manufactured
+  tr_TR.ISO-8859-9: tolower(0xC3)=0xE3 breaks a UTF-8 host's second
+  byte — pinned live via localedef + ctype), but the engine folds
+  have been locale-independent since PHP 8.2 (this project's floor,
+  the strtolower-ascii RFC), so the guard is the three-line
+  class-killer, not a reproduced defect; the probe is driven directly
+  with the pre-8.2 mangled spelling. (The round's first locale pin
+  leaked the manufactured locale into the suite — glibc resolves the
+  RESTORE through LOCPATH, and a partial locale dir made the restore
+  fail silently, breaking later tests' `/i` matching ~1 run in 3;
+  caught by this round's own verifier pass, fixed in-place: LOCPATH
+  restored before the locale, the restore checked.)
+- **The lint gate's exclusions ride the ONE vocabulary (t31-r12-9)**:
+  the hand-rolled case-sensitive list had drifted — the dotless
+  `phpunit.cache/` and `VENDOR/` were linted while the builder
+  excluded and the inspector rejected both spellings. The walk
+  consumes wp_connectors_is_development_entry() per segment,
+  root-relative (the tests ROOT stays the gate's own charge); the
+  judged file set on the current tree is unchanged.
+- **The embed destination prefix has ONE owner, two fold roles
+  (t31-r12-10 + r12-16)**: the writer spelled the territory with a
+  case-insensitive collision fence while the inspector's exemption
+  was byte-exact — two verdicts on one destination. One helper in the
+  library serves both sides, and the verifier round separated the
+  fold roles by doctrine: the writer's fence folds (any case-variant
+  of a generated destination refuses the build), the inspector's
+  exemption matches the CANONICAL prefix only — the first cut folded
+  the exemption too and both lenses reproduced the regression (a
+  hostile zip's `SRC/SHARED/composer.json` went REJECTED→ACCEPTED at
+  exit 0); the byte-exact exemption is back, foreign case-variants
+  judged by the vocabulary.
+- **The CLI-entry guard is ONE helper (t31-r12-11 + r12-17)**: four
+  hand-maintained copies of the t31-r9-4/t31-r10-3 idiom (guard +
+  diagnostics) collapsed into wp_connectors_cli_entry(); the
+  verifier round moved it off $_SERVER['argv'] (unpopulated under a
+  variables_order ini without "S" — every entry script became a
+  silent exit-0 no-op, reproduced) onto the auto-global the CLI SAPI
+  always populates. scan-secrets.php keeps its own guard for its own
+  round (ledgered).
+- **The embed postcondition walks the subtree, anchored at the
+  composed root (t31-r12-12)**: the composed-tree scan re-tokenized
+  the whole staged tree although the pre-gate had already judged the
+  plugin files byte-for-byte against the same anchor (30 embedded
+  sources instead of all 36 staged PHP files per example-connector
+  build). The load-bearing subtlety is pinned: the WALK narrows, the
+  ANCHOR does not — a naive subtree anchor would refuse a shared
+  source whose include is anchored at the plugin root above the
+  subtree (proven by mutation: exactly that false refusal fires).
+- **The HTTP VOs' header facade is ONE trait (t31-r12-13)**:
+  byte-identical twins of headers()/header()/__toString()/
+  __debugInfo() across the two VOs (four copies of the masking
+  plumbing after the location round) collapsed into the
+  HasMaskedHeaders trait; the only divergence kept is the
+  request-line/status-line head. The r2-13 repeated-header note and
+  the r10-5 digit-key caveat moved to the trait's single docblock;
+  every existing string-form and dump pin stayed green unchanged.
+- **buildPlugin's docblock states the layout coupling (t31-r12-14)**:
+  the public static API derives the shared library from
+  `dirname($distDir)/shared/src` — documented with the wrong-content
+  failure mode (a loud refusal covers absence, not identity);
+  parameterizing is ledgered for a second caller. Doc-only.
+
+Verifier round (t31-r12-15..20, both lenses' findings, all confirmed
+and fixed in-round): **byte-exact duplicate entry names refuse
+(t31-r12-15, the security lens's HIGH)** — a hostile zip may carry one
+entry name twice; extractTo() returns TRUE keeping only the last copy,
+so a webshell or live key in the first copy shipped green (reproduced
+end-to-end on a real built zip); the classification loop now fences
+byte-exact AND case-fold duplicates (the latter consumes the r6
+deferred collision class's inspector half — the builder-side fence
+stays the r6 line's own round), with interpolated names rendered
+through a new one-seam printable filter (every C0 control and DEL
+neutralized). **The captured extraction reason renders through that
+same seam (t31-r12-19)** and **the capture handler's restore rides a
+finally (t31-r12-20)** — both hardening with stated runtime
+boundaries (this libzip sanitizes control bytes in entry names on
+both write and read; extractTo() warns-and-returns rather than
+throwing). **The CLI guard's argv fix (t31-r12-17)** and **the bracket
+whole-host wrap (t31-r12-18)** are the two lenses' MEDIUM findings,
+both reproduced and closed as above.
+
 ### Added (shared — M3 OAuth foundation, Task 3.1)
 
 Provider-neutral OAuth contracts under `shared/src` (source namespace
