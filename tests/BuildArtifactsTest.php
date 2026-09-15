@@ -2852,6 +2852,81 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r8-3): the text lens applies the FULL family
+     * vocabulary. It tried only the source spelling and the consumer's
+     * target pattern, so a docblock `@throws` naming a SIBLING under
+     * the vendor prefix in a shared source launders exactly where the
+     * same sibling in a code or string position refuses — and the dev
+     * sweep rides the same detector, so nothing caught it anywhere
+     * (reproduced red: the docblock-sibling file produced only its
+     * declaration under the pre-fix detector). One vocabulary at every
+     * lens: the bare vendor prefix and every sibling continuation under
+     * it are text findings now, while the source and target spellings
+     * keep their dedicated, fuller reports (not preempted by a bare-
+     * stem match on the raw view of a double-backslash spelling).
+     */
+    public function testTheTextLensJudgesTheFullSiblingFamilyVocabulary(): void
+    {
+        $declaration = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n";
+        $text_finding = static function (string $body) use ($declaration): array {
+            $found = array();
+            foreach (wp_connectors_shared_family_references($declaration . $body) as $reference) {
+                if ('declaration' !== $reference['kind']) {
+                    $found[] = array( $reference['name'], $reference['kind'] );
+                }
+            }
+
+            return $found;
+        };
+
+        // THE REPRO: a docblock naming a sibling refuses.
+        $this->assertSame(
+            array( array( 'Deicod\\WpConnectors\\Zai', 'comment' ) ),
+            $text_finding("/**\n * @throws \\Deicod\\WpConnectors\\Zai\\ApiClient\n */\ninterface DocSiblingFixture\n{\n}\n"),
+            'A docblock naming a sibling under the vendor prefix is a finding — the same vocabulary the code and string positions judge.'
+        );
+
+        // The rest of the family shapes in text: the bare vendor prefix,
+        // a SharedStorage-prefixed sibling, inline HTML, and a group-use
+        // brace head naming a sibling member.
+        $this->assertSame(array( array( 'Deicod\\WpConnectors', 'comment' ) ), $text_finding("/** @package Deicod\\WpConnectors */\ninterface BareFixture\n{\n}\n"));
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\SharedStorage', 'comment' ) ), $text_finding("/** @see Deicod\\WpConnectors\\SharedStorage\\Widget */\ninterface SharedStorageFixture\n{\n}\n"));
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\Zai', 'inline-html' ) ), $text_finding("?>\n<b>Deicod\\WpConnectors\\Zai\\Api</b>\n<?php\ninterface HtmlFixture\n{\n}\n"));
+        $this->assertSame(array( array( 'Deicod\\WpConnectors', 'comment' ) ), $text_finding("/** Example: use Deicod\\WpConnectors\\{Zai\\Api}; */\ninterface BraceHeadFixture\n{\n}\n"));
+
+        // Non-family noise stays quiet: a sibling-local name without the
+        // vendor prefix, the prefix with a name character glued on, and
+        // a longer name merely CONTAINING the stem.
+        $this->assertSame(array(), $text_finding("/** SharedStorage notes; WpConnectors alone; MyDeicod\\WpConnectors\\Zai */\ninterface NoiseFixture\n{\n}\n"));
+
+        // The dedicated reports are not preempted: a source spelling
+        // (raw or double-backslash) reports the SOURCE namespace (the
+        // generator's match ends at its leaf, as it always has), and a
+        // target spelling the target namespace — never a bare stem.
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\Shared', 'comment' ) ), $text_finding("/** @see Deicod\\WpConnectors\\Shared\\Clock */\ninterface SourceReportFixture\n{\n}\n"));
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\Shared', 'comment' ) ), $text_finding("/** @see Deicod\\\\WpConnectors\\\\Shared\\\\Clock */\ninterface SourceRawReportFixture\n{\n}\n"));
+        $target_found = array();
+        foreach (wp_connectors_shared_family_references($declaration . "/** @throws Deicod\\\\WpConnectors\\\\OpenAiOauth\\\\Shared\\\\Clock */\ninterface TargetReportFixture\n{\n}\n", 'Deicod\\WpConnectors\\OpenAiOauth\\Shared') as $reference) {
+            if ('declaration' !== $reference['kind']) {
+                $target_found[] = array( $reference['name'], $reference['kind'] );
+            }
+        }
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\OpenAiOauth\\Shared', 'comment' ) ), $target_found, 'A double-backslash target spelling keeps its dedicated target report, not a sibling stem.');
+
+        // End to end through the build's postcondition: the docblock
+        // sibling REFUSES the rewrite, naming the sibling.
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($declaration . "/**\n * @throws \\Deicod\\WpConnectors\\Zai\\ApiClient\n */\ninterface DocSiblingStore\n{\n}\n", 'OpenAiOauth', 'shared/src/DocSibling.php');
+            $this->fail('A docblock naming a sibling must refuse the rewrite — the embedded copy would ship a reference to a namespace that does not exist inside the plugin.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('survived the rewrite', $e->getMessage());
+            $this->assertStringContainsString('DocSibling.php', $e->getMessage());
+            $this->assertStringContainsString('Deicod\\WpConnectors\\Zai', $e->getMessage(), 'The refusal names the sibling.');
+            $this->assertStringContainsString('comment position', $e->getMessage(), 'The refusal names the text position.');
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r4-3): ZipArchive::close()'s false return was
      * ignored — a failed finalization took no catch path while OVERWRITE
      * had already destroyed the previous good zip, so the run continued

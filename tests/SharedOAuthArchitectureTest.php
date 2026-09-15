@@ -521,6 +521,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             'dangling as eats the next reference (t31-r7-7)' => "<?php\nnamespace A;\nuse Foo\\Bar as;\n\$x = \\Deicod\\WpConnectors\\Shared\\Clock::class;\n",
             'dangling as survives the close tag (t31-r8-1)' => "<?php\nnamespace A;\nuse Foo\\Bar as ?>\ninline HTML\n<?php\n\$x = \\Deicod\\WpConnectors\\Shared\\Clock::class;\n",
             'relative operator escaping into the family (t31-r8-2)' => "<?php\nnamespace Deicod;\n\$x = namespace\\WpConnectors\\Shared\\Clock::class;\n",
+            'docblock naming a sibling (t31-r8-3)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\Zai\\ApiClient\n */\ninterface DocSiblingFixture\n{\n}\n",
             'source-spelled TARGET-rooted code reference (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface TargetCodeFixture\n{\n    public function name(): string;\n}\nfinal class TargetCodeCarrier\n{\n    public function name(): string\n    {\n        return \\class_exists(\\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost::class);\n    }\n}\n",
             'docblock naming the rewrite TARGET (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost\n */\ninterface TargetDocblockFixture\n{\n}\n",
         );

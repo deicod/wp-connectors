@@ -241,6 +241,61 @@ function wp_connectors_family_namespace_pattern($namespace)
 }
 
 /**
+ * The SIBLING spelling-pattern for the vendor prefix — the text lens's
+ * full-family vocabulary (verifier round t31-r8-3).
+ *
+ * The name-pattern lens above judges every family reference by
+ * STRUCTURE (the vendor prefix exactly, or anything under it), but the
+ * text lens tried only the source and target SPELLING patterns: a
+ * docblock `@throws \Deicod\WpConnectors\Zai\ApiClient` in a shared
+ * source launders exactly where the same sibling in a code or string
+ * position refuses — and the dev sweep rides the same detector, so
+ * nothing caught it anywhere. One vocabulary at every lens now: this
+ * pattern matches the vendor prefix stem in TEXT whenever the next
+ * segment is NOT one of the spellings the dedicated patterns already
+ * own — which is every remaining family shape: the BARE vendor prefix,
+ * and every sibling continuation under it (a brace-group head included:
+ * the group's first member is checked like any next segment).
+ *
+ * The shape rides the same totality dimensions as the family generator
+ * (case-insensitive, whitespace-tolerant between the stem's segments,
+ * name-boundary aware on both edges), and consumes the sibling's own
+ * next segment when one follows so the reported spelling names the
+ * sibling (`…\Zai`), never a bare stem with the charge unattributed.
+ * The exclusion is a lookahead on the segment AFTER the stem, with the
+ * leaf boundary of the generator — so 'Shared' excludes
+ * `…\Shared\Clock` but never the sibling 'SharedStorage' — and exists
+ * for diagnostics, not verdicts: the source and target patterns run
+ * first and return on their own match, but a double-backslash spelling
+ * misses them in the RAW view, and the lookahead keeps the fuller
+ * spelling's report from being preempted by a bare-stem match.
+ *
+ * @param list<string> $excluded_next_segments Namespace segments whose
+ *        continuations the dedicated patterns own (the source tree's
+ *        segment under the vendor prefix; the target's, when known).
+ * @return string PCRE pattern matching a sibling/bare spelling of the
+ *         vendor prefix in text.
+ */
+function wp_connectors_family_sibling_pattern(array $excluded_next_segments)
+{
+    $own_lower = strtolower(wp_connectors_shared_source_namespace());
+    $vendor = substr($own_lower, 0, (int) strrpos($own_lower, '\\'));
+    $stem = implode('\\s*\\\\\\s*', array_map(
+        static function ( $segment ) {
+            return preg_quote( (string) $segment, '/' );
+        },
+        explode( '\\', $vendor )
+    ));
+
+    $excluded = array();
+    foreach ( $excluded_next_segments as $segment ) {
+        $excluded[] = preg_quote( strtolower( (string) $segment ), '/' ) . '(?![A-Za-z0-9_])';
+    }
+
+    return '/(?<![A-Za-z0-9_])' . $stem . '(?![A-Za-z0-9_])(?!\\s*\\\\\\s*(?:' . implode('|', $excluded) . '))(?:\\s*\\\\\\s*[A-Za-z_][A-Za-z0-9_]*)?/i';
+}
+
+/**
  * The shared-namespace SPELLING pattern — the text lens of the round-7
  * token detector (formerly bin/build.php's
  * WpConnectorsBuild::SHARED_NAMESPACE_SURVIVOR_PATTERN, rounds t31-r3-2 →
@@ -844,12 +899,26 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * The TEXT lens's patterns: the source spelling always, plus the
      * consumer's TARGET spelling when one is provided (t31-r7-8: a
      * comment naming the target is a finding too, not an invisible
-     * spelling the source pattern cannot match).
+     * spelling the source pattern cannot match), plus the SIBLING
+     * vocabulary (t31-r8-3: the full family predicate — any spelling
+     * under the vendor prefix that the dedicated patterns do not own,
+     * the bare prefix included — so a docblock naming a sibling refuses
+     * exactly where the same sibling in a code or string position
+     * does; one vocabulary at every lens). The excluded next-segments
+     * are the source tree's and the target's segments under the vendor
+     * prefix, so their spellings stay owned by their dedicated
+     * patterns' fuller reports.
      */
     $patterns = array( wp_connectors_shared_namespace_pattern() );
+    $sibling_exclusions = array( substr($own_lower, strrpos($own_lower, '\\') + 1) );
     if (null !== $target_namespace && (string) $target_namespace !== '') {
         $patterns[] = wp_connectors_family_namespace_pattern( $target_namespace );
+        $target_segments = explode('\\', ltrim((string) $target_namespace, '\\'));
+        if (count($target_segments) > count(explode('\\', $vendor_lower))) {
+            $sibling_exclusions[] = $target_segments[ count(explode('\\', $vendor_lower)) ];
+        }
     }
+    $patterns[] = wp_connectors_family_sibling_pattern( $sibling_exclusions );
     $push_text_finding = function (string $kind, int $offset, string $spelling) use (&$references, $source): void {
         $references[] = array(
             'name' => $spelling,
