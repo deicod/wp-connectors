@@ -6,6 +6,67 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, review round t31-r13)
+
+Fix round over round-13's three counted findings (one MEDIUM
+security with a fresh empirical repro satisfying the ledger's
+re-open rule, one LOW correctness, one cleanup), fixed as
+t31-r13-1..3 — one commit per finding, the full offline check green
+after every commit, a revert-proven regression per repro fix — plus
+a two-lens verifier pass (independent correctness + security agents
+over the whole round diff, every raised finding adversarially
+re-derived by the implementer, byte-level where mechanism claims
+were made) whose one both-lens finding and one adopted precision
+item landed in-round as t31-r13-4/5; one lens claim refuted under
+byte-level re-derivation. Suite 1596 → 1599 tests,
+44708 → 44742 assertions, 2 skipped unchanged.
+
+- **Every inspector verdict line renders archive-controlled names
+  through the ONE printable seam (t31-r13-1 + r13-4)**: a raw
+  stored zip's entry name survives `getNameIndex()` byte-exact —
+  newline included; neither ZipArchive side sanitizes control bytes
+  in names on this runtime (both probed; the r12 ledger entry's
+  "sanitizes both sides" premise corrected under the repro) — so six
+  verdict lines printed a forged `inspect: … ACCEPTED (0
+  violations)` line on STDERR beside the real REJECTED verdict. All
+  six named sites ride the seam (plus the invalid-slug refusal, the
+  same class one grammar step earlier), and the verifier round
+  closed the residual the round's own claim missed: the MERGED
+  helper lines — main-file basenames, header values, the
+  version-constant value, the self-containment walk's landed paths
+  and include statements — render through the seam at the merge
+  (`wp_connectors_printable_lines()`), the helpers staying pure
+  producers (build and the conventions gate render them over the
+  repo's own trusted bytes; the inspector is the hostile-input
+  surface).
+- **The stored grant's provider id joins the ONE control-byte guard
+  (t31-r13-2)**: the trim screen alone let a `\n`-bearing provider id
+  construct, and `print_r()` of the grant forged a line BESIDE the
+  masked token set (reproduced) — the exact channel the r12-5 guard
+  closed on the pending flow's label. One `HeaderMap::
+  assert_no_control_bytes()` call in the private constructor — the
+  same callable, not a copy — holds for every produced grant
+  (in_state and every transition funnel through it).
+- **The use-walk's three fence predicates ride ONE owner each
+  (t31-r13-3)**: the builder's use-rewrite walk re-implemented the
+  detector's closure-use fence, statement-boundary tag set (r8-1),
+  and declaration-shape predicate (r8-10) — the third hand-rolled
+  copy of a vocabulary whose defect history is one copy drifting at
+  a time. Hoisted to `wp_connectors_use_opens_import()` /
+  `wp_connectors_is_use_statement_boundary()` /
+  `wp_connectors_namespace_opens_declaration()` with the provenance
+  comments moved into the owners; behavior-identical, pinned by the
+  existing batteries, a fifteen-case before/after differential
+  (byte-identical), and the verifier lens's own 70,000-input fuzz
+  (zero mismatches).
+- **Record precision, adopted and refuted (t31-r13-5)**: libzip's
+  captured `extractTo()` warning SUBSTITUTES control bytes with
+  visible glyphs (U+25D9/U+2190 — probed byte-level), it does not
+  omit them; and the verifier's counter-claim that `php -l` omits
+  the newline from a hostile filename was REFUTED (`od -c` shows the
+  raw byte inside the engine's message) — both php -l interpolations
+  stay load-bearing on this runtime.
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r12)
 
 Fix round over round-12's ten counted findings (four correctness, six

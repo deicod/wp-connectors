@@ -802,7 +802,50 @@ documented exception.
   (glibc resolves the restore through LOCPATH; a
   random-order flake, ~1 run in 3, fixed in-place).
   Suite 1581 → 1596 tests, 44540 → 44708
-  assertions, 2 skipped unchanged.
+  assertions, 2 skipped unchanged. Fix round
+  t31-r13 (five commits over round-13's three
+  counted findings — one MEDIUM security whose
+  fresh repro satisfied the ledger's re-open rule,
+  one LOW correctness, one cleanup — plus two
+  verifier-round commits): every inspector verdict
+  line renders archive-controlled names through
+  the ONE printable seam — the repro (a raw stored
+  zip's entry name survives getNameIndex()
+  byte-exact with its newline; neither ZipArchive
+  side sanitizes names, both probed) falsified the
+  r12 ledger entry's "does not reproduce" premise,
+  and the six sites it left open (plus the
+  invalid-slug refusal, the same class one grammar
+  step earlier) forged verdict lines beside the
+  real REJECTED verdict; StoredGrant's provider id
+  joins the r12-5 control-byte guard at the
+  constructor funnel (a '\n'-bearing label forged a
+  line beside the masked token set, reproduced);
+  and the use-rewrite walk's three fence predicates
+  (closure-use fence, r8-1 boundary set, r8-10
+  declaration shapes) hoisted to single owners in
+  plugin-tools.php — behavior-identical by
+  existing batteries plus a byte-identical
+  before/after differential. The round's two-lens
+  verifier pass raised ONE finding independently by
+  both lenses — the MERGED helper lines (main-file
+  names, header values, version-constant value,
+  self-containment paths and include text) still
+  interpolated archive-controlled bytes raw,
+  reproduced on every channel — fixed in-round as
+  t31-r13-4 (the seam rides the merge points; the
+  helpers stay pure producers over trusted repo
+  bytes); one precision item adopted (libzip's
+  captured warning SUBSTITUTES control bytes with
+  visible glyphs, probed byte-level) and one lens
+  claim REFUTED (php -l echoes the raw newline —
+  od -c). Two hardening boundaries ledgered with
+  their no-producer rationale (the seam's C0+DEL
+  class; the CLI argv channel); the dangling-
+  symlink build.json shape forwarded onto the r6
+  config-seam ledger line. Suite 1596 → 1599
+  tests, 44708 → 44742 assertions, 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
