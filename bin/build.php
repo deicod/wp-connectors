@@ -817,8 +817,22 @@ final class WpConnectorsBuild
     /**
      * Builds one plugin zip.
      *
+     * SOURCE LAYOUT COUPLING, stated (review round t31-r12-14, noted with
+     * zero second callers): the shared library an embed_shared plugin
+     * composes is read from dirname($distDir) . '/shared/src' — the
+     * repository's sibling layout (dist/ and shared/ beside each other
+     * under the repo root). The path is DERIVED, not a parameter, so a
+     * caller handing in a dist directory from any other layout embeds
+     * whatever tree happens to sit beside it: a missing directory
+     * refuses loudly ("requests shared code but … does not exist"), but
+     * a WRONG-content sibling embeds its PHP sources silently — the
+     * loud refusal covers absence, not identity. If a second caller
+     * with a different layout ever appears, parameterize the shared
+     * source root explicitly (ledgered); until then this method serves
+     * exactly the repository layout it lives in.
+     *
      * @param string $pluginDir Absolute plugin source directory.
-     * @param string $distDir   Absolute dist directory.
+     * @param string $distDir   Absolute dist directory (the shared library is read from its parent's shared/src sibling).
      * @return string Absolute path of the built zip.
      * @throws RuntimeException On invalid input or I/O failure.
      */
