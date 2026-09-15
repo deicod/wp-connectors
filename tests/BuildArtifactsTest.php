@@ -317,6 +317,44 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertSame($firstHash, $secondHash, 'Two builds of the same plugin must be byte-identical.');
     }
 
+    /**
+     * Review-round pin (t31-r12-6): the CLI success echo interpolated
+     * hash_file() unchecked, so a zip unreadable in the window between
+     * buildPlugin() returning and the echo printed 'sha256=' BLANK at
+     * exit 0 — the conflation the sidecar seam refuses at its own
+     * checksum step. The guarded helper owns the digest now: the
+     * refusal names the artifact, and the happy path is byte-identical.
+     */
+    public function testTheSuccessLineDigestRefusesWhenThePublishedZipCannotBeRead()
+    {
+        $zipPath = $this->buildFixture();
+        $this->assertSame(hash_file('sha256', $zipPath), WpConnectorsBuild::publishedChecksum($zipPath), 'The happy path keeps the exact digest the line printed before.');
+
+        // The deleted-zip window.
+        unlink($zipPath);
+        try {
+            WpConnectorsBuild::publishedChecksum($zipPath);
+            $this->fail('A vanished published zip must refuse the success-line digest, never print it blank.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('cannot checksum the published', $e->getMessage());
+            $this->assertStringContainsString(basename($zipPath), $e->getMessage(), 'The refusal names the artifact.');
+        }
+
+        // The chmod-000 window (non-root spelling, restored in finally).
+        $rebuilt = $this->buildFixture();
+        chmod($rebuilt, 0000);
+        try {
+            try {
+                WpConnectorsBuild::publishedChecksum($rebuilt);
+                $this->fail('An unreadable published zip must refuse the success-line digest.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('cannot checksum the published', $e->getMessage());
+            }
+        } finally {
+            chmod($rebuilt, 0644);
+        }
+    }
+
     public function testBuiltArtifactIsAcceptedByInspector()
     {
         $zipPath = $this->buildFixture();

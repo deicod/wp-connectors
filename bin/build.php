@@ -1414,6 +1414,35 @@ final class WpConnectorsBuild
     }
 
     /**
+     * The published archive's SHA-256 — the success line's own guarded
+     * hash (review round t31-r12-6).
+     *
+     * The CLI's success echo interpolated hash_file() unchecked, so a
+     * false return — the zip unreadable in the window between
+     * buildPlugin() returning and the echo (deleted or chmod-000 out of
+     * band) — printed 'sha256=' BLANK at exit 0: the exact blank-digest
+     * conflation this file already refuses for the sidecar at its own
+     * checksum step. Same guarded shape here: a hash failure refuses
+     * loudly (the CLI's catch prints the reason and exits non-zero),
+     * and the human-facing line never lies.
+     *
+     * @param string $zipPath Absolute path of the published zip.
+     * @return string The lowercase hex SHA-256.
+     * @throws RuntimeException When the published artifact cannot be read for hashing.
+     */
+    public static function publishedChecksum($zipPath)
+    {
+        // @: the diagnostic is suppressed, the failed return owned below
+        // (glm17-16) — the refusal is the build's own message.
+        $checksum = @hash_file('sha256', $zipPath);
+        if (false === $checksum) {
+            throw new RuntimeException("build: cannot checksum the published {$zipPath} — refusing to print a success line whose digest is blank (the artifact was unreadable at echo time)");
+        }
+
+        return $checksum;
+    }
+
+    /**
      * Finalizes the archive, refusing the build when finalization fails
      * (review round t31-r4-3; restructured by t31-r5-S).
      *
@@ -1797,7 +1826,11 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
     foreach ($targets as $target) {
         try {
             $zipPath = WpConnectorsBuild::buildPlugin($target, $distDir);
-            echo 'build: ' . basename($zipPath) . ' sha256=' . hash_file('sha256', $zipPath) . "\n";
+            // The digest is the guarded helper's (t31-r12-6): an
+            // unreadable published artifact refuses through the catch —
+            // exit non-zero, reason named — instead of printing a
+            // blank sha256= at exit 0.
+            echo 'build: ' . basename($zipPath) . ' sha256=' . WpConnectorsBuild::publishedChecksum($zipPath) . "\n";
         } catch (RuntimeException $e) {
             fwrite(STDERR, $e->getMessage() . "\n");
             $failed = true;
