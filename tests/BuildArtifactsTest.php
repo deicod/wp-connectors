@@ -3112,10 +3112,11 @@ FIXTURE;
      * family name — never matched the vendor predicate: the reference
      * shipped un-rewritten, class-not-found at runtime, both gates
      * green (reproduced red: zero family references under the pre-fix
-     * detector). The ADAPTATION carve-out is the pinned other half: a
-     * relative under a rewrite-owned tree (the source root, or the
-     * target root on rewritten bytes) adapts through the rewrite in any
-     * position and reports nothing.
+     * detector). The ADAPTATION carve-out is the pinned other half —
+     * CODE positions only since t31-r11-1 (a relative under a
+     * rewrite-owned tree adapts through the rewrite and reports
+     * nothing); the use position lost the carve-out there (see
+     * testARelativeUseImportIsRewrittenLikeAnyOtherFamilySpelling).
      */
     public function testARelativeOperatorResolvesAgainstTheDeclaredNamespaceBeforeTheFamilyPredicates(): void
     {
@@ -3161,8 +3162,10 @@ FIXTURE;
         $this->assertSame('Deicod\\WpConnectors\\Shared\\Clock', $found[0]['name']);
 
         // A relative USE spelling reports as 'relative', never 'use':
-        // the sweep treats use-position own-rooted imports as legal, and
-        // this spelling is not rewritten by anything.
+        // the kind's rewritable-position reading would wave it through
+        // the sweep — and since t31-r11-1 the rewriter OWNS the use
+        // position spelling (a survivor is a rewriter miss), so it can
+        // never ride the whitelist either.
         $relative_use = "<?php\nnamespace Deicod;\nuse namespace\\WpConnectors\\Shared\\Clock;\n";
         $found = wp_connectors_shared_family_references($relative_use);
         $this->assertSame('relative', $found[0]['kind'], 'A relative use spelling must not wear the use kind.');
@@ -3204,12 +3207,14 @@ FIXTURE;
         }
 
         /*
-         * The adaptation carve-out, both sides: under the SOURCE root
-         * the relative reports nothing (any position) and the rewrite
-         * passes its own postcondition — on the rewritten bytes the
-         * relative resolves under the TARGET root, which the consumer
-         * hands the detector, so it reports nothing there either: the
-         * spelling rides verbatim and adapts by construction.
+         * The adaptation carve-out, CODE positions only (t31-r11-1):
+         * under the SOURCE root the code-position relative reports
+         * nothing and the rewrite passes its own postcondition — on the
+         * rewritten bytes the relative resolves under the TARGET root,
+         * which the consumer hands the detector, so it reports nothing
+         * there either: the spelling rides verbatim and adapts by
+         * construction. The use position keeps no carve-out — the
+         * sibling test below pins its rewrite.
          */
         $adapting = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface FormsFixture\n{\n}\nfinal class Carrier\n{\n    public function self(): namespace\\FormsFixture\n    {\n        return new FormsFixture();\n    }\n}\n";
         $found = wp_connectors_shared_family_references($adapting);
@@ -3225,6 +3230,140 @@ FIXTURE;
             }, wp_connectors_shared_family_references($rewritten, 'Deicod\\WpConnectors\\OpenAiOauth\\Shared')),
             'On the rewritten bytes the relative resolves under the target root and reports nothing — the declaration is the only family reference (the ownership half of the carve-out).'
         );
+    }
+
+    /**
+     * Verifier-round pin (t31-r11-1): the rewriter owns the
+     * `namespace\`-relative USE spelling. A relative use statement is a
+     * parse error the engine never accepts (verified on 8.5.10), and
+     * the rewriter's patterns did not match the spelling — it rode
+     * verbatim through the rewrite, the postcondition (whose r8-2
+     * carve-out waived relatives under a rewrite-owned declaration),
+     * and the sweep, and the zip shipped the parse-error line at exit 0
+     * (the round's finding). The rewriter resolves the operator exactly
+     * as PHP does — the file's declared namespace plus the relative
+     * tail — applies the family rewrite to the RESOLVED name, and emits
+     * the fully-qualified rewritten import; relatives that cannot
+     * resolve within the family refuse loudly; the detector owns the
+     * spelling in use positions too (a survivor is a rewriter miss).
+     */
+    public function testARelativeUseImportIsRewrittenLikeAnyOtherFamilySpelling(): void
+    {
+        // THE REPRO, planted exactly as the round's finding planted it:
+        // a shared-root file importing through the relative operator.
+        // Pre-fix, the detector reported NOTHING for this file (the
+        // rewrite-ownership carve-out) and the rewriter shipped the
+        // parse-error line verbatim at exit 0.
+        $planted = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors\\Shared\\Clock\\SystemClock;\ninterface RelUseFixture\n{\n}\n";
+        $this->assertSame(
+            array(
+                array( 'name' => 'Deicod\\WpConnectors\\Shared', 'lower' => 'deicod\\wpconnectors\\shared', 'kind' => 'declaration', 'offset' => 16, 'line' => 2 ),
+                array( 'name' => 'Deicod\\WpConnectors\\Shared\\WpConnectors\\Shared\\Clock\\SystemClock', 'lower' => 'deicod\\wpconnectors\\shared\\wpconnectors\\shared\\clock\\systemclock', 'kind' => 'relative', 'offset' => 48, 'line' => 3 ),
+            ),
+            wp_connectors_shared_family_references($planted),
+            'A family-resolving relative USE statement reports under a rewrite-owned declaration too — the detector owns the spelling in use positions.'
+        );
+
+        // The rewrite direction: the file builds and ships REWRITTEN
+        // WORKING code — the resolved name (declared namespace plus the
+        // tail, the resolution PHP itself performs) mapped through the
+        // family rewrite, spelled as a fully-qualified import.
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($planted, 'OpenAiOauth', 'shared/src/RelUseFixture.php');
+        $this->assertStringContainsString('namespace Deicod\\WpConnectors\\OpenAiOauth\\Shared;', $rewritten, 'The declaration rewrites normally.');
+        $this->assertStringContainsString(
+            'use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\WpConnectors\\Shared\\Clock\\SystemClock;',
+            $rewritten,
+            'The relative import ships as the fully-qualified REWRITTEN resolution — the spelling is rewritten, never ridden.'
+        );
+        $this->assertStringNotContainsString('namespace\\', $rewritten, 'No relative spelling survives the rewrite.');
+
+        // "Working": the rewritten file parses — the pre-fix output was
+        // a parse error on this very line.
+        $probe = self::distDir() . '/.rel-use-probe.php';
+        file_put_contents($probe, $rewritten);
+        try {
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($probe) . ' 2>&1', $output, $exit);
+            $this->assertSame(0, $exit, 'The rewritten import must parse: ' . implode("\n", $output));
+        } finally {
+            @unlink($probe);
+        }
+
+        // The aliased and function/const forms rewrite through the same
+        // splice (only the name run's bytes are replaced).
+        $aliased = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock\\SystemClock as Clock;\nuse function namespace\\Clock\\now;\nuse const namespace\\Clock\\TICK;\ninterface AliasFixture\n{\n}\n";
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($aliased, 'OpenAiOauth', 'shared/src/AliasFixture.php');
+        $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\SystemClock as Clock;', $rewritten);
+        $this->assertStringContainsString('use function \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\now;', $rewritten);
+        $this->assertStringContainsString('use const \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\TICK;', $rewritten);
+
+        // A separator-INTERRUPTED relative (the walk reassembles; the
+        // splice replaces the whole run) resolves like its contiguous
+        // twin.
+        $interrupted = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors \\\n Shared \\ Clock;\ninterface InterruptedRelFixture\n{\n}\n";
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($interrupted, 'OpenAiOauth', 'shared/src/InterruptedRelFixture.php');
+        $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\WpConnectors\\Shared\\Clock;', $rewritten, 'An interrupted relative spelling is replaced whole, reassembled like its contiguous twin.');
+
+        // The other direction: a relative that ESCAPES the family —
+        // under a foreign declaration, where the resolution lands
+        // outside the vendor prefix — refuses loudly, never rides (in
+        // the output it would silently re-resolve against the
+        // REWRITTEN declaration, changing its meaning).
+        $escaping = "<?php\nnamespace Other\\Tree;\nuse namespace\\Foo\\Bar;\ninterface EscapeFixture\n{\n}\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($escaping, 'OpenAiOauth', 'shared/src/EscapeFixture.php');
+            $this->fail('An escaping relative use import must refuse the rewrite, never ride verbatim.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('outside the shared-namespace family', $e->getMessage());
+            $this->assertStringContainsString('Other\\Tree\\Foo\\Bar', $e->getMessage(), 'The refusal names the RESOLVED spelling.');
+        }
+
+        // A SIBLING resolution (family, but not under the rewrite's own
+        // tree) refuses too — the rewriter owns no sibling spelling.
+        $sibling = "<?php\nnamespace Deicod\\WpConnectors;\nuse namespace\\Zai\\Api;\ninterface SiblingFixture\n{\n}\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($sibling, 'OpenAiOauth', 'shared/src/SiblingFixture.php');
+            $this->fail('A sibling-resolving relative use import must refuse the rewrite.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('SIBLING', $e->getMessage());
+        }
+
+        // UNRESOLVABLE: no declaration in effect where the relative
+        // stands (and the multi-block resolution rule — the relative
+        // resolves against the declaration IN EFFECT, not the file's
+        // first).
+        $unresolvable = "<?php\nuse namespace\\Foo\\Bar;\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($unresolvable, 'OpenAiOauth', 'shared/src/NoDecl.php');
+            $this->fail('A relative with no declaration in effect must refuse the rewrite.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('cannot resolve', $e->getMessage());
+        }
+        $multi_block = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors\\Shared\\Clock;\nnamespace Other;\nuse namespace\\Baz;\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($multi_block, 'OpenAiOauth', 'shared/src/MultiBlock.php');
+            $this->fail('A relative resolving against a LATER block\'s foreign declaration must refuse, never resolve against the first block.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('outside the shared-namespace family', $e->getMessage(), 'The second block\'s relative resolves against the declaration in effect (Other), not the first block.');
+        }
+
+        // The group-use PREFIX shape — a parse-error spelling whose
+        // members the rewrite owns no map for — refuses by name.
+        $group_prefix = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors\\{Shared\\Clock};\ninterface GroupRelFixture\n{\n}\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($group_prefix, 'OpenAiOauth', 'shared/src/GroupRelFixture.php');
+            $this->fail('A relative group-use PREFIX must refuse the rewrite.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('group-use PREFIX', $e->getMessage());
+        }
+
+        // CODE positions are untouched — they adapt by construction
+        // (the r8-2 doctrine holds where its premise is true); the
+        // sibling test above pins the full both-sides shape.
+        $code_position = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class CodeRelCarrier\n{\n    public function self(): namespace\\FormsFixture\n    {\n        return new namespace\\FormsFixture();\n    }\n}\n";
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($code_position, 'OpenAiOauth', 'shared/src/CodeRelCarrier.php');
+        $this->assertStringContainsString('namespace\\FormsFixture', $rewritten, 'A code-position relative rides verbatim — it adapts through the rewritten declaration.');
     }
 
     /**

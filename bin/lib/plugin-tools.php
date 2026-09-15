@@ -989,13 +989,21 @@ function wp_connectors_unescape_php_string_literal($quote, $inner)
  *   invisible to it (a comment can only INTERRUPT a name run, never carry
  *   one), so the comment-interrupted spelling dies by construction;
  * - 'relative' — a `namespace\…` operator whose resolution against the
- *   file's declared namespace is a family name while the declared
- *   namespace itself is NOT a tree the rewrite owns (the source root, or
- *   the target root when judging rewritten bytes): such a spelling
- *   dangles inside the plugin, because the rewriter never touches it and
- *   the declaration it resolves against is never rewritten. A relative
- *   resolving under a rewrite-owned tree is legal in EVERY position —
- *   it adapts through the rewrite by construction (t31-r8-2);
+ *   file's declared namespace is a family name in a position the
+ *   rewrite does not carry through: EVERY family-resolving relative in
+ *   a USE position (verifier round t31-r11-1 — the r8-2 "adapts by
+ *   construction" premise is false there: a relative use statement is a
+ *   parse error PHP never accepts, so nothing ever adapts; the REWRITER
+ *   owns the spelling now, resolving it against the source declaration
+ *   and emitting the rewritten fully-qualified import, and a survivor
+ *   here is a rewriter miss), plus a relative in any other position
+ *   whose base is NOT a rewrite-owned tree (the source root, or the
+ *   target root when judging rewritten bytes): such a spelling dangles
+ *   inside the plugin, because the rewriter never touches it and the
+ *   declaration it resolves against is never rewritten. A relative in a
+ *   CODE position under a rewrite-owned tree stays legal — it adapts
+ *   through the rewrite by construction (t31-r8-2, still the doctrine
+ *   for the position where the premise holds);
  * - 'string' — a string literal (quoted, heredoc, or nowdoc) whose TEXT
  *   spells the family (the whitespace-tolerant pattern, so a value broken
  *   across lines still refuses, t31-r4-5's doctrine) OR whose runtime
@@ -1047,17 +1055,32 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * itself performs: declared namespace + '\' + the relative tail
      * (global namespace when nothing is declared yet).
      *
-     * THE ADAPTATION CARVE-OUT, and why a resolving relative is not a
-     * finding per se: a relative spelling resolves against WHATEVER the
-     * file declares, so when the declared namespace is a tree the
-     * rewrite OWNS (the source root — or the consumer's target root,
-     * judging already-rewritten bytes), the declaration is rewritten and
-     * the relative follows it: it adapts by construction, in any
-     * position (`namespace\FormsFixture` survives its file's rewrite
-     * resolving under the target — the pinned legal shape). Only a
-     * relative whose resolution is family WHILE its base is NOT
-     * rewrite-owned dangles inside the plugin, and exactly those are
-     * reported, under their own kind 'relative' — never 'use', whose
+     * THE ADAPTATION CARVE-OUT, restated for verifier round t31-r11-1:
+     * a relative spelling resolves against WHATEVER the file declares,
+     * so when the declared namespace is a tree the rewrite OWNS (the
+     * source root — or the consumer's target root, judging
+     * already-rewritten bytes), the declaration is rewritten and a
+     * relative in a CODE position follows it — it adapts by construction
+     * (`namespace\FormsFixture` survives its file's rewrite resolving
+     * under the target — the pinned legal shape). The r8 round extended
+     * that premise to EVERY position; it is FALSE in the use position:
+     * a relative USE statement is a parse error the engine never
+     * accepts (verified on 8.5.10 — `use namespace\Foo;` is a syntax
+     * error), so it adapts nowhere; it once rode the rewriter's
+     * patterns untouched and shipped inside the zip at exit 0. The
+     * rewriter owns the spelling now (it resolves the operator against
+     * the SOURCE declaration and rewrites it like any other family
+     * spelling), and the detector owns it in lockstep: every
+     * family-resolving relative in a USE position reports, base owned
+     * or not — on rewritten bytes that can only be a rewriter miss, and
+     * the build's postcondition refuses it; at the sweep the dev-time
+     * gate is the stricter verdict by design (the spelling is not one
+     * legal PHP accepts, so no shared source may carry it, while the
+     * build — meeting one anyway in planted bytes — rewrites it and
+     * ships working code). Code positions keep the ownership half, and
+     * a relative whose resolution is family WHILE its base is NOT
+     * rewrite-owned dangles in every position: exactly those report
+     * too, under the kind 'relative' — never 'use', whose
      * rewritable-position reading would wave an un-rewritable spelling
      * through the sweep while the build's postcondition refuses it.
      */
@@ -1093,7 +1116,15 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
         if (0 === strpos($reference['lower'], 'namespace\\')) {
             $tail_lower = substr($reference['lower'], strlen('namespace\\'));
             $resolved_lower = (null !== $declared_lower && '' !== $declared_lower ? $declared_lower . '\\' : '') . $tail_lower;
-            if ($is_family($resolved_lower) && (null === $declared_lower || ! $rewrite_owns($declared_lower))) {
+            /*
+             * The use position carries NO carve-out (t31-r11-1): the
+             * spelling never adapts (a parse error in PHP), so a
+             * family-resolving relative USE statement reports under a
+             * rewrite-owned base too — on rewritten bytes a survivor is
+             * a rewriter miss, and the postcondition must refuse it.
+             */
+            $use_position = 'use' === $reference['kind'];
+            if ($is_family($resolved_lower) && ($use_position || null === $declared_lower || ! $rewrite_owns($declared_lower))) {
                 $references[] = array(
                     'name' => (null !== $declared_lower && '' !== $declared_lower ? $declared_display . '\\' : '') . substr($reference['name'], strlen('namespace\\')),
                     'lower' => $resolved_lower,

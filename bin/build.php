@@ -87,6 +87,17 @@ final class WpConnectorsBuild
      * spelling this rewriter owns; the token walk is the AUTHORITY that
      * guarantees what they miss refuses the build instead of shipping.
      *
+     * Verifier round t31-r11-1: the rewriter owns the
+     * `namespace\`-RELATIVE use spelling too (rewriteRelativeUseImports()
+     * — resolved against the source declaration, then family-rewritten
+     * into the fully-qualified import). The r8-2 "relatives adapt by
+     * construction" premise is false in the use position: a relative
+     * use statement is a parse error the engine never accepts, and the
+     * spelling once rode every pattern and the postcondition's
+     * rewrite-ownership carve-out into the zip at exit 0. The detector's
+     * carve-out is gone in the use position, so a survivor now refuses
+     * the build here as well.
+     *
      * @param string $source        PHP source from shared/src.
      * @param string $pluginSuffix  Namespace segment, e.g. 'OpenAiOauth'.
      * @param string $sourceVersion Provenance string (repo-relative path/rev).
@@ -131,11 +142,28 @@ final class WpConnectorsBuild
 
         $escapedVersion = str_replace(array('\\', '$'), array('\\\\', '\\$'), (string) $sourceVersion);
         $provenance = "/**\n * Generated copy of {$escapedVersion} for this plugin's private namespace.\n * Do not edit here; change the shared source and rebuild.\n */\n";
+        /*
+         * The RELATIVE use step runs FIRST, against the source's own
+         * declaration (verifier round t31-r11-1): a `namespace\…`
+         * spelling resolves against whatever the file declares, and the
+         * bytes still declare the SOURCE tree here — after the
+         * declaration rewrite below, resolution would silently judge the
+         * rewritten tree (the adaptation fallacy). A relative USE
+         * statement is a parse error PHP never accepts (verified on
+         * 8.5.10), so nothing adapts it: the rewriter owns the spelling,
+         * resolves it exactly as PHP would, applies the family rewrite
+         * to the resolved name, and emits the fully-qualified rewritten
+         * import in its place. Relatives that cannot resolve within the
+         * family — no declaration to resolve against, an escaping
+         * resolution, or a sibling under the vendor prefix — refuse
+         * loudly here rather than riding verbatim into the plugin.
+         */
+        $rewritten = self::rewriteRelativeUseImports($source, $pluginSuffix, $sourceVersion);
         $rewritten = self::replaceOrThrow(
             preg_replace(
                 '/(namespace\s+)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
                 '$1' . $target_escaped . '$2',
-                $source
+                $rewritten
             ),
             'namespace declaration rewrite',
             $sourceVersion
@@ -322,6 +350,180 @@ final class WpConnectorsBuild
         }
 
         return $final;
+    }
+
+    /**
+     * Rewrites `namespace\`-relative USE imports into the plugin-private
+     * target — the t31-r11-1 seam.
+     *
+     * A relative USE statement (`use namespace\Foo\Bar;`) is a parse
+     * error PHP never accepts on any runtime (verified on 8.5.10:
+     * "syntax error, unexpected namespace-relative name"), and the
+     * rewrite's other patterns do not own the `namespace\` spelling —
+     * so it once rode verbatim through the rewrite, the postcondition
+     * (whose r8-2 carve-out waived relatives under a rewrite-owned
+     * declaration), and the sweep, and the zip shipped the parse-error
+     * line at exit 0. The doctrine this method implements: THE REWRITER
+     * OWNS THE SPELLING. It resolves the operator exactly as PHP does —
+     * the file's declared namespace plus the relative tail — applies
+     * the family rewrite to the RESOLVED name, and splices the
+     * fully-qualified rewritten import over the relative spelling's
+     * bytes (a fully-qualified import is legal in every use form:
+     * plain, aliased, `use function`, `use const`). Resolution happens
+     * against the SOURCE declaration, which is why this step runs
+     * before the declaration rewrite.
+     *
+     * Relatives that cannot be carried through the family rewrite
+     * refuse loudly, never ride: a file with no namespace declaration
+     * (unresolvable), a resolution landing outside the family
+     * (escaping — in the output it would silently re-resolve against
+     * the REWRITTEN declaration, changing its meaning), a resolution
+     * landing on a family SIBLING the rewrite owns no spelling of, and
+     * the group-use PREFIX shape (`use namespace\Foo\{Bar};` — a
+     * parse-error spelling whose members the rewrite owns no map for).
+     * Within the real build none of these can occur: the shared-source
+     * staging gate requires every shared file to declare a namespace
+     * under the tree root, so every relative resolves inside the owned
+     * tree. Code-position relatives are NOT this method's business —
+     * they resolve against the file's own declaration, which the
+     * rewrite rewrites, so they adapt by construction (the r8-2
+     * doctrine, still true in the position where its premise holds).
+     *
+     * @param string $source        PHP source from shared/src (still declaring the source tree).
+     * @param string $pluginSuffix  Namespace segment, e.g. 'OpenAiOauth' (already validated legal).
+     * @param string $sourceVersion Provenance string (diagnostics).
+     * @return string The source with every relative use import spliced to its rewritten fully-qualified form.
+     * @throws RuntimeException When a relative cannot be resolved within the family, or rides a shape the rewrite owns no map for.
+     */
+    private static function rewriteRelativeUseImports($source, $pluginSuffix, $sourceVersion)
+    {
+        $family_segments = explode('\\', wp_connectors_shared_source_namespace());
+        $vendor = implode('\\', array_slice($family_segments, 0, -1));
+        $family_leaf = (string) end($family_segments);
+        $root_lower = strtolower(implode('\\', $family_segments));
+        $vendor_lower = strtolower($vendor);
+
+        $tokens = token_get_all($source);
+        $count = count($tokens);
+
+        /*
+         * The file's namespace declarations in effect order, legal
+         * shapes only (the walk's own rule, r8-10: `namespace \X;` and
+         * other parse-error spellings must not corrupt the resolution
+         * base), each with the byte offset its name run starts at — a
+         * relative resolves against the declaration IN EFFECT where it
+         * stands, not the file's first (multi-block files).
+         */
+        $declarations = array();
+        $offset = 0;
+        for ($i = 0; $i < $count; ++$i) {
+            $token = $tokens[ $i ];
+            $id = is_array($token) ? $token[0] : null;
+            $text = is_array($token) ? $token[1] : $token;
+            $token_offset = $offset;
+            $offset += strlen($text);
+            if (T_NAMESPACE !== $id) {
+                continue;
+            }
+            $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
+            $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
+            if (T_STRING !== $follower_id && T_NAME_QUALIFIED !== $follower_id) {
+                continue;
+            }
+            $run = wp_connectors_name_run($tokens, $follower);
+            $declarations[] = array('offset' => $token_offset, 'display' => $run['name']);
+        }
+        $declaration_in_effect = static function (int $at_offset) use ($declarations): ?string {
+            $display = null;
+            foreach ($declarations as $declaration) {
+                if ($declaration['offset'] > $at_offset) {
+                    break;
+                }
+                $display = $declaration['display'];
+            }
+
+            return $display;
+        };
+
+        /*
+         * Every T_NAME_RELATIVE run inside an open use statement, with
+         * its byte extent — the run's tokens reassemble across trivia
+         * (wp_connectors_name_run()), and the splice covers first-token
+         * start through last-token end, so a separator-interrupted
+         * spelling is replaced whole. Collected in one pass, spliced in
+         * REVERSE byte order so earlier offsets stay true.
+         */
+        $splices = array();
+        $use_open = false;
+        $offset = 0;
+        for ($i = 0; $i < $count; ++$i) {
+            $token = $tokens[ $i ];
+            $id = is_array($token) ? $token[0] : null;
+            $text = is_array($token) ? $token[1] : $token;
+            $token_offset = $offset;
+            $offset += strlen($text);
+
+            if (T_USE === $id) {
+                // A closure's lexical `use (` is not an import (the
+                // walk's own fence).
+                $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
+                $use_open = null !== $follower && '(' !== $tokens[ $follower ];
+
+                continue;
+            }
+            if ($use_open && (';' === $token || T_CLOSE_TAG === $id || T_OPEN_TAG === $id || T_OPEN_TAG_WITH_ECHO === $id)) {
+                $use_open = false;
+
+                continue;
+            }
+            if (! ($use_open && T_NAME_RELATIVE === $id)) {
+                continue;
+            }
+
+            $run = wp_connectors_name_run($tokens, $i);
+            $run_end_offset = $token_offset;
+            for ($k = $i; $k <= $run['end']; ++$k) {
+                $run_end_offset += strlen(is_array($tokens[ $k ]) ? $tokens[ $k ][1] : $tokens[ $k ]);
+            }
+            $i = $run['end'];
+            $offset = $run_end_offset;
+
+            // The group-use PREFIX shape (`use namespace\Foo\{…}`): the
+            // rewrite owns no map for a relative prefix's members.
+            $next = wp_connectors_next_code_token_index($tokens, $i + 1);
+            if (null !== $next && T_NS_SEPARATOR === (is_array($tokens[ $next ]) ? $tokens[ $next ][0] : null)) {
+                $after_separator = wp_connectors_next_code_token_index($tokens, $next + 1);
+                if (null !== $after_separator && '{' === $tokens[ $after_separator ]) {
+                    throw new RuntimeException("build: a group-use PREFIX may not be a namespace-relative spelling ({$run['name']}) in {$sourceVersion} — the rewrite owns no map for such a prefix's members; write the family spelling");
+                }
+            }
+
+            $tail_display = (string) substr($run['name'], strlen('namespace\\'));
+            $declared_display = $declaration_in_effect($token_offset);
+            if (null === $declared_display || '' === $declared_display) {
+                throw new RuntimeException("build: the relative use import {$run['name']} in {$sourceVersion} cannot resolve — no namespace declaration is in effect there, and a relative spelling resolves against the file's own declaration");
+            }
+            $resolved_display = $declared_display . '\\' . $tail_display;
+            $resolved_lower = strtolower($resolved_display);
+            if ($resolved_lower !== $vendor_lower && 0 !== strpos($resolved_lower, $vendor_lower . '\\')) {
+                throw new RuntimeException("build: the relative use import {$run['name']} in {$sourceVersion} resolves to {$resolved_display}, outside the shared-namespace family — in the rewritten output it would silently re-resolve against the REWRITTEN declaration, so it refuses rather than riding with changed meaning");
+            }
+            if (0 !== strpos($resolved_lower, $root_lower . '\\')) {
+                throw new RuntimeException("build: the relative use import {$run['name']} in {$sourceVersion} resolves to {$resolved_display}, a SIBLING under the vendor prefix the rewrite owns no spelling of — write the shared tree's own namespace (or refuse by hand)");
+            }
+            $below_root = implode('\\', array_slice(explode('\\', $resolved_display), count($family_segments)));
+            $splices[] = array(
+                'start' => $token_offset,
+                'end' => $run_end_offset,
+                'replacement' => '\\' . $vendor . '\\' . $pluginSuffix . '\\' . $family_leaf . '\\' . $below_root,
+            );
+        }
+
+        for ($s = count($splices) - 1; $s >= 0; --$s) {
+            $source = substr($source, 0, $splices[ $s ]['start']) . $splices[ $s ]['replacement'] . substr($source, $splices[ $s ]['end']);
+        }
+
+        return $source;
     }
 
     /**
