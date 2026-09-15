@@ -1193,6 +1193,24 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $this->assertSame($from_source, $from_tokens, 'The token-stream walk and the source-taking wrapper report identical names, kinds, offsets, and lines.');
         $this->assertNotSame(array(), $from_tokens, 'The fixture must carry name runs (comment- and newline-interrupted) for the pin to bite.');
         $this->assertContains(array('Deicod\\WpConnectors\\Shared\\Clock', 'code', 204, 11), $from_tokens, 'The newline-interrupted run assembles with the token-line derivation.');
+
+        /*
+         * Verifier round t31-r8-11: ONE line semantics for both lenses.
+         * The engine counts a lone \r as a line terminator; the text
+         * lens's first "\n"-only count did not, so on a CR-only file
+         * the name lens and the text lens reported DIFFERENT lines
+         * within one detector run (and both drifted from the sweep's
+         * \R-splitting line reader). Both lenses ride the \R class now
+         * — pinned on the exact CR-only shape the drift was found on.
+         */
+        $cr_source = "<?php\rnamespace Deicod\\WpConnectors\\Shared;\r/** @see Deicod\\WpConnectors\\Zai\\Api */\r\$x = \\Deicod\\WpConnectors\\Zai\\ApiClient::class;\r";
+        foreach (wp_connectors_shared_family_references($cr_source) as $reference) {
+            if ('declaration' === $reference['kind']) {
+                continue;
+            }
+            $reader_line = substr_count(preg_replace('/\r\n|\r/', "\n", substr($cr_source, 0, $reference['offset'])), "\n") + 1;
+            $this->assertSame($reader_line, $reference['line'], sprintf('Every lens rides the \R line semantics: %s (kind %s) must report the reader\'s line.', $reference['name'], $reference['kind']));
+        }
     }
 
     /**

@@ -522,11 +522,14 @@ function wp_connectors_php_name_references($source)
  * with file:line bookkeeping a drift risk across the two streams).
  *
  * The walk needs nothing but the token stream: the 1-based line of a
- * reported run is its FIRST token's own line field — the engine
- * computes token lines from the same newlines the source-derived count
- * the wrapper's callers used to spell, so the two derivations agree by
- * construction (the run's first token is always an array token: name
- * token ids are never single-byte tokens).
+ * reported run is its FIRST token's own line field (the run's first
+ * token is always an array token: name token ids are never single-byte
+ * tokens). ONE line semantics for the whole detector: the engine
+ * counts \n, \r\n, and a lone \r as line terminators, and the text
+ * lens derives its lines with the same class (the \R reader at its
+ * push seam) — a "\n"-only count the lenses once spelled disagreed
+ * with the engine on lone-\r files, drifting the two lenses' lines
+ * apart inside one detector run (verifier round t31-r8-11).
  *
  * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
  * @return list<array{name: string, lower: string, kind: string, offset: int, line: int}>
@@ -997,13 +1000,27 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
         }
     }
     $patterns[] = wp_connectors_family_sibling_pattern( $sibling_exclusions );
-    $push_text_finding = function (string $kind, int $offset, string $spelling) use (&$references, $source): void {
+    /*
+     * The text lens's line derivation (t31-r8-11): the \R class is the
+     * engine's own line semantics for the terminators a PHP file
+     * carries (\n, \r\n, and a lone \r), and the reader the sweep's
+     * numberedLines() splits by — a "\n"-only count drifted from the
+     * name lens's token lines on lone-\r files, quoting the wrong
+     * source line in the refusal diagnostics. The count stays
+     * MATCH-precise (lines are read at the finding's offset, not the
+     * token's start — a finding deep inside a long docblock names its
+     * own line).
+     */
+    $line_of = static function (int $offset) use ($source): int {
+        return preg_match_all('/\R/', substr($source, 0, $offset), $line_matches) + 1;
+    };
+    $push_text_finding = function (string $kind, int $offset, string $spelling) use (&$references, $line_of): void {
         $references[] = array(
             'name' => $spelling,
             'lower' => 'pcre-abort' === $kind ? '' : strtolower(ltrim($spelling, '\\')),
             'kind' => $kind,
             'offset' => $offset,
-            'line' => substr_count($source, "\n", 0, $offset) + 1,
+            'line' => $line_of($offset),
         );
     };
     /*
