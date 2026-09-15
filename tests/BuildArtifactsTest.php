@@ -2924,7 +2924,12 @@ FIXTURE;
         $manifestPath = $scratch . '/dist/checksums.txt';
         try {
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
-            // A sibling plugin's entry rides the manifest.
+            // A sibling plugin's entry rides the manifest, and its
+            // artifact rides the dist beside it — under the t31-r12-7
+            // regeneration prune an entry survives exactly while its
+            // artifact exists, so the sibling's zip must be real for
+            // the survival half of this pin to mean anything.
+            file_put_contents($scratch . '/dist/connectors-other-demo-1.0.0.zip', 'sibling artifact bytes');
             file_put_contents($manifestPath, "connectors-other-demo-1.0.0.zip  " . str_repeat('a', 64) . "\n" . (string) file_get_contents($manifestPath));
             $manifestBefore = (string) file_get_contents($manifestPath);
             $zipBefore = (string) file_get_contents($zipPath);
@@ -2941,7 +2946,10 @@ FIXTURE;
             $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The sidecar survives the refused merge byte-for-byte.');
             $this->assertFileExists($manifestPath, 'The unreadable manifest is left exactly as found.');
 
-            // Recovery: readable again, the merge keeps every entry.
+            // Recovery: readable again, the merge keeps every LIVE
+            // entry — the sibling's artifact exists beside the manifest
+            // (the t31-r12-7 prune drops only entries whose artifact
+            // is gone).
             chmod($manifestPath, 0644);
             WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $rebuilt = (string) file_get_contents($manifestPath);
@@ -4431,6 +4439,73 @@ FIXTURE;
         }
     }
 
+    /*
+     * Manifest regeneration prunes (t31-r12-7): the header contract
+     * says "dist/checksums.txt is regenerated" — a connector whose zip
+     * is deleted out-of-band must not leave a stale line behind.
+     */
+
+    public function testManifestRegenerationDropsEntriesWhoseArtifactVanished()
+    {
+        $scratch = self::distDir() . '/.prune-manifest-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        try {
+            $plugins = array();
+            foreach (array('alpha-demo', 'beta-demo') as $slug) {
+                $plugins[$slug] = $this->makeMinimalPlugin($scratch . '/plugins', $slug);
+            }
+
+            $zipAlpha = WpConnectorsBuild::buildPlugin($plugins['alpha-demo'], $scratch . '/dist');
+            $zipBeta = WpConnectorsBuild::buildPlugin($plugins['beta-demo'], $scratch . '/dist');
+            $manifestPath = $scratch . '/dist/checksums.txt';
+            $lines = array_values(array_filter(explode("\n", (string) file_get_contents($manifestPath)), static function ($line): bool {
+                return '' !== $line;
+            }));
+            $this->assertCount(2, $lines, 'Both builds record their entries: ' . implode(' | ', $lines));
+
+            // The remove-a-connector scenario: its zip vanishes out of
+            // band, then ANY later build regenerates the manifest.
+            unlink($zipBeta);
+            WpConnectorsBuild::buildPlugin($plugins['alpha-demo'], $scratch . '/dist');
+
+            $lines = array_values(array_filter(explode("\n", (string) file_get_contents($manifestPath)), static function ($line): bool {
+                return '' !== $line;
+            }));
+            $this->assertCount(1, $lines, 'The vanished connector\'s entry is dropped by regeneration: ' . implode(' | ', $lines));
+            $this->assertStringContainsString(basename($zipAlpha), $lines[0]);
+
+            // Every surviving line verifies: the artifact it names
+            // exists beside the manifest and hashes to the recorded
+            // digest (the contract the stale line broke forever before).
+            foreach ($lines as $line) {
+                $parts = explode('  ', $line, 2);
+                $this->assertFileExists($scratch . '/dist/' . $parts[0], 'Every manifest line names an existing artifact.');
+                $this->assertSame($parts[1], hash_file('sha256', $scratch . '/dist/' . $parts[0]), 'Every manifest line carries the artifact\'s real digest.');
+            }
+
+            // A FAILED rebuild never touches the manifest (t31-r5-S,
+            // unchanged): the prune rides the successful merge only.
+            $manifestBefore = (string) file_get_contents($manifestPath);
+            $damaged = $plugins['beta-demo'] . '/beta-demo.php';
+            $source = (string) file_get_contents($damaged);
+            file_put_contents($damaged, str_replace('Plugin Name:', 'Plugin Void:', $source));
+            try {
+                WpConnectorsBuild::buildPlugin($plugins['beta-demo'], $scratch . '/dist');
+                $this->fail('A headerless plugin must refuse the build.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('no main plugin file', $e->getMessage());
+            } finally {
+                file_put_contents($damaged, $source);
+            }
+            $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'A failed run lands no manifest change, prune included.');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
     public function testNamespaceDerivationPreservesTheOpenAiAcronym()
     {
         // The documented namespace for the planned connectors/openai-oauth
@@ -4611,6 +4686,30 @@ FIXTURE;
         WpHarness::rrmdir($tmp);
 
         return $zipPath;
+    }
+
+    /**
+     * Creates one minimal VALID plugin directory (header, version
+     * constant, slug-derived PSR-4 autoloader) for in-process build
+     * tests — the same plugin shape makeBuildCliRepo writes for CLI
+     * runs, without the copied bin/ tree.
+     *
+     * @param string $root Parent directory (created implicitly).
+     * @param string $slug Plugin slug.
+     * @return string Absolute plugin directory.
+     */
+    private function makeMinimalPlugin(string $root, string $slug): string
+    {
+        $pluginDir = $root . '/' . $slug;
+        mkdir($pluginDir . '/src', 0755, true);
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( '" . strtoupper(str_replace('-', '_', $slug)) . "_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        file_put_contents($pluginDir . '/' . $slug . '.php', $main);
+        $suffix = wp_connectors_namespace_suffix_from_slug($slug);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\{$suffix}\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($pluginDir . '/src/autoload.php', $autoload);
+
+        return $pluginDir;
     }
 
     /**

@@ -12,7 +12,8 @@
  * files are staged with a fixed mtime and permissions and zipped in sorted
  * order, the repository LICENSE is embedded, shared OAuth source is copied
  * under the plugin's own namespace when the plugin opts in via build.json,
- * and every zip gets a SHA-256 checksum (dist/checksums.txt is regenerated).
+ * and every zip gets a SHA-256 checksum (dist/checksums.txt is regenerated:
+ * entries whose artifact no longer sits beside it are dropped).
  * A plugin is REFUSED when the shared convention checks fail — headers,
  * exactly one main plugin file, version constant matching the header
  * Version, self-containment, autoloader shape — so a mislabeled zip (e.g. a
@@ -1289,7 +1290,9 @@ final class WpConnectorsBuild
      *
      * The manifest stays per-run-atomic — a run updates only the entries
      * of the plugin(s) it built (manifestLinesWithout() keeps every other
-     * line byte-for-byte) and lands whole — but the staging file is now
+     * line byte-for-byte while its artifact exists beside the manifest,
+     * and drops the stale remainder per t31-r12-7) and lands whole — but
+     * the staging file is now
      * tempnam()-unique: the fixed '<manifest>.tmp' spelling made two
      * concurrent builds interleave their stage writes (the round's
      * two-process race), whichever rename landed last shipping a mix of
@@ -1357,11 +1360,14 @@ final class WpConnectorsBuild
      *
      * The ONE entry filter the publication merge rides (verifier round
      * t31-r3-16): a run rewrites only its own zip's entry and keeps
-     * every other line byte-for-byte, so the two halves of the merge
-     * cannot drift on what counts as an entry line. (The mid-build
-     * failure-path consumer — the entry scrub that removed a corrupted
-     * artifact's entry after the fact — died with t31-r5-S: a failure
-     * now never touches the manifest the run did not land.)
+     * every other line byte-for-byte — SO LONG AS its artifact still
+     * sits beside the manifest (t31-r12-7's regeneration prune: an
+     * entry whose zip no longer exists beside checksums.txt is the
+     * stale line the header's "regenerated" contract drops, never a
+     * fact to preserve). (The mid-build failure-path consumer — the
+     * entry scrub that removed a corrupted artifact's entry after the
+     * fact — died with t31-r5-S: a failure now never touches the
+     * manifest the run did not land.)
      *
      * @param string $manifestPath Absolute checksums.txt path.
      * @param string $zipName      Zip basename the entry names.
@@ -1389,6 +1395,25 @@ final class WpConnectorsBuild
             }
             foreach (explode("\n", $raw) as $line) {
                 if ($line === '' || strpos($line, $zipName . '  ') === 0) {
+                    continue;
+                }
+                /*
+                 * Regeneration DROPS entries whose artifact no longer
+                 * sits beside the manifest (review round t31-r12-7,
+                 * making behavior match the header's own "checksums.txt
+                 * is regenerated" contract): the merge once kept every
+                 * other line byte-for-byte forever, so a connector whose
+                 * zip was deleted out-of-band left a line naming an
+                 * artifact that no longer exists — checksum verification
+                 * then failed on every future check while every build
+                 * exited 0 (reproduced). A malformed line (no
+                 * 'name  checksum' shape) names no artifact and dies by
+                 * the same rule. The prune runs INSIDE the merge lock,
+                 * so a concurrent run only ever prunes against the
+                 * LANDED artifact set.
+                 */
+                $entry_name = strstr($line, '  ', true);
+                if (false === $entry_name || ! is_file(dirname($manifestPath) . '/' . $entry_name)) {
                     continue;
                 }
                 $manifest[] = $line;
@@ -1815,11 +1840,15 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
      * rebuild, its sidecars orphaned (reproduced). Each buildPlugin()
      * run merges only its own zip's entry into whatever manifest exists
      * and lands the result atomically (temp + rename), so entries
-     * survive partial rebuilds and failed runs whole. The manifest is a
-     * record of what was built and checksummed, not an inventory: a zip
-     * deleted out-of-band leaves its entry behind (verifier note,
-     * ledgered) — the two pinned invariants are that no run destroys an
-     * entry it did not build and no failure leaves a half-written file.
+     * survive partial rebuilds and failed runs whole — and the merge
+     * PRUNES (review round t31-r12-7, superseding the old "a zip
+     * deleted out-of-band leaves its entry behind" verifier note): an
+     * entry whose artifact no longer sits beside the manifest is the
+     * stale line the header's "checksums.txt is regenerated" contract
+     * drops, so the manifest stays an inventory whose every line names
+     * an existing artifact. The two pinned invariants: no run drops an
+     * entry whose artifact still exists beside the manifest, and no
+     * failure leaves a half-written file.
      */
 
     $failed = false;
