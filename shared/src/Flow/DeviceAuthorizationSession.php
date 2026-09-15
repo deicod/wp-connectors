@@ -22,6 +22,7 @@ namespace Deicod\WpConnectors\Shared\Flow;
 
 use DateTimeImmutable;
 use Deicod\WpConnectors\Shared\Http\Url;
+use Deicod\WpConnectors\Shared\Support\SecretMask;
 use InvalidArgumentException;
 
 /**
@@ -160,5 +161,32 @@ final class DeviceAuthorizationSession {
 	 */
 	public function expires_at(): DateTimeImmutable {
 		return $this->expires_at;
+	}
+
+	/**
+	 * Safe debug rendering for the serialization channel — print_r(),
+	 * var_dump(), and every debugger that walks object properties
+	 * (verifier round t31-r11-5).
+	 *
+	 * The device code is the poll credential (RFC 8628 §3.2 — the
+	 * client's proof at the token endpoint); the user code is masked
+	 * beside it, conservative by design: it is the pairing capability
+	 * that binds an authorization to this session at the verification
+	 * page, and a dump is a display surface, not a trust boundary. Both
+	 * mask through the one vocabulary (SecretMask::mask()); the
+	 * verification URI and the timing facts are public.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> Masked codes plus the public facts, never containing the credentials.
+	 */
+	public function __debugInfo(): array {
+		return array(
+			'device_code'      => SecretMask::mask( $this->device_code ),
+			'user_code'        => SecretMask::mask( $this->user_code ),
+			'verification_uri' => $this->verification_uri,
+			'interval_seconds' => $this->interval_seconds,
+			'expires_at'       => $this->expires_at,
+		);
 	}
 }

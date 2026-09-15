@@ -13,6 +13,7 @@ declare(strict_types=1);
 use Deicod\WpConnectors\Shared\Clock\ClockInterface;
 use Deicod\WpConnectors\Shared\Clock\SystemClock;
 use Deicod\WpConnectors\Shared\Support\InstantArithmetic;
+use Deicod\WpConnectors\Shared\Support\SecretMask;
 use Deicod\WpConnectors\Shared\Token\AccessTokenSet;
 
 final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCase
@@ -711,5 +712,33 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
             0,
             InstantArithmetic::minus_seconds(new \DateTimeImmutable('@0'), 0)->getTimestamp()
         );
+    }
+
+    /**
+     * Verifier-round pin (t31-r11-5): the SERIALIZATION channel rides
+     * the redaction contract. print_r()/var_dump() dump the raw
+     * property tree when a class defines no __debugInfo() — both token
+     * positions rendered in full (reproduced pre-fix). Both mask
+     * through the one vocabulary (SecretMask, the same owner the
+     * header renders ride); the public facts dump as themselves.
+     */
+    public function testTheSerializationChannelDumpsMaskedTokens(): void
+    {
+        $access = FakeSecrets::accessToken();
+        $refresh = FakeSecrets::refreshToken();
+        $set = new AccessTokenSet($access, $refresh, 3600, new \DateTimeImmutable('2026-09-13T10:00:00+00:00'));
+
+        $dumped = print_r($set, true);
+        $this->assertStringNotContainsString($access, $dumped, 'The dump must never carry the raw access token.');
+        $this->assertStringNotContainsString($refresh, $dumped, 'The dump must never carry the raw refresh token.');
+        $this->assertStringContainsString((string) SecretMask::mask($access), $dumped, 'The access token dumps in its masked form.');
+        $this->assertStringContainsString((string) SecretMask::mask($refresh), $dumped, 'The refresh token dumps in its masked form.');
+        $this->assertStringContainsString('3600', $dumped, 'The public lifetime fact dumps as itself.');
+
+        // The null refresh stays null — a fact, never a masked spelling.
+        $no_refresh = new AccessTokenSet($access, null, 3600, new \DateTimeImmutable('2026-09-13T10:00:00+00:00'));
+        $dumped = print_r($no_refresh, true);
+        $this->assertStringNotContainsString($access, $dumped, 'The no-refresh set dumps masked too.');
+        $this->assertStringContainsString((string) SecretMask::mask($access), $dumped);
     }
 }

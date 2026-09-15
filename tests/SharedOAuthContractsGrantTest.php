@@ -447,4 +447,27 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $storage->delete('fixture-provider');
         $this->assertNull($storage->load('fixture-provider'));
     }
+
+    /**
+     * Verifier-round pin (t31-r11-5): the SERIALIZATION channel rides
+     * the redaction contract. The grant's secret material lives in its
+     * token set; without __debugInfo() the engine dumped the raw
+     * property tree — both tokens in full through the nested set
+     * (reproduced pre-fix). The grant's dump renders the public facts
+     * and reaches the tokens only through the set's own masked dump —
+     * one vocabulary, no second masking decision to drift.
+     */
+    public function testTheSerializationChannelDumpsTheGrantWithMaskedTokens(): void
+    {
+        // One set, one grant: the fixture secrets are random per call, so
+        // the assertions must hold the SAME instance the dump carried.
+        $set = $this->tokenSet();
+        $grant = StoredGrant::in_state('fixture-provider', 3, GrantState::Connected, $set);
+        $dumped = print_r($grant, true);
+
+        $this->assertStringContainsString('fixture-provider', $dumped, 'The public provider fact dumps as itself.');
+        $this->assertStringNotContainsString($set->access_token(), $dumped, 'The dump must never carry the raw access token.');
+        $this->assertStringNotContainsString($set->refresh_token(), $dumped, 'The dump must never carry the raw refresh token.');
+        $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($set->access_token()), $dumped, 'The nested token set dumps in its masked form.');
+    }
 }

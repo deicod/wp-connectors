@@ -14,6 +14,10 @@
  * entirely. A request carrying an Authorization header, a
  * token-bearing URL, or a token-bearing body therefore cannot leak it
  * through any string interpolation, log call, or exception message.
+ * The SERIALIZATION channel rides the same contract: __debugInfo()
+ * (t31-r11-5) mirrors the masked vocabulary, so print_r()/var_dump()
+ * and every debugger view render the redacted URL, the masked header
+ * map, and an omitted body — never the raw property tree.
  *
  * @since 0.1.0
  *
@@ -223,6 +227,33 @@ final class HttpRequest {
 		$lines[] = '[body omitted]';
 
 		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Safe debug rendering for the serialization channel — print_r(),
+	 * var_dump(), and every debugger that walks object properties
+	 * (verifier round t31-r11-5).
+	 *
+	 * The redaction contract above enumerated the string cast's three
+	 * vectors but not this one: without __debugInfo() the engine dumps
+	 * the raw property tree — the full URL (query and userinfo are
+	 * credentials by the contract's own doctrine), every raw header
+	 * value (Authorization, cookies), and the body. The dump mirrors
+	 * __toString()'s vocabulary exactly — redacted URL, the masked
+	 * header map (HeaderMap's own __debugInfo owner), body omitted — so
+	 * the string form and the serialized form cannot drift.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The masked debug fields, never containing secrets.
+	 */
+	public function __debugInfo(): array {
+		return array(
+			'method'       => $this->method,
+			'redacted_url' => $this->redacted_url,
+			'headers'      => $this->headers->masked_headers(),
+			'body'         => '[body omitted]',
+		);
 	}
 
 	/**

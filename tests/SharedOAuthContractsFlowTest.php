@@ -213,4 +213,40 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
 
         PendingAuthorization::for_pkce(7, ' ', PkceCodePair::from_verifier(FakeSecrets::codeVerifier()), new \DateTimeImmutable());
     }
+
+    /**
+     * Verifier-round pin (t31-r11-5): the SERIALIZATION channel rides
+     * the redaction contract. Without __debugInfo() the engine dumped
+     * the raw property tree — the PKCE verifier (RFC 7636's
+     * confidential half) and both device-flow codes (the poll
+     * credential and the pairing capability) rendered in full
+     * (reproduced pre-fix). Each masks through the one vocabulary
+     * (SecretMask), the public halves (challenge, verification URI)
+     * dump as themselves, and the nesting carrier (PendingAuthorization)
+     * needs no mask of its own — the engine applies the payload's
+     * __debugInfo at every level.
+     */
+    public function testTheSerializationChannelDumpsMaskedFlowCredentials(): void
+    {
+        $verifier = FakeSecrets::codeVerifier();
+        $pair = PkceCodePair::from_verifier($verifier);
+
+        $dumped = print_r($pair, true);
+        $this->assertStringNotContainsString($verifier, $dumped, 'The dump must never carry the confidential verifier.');
+        $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($verifier), $dumped, 'The verifier dumps in its masked form.');
+        $this->assertStringContainsString($pair->code_challenge(), $dumped, 'The public challenge half dumps as itself — it travels in the authorization request.');
+
+        $device_code = FakeSecrets::deviceCode();
+        $user_code = 'BCJK-3502';
+        $session = new DeviceAuthorizationSession($device_code, $user_code, 'https://example.com/device', 5, new \DateTimeImmutable('+10 minutes'));
+
+        $dumped = print_r($session, true);
+        $this->assertStringNotContainsString($device_code, $dumped, 'The dump must never carry the device code (the poll credential).');
+        $this->assertStringNotContainsString($user_code, $dumped, 'The user code masks too — the pairing capability is not dump material.');
+        $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($device_code), $dumped, 'The device code dumps in its masked form.');
+        $this->assertStringContainsString('https://example.com/device', $dumped, 'The public verification URI dumps as itself.');
+
+        $pending = PendingAuthorization::for_pkce(7, 'fixture-provider', $pair, new \DateTimeImmutable());
+        $this->assertStringNotContainsString($verifier, print_r($pending, true), 'A nesting carrier reaches its payload only through the payload\'s own masked dump.');
+    }
 }

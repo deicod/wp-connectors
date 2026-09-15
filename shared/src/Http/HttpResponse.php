@@ -153,4 +153,26 @@ final class HttpResponse {
 
 		return implode( "\n", $lines );
 	}
+
+	/**
+	 * Safe debug rendering for the serialization channel — print_r(),
+	 * var_dump(), and every debugger that walks object properties
+	 * (verifier round t31-r11-5).
+	 *
+	 * Mirrors __toString()'s vocabulary: the masked header map
+	 * (HeaderMap's own __debugInfo owner — Set-Cookie and friends mask
+	 * there), body omitted. Without it the engine dumps the raw
+	 * property tree, token material included.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The masked debug fields, never containing secrets.
+	 */
+	public function __debugInfo(): array {
+		return array(
+			'status'  => $this->status,
+			'headers' => $this->headers->masked_headers(),
+			'body'    => '[body omitted]',
+		);
+	}
 }

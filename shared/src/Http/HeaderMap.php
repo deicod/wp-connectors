@@ -280,10 +280,72 @@ final class HeaderMap {
 	public function rendered_lines(): array {
 		$lines = array();
 		foreach ( $this->headers_by_lowercase as [ $name, $value ] ) {
-			$rendered = SecretMask::is_sensitive_header_name( $name ) ? SecretMask::mask( $value ) : $value;
-			$lines[]  = $name . ': ' . SecretMask::utf8_for_safe_render( $rendered );
+			$lines[] = $name . ': ' . $this->rendered_value( $name, $value );
 		}
 
 		return $lines;
+	}
+
+	/**
+	 * The masked map form of the same render — name => safe value, in
+	 * construction order (verifier round t31-r11-5).
+	 *
+	 * The value side is rendered_lines()'s own, by the same owner:
+	 * sensitive names (the SecretMask vocabulary) masked, every other
+	 * value verbatim-but-safe-for-render. This is the shape the
+	 * serialization channel (__debugInfo()) carries — a MAP keys a
+	 * debugger view, where rendered_lines()'s 'Name: value' lines serve
+	 * the string forms.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, string> Name (as constructed) => safe value, never containing secrets, always valid UTF-8.
+	 */
+	public function masked_headers(): array {
+		$masked = array();
+		foreach ( $this->headers_by_lowercase as [ $name, $value ] ) {
+			$masked[ $name ] = $this->rendered_value( $name, $value );
+		}
+
+		return $masked;
+	}
+
+	/**
+	 * Safe debug rendering for the serialization channel — print_r(),
+	 * var_dump(), and every debugger that walks object properties
+	 * (verifier round t31-r11-5).
+	 *
+	 * The r1 redaction contract enumerated three vectors — the string
+	 * cast, the redacted URL, the masked header lines — but not this
+	 * one: without __debugInfo() the engine dumps the raw property
+	 * tree, and an Authorization value (or a session cookie) renders in
+	 * full. The dump mirrors the masked map (masked_headers(), the same
+	 * render owner as rendered_lines()), so the two channels cannot
+	 * drift.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The masked map, wrapped under 'headers'.
+	 */
+	public function __debugInfo(): array {
+		return array( 'headers' => $this->masked_headers() );
+	}
+
+	/**
+	 * One header value in its safe rendered form — the ONE render
+	 * decision both header surfaces ride (verifier round t31-r11-5:
+	 * the line form and the map form were one inline expression apart,
+	 * a future edit away from drifting).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $name  Header name (as constructed).
+	 * @param string $value Header value (raw).
+	 * @return string Masked when the name is sensitive, else verbatim — always valid UTF-8, never a secret.
+	 */
+	private function rendered_value( string $name, string $value ): string {
+		$rendered = SecretMask::is_sensitive_header_name( $name ) ? SecretMask::mask( $value ) : $value;
+
+		return SecretMask::utf8_for_safe_render( $rendered );
 	}
 }

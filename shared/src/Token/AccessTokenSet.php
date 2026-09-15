@@ -33,6 +33,7 @@ namespace Deicod\WpConnectors\Shared\Token;
 use DateTimeImmutable;
 use DateTimeZone;
 use Deicod\WpConnectors\Shared\Support\InstantArithmetic;
+use Deicod\WpConnectors\Shared\Support\SecretMask;
 use InvalidArgumentException;
 
 /**
@@ -311,6 +312,32 @@ final class AccessTokenSet {
 	 */
 	public function expires_at(): DateTimeImmutable {
 		return $this->expires_at;
+	}
+
+	/**
+	 * Safe debug rendering for the serialization channel — print_r(),
+	 * var_dump(), and every debugger that walks object properties
+	 * (verifier round t31-r11-5).
+	 *
+	 * Both token positions ARE the secret; the r1 redaction contract
+	 * enumerated the rendered surfaces but not this one, and without
+	 * __debugInfo() the engine dumps the raw property tree — the access
+	 * and refresh tokens in full. Both mask through the one vocabulary
+	 * (SecretMask::mask(), the same owner the header renders ride); the
+	 * non-secret facts (lifetime, instants) render as themselves.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> Masked tokens plus the public facts, never containing token material.
+	 */
+	public function __debugInfo(): array {
+		return array(
+			'access_token'  => SecretMask::mask( $this->access_token ),
+			'refresh_token' => null === $this->refresh_token ? null : SecretMask::mask( $this->refresh_token ),
+			'expires_in'    => $this->expires_in,
+			'obtained_at'   => $this->obtained_at,
+			'expires_at'    => $this->expires_at,
+		);
 	}
 
 	/**

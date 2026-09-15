@@ -188,6 +188,30 @@ final class StoredGrant {
 	}
 
 	/**
+	 * Safe debug rendering for the serialization channel — print_r(),
+	 * var_dump(), and every debugger that walks object properties
+	 * (verifier round t31-r11-5).
+	 *
+	 * The grant itself is public facts (provider, generation, state);
+	 * its secret material lives in the token set, whose own
+	 * __debugInfo() masks both token positions. The nested object
+	 * renders through that mask — one vocabulary, no second masking
+	 * decision to drift.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The grant's public facts with the token set's masked dump.
+	 */
+	public function __debugInfo(): array {
+		return array(
+			'provider_id' => $this->provider_id,
+			'generation'  => $this->generation,
+			'state'       => $this->state,
+			'token_set'   => $this->token_set,
+		);
+	}
+
+	/**
 	 * Grant with a replaced token set (same generation, same state).
 	 *
 	 * The refresh-commit path's shape; the generation decision belongs to

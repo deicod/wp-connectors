@@ -18,6 +18,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Shared\Flow;
 
+use Deicod\WpConnectors\Shared\Support\SecretMask;
 use InvalidArgumentException;
 
 /**
@@ -117,5 +118,28 @@ final class PkceCodePair {
 	 */
 	public function code_challenge(): string {
 		return $this->code_challenge;
+	}
+
+	/**
+	 * Safe debug rendering for the serialization channel — print_r(),
+	 * var_dump(), and every debugger that walks object properties
+	 * (verifier round t31-r11-5).
+	 *
+	 * The verifier is the confidential half (RFC 7636 §4.1: the client
+	 * keeps it secret until the token request); the challenge is its
+	 * one-way derivative and travels in the authorization request, so
+	 * it is public by construction. The dump masks the verifier through
+	 * the one vocabulary (SecretMask::mask()) and renders the challenge
+	 * as itself.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The masked verifier beside the public challenge, never containing the confidential half.
+	 */
+	public function __debugInfo(): array {
+		return array(
+			'code_verifier'  => SecretMask::mask( $this->code_verifier ),
+			'code_challenge' => $this->code_challenge,
+		);
 	}
 }

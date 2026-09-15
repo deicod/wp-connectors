@@ -1310,4 +1310,51 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $owner = (string) file_get_contents((new \ReflectionClass(HeaderMap::class))->getFileName());
         $this->assertStringContainsString('isset( $this->headers_by_lowercase[ $folded ] )', $owner);
     }
+
+    /**
+     * Verifier-round pin (t31-r11-5): the SERIALIZATION channel rides
+     * the redaction contract. The r1 contract enumerated three vectors
+     * — the string cast, the redacted URL, the masked header lines —
+     * but not print_r()/var_dump(): without __debugInfo() the engine
+     * dumps the raw property tree, and an Authorization value, a
+     * token-bearing query, and the body rendered in full (reproduced
+     * pre-fix). Every secret-carrying VO's dump mirrors the masked
+     * vocabulary now — one render owner for headers (the same decision
+     * rendered_lines() rides), redacted URL, omitted body.
+     */
+    public function testTheSerializationChannelDumpsMaskedFormsNeverRawSecrets(): void
+    {
+        $token = FakeSecrets::accessToken();
+
+        $request = new HttpRequest(
+            'POST',
+            'https://user:pw@host.example/token?client_secret=' . $token,
+            array('Authorization' => 'Bearer ' . $token, 'X-Request-Id' => 'abc-123'),
+            '{"client_secret":"' . $token . '"}'
+        );
+        $dumped = print_r($request, true);
+        $this->assertStringNotContainsString($token, $dumped, 'The request dump must never carry the raw token — not via the URL, a header, or the body.');
+        $this->assertStringNotContainsString('user:pw', $dumped, 'Userinfo is credentials by the contract\'s own doctrine.');
+        $this->assertStringNotContainsString('client_secret=', $dumped, 'The query is dropped with the redacted URL.');
+        $this->assertStringContainsString('[body omitted]', $dumped, 'The dump mirrors the string form\'s body vocabulary.');
+        $this->assertStringContainsString((string) SecretMask::mask('Bearer ' . $token), $dumped, 'The Authorization value dumps in its masked form — the same render the string form carries.');
+        $this->assertStringContainsString('abc-123', $dumped, 'A non-sensitive value dumps verbatim, same as it renders.');
+        $this->assertStringContainsString('https://host.example/token', $dumped, 'The dump carries the REDACTED URL spelling.');
+
+        $response = new HttpResponse(200, array('Set-Cookie' => 'session=' . $token), 'token=' . $token);
+        $dumped = print_r($response, true);
+        $this->assertStringNotContainsString($token, $dumped, 'The response dump must never carry the raw session secret — not via Set-Cookie nor the body.');
+        $this->assertStringContainsString((string) SecretMask::mask('session=' . $token), $dumped, 'The Set-Cookie value dumps masked.');
+        $this->assertStringContainsString('[body omitted]', $dumped);
+
+        // The map owner's own dump is the same masked vocabulary, and
+        // var_dump (the other engine dumper) honors it too.
+        $map = new HeaderMap(array('X-Api-Key' => $token));
+        $this->assertStringNotContainsString($token, print_r($map, true), 'The header map dump masks its sensitive values.');
+        $this->assertStringNotContainsString($token, print_r(array($request, $response, $map), true), 'Nested dumps honor the mask — the engine applies __debugInfo at every level.');
+        ob_start();
+        var_dump($request);
+        $var_dumped = (string) ob_get_clean();
+        $this->assertStringNotContainsString($token, $var_dumped, 'var_dump rides the same masked dump.');
+    }
 }
