@@ -165,10 +165,45 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     }
     mkdir($workDir, 0755, true);
     try {
+        /*
+         * Both extraction returns are OWNED (review round t31-r12-1): the
+         * unchecked open()/extractTo() pair let a PARTIAL extraction
+         * inspect green — a zip carrying an entry whose name exceeds the
+         * filesystem's NAME_MAX (reproduced: a 300-byte path component)
+         * makes extractTo() return false mid-tree, the engine warning
+         * leaked raw to output, and every check below ran over whatever
+         * subset HAD extracted while the never-extracted remainder (the
+         * webshell and the live key behind it) was judged by nobody —
+         * ACCEPTED, 0 violations, exit 0. A failure to open or extract
+         * the whole archive is now a refusal naming the reason (the
+         * captured engine diagnostic — silenced, never leaked raw), and
+         * NO content check runs over a partial tree: the artifact is
+         * judged whole or not at all.
+         */
         $zip = new ZipArchive();
-        $zip->open($zipPath);
-        $zip->extractTo($workDir);
+        if (true !== $zip->open($zipPath)) {
+            $violations[] = sprintf('inspect: cannot open %s as a zip archive for independent extraction.', basename($zipPath));
+
+            return $violations;
+        }
+        $extract_reason = '';
+        set_error_handler(static function ( $errno, $errstr ) use ( &$extract_reason ) {
+            $extract_reason = (string) $errstr;
+
+            return true;
+        });
+        $extracted = $zip->extractTo($workDir);
+        restore_error_handler();
         $zip->close();
+        if (true !== $extracted) {
+            $violations[] = sprintf(
+                'inspect: cannot extract %s — %s; the artifact is judged whole or not at all, never over a partial extraction tree.',
+                basename($zipPath),
+                '' !== $extract_reason ? $extract_reason : 'extraction returned failure without a diagnostic'
+            );
+
+            return $violations;
+        }
 
         $pluginDir = $workDir . '/' . $slug;
         if (! is_dir($pluginDir)) {

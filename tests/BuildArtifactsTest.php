@@ -414,6 +414,59 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * Partial extraction (t31-r12-1): an entry whose name exceeds the
+     * filesystem's NAME_MAX makes extractTo() fail MID-TREE.
+     */
+
+    public function testInspectorRefusesLoudlyOverAPartialExtractionTree()
+    {
+        $slug = 'partextract-demo';
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'PARTEXTRACT_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\PartextractDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString("{$slug}/{$slug}.php", $main);
+        $zip->addFromString("{$slug}/src/autoload.php", $autoload);
+        // The >NAME_MAX entry: extraction of the tree fails at this entry.
+        $zip->addFromString("{$slug}/assets/" . str_repeat('a', 300) . '.php', "<?php\n");
+        // The payload a partial tree must never wave through: a live-shaped
+        // provider key (runtime-random via the fixture factory — never a
+        // literal) sitting BEHIND the never-extracted remainder.
+        $zip->addFromString("{$slug}/src/Keys.php", "<?php\n// key = " . FakeSecrets::zaiShapedKey() . "\n");
+        $zip->close();
+
+        /*
+         * The engine's raw warning must not leak: with every error class
+         * reported and display_errors forced on, the call's captured
+         * output stays empty and the refusal carries the reason instead.
+         * (Pre-fix, the warning escaped to output AND the artifact
+         * inspected ACCEPTED at 0 violations — both pinned red here.)
+         */
+        $level = error_reporting(E_ALL);
+        $display = ini_set('display_errors', '1');
+        ob_start();
+        try {
+            $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-partial');
+            $leaked = (string) ob_get_contents();
+        } finally {
+            ob_end_clean();
+            ini_set('display_errors', (string) $display);
+            error_reporting($level);
+        }
+
+        $this->assertSame('', $leaked, 'The engine warning must not leak raw to output; the refusal names the reason.');
+        $this->assertCount(
+            1,
+            $violations,
+            'The extraction refusal is the ONLY verdict — no header, syntax, or secret check runs over a partial tree: ' . implode("\n", $violations)
+        );
+        $this->assertStringContainsString('cannot extract', $violations[0]);
+        $this->assertDirectoryDoesNotExist(self::distDir() . '/.inspect-partial', 'The partial tree is cleaned up on the refusing path too.');
+    }
+
+    /*
      * Root-file archives (finding: the sole top-level entry is a FILE).
      */
 
