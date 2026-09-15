@@ -231,9 +231,18 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 
             return $violations;
         }
+        /*
+         * The captured diagnostic renders through the ONE printable
+         * seam (verifier round t31-r12-19, the security lens): the
+         * engine warning interpolates the hostile ENTRY NAME, and a
+         * 250+-byte component with an embedded newline (or an ANSI
+         * escape) otherwise forges lines — or rewrites the terminal —
+         * inside the inspector's own STDERR output. The refusal still
+         * names the reason; the reason can no longer forge one.
+         */
         $extract_reason = '';
         set_error_handler(static function ( $errno, $errstr ) use ( &$extract_reason ) {
-            $extract_reason = (string) $errstr;
+            $extract_reason = wp_connectors_printable((string) $errstr);
 
             return true;
         });

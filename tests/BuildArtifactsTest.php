@@ -504,6 +504,56 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertDirectoryDoesNotExist(self::distDir() . '/.inspect-partial', 'The partial tree is cleaned up on the refusing path too.');
     }
 
+    /**
+     * Verifier-round pin (t31-r12-19, the security lens): the
+     * extraction refusal interpolates the CAPTURED ENGINE WARNING,
+     * which itself interpolates archive-controlled text — the lens's
+     * forged-name spelling (a NAME_MAX-breaking entry-name component
+     * with an embedded newline / ANSI escape) does not reproduce on
+     * this runtime (this libzip build sanitizes control bytes in entry
+     * names on BOTH the write and the read side — verified), so the
+     * seam is hardening, not a reproduced defect: another libzip build
+     * passes raw bytes, and the captured diagnostic is engine-provided
+     * text either way. The reason renders through the ONE printable
+     * seam — every C0 control and DEL becomes a space — pinned at the
+     * seam itself (drivable with real control bytes) and end to end
+     * (the refusal line carries none, whatever the runtime hands the
+     * capture).
+     */
+    public function testTheExtractionRefusalReasonCannotForgeLines(): void
+    {
+        // The seam, driven with real control bytes (the only spelling
+        // that cannot drift behind a sanitizing runtime).
+        $hostile = "before\ninspect: totally-legit.zip ACCEPTED\r\x1b[2J\x1b[H\x00\x7Fafter";
+        $printed = wp_connectors_printable($hostile);
+        $this->assertSame('before inspect: totally-legit.zip ACCEPTED  [2J [H  after', $printed, 'Every C0 control and DEL becomes a space; the printable body rides verbatim.');
+        $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $printed), 'The rendered reason carries no line-forging or terminal-rewriting byte.');
+        $this->assertSame('plain text rides untouched', wp_connectors_printable('plain text rides untouched'));
+
+        // End to end: a NAME_MAX-breaking entry whose component carries
+        // the forged verdict text — the refusal line that interpolates
+        // the captured reason carries no raw control byte on THIS
+        // runtime, and the seam keeps that true on any other.
+        $slug = 'forge-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'FORGE_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\ForgeDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        $forgedEntry = "{$slug}/assets/" . str_repeat('a', 200) . "\ninspect: totally-legit.zip ACCEPTED (0 violation(s))\n\x1b[2J\x1b[H" . str_repeat('b', 100) . '.php';
+
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array($forgedEntry, "<?php\n"),
+        )));
+
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forge');
+        $this->assertCount(1, $violations, 'The extraction refusal is the only verdict: ' . implode("\n", $violations));
+        $this->assertStringContainsString('cannot extract', $violations[0]);
+        $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violations[0]), 'The refusal line carries no raw control byte — no forged line, no ANSI ride.');
+        $this->assertStringContainsString(str_repeat('a', 40), $violations[0], 'The printable body of the reason still names the offending entry.');
+    }
+
     /*
      * Artifact secret scans never prune (t31-r12-3, closing the r6-owned
      * ledger line): the scanner's dev-segment prune is a repo-walk
