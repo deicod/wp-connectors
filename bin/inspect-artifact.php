@@ -134,10 +134,12 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          */
         /*
          * The embed-territory judgment rides the ONE owner
-         * (t31-r12-10): wp_connectors_is_embed_destination() folds case
-         * exactly like the builder's collision fence, so any casing of
-         * the generated subtree is classified (never content-judged) as
-         * embed territory on both sides.
+         * (t31-r12-10, corrected t31-r12-16):
+         * wp_connectors_is_embed_destination() matches the CANONICAL
+         * prefix the builder generates — a case-variant spelling is
+         * foreign (the builder's case-insensitive fence refuses the
+         * whole tree that carries one), so its segments judge by the
+         * vocabulary below, per the t31-r12-3 signal doctrine.
          */
         $isEmbeddedShared = wp_connectors_is_embed_destination($name, $parts[0]);
         // Segment check (whole path components; a basename is one),

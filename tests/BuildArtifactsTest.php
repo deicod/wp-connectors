@@ -667,11 +667,16 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
-     * One embed-territory owner, both sides (t31-r12-10): the writer
-     * spelled the destination with a case-insensitive collision fence
-     * while the inspector's exemption was byte-exact — a case-variant
-     * spelling of the prefix was refused by the build and judged as
-     * plugin-owned by inspection.
+     * One embed-territory owner, two fold roles (t31-r12-10, corrected
+     * by its verifier round t31-r12-16): the writer's collision fence
+     * folds case (any case-variant of a generated destination refuses
+     * the build — pinned by the r5-16 battery), while the inspector's
+     * exemption matches the CANONICAL prefix only — a case-variant
+     * spelling is foreign (no builder-produced zip carries one), and
+     * its segments judge by the development-entry vocabulary. The
+     * first cut folded the exemption too, and both verifier lenses
+     * reproduced the regression: a hostile zip's 'SRC/SHARED/
+     * composer.json' went REJECTED → ACCEPTED at exit 0.
      */
 
     public function testEmbedTerritoryIsJudgedByOneOwnerOnBothSides(): void
@@ -681,37 +686,48 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $main = "<?php\n/**\n * {$head} */\ndefine( 'EMBEDCASE_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\EmbedcaseDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
 
-        // The owner's own fold: every casing of the prefix is embed
-        // territory; another slug's tree never is.
-        $this->assertTrue(wp_connectors_is_embed_destination("{$slug}/SRC/Shared/vendor/notes.txt", $slug), 'A case-variant embed prefix is embed territory.');
-        $this->assertTrue(wp_connectors_is_embed_destination("{$slug}/src/shared/x.php", $slug));
+        // The owner's own judgment: the canonical spelling is embed
+        // territory; case variants and other slugs' trees are not.
+        $this->assertTrue(wp_connectors_is_embed_destination("{$slug}/src/Shared/vendor/notes.txt", $slug), 'The canonical embed prefix is embed territory.');
+        $this->assertFalse(wp_connectors_is_embed_destination("{$slug}/SRC/Shared/vendor/notes.txt", $slug), 'A case-variant prefix is FOREIGN territory — the builder\'s fence refuses the tree that carries one.');
         $this->assertFalse(wp_connectors_is_embed_destination("other-slug/src/Shared/x.php", $slug), 'Another plugin\'s embed tree is not this slug\'s territory.');
 
-        // Inspector side, classification: a case-variant embed prefix
-        // over a dev-entry name exempts the DEV-ENTRY vocabulary only
-        // (the writer's fence fold, unified) — the zip inspects clean.
+        // The verifier lenses' regression, pinned: a hostile zip's
+        // case-variant embed territory carrying dev artifacts REFUSES —
+        // the pre-round byte-exact verdict, restored.
         $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
         $zip = new ZipArchive();
         $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
         $zip->addFromString("{$slug}/{$slug}.php", $main);
         $zip->addFromString("{$slug}/src/autoload.php", $autoload);
-        $zip->addFromString("{$slug}/SRC/Shared/vendor/notes.txt", "vendored dependency notes\n");
+        $zip->addFromString("{$slug}/SRC/SHARED/composer.json", "{}\n");
+        $zip->addFromString("{$slug}/SRC/SHARED/phpunit.xml", "<phpunit/>\n");
+        $zip->close();
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('development entry', $flat, 'A case-variant embed prefix is foreign: the dev artifacts under it are visible to the vocabulary again.');
+        $this->assertStringContainsString('composer.json', $flat);
+
+        // The CANONICAL territory stays exempt from classification
+        // (shared/src has no exclusion concepts, t31-r5-5) — and the
+        // exemption never exempts content (t31-r12-3): a live key
+        // under the canonical prefix rejects through the unpruned scan.
+        $key = 'AKIA' . strtoupper(bin2hex(random_bytes(8)));
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString("{$slug}/{$slug}.php", $main);
+        $zip->addFromString("{$slug}/src/autoload.php", $autoload);
+        $zip->addFromString("{$slug}/src/Shared/vendor/notes.txt", "vendored dependency notes\n");
         $zip->close();
         $this->assertSame(
             array(),
             wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase'),
-            'A case-variant embed prefix is classified as embed territory on both sides — the builder\'s fence fold, not a byte-exact exemption.'
+            'The canonical embed territory stays exempt from classification — the t31-r5-5 doctrine unchanged.'
         );
-
-        // The exemption never exempts CONTENT (the over-exempt guard):
-        // the same case-variant territory carrying a live-shaped key is
-        // rejected by the unpruned artifact scan (t31-r12-3).
-        $key = 'AKIA' . strtoupper(bin2hex(random_bytes(8)));
         $zip->open($zipPath);
-        $zip->addFromString("{$slug}/SRC/Shared/vendor/keys.txt", "aws = {$key}\n");
+        $zip->addFromString("{$slug}/src/Shared/vendor/keys.txt", "aws = {$key}\n");
         $zip->close();
         $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase');
-        $this->assertStringContainsString('aws-key', implode("\n", $violations), 'The folded exemption is classification-only: content checks still judge the case-variant territory.');
+        $this->assertStringContainsString('aws-key', implode("\n", $violations), 'The exemption is classification-only: content checks still judge the canonical territory.');
     }
 
     /*

@@ -3166,9 +3166,12 @@ function wp_connectors_is_development_entry($segment)
  * was refused by the build (the fence folds) while inspection judged it
  * as plugin-owned (the exemption did not): two verdicts on one
  * destination. ONE owner now: the writer builds every destination from
- * this prefix, and the inspector judges embed territory through
- * wp_connectors_is_embed_destination() below, folding case exactly as
- * the writer's fence does — the stricter semantics, never the looser.
+ * this prefix. The two FOLD ROLES stay distinct BY DOCTRINE
+ * (t31-r12-16): the writer's collision fence folds case (any
+ * case-variant of a generated destination refuses the build — the
+ * stricter collision semantics), while the inspector's exemption below
+ * matches the canonical spelling only (a case-variant is foreign, and
+ * its segments judge by the development-entry vocabulary).
  *
  * @param string $slug Plugin slug (the zip's top-level directory).
  * @return string The prefix every embed destination rides ('<slug>/src/Shared/').
@@ -3180,24 +3183,33 @@ function wp_connectors_embed_destination_prefix($slug)
 
 /**
  * Whether a zip entry path sits inside the embed destination subtree —
- * CASE-INSENSITIVELY, the writer's fence fold (review round t31-r12-10).
+ * the CANONICAL spelling only (review round t31-r12-10, corrected by
+ * its verifier round t31-r12-16).
  *
- * The classification exemption this feeds (the inspector exempts the
- * embedded subtree from the development-entry vocabulary, t31-r5-5)
- * folds exactly like the builder's collision fence: any casing of
- * 'src/Shared/' is generated territory by the builder's own doctrine
- * (a plugin-owned case-variant there REFUSES the build). The fold
- * exempts CLASSIFICATION only — traversal, syntax, secret, and
- * self-containment checks still judge every entry under it, so the
- * wider exemption never exempts content.
+ * The exemption this feeds (the inspector exempts the embedded subtree
+ * from the development-entry vocabulary, t31-r5-5) matches the prefix
+ * the builder actually GENERATES — byte-exact — because a case-variant
+ * spelling of the territory is foreign by the builder's own doctrine:
+ * the writer's collision fence is the case-insensitive half (a
+ * plugin-owned case-variant of an embed destination REFUSES the whole
+ * build), so no builder-produced zip ever carries 'SRC/SHARED/…', and
+ * an artifact that does is exactly the "a dev segment appearing in an
+ * artifact IS the signal" posture of t31-r12-3 — its segments judge by
+ * the vocabulary. (The first cut of t31-r12-10 folded the EXEMPTION
+ * with the fence; the verifier lenses reproduced the regression — a
+ * hostile zip's 'zai/SRC/SHARED/composer.json' went REJECTED →
+ * ACCEPTED at exit 0 — and the fold came back out: the fence's fold is
+ * the writer's collision check, never the inspector's exemption.)
+ * Content screens (traversal, syntax, secrets, self-containment)
+ * judge every entry under the exempted territory regardless.
  *
  * @param string $entry Zip entry path.
  * @param string $slug  The archive's top-level plugin directory.
- * @return bool True when the entry sits under the embed destination in any casing.
+ * @return bool True when the entry sits under the canonically-spelled embed destination.
  */
 function wp_connectors_is_embed_destination($entry, $slug)
 {
-    return 0 === stripos((string) $entry, wp_connectors_embed_destination_prefix($slug));
+    return 0 === strpos((string) $entry, wp_connectors_embed_destination_prefix($slug));
 }
 
 /**
