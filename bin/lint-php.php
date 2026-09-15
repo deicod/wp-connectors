@@ -10,55 +10,66 @@
 
 declare(strict_types=1);
 
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
-
 require_once __DIR__ . '/lib/plugin-tools.php';
 
-$roots = array(__DIR__ . '/../connectors', __DIR__ . '/../shared', __DIR__ . '/../bin', __DIR__ . '/../tests');
-$exclude = array('vendor', 'tools', 'dist', 'node_modules', '.git', '.phpunit.cache');
+if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
+    /*
+     * Diagnostics for the CLI run ONLY (t31-r10-3, the t31-r9-4 class
+     * already fixed in build.php, inspect-artifact.php,
+     * check-conventions.php, and scan-secrets.php): at file top these
+     * two calls — and the whole walk, and the exit() — executed in every
+     * process that REQUIRED the file too, so a php-cli host with
+     * display_errors off had it flipped on process-wide just by loading
+     * a library. The file scope carries only the require now.
+     */
+    error_reporting(E_ALL);
+    ini_set('display_errors', '1');
 
-$files = array();
-foreach ($roots as $root) {
-    if (!is_dir($root)) {
-        continue;
-    }
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
-    );
-    foreach ($iterator as $file) {
-        /** @var SplFileInfo $file */
-        // The extension judgment rides the ONE case-insensitive owner
-        // (verifier note on t31-r4-9): a '.PHP'-spelled source is as
-        // loadable as any other and must not escape the lint gate.
-        if (! wp_connectors_is_php_source($file->getPathname())) {
+    $roots = array(__DIR__ . '/../connectors', __DIR__ . '/../shared', __DIR__ . '/../bin', __DIR__ . '/../tests');
+    $exclude = array('vendor', 'tools', 'dist', 'node_modules', '.git', '.phpunit.cache');
+
+    $files = array();
+    foreach ($roots as $root) {
+        if (!is_dir($root)) {
             continue;
         }
-        $parts = explode(DIRECTORY_SEPARATOR, $file->getPathname());
-        if (array_intersect($parts, $exclude) !== array()) {
-            continue;
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            /** @var SplFileInfo $file */
+            // The extension judgment rides the ONE case-insensitive owner
+            // (verifier note on t31-r4-9): a '.PHP'-spelled source is as
+            // loadable as any other and must not escape the lint gate.
+            if (! wp_connectors_is_php_source($file->getPathname())) {
+                continue;
+            }
+            $parts = explode(DIRECTORY_SEPARATOR, $file->getPathname());
+            if (array_intersect($parts, $exclude) !== array()) {
+                continue;
+            }
+            $files[] = $file->getPathname();
         }
-        $files[] = $file->getPathname();
     }
-}
 
-sort($files);
-if ($files === array()) {
-    fwrite(STDERR, "lint-php: no PHP files found (unexpected)\n");
-    exit(1);
-}
-
-$php = escapeshellarg(PHP_BINARY);
-$failures = 0;
-foreach ($files as $path) {
-    $output = array();
-    $exit = 0;
-    exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($path)), $output, $exit);
-    if ($exit !== 0) {
-        ++$failures;
-        fwrite(STDERR, implode("\n", $output) . "\n");
+    sort($files);
+    if ($files === array()) {
+        fwrite(STDERR, "lint-php: no PHP files found (unexpected)\n");
+        exit(1);
     }
-}
 
-printf("lint-php: %d file(s) checked, %d failure(s)\n", count($files), $failures);
-exit($failures === 0 ? 0 : 1);
+    $php = escapeshellarg(PHP_BINARY);
+    $failures = 0;
+    foreach ($files as $path) {
+        $output = array();
+        $exit = 0;
+        exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($path)), $output, $exit);
+        if ($exit !== 0) {
+            ++$failures;
+            fwrite(STDERR, implode("\n", $output) . "\n");
+        }
+    }
+
+    printf("lint-php: %d file(s) checked, %d failure(s)\n", count($files), $failures);
+    exit($failures === 0 ? 0 : 1);
+}
