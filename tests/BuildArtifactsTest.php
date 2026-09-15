@@ -3462,6 +3462,32 @@ FIXTURE;
             $this->assertStringContainsString('group-use PREFIX', $e->getMessage());
         }
 
+        /*
+         * Verifier round t31-r11-9 (raised by both lenses): a relative
+         * standing INSIDE a group body once spliced a LEADING-BACKSLASH
+         * name into the member list — a spelling the grammar forbids —
+         * and the postcondition waved it through (the absolute member
+         * reports as a target-rooted 'use' reference), so the build
+         * shipped one parse error in place of another at exit 0
+         * (reproduced end-to-end through the real builder). Every such
+         * member refuses loudly now.
+         */
+        $group_members = array(
+            'plain member' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Other\\{namespace\\Clock};\ninterface GroupMemberFixture\n{\n}\n",
+            'aliased member' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Other\\{namespace\\Clock as C};\ninterface GroupMemberFixture\n{\n}\n",
+            'function member' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse function Other\\{namespace\\Clock\\now};\ninterface GroupMemberFixture\n{\n}\n",
+            'family-prefixed group' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{namespace\\Shared\\Clock};\ninterface GroupMemberFixture\n{\n}\n",
+            'second member of a list' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Other\\{Foo, namespace\\Clock};\ninterface GroupMemberFixture\n{\n}\n",
+        );
+        foreach ($group_members as $label => $source) {
+            try {
+                WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/GroupMemberFixture.php');
+                $this->fail("A relative group-use MEMBER must refuse the rewrite, never splice an illegal fully-qualified member ({$label}).");
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('group-use MEMBER', $e->getMessage(), "The refusal names the member shape ({$label}).");
+            }
+        }
+
         // CODE positions are untouched — they adapt by construction
         // (the r8-2 doctrine holds where its premise is true); the
         // sibling test above pins the full both-sides shape.

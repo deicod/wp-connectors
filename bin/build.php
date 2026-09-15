@@ -378,9 +378,13 @@ final class WpConnectorsBuild
      * (unresolvable), a resolution landing outside the family
      * (escaping — in the output it would silently re-resolve against
      * the REWRITTEN declaration, changing its meaning), a resolution
-     * landing on a family SIBLING the rewrite owns no spelling of, and
-     * the group-use PREFIX shape (`use namespace\Foo\{Bar};` — a
-     * parse-error spelling whose members the rewrite owns no map for).
+     * landing on a family SIBLING the rewrite owns no spelling of, the
+     * group-use PREFIX shape (`use namespace\Foo\{Bar};` — a
+     * parse-error spelling whose members the rewrite owns no map for),
+     * and any relative standing inside a group BODY
+     * (`use Other\{namespace\Foo};` — the grammar forbids the
+     * fully-qualified member the rewrite would emit, verifier round
+     * t31-r11-9, so the rewrite owns no map for such a member either).
      * Within the real build none of these can occur: the shared-source
      * staging gate requires every shared file to declare a namespace
      * under the tree root, so every relative resolves inside the owned
@@ -455,6 +459,7 @@ final class WpConnectorsBuild
          */
         $splices = array();
         $use_open = false;
+        $group_depth = 0;
         $offset = 0;
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[ $i ];
@@ -468,16 +473,51 @@ final class WpConnectorsBuild
                 // walk's own fence).
                 $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
                 $use_open = null !== $follower && '(' !== $tokens[ $follower ];
+                $group_depth = 0;
 
                 continue;
             }
             if ($use_open && (';' === $token || T_CLOSE_TAG === $id || T_OPEN_TAG === $id || T_OPEN_TAG_WITH_ECHO === $id)) {
                 $use_open = false;
+                $group_depth = 0;
+
+                continue;
+            }
+            if ($use_open && '{' === $token) {
+                ++$group_depth;
+
+                continue;
+            }
+            if ($use_open && '}' === $token) {
+                --$group_depth;
+                if ($group_depth < 0) {
+                    $group_depth = 0;
+                }
 
                 continue;
             }
             if (! ($use_open && T_NAME_RELATIVE === $id)) {
                 continue;
+            }
+
+            /*
+             * The group-use MEMBER shape (verifier round t31-r11-9,
+             * raised by both lenses): a T_NAME_RELATIVE standing INSIDE
+             * a brace body (`use Other\{namespace\Clock};`) resolves
+             * family by construction (declaration in effect + tail),
+             * and the splice below would emit a LEADING-BACKSLASH name
+             * into the member list — a spelling the grammar forbids
+             * ("unexpected fully qualified name, expecting identifier
+             * or namespaced name", verified on 8.5.10). The rewriter
+             * would manufacture one parse error out of another and the
+             * postcondition would wave it through (the absolute member
+             * reports un-composed with the 'use' kind, target-prefixed
+             * — the allow rule at the postcondition). Refuse loudly,
+             * same as the prefix shape below: the rewrite owns no map
+             * for such a member.
+             */
+            if ($group_depth > 0) {
+                throw new RuntimeException("build: a group-use MEMBER may not be a namespace-relative spelling ({$token[1]}) in {$sourceVersion} — the engine forbids the fully-qualified member the rewrite would emit, so the rewrite owns no map for such a member; write the family spelling");
             }
 
             $run = wp_connectors_name_run($tokens, $i);
