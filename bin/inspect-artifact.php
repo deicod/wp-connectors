@@ -248,8 +248,23 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
             }
         }
 
-        // No development credentials inside artifacts.
-        foreach (wp_connectors_scan_paths(array( $pluginDir )) as $secretFinding) {
+        /*
+         * No development credentials inside artifacts — the scan runs
+         * UNPRUNED (review round t31-r12-3, closing the round-6 ledger
+         * line): wp_connectors_scan_paths()'s dev-segment prune is a
+         * repository-walk concept, and the tree a zip actually ships has
+         * no dev segments by construction (the builder's collector drops
+         * them by the one development-entry vocabulary) — so a pruned
+         * segment inside an extracted artifact is itself the anomaly,
+         * never a reason to stop reading. The src/Shared dev-entry
+         * exemption above composes with this exactly: it exempts
+         * CLASSIFICATION (a shared source may live under src/Shared/
+         * tools/), while this scan still judges every file the artifact
+         * ships under it — the r6 HIGH had a live key at
+         * <slug>/src/Shared/vendor/keys.txt inspect ACCEPTED while the
+         * identical key one directory up rejected (reproduced).
+         */
+        foreach (wp_connectors_scan_paths(array( $pluginDir ), false) as $secretFinding) {
             $violations[] = 'inspect: ' . str_replace($workDir . '/', '', $secretFinding);
         }
 

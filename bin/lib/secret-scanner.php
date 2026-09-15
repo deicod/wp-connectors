@@ -151,13 +151,31 @@ function wp_connectors_scan_string($contents, $label)
 /**
  * Recursively scans files under given roots.
  *
- * @param list<string> $roots Absolute paths (files or directories).
+ * The segment prune is a DEV-TREE concept (review round t31-r12-3,
+ * closing the round-6 ledger line's named fix shape): the repository
+ * scan skips segments no source ever lives in — but a scan of an
+ * EXTRACTED ARTIFACT must never prune inside it. The builder never
+ * ships dev segments (the collector drops them by the one
+ * development-entry vocabulary), so a 'vendor'-shaped segment inside a
+ * shipped tree is not a place to skip reading, it IS the signal: the
+ * r6 HIGH had a live key at <slug>/src/Shared/vendor/keys.txt inspect
+ * ACCEPTED while the identical key at src/Shared/keys.txt rejected
+ * (reproduced) — the src/Shared dev-entry exemption exempts
+ * CLASSIFICATION, never the content judgment. Artifact scans pass
+ * false; the repository scan keeps the prune. (The prune list itself
+ * stays the repo walk's own traversal concept — a SUBSET of the one
+ * development-entry vocabulary, not a second vocabulary: pruning more
+ * of it would blind the repo scan to root config files it covers by
+ * contract.)
+ *
+ * @param list<string> $roots               Absolute paths (files or directories).
+ * @param bool         $prune_dev_segments  Whether to skip development-tree segments (the repository scan's concept; artifact scans never prune).
  * @return list<string> Findings.
  */
-function wp_connectors_scan_paths(array $roots)
+function wp_connectors_scan_paths(array $roots, $prune_dev_segments = true)
 {
     $findings = array();
-    $excluded = array( '.git', 'vendor', 'node_modules', 'dist', 'tools', '.phpunit.cache' );
+    $excluded = $prune_dev_segments ? array( '.git', 'vendor', 'node_modules', 'dist', 'tools', '.phpunit.cache' ) : array();
     foreach ($roots as $root) {
         if (is_file($root)) {
             $findings = array_merge($findings, wp_connectors_scan_string((string) file_get_contents($root), $root));

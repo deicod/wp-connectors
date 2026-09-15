@@ -467,6 +467,57 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * Artifact secret scans never prune (t31-r12-3, closing the r6-owned
+     * ledger line): the scanner's dev-segment prune is a repo-walk
+     * concept; a 'vendor'-shaped segment inside a SHIPPED tree is the
+     * signal, never a place to stop reading.
+     */
+
+    public function testArtifactSecretScanNeverPrunesInsideTheShippedTree()
+    {
+        $slug = 'prunescan-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'PRUNESCAN_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\PrunescanDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        // A live-shaped AWS key assembled at runtime (never a source
+        // literal): identical bytes at both repro positions.
+        $key = 'AKIA' . strtoupper(bin2hex(random_bytes(8)));
+
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString("{$slug}/{$slug}.php", $main);
+        $zip->addFromString("{$slug}/src/autoload.php", $autoload);
+        $zip->addFromString("{$slug}/src/Shared/keys.txt", "aws = {$key}\n");
+        // The r6 HIGH itself: the same key under a PRUNED-elsewhere segment.
+        $zip->addFromString("{$slug}/src/Shared/vendor/keys.txt", "aws = {$key}\n");
+        $zip->close();
+
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-prune');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('src/Shared/vendor/keys.txt', $flat, 'The live key under a vendor-shaped segment inside the SHIPPED tree must be found — the prune is a repo-walk concept, never an artifact one.');
+        $this->assertStringContainsString('src/Shared/keys.txt', $flat, 'The identical key outside the vendor segment keeps rejecting as before.');
+        $this->assertStringContainsString('aws-key', $flat);
+
+        // A legitimately clean artifact with a real vendor-style path under
+        // the embed subtree stays green: the src/Shared dev-entry exemption
+        // exempts CLASSIFICATION, and an unpruned content scan of clean
+        // files finds nothing.
+        $clean = self::distDir() . "/connectors-{$slug}-1.0.0-clean.zip";
+        $zip = new ZipArchive();
+        $zip->open($clean, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString("{$slug}/{$slug}.php", $main);
+        $zip->addFromString("{$slug}/src/autoload.php", $autoload);
+        $zip->addFromString("{$slug}/src/Shared/vendor/README.txt", "vendored dependency notes\n");
+        $zip->close();
+        $this->assertSame(
+            array(),
+            wp_connectors_inspect_artifact($clean, self::distDir() . '/.inspect-prune-clean'),
+            'A clean artifact carrying vendor-style paths under the embed subtree inspects green.'
+        );
+    }
+
+    /*
      * Root-file archives (finding: the sole top-level entry is a FILE).
      */
 
