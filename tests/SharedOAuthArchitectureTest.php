@@ -1130,6 +1130,34 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 $this->assertStringContainsString('Root.php', $e->getMessage());
                 $this->assertStringContainsString('Deicod\\WpConnectors\\Shared', $e->getMessage());
             }
+            unlink($scratch . '/Root.php');
+
+            /*
+             * The multi-block hole (verifier round t31-r8-8): the fence
+             * first judged only the file's FIRST namespace block, so a
+             * legal two-block source — first block agreeing with the
+             * staged path, second block one level deeper — shipped with
+             * the second block's class unloadable (interface_exists
+             * through the shipped autoloader FALSE, build and inspect
+             * green, end-to-end reproduced). ONE staged path per file:
+             * a second declaration block refuses outright, both
+             * spellings named.
+             */
+            file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\nnamespace Deicod\\WpConnectors\\Shared\\Http;\ninterface DeepRoot\n{\n}\n");
+            try {
+                wp_connectors_php_source_files($scratch);
+                $this->fail('A multi-block shared source must refuse the vocabulary — a second block stages nowhere the autoloader addresses.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('Root.php', $e->getMessage());
+                $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Http', $e->getMessage(), 'The refusal names the second block.');
+                $this->assertStringContainsString('one file per namespace', $e->getMessage(), 'The refusal states the fix.');
+            }
+            unlink($scratch . '/Root.php');
+
+            // The single-block control stays green through the same
+            // walk (restating the root row the earlier legs pinned).
+            file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\n");
+            $this->assertSame(array('Root.php'), wp_connectors_php_source_files($scratch));
         } finally {
             WpHarness::rrmdir($scratch);
         }

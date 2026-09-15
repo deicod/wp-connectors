@@ -3052,20 +3052,40 @@ function wp_connectors_php_source_files($dir)
                 $dir . '/' . $relative
             ));
         }
-        $declared_namespace = null;
+        /*
+         * Every declaration the source carries, not just the first
+         * (verifier round t31-r8-8): the fence's first cut broke at the
+         * file's first namespace block, so a legal multi-block source —
+         * first block agreeing with its staged path, second block one
+         * level deeper — collected, rewrote clean, passed inspection,
+         * and published while the second block's class mapped onto a
+         * path nothing stages (interface_exists through the shipped
+         * autoloader FALSE, end-to-end reproduced). The embed maps ONE
+         * staged path per file, so a SECOND declaration block stages
+         * nowhere at all — refused outright, with both spellings named.
+         */
+        $declarations = array();
         foreach (wp_connectors_php_name_references($contents) as $reference) {
             if ('declaration' === $reference['kind']) {
-                $declared_namespace = $reference['name'];
-                break;
+                $declarations[] = $reference['name'];
             }
         }
-        if (null === $declared_namespace) {
+        if ($declarations === array()) {
             throw new RuntimeException(sprintf(
                 'shared source %s declares no namespace — the embed stages it under src/Shared/, a tree only the slug-derived namespace prefix addresses, so a global-namespace source ships a class no loader can reach; declare %s\\… in it',
                 $dir . '/' . $relative,
                 wp_connectors_shared_source_namespace()
             ));
         }
+        if (count($declarations) > 1) {
+            throw new RuntimeException(sprintf(
+                'shared source %s declares %d namespaces (%s) — the embed stages ONE path per file, so a second block\'s classes stage nowhere the shipped autoloader addresses (class_exists false with every gate green); split the blocks into one file per namespace',
+                $dir . '/' . $relative,
+                count($declarations),
+                implode(', ', $declarations)
+            ));
+        }
+        $declared_namespace = $declarations[0];
         $root_lower_segments = explode('\\', strtolower(wp_connectors_shared_source_namespace()));
         $declared_segments = explode('\\', ltrim($declared_namespace, '\\'));
         if (count($declared_segments) < count($root_lower_segments)
