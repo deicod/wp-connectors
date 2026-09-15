@@ -295,6 +295,102 @@ gap, non-PHP files inside shared/src shipping, and the
 backreference-material namespace rewrite. Residuals ledgered. Suite
 1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r11)
+
+Fix round over round-11's eight counted findings (two correctness with
+exit-0 repros, three redaction/hygiene, two tool-output, one doc
+drift), fixed as t31-r11-1..8 per the driver's adjudication on the
+relative-use finding; then a two-lens verifier pass over the round diff
+(independent correctness + security agents, every raised finding
+adversarially re-derived by an independent verifier) raised six
+findings — three distinct defects after the cross-lens duplicates
+(both lenses independently found the relative-member splice and the
+interrupted-relative ride), ALL CONFIRMED with reproduced evidence
+(two exit-0 ships through the real builder, both produced by the
+round's own new code path), one refuted, all fixed in-round as
+t31-r11-9..11. Suite 1572 → 1581 tests, 44418 → 44539 assertions,
+2 skipped unchanged.
+
+- **The rewriter owns the namespace-relative USE spelling (t31-r11-1 +
+  the r11-9/r11-10 verifier follow-ups)**: a relative use statement
+  (`use namespace\Foo;`) is a parse error on every runtime and once
+  rode every rewrite pattern, the postcondition's rewrite-ownership
+  carve-out, and the sweep — the zip shipped the parse-error line at
+  exit 0 (the round's planted finding, reproduced through the real
+  builder). The rewriter owns the spelling now: the operator resolves
+  against the declaration in effect exactly as PHP does, the family
+  rewrite applies to the RESOLVED name, and the fully-qualified
+  rewritten import is spliced over the relative bytes — in BOTH
+  lexings (the fused token and the interrupted keyword, whose trivia
+  once dropped it from the step's keying entirely) and in every
+  standalone use form (plain, aliased, `use function`, `use const`).
+  Relatives the rewrite cannot carry refuse loudly: no declaration in
+  effect, an escaping resolution (which would silently re-resolve
+  against the REWRITTEN declaration), a sibling resolution, the
+  group-PREFIX shape, and any relative inside a group BODY (the
+  fully-qualified member the splice would emit is an illegal spelling
+  — the verifier's exit-0 ship, refused now). The detector owns the
+  spelling in use positions (a survivor is a rewriter miss); CODE
+  positions keep the r8-2 adaptation carve-out, where the premise
+  actually holds.
+- **An invisible /proc entry is no longer a death verdict
+  (t31-r11-2)**: under hidepid=2 another user's live build is
+  invisible in /proc, and the sweep's liveness shortcut read that as
+  DEAD — the startup reclaim would have deleted a live sibling
+  build's in-flight stage tree, the exact deletion the sweep's own
+  docblock forbids. Invisibility falls through to the signal-0 probe
+  (EPERM = alive, ESRCH = the only invisible-and-dead verdict); the
+  /proc entry probe is injectable so the regression pins the hidepid
+  view without a second user on the host.
+- **The URL port screen bans the whole glued-bracket class
+  (t31-r11-3 + t31-r11-11)**: the colon search starts after the last
+  `]`, so anything glued to the closing bracket dodged the digit
+  check while parse_url() misread it identically (host `[:`, port 1 —
+  the verifier swept 159 visible-ASCII spellings), and the rebuilt and
+  redacted authorities diverged from the raw URL. After the last `]`
+  comes `:` or the end of the authority now — the allow form,
+  abort-refusing — with every legal bracket authority shape green.
+- **The dotted-slug test no longer pollutes dist/ (t31-r11-4)**: its
+  end-to-end build ran against the real dist/ and its zip name matched
+  neither tearDown glob — every suite run left a permanent zip +
+  sidecar whose checksum the restored manifest records nowhere (the
+  round found exactly that pair leaked). The build rides the
+  artifact-state machinery (zip, sidecar, manifest snapshotted and
+  restored byte-for-byte on every exit path) and the leaked pair is
+  deleted.
+- **The serialization channel rides the redaction contract
+  (t31-r11-5)**: the r1 contract enumerated the string cast, the
+  redacted URL, and the masked header lines — but print_r()/var_dump()
+  dumped the raw property tree (Authorization values, token-bearing
+  queries, bodies, both token positions, the PKCE verifier, both
+  device-flow codes; reproduced). Every secret-carrying VO defines
+  `__debugInfo()` mirroring the masked vocabulary: HeaderMap is the
+  one header-render owner (the line form, the new masked map form, and
+  its own dump share one decision), tokens/verifiers/codes mask
+  through SecretMask, the HTTP VOs carry the redacted URL and an
+  omitted body, and the nested grant renders through its token set's
+  own masked dump. var_export()/serialize() bypass `__debugInfo()` by
+  engine design — export/persistence channels, not debug rendering
+  (ledgered).
+- **The slug→identifier core folds ASCII-only (t31-r11-6)**:
+  strtolower/ucfirst/strtoupper consult LC_CTYPE, and under a Turkish
+  locale the dotted-I rule made `zai` derive `ZAİ_VERSION`/
+  `İnkOauth`-shaped identifiers — derived vocabulary every plugin file
+  spells bare, so it must be identical in every process. The core
+  folds through explicit byte tables (the bin-side twins of the shared
+  tree's AsciiFold owner), with the tr_TR setlocale regression
+  attempting the locale and restoring it.
+- **CONVENTIONS states the hyphen-or-dot separator rule the check
+  enforces (t31-r11-7)**: the check (through the one slug→identifier
+  core) splits slugs on `/[-.]/` and the build derives legal labels
+  from dotted slugs — the document now says so (both the
+  namespace-derivation sentence and the constant rule's mapping).
+- **Octal escapes past \377 unescape deprecation-free (t31-r11-8)**:
+  chr() deprecates above 255 on the 8.5 runtime, and the string-lens
+  unescaper ran mid-gate; the value is masked to the low byte
+  explicitly — the same wrap the engine itself applies — so the
+  semantics are byte-identical and the notice is gone.
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r10)
 
 Fix round over round-10's eight counted findings (two correctness with

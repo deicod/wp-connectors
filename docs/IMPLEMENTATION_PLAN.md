@@ -699,6 +699,51 @@ documented exception.
   the pid-named zip temps (dead pid → unlinked; pid-less
   manifest temps exempt, never raced). Suite 1569 →
   1572 tests, 44283 → 44418 assertions, 2 skipped
+  unchanged. Fix round t31-r11 (11 commits over
+  round-11's eight counted findings + three
+  adversarially-confirmed verifier follow-ups): the
+  rewriter owns the namespace-relative USE spelling
+  (the adjudicated r8-2 premise-false finding —
+  rewriteRelativeUseImports() resolves the operator
+  against the declaration in effect and splices the
+  rewritten fully-qualified import; the detector drops
+  the carve-out in use positions, code positions keep
+  it); the sweep's liveness probe falls through to the
+  signal-0 check on an INVISIBLE /proc entry (hidepid
+  made a live sibling read dead — the injectable-probe
+  regression pins EPERM alive); the URL port screen
+  bans the whole glued-bracket class (']' then ':' or
+  end, abort-refusing); the dotted-slug test rides the
+  artifact-state machinery (no more dist/ zip leak
+  whose checksum the manifest records nowhere — the
+  leaked pair deleted); every secret-carrying VO
+  defines __debugInfo() mirroring the masked vocabulary
+  (HeaderMap is the one render owner for headers,
+  masked_headers() shared by line/map/dump forms); the
+  slug→identifier core folds ASCII-only (bin-side byte
+  tables, the tr_TR regression); CONVENTIONS states
+  the hyphen-or-dot separator the check enforces; and
+  octal escapes past \377 unescape deprecation-free
+  (the engine's own low-byte wrap, explicit). The
+  two-lens verifier pass raised SIX findings — three
+  distinct defects after the cross-lens duplicates
+  (both lenses independently found the relative-member
+  splice and the interrupted-relative ride), ALL
+  CONFIRMED with reproduced evidence (two exit-0 ships
+  through the real builder, both produced by the
+  round's own new code path), one REFUTED (the
+  var_export/serialize bypass — the docblocks already
+  enumerate the covered set; ledgered), all fixed
+  in-round: a relative group-use MEMBER refuses (its
+  FQ splice was an illegal spelling the postcondition
+  waved through); the INTERRUPTED relative spellings
+  (trivia between keyword and name drops the fused
+  token) are owned — resolved across the trivia,
+  rewritten, or refused by the same battery; and the
+  bracket screen generalizes from digits to the whole
+  glued class (159 visible-ASCII spellings misread
+  identically by parse_url). Suite 1572 → 1581
+  tests, 44418 → 44539 assertions, 2 skipped
   unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
