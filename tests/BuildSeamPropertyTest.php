@@ -114,21 +114,28 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // t31-r5-2: a chmod-000 shared source laundered through
                 // (string) file_get_contents() shipped a 0-byte library
                 // file with the sidecar+manifest published at exit 0.
+                // t31-r8-4 supersession: the refusal now fires EARLIER,
+                // at the collector's PSR-4 casing fence (the config
+                // seam, before any filesystem mutation), so the fragment
+                // is the fence's; readSharedSource's own loud read seam
+                // stays as defense in depth behind it.
                 'expect' => 'LOUD',
                 'apply' => static function (array $scratch): void {
                     chmod($scratch['shared'] . '/Clock/ClockInterface.php', 0000);
                 },
-                'fragment' => 'unreadable shared source',
+                'fragment' => 'cannot be read',
             ),
             'shared-source-whitespace-only' => array(
                 // t31-r5-2's empty half: rewriteSharedNamespace('') returns
                 // '' without throwing — the 0-byte ship without a read
-                // failure at all.
+                // failure at all. t31-r8-4 supersession: the collector's
+                // namespace fence refuses the declaration-less bytes at
+                // the config seam; the 'no bytes' seam stays behind it.
                 'expect' => 'LOUD',
                 'apply' => static function (array $scratch): void {
                     file_put_contents($scratch['shared'] . '/GrantInterface.php', " \n\t\n");
                 },
-                'fragment' => 'no bytes',
+                'fragment' => 'declares no namespace',
             ),
             'plugin-source-unreadable' => array(
                 // t31-r5-2's other collection point: an unreadable plugin

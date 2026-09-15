@@ -1953,24 +1953,30 @@ FIXTURE;
             $manifestBefore = (string) file_get_contents($scratch . '/dist/checksums.txt');
 
             // (a) An unreadable shared source (non-root chmod spelling).
+            // t31-r8-4 supersession: the refusal fires at the collector's
+            // PSR-4 casing fence now — the config seam, before any
+            // filesystem mutation — with readSharedSource's own loud read
+            // seam kept behind it as defense in depth.
             chmod($sharedSource, 0000);
             try {
                 WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
                 $this->fail('An unreadable shared source must refuse the build, never ship as a 0-byte library file.');
             } catch (RuntimeException $e) {
-                $this->assertStringContainsString('unreadable shared source', $e->getMessage());
+                $this->assertStringContainsString('cannot be read', $e->getMessage());
                 $this->assertStringContainsString('ClockInterface.php', $e->getMessage());
             }
             chmod($sharedSource, 0644);
 
-            // (b) The whitespace-only twin: no read failure, same ship.
+            // (b) The whitespace-only twin: no read failure, same ship —
+            // refused by the same collector fence, one seam earlier
+            // (t31-r8-4: declaration-less bytes declare no namespace).
             $sourceBefore = (string) file_get_contents($sharedSource);
             file_put_contents($sharedSource, " \n\t\n");
             try {
                 WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
                 $this->fail('A whitespace-only shared source must refuse the build, never rewrite to an empty file.');
             } catch (RuntimeException $e) {
-                $this->assertStringContainsString('no bytes', $e->getMessage());
+                $this->assertStringContainsString('declares no namespace', $e->getMessage());
                 $this->assertStringContainsString('ClockInterface.php', $e->getMessage());
             }
             file_put_contents($sharedSource, $sourceBefore);

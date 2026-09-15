@@ -1044,6 +1044,98 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
+     * Fix-round pin (t31-r8-4): the PSR-4 casing-agreement fence for
+     * the embedded tree — the r5-3 extension-casing doctrine's
+     * DIRECTORY axis. shared/src/tools/Helper.php declaring `…\Tools;`
+     * collected, staged at src/Shared/tools/, passed inspection, and
+     * published, while the shipped autoloader maps the class name
+     * `…\Tools\Helper` onto src/Shared/Tools/Helper.php verbatim:
+     * class_exists through the real shipped loader FALSE with every
+     * gate green (end-to-end reproduced in the round). The staged
+     * path's directory segments must now agree with the declared
+     * namespace's segments below the shared root CASE-EXACTLY (depth
+     * included), the declaration must exist and sit under the tree
+     * root, and the clean direction — a case-consistent tree of any
+     * depth — stays green.
+     */
+    public function testTheEmbeddedTreeSCasingAgreesWithTheDeclaredNamespaceExactly(): void
+    {
+        $scratch = tempnam(sys_get_temp_dir(), 'wpct-psr4case-');
+        unlink($scratch);
+        mkdir($scratch . '/tools', 0755, true);
+
+        try {
+            file_put_contents($scratch . '/tools/Helper.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Tools;\ninterface Helper\n{\n}\n");
+
+            // THE REPRO: the directory casing diverges from the declared
+            // namespace's — refuses loudly, naming the file and BOTH
+            // spellings (declared vs staged).
+            try {
+                wp_connectors_php_source_files($scratch);
+                $this->fail('A directory casing disagreeing with the declared namespace must refuse the shared-source vocabulary, never stage a class the shipped autoloader cannot spell.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('Helper.php', $e->getMessage(), 'The refusal must name the file.');
+                $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Tools', $e->getMessage(), 'The refusal must name the declared spelling.');
+                $this->assertStringContainsString('tools', $e->getMessage(), 'The refusal must name the staged spelling.');
+                $this->assertStringContainsString('autoloader', $e->getMessage(), 'The refusal must state the load consequence.');
+            }
+
+            // The clean direction: the case-consistent spelling of the
+            // same tree collects — at any depth, and at the root.
+            WpHarness::rrmdir($scratch . '/tools');
+            mkdir($scratch . '/Tools', 0755, true);
+            file_put_contents($scratch . '/Tools/Helper.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Tools;\ninterface Helper\n{\n}\n");
+            file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\n");
+            $this->assertSame(
+                array('Root.php', 'Tools/Helper.php'),
+                wp_connectors_php_source_files($scratch),
+                'A case-consistent tree collects unchanged, at the root and in depth.'
+            );
+
+            // The depth axis: a declaration DEEPER than the staged path
+            // ships the same unloadable disagreement and refuses.
+            WpHarness::rrmdir($scratch . '/Tools');
+            mkdir($scratch . '/Http', 0755, true);
+            file_put_contents($scratch . '/Http/Request.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Http\\Message;\ninterface Request\n{\n}\n");
+            try {
+                wp_connectors_php_source_files($scratch);
+                $this->fail('A declared-namespace depth disagreeing with the staged path depth must refuse the vocabulary.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('Request.php', $e->getMessage());
+                $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Http\\Message', $e->getMessage());
+            }
+            unlink($scratch . '/Http/Request.php');
+            rmdir($scratch . '/Http');
+
+            // A missing declaration refuses: the embed stages under
+            // src/Shared/, a tree only the slug-derived prefix addresses.
+            file_put_contents($scratch . '/Global.php', "<?php\ninterface GlobalThing\n{\n}\n");
+            try {
+                wp_connectors_php_source_files($scratch);
+                $this->fail('A shared source declaring no namespace must refuse the vocabulary — it stages onto a tree no autoload path addresses.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('Global.php', $e->getMessage());
+                $this->assertStringContainsString('declares no namespace', $e->getMessage());
+            }
+            unlink($scratch . '/Global.php');
+
+            // A declaration OUTSIDE the tree root refuses the same way:
+            // the rewrite never touches it, so the staged path maps no
+            // autoloadable class.
+            file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod;\ninterface Root\n{\n}\n");
+            try {
+                wp_connectors_php_source_files($scratch);
+                $this->fail('A shared source declaring outside the tree root must refuse the vocabulary.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('Root.php', $e->getMessage());
+                $this->assertStringContainsString('Deicod\\WpConnectors\\Shared', $e->getMessage());
+            }
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r4-9): ONE case-insensitive owner judges the
      * php extension — wp_connectors_is_php_source() for collect and
      * classify, wp_connectors_basename_without_php_extension() for the

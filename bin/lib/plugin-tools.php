@@ -2987,6 +2987,73 @@ function wp_connectors_php_source_files($dir)
                 $dir . '/' . $relative
             ));
         }
+        /*
+         * The PSR-4 CASING-AGREEMENT fence for the embedded tree
+         * (verifier round t31-r8-4): the r5-3 doctrine fenced the
+         * EXTENSION's casing but not the DIRECTORIES' —
+         * shared/src/tools/Helper.php declaring `…\Tools;` collected,
+         * staged at src/Shared/tools/, passed inspection, and
+         * published, while the shipped autoloader maps the class name
+         * `…\Tools\Helper` onto `src/Shared/Tools/Helper.php`
+         * verbatim: class_exists through the real shipped loader was
+         * FALSE with every gate green (end-to-end reproduced). The
+         * staged path's directory segments must agree with the declared
+         * namespace's segments below the shared root CASE-EXACTLY
+         * (depth included) — the root's own casing stays the family
+         * detector's and the rewrite postcondition's charge, since the
+         * build itself maps the root onto src/Shared/ regardless of
+         * spelling. A missing declaration refuses too: a global-
+         * namespace source staged under src/Shared/ is a tree no
+         * autoload path can address.
+         */
+        // @: the diagnostic is suppressed, the failed return owned below — the glm17-16 idiom.
+        $contents = @file_get_contents($dir . '/' . $relative);
+        if (false === $contents) {
+            throw new RuntimeException(sprintf(
+                'shared source %s cannot be read for the PSR-4 casing fence — an unreadable source refuses the walk, never ships unverified',
+                $dir . '/' . $relative
+            ));
+        }
+        $declared_namespace = null;
+        foreach (wp_connectors_php_name_references($contents) as $reference) {
+            if ('declaration' === $reference['kind']) {
+                $declared_namespace = $reference['name'];
+                break;
+            }
+        }
+        if (null === $declared_namespace) {
+            throw new RuntimeException(sprintf(
+                'shared source %s declares no namespace — the embed stages it under src/Shared/, a tree only the slug-derived namespace prefix addresses, so a global-namespace source ships a class no loader can reach; declare %s\\… in it',
+                $dir . '/' . $relative,
+                wp_connectors_shared_source_namespace()
+            ));
+        }
+        $root_lower_segments = explode('\\', strtolower(wp_connectors_shared_source_namespace()));
+        $declared_segments = explode('\\', ltrim($declared_namespace, '\\'));
+        if (count($declared_segments) < count($root_lower_segments)
+            || array_map('strtolower', array_slice($declared_segments, 0, count($root_lower_segments))) !== $root_lower_segments) {
+            throw new RuntimeException(sprintf(
+                'shared source %s declares %s — not the shared tree root %s the embed rewrites and stages under src/Shared/, so its staged path maps no autoloadable class; declare the tree root (or deeper) in it',
+                $dir . '/' . $relative,
+                $declared_namespace,
+                wp_connectors_shared_source_namespace()
+            ));
+        }
+        $below_root = array_slice($declared_segments, count($root_lower_segments));
+        $directories = array();
+        foreach (explode('/', dirname($relative)) as $segment) {
+            if ('' !== $segment && '.' !== $segment) {
+                $directories[] = $segment;
+            }
+        }
+        if ($below_root !== $directories) {
+            throw new RuntimeException(sprintf(
+                'shared source %s declares %s but its staged path spells the namespace directories %s — the shipped autoloader maps class names onto paths verbatim (PSR-4, case-sensitive), so the casing disagreement ships a class no loader reaches; rename the directory or the declaration so they agree exactly',
+                $dir . '/' . $relative,
+                $declared_namespace,
+                implode('\\', $directories === array() ? array( '(the tree root)' ) : $directories)
+            ));
+        }
         $files[] = $relative;
     }
     sort($files, SORT_STRING);
