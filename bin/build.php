@@ -786,6 +786,35 @@ final class WpConnectorsBuild
                 }
             }
 
+            /*
+             * The build's self-containment gate over the COMPOSED
+             * artifact tree (review round t31-r9-2): the pre-gate at
+             * the top of buildPlugin() judged the plugin DIRECTORY
+             * alone, so an escaping include appended to a shared source
+             * built and published at exit 0 while the inspector —
+             * which scans the extracted zip, embedded src/Shared
+             * subtree included — refused the same artifact (reproduced;
+             * the one-verdict doctrine broken on the publish path, and
+             * distinct from the r8-noted curation item: the WP-reach
+             * vocabularies stay a ledgered dev-time design decision,
+             * while this channel the inspector already judged). The
+             * SAME gate, wp_connectors_self_containment_violations(),
+             * now runs over the staged tree the zip will pack — plugin
+             * files plus the embedded subtree — at the staging path
+             * (the t31-r5-S doctrine: every byte verified at its temp
+             * path, the previous good release untouched). The scan runs
+             * only when an embed composed something the pre-gate had
+             * not already judged byte-for-byte: without $embedShared
+             * the staged tree is a plain copy of the pre-gated plugin
+             * files (plus the non-PHP LICENSE).
+             */
+            if ($embedShared) {
+                $stagedViolations = wp_connectors_self_containment_violations($stage . '/' . $slug);
+                if ($stagedViolations !== array()) {
+                    throw new RuntimeException("build: refusing to package {$slug} — the self-containment gate over the composed artifact tree (embedded src/Shared included):\n - " . implode("\n - ", $stagedViolations));
+                }
+            }
+
             sort($entries, SORT_STRING);
 
             // The archive itself is built at its staging path (fixed

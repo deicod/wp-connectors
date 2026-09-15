@@ -1620,6 +1620,72 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r9-2): the build's self-containment gate
+     * covered only the plugin directory, never the shared sources the
+     * embed composes into the artifact — an escaping include appended
+     * to shared/src/Clock/SystemClock.php built and PUBLISHED at exit 0
+     * while the inspector (which scans the extracted zip, embedded
+     * subtree included) refused the same artifact: one-verdict doctrine
+     * broken on the publish path, reproduced pre-fix. The gate now runs
+     * over the COMPOSED STAGED TREE — plugin files plus the embedded
+     * src/Shared subtree — the same wp_connectors_self_containment_
+     * violations() walk the inspector rides, so build and inspect give
+     * one verdict by construction. (Distinct from the r8-noted
+     * curation item: that one ledgered the WP-reach vocabularies as a
+     * dev-time-only design decision; this is the escaping-include
+     * channel the inspector already judged.)
+     */
+    public function testAnEscapingIncludeInTheSharedSourceRefusesTheBuild(): void
+    {
+        $scratch = self::distDir() . '/.embed-escaping-include';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents(
+            $scratch . '/shared/src/Clock/ClockInterface.php',
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n"
+        );
+        // SystemClock with the escaping include appended: staged at
+        // src/Shared/Clock/SystemClock.php, four '..' segments walk out
+        // of the plugin dir entirely (staged at <stage>/<slug>/, the
+        // fourth up lands beside it).
+        file_put_contents(
+            $scratch . '/shared/src/Clock/SystemClock.php',
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\nfinal class SystemClock {\n    public function now(): \\DateTimeImmutable { return new \\DateTimeImmutable('now'); }\n}\nrequire __DIR__ . '/../../../../escape.php';\n"
+        );
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            $refused = null;
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('An escaping include in a shared source must refuse the BUILD, not only the inspection.');
+            } catch (RuntimeException $e) {
+                $refused = $e->getMessage();
+            }
+
+            $this->assertStringContainsString('refusing to package', $refused);
+            $this->assertStringContainsString('SystemClock.php', $refused, 'The refusal must name the offending shared source.');
+            $this->assertStringContainsString('not anchored', $refused, 'The refusal must carry the self-containment vocabulary.');
+
+            // Nothing published: no zip, no sidecar, no manifest entry.
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'A refused build never publishes an archive.');
+            $this->assertFileDoesNotExist($scratch . '/dist/checksums.txt');
+
+            // One verdict: the same tree shape the inspector judges —
+            // the refusal names the embedded position (src/Shared/...),
+            // exactly where the extract-and-scan gate would find it.
+            $this->assertStringContainsString('src/Shared/Clock/SystemClock.php', $refused);
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r3-9), SUPERSEDED by t31-r5-3's casing
      * doctrine, restated honestly: the '.php' extension filter was
      * case-sensitive, so a ClockMath.PHP source was silently SKIPPED
