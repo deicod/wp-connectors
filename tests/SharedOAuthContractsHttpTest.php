@@ -210,6 +210,55 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Review-round pin (t31-r12-2): the glued-bracket screen trusted the
+     * last ']' as the IPv6 closer without asking whether a matching '['
+     * exists — and parse_url() misread every opener-less spelling:
+     * 'http://host:44x]/p' was ACCEPTED with authority 'host:44' (the
+     * port truncated at the raw ']'), 'http://example.com:8080]/x'
+     * constructed with url() carrying ':8080]' while the redacted form
+     * dropped the bracket (a value object internally inconsistent), and
+     * bare 'a]' / ']]]' passed the brackets verbatim into the authority.
+     * A ']' is only legal as the IPv6 closer of ONE well-formed bracket
+     * pair; the legal bracket authorities stay green beside it.
+     */
+    public function testALoneBracketInAnAuthorityIsRejected(): void
+    {
+        $hostile_urls = array(
+            'the truncated-port repro' => 'http://host:44x]/p',
+            'the VO-inconsistency repro' => 'http://example.com:8080]/x',
+            'a bare bracket host' => 'http://a]/x',
+            'three closers' => 'http://]]]/x',
+            'closer with no port' => 'http://host]/token',
+            'a second closer' => 'http://[::1]]/token',
+            'a second opener' => 'http://[[::1]/token',
+            'opener after closer' => 'http://]a[/token',
+            'https twin' => 'https://host.example:8443]/token',
+            'userinfo does not hide it' => 'http://user:pw@host.example:80]/x',
+            'a lone opener' => 'http://[::1/token',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A lone or doubled bracket in the authority (%s) must be rejected by the shared URL owner.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('one well-formed IPv6 literal', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A lone or doubled bracket in the authority (%s) must be rejected by the request VO too.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('one well-formed IPv6 literal', $e->getMessage());
+            }
+        }
+
+        // The legal bracket authorities stay green beside the pins above.
+        $this->assertSame('[::1]:443', Url::parse_validated('http://[::1]:443/token')['authority'], 'A well-formed bracket authority with a port stays legal.');
+        $this->assertSame('[fe80::1]', Url::parse_validated('http://[fe80::1]/token')['authority'], 'A well-formed full-IPv6 authority stays legal.');
+    }
+
+    /**
      * Fix-round pin (t31-r4-13): the C1 screen banned only the UTF-8
      * SPELLINGS of the control vocabulary, so a lone RAW byte (0x85
      * NEL, 0x9B CSI lead) — invalid UTF-8 — passed parse_url verbatim

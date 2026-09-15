@@ -106,6 +106,35 @@ final class Url {
 		$bracket_end  = strrpos( $host_port, ']' );
 
 		/*
+		 * The PAIR leg of the bracket screen (review round t31-r12-2):
+		 * the glued-bracket rule below trusts the last ']' as the IPv6
+		 * closer without ever asking whether an OPENER exists — and
+		 * parse_url() misreads every bracket-bearing authority it should
+		 * not accept. Reproduced: 'http://host:44x]/p' was accepted with
+		 * authority 'host:44' (the port TRUNCATED at the raw ']');
+		 * 'http://example.com:8080]/x' constructed with url() carrying
+		 * ':8080]' while the redacted form dropped the bracket — a value
+		 * object internally inconsistent; bare 'a]' and ']]]' passed the
+		 * bracket verbatim into the authority. An authority carries
+		 * brackets only as ONE well-formed IPv6 literal — exactly one
+		 * '[', exactly one ']', opener before closer — and anything else
+		 * refuses loudly, per the same doctrine as the glued leg: a
+		 * malformed bracket authority is a shape no client means to
+		 * send, and the URL string and the rebuilt authority must agree.
+		 */
+		$bracket_opens            = substr_count( $host_port, '[' );
+		$bracket_closes           = substr_count( $host_port, ']' );
+		$bracket_open             = strpos( $host_port, '[' );
+		$well_formed_bracket_pair = 1 === $bracket_opens
+			&& 1 === $bracket_closes
+			&& false !== $bracket_open
+			&& false !== $bracket_end
+			&& $bracket_open < $bracket_end;
+		if ( ( $bracket_opens + $bracket_closes ) > 0 && ! $well_formed_bracket_pair ) {
+			throw new InvalidArgumentException( 'The URL authority may carry brackets only as one well-formed IPv6 literal ("[::1]:443") — a "]" without its matching "[" (or a second bracket of either kind) is a malformed authority parse_url() misreads (a raw "]" truncated "http://host:44x]/p" to port 44) while the URL string carries the raw text, and the two must agree.' );
+		}
+
+		/*
 		 * The glued-authority leg of the same screen (verifier round
 		 * t31-r11-3, generalized by t31-r11-11): the colon search
 		 * starts AFTER the closing ']', so anything glued straight to
