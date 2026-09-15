@@ -67,6 +67,12 @@ interface TokenStorageInterface {
 	/**
 	 * Loads the stored grant for a provider.
 	 *
+	 * The returned grant is a RECONSTRUCTED instance, never the caller's
+	 * stored one: identity does not survive the storage boundary (a real
+	 * adapter decodes persisted bytes into a fresh object graph, the
+	 * in-memory fake round-trips a copy — review round t31-r9-5). Callers
+	 * compare grants by VALUE (the accessors), never by ===.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param string $provider_id Provider label.

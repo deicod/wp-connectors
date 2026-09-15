@@ -350,13 +350,32 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->assertNull($storage->load('fixture-provider'));
 
         $this->assertTrue($storage->save('fixture-provider', $first, TokenStorageInterface::EXPECT_NO_GRANT));
-        $this->assertSame($first, $storage->load('fixture-provider'));
+        $loaded = $storage->load('fixture-provider');
+
+        /*
+         * Fix-round pin (t31-r9-5): the round trip is by VALUE, and
+         * identity never survives the storage boundary — a decrypting
+         * (real) adapter reconstructs the object graph from persisted
+         * bytes on every load, so the old assertSame pins asked for
+         * semantics no real implementation can honor (they passed only
+         * against the fake's alias). The fake round-trips a copy now;
+         * the pins below hold against every implementation.
+         */
+        $this->assertNotSame($first, $loaded, 'A loaded grant is a reconstructed instance, never the stored one.');
+        $this->assertNotSame($storage->load('fixture-provider'), $storage->load('fixture-provider'), 'Every load reconstructs — two loads never share an instance either.');
+        $this->assertSame($first->provider_id(), $loaded->provider_id());
+        $this->assertSame($first->generation(), $loaded->generation());
+        $this->assertSame($first->state(), $loaded->state());
+        $this->assertSame($first->token_set()->to_array(), $loaded->token_set()->to_array(), 'The token set round-trips exactly (the storage serialization is the compare).');
 
         // Atomic replace on the observed generation: only the newest
         // grant is ever visible.
         $second = $first->with_token_set($this->tokenSet())->with_generation(4);
         $this->assertTrue($storage->save('fixture-provider', $second, 3));
-        $this->assertSame($second, $storage->load('fixture-provider'));
+        $replaced = $storage->load('fixture-provider');
+        $this->assertNotSame($second, $replaced);
+        $this->assertSame(4, $replaced->generation());
+        $this->assertSame($second->token_set()->to_array(), $replaced->token_set()->to_array());
         $this->assertSame(2, $storage->saveCount('fixture-provider'));
     }
 
@@ -410,7 +429,11 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $storage->save('fixture-provider', $grant, TokenStorageInterface::EXPECT_NO_GRANT);
 
         $this->assertNull($storage->load('another-provider'));
-        $this->assertSame($grant, $storage->load('fixture-provider'));
+        // By value, not identity (t31-r9-5: load reconstructs).
+        $loaded = $storage->load('fixture-provider');
+        $this->assertNotSame($grant, $loaded);
+        $this->assertSame($grant->provider_id(), $loaded->provider_id());
+        $this->assertSame($grant->generation(), $loaded->generation());
     }
 
     public function testStorageDeleteRemovesAndIsANoopWhenAbsent(): void
