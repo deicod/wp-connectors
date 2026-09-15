@@ -29,8 +29,12 @@ interface ClockInterface {
 	/**
 	 * The current reading.
 	 *
-	 * Implementations must return a fresh instant per call representing the
-	 * current time — monotonicity is the wall clock's, not the port's.
+	 * Implementations return an instant representing the current time —
+	 * monotonicity is the wall clock's, not the port's. Callers must not
+	 * rely on instance identity across calls: DateTimeImmutable makes a
+	 * repeated instance indistinguishable from a fresh one, and a
+	 * deterministic implementation (the test harness's) legitimately
+	 * returns the same object per reading (t31-r9's noted item).
 	 *
 	 * @since 0.1.0
 	 *

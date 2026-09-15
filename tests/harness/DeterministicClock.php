@@ -32,6 +32,11 @@ final class DeterministicClock implements ClockInterface
     /**
      * The controlled reading.
      *
+     * Returns the SAME instance per reading on purpose (t31-r9's noted
+     * item): the reading is immutable, so identity is unobservable, and
+     * the port's contract explicitly disclaims instance identity — a
+     * caller keying on === is the defect, not the deterministic clock.
+     *
      * @return \DateTimeImmutable
      */
     public function now(): \DateTimeImmutable
