@@ -2834,6 +2834,42 @@ FIXTURE;
         $this->assertSame('relative', $found[0]['kind'], 'A relative use spelling must not wear the use kind.');
 
         /*
+         * Verifier round t31-r8-10: a fully-qualified (parse-error)
+         * namespace spelling is NOT a declaration — the walk first
+         * classified `namespace \Junk;` as one, letting the invalid
+         * spelling CORRUPT the file's in-effect namespace: the relative
+         * after it resolved against the junk base, stopped being
+         * family, and laundered past both gates (reproduced: the
+         * hostile file rewrote clean where its control refused). Only
+         * the two legal declaration shapes open one now; the invalid
+         * spelling's name falls to a code position, where a FAMILY
+         * spelling still refuses everywhere.
+         */
+        $corrupted = "<?php\nnamespace Deicod;\nnamespace \\Junk;\n\$x = namespace\\WpConnectors\\Shared\\Clock::class;\n";
+        $found = wp_connectors_shared_family_references($corrupted);
+        $this->assertCount(1, $found, 'The junk spelling corrupts nothing: the family-resolving relative still reports.');
+        $this->assertSame(array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( $found[0]['name'], $found[0]['kind'] ));
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($corrupted, 'ExampleConnector', 'shared/src/Corrupt.php');
+            $this->fail('A relative laundering behind an invalid fully-qualified declaration must refuse the rewrite, exactly like its control.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('survived the rewrite', $e->getMessage());
+        }
+
+        // A fully-qualified FAMILY declaration (`namespace \Deicod\…`)
+        // is a code-position name now — refused by both consumers, one
+        // verdict, never a declaration that overwrites the base.
+        $fq_family = "<?php\nnamespace Deicod;\nnamespace \\Deicod\\WpConnectors\\Shared;\ninterface FqFixture\n{\n}\n";
+        $found = wp_connectors_shared_family_references($fq_family);
+        $this->assertContains(array( 'name' => 'Deicod\\WpConnectors\\Shared', 'lower' => 'deicod\\wpconnectors\\shared', 'kind' => 'code', 'offset' => 34, 'line' => 3 ), $found, 'The invalid fully-qualified family spelling reports as a code-position name, never a declaration.');
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($fq_family, 'ExampleConnector', 'shared/src/Fq.php');
+            $this->fail('A fully-qualified family declaration must refuse the rewrite.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('code position', $e->getMessage());
+        }
+
+        /*
          * The adaptation carve-out, both sides: under the SOURCE root
          * the relative reports nothing (any position) and the rewrite
          * passes its own postcondition — on the rewritten bytes the

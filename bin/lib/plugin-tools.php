@@ -566,8 +566,22 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             continue;
         }
         if (T_NAMESPACE === $id) {
+            /*
+             * Only the two LEGAL declaration shapes open one
+             * (verifier round t31-r8-10): a bare name or an unqualified
+             * sequence. `namespace \X;` (T_NAME_FULLY_QUALIFIED) and
+             * `namespace namespace\X;` are parse-error spellings whose
+             * names still assemble — classifying them as declarations
+             * let the invalid spelling CORRUPT the file's in-effect
+             * namespace, and a family-resolving relative after it then
+             * resolved against the junk base and laundered past both
+             * gates (reproduced: rewrite shipped where the control file
+             * refused). They fall to 'code' positions now, where a
+             * family spelling refuses in every consumer.
+             */
             $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
-            $declaration_pending = null !== $follower && wp_connectors_is_name_token_id(is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null);
+            $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
+            $declaration_pending = T_STRING === $follower_id || T_NAME_QUALIFIED === $follower_id;
 
             continue;
         }
