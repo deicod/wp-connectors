@@ -306,25 +306,23 @@ function wp_connectors_inspect_rrmdir($dir)
     rmdir($dir);
 }
 
-if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
+if (wp_connectors_cli_entry(__FILE__)) {
     /*
-     * Diagnostics for the CLI run ONLY (glm17-16, review round
-     * t31-r9-4): at file top these two calls executed in every process
-     * that REQUIRED the file too — the test suite loads it for
-     * wp_connectors_inspect_artifact() (BuildArtifactsTest,
-     * BuildSeamPropertyTest), and a host running php-cli with
-     * display_errors off would have had it flipped on process-wide
-     * just by loading a test. Same shape check-conventions.php already
-     * wears.
+     * The guard + diagnostics are the ONE helper (t31-r12-11); this
+     * file's former hand-rolled copy (t31-r9-4 — at file top the calls
+     * executed in every requiring process; the test suite loads this
+     * file for wp_connectors_inspect_artifact()) is gone. The args ride
+     * $_SERVER['argv'] — the same array $argv binds in the CLI, spelled
+     * so the entry stays provably defined once the guard moved into the
+     * helper.
      */
-    error_reporting(E_ALL);
-    ini_set('display_errors', '1');
 
-    if (count($argv) < 2) {
+    $cliArgs = $_SERVER['argv'] ?? array();
+    if (count($cliArgs) < 2) {
         fwrite(STDERR, "usage: php bin/inspect-artifact.php <zip>\n");
         exit(2);
     }
-    $zipPath = $argv[1];
+    $zipPath = (string) $cliArgs[1];
     if (! is_file($zipPath)) {
         fwrite(STDERR, "inspect: no such file: {$zipPath}\n");
         exit(2);

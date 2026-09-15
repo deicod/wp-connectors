@@ -3592,3 +3592,35 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
 
     return $violations;
 }
+
+/**
+ * Whether this process is the script's own CLI run — and, when it is,
+ * the CLI diagnostics idiom, applied (review round t31-r12-11).
+ *
+ * ONE spelling of the guard + diagnostics shape that four bin/ entry
+ * scripts (build, check-conventions, lint-php, inspect-artifact) wore
+ * as four hand-maintained copies of the t31-r9-4/t31-r10-3 idiom: at
+ * file top the error_reporting/display_errors calls executed in every
+ * process that merely REQUIRED the file too, so a php-cli host with
+ * display_errors off had it flipped on process-wide just by loading a
+ * library — a class each script fixed independently, one spelling away
+ * from being reintroduced. The helper answers the guard question
+ * (realpath($argv[0]) equals the given script path) and applies the
+ * diagnostics (E_ALL + display_errors '1', the glm17-16 CLI posture)
+ * ONLY on the CLI run; a requiring process sees neither. A new bin/
+ * entry script takes this helper, never a hand-rolled copy.
+ *
+ * @param string $script The entry file's own __FILE__.
+ * @return bool True when this process is the script's CLI run (with the CLI diagnostics applied).
+ */
+function wp_connectors_cli_entry($script)
+{
+    $argv = $_SERVER['argv'] ?? null;
+    if (PHP_SAPI !== 'cli' || null === $argv || realpath((string) ($argv[0] ?? '')) !== $script) {
+        return false;
+    }
+    error_reporting(E_ALL);
+    ini_set('display_errors', '1');
+
+    return true;
+}

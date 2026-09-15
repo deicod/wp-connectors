@@ -729,11 +729,11 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
     }
 
     /**
-     * Fix-round pin (t31-r9-4, extended by t31-r10-3): the file-scope
-     * error_reporting(E_ALL) + ini_set('display_errors', '1') ran in
-     * every process that REQUIRED these files, not just the CLI run —
-     * and this suite is one of the requirers (build.php and
-     * inspect-artifact.php load for the class and the inspector
+     * Fix-round pin (t31-r9-4, extended by t31-r10-3 and t31-r12-11):
+     * the file-scope error_reporting(E_ALL) + ini_set('display_errors',
+     * '1') ran in every process that REQUIRED these files, not just
+     * the CLI run — and this suite is one of the requirers (build.php
+     * and inspect-artifact.php load for the class and the inspector
      * function), so a php-cli host with display_errors off had it
      * flipped on process-wide just by running the tests (reproduced:
      * `php -d display_errors=0 -r 'require bin/build.php; …'` printed
@@ -742,14 +742,18 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * consumers (this suite) after that fix. t31-r10-3 adds
      * lint-php.php to the pin: its file scope carried the diagnostics
      * AND the whole walk AND the exit() — a require ran the lint.
-     * Pinned through a child process because the in-process ini state
-     * belongs to PHPUnit's own runner, not to this test.
+     * t31-r12-11 folds the four in-diff scripts' guard + diagnostics
+     * into the ONE helper (wp_connectors_cli_entry()) and adds
+     * check-conventions.php to the require side. Pinned through a
+     * child process because the in-process ini state belongs to
+     * PHPUnit's own runner, not to this test.
      */
     public function testRequiringTheBuildAndInspectFilesNeverFlipsDisplayErrors(): void
     {
         $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/build.php'), true) . ';'
             . ' require ' . var_export(realpath(__DIR__ . '/../bin/inspect-artifact.php'), true) . ';'
             . ' require ' . var_export(realpath(__DIR__ . '/../bin/lint-php.php'), true) . ';'
+            . ' require ' . var_export(realpath(__DIR__ . '/../bin/check-conventions.php'), true) . ';'
             . ' echo ini_get("display_errors");';
         exec(escapeshellarg(PHP_BINARY) . ' -d display_errors=0 -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
 
@@ -757,7 +761,17 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertSame(
             array('0'),
             $output,
-            'Requiring bin/build.php, bin/inspect-artifact.php, and bin/lint-php.php into a host process must leave display_errors exactly as the host set it and must not run the lint — the diagnostics and the walk belong to the CLI guard, not the file scope.'
+            'Requiring bin/build.php, bin/inspect-artifact.php, bin/lint-php.php, and bin/check-conventions.php into a host process must leave display_errors exactly as the host set it and must not run any walk — the diagnostics and the walks belong to the CLI guard, not the file scope.'
         );
+
+        // The helper is the single spelling (t31-r12-11): every in-diff
+        // entry script consumes wp_connectors_cli_entry() and none
+        // carries a hand-rolled copy of the guard anymore.
+        foreach (array('build.php', 'inspect-artifact.php', 'lint-php.php', 'check-conventions.php') as $entry) {
+            $source = (string) file_get_contents(__DIR__ . '/../bin/' . $entry);
+            $this->assertStringContainsString('wp_connectors_cli_entry(__FILE__)', $source, "{$entry} consumes the ONE CLI-entry helper.");
+            $this->assertStringNotContainsString("realpath(\$argv[0]) === __FILE__", $source, "{$entry} carries no hand-rolled guard copy.");
+            $this->assertStringNotContainsString("ini_set('display_errors'", $source, "{$entry} carries no hand-rolled diagnostics copy.");
+        }
     }
 }

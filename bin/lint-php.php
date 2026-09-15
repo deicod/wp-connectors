@@ -13,18 +13,13 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/plugin-tools.php';
 
-if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
+if (wp_connectors_cli_entry(__FILE__)) {
     /*
-     * Diagnostics for the CLI run ONLY (t31-r10-3, the t31-r9-4 class
-     * already fixed in build.php, inspect-artifact.php,
-     * check-conventions.php, and scan-secrets.php): at file top these
-     * two calls — and the whole walk, and the exit() — executed in every
-     * process that REQUIRED the file too, so a php-cli host with
-     * display_errors off had it flipped on process-wide just by loading
-     * a library. The file scope carries only the require now.
+     * The guard + diagnostics are the ONE helper (t31-r12-11); this
+     * file's former hand-rolled copy (t31-r10-3, the t31-r9-4 class —
+     * at file top the diagnostics AND the whole walk AND the exit()
+     * executed in every requiring process) is gone.
      */
-    error_reporting(E_ALL);
-    ini_set('display_errors', '1');
 
     $roots = array(__DIR__ . '/../connectors', __DIR__ . '/../shared', __DIR__ . '/../bin', __DIR__ . '/../tests');
 

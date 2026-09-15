@@ -16,16 +16,13 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/plugin-tools.php';
 
-if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
+if (wp_connectors_cli_entry(__FILE__)) {
     /*
-     * Diagnostics for the CLI run ONLY (glm17-16): at file top these
-     * two calls executed in every process that REQUIRED the file too —
-     * the test suite loads it for the scanner fixtures, and a host
-     * running php-cli with display_errors off would have had it
-     * flipped on process-wide just by loading a test.
+     * The guard + diagnostics are the ONE helper (t31-r12-11); this
+     * file's former hand-rolled copy (the glm17-16 original — at file
+     * top the calls executed in every requiring process, the test
+     * suite loads this file for the scanner fixtures) is gone.
      */
-    error_reporting(E_ALL);
-    ini_set('display_errors', '1');
 
     $repoRoot = dirname(__DIR__);
     $pluginRoots = array();

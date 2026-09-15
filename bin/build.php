@@ -1790,20 +1790,15 @@ final class WpConnectorsBuild
  * ---------------------------------------------------------------------
  */
 
-if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
+if (wp_connectors_cli_entry(__FILE__)) {
     /*
-     * Diagnostics for the CLI run ONLY (glm17-16, review round
-     * t31-r9-4): at file top these two calls executed in every process
-     * that REQUIRED the file too — the test suite loads it for
-     * WpConnectorsBuild (BuildArtifactsTest, BuildSeamPropertyTest,
-     * SharedOAuthArchitectureTest), and a host running php-cli with
-     * display_errors off would have had it flipped on process-wide
-     * just by loading a test (reproduced: `php -d display_errors=0 -r
-     * 'require bin/build.php; …'` printed 1). Same shape check-
-     * conventions.php already wears.
+     * The guard + diagnostics are the ONE helper now (t31-r12-11): the
+     * four in-diff entry scripts wore four hand-maintained copies of
+     * the t31-r9-4/t31-r10-3 idiom (at file top the calls executed in
+     * every requiring process — the test suite loads this file for
+     * WpConnectorsBuild — flipping display_errors process-wide on
+     * hosts that set it off).
      */
-    error_reporting(E_ALL);
-    ini_set('display_errors', '1');
 
     $repoRoot = dirname(__DIR__);
     $distDir = $repoRoot . '/dist';
