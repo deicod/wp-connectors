@@ -2694,6 +2694,76 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r8-1): the use-statement boundary SET. r7-7
+     * taught the walk's use-tracking state to die at ';' — but a CLOSE
+     * TAG is a statement terminator exactly like ';' (the engine implies
+     * the semicolon at '?>'), and it was not in the set: a hostile
+     * `use Foo\Bar as ?>` left the alias skip (and the unclosed group's
+     * prefix) armed across the mode boundary and into the re-entered
+     * code, where the armed skip silently ATE the next name run — the
+     * family reference after the tag became invisible to both gates and
+     * shipped at exit 0 (reproduced red under the pre-fix detector:
+     * zero family references). The matrix walks every boundary
+     * spelling over every state that can survive one: the alias skip
+     * behind a dangling `as`, and an unclosed group prefix behind '{'.
+     * The clean direction: an own-namespace file that legitimately ends
+     * statements with '?>' stays clean through the same walk.
+     */
+    public function testAUseStatementDiesAtEveryStatementBoundarySpelling(): void
+    {
+        $boundaries = array(
+            'semicolon (the r7-7 spelling)' => "use Foo\\Bar as;\n\$x = \\Deicod\\WpConnectors\\Zai\\ApiClient::class;\n",
+            'close tag with inline HTML between (the r8-1 repro)' => "use Foo\\Bar as ?>\ninline HTML\n<?php\n\$x = \\Deicod\\WpConnectors\\Zai\\ApiClient::class;\n",
+            'close tag re-entered by <?= (T_OPEN_TAG_WITH_ECHO)' => "use Foo\\Bar as ?>\n<?= 'x' ?>\n<?php\n\$x = \\Deicod\\WpConnectors\\Zai\\ApiClient::class;\n",
+            'close tag with no gap before the open tag' => "use Foo\\Bar as ?><?php\n\$x = \\Deicod\\WpConnectors\\Zai\\ApiClient::class;\n",
+            'unclosed group prefix survives the close tag (the composition half)' => "use Foo\\{Bar, ?>\n<?php\nuse Deicod\\WpConnectors\\Zai\\Api;\nclass TagBoundStore\n{\n}\n",
+        );
+        foreach ($boundaries as $label => $tail) {
+            $source = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n" . $tail;
+            try {
+                WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/TagBound.php');
+                $this->fail("A use statement's tracking state must die at every statement-boundary spelling ({$label}) — never eat the name run after the boundary.");
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('survived the rewrite', $e->getMessage(), "The refusal is the postcondition's ({$label}).");
+                $this->assertStringContainsString('TagBound.php', $e->getMessage(), "The refusal must name the file ({$label}).");
+                $this->assertStringContainsString('Deicod\\WpConnectors\\Zai\\Api', $e->getMessage(), "The refusal must name the laundered reference ({$label}).");
+            }
+        }
+
+        // The unclosed-group row launders through the PREFIX COMPOSITION
+        // (the post-tag member composes with 'Foo\' and stops looking
+        // family) — pin that the bare member is what the walk must
+        // report: the same member WITHOUT the tag boundary is composed
+        // and refused today, so the boundary is the only variable.
+        $detector = wp_connectors_shared_family_references(
+            "<?php\nuse Foo\\{Bar, ?>\n<?php\nuse Deicod\\WpConnectors\\Zai\\Api;\n"
+        );
+        $this->assertContains(
+            array('name' => 'Deicod\\WpConnectors\\Zai\\Api', 'lower' => 'deicod\\wpconnectors\\zai\\api', 'kind' => 'use', 'offset' => 33, 'line' => 4),
+            $detector,
+            'Past a tag boundary the post-tag name run is judged bare, never composed with a prefix from before the boundary.'
+        );
+
+        /*
+         * Clean direction: a shared source that legitimately CARRIES a
+         * close tag (template-flavored tail, still lintable PHP) keeps
+         * rewriting clean — the boundary resets nothing that was not
+         * already dead. The family declaration and import stay ';'
+         * -terminated: the REWRITER owns only that spelling of the
+         * statement end (its patterns anchor on ';'), so a tag-
+         * terminated family declaration is a postcondition refusal —
+         * loud, and out of this round's detector scope. (The close tag
+         * is spelled out in words in this comment: the two-byte
+         * spelling would close PHP mode INSIDE a line comment.)
+         */
+        $clean = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock;\nfinal class TagBoundClean\n{\n    public function stamp(): string\n    {\n        return Clock::class;\n    }\n}\n?>\n<p>rendered</p>\n";
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($clean, 'OpenAiOauth', 'shared/src/TagBoundClean.php');
+        $this->assertStringContainsString('namespace Deicod\\WpConnectors\\OpenAiOauth\\Shared;', $rewritten, 'A source carrying a close-tag tail rewrites its declaration normally.');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock;', $rewritten, 'A source carrying a close-tag tail rewrites its import normally.');
+        $this->assertStringContainsString('<p>rendered</p>', $rewritten, 'The inline-HTML tail rides verbatim.');
+    }
+
+    /**
      * Fix-round pin (t31-r4-3): ZipArchive::close()'s false return was
      * ignored — a failed finalization took no catch path while OVERWRITE
      * had already destroyed the previous good zip, so the run continued

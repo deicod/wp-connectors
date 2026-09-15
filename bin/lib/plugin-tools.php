@@ -472,7 +472,24 @@ function wp_connectors_php_name_references($source)
 
         if (null === $id || ! wp_connectors_is_name_token_id($id)) {
             if ($use_open) {
-                if (';' === $token) {
+                /*
+                 * The statement-boundary SET (verifier round t31-r8-1):
+                 * ';' plus every PHP-mode tag boundary. A close tag IS a
+                 * statement terminator — the engine implies the
+                 * semicolon at '?>' — but r7-7's reset named only the
+                 * ';' spelling, so a hostile `use Foo\Bar as ?>` left
+                 * the alias skip armed across the tag and into the
+                 * re-entered code, where it silently ATE the next name
+                 * run: a family reference there became invisible to
+                 * both gates (adversarially confirmed: pre-round REFUSE,
+                 * round exit-0 ship). The re-entry tags can never occur
+                 * inside a live import statement — an open tag only
+                 * ever follows a close tag or starts the file — so
+                 * resetting at them too is the invariant worn on both
+                 * sides: a mode boundary IS a statement boundary,
+                 * whichever side of it the walk stands.
+                 */
+                if (';' === $token || T_CLOSE_TAG === $id || T_OPEN_TAG === $id || T_OPEN_TAG_WITH_ECHO === $id) {
                     $use_open = false;
                     $group_prefix = null;
                     $group_brace_depth = 0;
