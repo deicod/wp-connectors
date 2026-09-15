@@ -246,8 +246,20 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 
             return true;
         });
-        $extracted = $zip->extractTo($workDir);
-        restore_error_handler();
+        /*
+         * The capture is EXCEPTION-SAFE (verifier round t31-r12-20, the
+         * security lens): anything extractTo() throws between the two
+         * handler calls (8.5 throws ValueError on an unusable
+         * destination) otherwise leaves the swallow-all capture handler
+         * installed for the REST of the process, silently suppressing
+         * every later warning, notice, and deprecation. The restore
+         * rides a finally; the throw itself keeps propagating.
+         */
+        try {
+            $extracted = $zip->extractTo($workDir);
+        } finally {
+            restore_error_handler();
+        }
         $zip->close();
         if (true !== $extracted) {
             $violations[] = sprintf(

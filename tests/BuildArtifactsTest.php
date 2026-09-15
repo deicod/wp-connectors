@@ -554,6 +554,32 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString(str_repeat('a', 40), $violations[0], 'The printable body of the reason still names the offending entry.');
     }
 
+    /**
+     * Verifier-round pin (t31-r12-20, the security lens): the capture
+     * handler's restore rides a FINALLY around the extractTo() call —
+     * the pre-fix pairing (set_error_handler … call … restore on the
+     * happy path only) left the swallow-all capture handler installed
+     * for the REST of the process on any throw between the two calls,
+     * silently suppressing every later warning, notice, and
+     * deprecation. The throw spelling does not fire on this runtime
+     * (probed: extractTo() with an unusable destination WARNS and
+     * returns false — captured — rather than raising), so the pin is
+     * the structural one: the restore lives inside the finally that
+     * wraps the call, mutation-sensitive to the happy-path-only
+     * pairing coming back.
+     */
+    public function testTheCaptureHandlerRestoreRidesAFinally(): void
+    {
+        $source = (string) file_get_contents(__DIR__ . '/../bin/inspect-artifact.php');
+        $call = 'try {' . "\n" . '            $extracted = $zip->extractTo($workDir);' . "\n" . '        } finally {' . "\n" . '            restore_error_handler();' . "\n" . '        }';
+
+        $this->assertStringContainsString(
+            $call,
+            $source,
+            'The capture handler\'s restore must ride the finally that wraps the extractTo() call — a happy-path-only restore leaks the swallow-all handler on any throw.'
+        );
+    }
+
     /*
      * Artifact secret scans never prune (t31-r12-3, closing the r6-owned
      * ledger line): the scanner's dev-segment prune is a repo-walk
