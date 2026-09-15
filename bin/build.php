@@ -1597,21 +1597,40 @@ final class WpConnectorsBuild
     /**
      * Whether a process id is alive — the sweep's liveness check.
      *
-     * /proc when the platform carries it, a signal-0 probe through posix
-     * when it does not (EPERM counts as alive: the process exists, it
-     * just is not ours), and ALIVE when neither mechanism exists — a
-     * sweep that cannot tell never deletes.
+     * A VISIBLE /proc entry is alive, deterministically. An INVISIBLE
+     * one is NOT a death verdict (verifier round t31-r11-2): under
+     * hidepid=2 another user's /proc/<pid> is invisible to us while the
+     * process runs, and the old `is_dir('/proc') ? is_dir('/proc/'.$pid)
+     * : …` shortcut concluded dead from invisibility alone — the sweep
+     * then rrmdired a LIVE sibling build's in-flight stage tree,
+     * contradicting its own charter ("a sweep that cannot tell never
+     * deletes"). Invisibility falls through to the signal-0 probe
+     * through posix, whose answer IS deterministic in both directions:
+     * EPERM means the process exists (alive, not ours to signal), ESRCH
+     * means it is gone (dead — the only invisible-and-dead verdict this
+     * method returns). When neither mechanism can tell — no entry, no
+     * posix — the verdict is ALIVE: still the charter's rule.
      *
-     * @param int $pid Process id.
+     * The /proc entry probe is injectable for the regression: the
+     * default consults the filesystem; a probe forced to FALSE stands
+     * for the hidepid view (the entry exists, we just cannot see it).
+     *
+     * @param int        $pid           Process id.
+     * @param callable|null $entry_visible Optional probe: pid => bool,
+     *        whether /proc/<pid> is visible as a directory (defaults to
+     *        the real filesystem check).
      * @return bool True when the process is alive or liveness is undeterminable.
      */
-    private static function processIsAlive($pid)
+    private static function processIsAlive($pid, $entry_visible = null)
     {
         if ($pid <= 0) {
             return false;
         }
-        if (is_dir('/proc')) {
-            return is_dir('/proc/' . $pid);
+        $entry_visible = $entry_visible ?: static function (int $probe_pid): bool {
+            return is_dir('/proc/' . $probe_pid);
+        };
+        if ($entry_visible((int) $pid)) {
+            return true;
         }
         if (function_exists('posix_kill')) {
             // 1 = EPERM: exists, not ours to signal.

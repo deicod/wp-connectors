@@ -2551,6 +2551,49 @@ FIXTURE;
     }
 
     /**
+     * Verifier-round pin (t31-r11-2): an INVISIBLE /proc entry is not a
+     * death verdict. Under hidepid=2 another user's live build is
+     * invisible in /proc while it runs, and the old liveness shortcut —
+     * `is_dir('/proc') ? is_dir('/proc/<pid>') : <signal probe>` — read
+     * that invisibility as DEAD, making the posix fallback (whose EPERM
+     * answer means ALIVE) unreachable on every Linux: the sweep would
+     * have rrmdired a live sibling build's in-flight stage tree, the
+     * exact deletion the sweep's own docblock forbids ("a sweep that
+     * cannot tell never deletes"). Invisibility falls through to the
+     * signal-0 probe now; this pin drives the private verdict with the
+     * /proc entry probe INJECTED as the hidepid view (every entry
+     * invisible), so the deterministic legs run without needing a
+     * second user on the host.
+     */
+    public function testAnInvisibleProcEntryIsNotADeathVerdict(): void
+    {
+        if (! function_exists('posix_kill')) {
+            $this->markTestSkipped('The deterministic invisible-path verdicts need the posix signal-0 probe.');
+        }
+        $alive = new ReflectionMethod('WpConnectorsBuild', 'processIsAlive');
+        $hidepid_view = static function (int $pid): bool {
+            return false; // every /proc entry invisible to this process
+        };
+
+        /*
+         * EPERM through the invisible path: a LIVE process that is not
+         * ours to signal — pid 1 from an unprivileged runner (a root
+         * runner's probe simply succeeds, also alive). The pre-fix
+         * shortcut returned DEAD here.
+         */
+        $this->assertTrue($alive->invoke(null, 1, $hidepid_view), 'An invisible-but-live process (EPERM on signal 0) must read ALIVE — invisibility is not a death verdict.');
+
+        // ESRCH through the invisible path: the one deterministic
+        // invisible-and-dead verdict (a pid beyond every Linux pid_max).
+        $this->assertFalse($alive->invoke(null, 999999999, $hidepid_view), 'An invisible entry whose signal probe returns ESRCH reads dead — the only invisible death verdict.');
+
+        // The visible path is unchanged: a visible entry reads alive,
+        // and a non-positive pid stays dead under every probe.
+        $this->assertTrue($alive->invoke(null, getmypid()), 'A visible /proc entry (this process) reads alive.');
+        $this->assertFalse($alive->invoke(null, 0, $hidepid_view), 'A non-positive pid is dead under every probe.');
+    }
+
+    /**
      * Fix-round pin (t31-r10-8): the version-constant stem rode a second
      * hand-spelled slug→identifier derivation beside
      * wp_connectors_namespace_suffix_from_slug() — twins this branch had
