@@ -26,9 +26,6 @@
 
 declare(strict_types=1);
 
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
-
 require_once __DIR__ . '/lib/plugin-tools.php';
 
 /**
@@ -1244,6 +1241,20 @@ final class WpConnectorsBuild
  */
 
 if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
+    /*
+     * Diagnostics for the CLI run ONLY (glm17-16, review round
+     * t31-r9-4): at file top these two calls executed in every process
+     * that REQUIRED the file too — the test suite loads it for
+     * WpConnectorsBuild (BuildArtifactsTest, BuildSeamPropertyTest,
+     * SharedOAuthArchitectureTest), and a host running php-cli with
+     * display_errors off would have had it flipped on process-wide
+     * just by loading a test (reproduced: `php -d display_errors=0 -r
+     * 'require bin/build.php; …'` printed 1). Same shape check-
+     * conventions.php already wears.
+     */
+    error_reporting(E_ALL);
+    ini_set('display_errors', '1');
+
     $repoRoot = dirname(__DIR__);
     $distDir = $repoRoot . '/dist';
     $args = getopt('', array( 'slug::', 'fixture::' ));

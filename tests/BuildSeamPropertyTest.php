@@ -727,4 +727,33 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
 
         return $names;
     }
+
+    /**
+     * Fix-round pin (t31-r9-4): the file-scope error_reporting(E_ALL) +
+     * ini_set('display_errors', '1') ran in every process that REQUIRED
+     * these files, not just the CLI run — and this suite is one of the
+     * requirers (both files load for the class and the inspector
+     * function), so a php-cli host with display_errors off had it
+     * flipped on process-wide just by running the tests (reproduced:
+     * `php -d display_errors=0 -r 'require bin/build.php; …'` printed
+     * 1). The glm17-16 class, already fixed in check-conventions.php
+     * but unguarded here — the two files grew their require-side
+     * consumers (this suite) after that fix. Pinned through a child
+     * process because the in-process ini state belongs to PHPUnit's
+     * own runner, not to this test.
+     */
+    public function testRequiringTheBuildAndInspectFilesNeverFlipsDisplayErrors(): void
+    {
+        $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/build.php'), true) . ';'
+            . ' require ' . var_export(realpath(__DIR__ . '/../bin/inspect-artifact.php'), true) . ';'
+            . ' echo ini_get("display_errors");';
+        exec(escapeshellarg(PHP_BINARY) . ' -d display_errors=0 -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+
+        $this->assertSame(0, $exit, 'The require itself must not error.');
+        $this->assertSame(
+            array('0'),
+            $output,
+            'Requiring bin/build.php and bin/inspect-artifact.php into a host process must leave display_errors exactly as the host set it — the diagnostics calls belong to the CLI guard, not the file scope.'
+        );
+    }
 }
