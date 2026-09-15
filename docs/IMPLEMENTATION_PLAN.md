@@ -657,7 +657,49 @@ documented exception.
   completeness verified exhaustively (zero bidi-ACTIVE
   Cf pass; the invisible residual ledgered as curation
   decisions). Suite 1560 → 1569 tests, 44212 → 44283
-  assertions, 2 skipped unchanged.
+  assertions, 2 skipped unchanged. Fix round t31-r10
+  (13 commits over round-10's eight findings + five
+  adversarially-confirmed verifier follow-ups): the
+  walk's trait-adaptation misparse (the r8-noted debt)
+  closed — a glued brace opens an ADAPTATION block whose
+  clause and members report as un-composed code
+  positions, where the old group-prefix composition
+  laundered a fully-qualified family reference to zero
+  carriers (exit-0 ship reproduced); the value lens
+  strips the value-free b/B prefix before taking the
+  quote (a b-prefixed family class-string was invisible
+  while its unprefixed twin refused); lint-php.php's
+  file scope moved inside the CLI guard (the r9-4 class,
+  closed repo-wide); the stage tree PID-named with a
+  dead-pid startup sweep (the r5-11 reopen — concurrent
+  same-plugin builds survive); both VO headers()
+  docblocks state the all-digit int-key caveat in
+  byte-identical wording; the provider-name pattern
+  derives from a SPEC-tracked provider set (single
+  source, fail-loud both directions); the HeaderMap
+  duplicate fence probes the one folded index (the
+  seen_lowercase parallel deleted); and both
+  slug→identifier spellings (namespace suffix, constant
+  stem) derive from one core with byte parity pinned.
+  The two-lens verifier pass raised ten findings — five
+  distinct defects, ALL CONFIRMED with reproduced
+  evidence, zero refuted — fixed in-round: three more
+  zero-carrier spellings of the same walk machinery (a
+  fully-qualified group member against a non-family
+  prefix — an exit-0 ship through the real builder; a
+  qualified name after `as` eaten by the alias skip; an
+  empty group body reporting nothing); the sweep
+  deleting a FOREIGN tree through a stage-shaped symlink
+  (links never touched now, own-name link refuses
+  loudly); the multi-trait clause classification stated
+  honestly in the contract docblock (+ the missing
+  clause-list battery row); a row-count fence on the
+  SPEC-sync pin (deviant table rows fail loudly, never
+  skip); and the sweep's crashed-run charter extended to
+  the pid-named zip temps (dead pid → unlinked; pid-less
+  manifest temps exempt, never raced). Suite 1569 →
+  1572 tests, 44283 → 44418 assertions, 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

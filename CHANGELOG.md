@@ -295,6 +295,121 @@ gap, non-PHP files inside shared/src shipping, and the
 backreference-material namespace rewrite. Residuals ledgered. Suite
 1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r10)
+
+Fix round over round-10's eight counted findings (two correctness with
+end-to-end exit-0 repros, three smaller, three cleanup), fixed as
+t31-r10-1..8; then a two-lens verifier pass over the round diff
+(independent correctness + security agents, every raised finding
+adversarially re-derived by a third agent before fixing) raised ten
+findings — five distinct defects after the cross-lens duplicates —
+ALL CONFIRMED with reproduced evidence (one an exit-0 ship through
+the real builder), zero refuted, all fixed in-round as t31-r10-9..13.
+Suite 1569 → 1572 tests, 44283 → 44418 assertions, 2 skipped
+unchanged.
+
+- **The trait-adaptation block no longer launders family references
+  (t31-r10-1)**: the walk read `use SomeTrait { … }` (brace glued
+  DIRECTLY to the clause, no separator) as a GROUP-USE prefix and
+  composed every member name against the TRAIT name — a
+  fully-qualified family reference inside the braces produced ZERO
+  carriers, invisible to the detector, the build postcondition, and
+  the sweep (reproduced end-to-end: an exit-0 ship of dangling
+  source-namespace bytes; the r8-noted misparse debt upgraded to a
+  demonstrated ships-broken channel). The grammar's two
+  brace-after-clause shapes are distinguished now: `Prefix\{` is the
+  group prefix (unchanged), the glued brace opens an ADAPTATION block
+  — the clause and members report as un-composed code positions and
+  the `as` skip never arms inside; legal adaptations and group uses
+  stay green (byte-identical at HEAD).
+- **b/B-prefixed literals no longer blind the value lens (t31-r10-2)**:
+  the token text of `b"…"`/`B'…'` includes the prefix byte, so the
+  lens read the PREFIX as the quote and the unescape shifted by one —
+  a b-prefixed family class-string (`b"\x44eicod\\WpConnectors…"`)
+  yielded zero findings while its unprefixed twin refused. The prefix
+  is value-free; both enclosures normalize identically now.
+- **lint-php's file scope carries only the require (t31-r10-3)**: the
+  t31-r9-4 display_errors class, already fixed in build.php,
+  inspect-artifact.php, check-conventions.php, and scan-secrets.php,
+  was left standing in lint-php.php — file-scope diagnostics AND the
+  whole walk AND the exit() ran in every process that required the
+  file. Same guard shape as the siblings; the r9-4 pin covers it.
+- **The stage tree is PID-named (t31-r10-4)**: `.stage-<slug>` was
+  shared between concurrent same-plugin builds — run B's
+  startup/finally rrmdir deleted run A's in-flight tree and A refused
+  on a spurious "cannot add … to" (the reopen the t31-r5-11 ledger
+  entry itself names). `.stage-<slug>-<pid>` is unique per run; the
+  finally releases exactly the run's own tree; the startup sweep
+  reclaims only DEAD-pid orphans of the same plugin (live runs never
+  touched; /proc liveness, signal-0 posix fallback, never-delete when
+  undeterminable).
+- **Both headers() docblocks state the all-digit int-key caveat
+  (t31-r10-5)**: execution falsified the `array<string, string>`
+  annotation (an all-digit RFC 7230 token name is returned under its
+  PHP-canonical INTEGER key) while the HeaderMap owner's docblock
+  already stated it. Both VO docblocks carry the caveat in
+  byte-identical wording; the digit-name pin extends to the response
+  VO.
+- **The provider-name pattern derives from the provider set
+  (t31-r10-6)**: the hand-maintained PROVIDER_NAME_PATTERN was a
+  checklist-in-code that lagged the provider set, and more connectors
+  are scheduled (M4 codex/openai, M5 grok/xai, M6 claude/anthropic).
+  PROVIDER_SET (per SPEC §1's connector table) drives a derived,
+  preg_quoted, word-bounded pattern, a SPEC-sync pin fails loudly both
+  directions, and the derived vocabulary is a superset of the former
+  (whole IDs `zai_anthropic`/`claude_pro` join as words).
+- **The duplicate fence probes the one folded index (t31-r10-7)**:
+  `$seen_lowercase` was a redundant parallel of `$by_lowercase`'s
+  keys — two copies of one fact, one silent-weakening edit away from a
+  dead fence. The fence probes the index itself; a canonical
+  digit-string probe coerces to the same int slot the store lands in,
+  so the all-digit fence is the same fence by construction.
+- **One slug→identifier core (t31-r10-8)**: the version-constant stem
+  rode a second hand-spelled derivation beside
+  `wp_connectors_namespace_suffix_from_slug()` — twins synchronized
+  by hand twice already (r5-8, r5-12). Both spellings (namespace
+  suffix, constant stem) derive from
+  `wp_connectors_identifier_from_slug()` over one segmenter —
+  separator vocabulary, acronym casing, and digit-initial underscore
+  once — with byte parity against each former hand spelling pinned at
+  the cutover.
+- **Verifier: three more zero-carrier spellings die (t31-r10-9)**: a
+  FULLY-QUALIFIED group member composed against a non-family prefix
+  (`use OtherVendor\{ \Deicod\… }` — reproduced as an exit-0 ship
+  through the real builder), a QUALIFIED name after `as` (eaten by the
+  alias skip though an alias is a bare identifier), and an EMPTY group
+  body (`use Deicod\WpConnectors\{};` — the prefix never reports and
+  no member exists). An absolute run never composes; the alias skip
+  eats only bare identifiers; a group statement reporting no member
+  reports its prefix. All pre-existing at the pre-round base —
+  completeness debt of the same machinery, not regressions.
+- **Verifier: the sweep never deletes through a symlink
+  (t31-r10-10)**: is_dir() follows links, so a dist entry symlinked as
+  `.stage-<slug>-<dead-pid>` passed the sweep's gate and rrmdir()
+  emptied the TARGET tree through the link (both lenses confirmed
+  independently). Links are never this code's product: stage-shaped
+  links stand untouched, and a link at the run's OWN stage name
+  refuses the build loudly.
+- **Verifier: the multi-trait classification, stated honestly
+  (t31-r10-11)**: the r10-1 docblock claimed every adaptation clause
+  reports as 'code' — in `use A, B {…}` the pre-brace clauses report
+  as un-composed 'use' import positions (the flag arms at the brace).
+  The classification was the code's intent; the contract docblock and
+  a battery row (a multi-trait CLAUSE naming the family refuses via
+  ownership) now match it.
+- **Verifier: the SPEC-sync pin counts every table row (t31-r10-12)**:
+  a connector row in a deviant shape (unquoted or off-vocabulary ID,
+  inserted column) was INVISIBLE to the pin's parse — the fail-open
+  direction the pin exists to kill. Every digit-first table row must
+  parse into a provider ID; a deviant row fails loudly.
+- **Verifier: the sweep's crashed-run charter covers the pid-named
+  temps (t31-r10-13)**: the same crash that orphans a stage tree also
+  leaves `.<zip>.tmp-<pid>` (+ `.sha256`, + libzip's in-window
+  `.part`) forever — reproduced with a planted dead-pid state and a
+  real SIGKILL. Dead-pid temp files are unlinked under the same
+  liveness gate; pid-less `.checksums-*` staging temps stay exempt
+  (unattributable — reclaiming one could race a live run).
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r9)
 
 Fix round over round-9's nine counted findings — the headliner: the
