@@ -514,8 +514,10 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      * BYTE-EXACT, and addFromString keeps it too; both sides probed),
      * but THIS arm's spelling still does not reproduce here for its
      * own reason: the ENGINE DIAGNOSTIC the capture reads is
-     * libzip-rendered text, and this build's renderer omits the
-     * control bytes — the seam is load-bearing for the verdict lines
+     * libzip-rendered text, and this build's renderer SUBSTITUTES the
+     * control bytes with visible glyphs (U+25D9 for a newline, U+2190
+     * for ESC — probed byte-level), so no raw C0 byte reaches the
+     * capture — the seam is load-bearing for the verdict lines
      * that interpolate the names themselves (t31-r13-1, reproduced)
      * and hardening for captured engine text on builds whose renderer
      * passes raw bytes. The reason renders through the ONE printable
