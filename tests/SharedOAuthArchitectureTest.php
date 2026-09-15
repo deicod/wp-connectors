@@ -66,10 +66,50 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     private const WP_TOKEN_PATTERN = '/(?:\bwp_[a-z0-9_]+|\b(?:apply_filters|do_action|add_action|add_filter|remove_action|remove_filter|_doing_it_wrong|current_time|current_user_can|get_current_user_id|get_current_blog_id|is_admin|is_multisite|is_user_logged_in|is_wp_error|get_bloginfo|get_locale|get_option|update_option|add_option|delete_option|get_blog_option|update_blog_option|delete_blog_option|get_site_option|update_site_option|delete_site_option|switch_to_blog|restore_current_blog|get_transient|set_transient|delete_transient|get_user_meta|update_user_meta|register_setting|add_settings_(?:section|field)|add_submenu_page|register_(?:activation|deactivation|uninstall)_hook|plugin_dir_path|plugins_url|admin_url|network_admin_url|self_admin_url|site_url|home_url|get_site_url|get_home_url|add_query_arg|remove_query_arg|load_plugin_textdomain|check_admin_referer|check_ajax_referer|esc_[a-z0-9_]+|sanitize_[a-z0-9_]+|wpdb|wp_error)(?![A-Za-z])|\b__\s*\(|\b(?:AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|AUTH_SALT|SECURE_AUTH_SALT|LOGGED_IN_SALT|NONCE_SALT|ABSPATH|WPINC|WP_CONTENT_DIR|WP_PLUGIN_DIR|WPMU_PLUGIN_DIR)\b)/i';
 
     /**
-     * Provider names the generic classes must not carry (word-bounded,
-     * case-insensitive; z.ai spelled both ways).
+     * The provider set (round t31-r10-6): provider ID => the vendor-name
+     * spellings beyond the ID itself that the ecosystem uses for the
+     * provider. ONE source, per docs/specs/SPEC.md §1's connector table
+     * — the SPEC-sync pin below fails loudly when the two disagree —
+     * and the banned pattern is DERIVED from it. The hand-maintained
+     * pattern was a checklist-in-code that lagged the set (more
+     * connectors are scheduled: M4 codex/openai, M5 grok/xai, M6
+     * claude/anthropic); a provider joins by its row here, never by a
+     * regex edit someone remembers to make.
      */
-    private const PROVIDER_NAME_PATTERN = '/(?:\bz\.ai\b|\b(?:openai|xai|grok|anthropic|claude|codex|zai)\b)/i';
+    private const PROVIDER_SET = array(
+        'zai' => array('z.ai'),
+        'zai_anthropic' => array('anthropic'),
+        'codex' => array('openai'),
+        'grok' => array('xai'),
+        'claude_pro' => array('anthropic', 'claude'),
+    );
+
+    /**
+     * The provider-neutrality pattern, DERIVED from the provider set
+     * (t31-r10-6): every provider ID plus its vendor aliases, word-
+     * bounded and case-insensitive (PHP names are), preg_quoted so a
+     * dotted spelling ('z.ai') keeps its literal byte. Derived, never
+     * hand-spelled — the set is the single vocabulary.
+     *
+     * @return string The banned-provider pattern.
+     */
+    private function providerNamePattern(): string
+    {
+        $words = array();
+        foreach (self::PROVIDER_SET as $provider_id => $aliases) {
+            $words[] = (string) $provider_id;
+            foreach ($aliases as $alias) {
+                $words[] = $alias;
+            }
+        }
+
+        return '/\b(?:' . implode('|', array_map(
+            static function (string $word): string {
+                return preg_quote($word, '/');
+            },
+            array_values(array_unique($words))
+        )) . ')\b/i';
+    }
 
     /**
      * Static mutable state (pure value objects carry none).
@@ -375,9 +415,54 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         foreach ($paths as $path) {
             $this->assertPatternAbsentWholeFile(
                 (string) $path,
-                self::PROVIDER_NAME_PATTERN,
+                $this->providerNamePattern(),
                 'Provider name in the provider-neutral shared source (provider config belongs to the per-plugin directories)'
             );
+        }
+    }
+
+    /**
+     * Fix-round pin (t31-r10-6): the provider-neutrality vocabulary is
+     * DERIVED from the provider set, and the set tracks the SPEC's
+     * connector table — the hand-maintained pattern was a
+     * checklist-in-code that lagged the set, and more connectors are
+     * scheduled. A provider added to the SPEC FAILS this pin until its
+     * row joins the set, so the gate can never silently go stale; a
+     * retired provider fails it the other direction.
+     */
+    public function testTheProviderSetTracksTheSpecConnectorTableAndDrivesThePattern(): void
+    {
+        // The set == the SPEC's connector table, both directions (loud
+        // read: an unreadable SPEC is a refusal, never a vacuous pass).
+        $spec_path = realpath(__DIR__ . '/../docs/specs/SPEC.md');
+        $this->assertNotFalse($spec_path, 'docs/specs/SPEC.md must exist — the provider set rides its connector table.');
+        $spec_contents = file_get_contents($spec_path);
+        $this->assertNotFalse($spec_contents, 'The SPEC must be readable — an unreadable SPEC is a refusal, never a vacuous pass.');
+        $rows = array();
+        $result = preg_match_all('/^\|\s*\d+\s*\|\s*`([a-z0-9_]+)`\s*\|/m', (string) $spec_contents, $rows);
+        $this->assertNotFalse($result, 'The SPEC table scan aborted (PCRE) — an abort is a refusal.');
+        $this->assertNotSame(array(), $rows[1], 'The SPEC\'s connector table must parse into provider IDs — the pin rides it.');
+        $spec_ids = array_values(array_unique($rows[1]));
+        sort($spec_ids);
+        $set_ids = array_keys(self::PROVIDER_SET);
+        sort($set_ids);
+        $this->assertSame(
+            $spec_ids,
+            $set_ids,
+            'The provider set must carry every provider the SPEC schedules (and no retired ones) — a provider added to the SPEC joins the set here, never silently misses the gate.'
+        );
+
+        // The derivation, both directions: every vocabulary word matches
+        // (non-vacuous), and words the set does not carry stay clean —
+        // including the segment-shaped lookalikes inside scheduled IDs.
+        $pattern = $this->providerNamePattern();
+        foreach (self::PROVIDER_SET as $provider_id => $aliases) {
+            foreach (array_merge(array((string) $provider_id), $aliases) as $word) {
+                $this->assertSame(1, preg_match($pattern, "the {$word} connector"), "The derived pattern must flag every vocabulary word: {$word}.");
+            }
+        }
+        foreach (array('azai', 'zaid', 'pro', 'oauth', 'provider', 'anthropicish') as $lookalike) {
+            $this->assertSame(0, preg_match($pattern, "a {$lookalike} reminder"), "The derived pattern must not flag words outside the vocabulary: {$lookalike}.");
         }
     }
 
@@ -1376,7 +1461,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         try {
             $this->assertPatternAbsentWholeFile(
                 $providerFixture,
-                self::PROVIDER_NAME_PATTERN,
+                $this->providerNamePattern(),
                 'Provider name in the provider-neutral shared source (provider config belongs to the per-plugin directories)'
             );
             $this->fail('A planted provider name must fail the provider gate.');
@@ -1389,7 +1474,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // same gate.
         $this->assertPatternAbsentWholeFile(
             (string) realpath(__DIR__ . '/../shared/src/Token/AccessTokenSet.php'),
-            self::PROVIDER_NAME_PATTERN,
+            $this->providerNamePattern(),
             'Provider name in the provider-neutral shared source (provider config belongs to the per-plugin directories)'
         );
     }
