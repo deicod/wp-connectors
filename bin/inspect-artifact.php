@@ -96,7 +96,14 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * headers, syntax (php -l), secrets, self-containment — still
          * judges every entry, embedded or not.
          */
-        $isEmbeddedShared = 0 === strpos($name, $parts[0] . '/src/Shared/');
+        /*
+         * The embed-territory judgment rides the ONE owner
+         * (t31-r12-10): wp_connectors_is_embed_destination() folds case
+         * exactly like the builder's collision fence, so any casing of
+         * the generated subtree is classified (never content-judged) as
+         * embed territory on both sides.
+         */
+        $isEmbeddedShared = wp_connectors_is_embed_destination($name, $parts[0]);
         // Segment check (whole path components; a basename is one),
         // judged by the ONE comparison owner — case-insensitively
         // (t31-r6-3), the same fold the builder's collector excludes

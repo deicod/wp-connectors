@@ -1138,8 +1138,14 @@ final class WpConnectorsBuild
                      * silently overwrites the generated, sweep-gated
                      * embed — the same defect one case-folding away
                      * (adversarially confirmed).
+                     *
+                     * The destination itself rides the ONE prefix owner
+                     * (t31-r12-10): the embed-destination prefix helper
+                     * is the single spelling of the embed territory,
+                     * consumed by this loop and judged by the inspector
+                     * through the same owner's fold.
                      */
-                    $destination = $slug . '/src/Shared/' . $relative;
+                    $destination = wp_connectors_embed_destination_prefix($slug) . $relative;
                     foreach ($entries as $existing_entry) {
                         if (0 === strcasecmp($existing_entry, $destination)) {
                             throw new RuntimeException("build: {$slug} owns {$existing_entry} — a case-insensitive collision with the generated embed copy {$destination}; src/Shared/ is build-generated (build.json embed_shared), so remove or rename the plugin's own file");
@@ -1147,10 +1153,10 @@ final class WpConnectorsBuild
                     }
                     $source = self::readSharedSource($sharedDir, $relative);
                     $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
-                    $target = $stage . '/' . $slug . '/src/Shared/' . $relative;
+                    $target = $stage . '/' . wp_connectors_embed_destination_prefix($slug) . $relative;
                     @mkdir(dirname($target), 0755, true);
                     self::writeNormalized($rewritten, $target);
-                    $entries[] = $slug . '/src/Shared/' . $relative;
+                    $entries[] = wp_connectors_embed_destination_prefix($slug) . $relative;
                 }
             }
 

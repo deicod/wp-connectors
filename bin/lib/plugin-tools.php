@@ -3132,6 +3132,52 @@ function wp_connectors_is_development_entry($segment)
 }
 
 /**
+ * The embed destination prefix for a plugin slug: "<slug>/src/Shared/"
+ * — the ONE spelling owner of where build.json's embed_shared composes
+ * the shared library inside a plugin tree (review round t31-r12-10).
+ *
+ * The writer (bin/build.php's embed loop) and the artifact inspector
+ * spelled this prefix independently — the writer with the r5-16
+ * CASE-INSENSITIVE collision fence, the inspector with a byte-exact
+ * strpos exemption — so a case-variant spelling of the embed territory
+ * was refused by the build (the fence folds) while inspection judged it
+ * as plugin-owned (the exemption did not): two verdicts on one
+ * destination. ONE owner now: the writer builds every destination from
+ * this prefix, and the inspector judges embed territory through
+ * wp_connectors_is_embed_destination() below, folding case exactly as
+ * the writer's fence does — the stricter semantics, never the looser.
+ *
+ * @param string $slug Plugin slug (the zip's top-level directory).
+ * @return string The prefix every embed destination rides ('<slug>/src/Shared/').
+ */
+function wp_connectors_embed_destination_prefix($slug)
+{
+    return $slug . '/src/Shared/';
+}
+
+/**
+ * Whether a zip entry path sits inside the embed destination subtree —
+ * CASE-INSENSITIVELY, the writer's fence fold (review round t31-r12-10).
+ *
+ * The classification exemption this feeds (the inspector exempts the
+ * embedded subtree from the development-entry vocabulary, t31-r5-5)
+ * folds exactly like the builder's collision fence: any casing of
+ * 'src/Shared/' is generated territory by the builder's own doctrine
+ * (a plugin-owned case-variant there REFUSES the build). The fold
+ * exempts CLASSIFICATION only — traversal, syntax, secret, and
+ * self-containment checks still judge every entry under it, so the
+ * wider exemption never exempts content.
+ *
+ * @param string $entry Zip entry path.
+ * @param string $slug  The archive's top-level plugin directory.
+ * @return bool True when the entry sits under the embed destination in any casing.
+ */
+function wp_connectors_is_embed_destination($entry, $slug)
+{
+    return 0 === stripos((string) $entry, wp_connectors_embed_destination_prefix($slug));
+}
+
+/**
  * Collects every PHP source file (relative paths) under a source-only tree.
  *
  * The shared/src file vocabulary's ONE owner (review round t31-r3-4):

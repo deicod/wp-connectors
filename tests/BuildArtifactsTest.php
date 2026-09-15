@@ -556,6 +556,54 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * One embed-territory owner, both sides (t31-r12-10): the writer
+     * spelled the destination with a case-insensitive collision fence
+     * while the inspector's exemption was byte-exact — a case-variant
+     * spelling of the prefix was refused by the build and judged as
+     * plugin-owned by inspection.
+     */
+
+    public function testEmbedTerritoryIsJudgedByOneOwnerOnBothSides(): void
+    {
+        $slug = 'embedcase-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'EMBEDCASE_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\EmbedcaseDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+
+        // The owner's own fold: every casing of the prefix is embed
+        // territory; another slug's tree never is.
+        $this->assertTrue(wp_connectors_is_embed_destination("{$slug}/SRC/Shared/vendor/notes.txt", $slug), 'A case-variant embed prefix is embed territory.');
+        $this->assertTrue(wp_connectors_is_embed_destination("{$slug}/src/shared/x.php", $slug));
+        $this->assertFalse(wp_connectors_is_embed_destination("other-slug/src/Shared/x.php", $slug), 'Another plugin\'s embed tree is not this slug\'s territory.');
+
+        // Inspector side, classification: a case-variant embed prefix
+        // over a dev-entry name exempts the DEV-ENTRY vocabulary only
+        // (the writer's fence fold, unified) — the zip inspects clean.
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString("{$slug}/{$slug}.php", $main);
+        $zip->addFromString("{$slug}/src/autoload.php", $autoload);
+        $zip->addFromString("{$slug}/SRC/Shared/vendor/notes.txt", "vendored dependency notes\n");
+        $zip->close();
+        $this->assertSame(
+            array(),
+            wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase'),
+            'A case-variant embed prefix is classified as embed territory on both sides — the builder\'s fence fold, not a byte-exact exemption.'
+        );
+
+        // The exemption never exempts CONTENT (the over-exempt guard):
+        // the same case-variant territory carrying a live-shaped key is
+        // rejected by the unpruned artifact scan (t31-r12-3).
+        $key = 'AKIA' . strtoupper(bin2hex(random_bytes(8)));
+        $zip->open($zipPath);
+        $zip->addFromString("{$slug}/SRC/Shared/vendor/keys.txt", "aws = {$key}\n");
+        $zip->close();
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase');
+        $this->assertStringContainsString('aws-key', implode("\n", $violations), 'The folded exemption is classification-only: content checks still judge the case-variant territory.');
+    }
+
+    /*
      * Root-file archives (finding: the sole top-level entry is a FILE).
      */
 
