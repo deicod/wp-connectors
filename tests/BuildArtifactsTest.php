@@ -3471,6 +3471,38 @@ FIXTURE;
     }
 
     /**
+     * Verifier-round pin (t31-r11-8): octal escapes past \377 unescape
+     * DEPRECATION-FREE. The engine wraps such escapes to the low byte
+     * ("\400" is chr(0), "\777" is chr(255) — verified against the
+     * runtime), and the unescaper mirrors it — but chr() with a
+     * codepoint over 255 deprecates on PHP 8.5, and this unescaper runs
+     * mid-gate (the string lens of both namespace gates): the notice
+     * polluted the gate's output while every verdict stayed correct.
+     * The explicit & 0xFF applies the engine's own wrap, silently.
+     */
+    public function testOctalEscapesPast377UnescapeDeprecationFree(): void
+    {
+        $deprecations = array();
+        set_error_handler(static function (int $errno, string $message) use (&$deprecations): bool {
+            if (E_DEPRECATED === $errno || E_USER_DEPRECATED === $errno) {
+                $deprecations[] = $message;
+            }
+
+            return true;
+        });
+        try {
+            $wrapped = wp_connectors_unescape_php_string_literal('"', '\\777\\400\\101');
+            $in_range = wp_connectors_unescape_php_string_literal('"', '\\101\\102');
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame("\xFF\x00\x41", $wrapped, 'The wrap is the engine\'s own: octal \777\400\101 mask to the low byte, semantics unchanged.');
+        $this->assertSame('AB', $in_range, 'In-range octal is untouched by the mask.');
+        $this->assertSame(array(), $deprecations, 'An octal escape past \377 must not raise the chr() deprecation mid-gate (chr() over 255 deprecates on the 8.5 runtime).');
+    }
+
+    /**
      * Fix-round pin (t31-r8-3): the text lens applies the FULL family
      * vocabulary. It tried only the source spelling and the consumer's
      * target pattern, so a docblock `@throws` naming a SIBLING under

@@ -963,7 +963,17 @@ function wp_connectors_unescape_php_string_literal($quote, $inner)
             while ($i + 1 < $length && strlen($octal) < 3 && false !== strpos('01234567', $inner[ $i + 1 ])) {
                 $octal .= $inner[ ++$i ];
             }
-            $value .= chr((int) octdec($octal));
+            /*
+             * Masked to the low byte (verifier round t31-r11-8): the
+             * engine itself wraps an octal escape past \377 ("\400" is
+             * chr(0), "\777" is chr(255) — verified), but chr() with a
+             * codepoint over 255 DEPRECATES on the 8.5 runtime, and
+             * this unescaper runs mid-gate — the deprecation notice
+             * pollutes the gate's output while every verdict stays
+             * correct. The explicit & 0xFF applies the same wrap the
+             * engine applies, deprecation-free.
+             */
+            $value .= chr(((int) octdec($octal)) & 0xFF);
 
             continue;
         }
