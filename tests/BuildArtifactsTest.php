@@ -3236,6 +3236,14 @@ FIXTURE;
             // (a) The SHORT-WRITE spelling, through the real write layer:
             // the wrapper's stream_write accepts half of every chunk, so
             // PHP's write loop falls short and file_put_contents fails.
+            // Fix-round pin (t31-r9-8): the scratch URL is two segments
+            // deep ('…://staged/short.php') so the seam's @mkdir(
+            // dirname($to)) stays INSIDE the URL scheme — the old
+            // one-segment '…://short' spelled a scheme-only dirname
+            // ('wpctshortwrite:') that PHP treats as a plain relative
+            // path, and the mkdir created a literal directory of that
+            // name in the process CWD (the repo root; two leaked dirs
+            // verified present, one stale from an earlier spelling).
             $payload = str_repeat('x', 1000);
             $this->assertTrue(stream_wrapper_register('wpctshortwrite', WpctShortWriteStream::class), 'The short-write wrapper must register.');
             try {
@@ -3247,7 +3255,7 @@ FIXTURE;
                 });
                 $refused = null;
                 try {
-                    $write->invoke(null, $payload, 'wpctshortwrite://short');
+                    $write->invoke(null, $payload, 'wpctshortwrite://staged/short.php');
                 } catch (RuntimeException $e) {
                     $refused = $e->getMessage();
                 } finally {
@@ -3255,11 +3263,15 @@ FIXTURE;
                 }
 
                 $this->assertNotNull($refused, 'A short write must refuse the build, never stage a truncated file the zip would happily pack.');
-                $this->assertStringContainsString('wpctshortwrite://short', $refused, 'The refusal must name the file.');
+                $this->assertStringContainsString('wpctshortwrite://staged/short.php', $refused, 'The refusal must name the file.');
                 $this->assertStringContainsString('1000 bytes expected', $refused, 'The refusal must name the expected byte count.');
                 $this->assertNotSame(array(), array_filter($warnings, static function (string $w): bool {
                     return false !== strpos($w, 'bytes written');
                 }), 'The pin must drive a REAL short write (PHP\'s own "Only X of Y bytes written" diagnostic is the evidence), not a stubbed one.');
+                $this->assertFileDoesNotExist(
+                    getcwd() . '/wpctshortwrite:',
+                    'The stream-URL scratch must never leak a literal scheme-named directory into the working directory.'
+                );
             } finally {
                 stream_wrapper_unregister('wpctshortwrite');
             }
@@ -3923,6 +3935,13 @@ FIXTURE;
  * the checked-write pin (no ENOSPC filesystem required). Registered and
  * unregistered by the test that drives it; never exposed on a path any
  * other code touches.
+ *
+ * The wrapper owns its URL namespace's DIRECTORY operations too
+ * (t31-r9-8): writeNormalized() probes @mkdir(dirname($to)) before
+ * every write, and the wrapper's mkdir() no-ops it inside the scheme —
+ * the scratch URL never resolves onto the host filesystem, so the pin
+ * cannot leak a literal scheme-named directory into the working
+ * directory the way the one-segment URL spelling did.
  */
 final class WpctShortWriteStream
 {
@@ -3939,6 +3958,20 @@ final class WpctShortWriteStream
      * @return bool Always true.
      */
     public function stream_open(string $path, string $mode, int $options, ?string &$opened_path): bool
+    {
+        return true;
+    }
+
+    /**
+     * No-op directory creation inside the URL scheme (t31-r9-8): the
+     * seam's mkdir probe succeeds without touching the host filesystem.
+     *
+     * @param string $path    The directory path inside the scheme.
+     * @param int    $mode    The requested mode.
+     * @param int    $options Stream options.
+     * @return bool Always true.
+     */
+    public function mkdir(string $path, int $mode, int $options): bool
     {
         return true;
     }
