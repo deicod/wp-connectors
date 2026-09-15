@@ -612,7 +612,52 @@ documented exception.
   refactor drifted the two lenses' lines apart on
   CR-only files — fixed as t31-r8-8/9/10/11. Suite
   1554 → 1560 tests, 44107 → 44212 assertions, 2 skipped
-  unchanged.
+  unchanged. Fix round t31-r9 (11 commits over round-9's
+  nine findings + the noted item): the r8-5 ALM ban's
+  bytes corrected (it banned \xD9\x9C — U+065C, a
+  VISIBLE Arabic vowel sign — while the real U+061C
+  mark's \xD8\x9C passed: the reorder-spoof channel
+  reopened and legitimate content falsely refused; the
+  swap verified against the Unicode database, the vowel
+  sign returned to allowed obs-text, byte-swap pinned on
+  both surfaces); the build's self-containment gate
+  extended to the COMPOSED staged tree (an escaping
+  include in a shared source published at exit 0 while
+  inspect refused — one verdict restored, the WP-reach
+  curation item staying ledgered); token material
+  VSCHAR-screened at construction per RFC 6749's token
+  grammar (non-UTF-8 bytes made the 3.2 envelope payload
+  unencodable); the display_errors file-scope leak in
+  bin/build.php + bin/inspect-artifact.php moved inside
+  the CLI guard (both files are required by the test
+  suite — the glm17-16 class); the storage fake
+  round-trips grants through serialize/unserialize with
+  the port contract stating identity never survives the
+  storage boundary (port tests re-pinned by value); the
+  provenance banner inserted after ANY legal opener
+  (case-insensitive + BOM-preserving, zero-match refuses
+  — '<?PHP' shipped banner-less); the unused-import gate
+  grown to shared/src; the short-write pin's stream
+  scratch kept off the host filesystem (two leaked
+  scheme-named dirs in the repo root removed); and the
+  rewriter's four hand-spelled family literals derived
+  from the namespace helper via preg_quote (byte parity
+  verified). The noted item fixed as the one-line shape:
+  the clock port disclaims instance identity. A two-lens
+  verifier pass (correctness lens clean; the security
+  lens's one finding adversarially CONFIRMED with
+  end-to-end repros) falsified r9-1's own docblock —
+  "only format controls are banned" was false coverage:
+  the invisible bidi-ACTIVE Cf siblings (U+070F strong-
+  RTL, U+110BD/U+13430-3F strong-LTR, U+0600-0605/U+06DD/
+  U+0890/U+0891/U+08E2 AN) plus ZWSP/ZWNJ/ZWJ/U+FEFF/
+  U+00AD passed on both surfaces — all banned at the one
+  owner as t31-r9-10, the vocabulary restated as a
+  curated byte list (never a category derivation), and
+  completeness verified exhaustively (zero bidi-ACTIVE
+  Cf pass; the invisible residual ledgered as curation
+  decisions). Suite 1560 → 1569 tests, 44212 → 44283
+  assertions, 2 skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

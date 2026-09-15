@@ -295,6 +295,121 @@ gap, non-PHP files inside shared/src shipping, and the
 backreference-material namespace rewrite. Residuals ledgered. Suite
 1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r9)
+
+Fix round over round-9's nine counted findings — the headliner: the
+r8-5 ALM ban encoded the WRONG BYTES (U+065C instead of U+061C), so
+the real reorder-spoof mark passed while a legitimate Arabic vowel was
+falsely refused — plus one one-verdict drift on the publish path, one
+3.2-envelope gap, and six smaller items, fixed as t31-r9-1..9; then a
+two-lens verifier pass over the round diff (the correctness lens
+clean, the security lens's one finding adversarially CONFIRMED with
+end-to-end repros) falsified the round's own fix docs and fixed
+in-round as t31-r9-10. The round's noted item (the clock port's
+"fresh instant per call" wording vs the deterministic clock's
+same-instance reading) fixed as the trivial one-line shape.
+
+- **The ALM ban encodes U+061C (t31-r9-1)**: the r8-5 arm banned
+  \xD9\x9C — the UTF-8 encoding of U+065C ARABIC VOWEL SIGN DOT BELOW,
+  a VISIBLE combining vowel sign (category Mn, bidi NSM: it decorates
+  a letter, reorders nothing) — while the documented mark U+061C
+  (category Cf, bidi AL: the zero-width format control in the
+  LRM/RLM family) encodes to \xD8\x9C and PASSED: the exact
+  reorder-spoof channel r8-5 claimed closed, verbatim through
+  rendered_lines(), while legitimate Arabic content was refused (the
+  swap verified against the Unicode character database). The arm
+  carries the correct bytes; the r8-5 decision restated honestly
+  (ban the format control; U+065C returns to allowed obs-text); both
+  test spellings the round had pinned wrong corrected, and the
+  byte-swap pinned on both surfaces the one vocabulary owns — the
+  vowel sign constructs and renders VERBATIM, the real mark refuses.
+- **The build's self-containment gate scans the composed artifact
+  tree (t31-r9-2)**: the gate judged the plugin DIRECTORY alone, so
+  an escaping include appended to a shared source built and
+  PUBLISHED at exit 0 while the inspector — which scans the
+  extracted zip, embedded src/Shared included — refused the same
+  artifact: one-verdict doctrine broken on the publish path
+  (reproduced; distinct from the r8-noted WP-reach curation item).
+  The SAME gate now runs over the STAGED tree the zip will pack —
+  plugin files plus the embedded subtree — at the staging path (the
+  r5-S doctrine: every byte verified at its temp path), only when an
+  embed composed bytes the pre-gate had not already judged.
+- **Token material is VSCHAR-screened at construction
+  (t31-r9-3)**: non-UTF-8 token bytes constructed fine while
+  json_encode(to_array()) returned FALSE — and to_array() is the
+  documented Task-3.2 envelope payload (the saves-never-loads shape,
+  one layer out). The screen is the OAuth BCP's own grammar, not an
+  invented encoding probe: RFC 6749 fixes the token positions as
+  1*VSCHAR (%x20-%x7E, printable US-ASCII). Both positions checked at
+  the constructor (from_array() rides it, so corrupted payloads
+  refuse at load); the grammar's own edges stay legal (an interior
+  space is %x20) and a legal set's payload always json_encodes.
+- **display_errors diagnostics live inside the CLI guard
+  (t31-r9-4)**: bin/build.php and bin/inspect-artifact.php carried
+  error_reporting(E_ALL)+ini_set('display_errors','1') at FILE scope
+  — and both are REQUIRED into the PHPUnit process, so a php-cli
+  host with display_errors off had it flipped process-wide just by
+  running the tests (reproduced: the require printed 1). The
+  glm17-16 class, already fixed in check-conventions.php but
+  unguarded here; both files wear that shape now, pinned through a
+  child process.
+- **Identity never survives the storage boundary (t31-r9-5)**:
+  InMemoryTokenStorage::load() returned the caller's very instance
+  and the port tests pinned assertSame on it — semantics no
+  DECRYPTING (real) adapter can honor. The fake round-trips grants
+  through serialize/unserialize (the same whole-graph encode/decode
+  a real adapter performs; a Revoked tombstone reconstructs too),
+  the port's load() contract states the reconstruction rule, and the
+  port tests pin by VALUE (accessors + the token set's own storage
+  serialization as the compare) with assertNotSame pins in both
+  directions of the boundary.
+- **Every legal opener carries the provenance banner (t31-r9-6)**:
+  the banner-insertion pattern was case- and BOM-sensitive with no
+  zero-match guard — '<?PHP' and a BOM-prefixed source matched
+  nothing and shipped BANNER-LESS silently (reproduced), and a
+  tag-less source was only caught incidentally by the postcondition.
+  Doctrine BANNER-IN-PLACE: the pattern matches an optional BOM then
+  the open tag case-insensitively, PRESERVES the opener bytes
+  verbatim, and a zero-match refuses loudly at the banner seam,
+  naming the file.
+- **The unused-import gate scans shared/src (t31-r9-7)**: the scan
+  covered only connectors/, so a dead import in shared/src passed
+  every gate and shipped into EVERY embedding plugin. Same scanner
+  over the shared tree (real tree verified clean), pinned through
+  the CLI itself against a scratch repo.
+- **The short-write pin leaks nothing (t31-r9-8)**: the stream-URL
+  scratch was one segment deep, so the seam's @mkdir(dirname($to))
+  created a literal scheme-named directory in the repo root (two
+  leaked dirs verified present, both removed). The scratch URL is
+  two segments deep and the wrapper owns its namespace's mkdir —
+  pinned: no literal dir after the refused write.
+- **The rewriter's family patterns derive from the namespace helper
+  (t31-r9-9)**: four independent hand-spellings of the family
+  namespace in rewriteSharedNamespace() while
+  wp_connectors_shared_source_namespace() claims single ownership —
+  a rename needed synchronized two-file edits. Every spelling
+  derives from the helper's segments via preg_quote now (byte parity
+  with all eight former literals verified IDENTICAL); a family rename
+  is a one-edit change in the helper.
+- **Verifier follow-up (t31-r9-10, adversarially confirmed)**: the
+  r9-1 docblock's "only format controls are banned" claim was FALSE
+  as coverage — the invisible bidi-ACTIVE Cf siblings of the banned
+  marks passed on both surfaces: U+070F (bidi AL: invisible
+  STRONG-RTL, the banned ALM/RLM mechanism, reproduced rendering
+  verbatim), U+110BD/U+110CD/U+13430-U+1343F (bidi L: the LRM
+  mechanism), U+0600-U+0605/U+06DD/U+0890/U+0891/U+08E2 (invisible
+  AN), plus the invisible-neutral homograph class ZWSP/ZWNJ/ZWJ
+  (glyph-joining), U+FEFF, U+00AD. All banned at the one owner; the
+  docblock states the honest doctrine (a CURATED BYTE LIST of
+  invisible direction/joining material, never a category derivation
+  — the residual invisible set ledgered as curation decisions);
+  completeness verified exhaustively against the Unicode database
+  (zero bidi-ACTIVE Cf pass), with the visible-content counter-pin
+  (Arabic letters and vowel signs render verbatim).
+
+Suite 1560 → 1569 tests, 44212 → 44283 assertions, 2 skipped
+unchanged; green in default and random order throughout.
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r8)
 
 Fix round over round-8's seven counted findings — three state-machine/
