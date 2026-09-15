@@ -2,8 +2,9 @@
 /**
  * PHP syntax check (php -l) over all repository PHP sources.
  *
- * Excludes vendor/, tools/, dist/ and anything else that is generated or
- * third-party. Exits non-zero if any file fails to parse.
+ * Excludes development entries (the ONE shared vocabulary's segments —
+ * vendor/, tools/, tests-nested trees, caches — in any casing) below
+ * each walked root. Exits non-zero if any file fails to parse.
  *
  * @package wp-connectors
  */
@@ -26,7 +27,6 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
     ini_set('display_errors', '1');
 
     $roots = array(__DIR__ . '/../connectors', __DIR__ . '/../shared', __DIR__ . '/../bin', __DIR__ . '/../tests');
-    $exclude = array('vendor', 'tools', 'dist', 'node_modules', '.git', '.phpunit.cache');
 
     $files = array();
     foreach ($roots as $root) {
@@ -44,9 +44,23 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
             if (! wp_connectors_is_php_source($file->getPathname())) {
                 continue;
             }
-            $parts = explode(DIRECTORY_SEPARATOR, $file->getPathname());
-            if (array_intersect($parts, $exclude) !== array()) {
-                continue;
+            /*
+             * The exclusion rides the ONE development-entry vocabulary
+             * (review round t31-r12-9): the hand-rolled case-sensitive
+             * list here had already drifted from the owner — the
+             * dotless 'phpunit.cache/' and a 'VENDOR/' spelling were
+             * linted while the builder excluded and the inspector
+             * rejected both spellings, the exact drift the owner's
+             * docblock forbids. Judged on the segments BELOW the root
+             * (folding included): the roots themselves — tests among
+             * them — are this gate's own charge, not development
+             * entries.
+             */
+            $relative = (string) substr($file->getPathname(), strlen($root) + 1);
+            foreach (explode(DIRECTORY_SEPARATOR, $relative) as $segment) {
+                if (wp_connectors_is_development_entry($segment)) {
+                    continue 2;
+                }
             }
             $files[] = $file->getPathname();
         }

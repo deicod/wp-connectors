@@ -141,6 +141,92 @@ final class ToolchainSmokeTest extends TestCase
     }
 
     /**
+     * Review-round pin (t31-r12-9): the lint gate's exclusion rides the
+     * ONE development-entry vocabulary, judged root-relative with the
+     * owner's case fold. The hand-rolled case-sensitive list had
+     * drifted: the dotless 'phpunit.cache/' and a 'VENDOR/' spelling
+     * were LINTED while the builder excluded and the inspector
+     * rejected both spellings — the exact drift the owner's docblock
+     * forbids. Driven as a child process against a scratch copy of the
+     * tool (the real script's roots are its own __DIR__), with the
+     * tests ROOT carrying a real source (the root itself is the gate's
+     * charge, never a development entry) and a broken file outside any
+     * dev entry as the still-fails control.
+     */
+    public function testLintPhpExclusionsRideTheDevelopmentEntryVocabulary(): void
+    {
+        $scratch = sys_get_temp_dir() . '/wpct-lint-' . getmypid();
+        if (is_dir($scratch)) {
+            $this->rrmdir($scratch);
+        }
+        mkdir($scratch . '/bin/lib', 0755, true);
+        copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php');
+        copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php');
+
+        try {
+            // Real sources: one under tests/ (the root lints), one under
+            // connectors/; then the drifted spellings with parse-broken
+            // PHP inside — both must be SKIPPED, not linted.
+            mkdir($scratch . '/tests/unit', 0755, true);
+            file_put_contents($scratch . '/tests/unit/RealTest.php', "<?php\n// lintable tests-root source\n");
+            mkdir($scratch . '/connectors/demo', 0755, true);
+            file_put_contents($scratch . '/connectors/demo/demo.php', "<?php\n// lintable connector source\n");
+            mkdir($scratch . '/connectors/demo/phpunit.cache', 0755, true);
+            file_put_contents($scratch . '/connectors/demo/phpunit.cache/broken.php', "<?php this is not php");
+            mkdir($scratch . '/connectors/demo/VENDOR', 0755, true);
+            file_put_contents($scratch . '/connectors/demo/VENDOR/broken.php', "<?php this is not php either");
+
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
+            $report = implode("\n", $output);
+
+            $this->assertSame(0, $exit, "The drift spellings must be skipped by the ONE vocabulary, not linted: {$report}");
+            // Two real sources plus the copied tool files under bin/ (the
+            // tool lints its own tree too): every root stays in charge,
+            // nothing else narrowed.
+            $this->assertStringContainsString('4 file(s) checked, 0 failure(s)', $report);
+            $this->assertStringNotContainsString('broken.php', $report);
+
+            // The still-fails control: a broken file on no dev-entry path
+            // keeps failing the lint — the exclusion narrowed nothing else.
+            file_put_contents($scratch . '/connectors/demo/broken-too.php', "<?php nor is this");
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
+            $this->assertSame(1, $exit, 'A parse-broken real source still fails the lint.');
+            $this->assertStringContainsString('broken-too.php', implode("\n", $output));
+        } finally {
+            $this->rrmdir($scratch);
+        }
+    }
+
+    /**
+     * Recursively removes a directory.
+     *
+     * @param string $dir Absolute directory path.
+     * @return void
+     */
+    private function rrmdir(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($items as $item) {
+            if ($item->isDir()) {
+                rmdir($item->getPathname());
+            } else {
+                unlink($item->getPathname());
+            }
+        }
+        rmdir($dir);
+    }
+
+    /**
      * Every PHP file under the phpcs-compat ruleset's tree set, mirroring
      * its vendor/dist/tools and tests/fixtures/data exclusions.
      *
