@@ -349,13 +349,14 @@ if (wp_connectors_cli_entry(__FILE__)) {
      * The guard + diagnostics are the ONE helper (t31-r12-11); this
      * file's former hand-rolled copy (t31-r9-4 — at file top the calls
      * executed in every requiring process; the test suite loads this
-     * file for wp_connectors_inspect_artifact()) is gone. The args ride
-     * $_SERVER['argv'] — the same array $argv binds in the CLI, spelled
-     * so the entry stays provably defined once the guard moved into the
-     * helper.
+     * file for wp_connectors_inspect_artifact()) is gone. The args
+     * ride the ONE argv accessor (t31-r12-17): the auto-global,
+     * function-scoped so the read stays provably defined —
+     * $_SERVER['argv'] is unpopulated under a variables_order ini
+     * without "S", where the guard still fires.
      */
 
-    $cliArgs = $_SERVER['argv'] ?? array();
+    $cliArgs = wp_connectors_cli_args();
     if (count($cliArgs) < 2) {
         fwrite(STDERR, "usage: php bin/inspect-artifact.php <zip>\n");
         exit(2);

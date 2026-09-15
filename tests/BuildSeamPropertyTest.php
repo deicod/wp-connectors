@@ -764,6 +764,25 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             'Requiring bin/build.php, bin/inspect-artifact.php, bin/lint-php.php, and bin/check-conventions.php into a host process must leave display_errors exactly as the host set it and must not run any walk — the diagnostics and the walks belong to the CLI guard, not the file scope.'
         );
 
+        /*
+         * Verifier-round pin (t31-r12-17, the correctness lens): the
+         * guard read $_SERVER['argv'], which is UNPOPULATED under a
+         * variables_order ini without "S" — the guard answered false
+         * and every entry script became a SILENT EXIT-0 NO-OP
+         * (reproduced: the inspector printed nothing and exited 0, its
+         * ACCEPTED contract, instead of inspecting). Under GPC the
+         * guard must fire exactly as under the default ini: the
+         * inspector's missing-file refusal still exits 2, and the lint
+         * still checks its files and says so.
+         */
+        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg(realpath(__DIR__ . '/../bin/inspect-artifact.php')) . ' /nonexistent-zip.zip 2>&1', $gpcOutput, $gpcExit);
+        $this->assertSame(2, $gpcExit, 'Under variables_order=GPC the CLI guard still fires — never a silent exit-0 no-op.');
+        $this->assertStringContainsString('no such file', implode("\n", $gpcOutput));
+
+        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg(realpath(__DIR__ . '/../bin/lint-php.php')) . ' 2>&1', $gpcLintOutput, $gpcLintExit);
+        $this->assertSame(0, $gpcLintExit);
+        $this->assertStringContainsString('file(s) checked', implode("\n", $gpcLintOutput), 'The lint still runs its walk under GPC.');
+
         // The helper is the single spelling (t31-r12-11): every in-diff
         // entry script consumes wp_connectors_cli_entry() and none
         // carries a hand-rolled copy of the guard anymore.

@@ -3673,12 +3673,43 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
  */
 function wp_connectors_cli_entry($script)
 {
-    $argv = $_SERVER['argv'] ?? null;
-    if (PHP_SAPI !== 'cli' || null === $argv || realpath((string) ($argv[0] ?? '')) !== $script) {
+    /*
+     * The AUTO-GLOBAL $argv, never $_SERVER['argv'] (verifier round
+     * t31-r12-17, the correctness lens's finding): under a
+     * variables_order ini without "S" (GPC is a documented spelling)
+     * $_SERVER stays unpopulated — $_SERVER['argv'] read NULL, the
+     * guard answered false, and every entry script became a SILENT
+     * EXIT-0 NO-OP (reproduced: `php -d variables_order=GPC
+     * bin/inspect-artifact.php x.zip` printed nothing and exited 0 —
+     * the ACCEPTED contract — instead of inspecting). The auto-global
+     * is populated in every CLI process regardless of that ini (the
+     * CLI SAPI forces it, register_argc_argv included — verified).
+     */
+    global $argv;
+    if (PHP_SAPI !== 'cli' || realpath((string) $argv[0]) !== $script) {
         return false;
     }
     error_reporting(E_ALL);
     ini_set('display_errors', '1');
 
     return true;
+}
+
+/**
+ * The CLI argument vector — the auto-global, function-scoped so every
+ * consumer reads it provably defined (verifier round t31-r12-17).
+ *
+ * Populated in every CLI process regardless of the variables_order and
+ * register_argc_argv inis (the CLI SAPI forces it). Consumers that
+ * need the args call this beside wp_connectors_cli_entry()'s true
+ * branch, never a bare file-scope $argv (which a static analyzer
+ * cannot prove defined once the guard moved into the helper).
+ *
+ * @return list<string> The argv (program name first).
+ */
+function wp_connectors_cli_args()
+{
+    global $argv;
+
+    return $argv;
 }
