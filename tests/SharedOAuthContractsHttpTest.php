@@ -1417,4 +1417,55 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $var_dumped = (string) ob_get_clean();
         $this->assertStringNotContainsString($token, $var_dumped, 'var_dump rides the same masked dump.');
     }
+
+    /**
+     * Dedup pin (t31-r12-13): the header facade — headers()/header()
+     * and the __toString()/__debugInfo() bodies — is ONE implementation
+     * (the HasMaskedHeaders trait) both value objects consume. The two
+     * VOs' string forms must therefore AGREE on the masking vocabulary
+     * for an identical header set: byte-identical header lines and
+     * byte-identical masked map values, with only the head line (the
+     * request line vs the status line) and the debug head fields
+     * differing. Before the trait, each side carried its own copy of
+     * the plumbing — a future edit to one would have drifted the
+     * other silently.
+     */
+    public function testBothValueObjectsStringFormsAgreeOnTheMaskingVocabulary(): void
+    {
+        $headers = array(
+            'Authorization' => 'Bearer ' . FakeSecrets::accessToken(),
+            'Set-Cookie' => 'session=' . FakeSecrets::accessToken(),
+            'X-Request-Id' => 'abc-123',
+        );
+        $request = new HttpRequest('POST', 'https://host.example/token', $headers, '{"a":1}');
+        $response = new HttpResponse(200, $headers, '{"a":1}');
+
+        $request_lines = explode("\n", (string) $request);
+        $response_lines = explode("\n", (string) $response);
+
+        // Head and tail are the VO's own; every line between is the
+        // shared masked header render.
+        $this->assertSame('POST https://host.example/token', $request_lines[0]);
+        $this->assertSame('HTTP 200', $response_lines[0]);
+        $this->assertSame('[body omitted]', end($request_lines));
+        $this->assertSame('[body omitted]', end($response_lines));
+        $shared_request = array_slice($request_lines, 1, -1);
+        $shared_response = array_slice($response_lines, 1, -1);
+        $this->assertSame($shared_request, $shared_response, 'The header lines between head and body-omitted marker are the ONE shared render — identical bytes on both VOs.');
+
+        // The debug form agrees the same way: identical masked map
+        // values, only the head fields diverge.
+        $request_debug = $request->__debugInfo();
+        $response_debug = $response->__debugInfo();
+        $this->assertSame($request_debug['headers'], $response_debug['headers'], 'The masked header map is the ONE shared render in the serialization channel too.');
+        $this->assertSame('[body omitted]', $request_debug['body']);
+        $this->assertSame('[body omitted]', $response_debug['body']);
+        $this->assertSame(array('method', 'redacted_url', 'headers', 'body'), array_keys($request_debug), 'The request contributes exactly its head fields.');
+        $this->assertSame(array('status', 'headers', 'body'), array_keys($response_debug), 'The response contributes exactly its head field.');
+
+        // The facade twins delegate identically.
+        $this->assertSame($request->headers(), $response->headers());
+        $this->assertSame($request->header('x-request-id'), $response->header('X-Request-Id'));
+        $this->assertNull($request->header('X-Other'), 'A name neither carries folds through the same owner.');
+    }
 }

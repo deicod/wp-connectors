@@ -552,7 +552,12 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      */
     public function testTheSharedTreeSImportVocabularyIsTheEnumeratedLegalSet(): void
     {
-        $legal_platform = array('DateTimeImmutable', 'DateTimeZone', 'InvalidArgumentException', 'RuntimeException', 'Throwable');
+        // 'HasMaskedHeaders' is the tree's OWN Http trait (t31-r12-13):
+        // same-namespace, so the trait use carries no import statement of
+        // its own — but the use-statement walk reads the `use` inside
+        // HttpRequest/HttpResponse as one, so it is pinned here
+        // deliberately: an own-tree shape, zero new dependencies.
+        $legal_platform = array('DateTimeImmutable', 'DateTimeZone', 'InvalidArgumentException', 'RuntimeException', 'Throwable', 'HasMaskedHeaders');
         $own_lower = strtolower(wp_connectors_shared_source_namespace());
 
         $platform = array();

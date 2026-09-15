@@ -26,6 +26,8 @@ use InvalidArgumentException;
  */
 final class HttpResponse {
 
+	use HasMaskedHeaders;
+
 	/**
 	 * Final status code (an intermediate 1xx is not a completed exchange).
 	 *
@@ -87,46 +89,37 @@ final class HttpResponse {
 	}
 
 	/**
-	 * Header map as received.
-	 *
-	 * LOSS, STATED HONESTLY (review round t31-r2-13): an array-keyed
-	 * header map cannot represent REPEATED header names — a provider
-	 * sending the same name on multiple lines (Set-Cookie is the
-	 * canonical case) collapses to the single entry whichever parser
-	 * stage the binding lets win. This value object carries one value
-	 * per name by design; how a binding ought to surface repeats
-	 * (first-wins documented, folded per RFC 9110 section 5.2, or a
-	 * list-carrying shape) is the Task 3.7 transport binding's
-	 * decision to make against a live provider — re-open this seam
-	 * when that consumer exists.
-	 *
-	 * An all-digit header name (a legal RFC 7230 token) appears under
-	 * its PHP-canonical INTEGER key — the engine coerces canonical
-	 * digit-string array keys before any PHP array can carry them, so
-	 * the array<string, string> return names every NON-digit name's
-	 * spelling; header() and the safe debug render fold through
-	 * (string) and never observe the difference (t31-r10-5: execution
-	 * pins this behavior; the annotation states it now, matching the
-	 * HeaderMap owner's own docblock).
+	 * The header map the shared facade (HasMaskedHeaders) delegates to.
 	 *
 	 * @since 0.1.0
 	 *
-	 * @return array<string, string>
+	 * @return HeaderMap
 	 */
-	public function headers(): array {
-		return $this->headers->headers();
+	protected function header_map(): HeaderMap {
+		return $this->headers;
 	}
 
 	/**
-	 * One header value, looked up case-insensitively.
+	 * The status line the shared string form leads with (the trait's
+	 * one divergence point, t31-r12-13).
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param string $name Header name (any case).
-	 * @return string|null The value, or null when absent.
+	 * @return string
 	 */
-	public function header( string $name ): ?string {
-		return $this->headers->header( $name );
+	protected function safe_render_head(): string {
+		return 'HTTP ' . $this->status;
+	}
+
+	/**
+	 * The response's head fields for the shared debug form.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed>
+	 */
+	protected function safe_debug_head_fields(): array {
+		return array( 'status' => $this->status );
 	}
 
 	/**
@@ -138,41 +131,5 @@ final class HttpResponse {
 	 */
 	public function body(): string {
 		return $this->body;
-	}
-
-	/**
-	 * Safe debug rendering — never contains secrets.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return string
-	 */
-	public function __toString(): string {
-		$lines   = array_merge( array( 'HTTP ' . $this->status ), $this->headers->rendered_lines() );
-		$lines[] = '[body omitted]';
-
-		return implode( "\n", $lines );
-	}
-
-	/**
-	 * Safe debug rendering for the serialization channel — print_r(),
-	 * var_dump(), and every debugger that walks object properties
-	 * (verifier round t31-r11-5).
-	 *
-	 * Mirrors __toString()'s vocabulary: the masked header map
-	 * (HeaderMap's own __debugInfo owner — Set-Cookie and friends mask
-	 * there), body omitted. Without it the engine dumps the raw
-	 * property tree, token material included.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return array<string, mixed> The masked debug fields, never containing secrets.
-	 */
-	public function __debugInfo(): array {
-		return array(
-			'status'  => $this->status,
-			'headers' => $this->headers->masked_headers(),
-			'body'    => '[body omitted]',
-		);
 	}
 }

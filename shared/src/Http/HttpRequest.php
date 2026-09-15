@@ -38,6 +38,8 @@ use InvalidArgumentException;
  */
 final class HttpRequest {
 
+	use HasMaskedHeaders;
+
 	/**
 	 * HTTP method token characters (RFC 7230 tchar).
 	 *
@@ -158,38 +160,6 @@ final class HttpRequest {
 	}
 
 	/**
-	 * Header map as constructed.
-	 *
-	 * An all-digit header name (a legal RFC 7230 token) appears under
-	 * its PHP-canonical INTEGER key — the engine coerces canonical
-	 * digit-string array keys before any PHP array can carry them, so
-	 * the array<string, string> return names every NON-digit name's
-	 * spelling; header() and the safe debug render fold through
-	 * (string) and never observe the difference (t31-r10-5: execution
-	 * pins this behavior; the annotation states it now, matching the
-	 * HeaderMap owner's own docblock).
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return array<string, string>
-	 */
-	public function headers(): array {
-		return $this->headers->headers();
-	}
-
-	/**
-	 * One header value, looked up case-insensitively.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $name Header name (any case).
-	 * @return string|null The value, or null when absent.
-	 */
-	public function header( string $name ): ?string {
-		return $this->headers->header( $name );
-	}
-
-	/**
 	 * Body, or null when the request carries none.
 	 *
 	 * @since 0.1.0
@@ -216,43 +186,39 @@ final class HttpRequest {
 	}
 
 	/**
-	 * Safe debug rendering — never contains secrets.
+	 * The header map the shared facade (HasMaskedHeaders) delegates to.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return HeaderMap
+	 */
+	protected function header_map(): HeaderMap {
+		return $this->headers;
+	}
+
+	/**
+	 * The request line the shared string form leads with (the trait's
+	 * one divergence point, t31-r12-13).
 	 *
 	 * @since 0.1.0
 	 *
 	 * @return string
 	 */
-	public function __toString(): string {
-		$lines   = array_merge( array( $this->method . ' ' . $this->redacted_url ), $this->headers->rendered_lines() );
-		$lines[] = '[body omitted]';
-
-		return implode( "\n", $lines );
+	protected function safe_render_head(): string {
+		return $this->method . ' ' . $this->redacted_url;
 	}
 
 	/**
-	 * Safe debug rendering for the serialization channel — print_r(),
-	 * var_dump(), and every debugger that walks object properties
-	 * (verifier round t31-r11-5).
-	 *
-	 * The redaction contract above enumerated the string cast's three
-	 * vectors but not this one: without __debugInfo() the engine dumps
-	 * the raw property tree — the full URL (query and userinfo are
-	 * credentials by the contract's own doctrine), every raw header
-	 * value (Authorization, cookies), and the body. The dump mirrors
-	 * __toString()'s vocabulary exactly — redacted URL, the masked
-	 * header map (HeaderMap's own __debugInfo owner), body omitted — so
-	 * the string form and the serialized form cannot drift.
+	 * The request's head fields for the shared debug form.
 	 *
 	 * @since 0.1.0
 	 *
-	 * @return array<string, mixed> The masked debug fields, never containing secrets.
+	 * @return array<string, mixed>
 	 */
-	public function __debugInfo(): array {
+	protected function safe_debug_head_fields(): array {
 		return array(
 			'method'       => $this->method,
 			'redacted_url' => $this->redacted_url,
-			'headers'      => $this->headers->masked_headers(),
-			'body'         => '[body omitted]',
 		);
 	}
 
