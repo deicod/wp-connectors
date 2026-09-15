@@ -285,6 +285,14 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame(array(456 => 'y'), $request->headers());
         $this->assertStringContainsString('456: y', (string) $request);
 
+        // And the response VO (t31-r10-5): both headers() docblocks state
+        // the integer-key caveat — identical wording, matching the
+        // HeaderMap owner — and this is the execution they describe.
+        $response = new HttpResponse(200, array('789' => 'z'));
+        $this->assertSame('z', $response->header('789'));
+        $this->assertSame(array(789 => 'z'), $response->headers());
+        $this->assertStringContainsString('789: z', (string) $response);
+
         // The grammar still owns the boundary: the empty key rejects,
         // and a spelling a digit key cannot produce still rejects.
         try {

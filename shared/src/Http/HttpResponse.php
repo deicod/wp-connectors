@@ -100,6 +100,15 @@ final class HttpResponse {
 	 * decision to make against a live provider — re-open this seam
 	 * when that consumer exists.
 	 *
+	 * An all-digit header name (a legal RFC 7230 token) appears under
+	 * its PHP-canonical INTEGER key — the engine coerces canonical
+	 * digit-string array keys before any PHP array can carry them, so
+	 * the array<string, string> return names every NON-digit name's
+	 * spelling; header() and the safe debug render fold through
+	 * (string) and never observe the difference (t31-r10-5: execution
+	 * pins this behavior; the annotation states it now, matching the
+	 * HeaderMap owner's own docblock).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, string>
