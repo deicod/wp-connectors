@@ -1324,21 +1324,31 @@ final class WpConnectorsBuild
      *
      * The PID-named stage (`.stage-<slug>-<pid>`) makes concurrent builds
      * of the same plugin disjoint, at the cost of a crashed run leaving
-     * its tree behind — the sweep closes that: every
-     * `.stage-<slug>-<pid>` whose process is DEAD is removed; a LIVE
-     * run's tree is never touched; a SYMLINK never is (verifier round
-     * t31-r10-10: is_dir() follows links, and rrmdir through a
-     * matching-named link deleted the TARGET tree's contents — a link
-     * is never this code's product, and the sweep leaves it exactly
-     * where it stands); foreign-shaped names (the pid-less pre-r10
-     * spelling included) are left alone — nothing running this code
-     * creates them, so their lifecycle is not this sweep's to guess. A
-     * dead pid REUSED by an unrelated live process keeps its orphan
+     * its scratch behind — the sweep closes that (verifier round
+     * t31-r10-13: the r10-4 sweep reclaimed only the STAGE tree while
+     * the same crash also left `.<zip>.tmp-<pid>` temps forever):
+     *
+     * - every `.stage-<slug>-<pid>` DIRECTORY whose process is dead is
+     *   removed; a LIVE run's tree is never touched;
+     * - every `.connectors-<slug>-….zip.tmp-<pid>…` FILE (the zip temp,
+     *   its sidecar twin `.sha256`, and libzip's in-window `.<rand>.part`
+     *   spelling a SIGKILL leaves behind) whose process is dead is
+     *   unlinked — the same crashed-run charter, the same liveness gate;
+     * - a SYMLINK never is touched (verifier round t31-r10-10: is_dir()
+     *   follows links, and rrmdir through a matching-named link deleted
+     *   the TARGET tree's contents — a link is never this code's
+     *   product, and the sweep leaves it exactly where it stands);
+     * - foreign-shaped names (the pid-less pre-r10 stage spelling, the
+     *   pid-less `.checksums-*` manifest staging temps — unattributable,
+     *   so reclaiming one could race a LIVE run's staging) are left
+     *   alone: nothing running this code loses by them.
+     *
+     * A dead pid REUSED by an unrelated live process keeps its orphan
      * until that process dies (the conservative direction: never delete
-     * a possibly-live run's tree).
+     * a possibly-live run's scratch).
      *
      * @param string $distDir Absolute dist directory (staging home).
-     * @param string $slug    Plugin slug whose stage dirs get swept.
+     * @param string $slug    Plugin slug whose scratch gets swept.
      * @return void
      */
     private static function sweepStaleStageDirs($distDir, $slug)
@@ -1349,21 +1359,32 @@ final class WpConnectorsBuild
         if (false === $dir) {
             return;
         }
-        $pattern = '/^\.stage-' . preg_quote($slug, '/') . '-(\d+)$/';
+        $stage_pattern = '/^\.stage-' . preg_quote($slug, '/') . '-(\d+)$/';
+        $temp_pattern = '/^\.connectors-' . preg_quote($slug, '/') . '-.*\.zip\.tmp-(\d+)(?:\..*)?$/';
         try {
             while (false !== ($entry = readdir($dir))) {
-                if (! preg_match($pattern, $entry, $pid_match) || ! is_dir($distDir . '/' . $entry)) {
-                    continue;
-                }
+                $path = $distDir . '/' . $entry;
                 // The no-symlinks doctrine at the sweep seam: a link is
-                // never a run's stage tree, and deleting through one
+                // never a run's scratch, and deleting through one
                 // destroys its target (t31-r10-10).
-                if (is_link($distDir . '/' . $entry)) {
+                if (is_link($path)) {
                     continue;
                 }
-                $pid = (int) $pid_match[1];
-                if ($pid !== (int) getmypid() && ! self::processIsAlive($pid)) {
-                    self::rrmdir($distDir . '/' . $entry);
+                if (preg_match($stage_pattern, $entry, $pid_match) && is_dir($path)) {
+                    $pid = (int) $pid_match[1];
+                    if ($pid !== (int) getmypid() && ! self::processIsAlive($pid)) {
+                        self::rrmdir($path);
+                    }
+
+                    continue;
+                }
+                if (preg_match($temp_pattern, $entry, $pid_match) && is_file($path)) {
+                    $pid = (int) $pid_match[1];
+                    if ($pid !== (int) getmypid() && ! self::processIsAlive($pid)) {
+                        // A FILE, never a link (the guard above): unlink
+                        // removes the entry itself.
+                        @unlink($path);
+                    }
                 }
             }
         } finally {

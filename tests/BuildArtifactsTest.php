@@ -2465,13 +2465,20 @@ FIXTURE;
 
             // The live sibling's in-flight tree, a dead-pid orphan of the
             // same plugin (999999999 exceeds every Linux pid_max), a
-            // pid-less foreign spelling, and another plugin's dead-pid
-            // orphan.
+            // pid-less foreign spelling, another plugin's dead-pid
+            // orphan, and the crashed-run TEMP spellings (verifier round
+            // t31-r10-13: the zip temp, its sidecar twin, and libzip's
+            // in-window .part spelling — dead pid swept, live pid kept).
             mkdir($scratch . '/dist/.stage-stage-demo-' . $live_pid . '/stage-demo', 0755, true);
             file_put_contents($scratch . '/dist/.stage-stage-demo-' . $live_pid . '/stage-demo/inflight.txt', 'run A mid-flight');
             mkdir($scratch . '/dist/.stage-stage-demo-999999999', 0755, true);
             mkdir($scratch . '/dist/.stage-stage-demo', 0755, true);
             mkdir($scratch . '/dist/.stage-other-demo-999999999', 0755, true);
+            file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997', 'half a zip');
+            file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.sha256', 'half a sidecar');
+            file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.acce0w.part', 'libzip window');
+            file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-' . $live_pid, 'live run temp');
+            file_put_contents($scratch . '/dist/.checksums-orphan', 'pid-less manifest staging temp');
 
             // Run "B": builds green BESIDE the live sibling.
             WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist');
@@ -2481,6 +2488,11 @@ FIXTURE;
             $this->assertDirectoryExists($scratch . '/dist/.stage-stage-demo', 'A pid-less foreign spelling is left alone (nothing running this code creates it).');
             $this->assertDirectoryExists($scratch . '/dist/.stage-other-demo-999999999', 'Another plugin\'s stage dirs are that plugin\'s sweep\'s to reclaim.');
             $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-stage-demo-' . getmypid(), 'The run\'s own stage tree tears down on success.');
+            $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997', 'A dead-pid zip temp is reclaimed — the crashed-run charter covers the temps too.');
+            $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.sha256', 'A dead-pid sidecar temp is reclaimed.');
+            $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.acce0w.part', 'A dead-pid libzip .part temp is reclaimed.');
+            $this->assertFileExists($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-' . $live_pid, 'A LIVE run\'s temp is never touched by a sibling build.');
+            $this->assertFileExists($scratch . '/dist/.checksums-orphan', 'A pid-less manifest staging temp is unattributable — left alone, never raced.');
 
             // Part 3: once the sibling's process is dead (terminated and
             // reaped), its leftover tree is reclaimed by the next build.
