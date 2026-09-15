@@ -298,18 +298,32 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
             return $violations;
         }
 
+        /*
+         * The MERGED helper lines render through the ONE printable
+         * seam at the merge (verifier round t31-r13-4, raised
+         * independently by both lenses): the helpers interpolate
+         * archive-controlled text — main-file basenames, header
+         * values, the version-constant value, landed paths, include
+         * statements — and r13-1's seam covered only the lines the
+         * inspector spells itself, so a newline-bearing landed name or
+         * a CR/ESC-bearing header value forged lines beside the real
+         * REJECTED verdict (reproduced). The helpers stay pure
+         * producers (build and the conventions gate render them over
+         * the repo's own trusted bytes); the INSPECTOR is the
+         * hostile-input surface, so the seam rides its merge points.
+         */
         $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
         if ($mainFiles === array()) {
             $violations[] = sprintf('inspect: %s: no main plugin file with a Plugin Name header.', $slug);
         } else {
-            $violations = array_merge($violations, wp_connectors_main_file_violations($pluginDir, $mainFiles));
+            $violations = array_merge($violations, wp_connectors_printable_lines(wp_connectors_main_file_violations($pluginDir, $mainFiles)));
             $headers = wp_connectors_parse_plugin_headers($mainFiles[0]);
-            $violations = array_merge($violations, wp_connectors_duplicate_header_violations($mainFiles[0], $slug));
-            $violations = array_merge($violations, wp_connectors_header_violations($headers, $slug));
-            $violations = array_merge($violations, wp_connectors_version_constant_violations($pluginDir, $headers, $mainFiles));
-            $violations = array_merge($violations, wp_connectors_autoloader_violations($pluginDir));
+            $violations = array_merge($violations, wp_connectors_printable_lines(wp_connectors_duplicate_header_violations($mainFiles[0], $slug)));
+            $violations = array_merge($violations, wp_connectors_printable_lines(wp_connectors_header_violations($headers, $slug)));
+            $violations = array_merge($violations, wp_connectors_printable_lines(wp_connectors_version_constant_violations($pluginDir, $headers, $mainFiles)));
+            $violations = array_merge($violations, wp_connectors_printable_lines(wp_connectors_autoloader_violations($pluginDir)));
         }
-        $violations = array_merge($violations, wp_connectors_self_containment_violations($pluginDir));
+        $violations = array_merge($violations, wp_connectors_printable_lines(wp_connectors_self_containment_violations($pluginDir)));
 
         // Every PHP file must pass a syntax check after independent extraction.
         $php = escapeshellarg(PHP_BINARY);

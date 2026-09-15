@@ -3567,6 +3567,30 @@ function wp_connectors_printable($value)
 }
 
 /**
+ * Renders a LIST of diagnostic lines through the ONE printable seam —
+ * the list twin of wp_connectors_printable() (verifier round
+ * t31-r13-4, raised independently by both lenses).
+ *
+ * The inspector merges violation lines from the shared helpers —
+ * main-file basenames, header values, the version-constant value, the
+ * self-containment walk's landed paths and include statements — every
+ * one of them archive-controlled text (landed file names survive
+ * extraction byte-exact; header and code values are the artifact's
+ * own content). The helpers are pure PRODUCERS (the conventions gate
+ * and the builder render them over the repo's own trusted bytes); the
+ * inspector is the hostile-input surface, so it renders what it
+ * merges through the seam at the merge — one line each, and no helper
+ * grows a second opinion about rendering.
+ *
+ * @param list<string> $lines The violation lines about to merge into a report.
+ * @return list<string> The same lines with every C0 control and DEL as a space.
+ */
+function wp_connectors_printable_lines(array $lines)
+{
+    return array_map('wp_connectors_printable', $lines);
+}
+
+/**
  * The upper twin of wp_connectors_ascii_lower() — see its doctrine.
  *
  * @param string $value The bytes to fold.

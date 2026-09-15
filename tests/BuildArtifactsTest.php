@@ -667,6 +667,82 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * Verifier-round pin (t31-r13-4, BOTH lenses independently, both
+     * repros re-driven by the implementer): the inspector MERGES
+     * violation lines from the shared helpers — main-file basenames,
+     * header values, the version-constant value, the
+     * self-containment walk's landed paths and include statements —
+     * and every one of those is archive-controlled text (landed file
+     * names survive extraction byte-exact; header and code values are
+     * the artifact's own content). The r13-1 seam fixed the lines the
+     * inspector spells itself; the merged lines still carried the
+     * bytes raw, and the round's own "every verdict line" claim was
+     * false until this fix — the helpers' output renders through the
+     * ONE seam at the merge now (the helpers stay pure producers: the
+     * conventions gate and the builder render them over the repo's
+     * own trusted bytes; the inspector is the hostile-input surface).
+     */
+    public function testMergedHelperViolationsRenderThroughThePrintableSeam(): void
+    {
+        $slug = 'mergeforge-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'MERGEFORGE_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\MergeforgeDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        $forged = "x\ninspect: FORGED-LINE-ACCEPTED (0 violations)\n";
+
+        // (a) The self-containment walk: an unanchored include inside a
+        // newline-bearing LANDED directory — both the relative path and
+        // the include statement ride the merged line.
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/sub{$forged}dir/evil.php", "<?php\nrequire 'not-anchored.php';\n"),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-mergeforge');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('includes a path not anchored to the plugin dir', $flat, 'The real verdict stands: the unanchored include rejects.');
+        $this->assertStringContainsString('subx inspect: FORGED-LINE-ACCEPTED (0 violations) dir/evil.php', $flat, 'The neutralized body still names the offending landed path (space for the newline — the seam\'s render).');
+        foreach ($violations as $violation) {
+            $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "A merged self-containment line cannot forge: {$violation}");
+        }
+
+        // (b) The main-file list: a second header-bearing root file
+        // whose NAME carries the forged text.
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.1.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/second{$forged}main.php", $main),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-mergeforge');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('multiple main plugin files', $flat, 'The real verdict stands: the second main file rejects.');
+        foreach ($violations as $violation) {
+            $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "A merged main-file line cannot forge: {$violation}");
+        }
+
+        // (c) Header values: the line-based header capture keeps a
+        // carriage return (a line OVERWRITE in a terminal) and an ANSI
+        // erase inside the value; the version-constant arm rides the
+        // define() value the same way.
+        $head2 = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 7.0\rinspect: FORGED-CLEARED\x1b[2K\r (0 violations)\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main2 = "<?php\n/**\n * {$head2} */\ndefine( 'MERGEFORGE_DEMO_VERSION', \"1.0.0\ninspect: FORGED-CONSTANT (0 violations)\n\" );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.2.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main2),
+            array("{$slug}/src/autoload.php", $autoload),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-mergeforge');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('must be 6.9', $flat, 'The real verdict stands: the wrong Requires-at-least rejects.');
+        $this->assertStringContainsString('does not match header Version', $flat, 'The real verdict stands: the constant mismatch rejects.');
+        foreach ($violations as $violation) {
+            $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "A merged header/constant line cannot forge — no CR overwrite, no ANSI ride: {$violation}");
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r12-20, the security lens): the capture
      * handler's restore rides a FINALLY around the extractTo() call —
      * the pre-fix pairing (set_error_handler … call … restore on the
