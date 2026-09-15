@@ -452,6 +452,27 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             'The provider set must carry every provider the SPEC schedules (and no retired ones) — a provider added to the SPEC joins the set here, never silently misses the gate.'
         );
 
+        /*
+         * The ROW FENCE (verifier round t31-r10-12): the ID regex above
+         * only sees rows in the exact `| <digits> | `<id>` |` shape, so a
+         * future row spelled differently (an unquoted id, a dash or an
+         * uppercase byte in it, an inserted column) was INVISIBLE — the
+         * parse silently skipped it and the pin passed while the SPEC
+         * scheduled a provider the set did not carry (the fail-open
+         * direction the pin exists to kill). Every digit-first table row
+         * must parse into an ID: the connector table is the SPEC's only
+         * digit-first table, so the counts agree exactly when every row
+         * parses — a deviant row fails loudly here instead of lurking.
+         */
+        $digit_first_rows = array();
+        $result = preg_match_all('/^\|\s*\d+\s*\|/m', (string) $spec_contents, $digit_first_rows);
+        $this->assertNotFalse($result, 'The SPEC row-count scan aborted (PCRE) — an abort is a refusal.');
+        $this->assertSame(
+            count($digit_first_rows[0]),
+            count($rows[0]),
+            'Every connector-table row must parse into a provider ID — a row the ID regex cannot see (an unquoted or off-vocabulary ID spelling, an inserted column) is a FAIL, never a silent skip.'
+        );
+
         // The derivation, both directions: every vocabulary word matches
         // (non-vacuous), and words the set does not carry stay clean —
         // including the segment-shaped lookalikes inside scheduled IDs.
