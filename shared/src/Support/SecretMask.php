@@ -2,11 +2,14 @@
 /**
  * Secret-masking policy for safe debug rendering (Task 3.1).
  *
- * Single owner of the two facts every safe debug form depends on: what a
+ * Single owner of the three facts every safe debug form depends on: what a
  * masked secret looks like (an ellipsis plus the last four characters —
  * enough to correlate a value across log lines, never enough to use it),
- * and which HTTP header names always count as secret-bearing regardless
- * of the value they carry.
+ * which HTTP header names always count as secret-bearing regardless
+ * of the value they carry, and — since t31-r8-6 — how a verbatim value's
+ * invalid-UTF-8 bytes render (percent-encoded: the r4-13 doctrine's
+ * OUTCOME at the header render seam, where obs-text values must not
+ * reject).
  *
  * Pure PHP, UTF-8-aware at the byte level (review round t31-r1): the
  * visible tail is the last four CHARACTERS — complete sequences, never
@@ -125,6 +128,96 @@ final class SecretMask {
 	 */
 	public static function is_sensitive_header_name( string $name ): bool {
 		return \in_array( AsciiFold::lower( $name ), self::SENSITIVE_HEADER_NAMES, true );
+	}
+
+	/**
+	 * Renders a value so it is always VALID UTF-8 — the byte-level twin
+	 * of mask()'s never-invalid contract, for values that render
+	 * verbatim (verifier round t31-r8-6, the r4-13 doctrine on the
+	 * header surface).
+	 *
+	 * A header value legally carries RFC 7230 obs-text (any high byte,
+	 * t31-r1-19), and a Latin-1 value is obs-text the constructor must
+	 * keep accepting — but its bytes are INVALID UTF-8, and
+	 * json_encode() of the rendered line then returns FALSE: the log
+	 * line is dropped, not degraded, the exact failure mode r4-13
+	 * killed on the URL surface (by rejecting the input there — the
+	 * URL constructor owes no obs-text hospitality). The render seam
+	 * owes the same OUTCOME without rejecting the value: every byte of
+	 * a well-formed sequence renders verbatim (the pinned obs-text
+	 * rendering, e.g. a UTF-8 'café'), and every byte the canonical
+	 * grammar cannot accept renders as its percent-encoded spelling
+	 * ('%E9') — encoded, never destroyed, so the debug form stays
+	 * diagnosable and the line always json_encodes.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $value The value about to render verbatim.
+	 * @return string The same bytes when valid UTF-8, else invalid sequences percent-encoded.
+	 */
+	public static function utf8_for_safe_render( string $value ): string {
+		if ( 1 === \preg_match( '//u', $value ) ) {
+			return $value;
+		}
+
+		$rendered = '';
+		$length   = \strlen( $value );
+		for ( $i = 0; $i < $length; ) {
+			$lead = \ord( $value[ $i ] );
+			if ( $lead < 0x80 ) {
+				$rendered .= $value[ $i ];
+				++$i;
+				continue;
+			}
+
+			/*
+			 * The canonical grammar (the table UTF8_SEQUENCE_PATTERN
+			 * spells as one regex): the lead byte's class fixes the
+			 * sequence length and the constraints that reject overlong
+			 * and out-of-range spellings. A byte (or run) the grammar
+			 * cannot accept percent-encodes ONE byte at a time — the
+			 * bytes after it get their own judgment.
+			 */
+			$sequence  = 0;
+			$first_min = 0x80;
+			$first_max = 0xBF;
+			if ( $lead >= 0xC2 && $lead <= 0xDF ) {
+				$sequence = 2;
+			} elseif ( 0xE0 === $lead ) {
+				$sequence  = 3;
+				$first_min = 0xA0;
+			} elseif ( ( $lead >= 0xE1 && $lead <= 0xEC ) || 0xEE === $lead || 0xEF === $lead ) {
+				$sequence = 3;
+			} elseif ( 0xED === $lead ) {
+				$sequence  = 3;
+				$first_max = 0x9F;
+			} elseif ( 0xF0 === $lead ) {
+				$sequence  = 4;
+				$first_min = 0x90;
+			} elseif ( $lead >= 0xF1 && $lead <= 0xF3 ) {
+				$sequence = 4;
+			} elseif ( 0xF4 === $lead ) {
+				$sequence  = 4;
+				$first_max = 0x8F;
+			}
+			$valid = $sequence > 0 && $i + $sequence <= $length;
+			if ( $valid ) {
+				$first = \ord( $value[ $i + 1 ] );
+				$valid = ( $first & 0xC0 ) === 0x80 && $first >= $first_min && $first <= $first_max;
+				for ( $j = 2; $valid && $j < $sequence; $j++ ) {
+					$valid = ( \ord( $value[ $i + $j ] ) & 0xC0 ) === 0x80;
+				}
+			}
+			if ( $valid ) {
+				$rendered .= substr( $value, $i, $sequence );
+				$i        += $sequence;
+			} else {
+				$rendered .= sprintf( '%%%02X', $lead );
+				++$i;
+			}
+		}
+
+		return $rendered;
 	}
 
 	/**

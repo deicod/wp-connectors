@@ -221,15 +221,27 @@ final class HeaderMap {
 	 * header map — the request and response debug forms embed it, so
 	 * the redaction surface cannot drift between them.
 	 *
+	 * The render is also always VALID UTF-8 (verifier round t31-r8-6,
+	 * the r4-13 doctrine on the header surface): a header value legally
+	 * carries RFC 7230 obs-text (t31-r1-19), and a Latin-1 value is
+	 * obs-text whose bytes are invalid UTF-8 — json_encode() of the
+	 * rendered line returned FALSE, the log line dropped rather than
+	 * degraded, the exact failure mode r4-13 killed on the URL surface
+	 * by rejecting the input. The render seam owes the same outcome
+	 * without rejecting the value: well-formed sequences render
+	 * verbatim, invalid bytes render percent-encoded
+	 * (SecretMask::utf8_for_safe_render(), the render vocabulary's one
+	 * owner).
+	 *
 	 * @since 0.1.0
 	 *
-	 * @return list<string> Rendered 'Name: value' lines, never containing secrets.
+	 * @return list<string> Rendered 'Name: value' lines, never containing secrets, always valid UTF-8.
 	 */
 	public function rendered_lines(): array {
 		$lines = array();
 		foreach ( $this->headers_by_lowercase as [ $name, $value ] ) {
 			$rendered = SecretMask::is_sensitive_header_name( $name ) ? SecretMask::mask( $value ) : $value;
-			$lines[]  = $name . ': ' . $rendered;
+			$lines[]  = $name . ': ' . SecretMask::utf8_for_safe_render( $rendered );
 		}
 
 		return $lines;

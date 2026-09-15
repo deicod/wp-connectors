@@ -1005,6 +1005,56 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Fix-round pin (t31-r8-6): rendered_lines() is always VALID UTF-8
+     * — the r4-13 doctrine's outcome on the header surface. A header
+     * value legally carries RFC 7230 obs-text (t31-r1-19), and a
+     * Latin-1 value is obs-text whose bytes are invalid UTF-8:
+     * json_encode() of the rendered line returned FALSE — the log line
+     * dropped, not degraded — exactly the failure mode r4-13 killed on
+     * the URL surface by rejecting the input. The render seam owes the
+     * same outcome without rejecting the value: well-formed sequences
+     * render verbatim, invalid bytes render percent-encoded.
+     */
+    public function testRenderedLinesAreAlwaysValidUtf8AndJsonEncodeWhole(): void
+    {
+        // THE REPRO: a Latin-1 (obs-text) value — legal at construction,
+        // invalid as UTF-8, json_encode of the line FALSE pre-fix.
+        $map = new HeaderMap(array('X-Note' => "caf\xE9"));
+        $lines = $map->rendered_lines();
+        $this->assertSame(array('X-Note: caf%E9'), $lines, 'The invalid byte renders percent-encoded — encoded, never dropped.');
+        $encoded = json_encode($lines[0]);
+        $this->assertNotFalse($encoded, 'A Latin-1 header value must never make json_encode of the rendered line fail.');
+        $this->assertSame('X-Note: caf%E9', json_decode($encoded), 'The line round-trips through json_encode.');
+
+        // The value the caller holds is untouched — the gate is at the
+        // RENDER seam only (obs-text stays legal at construction).
+        $this->assertSame("caf\xE9", $map->header('x-note'));
+
+        // Valid-UTF-8 obs-text renders VERBATIM (the t31-r1-19 pin,
+        // restated through the gate): a multibyte sequence is never
+        // encoded, beside encoded invalid bytes in the same value.
+        $verbatim = new HeaderMap(array('X-Note' => "caf\xC3\xA9 \xE9 \xF0\x9F\x98"));
+        $this->assertSame(array("X-Note: caf\xC3\xA9 %E9 %F0%9F%98"), $verbatim->rendered_lines());
+        foreach ($verbatim->rendered_lines() as $line) {
+            $this->assertNotFalse(json_encode($line), 'Every rendered line json_encodes.');
+        }
+
+        // The masked branch holds the same gate by construction
+        // (mask() never returns invalid UTF-8) — pinned belt-and-braces:
+        // a binary secret's masked line still encodes whole.
+        $masked = new HeaderMap(array('Authorization' => "Bearer caf\xE9caf\xE9caf\xE9"));
+        foreach ($masked->rendered_lines() as $line) {
+            $this->assertNotFalse(json_encode($line), 'A masked line stays valid UTF-8.');
+        }
+
+        // End to end through the debug form that embeds the render: the
+        // whole safe debug form json_encodes with a Latin-1 value aboard.
+        $request = new HttpRequest('POST', 'https://host.example/', array('X-Note' => "caf\xE9"));
+        $this->assertNotFalse(json_encode((string) $request), 'The request debug form json_encodes with an obs-text value aboard.');
+        $this->assertStringContainsString('X-Note: caf%E9', (string) $request, 'The encoded spelling is what the debug form shows.');
+    }
+
+    /**
      * Fix-round pin (t31-r2-11), the grammar-identity pin:
      * METHOD_TOKEN_PATTERN was a second verbatim copy of the RFC 7230
      * tchar grammar — t31-r1-16 declared HeaderMap the single owner
