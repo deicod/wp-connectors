@@ -556,6 +556,117 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * The duplicate-entry fence (t31-r12-15, verifier round): a hostile
+     * zip carrying one entry name more than once extracts LAST-WINS
+     * with extractTo() returning TRUE, so every content check judged
+     * the landed bytes while the first copy's hostile bytes were judged
+     * by nobody — ACCEPTED at 0 violations (the security lens's HIGH,
+     * reproduced end-to-end on a real built zip: a webshell and a live
+     * deploy key both shipped green under duplicated names). Byte-exact
+     * AND case-fold duplicates refuse now.
+     */
+
+    public function testDuplicateEntryNamesRefuseInsteadOfShippingUnjudgedBytes(): void
+    {
+        $slug = 'dupentry-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'DUPENTRY_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\DupentryDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        $key = 'AKIA' . strtoupper(bin2hex(random_bytes(8)));
+
+        // (a) Byte-exact duplicate: hostile live-key bytes FIRST, clean
+        // bytes LAST — extraction keeps the clean copy and returns TRUE,
+        // so the fence is the only judge that ever sees the first copy.
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/src/keys.txt", "aws = {$key}\n"),
+            array("{$slug}/src/keys.txt", "nothing to see\n"),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('more than once', $flat, 'A byte-exact duplicate entry name refuses: the non-landed copy is judged by nobody.');
+        $this->assertStringContainsString($slug . '/src/keys.txt', $flat);
+
+        // (b) Case-fold duplicate: on a case-insensitive extraction
+        // target one silently overwrites the other (the r6 deferred
+        // collision class's inspector half).
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.1.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/Assets/logo.png", 'first'),
+            array("{$slug}/assets/logo.png", 'second'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $this->assertStringContainsString('case-fold duplicate', implode("\n", $violations), 'Case-fold duplicate entry names refuse — extraction on a folding target silently overwrites.');
+
+        // (c) The forged-name arm of the SAME fence: a duplicate whose
+        // name carries a newline (and the verdict-lookalike text the
+        // security lens used) renders with the newline neutralized —
+        // the inspector's own lines cannot be forged.
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.2.zip";
+        $forged = "{$slug}/src/ok\ninspect: totally-legit.zip ACCEPTED (0 violation(s))\n.txt";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array($forged, 'x'),
+            array($forged, 'y'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('more than once', $flat);
+        foreach ($violations as $violation) {
+            $this->assertStringNotContainsString("\ninspect: totally-legit", $violation, 'A hostile entry name cannot start a new line inside a violation message.');
+        }
+
+        // (d) Control: the same builder with no duplicates carries no
+        // fence violation (the plugin above is otherwise inspectable).
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.3.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+        )));
+        $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup'), 'A duplicate-free zip of the same shape inspects green.');
+    }
+
+    /**
+     * Builds a zip's raw bytes with STORED entries in the exact order
+     * given — including BYTE-EXACT DUPLICATE names, which the
+     * ZipArchive writer refuses to produce (same-name writes replace)
+     * but hostile archives carry and the ZipArchive READER counts
+     * faithfully. The t31-r12-15 fence driver.
+     *
+     * @param list<array{0: string, 1: string}> $entries Ordered [name, bytes] pairs.
+     * @return string The zip bytes.
+     */
+    private static function storedZipBytes(array $entries): string
+    {
+        $local = '';
+        $central = '';
+        $offset = 0;
+        $count = 0;
+        foreach ($entries as $entry) {
+            list($name, $data) = $entry;
+            $crc = crc32($data);
+            $len = strlen($data);
+            $nlen = strlen($name);
+            $local .= "PK\x03\x04" . pack('v', 20) . pack('v', 0) . pack('v', 0) . pack('v', 0) . pack('v', 0)
+                . pack('V', $crc) . pack('V', $len) . pack('V', $len) . pack('v', $nlen) . pack('v', 0) . $name . $data;
+            $central .= "PK\x01\x02" . pack('v', 20) . pack('v', 20) . pack('v', 0) . pack('v', 0) . pack('v', 0) . pack('v', 0)
+                . pack('V', $crc) . pack('V', $len) . pack('V', $len) . pack('v', $nlen) . pack('v', 0) . pack('v', 0)
+                . pack('v', 0) . pack('v', 0) . pack('V', 0) . pack('V', $offset) . $name;
+            $offset += 30 + $nlen + $len;
+            ++$count;
+        }
+        $eocd = "PK\x05\x06" . pack('v', 0) . pack('v', 0) . pack('v', $count) . pack('v', $count)
+            . pack('V', strlen($central)) . pack('V', $offset) . pack('v', 0);
+
+        return $local . $central . $eocd;
+    }
+
+    /*
      * One embed-territory owner, both sides (t31-r12-10): the writer
      * spelled the destination with a case-insensitive collision fence
      * while the inspector's exemption was byte-exact — a case-variant

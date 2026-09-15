@@ -3470,6 +3470,29 @@ function wp_connectors_ascii_lower($value)
 }
 
 /**
+ * Renders bytes for a diagnostic line with every line-forging byte
+ * neutralized (verifier round t31-r12-15, from the security lens's
+ * forged-output finding).
+ *
+ * Violation messages interpolate ARCHIVE-CONTROLLED text — entry names,
+ * captured engine diagnostics — and a hostile zip legally carries a
+ * 250+-byte entry-name component with an embedded newline (or an ANSI
+ * escape: terminal rewriting) in it. The inspector's own lines are
+ * diagnostics a human scans, so the interpolations print through this
+ * ONE seam: every C0 control and DEL becomes a space (a newline can
+ * no longer start a line that reads as a different verdict; an ESC
+ * sequence can no longer rewrite the terminal). The printable body —
+ * including multibyte UTF-8 — rides verbatim.
+ *
+ * @param string $value The bytes about to interpolate into a diagnostic.
+ * @return string The same bytes with every C0 control and DEL as a space.
+ */
+function wp_connectors_printable($value)
+{
+    return (string) strtr((string) $value, array_combine(array_map('chr', array_merge(range(0, 31), array(127))), array_fill(0, 33, ' ')));
+}
+
+/**
  * The upper twin of wp_connectors_ascii_lower() — see its doctrine.
  *
  * @param string $value The bytes to fold.

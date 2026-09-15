@@ -58,9 +58,45 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     $topDirs = array();
     $sawDirectoryEntry = false;
     $traversalEntries = array();
+    $seenEntryNames = array();
+    $seenFoldedNames = array();
     for ($i = 0; $i < $zip->numFiles; ++$i) {
         $name = (string) $zip->getNameIndex($i);
         $parts = explode('/', $name);
+        /*
+         * The duplicate-entry fence (verifier round t31-r12-15, the
+         * security lens's HIGH): a hostile zip may carry one entry
+         * name MORE THAN ONCE — the ZipArchive WRITER refuses to
+         * produce that shape (same-name writes replace), but the
+         * READER counts every copy and extractTo() keeps only the
+         * LAST: the extraction returns TRUE, every content check below
+         * judges the landed bytes, and the first copy's bytes (the
+         * webshell, the live key) are judged by nobody — ACCEPTED at 0
+         * violations (reproduced on a real built zip). Byte-exact AND
+         * case-folded duplicates refuse: on a case-insensitive
+         * extraction target ('Assets/logo.png' beside
+         * 'assets/logo.png') one silently overwrites the other — the
+         * r6 deferred collision class's INSPECTOR half, consumed here;
+         * the builder-side fence over the collected entry set (and its
+         * directory prefixes) stays the r6 line's own round.
+         */
+        $folded_name = wp_connectors_ascii_lower($name);
+        if (isset($seenEntryNames[$name])) {
+            $violations[] = sprintf(
+                'inspect: zip carries the entry name "%s" more than once — extraction keeps only one copy, so the other bytes are judged by nobody.',
+                wp_connectors_printable($name)
+            );
+        } else {
+            $seenEntryNames[$name] = true;
+        }
+        if (isset($seenFoldedNames[$folded_name])) {
+            $violations[] = sprintf(
+                'inspect: zip carries case-fold duplicate entry names ("%s") — on a case-insensitive extraction target one silently overwrites the other.',
+                wp_connectors_printable($name)
+            );
+        } else {
+            $seenFoldedNames[$folded_name] = true;
+        }
         $topDirs[ $parts[0] ] = true;
         // An entry with a second path segment proves the top-level name is
         // (also) a directory; a zip of only "file.php"-style entries has a
