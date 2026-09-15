@@ -86,6 +86,63 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         $this->assertSame(1, $session->interval_seconds());
     }
 
+    /**
+     * Review-round pin (t31-r12-5): both device-flow codes are
+     * PROVIDER-SUPPLIED strings, and with only the non-empty screen a
+     * raw CRLF constructed — print_r() then forged lines in the MASKED
+     * debug tail (the mask keeps the last four characters, controls
+     * included — reproduced), the forged-log-line channel
+     * r1-19/r2-1/r11-5 closed on the URL and header surfaces but not
+     * on the code positions. The ONE control-byte guard (HeaderMap's
+     * own vocabulary, one callable) refuses them loudly; the pending
+     * authorization's provider-supplied label takes the same guard,
+     * and the exact legal session spellings stay green.
+     */
+    public function testControlBytesInProviderSuppliedCodesRefuseLoudly(): void
+    {
+        $legal_code = 'wpct_fixture_dc_' . bin2hex(random_bytes(8));
+
+        $hostile_codes = array(
+            'device code with CRLF' => $legal_code . "\r\nAuthorization: Bearer x",
+            'device code with NUL' => "wpct\x00dc",
+            'device code with C1 NEL spelling' => "wpct\xC2\x85dc",
+            'user code with CRLF' => "ABCD-1234\r\n",
+            'user code with NUL' => "AB\x00CD",
+            'user code with U+2028' => "ABCD\xE2\x80\xA81234",
+        );
+        foreach ($hostile_codes as $label => $code) {
+            try {
+                new DeviceAuthorizationSession($code, 'ABCD-1234', 'https://auth.example.test/device', 5, new \DateTimeImmutable());
+                $this->fail("A control-byte-bearing device code ({$label}) must refuse.");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not contain control characters', $e->getMessage());
+            }
+            try {
+                new DeviceAuthorizationSession(FakeSecrets::deviceCode(), $code, 'https://auth.example.test/device', 5, new \DateTimeImmutable());
+                $this->fail("A control-byte-bearing user code ({$label}) must refuse.");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not contain control characters', $e->getMessage());
+            }
+        }
+
+        // The pending authorization's provider-supplied label rides the
+        // same guard (its flow payloads gate themselves: the PKCE pair by
+        // grammar, the device session by the gates above).
+        try {
+            PendingAuthorization::for_device(1, "zai\r\ninjected", $this->deviceSession(), new \DateTimeImmutable());
+            $this->fail('A control-byte-bearing provider id must refuse.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('must not contain control characters', $e->getMessage());
+        }
+
+        // The exact legal session fixtures stay green: the factory code,
+        // the typed human spelling, and a dotted provider label.
+        $session = new DeviceAuthorizationSession($legal_code, 'ABCD-1234', 'https://auth.example.test/device', 5, new \DateTimeImmutable());
+        $this->assertSame($legal_code, $session->device_code());
+        $this->assertSame('ABCD-1234', $session->user_code());
+        $this->assertStringNotContainsString("\r", print_r($session, true), 'The legal dump carries no carriage return — no forged line material.');
+    }
+
     /* ---------------------------------------------------------------
      * PKCE pair.
      * ---------------------------------------------------------------

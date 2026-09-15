@@ -21,6 +21,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Shared\Flow;
 
 use DateTimeImmutable;
+use Deicod\WpConnectors\Shared\Http\HeaderMap;
 use Deicod\WpConnectors\Shared\Http\Url;
 use Deicod\WpConnectors\Shared\Support\SecretMask;
 use InvalidArgumentException;
@@ -96,6 +97,19 @@ final class DeviceAuthorizationSession {
 		if ( '' === trim( $user_code ) ) {
 			throw new InvalidArgumentException( 'The user code must be a non-empty string.' );
 		}
+
+		/*
+		 * Both codes are PROVIDER-SUPPLIED strings (RFC 8628 §3.2), so
+		 * they ride the ONE control-byte guard (t31-r12-5): with only
+		 * the non-empty screen, a raw CRLF constructed and print_r()
+		 * forged lines in the MASKED debug tail below (the mask keeps
+		 * the last four characters, controls included — reproduced),
+		 * the forged-log-line channel r1-19/r2-1/r11-5 closed on the
+		 * URL and header surfaces but not on the provider-supplied
+		 * code positions.
+		 */
+		HeaderMap::assert_no_control_bytes( $device_code, 'The device code' );
+		HeaderMap::assert_no_control_bytes( $user_code, 'The user code' );
 		Url::parse_validated( $verification_uri );
 		if ( $interval_seconds < 1 ) {
 			throw new InvalidArgumentException( 'The poll interval must be at least one second.' );

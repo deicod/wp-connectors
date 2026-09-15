@@ -218,6 +218,37 @@ final class HeaderMap {
 	}
 
 	/**
+	 * Rejects a value carrying the control-byte vocabulary — the ONE
+	 * shared guard the provider-supplied string surfaces ride (review
+	 * round t31-r12-5).
+	 *
+	 * The vocabulary above is public beyond the header map itself
+	 * ("one vocabulary, two surfaces" — Url screens the request
+	 * surface), and the surfaces kept growing a spelling at a time:
+	 * the device-flow codes construct with a raw CRLF and print_r()
+	 * forges lines in the MASKED debug tail (the mask keeps the last
+	 * four characters, controls included — reproduced), the exact
+	 * forged-log-line channel the header-value rule (t31-r1-19), the
+	 * URL rule (t31-r2-1), and the dump channel (t31-r11-5) closed
+	 * everywhere else. The guard reads the ban-pattern abort-as-reject
+	 * (glm36-8): a PCRE failure refuses the value, never passes it.
+	 * No new vocabulary — the same curated byte list, one callable.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $value The provider-supplied value about to be stored.
+	 * @param string $what  Field label for the rejection ('The device code').
+	 * @return void
+	 * @throws InvalidArgumentException When the value carries any byte of the control vocabulary.
+	 */
+	public static function assert_no_control_bytes( string $value, string $what ): void {
+		if ( 0 !== preg_match( self::VALUE_CONTROL_BYTE_PATTERN, $value ) ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- $what is the CALLER's compile-time field label ('The device code'), never provider data; escaping belongs to the display layer (the same posture the response VO's status rejection carries).
+			throw new InvalidArgumentException( sprintf( '%s must not contain control characters or line breaks — including their UTF-8 spellings (U+2028/U+2029, C1 controls), which forge log lines in the safe debug forms.', $what ) );
+		}
+	}
+
+	/**
 	 * The header map as constructed.
 	 *
 	 * An all-digit name appears under its PHP-canonical integer key (the

@@ -23,6 +23,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Shared\Flow;
 
 use DateTimeImmutable;
+use Deicod\WpConnectors\Shared\Http\HeaderMap;
 use InvalidArgumentException;
 
 /**
@@ -96,6 +97,19 @@ final class PendingAuthorization {
 		if ( '' === trim( $provider_id ) ) {
 			throw new InvalidArgumentException( 'The provider id must be a non-empty string.' );
 		}
+
+		/*
+		 * The ONE control-byte guard on the provider-supplied string this
+		 * VO carries (t31-r12-5): the authorization-code flow's own
+		 * code/state ride the flow PAYLOADS, and those gate themselves
+		 * (PkceCodePair by its RFC 7636 grammar; the device session by
+		 * the same guard this round gave it) — the free-text label is
+		 * the string left unguarded, and it rendered raw (a CRLF-bearing
+		 * provider id forged a line in a print_r of the pending flow,
+		 * reproduced). A future code/state field on this VO joins the
+		 * same guard, not a copy of it.
+		 */
+		HeaderMap::assert_no_control_bytes( $provider_id, 'The provider id' );
 		if ( ( null === $device_session ) === ( null === $pkce_pair ) ) {
 			throw new InvalidArgumentException( 'A pending authorization carries exactly one flow payload (device session or PKCE pair).' );
 		}
