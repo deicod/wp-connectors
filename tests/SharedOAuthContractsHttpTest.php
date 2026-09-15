@@ -540,6 +540,17 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'RLI right-to-left isolate' => "ok\xE2\x81\xA7evac",
             'FSI first strong isolate' => "ok\xE2\x81\xA8evac",
             'PDI pop directional isolate' => "ok\xE2\x81\xA9evac",
+            /*
+             * Fix-round extension (t31-r8-5): the direction MARKS —
+             * zero-width reorder/mirror material spelled BELOW the
+             * U+2028-U+202E block (LRM/RLM) and outside the U+2xxx run
+             * entirely (ALM) — passed the r2-6 ranges and rendered
+             * provider-controlled values reordered/mirrored in the safe
+             * debug forms.
+             */
+            'LRM left-to-right mark (t31-r8-5)' => "ok\xE2\x80\x8Eevac",
+            'RLM right-to-left mark (t31-r8-5)' => "ok\xE2\x80\x8Fevac",
+            'ALM arabic letter mark (t31-r8-5)' => "ok\xD9\x9Cevac",
         );
 
         foreach ($hostile_values as $label => $value) {
@@ -570,6 +581,24 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $this->fail('A URL carrying RLO must be rejected.');
         } catch (\InvalidArgumentException $e) {
             $this->assertStringContainsString('control characters', $e->getMessage());
+        }
+
+        /*
+         * Fix-round extension (t31-r8-5): the direction MARKS join the
+         * one vocabulary on the URL surface with no second pattern to
+         * drift — the constant is the single owner both surfaces read.
+         */
+        foreach (array(
+            'LRM' => "https://api.example/cb\xE2\x80\x8Eevac",
+            'RLM' => "https://api.example/cb\xE2\x80\x8Fevac",
+            'ALM' => "https://api.example/cb\xD9\x9Cevac",
+        ) as $label => $url) {
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail("A URL carrying {$label} must be rejected (one vocabulary, two surfaces).");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
         }
     }
 

@@ -45,8 +45,13 @@ final class HeaderMap {
 	 * and U+2066-U+2069 (LRI/RLI/FSI/PDI) — zero-width direction
 	 * controls that render provider-controlled values with reordered
 	 * or mirrored appearance, the character-spoofing sibling of the
-	 * forged line (review round t31-r2-6). Other high bytes stay legal
-	 * as RFC 7230 obs-text (verifier round t31-r1-19).
+	 * forged line (review round t31-r2-6) — plus the direction MARKS
+	 * U+200E LRM, U+200F RLM, and U+061C ALM (verifier round
+	 * t31-r8-5): the same zero-width reorder/mirror material, spelled
+	 * BELOW the U+2028-U+202E block (and, for ALM, outside the
+	 * U+2xxx plane run entirely), so the r2-6 ranges never saw them.
+	 * Other high bytes stay legal as RFC 7230 obs-text (verifier round
+	 * t31-r1-19).
 	 *
 	 * PUBLIC and single-owner beyond the header map itself (review
 	 * round t31-r2-1): this constant names the control vocabulary no
@@ -58,7 +63,7 @@ final class HeaderMap {
 	 *
 	 * @var string
 	 */
-	const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F]|\xE2\x80[\xA8-\xAE]|\xE2\x81[\xA6-\xA9]/';
+	const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F]|\xE2\x80[\x8E\x8F\xA8-\xAE]|\xE2\x81[\xA6-\xA9]|\xD9\x9C/';
 
 	/**
 	 * The RFC 7230 token grammar every header NAME must satisfy
