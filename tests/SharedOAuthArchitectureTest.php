@@ -520,6 +520,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             'bare vendor-prefix import' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors;\ninterface BarePrefixFixture\n{\n}\n",
             'dangling as eats the next reference (t31-r7-7)' => "<?php\nnamespace A;\nuse Foo\\Bar as;\n\$x = \\Deicod\\WpConnectors\\Shared\\Clock::class;\n",
             'dangling as survives the close tag (t31-r8-1)' => "<?php\nnamespace A;\nuse Foo\\Bar as ?>\ninline HTML\n<?php\n\$x = \\Deicod\\WpConnectors\\Shared\\Clock::class;\n",
+            'relative operator escaping into the family (t31-r8-2)' => "<?php\nnamespace Deicod;\n\$x = namespace\\WpConnectors\\Shared\\Clock::class;\n",
             'source-spelled TARGET-rooted code reference (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface TargetCodeFixture\n{\n    public function name(): string;\n}\nfinal class TargetCodeCarrier\n{\n    public function name(): string\n    {\n        return \\class_exists(\\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost::class);\n    }\n}\n",
             'docblock naming the rewrite TARGET (t31-r7-8)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/**\n * @throws \\Deicod\\WpConnectors\\ExampleConnector\\Shared\\Clock\\Ghost\n */\ninterface TargetDocblockFixture\n{\n}\n",
         );
@@ -549,7 +550,11 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // The clean direction, through the same gate on its own fresh
         // path: everything the rewriter owns (own declaration,
         // plain/group/function own imports) plus the enumerated platform
-        // imports and a relative `namespace\` operator — no finding.
+        // imports and a relative `namespace\` operator — no finding
+        // (t31-r8-2 makes that operator LOAD-BEARING: it resolves
+        // against the own-root declaration and adapts through the
+        // rewrite, so it must stay clean while its escaping twin above
+        // refuses).
         $clean = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-clean-');
         try {
             file_put_contents(

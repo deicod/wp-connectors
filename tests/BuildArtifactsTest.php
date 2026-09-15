@@ -2764,6 +2764,94 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r8-2): the relative operator resolves against
+     * the file's declared namespace BEFORE the family predicates judge
+     * it. T_NAME_RELATIVE carries its literal `namespace\` prefix
+     * through the walk, so `namespace\WpConnectors\Shared\Clock` in a
+     * file declaring `namespace Deicod;` — which PHP resolves to the
+     * family name — never matched the vendor predicate: the reference
+     * shipped un-rewritten, class-not-found at runtime, both gates
+     * green (reproduced red: zero family references under the pre-fix
+     * detector). The ADAPTATION carve-out is the pinned other half: a
+     * relative under a rewrite-owned tree (the source root, or the
+     * target root on rewritten bytes) adapts through the rewrite in any
+     * position and reports nothing.
+     */
+    public function testARelativeOperatorResolvesAgainstTheDeclaredNamespaceBeforeTheFamilyPredicates(): void
+    {
+        // THE REPRO, both directions at the detector: matches when the
+        // resolution lands in the family…
+        $escape = "<?php\nnamespace Deicod;\n\$x = namespace\\WpConnectors\\Shared\\Clock::class;\n";
+        $this->assertSame(
+            array( array( 'name' => 'Deicod\\WpConnectors\\Shared\\Clock', 'lower' => 'deicod\\wpconnectors\\shared\\clock', 'kind' => 'relative', 'offset' => 29, 'line' => 3 ) ),
+            wp_connectors_shared_family_references($escape),
+            'A relative operator resolving into the family under a non-owned declaration is a family reference — resolved, not literal.'
+        );
+        // …and passes when it resolves outside it.
+        $outside = "<?php\nnamespace Other\\Tree;\n\$x = namespace\\Foo\\Bar::class;\n";
+        $this->assertSame(array(), wp_connectors_shared_family_references($outside), 'A relative resolving outside the family is no family reference.');
+
+        // The escape refuses the build's postcondition loudly — the
+        // rewriter owns no relative spelling, and the declaration it
+        // resolves against (outside the rewrite's trees) is never
+        // rewritten, so the reference dangles inside the plugin.
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($escape, 'OpenAiOauth', 'shared/src/Relative.php');
+            $this->fail('A family-resolving relative under a non-owned declaration must refuse the rewrite, never ship un-rewritten.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('survived the rewrite', $e->getMessage());
+            $this->assertStringContainsString('Relative.php', $e->getMessage());
+            $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Clock', $e->getMessage(), 'The refusal names the RESOLVED reference.');
+            $this->assertStringContainsString('relative position', $e->getMessage(), 'The refusal names the relative kind — never "use", whose rewritable-position reading would wave it through the sweep.');
+        }
+
+        // The keyword's case and interrupted spellings resolve too
+        // (the walk reassembles; the resolution judges the assembly).
+        $interrupted = "<?php\nnamespace Deicod;\n\$x = NAMESPACE\\WpConnectors \\ Shared \\ Clock::class;\n";
+        $found = wp_connectors_shared_family_references($interrupted);
+        $this->assertCount(1, $found, 'A case-variant, separator-interrupted relative resolves like its contiguous twin.');
+        $this->assertSame('Deicod\\WpConnectors\\Shared\\Clock', $found[0]['name']);
+        $this->assertSame('relative', $found[0]['kind']);
+
+        // Multi-block files: the SECOND declaration is the base a later
+        // relative resolves against.
+        $multi = "<?php\nnamespace Other;\n\$a = namespace\\Foo;\nnamespace Deicod;\n\$b = namespace\\WpConnectors\\Shared\\Clock::class;\n";
+        $found = wp_connectors_shared_family_references($multi);
+        $this->assertCount(1, $found, 'Only the relative under the second block\'s declaration resolves into the family.');
+        $this->assertSame('Deicod\\WpConnectors\\Shared\\Clock', $found[0]['name']);
+
+        // A relative USE spelling reports as 'relative', never 'use':
+        // the sweep treats use-position own-rooted imports as legal, and
+        // this spelling is not rewritten by anything.
+        $relative_use = "<?php\nnamespace Deicod;\nuse namespace\\WpConnectors\\Shared\\Clock;\n";
+        $found = wp_connectors_shared_family_references($relative_use);
+        $this->assertSame('relative', $found[0]['kind'], 'A relative use spelling must not wear the use kind.');
+
+        /*
+         * The adaptation carve-out, both sides: under the SOURCE root
+         * the relative reports nothing (any position) and the rewrite
+         * passes its own postcondition — on the rewritten bytes the
+         * relative resolves under the TARGET root, which the consumer
+         * hands the detector, so it reports nothing there either: the
+         * spelling rides verbatim and adapts by construction.
+         */
+        $adapting = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface FormsFixture\n{\n}\nfinal class Carrier\n{\n    public function self(): namespace\\FormsFixture\n    {\n        return new FormsFixture();\n    }\n}\n";
+        $found = wp_connectors_shared_family_references($adapting);
+        $this->assertCount(1, $found, 'Only the declaration reports; the adapting relative is legal in a code position.');
+        $this->assertSame('declaration', $found[0]['kind']);
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($adapting, 'OpenAiOauth', 'shared/src/Carrier.php');
+        $this->assertStringContainsString('namespace Deicod\\WpConnectors\\OpenAiOauth\\Shared;', $rewritten, 'The declaration is rewritten.');
+        $this->assertStringContainsString('namespace\\FormsFixture', $rewritten, 'The relative spelling rides verbatim — it adapts, it is never rewritten.');
+        $this->assertSame(
+            array( array( 'name' => 'Deicod\\WpConnectors\\OpenAiOauth\\Shared', 'lower' => 'deicod\\wpconnectors\\openaioauth\\shared', 'kind' => 'declaration' ) ),
+            array_map(static function (array $reference): array {
+                return array( 'name' => $reference['name'], 'lower' => $reference['lower'], 'kind' => $reference['kind'] );
+            }, wp_connectors_shared_family_references($rewritten, 'Deicod\\WpConnectors\\OpenAiOauth\\Shared')),
+            'On the rewritten bytes the relative resolves under the target root and reports nothing — the declaration is the only family reference (the ownership half of the carve-out).'
+        );
+    }
+
+    /**
      * Fix-round pin (t31-r4-3): ZipArchive::close()'s false return was
      * ignored — a failed finalization took no catch path while OVERWRITE
      * had already destroyed the previous good zip, so the run continued

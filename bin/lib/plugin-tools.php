@@ -729,6 +729,14 @@ function wp_connectors_unescape_php_string_literal($quote, $inner)
  *   (wp_connectors_php_name_references()); comments are structurally
  *   invisible to it (a comment can only INTERRUPT a name run, never carry
  *   one), so the comment-interrupted spelling dies by construction;
+ * - 'relative' — a `namespace\…` operator whose resolution against the
+ *   file's declared namespace is a family name while the declared
+ *   namespace itself is NOT a tree the rewrite owns (the source root, or
+ *   the target root when judging rewritten bytes): such a spelling
+ *   dangles inside the plugin, because the rewriter never touches it and
+ *   the declaration it resolves against is never rewritten. A relative
+ *   resolving under a rewrite-owned tree is legal in EVERY position —
+ *   it adapts through the rewrite by construction (t31-r8-2);
  * - 'string' — a string literal (quoted, heredoc, or nowdoc) whose TEXT
  *   spells the family (the whitespace-tolerant pattern, so a value broken
  *   across lines still refuses, t31-r4-5's doctrine) OR whose runtime
@@ -762,9 +770,71 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
     $is_family = static function (string $lower) use ($vendor_lower): bool {
         return $lower === $vendor_lower || 0 === strpos($lower, $vendor_lower . '\\');
     };
+    $target_lower = null;
+    if (null !== $target_namespace && (string) $target_namespace !== '') {
+        $target_lower = strtolower(ltrim((string) $target_namespace, '\\'));
+    }
+
+    /*
+     * The RELATIVE operator resolves against the file's declared
+     * namespace before the family predicates judge it (verifier round
+     * t31-r8-2): T_NAME_RELATIVE carries its literal `namespace\` prefix
+     * through the walk, so `namespace\WpConnectors\Shared\Clock` in a
+     * file declaring `namespace Deicod;` — which PHP resolves to the
+     * family name `Deicod\WpConnectors\Shared\Clock` — never matched the
+     * vendor predicate and shipped un-rewritten: class-not-found at
+     * runtime with both gates green (the declaration itself escaped too,
+     * being outside the vendor prefix). The resolution is the one PHP
+     * itself performs: declared namespace + '\' + the relative tail
+     * (global namespace when nothing is declared yet).
+     *
+     * THE ADAPTATION CARVE-OUT, and why a resolving relative is not a
+     * finding per se: a relative spelling resolves against WHATEVER the
+     * file declares, so when the declared namespace is a tree the
+     * rewrite OWNS (the source root — or the consumer's target root,
+     * judging already-rewritten bytes), the declaration is rewritten and
+     * the relative follows it: it adapts by construction, in any
+     * position (`namespace\FormsFixture` survives its file's rewrite
+     * resolving under the target — the pinned legal shape). Only a
+     * relative whose resolution is family WHILE its base is NOT
+     * rewrite-owned dangles inside the plugin, and exactly those are
+     * reported, under their own kind 'relative' — never 'use', whose
+     * rewritable-position reading would wave an un-rewritable spelling
+     * through the sweep while the build's postcondition refuses it.
+     */
+    $rewrite_owns = static function (string $base_lower) use ($own_lower, $target_lower): bool {
+        foreach (array( $own_lower, $target_lower ) as $root) {
+            if (null !== $root && ($base_lower === $root || 0 === strpos($base_lower, $root . '\\'))) {
+                return true;
+            }
+        }
+
+        return false;
+    };
 
     $references = array();
+    $declared_lower = null;
+    $declared_display = '';
     foreach (wp_connectors_php_name_references($source) as $reference) {
+        if ('declaration' === $reference['kind']) {
+            $declared_lower = $reference['lower'];
+            $declared_display = $reference['name'];
+        }
+        if (0 === strpos($reference['lower'], 'namespace\\')) {
+            $tail_lower = substr($reference['lower'], strlen('namespace\\'));
+            $resolved_lower = (null !== $declared_lower && '' !== $declared_lower ? $declared_lower . '\\' : '') . $tail_lower;
+            if ($is_family($resolved_lower) && (null === $declared_lower || ! $rewrite_owns($declared_lower))) {
+                $references[] = array(
+                    'name' => (null !== $declared_lower && '' !== $declared_lower ? $declared_display . '\\' : '') . substr($reference['name'], strlen('namespace\\')),
+                    'lower' => $resolved_lower,
+                    'kind' => 'relative',
+                    'offset' => $reference['offset'],
+                    'line' => $reference['line'],
+                );
+            }
+
+            continue;
+        }
         if ($is_family($reference['lower'])) {
             $references[] = $reference;
         }
