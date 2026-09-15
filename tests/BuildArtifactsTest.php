@@ -2715,6 +2715,9 @@ FIXTURE;
             'trait-adaptation block carrying a family reference (t31-r10-1)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait AdaptStoreTrait\n{\n}\nfinal class AdaptStore\n{\n    use AdaptStoreTrait {\n        \\Deicod\\WpConnectors\\Shared\\Clock::now insteadof AdaptStoreTrait;\n    }\n}\n",
             'trait-adaptation clause naming the family itself (t31-r10-1)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClauseStore\n{\n    use Deicod\\WpConnectors\\Shared\\ClockFamily { tick as tock; }\n}\n",
             'multi-trait adaptation carrying a family member (t31-r10-1)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait MultiStoreA { public function s(): void {} }\ntrait MultiStoreB { public function s(): void {} }\nfinal class MultiStore\n{\n    use MultiStoreA, MultiStoreB {\n        MultiStoreA::s insteadof MultiStoreB;\n        \\Deicod\\WpConnectors\\Shared\\Ghost::s insteadof MultiStoreA;\n    }\n}\n",
+            'b-prefixed class-string, double-quoted, judged by value (t31-r10-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BPrefixStore\n{\n    public function name(): string\n    {\n        return b\"Deicod\\\\WpConnectors\\\\Shared\\\\Clock\";\n    }\n}\n",
+            'B-prefixed class-string, single-quoted, judged by value (t31-r10-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BPrefixStore\n{\n    public function name(): string\n    {\n        return B'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
+            'b-prefixed hex-escaped class-string, judged by value (t31-r10-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BPrefixStore\n{\n    public function name(): string\n    {\n        return b\"\\x44eicod\\\\WpConnectors\\\\Shared\\\\Clock\";\n    }\n}\n",
         );
         foreach ($survivors as $label => $hostile) {
             try {

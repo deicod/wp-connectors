@@ -1136,10 +1136,22 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
             // Text lens: the raw token (whitespace-tolerant, so a value
             // broken across lines refuses — t31-r4-5's doctrine holds).
             $text_lens('string', $text, $token_offset);
-            // Value lens: what PHP computes from the literal (finding 4:
-            // the double-backslash class-string spelling).
-            $quote = $text[0];
-            $value = wp_connectors_unescape_php_string_literal($quote, substr($text, 1, -1));
+            /*
+             * Value lens: what PHP computes from the literal (finding 4:
+             * the double-backslash class-string spelling). The token text
+             * of a b/B-prefixed literal (the binary-string spelling,
+             * `b"\x44eicod…"`) INCLUDES the prefix byte — reading the
+             * quote off $text[0] left the prefix inside the enclosure,
+             * the unescape shifted by one, and the runtime value carried
+             * a stray quote byte that no family predicate could match
+             * while the unprefixed twin refused (round t31-r10-2). The
+             * prefix is value-free (a b-literal computes exactly what its
+             * unprefixed twin computes); strip it and both enclosures
+             * normalize identically.
+             */
+            $literal = ('b' === $text[0] || 'B' === $text[0]) ? substr($text, 1) : $text;
+            $quote = $literal[0];
+            $value = wp_connectors_unescape_php_string_literal($quote, substr($literal, 1, -1));
             if ($is_family(strtolower($value))) {
                 $push_text_finding('string', $token_offset, $value);
             }
