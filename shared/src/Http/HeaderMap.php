@@ -50,8 +50,15 @@ final class HeaderMap {
 	 * t31-r8-5): the same zero-width reorder/mirror material, spelled
 	 * BELOW the U+2028-U+202E block (and, for ALM, outside the
 	 * U+2xxx plane run entirely), so the r2-6 ranges never saw them.
-	 * Other high bytes stay legal as RFC 7230 obs-text (verifier round
-	 * t31-r1-19).
+	 * The ALM arm carries the CORRECT bytes (review round t31-r9-1):
+	 * U+061C encodes to UTF-8 as \xD8\x9C, and the r8-5 fix spelled
+	 * the arm \xD9\x9C — the encoding of U+065C ARABIC VOWEL SIGN
+	 * DOT BELOW, a VISIBLE combining vowel sign (category Mn), not a
+	 * bidi control — so the real mark passed while a legitimate
+	 * Arabic vowel was falsely refused. Only format controls (Cf)
+	 * are banned: U+065C stays legal obs-text like every other
+	 * high byte. Other high bytes stay legal as RFC 7230 obs-text
+	 * (verifier round t31-r1-19).
 	 *
 	 * PUBLIC and single-owner beyond the header map itself (review
 	 * round t31-r2-1): this constant names the control vocabulary no
@@ -63,7 +70,7 @@ final class HeaderMap {
 	 *
 	 * @var string
 	 */
-	const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F]|\xE2\x80[\x8E\x8F\xA8-\xAE]|\xE2\x81[\xA6-\xA9]|\xD9\x9C/';
+	const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F]|\xE2\x80[\x8E\x8F\xA8-\xAE]|\xE2\x81[\xA6-\xA9]|\xD8\x9C/';
 
 	/**
 	 * The RFC 7230 token grammar every header NAME must satisfy

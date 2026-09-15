@@ -547,10 +547,19 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
              * entirely (ALM) — passed the r2-6 ranges and rendered
              * provider-controlled values reordered/mirrored in the safe
              * debug forms.
+             *
+             * Fix-round correction (t31-r9-1): the ALM arm carries the
+             * REAL bytes now. U+061C ARABIC LETTER MARK is code point
+             * 0x061C, whose two-byte UTF-8 encoding is \xD8\x9C; the
+             * r8-5 fix spelled the arm \xD9\x9C — the encoding of
+             * U+065C (0x065C) — so the reorder-spoof channel the round
+             * claimed closed stayed OPEN while a legitimate Arabic
+             * vowel was falsely refused (the byte-swap pin is in
+             * testTheArabicVowelSignStaysLegalObsTextWhileTheRealAlmRefuses).
              */
             'LRM left-to-right mark (t31-r8-5)' => "ok\xE2\x80\x8Eevac",
             'RLM right-to-left mark (t31-r8-5)' => "ok\xE2\x80\x8Fevac",
-            'ALM arabic letter mark (t31-r8-5)' => "ok\xD9\x9Cevac",
+            'ALM arabic letter mark (t31-r8-5, corrected t31-r9-1)' => "ok\xD8\x9Cevac",
         );
 
         foreach ($hostile_values as $label => $value) {
@@ -587,11 +596,12 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
          * Fix-round extension (t31-r8-5): the direction MARKS join the
          * one vocabulary on the URL surface with no second pattern to
          * drift — the constant is the single owner both surfaces read.
+         * ALM corrected to its real bytes (t31-r9-1): \xD8\x9C.
          */
         foreach (array(
             'LRM' => "https://api.example/cb\xE2\x80\x8Eevac",
             'RLM' => "https://api.example/cb\xE2\x80\x8Fevac",
-            'ALM' => "https://api.example/cb\xD9\x9Cevac",
+            'ALM' => "https://api.example/cb\xD8\x9Cevac",
         ) as $label => $url) {
             try {
                 new HttpRequest('GET', $url);
@@ -599,6 +609,59 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             } catch (\InvalidArgumentException $e) {
                 $this->assertStringContainsString('control characters', $e->getMessage());
             }
+        }
+    }
+
+    /**
+     * Fix-round pin (t31-r9-1, the byte-swap half of the r8-5 decision):
+     * the r8-5 ALM arm banned \xD9\x9C — the UTF-8 encoding of U+065C
+     * ARABIC VOWEL SIGN DOT BELOW, a VISIBLE combining vowel sign
+     * (Unicode category Mn, bidi class NSM: it decorates a letter, it
+     * reorders nothing) — while the documented mark, U+061C ARABIC
+     * LETTER MARK (category Cf, bidi class AL: a zero-width format
+     * control in the LRM/RLM family), encodes to \xD8\x9C and PASSED
+     * (verified against the Unicode character database: both spellings
+     * derived from the code points — 0x061C → 0xD8 0x9C, 0x065C →
+     * 0xD9 0x9C under the two-byte UTF-8 scheme 110xxxxx 10xxxxxx).
+     * The decision the r8-5 round made is "ban ALM", so the vowel sign
+     * returns to ALLOWED: it is legitimate content in an Arabic
+     * provider-controlled value, not reorder material, and the r1-19
+     * obs-text hospitality covers it exactly as it covers every other
+     * high byte. Pinned on both surfaces the one vocabulary owns.
+     */
+    public function testTheArabicVowelSignStaysLegalObsTextWhileTheRealAlmRefuses(): void
+    {
+        $vowel_sign = "ok\xD9\x9Cevac"; // U+065C, Mn — visible, legal.
+        $real_alm = "ok\xD8\x9Cevac"; // U+061C, Cf — zero-width, banned.
+
+        // The vowel sign constructs on the header surface and renders
+        // VERBATIM through the safe debug forms (valid UTF-8 obs text,
+        // the t31-r8-6 render doctrine: no mask, no percent-encode).
+        $response = new HttpResponse(429, array('Retry-After' => $vowel_sign));
+        $this->assertSame($vowel_sign, $response->header('retry-after'));
+        $this->assertStringContainsString("Retry-After: {$vowel_sign}", (string) $response);
+
+        // And on the URL surface (one vocabulary: what the constant does
+        // not ban, neither surface refuses).
+        $request = new HttpRequest('GET', "https://api.example/cb\xD9\x9Cevac");
+        $this->assertSame("https://api.example/cb\xD9\x9Cevac", (string) $request->url());
+
+        // The REAL mark refuses on both surfaces — the channel r8-5
+        // claimed closed and was not (the swapped bytes passed while the
+        // vowel sign refused; both directions pinned above and in the
+        // two t31-r8-5 tests).
+        try {
+            new HttpResponse(429, array('Retry-After' => $real_alm));
+            $this->fail('The real ALM (U+061C, \\xD8\\x9C) must be refused in a header value.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('control characters', $e->getMessage());
+        }
+
+        try {
+            new HttpRequest('GET', "https://api.example/cb\xD8\x9Cevac");
+            $this->fail('The real ALM (U+061C, \\xD8\\x9C) must be refused in a URL.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('control characters', $e->getMessage());
         }
     }
 
