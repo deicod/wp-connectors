@@ -262,21 +262,29 @@ function wp_connectors_family_namespace_pattern($namespace)
  * name-boundary aware on both edges), and consumes the sibling's own
  * next segment when one follows so the reported spelling names the
  * sibling (`…\Zai`), never a bare stem with the charge unattributed.
- * The exclusion is a lookahead on the segment AFTER the stem, with the
- * leaf boundary of the generator — so 'Shared' excludes
- * `…\Shared\Clock` but never the sibling 'SharedStorage' — and exists
- * for diagnostics, not verdicts: the source and target patterns run
- * first and return on their own match, but a double-backslash spelling
- * misses them in the RAW view, and the lookahead keeps the fuller
- * spelling's report from being preempted by a bare-stem match.
+ * The exclusion is a lookahead on the segments AFTER the stem, each
+ * alternative a FULL below-vendor tail a dedicated pattern owns (the
+ * source tail 'Shared'; the target tail '<Suffix>\Shared' when the
+ * consumer knows a target) with the generator's leaf boundary — so
+ * 'Shared' excludes `…\Shared\Clock` but never the sibling
+ * 'SharedStorage', and the target tail excludes `…\<Suffix>\Shared\…`
+ * but never the target-SEGMENT sibling `…\<Suffix>\OAuth` (verifier
+ * round t31-r8-9: excluding the suffix segment ALONE waved every
+ * spelling under the building plugin's own segment through the build
+ * postcondition while the sweep refused the same file — verdict
+ * drift, the r7-8 class one segment inside the target tree). The
+ * exclusion exists for diagnostics, not verdicts: the source and
+ * target patterns run first and return on their own match, but a
+ * double-backslash spelling misses them in the RAW view, and the
+ * lookahead keeps the fuller spelling's report from being preempted
+ * by a bare-stem match.
  *
- * @param list<string> $excluded_next_segments Namespace segments whose
- *        continuations the dedicated patterns own (the source tree's
- *        segment under the vendor prefix; the target's, when known).
+ * @param list<string> $excluded_tails Namespace tails below the vendor
+ *        prefix whose spellings the dedicated patterns own.
  * @return string PCRE pattern matching a sibling/bare spelling of the
  *         vendor prefix in text.
  */
-function wp_connectors_family_sibling_pattern(array $excluded_next_segments)
+function wp_connectors_family_sibling_pattern(array $excluded_tails)
 {
     $own_lower = strtolower(wp_connectors_shared_source_namespace());
     $vendor = substr($own_lower, 0, (int) strrpos($own_lower, '\\'));
@@ -287,12 +295,28 @@ function wp_connectors_family_sibling_pattern(array $excluded_next_segments)
         explode( '\\', $vendor )
     ));
 
+    /*
+     * The separator the exclusion and the continuation ride tolerates
+     * ONE OR TWO backslashes: a double-backslash spelling (the
+     * class-string convention) misses the dedicated patterns in the
+     * RAW view, and a single-separator lookahead there would let the
+     * sibling's bare stem preempt the fuller report the UNESCAPED view
+     * owes — the diagnostics half of the exclusion, held on both
+     * spellings of every separator the lens judges.
+     */
+    $separator = '(?:\\s*\\\\\\s*|\\s*\\\\\\\\\\s*)';
+
     $excluded = array();
-    foreach ( $excluded_next_segments as $segment ) {
-        $excluded[] = preg_quote( strtolower( (string) $segment ), '/' ) . '(?![A-Za-z0-9_])';
+    foreach ( $excluded_tails as $tail ) {
+        $excluded[] = implode($separator, array_map(
+            static function ( $segment ) {
+                return preg_quote( strtolower( (string) $segment ), '/' );
+            },
+            explode( '\\', (string) $tail )
+        )) . '(?![A-Za-z0-9_])';
     }
 
-    return '/(?<![A-Za-z0-9_])' . $stem . '(?![A-Za-z0-9_])(?!\\s*\\\\\\s*(?:' . implode('|', $excluded) . '))(?:\\s*\\\\\\s*[A-Za-z_][A-Za-z0-9_]*)?/i';
+    return '/(?<![A-Za-z0-9_])' . $stem . '(?![A-Za-z0-9_])(?!' . $separator . '(?:' . implode('|', $excluded) . '))(?:' . $separator . '[A-Za-z_][A-Za-z0-9_]*)?/i';
 }
 
 /**
@@ -941,18 +965,21 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * under the vendor prefix that the dedicated patterns do not own,
      * the bare prefix included — so a docblock naming a sibling refuses
      * exactly where the same sibling in a code or string position
-     * does; one vocabulary at every lens). The excluded next-segments
-     * are the source tree's and the target's segments under the vendor
-     * prefix, so their spellings stay owned by their dedicated
-     * patterns' fuller reports.
+     * does; one vocabulary at every lens). The excluded tails are the
+     * FULL below-vendor tails the dedicated patterns own — the source
+     * tree's 'Shared' and the target's '<Suffix>\Shared' (t31-r8-9:
+     * the suffix segment ALONE over-covered, waving target-SEGMENT
+     * siblings like '…\<Suffix>\OAuth' through the build postcondition
+     * while the sweep refused them, verdict drift).
      */
     $patterns = array( wp_connectors_shared_namespace_pattern() );
-    $sibling_exclusions = array( substr($own_lower, strrpos($own_lower, '\\') + 1) );
-    if (null !== $target_namespace && (string) $target_namespace !== '') {
-        $patterns[] = wp_connectors_family_namespace_pattern( $target_namespace );
-        $target_segments = explode('\\', ltrim((string) $target_namespace, '\\'));
-        if (count($target_segments) > count(explode('\\', $vendor_lower))) {
-            $sibling_exclusions[] = $target_segments[ count(explode('\\', $vendor_lower)) ];
+    $vendor_segment_count = count(explode('\\', $vendor_lower));
+    $sibling_exclusions = array( implode('\\', array_slice(explode('\\', $own_lower), $vendor_segment_count)) );
+    if (null !== $target_lower) {
+        $patterns[] = wp_connectors_family_namespace_pattern( (string) $target_namespace );
+        $target_lower_segments = explode('\\', $target_lower);
+        if (count($target_lower_segments) > $vendor_segment_count) {
+            $sibling_exclusions[] = implode('\\', array_slice($target_lower_segments, $vendor_segment_count));
         }
     }
     $patterns[] = wp_connectors_family_sibling_pattern( $sibling_exclusions );

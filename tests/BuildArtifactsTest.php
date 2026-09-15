@@ -2911,6 +2911,36 @@ FIXTURE;
         // target spelling the target namespace — never a bare stem.
         $this->assertSame(array( array( 'Deicod\\WpConnectors\\Shared', 'comment' ) ), $text_finding("/** @see Deicod\\WpConnectors\\Shared\\Clock */\ninterface SourceReportFixture\n{\n}\n"));
         $this->assertSame(array( array( 'Deicod\\WpConnectors\\Shared', 'comment' ) ), $text_finding("/** @see Deicod\\\\WpConnectors\\\\Shared\\\\Clock */\ninterface SourceRawReportFixture\n{\n}\n"));
+
+        /*
+         * Verifier round t31-r8-9: the sibling exclusion first covered
+         * the target's whole SUFFIX segment, but the dedicated target
+         * pattern owns only …\<Suffix>\Shared — so a docblock naming
+         * anything ELSE under the building plugin's own segment
+         * (`…\ExampleConnector\OAuth`) reported ZERO findings under the
+         * build's postcondition (target given) while the sweep refused
+         * the same file, and the dangling docblock shipped verbatim at
+         * exit 0 (end-to-end reproduced) — the r7-8 verdict-drift
+         * class, one segment inside the target tree. The exclusion is
+         * the FULL below-vendor tails now: both gates give ONE verdict
+         * on the target-SEGMENT sibling, the refusal direction.
+         */
+        $drift = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/** @see \\Deicod\\WpConnectors\\ExampleConnector\\OAuth::start() */\ninterface DriftFixture\n{\n}\n";
+        $target_given = array();
+        foreach (wp_connectors_shared_family_references($drift, 'Deicod\\WpConnectors\\ExampleConnector\\Shared') as $reference) {
+            if ('declaration' !== $reference['kind']) {
+                $target_given[] = array( $reference['name'], $reference['kind'] );
+            }
+        }
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\ExampleConnector', 'comment' ) ), $target_given, 'With the target given, a target-SEGMENT sibling reports exactly what the sweep (no target) reports on the same file.');
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\ExampleConnector', 'comment' ) ), $text_finding("/** @see \\Deicod\\WpConnectors\\ExampleConnector\\OAuth::start() */\ninterface DriftSweepFixture\n{\n}\n"), 'The sweep twin (no target) gives the same verdict.');
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($drift, 'ExampleConnector', 'shared/src/Drift.php');
+            $this->fail('A docblock naming a sibling under the building plugin\'s own segment must refuse the rewrite — never ship the dangling spelling the sweep refuses.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('Drift.php', $e->getMessage());
+            $this->assertStringContainsString('Deicod\\WpConnectors\\ExampleConnector', $e->getMessage());
+        }
         $target_found = array();
         foreach (wp_connectors_shared_family_references($declaration . "/** @throws Deicod\\\\WpConnectors\\\\OpenAiOauth\\\\Shared\\\\Clock */\ninterface TargetReportFixture\n{\n}\n", 'Deicod\\WpConnectors\\OpenAiOauth\\Shared') as $reference) {
             if ('declaration' !== $reference['kind']) {
