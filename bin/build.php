@@ -368,10 +368,19 @@ final class WpConnectorsBuild
      * the file's declared namespace plus the relative tail — applies
      * the family rewrite to the RESOLVED name, and splices the
      * fully-qualified rewritten import over the relative spelling's
-     * bytes (a fully-qualified import is legal in every use form:
-     * plain, aliased, `use function`, `use const`). Resolution happens
-     * against the SOURCE declaration, which is why this step runs
-     * before the declaration rewrite.
+     * bytes (a fully-qualified import is legal in every STANDALONE use
+     * form: plain, aliased, `use function`, `use const` — but never in
+     * a group BODY, which is why the member shape refuses below).
+     * Resolution happens against the SOURCE declaration, which is why
+     * this step runs before the declaration rewrite.
+     *
+     * The operator is owned in BOTH of its lexings (verifier round
+     * t31-r11-10): the fused T_NAME_RELATIVE token AND the INTERRUPTED
+     * keyword — a space or comment between `namespace` and the name
+     * makes the lexer emit a bare T_NAMESPACE plus pieces, an equally
+     * illegal spelling that once rode this step untouched. Inside an
+     * open use statement the bare keyword is owned the same way:
+     * resolved across the trivia, rewritten, or refused.
      *
      * Relatives that cannot be carried through the family rewrite
      * refuse loudly, never ride: a file with no namespace declaration
@@ -496,14 +505,44 @@ final class WpConnectorsBuild
 
                 continue;
             }
-            if (! ($use_open && T_NAME_RELATIVE === $id)) {
+            if (! ($use_open && (T_NAME_RELATIVE === $id || T_NAMESPACE === $id))) {
                 continue;
             }
 
             /*
+             * Normalize BOTH spellings of the relative operator to one
+             * shape (verifier round t31-r11-10, raised by both lenses):
+             * the FUSED token (namespace backslash Foo) and the
+             * INTERRUPTED keyword — a space or COMMENT between the
+             * keyword and the name makes the lexer drop the fused
+             * token, so the old name-token-only keying let these ride
+             * verbatim: parse-error bytes shipped at exit 0. Inside an
+             * OPEN USE STATEMENT the bare keyword is never legal PHP —
+             * the operator only ever reaches the parser as the fused
+             * token — so every T_NAMESPACE met here is a parse-error
+             * spelling this step owns.
+             */
+            $fused = T_NAME_RELATIVE === $id;
+            $run_index = $i;
+            if (! $fused) {
+                // The keyword's own extent starts the splice; the tail
+                // begins at the first name token past any separator.
+                $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
+                $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
+                if (T_NS_SEPARATOR === $follower_id) {
+                    $follower = wp_connectors_next_code_token_index($tokens, $follower + 1);
+                    $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
+                }
+                if (! wp_connectors_is_name_token_id($follower_id)) {
+                    throw new RuntimeException("build: the bare 'namespace' keyword inside a use statement in {$sourceVersion} is not a spelling PHP accepts — the relative operator only ever parses as one fused token; write the family spelling");
+                }
+                $run_index = $follower;
+            }
+
+            /*
              * The group-use MEMBER shape (verifier round t31-r11-9,
-             * raised by both lenses): a T_NAME_RELATIVE standing INSIDE
-             * a brace body (`use Other\{namespace\Clock};`) resolves
+             * raised by both lenses): a relative standing INSIDE a
+             * brace body (`use Other\{namespace\Clock};`) resolves
              * family by construction (declaration in effect + tail),
              * and the splice below would emit a LEADING-BACKSLASH name
              * into the member list — a spelling the grammar forbids
@@ -517,39 +556,43 @@ final class WpConnectorsBuild
              * for such a member.
              */
             if ($group_depth > 0) {
-                throw new RuntimeException("build: a group-use MEMBER may not be a namespace-relative spelling ({$token[1]}) in {$sourceVersion} — the engine forbids the fully-qualified member the rewrite would emit, so the rewrite owns no map for such a member; write the family spelling");
+                throw new RuntimeException("build: a group-use MEMBER may not be a namespace-relative spelling in {$sourceVersion} — the engine forbids the fully-qualified member the rewrite would emit, so the rewrite owns no map for such a member; write the family spelling");
             }
 
-            $run = wp_connectors_name_run($tokens, $i);
+            $run = wp_connectors_name_run($tokens, $run_index);
             $run_end_offset = $token_offset;
             for ($k = $i; $k <= $run['end']; ++$k) {
                 $run_end_offset += strlen(is_array($tokens[ $k ]) ? $tokens[ $k ][1] : $tokens[ $k ]);
             }
             $i = $run['end'];
             $offset = $run_end_offset;
+            $tail_display = $fused ? (string) substr($run['name'], strlen('namespace\\')) : ltrim($run['name'], '\\');
+            $spelling_display = $fused ? $run['name'] : 'namespace\\' . $tail_display;
 
-            // The group-use PREFIX shape (`use namespace\Foo\{…}`): the
-            // rewrite owns no map for a relative prefix's members.
+            /*
+             * The group-use PREFIX shape (`use namespace\Foo\{…}`,
+             * fused or interrupted): the rewrite owns no map for a
+             * relative prefix's members.
+             */
             $next = wp_connectors_next_code_token_index($tokens, $i + 1);
             if (null !== $next && T_NS_SEPARATOR === (is_array($tokens[ $next ]) ? $tokens[ $next ][0] : null)) {
                 $after_separator = wp_connectors_next_code_token_index($tokens, $next + 1);
                 if (null !== $after_separator && '{' === $tokens[ $after_separator ]) {
-                    throw new RuntimeException("build: a group-use PREFIX may not be a namespace-relative spelling ({$run['name']}) in {$sourceVersion} — the rewrite owns no map for such a prefix's members; write the family spelling");
+                    throw new RuntimeException("build: a group-use PREFIX may not be a namespace-relative spelling ({$spelling_display}) in {$sourceVersion} — the rewrite owns no map for such a prefix's members; write the family spelling");
                 }
             }
 
-            $tail_display = (string) substr($run['name'], strlen('namespace\\'));
             $declared_display = $declaration_in_effect($token_offset);
             if (null === $declared_display || '' === $declared_display) {
-                throw new RuntimeException("build: the relative use import {$run['name']} in {$sourceVersion} cannot resolve — no namespace declaration is in effect there, and a relative spelling resolves against the file's own declaration");
+                throw new RuntimeException("build: the relative use import {$spelling_display} in {$sourceVersion} cannot resolve — no namespace declaration is in effect there, and a relative spelling resolves against the file's own declaration");
             }
             $resolved_display = $declared_display . '\\' . $tail_display;
             $resolved_lower = strtolower($resolved_display);
             if ($resolved_lower !== $vendor_lower && 0 !== strpos($resolved_lower, $vendor_lower . '\\')) {
-                throw new RuntimeException("build: the relative use import {$run['name']} in {$sourceVersion} resolves to {$resolved_display}, outside the shared-namespace family — in the rewritten output it would silently re-resolve against the REWRITTEN declaration, so it refuses rather than riding with changed meaning");
+                throw new RuntimeException("build: the relative use import {$spelling_display} in {$sourceVersion} resolves to {$resolved_display}, outside the shared-namespace family — in the rewritten output it would silently re-resolve against the REWRITTEN declaration, so it refuses rather than riding with changed meaning");
             }
             if (0 !== strpos($resolved_lower, $root_lower . '\\')) {
-                throw new RuntimeException("build: the relative use import {$run['name']} in {$sourceVersion} resolves to {$resolved_display}, a SIBLING under the vendor prefix the rewrite owns no spelling of — write the shared tree's own namespace (or refuse by hand)");
+                throw new RuntimeException("build: the relative use import {$spelling_display} in {$sourceVersion} resolves to {$resolved_display}, a SIBLING under the vendor prefix the rewrite owns no spelling of — write the shared tree's own namespace (or refuse by hand)");
             }
             $below_root = implode('\\', array_slice(explode('\\', $resolved_display), count($family_segments)));
             $splices[] = array(

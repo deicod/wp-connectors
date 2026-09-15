@@ -3494,6 +3494,73 @@ FIXTURE;
         $code_position = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class CodeRelCarrier\n{\n    public function self(): namespace\\FormsFixture\n    {\n        return new namespace\\FormsFixture();\n    }\n}\n";
         $rewritten = WpConnectorsBuild::rewriteSharedNamespace($code_position, 'OpenAiOauth', 'shared/src/CodeRelCarrier.php');
         $this->assertStringContainsString('namespace\\FormsFixture', $rewritten, 'A code-position relative rides verbatim — it adapts through the rewritten declaration.');
+
+        /*
+         * Verifier round t31-r11-10 (raised by both lenses): the
+         * INTERRUPTED spellings — trivia between the keyword and the
+         * name makes the lexer drop the fused T_NAME_RELATIVE token —
+         * rode the step untouched and shipped parse-error bytes at
+         * exit 0. The step owns the keyword now: every interrupted
+         * spelling resolves across the trivia and rewrites to the same
+         * fully-qualified import (and the shipped bytes parse).
+         */
+        $interrupted_spellings = array(
+            'space after the keyword' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace \\Clock\\SystemClock;\ninterface InterruptedKeywordFixture\n{\n}\n",
+            'block comment between' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace/* c */\\Http\\Url;\ninterface InterruptedKeywordFixture\n{\n}\n",
+            'line comment between' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\n// c\n\\\\Clock;\ninterface InterruptedKeywordFixture\n{\n}\n",
+            'doc comment between' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace /** d */ \\Clock;\ninterface InterruptedKeywordFixture\n{\n}\n",
+        );
+        foreach ($interrupted_spellings as $label => $source) {
+            $rewritten = WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/InterruptedKeywordFixture.php');
+            $this->assertStringContainsString(
+                'use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\SystemClock;',
+                str_replace(array('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Http\\Url;', 'use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock;'), 'use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\SystemClock;', $rewritten),
+                "An interrupted relative spelling is owned: resolved across the trivia, rewritten whole ({$label})."
+            );
+            $this->assertStringNotContainsString('namespace \\', $rewritten, "No interrupted spelling survives ({$label}).");
+        }
+        // The shipped bytes parse — the pre-fix output was a parse
+        // error on this very line.
+        $probe = self::distDir() . '/.interrupted-rel-probe.php';
+        file_put_contents($probe, WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace \\Clock\\SystemClock as Clock;\ninterface InterruptedKeywordFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/InterruptedKeywordFixture.php'));
+        try {
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($probe) . ' 2>&1', $output, $exit);
+            $this->assertSame(0, $exit, 'The rewritten interrupted spelling must parse: ' . implode("\n", $output));
+        } finally {
+            @unlink($probe);
+        }
+
+        // The bare keyword with no name to resolve, and the interrupted
+        // group shapes, refuse loudly — the step owns the keyword in
+        // every position it can appear.
+        $refusals = array(
+            'bare keyword' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace;\ninterface BareKeywordFixture\n{\n}\n",
+                'not a spelling PHP accepts',
+            ),
+            'interrupted prefix' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace \\WpConnectors\\{Shared\\Clock};\ninterface BareKeywordFixture\n{\n}\n",
+                'group-use PREFIX',
+            ),
+            'interrupted member' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Other\\{namespace \\Clock};\ninterface BareKeywordFixture\n{\n}\n",
+                'group-use MEMBER',
+            ),
+            'interrupted escape' => array(
+                "<?php\nnamespace Other;\nuse namespace \\Foo;\ninterface BareKeywordFixture\n{\n}\n",
+                'outside the shared-namespace family',
+            ),
+        );
+        foreach ($refusals as $label => $case) {
+            try {
+                WpConnectorsBuild::rewriteSharedNamespace($case[0], 'OpenAiOauth', 'shared/src/BareKeywordFixture.php');
+                $this->fail("An un-ownable keyword spelling must refuse the rewrite ({$label}).");
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString($case[1], $e->getMessage(), "The refusal names the shape ({$label}).");
+            }
+        }
     }
 
     /**
