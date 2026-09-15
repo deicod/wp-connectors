@@ -486,7 +486,30 @@ function wp_connectors_name_run(array $tokens, $start)
  */
 function wp_connectors_php_name_references($source)
 {
-    $tokens = token_get_all($source);
+    return wp_connectors_name_references_from_tokens(token_get_all($source));
+}
+
+/**
+ * The name walk over an ALREADY-TOKENIZED stream — the body
+ * wp_connectors_php_name_references() wraps (verifier round t31-r8-7:
+ * one tokenization pass feeds both lenses of the family detector, the
+ * name walk and the text lens alike, where each used to re-tokenize
+ * the same bytes — the detector's dominant cost, paid twice per call,
+ * with file:line bookkeeping a drift risk across the two streams).
+ *
+ * The walk needs nothing but the token stream: the 1-based line of a
+ * reported run is its FIRST token's own line field — the engine
+ * computes token lines from the same newlines the source-derived count
+ * the wrapper's callers used to spell, so the two derivations agree by
+ * construction (the run's first token is always an array token: name
+ * token ids are never single-byte tokens).
+ *
+ * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
+ * @return list<array{name: string, lower: string, kind: string, offset: int, line: int}>
+ *         Assembled names, shaped exactly like the wrapper's.
+ */
+function wp_connectors_name_references_from_tokens(array $tokens)
+{
     $count = count($tokens);
     $references = array();
     $offset = 0;
@@ -586,9 +609,12 @@ function wp_connectors_php_name_references($source)
 
         // A name run: assemble it whole before classifying. The offset
         // counter advances over EVERY token the run consumed — trivia
-        // included — so it stays true to the stream.
+        // included — so it stays true to the stream; the line rides the
+        // START token's own line field (t31-r8-7: no source bytes here,
+        // and the run's first token is always an array token).
         $run = wp_connectors_name_run($tokens, $i);
         $display = ltrim($run['name'], '\\');
+        $token_line = is_array($token) ? (int) $token[2] : 1;
         $offset = $token_offset;
         for ($k = $i; $k <= $run['end']; ++$k) {
             $offset += strlen(is_array($tokens[ $k ]) ? $tokens[ $k ][1] : $tokens[ $k ]);
@@ -636,7 +662,7 @@ function wp_connectors_php_name_references($source)
             'lower' => strtolower($display),
             'kind' => $kind,
             'offset' => $token_offset,
-            'line' => substr_count($source, "\n", 0, $token_offset) + 1,
+            'line' => $token_line,
         );
     }
 
@@ -867,10 +893,21 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
         return false;
     };
 
+    /*
+     * ONE tokenization pass feeds BOTH lenses (verifier round
+     * t31-r8-7): the name walk and the text lens each used to
+     * re-tokenize the same source — the detector's dominant cost, paid
+     * twice per call, and a file:line drift risk across the two
+     * streams. The walk takes the stream directly
+     * (wp_connectors_name_references_from_tokens()); the text-lens
+     * loop below reuses the same array.
+     */
+    $tokens = token_get_all($source);
+
     $references = array();
     $declared_lower = null;
     $declared_display = '';
-    foreach (wp_connectors_php_name_references($source) as $reference) {
+    foreach (wp_connectors_name_references_from_tokens($tokens) as $reference) {
         if ('declaration' === $reference['kind']) {
             $declared_lower = $reference['lower'];
             $declared_display = $reference['name'];
@@ -958,7 +995,8 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
         }
     };
 
-    $tokens = token_get_all($source);
+    // The SAME token stream the name walk rode above (t31-r8-7): the
+    // text lens never re-tokenizes what the walk already consumed.
     $count = count($tokens);
     $offset = 0;
     $in_heredoc = false;

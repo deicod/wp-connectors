@@ -1136,6 +1136,38 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
+     * Fix-round pin (t31-r8-7): ONE tokenization feeds both lenses of
+     * the family detector. The name walk takes an already-tokenized
+     * stream (wp_connectors_name_references_from_tokens()) and derives
+     * each reported line from the run's FIRST token's own line field;
+     * this pin holds that derivation byte-identical to the source-taking
+     * wrapper's on a fixture whose name runs cross lines and comments —
+     * the wrapper is still the public entry the import enumeration and
+     * the sweep call, so the two must agree on every field, lines
+     * included, by construction.
+     */
+    public function testTheTokenStreamWalkMatchesTheSourceTakingWrapperExactly(): void
+    {
+        $source = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod/* pick one */\\WpConnectors\\Shared\\Clock;\ninterface WalkFixture\n{\n}\nfinal class WalkCarrier\n{\n    public function name(): string\n    {\n        return \\Deicod\\WpConnectors\\\nShared\\Clock::class;\n    }\n}\n";
+        $from_tokens = array_map(
+            static function (array $reference): array {
+                return array( $reference['name'], $reference['kind'], $reference['offset'], $reference['line'] );
+            },
+            wp_connectors_name_references_from_tokens(token_get_all($source))
+        );
+        $from_source = array_map(
+            static function (array $reference): array {
+                return array( $reference['name'], $reference['kind'], $reference['offset'], $reference['line'] );
+            },
+            wp_connectors_php_name_references($source)
+        );
+
+        $this->assertSame($from_source, $from_tokens, 'The token-stream walk and the source-taking wrapper report identical names, kinds, offsets, and lines.');
+        $this->assertNotSame(array(), $from_tokens, 'The fixture must carry name runs (comment- and newline-interrupted) for the pin to bite.');
+        $this->assertContains(array('Deicod\\WpConnectors\\Shared\\Clock', 'code', 204, 11), $from_tokens, 'The newline-interrupted run assembles with the token-line derivation.');
+    }
+
+    /**
      * Fix-round pin (t31-r4-9): ONE case-insensitive owner judges the
      * php extension — wp_connectors_is_php_source() for collect and
      * classify, wp_connectors_basename_without_php_extension() for the
