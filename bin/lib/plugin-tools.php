@@ -192,6 +192,15 @@ function wp_connectors_file_code_views($path)
  * (`Deicod\WpConnectors`) and the own-tree root from THIS spelling, so
  * the three can never drift about what counts as the shared family.
  *
+ * Review round t31-r9-9: the rewriter's PATTERNS derive from this
+ * spelling too — the namespace-declaration, use-statement, group-use-
+ * prefix, and member-leaf patterns and their replacement sides are
+ * built from these segments via preg_quote inside
+ * WpConnectorsBuild::rewriteSharedNamespace(), so a family rename is a
+ * ONE-EDIT change here, never synchronized two-file edits (the helper's
+ * single-ownership claim covers the mechanism now, not just the
+ * postcondition).
+ *
  * @return string The shared source namespace (the pre-rewrite side).
  */
 function wp_connectors_shared_source_namespace()

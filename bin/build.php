@@ -96,12 +96,45 @@ final class WpConnectorsBuild
     public static function rewriteSharedNamespace($source, $pluginSuffix, $sourceVersion)
     {
         self::assertNamespaceSegment($pluginSuffix);
+        /*
+         * The family vocabulary is DERIVED from the ONE owner (review
+         * round t31-r9-9): wp_connectors_shared_source_namespace()
+         * (bin/lib/plugin-tools.php) names the source tree, and every
+         * spelling below — the namespace-declaration pattern, the
+         * use-statement pattern, the group-use prefix pattern, the
+         * member-leaf pattern, the replacement sides, and the target
+         * the postcondition judges — derives from its segments through
+         * preg_quote. The four pattern literals were independent
+         * hand-spellings before, so a family rename needed synchronized
+         * two-file edits the helper's single-ownership docblock promised
+         * could never drift. Byte parity with the former literals holds
+         * by construction: each segment preg_quoted, joined with the
+         * regex spelling of one separator ('\\\\' — two bytes in a PHP
+         * string); the rewrite battery pins the behavior end to end.
+         */
+        $family_segments = explode('\\', wp_connectors_shared_source_namespace());
+        $quoted_segments = array_map(
+            static function ( $segment ) {
+                return preg_quote( (string) $segment, '/' );
+            },
+            $family_segments
+        );
+        $shared_pattern = implode('\\\\', $quoted_segments);
+        $vendor_pattern = implode('\\\\', array_slice($quoted_segments, 0, -1));
+        $shared_leaf = (string) end($quoted_segments);
+        $vendor = implode('\\', array_slice($family_segments, 0, -1));
+        $family_leaf = (string) end($family_segments);
+        // The rewritten target's regex/replacement spelling (the suffix
+        // is a validated namespace segment; preg_quote is the belt to
+        // the assertNamespaceSegment braces).
+        $target_escaped = $vendor_pattern . '\\\\' . preg_quote((string) $pluginSuffix, '/') . '\\\\' . $shared_leaf;
+
         $escapedVersion = str_replace(array('\\', '$'), array('\\\\', '\\$'), (string) $sourceVersion);
         $provenance = "/**\n * Generated copy of {$escapedVersion} for this plugin's private namespace.\n * Do not edit here; change the shared source and rebuild.\n */\n";
         $rewritten = self::replaceOrThrow(
             preg_replace(
-                '/(namespace\s+)Deicod\\\\WpConnectors\\\\Shared((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
-                '$1Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared$2',
+                '/(namespace\s+)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
+                '$1' . $target_escaped . '$2',
                 $source
             ),
             'namespace declaration rewrite',
@@ -123,8 +156,8 @@ final class WpConnectorsBuild
          */
         $rewritten = self::replaceOrThrow(
             preg_replace(
-                '/(?<![A-Za-z0-9_])((?:use\s+(?:function\s+|const\s+)?)\\\\?)Deicod\\\\WpConnectors\\\\Shared((?:\\\\[A-Za-z0-9_]+)*)(\s+as\s+[A-Za-z0-9_]+)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
-                '${1}Deicod\\\\WpConnectors\\\\' . $pluginSuffix . '\\\\Shared${2}${3}${4};',
+                '/(?<![A-Za-z0-9_])((?:use\s+(?:function\s+|const\s+)?)\\\\?)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*)(\s+as\s+[A-Za-z0-9_]+)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
+                '${1}' . $target_escaped . '${2}${3}${4};',
                 $rewritten
             ),
             'use-statement rewrite',
@@ -153,8 +186,8 @@ final class WpConnectorsBuild
          */
         $rewritten = self::replaceOrThrow(
             preg_replace_callback(
-                '/((?<![A-Za-z0-9_])use\s+(?:function\s+|const\s+)?\\\\?Deicod\\\\WpConnectors\\\\)\s*(\{)([^{}]*)(\})\s*;/',
-                static function ($matches) use ($pluginSuffix, $sourceVersion) {
+                '/((?<![A-Za-z0-9_])use\s+(?:function\s+|const\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
+                static function ($matches) use ($pluginSuffix, $sourceVersion, $shared_leaf) {
                     $members = array();
                     foreach (explode(',', $matches[3]) as $member) {
                         $member = trim($member);
@@ -170,8 +203,8 @@ final class WpConnectorsBuild
                         }
                         $members[] = $kind . self::replaceOrThrow(
                             preg_replace(
-                                '/^Shared(?![A-Za-z0-9_])/',
-                                $pluginSuffix . '\\\\Shared',
+                                '/^' . $shared_leaf . '(?![A-Za-z0-9_])/',
+                                $pluginSuffix . '\\\\' . $shared_leaf,
                                 $member
                             ),
                             'group-use member rewrite',
@@ -266,7 +299,9 @@ final class WpConnectorsBuild
          * over the FINAL bytes — provenance included — so nothing that
          * ships escapes it.
          */
-        $target = 'Deicod\\WpConnectors\\' . $pluginSuffix . '\\Shared';
+        // The rewritten target, derived (t31-r9-9) — never a fifth
+        // hand-spelling of the family.
+        $target = $vendor . '\\' . $pluginSuffix . '\\' . $family_leaf;
         $target_lower = strtolower($target);
         foreach (wp_connectors_shared_family_references($final, $target) as $reference) {
             if ('pcre-abort' === $reference['kind']) {
