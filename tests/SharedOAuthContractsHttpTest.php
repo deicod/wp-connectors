@@ -154,6 +154,51 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Verifier-round pin (t31-r11-3): the port screen's colon search
+     * starts AFTER the last ']', so a digit run GLUED to the closing
+     * bracket — 'http://[::1]80/' — never met the digit check:
+     * parse_url() read host '[:', port 1 (reproduced), and the rebuilt
+     * and redacted authorities diverged from the raw URL, the exact
+     * class t31-r4-12 chartered the screen to kill. A digit immediately
+     * after the bracket rejects now (the spelling is malformed — a
+     * bracket authority carries its port only after a colon; reject is
+     * the r4-12 doctrine, normalization is not), while every legal
+     * bracket authority shape stays green.
+     */
+    public function testAGluedPortAfterABracketedHostIsRejected(): void
+    {
+        $hostile_urls = array(
+            'the repro' => 'http://[::1]80/',
+            'no path' => 'http://[::1]80',
+            'https twin' => 'https://[::1]80/',
+            'full IPv6 host' => 'http://[fe80::1]443/',
+            'userinfo does not hide it' => 'http://user:pw@[::1]80/',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A digit run glued to the closing bracket (%s) must be rejected by the shared URL owner.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('bracketed host must carry its port after a colon', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A digit run glued to the closing bracket (%s) must be rejected by the request VO too.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('bracketed host must carry its port after a colon', $e->getMessage());
+            }
+        }
+
+        // The legal bracket authorities stay green: bare, coloned port,
+        // and the port's int value in the rebuilt authority.
+        $this->assertSame('[::1]', Url::parse_validated('http://[::1]/token')['authority'], 'A bare bracketed host stays legal.');
+        $this->assertSame('[::1]:8080', Url::parse_validated('http://[::1]:8080/token')['authority'], 'A bracketed host with a coloned port stays legal.');
+        $this->assertSame('https://[::1]:8443/token', (new HttpRequest('GET', 'https://[::1]:8443/token'))->redacted_url(), 'The redacted form of a legal bracket authority keeps host and port.');
+    }
+
+    /**
      * Fix-round pin (t31-r4-13): the C1 screen banned only the UTF-8
      * SPELLINGS of the control vocabulary, so a lone RAW byte (0x85
      * NEL, 0x9B CSI lead) — invalid UTF-8 — passed parse_url verbatim

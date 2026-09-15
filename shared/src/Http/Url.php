@@ -104,7 +104,23 @@ final class Url {
 		$at           = strrpos( $authority, '@' );
 		$host_port    = false === $at ? $authority : (string) substr( $authority, $at + 1 );
 		$bracket_end  = strrpos( $host_port, ']' );
-		$colon        = strpos( $host_port, ':', false === $bracket_end ? 0 : (int) $bracket_end + 1 );
+
+		/*
+		 * The glued-port leg of the same screen (verifier round
+		 * t31-r11-3): the colon search starts AFTER the closing ']',
+		 * so a digit run glued straight to the bracket
+		 * ('http://[::1]80/') never meets the digit check — parse_url()
+		 * then reads host '[:', port 1 (reproduced), and the rebuilt or
+		 * redacted authority diverges from the raw URL exactly the way
+		 * t31-r4-12 chartered this screen to kill. The spelling is
+		 * malformed (a bracket authority carries its port only after a
+		 * ':'), so it rejects rather than normalizing — reject is the
+		 * safer doctrine for a shape no client means to send.
+		 */
+		if ( false !== $bracket_end && 0 !== preg_match( '/\A\]\d/', substr( $host_port, (int) $bracket_end ) ) ) {
+			throw new InvalidArgumentException( 'A bracketed host must carry its port after a colon ("[::1]:8080") — digits glued straight to the closing bracket ("[::1]8080") are a malformed authority parse_url() misreads, and the URL string and the rebuilt authority must agree.' );
+		}
+		$colon = strpos( $host_port, ':', false === $bracket_end ? 0 : (int) $bracket_end + 1 );
 		if ( false !== $colon ) {
 			$raw_port = (string) substr( $host_port, $colon + 1 );
 			if ( 1 !== preg_match( '/\A[0-9]+\z/', $raw_port ) ) {
