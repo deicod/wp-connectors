@@ -1890,6 +1890,55 @@ FIXTURE;
     }
 
     /**
+     * Review-round pin (t31-r12-12): the composed-tree postcondition's
+     * WALK is scoped to the embed destination subtree, but the ANCHOR
+     * stays the composed tree root. A shared source whose include is
+     * anchored at the PLUGIN ROOT above the subtree
+     * ('__DIR__ . /../../helper.php' from src/Shared/Clock — helper.php
+     * ships at the plugin root) is inside the artifact: legal under the
+     * full-tree walk, legal to the inspector, and it must stay legal
+     * when the walk narrows — a naive subtree anchor would have refused
+     * it. The verdict over the plugin files beside the subtree rides
+     * the pre-gate unchanged (byte-copies, same anchor).
+     */
+    public function testTheScopedComposedScanKeepsTheComposedTreeAnchor(): void
+    {
+        $scratch = self::distDir() . '/.embed-anchored-include';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents(
+            $scratch . '/shared/src/Clock/ClockInterface.php',
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n"
+        );
+        // The anchored-at-plugin-root include: staged at
+        // src/Shared/Clock/RootAnchored.php, two '..' segments reach the
+        // plugin root — INSIDE the composed tree (helper.php ships
+        // there), outside the embed subtree.
+        file_put_contents(
+            $scratch . '/shared/src/Clock/RootAnchored.php',
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\nfinal class RootAnchored {\n    public function boot(): void { require __DIR__ . '/../../helper.php'; }\n}\n"
+        );
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+        file_put_contents($scratch . '/plugin/example-connector/helper.php', "<?php\n// plugin-root helper, shipped beside the generated subtree\n");
+
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertFileExists($zipPath, 'The plugin-root-anchored include is inside the artifact — the scoped walk must not narrow the anchor.');
+
+            // One verdict: the inspector scans the extracted tree with
+            // the same full-tree anchor and accepts too.
+            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/dist/.inspect-anchored'));
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r3-9), SUPERSEDED by t31-r5-3's casing
      * doctrine, restated honestly: the '.php' extension filter was
      * case-sensitive, so a ClockMath.PHP source was silently SKIPPED

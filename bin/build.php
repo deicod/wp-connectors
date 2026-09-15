@@ -1173,17 +1173,30 @@ final class WpConnectorsBuild
              * vocabularies stay a ledgered dev-time design decision,
              * while this channel the inspector already judged). The
              * SAME gate, wp_connectors_self_containment_violations(),
-             * now runs over the staged tree the zip will pack — plugin
-             * files plus the embedded subtree — at the staging path
-             * (the t31-r5-S doctrine: every byte verified at its temp
-             * path, the previous good release untouched). The scan runs
-             * only when an embed composed something the pre-gate had
-             * not already judged byte-for-byte: without $embedShared
-             * the staged tree is a plain copy of the pre-gated plugin
-             * files (plus the non-PHP LICENSE).
+             * runs over the staged tree the zip will pack, at the
+             * staging path (the t31-r5-S doctrine: every byte verified
+             * at its temp path, the previous good release untouched),
+             * and the scan runs only when an embed composed something
+             * the pre-gate had not already judged byte-for-byte:
+             * without $embedShared the staged tree is a plain copy of
+             * the pre-gated plugin files (plus the non-PHP LICENSE).
+             *
+             * The WALK is scoped to the embed destination subtree
+             * (t31-r12-12, the ONE prefix owner) while the ANCHOR
+             * stays the composed tree root: the plugin files beside
+             * the subtree are byte-copies the pre-gate already judged
+             * against the same anchor, so re-walking them re-tokenized
+             * identical bytes for an identical verdict. The anchor
+             * NEVER narrows with the walk — an include anchored at the
+             * plugin root above the subtree is inside the artifact and
+             * stays legal, exactly as the full-tree walk and the
+             * inspector judged it.
              */
             if ($embedShared) {
-                $stagedViolations = wp_connectors_self_containment_violations($stage . '/' . $slug);
+                $stagedViolations = wp_connectors_self_containment_violations(
+                    $stage . '/' . $slug,
+                    $stage . '/' . wp_connectors_embed_destination_prefix($slug)
+                );
                 if ($stagedViolations !== array()) {
                     throw new RuntimeException("build: refusing to package {$slug} — the self-containment gate over the composed artifact tree (embedded src/Shared included):\n - " . implode("\n - ", $stagedViolations));
                 }

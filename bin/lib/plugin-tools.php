@@ -2810,15 +2810,38 @@ function wp_connectors_literal_is_interpolated($quote, $literal)
  * to stay inside the plugin dir, runtime references to vendor/autoload or
  * Composer, and any reference to the repository-level shared/ source.
  *
- * @param string $pluginDir Absolute plugin directory.
+ * The optional $scanRoot (review round t31-r12-12) scopes the WALK
+ * tighter than the ANCHOR: every verdict below still judges against
+ * $pluginDir, but only files under $scanRoot are visited. Build's
+ * composed-tree postcondition rides this with the embed destination
+ * subtree — the plugin files beside it were already judged by the
+ * pre-gate over the same anchor — so the postcondition stops
+ * re-tokenizing bytes whose verdict cannot change.
+ *
+ * @param string      $pluginDir Absolute plugin directory (the anchoring base).
+ * @param string|null $scanRoot  Optional absolute walk root under $pluginDir (default: walk $pluginDir).
  * @return list<string> Violation messages ("<slug>: <file>: <message>").
  */
-function wp_connectors_self_containment_violations($pluginDir)
+function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
 {
     $violations = array();
     $slug = basename(rtrim($pluginDir, '/'));
+    /*
+     * The WALK may be scoped tighter than the ANCHOR (review round
+     * t31-r12-12): build's composed-tree postcondition passes the embed
+     * destination subtree as $scanRoot while $pluginDir stays the
+     * composed tree root — the plugin files beside the subtree were
+     * already judged byte-for-byte by the pre-gate over the SAME
+     * anchor, so re-walking them re-tokenized identical bytes for an
+     * identical verdict. The anchoring base NEVER narrows with the
+     * walk: an include anchored at the plugin root ABOVE the subtree
+     * (dirname(__DIR__, 2) . '/helper.php' from src/Shared/…) is
+     * inside the artifact and stays legal, exactly as the full-tree
+     * walk and the inspector judged it.
+     */
+    $scanRoot = null === $scanRoot ? $pluginDir : rtrim((string) $scanRoot, '/');
     $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($pluginDir, FilesystemIterator::SKIP_DOTS)
+        new RecursiveDirectoryIterator($scanRoot, FilesystemIterator::SKIP_DOTS)
     );
     /*
      * glm31-4 (round-31 finding 4): a subdirectory the iterator cannot
