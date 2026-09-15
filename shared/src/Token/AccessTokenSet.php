@@ -79,6 +79,32 @@ final class AccessTokenSet {
 	private const SERIAL_INSTANT_PATTERN = '/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+00:00\z/';
 
 	/**
+	 * The token grammar both token positions must satisfy: VSCHAR
+	 * (review round t31-r9-3).
+	 *
+	 * RFC 6749 fixes the token positions of the protocol as printable
+	 * US-ASCII — §1.5's grammar note with the Appendix A ABNF
+	 * (`access-token = 1*VSCHAR`, `refresh-token = 1*VSCHAR`,
+	 * `VSCHAR = %x20-7E`) — so a token carrying anything else (a raw
+	 * non-UTF-8 byte, multibyte UTF-8, a control byte) is not a token
+	 * the protocol ever spells. Screened at construction because
+	 * to_array() is the Task-3.2 envelope payload: non-VSCHAR material
+	 * made json_encode() of the payload return FALSE, a set that saves
+	 * but cannot load one layer further out. The screen also rides
+	 * from_array() by construction (the loader builds through this
+	 * constructor), so a corrupted payload refuses at load, never
+	 * inside the envelope.
+	 *
+	 * The abort-as-reject rule (glm36-8) rides the probe: a PCRE
+	 * failure refuses the token, never passes it.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	private const VSCHAR_PATTERN = '/\A[\x20-\x7E]+\z/';
+
+	/**
 	 * The zone every serialized instant renders in (canonical UTC).
 	 *
 	 * @since 0.1.0
@@ -181,8 +207,8 @@ final class AccessTokenSet {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param string            $access_token  Access token; empty or whitespace-only values are rejected.
-	 * @param string|null       $refresh_token Refresh token, or null when none was issued; empty or whitespace-only strings are rejected.
+	 * @param string            $access_token  Access token; empty or whitespace-only values are rejected, and the bytes must satisfy the RFC 6749 VSCHAR grammar (%x20-%x7E, t31-r9-3).
+	 * @param string|null       $refresh_token Refresh token, or null when none was issued; empty or whitespace-only strings are rejected, and non-null values must satisfy the RFC 6749 VSCHAR grammar (%x20-%x7E, t31-r9-3).
 	 * @param int               $expires_in    Lifetime in seconds; must be positive (the expiry offset from obtained-at may not be zero or negative) and small enough that the derived expiry stays inside the serializable range (year 9999 UTC).
 	 * @param DateTimeImmutable $obtained_at   Clock reading at issuance.
 	 * @throws InvalidArgumentException When any field violates the contract above.
@@ -193,6 +219,16 @@ final class AccessTokenSet {
 		}
 		if ( null !== $refresh_token && '' === trim( $refresh_token ) ) {
 			throw new InvalidArgumentException( 'The refresh token must be null (none issued) or a non-empty, non-whitespace string; an empty string is not a valid "no token" spelling.' );
+		}
+		// VSCHAR at both token positions (t31-r9-3): the token grammar
+		// of RFC 6749 §1.5/Appendix A, screened here so the storage
+		// payload is always JSON-encodable. `1 !==` reads no-match AND
+		// a PCRE abort as rejections (glm36-8).
+		if ( 1 !== preg_match( self::VSCHAR_PATTERN, $access_token ) ) {
+			throw new InvalidArgumentException( 'The access token must satisfy the RFC 6749 VSCHAR grammar (printable US-ASCII bytes %x20-%x7E only) — a token carrying any other byte is not a spelling the protocol makes, and its storage payload could not be JSON-encoded (to_array() is the encrypted envelope\'s payload).' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a fixed grammar description in a developer-facing rejection; escaping belongs to the display layer.
+		}
+		if ( null !== $refresh_token && 1 !== preg_match( self::VSCHAR_PATTERN, $refresh_token ) ) {
+			throw new InvalidArgumentException( 'The refresh token must satisfy the RFC 6749 VSCHAR grammar (printable US-ASCII bytes %x20-%x7E only) — a token carrying any other byte is not a spelling the protocol makes, and its storage payload could not be JSON-encoded (to_array() is the encrypted envelope\'s payload).' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a fixed grammar description in a developer-facing rejection; escaping belongs to the display layer.
 		}
 		if ( $expires_in <= 0 ) {
 			throw new InvalidArgumentException( sprintf( 'The expires_in offset must be a positive number of seconds, %d given.', $expires_in ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.

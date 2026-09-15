@@ -135,6 +135,84 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         new AccessTokenSet(FakeSecrets::accessToken(), '   ', 3600, $this->obtainedAt());
     }
 
+    /**
+     * Fix-round pin (t31-r9-3): non-UTF-8 token material constructed
+     * fine while json_encode(to_array()) returned FALSE — and
+     * to_array() is the documented Task-3.2 envelope payload, so a set
+     * could exist whose storage serialization cannot be encoded: a
+     * grant that saves-never-loads one layer further out. The grammar
+     * screen is the OAuth BCP's own: RFC 6749 §1.5's grammar note (with
+     * the Appendix A ABNF, access-token/refresh-token = 1*VSCHAR,
+     * VSCHAR = %x20-7E) fixes the token positions of the protocol as
+     * printable US-ASCII — asserted against that, not invented here.
+     * Both token positions are screened at CONSTRUCTION (and thereby at
+     * from_array(): a corrupted payload carrying foreign bytes refuses
+     * at load, never inside the envelope).
+     */
+    public function testNonVscharAccessTokenIsRejectedAtConstruction(): void
+    {
+        try {
+            new AccessTokenSet("abc\xFF\x80def", null, 3600, $this->obtainedAt());
+            $this->fail('A non-UTF-8 access token must be rejected at construction — its to_array() payload cannot be JSON-encoded, and the token positions of RFC 6749 are VSCHAR only.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('VSCHAR', $e->getMessage());
+        }
+
+        // Multibyte VALID UTF-8 is equally outside VSCHAR: the grammar
+        // is %x20-7E (printable US-ASCII), so a token-shaped 'café'
+        // refuses too — the screen is the grammar, not an encoding probe.
+        try {
+            new AccessTokenSet('café-token', null, 3600, $this->obtainedAt());
+            $this->fail('A multibyte token must be rejected: VSCHAR is %x20-7E, ASCII-only.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('VSCHAR', $e->getMessage());
+        }
+
+        // Control bytes are outside VSCHAR as well (0x00-0x1F, DEL).
+        $this->expectException(\InvalidArgumentException::class);
+        new AccessTokenSet("abc\tdef", null, 3600, $this->obtainedAt());
+    }
+
+    public function testNonVscharRefreshTokenIsRejectedAtConstruction(): void
+    {
+        try {
+            new AccessTokenSet(FakeSecrets::accessToken(), "rt\xFF", 3600, $this->obtainedAt());
+            $this->fail('A non-UTF-8 refresh token must be rejected at construction (RFC 6749 refresh tokens are 1*VSCHAR).');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('VSCHAR', $e->getMessage());
+        }
+
+        // And the load side refuses the same bytes in a payload.
+        $payload = array(
+            'access_token' => FakeSecrets::accessToken(),
+            'refresh_token' => "rt\xFF",
+            'expires_in' => 3600,
+            'obtained_at' => '2026-09-13T10:00:00.000000+00:00',
+            'expires_at' => '2026-09-13T11:00:00.000000+00:00',
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        AccessTokenSet::from_array($payload);
+    }
+
+    /**
+     * The VSCHAR screen is the GRAMMAR, exactly: %x20-7E includes the
+     * space byte, so a token carrying an interior space constructs (the
+     * empty/whitespace-only rejections above own their own shapes), and
+     * the legal set's payload json_encodes — the envelope-shape pin the
+     * finding's repro demanded (a set whose to_array() returns false
+     * from json_encode is unconstructible now).
+     */
+    public function testVscharEdgeBytesStayLegalAndThePayloadEncodes(): void
+    {
+        $access = 'a b~delimiters-._~+/' ; // interior space and the %x7E edge.
+        $set = new AccessTokenSet($access, null, 3600, $this->obtainedAt());
+
+        $this->assertSame($access, $set->access_token());
+        $encoded = json_encode($set->to_array());
+        $this->assertNotFalse($encoded, 'A legal VSCHAR token set\'s storage payload must always json_encode — it is the Task-3.2 envelope payload.');
+    }
+
     public function testValidSetCarriesItsFacts(): void
     {
         $access = FakeSecrets::accessToken();
