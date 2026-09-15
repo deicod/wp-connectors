@@ -3253,41 +3253,79 @@ function wp_connectors_php_source_files($dir)
 }
 
 /**
+ * The slug's identifier segments: lowercased, '-' AND '.' separated
+ * (t31-r5-12 — a dotted slug's naive spellings are not legal labels, so
+ * the dot separates like the dash and every derived segment stays a
+ * label).
+ *
+ * @param string $slug Plugin slug.
+ * @return list<string> The lowercased segments, in slug order.
+ */
+function wp_connectors_slug_segments($slug)
+{
+    return preg_split('/[-.]/', strtolower((string) $slug)) ?: array();
+}
+
+/**
+ * Derives an IDENTIFIER from a plugin slug — the ONE slug→identifier
+ * core (round t31-r10-8).
+ *
+ * The slug's segments (wp_connectors_slug_segments()) are cased per
+ * segment — acronyms keep their documented casing ('openai' -> 'OpenAi',
+ * per docs/CONVENTIONS.md) — joined by the caller's glue, and
+ * underscored when the result starts with a digit (the t31-r3-5
+ * legal-label rule: a PHP label may not start with a digit, so
+ * '3cx-oauth' derives '_3cxOauth' / '_3CX_OAUTH', never a spelling a
+ * namespace or a bare constant reference could not declare).
+ *
+ * The two identifiers this repo derives — the namespace segment
+ * ('my-plugin' -> 'MyPlugin') and the version-constant stem
+ * ('my-plugin' -> 'MY_PLUGIN') — were hand-maintained twins beside each
+ * other, synchronized twice by hand (t31-r5-8's digit rule, t31-r5-12's
+ * dot separator) before this core existed; a future rule change lands
+ * once here and both spellings follow by construction. The underscore
+ * glue upper-cases its segments (the constant stem is all-caps; the
+ * acronym casing folds away under it).
+ *
+ * @param string $slug Plugin slug.
+ * @param string $glue Join between segments ('' for the camel-cased
+ *                     namespace spelling, '_' for the constant stem).
+ * @return string The derived identifier (digit-initial spellings prefixed '_').
+ */
+function wp_connectors_identifier_from_slug($slug, $glue)
+{
+    $acronyms = array( 'openai' => 'OpenAi' );
+
+    $parts = array();
+    foreach (wp_connectors_slug_segments($slug) as $segment) {
+        $parts[] = isset($acronyms[ $segment ]) ? $acronyms[ $segment ] : ucfirst($segment);
+    }
+    if ('_' === $glue) {
+        $parts = array_map('strtoupper', $parts);
+    }
+    $identifier = implode($glue, $parts);
+
+    // Legal-label fix (t31-r3-5): underscore a digit-initial derivation.
+    return '' !== $identifier && ctype_digit($identifier[0]) ? '_' . $identifier : $identifier;
+}
+
+/**
  * Derives the plugin namespace segment from the slug (openai-oauth -> OpenAiOauth).
  *
- * The ONE derivation shared by bin/build.php (shared-code namespace
- * rewriting), bin/check-conventions.php (expected autoloader prefix), and
- * the test bootstrap (dev autoloader). Slug segments are capitalized except
- * known acronyms, which keep their documented casing ('openai' -> 'OpenAi',
- * per docs/CONVENTIONS.md).
- *
- * A DIGIT-INITIAL slug derives a digit-initial suffix — and a PHP label
- * may not start with a digit, so '3cx-oauth' -> '3cxOauth' was a suffix
- * no namespace could ever declare while build's validator (correctly)
- * rejected it (review round t31-r3-5: derivation and validation must
- * agree). The mechanical spelling that IS a legal segment is the
- * underscored one: '3cx-oauth' -> '_3cxOauth'. Every consumer of this
- * derivation gets the same legal segment by construction.
+ * The camel-glue spelling of the ONE slug→identifier core
+ * (wp_connectors_identifier_from_slug(), round t31-r10-8) — shared by
+ * bin/build.php (shared-code namespace rewriting),
+ * bin/check-conventions.php (expected autoloader prefix), and the test
+ * bootstrap (dev autoloader). Every consumer gets the same legal
+ * segment by construction; the constant-stem twin derives from the same
+ * core.
  *
  * @param string $slug Plugin slug.
  * @return string
  */
 function wp_connectors_namespace_suffix_from_slug($slug)
 {
-    $acronyms = array( 'openai' => 'OpenAi' );
-
-    $parts = array();
-    // '-' AND '.' separate slug segments (t31-r5-12): a dotted slug's
-    // naive suffix ('my.plugin' -> 'My.plugin') is not a legal namespace
-    // segment, so the derivation treats '.' as a separator like '-' and
-    // every derived segment stays a label.
-    foreach (preg_split('/[-.]/', strtolower((string) $slug)) ?: array() as $segment) {
-        $parts[] = isset($acronyms[ $segment ]) ? $acronyms[ $segment ] : ucfirst($segment);
-    }
-    $suffix = implode('', $parts);
-
-    // Legal-label fix (t31-r3-5): underscore a digit-initial derivation.
-    return '' !== $suffix && ctype_digit($suffix[0]) ? '_' . $suffix : $suffix;
+    return wp_connectors_identifier_from_slug($slug, '');
 }
 
 /**
@@ -3326,12 +3364,13 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * exit 0), and a digit-initial result is underscored exactly like
      * the namespace derivation (t31-r5-8, the t31-r3-5 rule's twin:
      * '3CX_OAUTH_VERSION' defined fine but every bare reference was a
-     * lexer error).
+     * lexer error). The derivation rides the ONE slug→identifier core
+     * now (t31-r10-8): the underscore-glue spelling of
+     * wp_connectors_identifier_from_slug(), the same core the
+     * namespace suffix derives from — the hand-spelled twin is gone,
+     * and the two labels cannot drift apart again.
      */
-    $constantName = strtoupper(str_replace(array( '-', '.' ), '_', $slug)) . '_VERSION';
-    if (ctype_digit($constantName[0])) {
-        $constantName = '_' . $constantName;
-    }
+    $constantName = wp_connectors_identifier_from_slug($slug, '_') . '_VERSION';
     if (! preg_match('/define\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/', $source, $constantMatch)) {
         $violations[] = sprintf('%s: main file must define constant %s.', $slug, $constantName);
     } elseif (isset($headers['version']) && $constantMatch[1] !== $headers['version']) {

@@ -2507,6 +2507,47 @@ FIXTURE;
     }
 
     /**
+     * Fix-round pin (t31-r10-8): the version-constant stem rode a second
+     * hand-spelled slug→identifier derivation beside
+     * wp_connectors_namespace_suffix_from_slug() — twins this branch had
+     * already synchronized by hand twice (t31-r5-8's digit rule,
+     * t31-r5-12's dot separator). Both spellings derive from the ONE
+     * core (wp_connectors_identifier_from_slug()) now; this pin holds
+     * BYTE PARITY with each former hand spelling at the cutover (the
+     * t31-r9-9 discipline), so the core provably changes nothing but
+     * the drift risk.
+     */
+    public function testTheSlugToIdentifierDerivationHasOneCore(): void
+    {
+        $slugs = array('my-plugin', 'my.plugin', '3cx-oauth', 'openai-oauth', '42', 'x3-dev', 'zai', 'My-Plugin', '');
+
+        foreach ($slugs as $slug) {
+            // The namespace spelling: the former derivation, verbatim.
+            $former_suffix = '';
+            foreach (preg_split('/[-.]/', strtolower($slug)) ?: array() as $segment) {
+                $former_suffix .= 'openai' === $segment ? 'OpenAi' : ucfirst($segment);
+            }
+            if ('' !== $former_suffix && ctype_digit($former_suffix[0])) {
+                $former_suffix = '_' . $former_suffix;
+            }
+            $this->assertSame($former_suffix, wp_connectors_namespace_suffix_from_slug($slug), "Namespace suffix byte parity: {$slug}");
+
+            // The constant spelling: the former derivation, verbatim (its
+            // digit check rode the FULL name, '_VERSION' included).
+            $former_constant = strtoupper(str_replace(array('-', '.'), '_', $slug)) . '_VERSION';
+            if (ctype_digit($former_constant[0])) {
+                $former_constant = '_' . $former_constant;
+            }
+            $this->assertSame($former_constant, wp_connectors_identifier_from_slug($slug, '_') . '_VERSION', "Constant stem byte parity: {$slug}");
+        }
+
+        // The shared rules, both spellings at once: same segments, same
+        // digit-initial underscore.
+        $this->assertSame('_3cxOauth', wp_connectors_namespace_suffix_from_slug('3cx-oauth'));
+        $this->assertSame('_3CX_OAUTH_VERSION', wp_connectors_identifier_from_slug('3cx-oauth', '_') . '_VERSION');
+    }
+
+    /**
      * Verifier-round pin (t31-r5-12): a dotted slug ('my.plugin' — legal
      * to the slug regex and the text-domain gate) derived the constant
      * 'MY.PLUGIN_VERSION' and the namespace suffix 'My.plugin' — both
