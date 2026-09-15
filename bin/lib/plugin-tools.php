@@ -388,6 +388,90 @@ function wp_connectors_next_code_token_index(array $tokens, $from)
 }
 
 /**
+ * Whether the `use` keyword token at an index OPENS a namespace import
+ * statement — the closure-use fence, ONE owner since t31-r13-3.
+ *
+ * A closure's lexical `use (` is not a namespace import (its binding
+ * list never carries one); every OTHER `use` opens an import statement.
+ * The fence is the first code token past the trivia: an open
+ * parenthesis is the lexical spelling; anything else (a name, a
+ * separator, the `function`/`const` kind keywords) is the import's own
+ * first token. The name walks that classify and rewrite use statements
+ * — the detector's classification walk and the builder's use-rewrite
+ * walk — shared this fence as two hand-rolled copies until the hoist
+ * (the defect history is one copy drifting at a time: r7-7, r8-1,
+ * r8-10, r11-10); both consume this one owner now.
+ *
+ * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
+ * @param int                                             $at     Index of the T_USE token.
+ * @return bool True when the token opens a `use` IMPORT statement.
+ */
+function wp_connectors_use_opens_import(array $tokens, $at)
+{
+    $follower = wp_connectors_next_code_token_index($tokens, $at + 1);
+
+    return null !== $follower && '(' !== $tokens[ $follower ];
+}
+
+/**
+ * Whether a token is a boundary of an open `use` statement — the
+ * statement-boundary SET (verifier round t31-r8-1; ONE owner since
+ * t31-r13-3).
+ *
+ * ';' plus every PHP-mode tag boundary. A close tag IS a statement
+ * terminator — the engine implies the semicolon at '?>' — but the
+ * pre-r8-1 reset named only the ';' spelling, so a hostile
+ * `use Foo\Bar as ?>` left the alias skip armed across the tag and
+ * into the re-entered code, where it silently ATE the next name run:
+ * a family reference there became invisible to both gates
+ * (adversarially confirmed: pre-round REFUSE, round exit-0 ship). The
+ * re-entry tags can never occur inside a live import statement — an
+ * open tag only ever follows a close tag or starts the file — so
+ * resetting at them too is the invariant worn on both sides: a mode
+ * boundary IS a statement boundary, whichever side of it the walk
+ * stands.
+ *
+ * @param mixed    $token The raw token (a single-byte string or an array token).
+ * @param int|null $id    The token's id, null for single-byte tokens.
+ * @return bool True for ';' and every open/close tag token.
+ */
+function wp_connectors_is_use_statement_boundary($token, $id)
+{
+    return ';' === $token || T_CLOSE_TAG === $id || T_OPEN_TAG === $id || T_OPEN_TAG_WITH_ECHO === $id;
+}
+
+/**
+ * Whether the `namespace` keyword token at an index carries one of the
+ * two LEGAL declaration name shapes — a bare name (T_STRING) or an
+ * unqualified sequence (T_NAME_QUALIFIED) — the declaration-shape
+ * predicate (verifier round t31-r8-10; ONE owner since t31-r13-3).
+ *
+ * Only these two open a declaration a walk may resolve against:
+ * `namespace \X;` (T_NAME_FULLY_QUALIFIED) and
+ * `namespace namespace\X;` are parse-error spellings whose names still
+ * assemble — classifying them as declarations let the invalid spelling
+ * CORRUPT the file's in-effect namespace, and a family-resolving
+ * relative after it then resolved against the junk base and laundered
+ * past both gates (reproduced: rewrite shipped where the control file
+ * refused). In the detector they fall to 'code' positions, where a
+ * family spelling refuses in every consumer; in the rewriter's
+ * declaration ledger they are simply not declarations (a relative
+ * after one resolves against the PREVIOUS legal declaration in
+ * effect, or refuses when none is).
+ *
+ * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
+ * @param int                                             $at     Index of the T_NAMESPACE token.
+ * @return bool True when the keyword opens a legal declaration shape.
+ */
+function wp_connectors_namespace_opens_declaration(array $tokens, $at)
+{
+    $follower = wp_connectors_next_code_token_index($tokens, $at + 1);
+    $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
+
+    return T_STRING === $follower_id || T_NAME_QUALIFIED === $follower_id;
+}
+
+/**
  * Whether a token id may begin (or continue) an assembled name run.
  *
  * @param int $id Token id.
@@ -584,11 +668,11 @@ function wp_connectors_name_references_from_tokens(array $tokens)
         $offset += strlen($text);
 
         if (T_USE === $id) {
-            // A closure's lexical `use (` is not a namespace import; every
-            // other `use` opens an import statement whose FIRST name is
-            // the group-prefix candidate.
-            $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
-            $use_open = null !== $follower && '(' !== $tokens[ $follower ];
+            // The closure-use fence rides its ONE owner
+            // (wp_connectors_use_opens_import()); every other `use`
+            // opens an import statement whose FIRST name is the
+            // group-prefix candidate.
+            $use_open = wp_connectors_use_opens_import($tokens, $i);
             $group_prefix = null;
             $group_member_seen = false;
             $group_brace_depth = 0;
@@ -599,22 +683,12 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             continue;
         }
         if (T_NAMESPACE === $id) {
-            /*
-             * Only the two LEGAL declaration shapes open one
-             * (verifier round t31-r8-10): a bare name or an unqualified
-             * sequence. `namespace \X;` (T_NAME_FULLY_QUALIFIED) and
-             * `namespace namespace\X;` are parse-error spellings whose
-             * names still assemble — classifying them as declarations
-             * let the invalid spelling CORRUPT the file's in-effect
-             * namespace, and a family-resolving relative after it then
-             * resolved against the junk base and laundered past both
-             * gates (reproduced: rewrite shipped where the control file
-             * refused). They fall to 'code' positions now, where a
-             * family spelling refuses in every consumer.
-             */
-            $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
-            $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
-            $declaration_pending = T_STRING === $follower_id || T_NAME_QUALIFIED === $follower_id;
+            // The legal-shape judgment rides its ONE owner
+            // (wp_connectors_namespace_opens_declaration(), the r8-10
+            // rule); the parse-error spellings fall to 'code'
+            // positions below, where a family spelling refuses in
+            // every consumer.
+            $declaration_pending = wp_connectors_namespace_opens_declaration($tokens, $i);
 
             continue;
         }
@@ -622,23 +696,11 @@ function wp_connectors_name_references_from_tokens(array $tokens)
         if (null === $id || ! wp_connectors_is_name_token_id($id)) {
             if ($use_open) {
                 /*
-                 * The statement-boundary SET (verifier round t31-r8-1):
-                 * ';' plus every PHP-mode tag boundary. A close tag IS a
-                 * statement terminator — the engine implies the
-                 * semicolon at '?>' — but r7-7's reset named only the
-                 * ';' spelling, so a hostile `use Foo\Bar as ?>` left
-                 * the alias skip armed across the tag and into the
-                 * re-entered code, where it silently ATE the next name
-                 * run: a family reference there became invisible to
-                 * both gates (adversarially confirmed: pre-round REFUSE,
-                 * round exit-0 ship). The re-entry tags can never occur
-                 * inside a live import statement — an open tag only
-                 * ever follows a close tag or starts the file — so
-                 * resetting at them too is the invariant worn on both
-                 * sides: a mode boundary IS a statement boundary,
-                 * whichever side of it the walk stands.
+                 * The statement-boundary SET rides its ONE owner
+                 * (wp_connectors_is_use_statement_boundary(), the
+                 * t31-r8-1 rule): ';' plus every PHP-mode tag boundary.
                  */
-                if (';' === $token || T_CLOSE_TAG === $id || T_OPEN_TAG === $id || T_OPEN_TAG_WITH_ECHO === $id) {
+                if (wp_connectors_is_use_statement_boundary($token, $id)) {
                     if (null !== $group_prefix && ! $group_member_seen) {
                         $references[] = array(
                             'name' => $group_prefix_display,

@@ -422,11 +422,14 @@ final class WpConnectorsBuild
 
         /*
          * The file's namespace declarations in effect order, legal
-         * shapes only (the walk's own rule, r8-10: `namespace \X;` and
-         * other parse-error spellings must not corrupt the resolution
-         * base), each with the byte offset its name run starts at — a
-         * relative resolves against the declaration IN EFFECT where it
-         * stands, not the file's first (multi-block files).
+         * shapes only — judged by the ONE declaration-shape owner
+         * (wp_connectors_namespace_opens_declaration(), the r8-10 rule
+         * the detector's classification walk rides: `namespace \X;`
+         * and other parse-error spellings must not corrupt the
+         * resolution base) — each with the byte offset its name run
+         * starts at: a relative resolves against the declaration IN
+         * EFFECT where it stands, not the file's first (multi-block
+         * files).
          */
         $declarations = array();
         $offset = 0;
@@ -439,12 +442,10 @@ final class WpConnectorsBuild
             if (T_NAMESPACE !== $id) {
                 continue;
             }
-            $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
-            $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
-            if (T_STRING !== $follower_id && T_NAME_QUALIFIED !== $follower_id) {
+            if (! wp_connectors_namespace_opens_declaration($tokens, $i)) {
                 continue;
             }
-            $run = wp_connectors_name_run($tokens, $follower);
+            $run = wp_connectors_name_run($tokens, wp_connectors_next_code_token_index($tokens, $i + 1));
             $declarations[] = array('offset' => $token_offset, 'display' => $run['name']);
         }
         $declaration_in_effect = static function (int $at_offset) use ($declarations): ?string {
@@ -479,15 +480,15 @@ final class WpConnectorsBuild
             $offset += strlen($text);
 
             if (T_USE === $id) {
-                // A closure's lexical `use (` is not an import (the
-                // walk's own fence).
-                $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
-                $use_open = null !== $follower && '(' !== $tokens[ $follower ];
+                // The closure-use fence rides its ONE owner — the
+                // detector's own vocabulary
+                // (wp_connectors_use_opens_import()).
+                $use_open = wp_connectors_use_opens_import($tokens, $i);
                 $group_depth = 0;
 
                 continue;
             }
-            if ($use_open && (';' === $token || T_CLOSE_TAG === $id || T_OPEN_TAG === $id || T_OPEN_TAG_WITH_ECHO === $id)) {
+            if ($use_open && wp_connectors_is_use_statement_boundary($token, $id)) {
                 $use_open = false;
                 $group_depth = 0;
 
