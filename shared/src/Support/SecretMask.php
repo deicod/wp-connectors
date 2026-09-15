@@ -68,11 +68,21 @@ final class SecretMask {
 	/**
 	 * Header names (lowercase) whose values are always masked.
 	 *
+	 * 'location' joined with vendor-doc proof, not a hypothetical (review
+	 * round t31-r12-4, driver adjudication): RFC 6749 section 4.1.2
+	 * mandates the authorization code in the redirect's Location query
+	 * — a 302's Location IS a credential-bearing surface by
+	 * specification, and it rendered verbatim through every safe debug
+	 * form while the request side masked its own credential headers
+	 * (reproduced: 'Location: https://client/cb?code=…' in full in the
+	 * string cast, the dump, and print_r). One owner: this catalog is
+	 * the single spelling of what a sensitive header name is.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAMES = array( 'authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key' );
+	const SENSITIVE_HEADER_NAMES = array( 'authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'location' );
 
 	/**
 	 * One well-formed UTF-8 sequence (the canonical byte grammar).

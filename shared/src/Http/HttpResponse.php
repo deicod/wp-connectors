@@ -4,7 +4,10 @@
  *
  * The neutral response shape: final status code, header map, body. Same
  * purity and redaction rules as the request value object — the debug form
- * masks sensitive header values and omits the body, so a response
+ * masks sensitive header values (Location included, the response side's
+ * own credential channel: RFC 6749 section 4.1.2 carries the
+ * authorization code in the 3xx redirect's Location query, so the value
+ * masks like any bearer material) and omits the body, so a response
  * carrying token material in a header or body cannot leak it through a
  * string form.
  *

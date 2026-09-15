@@ -991,6 +991,47 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString($session, $rendered);
     }
 
+    /**
+     * Review-round pin (t31-r12-4, driver adjudication on vendor-doc
+     * proof): RFC 6749 section 4.1.2 mandates the authorization code in
+     * the redirect's Location query — a 302's Location IS a
+     * credential-bearing surface by specification, yet it rendered
+     * verbatim through every safe debug form while the request side
+     * masked its own credential headers (reproduced: the full
+     * 'Location: https://client/cb?code=…' line in the string cast,
+     * the dump, and print_r). 'location' joins the one catalog, and
+     * the fold pins keep the spelling case-insensitive.
+     */
+    public function testARedirectLocationCarryingAnAuthorizationCodeMasksEverywhere(): void
+    {
+        $code = FakeSecrets::accessToken();
+        $redirect = 'https://client.example/cb?code=' . $code . '&state=xyz';
+
+        $this->assertTrue(SecretMask::is_sensitive_header_name('Location'), 'location is in the one sensitive-header catalog.');
+
+        $response = new HttpResponse(302, array('Location' => $redirect), '');
+
+        // The string form: the code and the query it rides never appear;
+        // the masked rendering does.
+        $rendered = (string) $response;
+        $this->assertStringNotContainsString($code, $rendered);
+        $this->assertStringNotContainsString('client.example/cb?code=', $rendered, 'The redirect query — where the code rides — does not render.');
+        $this->assertStringContainsString((string) SecretMask::mask($redirect), $rendered);
+
+        // The serialization channel agrees: print_r and the debug form.
+        $dumped = print_r($response, true);
+        $this->assertStringNotContainsString($code, $dumped);
+        $this->assertStringContainsString((string) SecretMask::mask($redirect), $dumped);
+        $this->assertNotFalse(json_encode($response->__debugInfo()), 'The masked dump stays encodable.');
+
+        // Header-name folding (the r2-14 doctrine's own vocabulary site):
+        // any casing of the name masks the value.
+        foreach (array('LOCATION', 'location', 'LoCaTiOn') as $spelling) {
+            $folded = new HttpResponse(302, array($spelling => $redirect), '');
+            $this->assertStringNotContainsString($code, (string) $folded, "The '{$spelling}' spelling masks identically.");
+        }
+    }
+
     /* ---------------------------------------------------------------
      * Response shape and validation.
      * ---------------------------------------------------------------
