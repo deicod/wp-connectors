@@ -106,19 +106,25 @@ final class Url {
 		$bracket_end  = strrpos( $host_port, ']' );
 
 		/*
-		 * The glued-port leg of the same screen (verifier round
-		 * t31-r11-3): the colon search starts AFTER the closing ']',
-		 * so a digit run glued straight to the bracket
-		 * ('http://[::1]80/') never meets the digit check — parse_url()
-		 * then reads host '[:', port 1 (reproduced), and the rebuilt or
+		 * The glued-authority leg of the same screen (verifier round
+		 * t31-r11-3, generalized by t31-r11-11): the colon search
+		 * starts AFTER the closing ']', so anything glued straight to
+		 * the bracket — 'http://[::1]80/' first, then (one
+		 * character-class away, verifier-reproduced) ']' plus a letter,
+		 * a space, punctuation: 159 visible-ASCII spellings — never
+		 * meets the digit check, and parse_url() misreads every one of
+		 * them identically (host '[:', port 1), so the rebuilt or
 		 * redacted authority diverges from the raw URL exactly the way
-		 * t31-r4-12 chartered this screen to kill. The spelling is
-		 * malformed (a bracket authority carries its port only after a
-		 * ':'), so it rejects rather than normalizing — reject is the
-		 * safer doctrine for a shape no client means to send.
+		 * t31-r4-12 chartered this screen to kill. The rule is the
+		 * authority grammar whole: after the last ']' comes a ':' or
+		 * the end of the authority — read as the allow form (1 !==,
+		 * abort-refusing per glm36-8), so anything else rejects. The
+		 * spelling is malformed (a bracket authority carries its port
+		 * only after a ':'), and reject is the safer doctrine for a
+		 * shape no client means to send.
 		 */
-		if ( false !== $bracket_end && 0 !== preg_match( '/\A\]\d/', substr( $host_port, (int) $bracket_end ) ) ) {
-			throw new InvalidArgumentException( 'A bracketed host must carry its port after a colon ("[::1]:8080") — digits glued straight to the closing bracket ("[::1]8080") are a malformed authority parse_url() misreads, and the URL string and the rebuilt authority must agree.' );
+		if ( false !== $bracket_end && 1 !== preg_match( '/\A\](?::|\z)/', substr( $host_port, (int) $bracket_end ) ) ) {
+			throw new InvalidArgumentException( 'A bracketed host must be followed by a colon port ("[::1]:8080") or the end of the authority — anything glued to the closing bracket ("[::1]8080", "[::1]x") is a malformed authority parse_url() misreads, and the URL string and the rebuilt authority must agree.' );
 		}
 		$colon = strpos( $host_port, ':', false === $bracket_end ? 0 : (int) $bracket_end + 1 );
 		if ( false !== $colon ) {

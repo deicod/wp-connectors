@@ -154,16 +154,17 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
-     * Verifier-round pin (t31-r11-3): the port screen's colon search
-     * starts AFTER the last ']', so a digit run GLUED to the closing
-     * bracket — 'http://[::1]80/' — never met the digit check:
-     * parse_url() read host '[:', port 1 (reproduced), and the rebuilt
-     * and redacted authorities diverged from the raw URL, the exact
-     * class t31-r4-12 chartered the screen to kill. A digit immediately
-     * after the bracket rejects now (the spelling is malformed — a
-     * bracket authority carries its port only after a colon; reject is
-     * the r4-12 doctrine, normalization is not), while every legal
-     * bracket authority shape stays green.
+     * Verifier-round pin (t31-r11-3, generalized by t31-r11-11): the
+     * port screen's colon search starts AFTER the last ']', so anything
+     * GLUED to the closing bracket never met the digit check:
+     * parse_url() misreads the whole class IDENTICALLY (host '[:',
+     * port 1 — reproduced for digits, letters, spaces, punctuation:
+     * 159 visible-ASCII spellings), and the rebuilt and redacted
+     * authorities diverged from the raw URL, the exact class t31-r4-12
+     * chartered the screen to kill. The rule is the authority grammar
+     * whole now: after the last ']' comes a ':' or the end of the
+     * authority (read as the allow form, abort-refusing), while every
+     * legal bracket authority shape stays green.
      */
     public function testAGluedPortAfterABracketedHostIsRejected(): void
     {
@@ -173,29 +174,39 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'https twin' => 'https://[::1]80/',
             'full IPv6 host' => 'http://[fe80::1]443/',
             'userinfo does not hide it' => 'http://user:pw@[::1]80/',
+            'a letter glued (t31-r11-11)' => 'http://[::1]x/',
+            'a space glued (t31-r11-11)' => 'http://[::1] 80/',
+            'punctuation glued (t31-r11-11)' => 'http://[::1],/',
         );
 
         foreach ($hostile_urls as $label => $url) {
             try {
                 Url::parse_validated($url);
-                $this->fail(sprintf('A digit run glued to the closing bracket (%s) must be rejected by the shared URL owner.', $label));
+                $this->fail(sprintf('Anything glued to the closing bracket (%s) must be rejected by the shared URL owner.', $label));
             } catch (\InvalidArgumentException $e) {
-                $this->assertStringContainsString('bracketed host must carry its port after a colon', $e->getMessage());
+                $this->assertStringContainsString('bracketed host must be followed by a colon port', $e->getMessage());
             }
 
             try {
                 new HttpRequest('GET', $url);
-                $this->fail(sprintf('A digit run glued to the closing bracket (%s) must be rejected by the request VO too.', $label));
+                $this->fail(sprintf('Anything glued to the closing bracket (%s) must be rejected by the request VO too.', $label));
             } catch (\InvalidArgumentException $e) {
-                $this->assertStringContainsString('bracketed host must carry its port after a colon', $e->getMessage());
+                $this->assertStringContainsString('bracketed host must be followed by a colon port', $e->getMessage());
             }
         }
 
-        // The legal bracket authorities stay green: bare, coloned port,
-        // and the port's int value in the rebuilt authority.
+        // The legal bracket authorities stay green: bare, coloned port
+        // (empty port spelled by the r4-12 digit check), and the
+        // port's int value in the rebuilt authority.
         $this->assertSame('[::1]', Url::parse_validated('http://[::1]/token')['authority'], 'A bare bracketed host stays legal.');
         $this->assertSame('[::1]:8080', Url::parse_validated('http://[::1]:8080/token')['authority'], 'A bracketed host with a coloned port stays legal.');
         $this->assertSame('https://[::1]:8443/token', (new HttpRequest('GET', 'https://[::1]:8443/token'))->redacted_url(), 'The redacted form of a legal bracket authority keeps host and port.');
+        try {
+            Url::parse_validated('http://[::1]:/');
+            $this->fail('An empty port after the bracket colon still rejects through the r4-12 digit check.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('port must be digits', $e->getMessage());
+        }
     }
 
     /**
