@@ -295,6 +295,121 @@ gap, non-PHP files inside shared/src shipping, and the
 backreference-material namespace rewrite. Residuals ledgered. Suite
 1495 → 1513 tests, 42899 → 43122 assertions, 2 skipped unchanged.
 
+### Fixed (shared — M3 Task 3.1, review round t31-r8)
+
+Fix round over round-8's seven counted findings — three state-machine/
+predicate gaps in the r7 token detector (each with an exit-0 repro), two
+HeaderMap surface defects, one directory-casing axis, one cleanup — fixed
+as t31-r8-1..7, then a two-lens verifier pass over the round diff
+(both lenses adversarial-re-derived before fixing) raised four more
+findings, all CONFIRMED with end-to-end repros and fixed in-round as
+t31-r8-8..11 (two of them gaps in this round's own fixes, one a
+state-corruption vector, one a diagnostics drift the refactor
+introduced):
+
+- **The use-statement boundary is a SET (t31-r8-1)**: r7-7 taught the
+  walk's use-tracking state to die at ';' — but a close tag is a
+  statement terminator exactly like it (the engine implies the
+  semicolon at the tag), and `use Foo\Bar as ?>` left the alias skip
+  — and an unclosed group's prefix — armed across the mode boundary,
+  silently eating the next name run in the re-entered code: the family
+  reference after the tag shipped at exit 0 with both gates green.
+  ';' plus every PHP-mode tag token resets the state now; pinned by a
+  boundary matrix over both laundering halves and a clean
+  close-tag-tailing source.
+- **The relative operator resolves before the family predicates
+  (t31-r8-2)**: T_NAME_RELATIVE carried its literal `namespace\`
+  prefix through the walk, so `namespace\WpConnectors\Shared\Clock`
+  in a file declaring `namespace Deicod;` — family once resolved, the
+  resolution PHP itself performs — never matched the vendor predicate
+  and shipped un-rewritten (class-not-found at runtime, both gates
+  green; the escaping declaration sat outside the prefix and escaped
+  every gate too). The detector resolves relatives against the file's
+  in-effect declared namespace, with the ADAPTATION carve-out pinned
+  as the legal other half: a relative under a rewrite-owned tree
+  (source root, or the target root on rewritten bytes) adapts through
+  the rewrite in any position and reports nothing; only a
+  family-resolving relative under a base the rewrite does not own
+  reports — under its own 'relative' kind, never 'use', whose
+  rewritable-position reading would wave the un-rewritable spelling
+  through the sweep while the build refuses it.
+- **The text lens judges the full sibling/family vocabulary
+  (t31-r8-3, tightened by t31-r8-9)**: the lens tried only the source
+  and target spellings, so a docblock naming a SIBLING under the
+  vendor prefix laundered exactly where the same sibling in a code or
+  string position refuses — and the dev sweep rides the same
+  detector, so nothing caught it anywhere. The lens applies the full
+  family predicate now (the bare vendor prefix and every sibling
+  continuation, via wp_connectors_family_sibling_pattern() on the
+  generator's totality dimensions); the exclusion owns exactly the
+  dedicated patterns' FULL below-vendor tails ('Shared';
+  '<Suffix>\Shared'), because the first cut excluded the suffix
+  segment alone and waved target-SEGMENT siblings
+  (`…\<Suffix>\OAuth`) through the build postcondition while the
+  sweep refused the same file — the r7-8 verdict-drift class, one
+  segment inside the target tree, closed both directions.
+- **The embedded tree's directory casing agrees with the declared
+  namespace (t31-r8-4, closed to every declaration by t31-r8-8)**: the
+  r5-3 extension-casing doctrine never fenced the DIRECTORIES —
+  shared/src/tools/Helper.php declaring `…\Tools;` collected, staged
+  at src/Shared/tools/, passed inspection, and published while the
+  shipped autoloader maps `…\Tools\Helper` onto
+  src/Shared/Tools/Helper.php verbatim: class_exists through the real
+  shipped loader FALSE with every gate green (end-to-end reproduced).
+  The ONE collector the build's embed and the sweep both ride now
+  refuses unless every declaration sits under the shared root with
+  below-root segments equal to the staged path's directories
+  CASE-EXACTLY, depth included — a missing declaration, an
+  outside-root declaration, and a SECOND declaration block (the embed
+  stages one path per file, so a second block's classes stage
+  nowhere) all refuse loudly. Supersession pinned: unreadable and
+  declaration-less shared sources now refuse one seam earlier (the
+  collector's fence at the config seam), with the read seams kept as
+  defense in depth.
+- **The bidi screen bans the direction marks (t31-r8-5)**: LRM
+  (U+200E), RLM (U+200F), and ALM (U+061C) — the same zero-width
+  reorder/mirror material as the r2-6 class, spelled below its byte
+  range (and, for ALM, outside the U+2xxx run) — joined the one
+  control vocabulary at its single owner; Url rides the same constant,
+  so the extension lands on both surfaces with no second pattern to
+  drift.
+- **rendered_lines() is always valid UTF-8 (t31-r8-6)**: a Latin-1
+  (obs-text) header value is legal at construction (r1-19) but its
+  bytes are invalid UTF-8 — json_encode of the rendered line returned
+  false, the log line dropped rather than degraded, the exact r4-13
+  failure mode killed on the URL surface by rejecting the input. The
+  render seam owes the same OUTCOME without rejecting the value:
+  well-formed sequences render verbatim (the pinned obs-text
+  rendering), invalid bytes render percent-encoded — encoded, never
+  destroyed (SecretMask::utf8_for_safe_render(), the render
+  vocabulary's one owner beside the grammar it already owns).
+- **One tokenization feeds both lenses (t31-r8-7, line semantics
+  unified by t31-r8-11)**: the detector tokenized every file twice —
+  the name walk and the text lens each re-tokenizing the same bytes,
+  the dominant cost paid twice. The walk takes the token stream
+  directly (wp_connectors_name_references_from_tokens()); the line
+  derivation rides the engine's token lines with the text lens
+  counting the same \R class at its push seam — the refactor's first
+  cut left the text lens on a "\n"-only count, drifting the two
+  lenses' lines apart on CR-only files within one detector run.
+- **Verifier follow-ups (t31-r8-8/9/10/11, each adversarially
+  re-derived, each repro reproduced before fixing)**: the PSR-4 fence
+  judged only a file's FIRST namespace block, so a legal two-block
+  source shipped with the second block's class unloadable
+  (interface_exists through the shipped autoloader false, build and
+  inspect green — found independently by both lenses); the sibling
+  exclusion over-covered the target segment (the verdict-drift row
+  above); a parse-error fully-qualified namespace spelling
+  (`namespace \Junk;`) was classified as a declaration and corrupted
+  the file's in-effect namespace, laundering a family-resolving
+  relative past both gates where its control refused — only the two
+  legal declaration shapes open one now, and the invalid spellings'
+  names fall to code positions where family spellings refuse
+  everywhere; and the CR-only line drift (above).
+
+Suite 1554 → 1560 tests, 44107 → 44212 assertions, 2 skipped
+unchanged; green in default and random order throughout.
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r7)
 
 Fix round over round-7's five counted findings — all in the

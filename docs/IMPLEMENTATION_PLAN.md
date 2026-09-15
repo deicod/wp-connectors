@@ -565,7 +565,54 @@ documented exception.
   references shipped as dangling spellings the sweep
   refused — fixed as t31-r7-6/7/8, each pin red under the
   pre-fix code. Suite 1552 → 1554 tests, 43763 → 44107
-  assertions, 2 skipped unchanged.
+  assertions, 2 skipped unchanged. Fix round t31-r8 (11
+  commits over round-8's seven counted findings — three
+  state-machine/predicate gaps in the r7 token detector,
+  two HeaderMap surface defects, a directory-casing axis,
+  a tokenization cleanup): the use-statement boundary
+  became a SET (';' plus every PHP-mode tag token — a
+  close tag is a terminator exactly like ';', and the
+  r7-7 reset had named only one spelling, leaving the
+  alias skip armed across the mode boundary to eat the
+  next name run); the relative operator (T_NAME_RELATIVE)
+  resolves against the file's declared namespace before
+  the family predicates — with the adaptation carve-out:
+  a relative under a rewrite-owned tree adapts through
+  the rewrite in any position and reports nothing, only
+  a family-resolving relative under a non-owned base
+  reports, under its own 'relative' kind (never 'use',
+  whose rewritable-position reading would drift the two
+  gates); the text lens applies the FULL family predicate
+  (bare vendor prefix and sibling continuations via a
+  generated sibling pattern whose exclusion owns exactly
+  the dedicated patterns' below-vendor tails); the ONE
+  collector gained the PSR-4 casing-agreement fence
+  (declared namespace's below-root segments must equal
+  the staged path's directories case-exactly, depth
+  included, one declaration per file); the bidi screen
+  gained the direction marks LRM/RLM/ALM at its single
+  owner; rendered_lines() is always valid UTF-8 (invalid
+  bytes percent-encoded at the render seam — the r4-13
+  outcome without rejecting legal obs-text); and one
+  tokenization feeds both lenses with one line semantics.
+  A two-lens verifier pass over the round diff (every
+  finding adversarially re-derived, all four CONFIRMED
+  with end-to-end repros — two found independently by
+  both lenses) falsified the round's own fixes: the fence
+  judged only a file's FIRST namespace block (a two-block
+  source shipped with the second block's class
+  unloadable through the real shipped autoloader), the
+  sibling exclusion over-covered the target segment
+  (target-SEGMENT docblock siblings shipped past the
+  postcondition while the sweep refused them — the r7-8
+  drift class one segment inside the target tree), a
+  parse-error fully-qualified declaration corrupted the
+  relative-resolution base and laundered a family-
+  resolving relative past both gates, and the line
+  refactor drifted the two lenses' lines apart on
+  CR-only files — fixed as t31-r8-8/9/10/11. Suite
+  1554 → 1560 tests, 44107 → 44212 assertions, 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
