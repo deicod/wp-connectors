@@ -55,10 +55,37 @@ final class HeaderMap {
 	 * the arm \xD9\x9C — the encoding of U+065C ARABIC VOWEL SIGN
 	 * DOT BELOW, a VISIBLE combining vowel sign (category Mn), not a
 	 * bidi control — so the real mark passed while a legitimate
-	 * Arabic vowel was falsely refused. Only format controls (Cf)
-	 * are banned: U+065C stays legal obs-text like every other
-	 * high byte. Other high bytes stay legal as RFC 7230 obs-text
-	 * (verifier round t31-r1-19).
+	 * Arabic vowel was falsely refused. U+065C stays legal obs-text
+	 * like every other high byte.
+	 *
+	 * Verifier round t31-r9-10 (the round-9 verifier pass, adversarially
+	 * confirmed): the r9-1 docblock's 'only format controls are banned'
+	 * claim was FALSE as coverage — 158 of 170 Cf code points passed,
+	 * and among them the invisible bidi-ACTIVE siblings of the banned
+	 * marks: U+070F SYRIAC ABBREVIATION MARK (bidi class AL — an
+	 * invisible STRONG-RTL character, the exact resolution mechanism of
+	 * the banned ALM/RLM; reproduced rendering verbatim through both
+	 * safe-debug surfaces), U+110BD/U+110CD/U+13430-U+1343F (bidi class
+	 * L — invisible strong-LTR, the LRM mechanism), and
+	 * U+0600-U+0605/U+06DD/U+0890/U+0891/U+08E2 (invisible AN,
+	 * bidi-active in number runs) — plus the invisible-neutral
+	 * homograph class the same pass confirmed: U+200B-U+200D
+	 * ZWSP/ZWNJ/ZWJ (ZWJ/ZWNJ alter Arabic GLYPH JOINING — invisible
+	 * bytes that change visible rendering, the character-spoofing
+	 * channel r2-6 named), U+FEFF, and U+00AD. All banned now.
+	 *
+	 * The vocabulary is a CURATED BYTE LIST of invisible
+	 * direction/joining material — deliberately NOT a Unicode-category
+	 * derivation (the r9-1 lesson: category claims drift from bytes).
+	 * Visible content stays legal obs-text (verifier round t31-r1-19):
+	 * letters, and the visible Mn vowel signs. Invisible material
+	 * OUTSIDE the curated list — variation selectors (Mn, glyph-
+	 * choosing), the word-joiner/math-invisible run U+2060-U+2064,
+	 * the deprecated direction-PROCESSING controls U+206A-U+206F,
+	 * U+180E, tag characters, interlinear annotation marks — is a
+	 * LEDGERED curation decision (the t31-r2-7 spelling-curated
+	 * posture), not covered coverage: do not read this constant as
+	 * banning every invisible code point.
 	 *
 	 * PUBLIC and single-owner beyond the header map itself (review
 	 * round t31-r2-1): this constant names the control vocabulary no
@@ -70,7 +97,7 @@ final class HeaderMap {
 	 *
 	 * @var string
 	 */
-	const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F]|\xE2\x80[\x8E\x8F\xA8-\xAE]|\xE2\x81[\xA6-\xA9]|\xD8\x9C/';
+	const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F\xAD]|\xE2\x80[\x8B-\x8F\xA8-\xAE]|\xE2\x81[\xA6-\xA9]|\xD8\x9C|\xD8[\x80-\x85]|\xDB\x9D|\xDC\x8F|\xE0\xA2[\x90-\x91]|\xE0\xA3\xA2|\xF0\x91\x82\xBD|\xF0\x91\x83\x8D|\xF0\x93\x90[\xB0-\xBF]|\xEF\xBB\xBF/';
 
 	/**
 	 * The RFC 7230 token grammar every header NAME must satisfy

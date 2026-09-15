@@ -613,6 +613,77 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * Verifier-round pin (t31-r9-10, the round-9 two-lens verifier pass,
+     * adversarially confirmed with end-to-end repros): the r9-1 docblock
+     * claim "only format controls are banned" was FALSE as coverage —
+     * the invisible bidi-ACTIVE Cf siblings of the banned marks passed
+     * on both surfaces: U+070F SYRIAC ABBREVIATION MARK (bidi AL: an
+     * invisible STRONG-RTL character — the exact resolution mechanism
+     * of the banned ALM/RLM; reproduced rendering verbatim through
+     * rendered_lines() and the URL safe-debug form), U+110BD/U+110CD/
+     * U+13430-U+1343F (bidi L: invisible strong-LTR, the LRM
+     * mechanism), U+0600-U+0605/U+06DD/U+0890/U+0891/U+08E2 (invisible
+     * AN, bidi-active in number runs), plus the invisible-neutral
+     * homograph class: U+200B-U+200D ZWSP/ZWNJ/ZWJ (ZWJ/ZWNJ alter
+     * Arabic glyph joining — invisible bytes changing visible
+     * rendering), U+FEFF, and U+00AD. All refused now; the byte
+     * spellings below are derived from the code points (verified
+     * against the Unicode character database).
+     */
+    public function testTheInvisibleBidiActiveAndJoinerSiblingsRefuseOnBothSurfaces(): void
+    {
+        $hostile = array(
+            // The confirmed repro headliner: invisible strong-RTL.
+            'U+070F Syriac abbreviation mark (strong RTL)' => "ok\xDC\x8Fevac",
+            // Invisible strong-LTR (the LRM mechanism), 4-byte arms.
+            'U+110BD Kaithi number sign (strong LTR)' => "ok\xF0\x91\x82\xBDevac",
+            'U+110CD (strong LTR)' => "ok\xF0\x91\x83\x8Devac",
+            'U+13430 Egyptian format control range start' => "ok\xF0\x93\x90\xB0evac",
+            'U+1343F Egyptian format control range end' => "ok\xF0\x93\x90\xBFevac",
+            // Invisible Arabic number-context marks (bidi AN).
+            'U+0600 Arabic number sign (AN)' => "ok\xD8\x80evac",
+            'U+0605 (AN, range end)' => "ok\xD8\x85evac",
+            'U+06DD end of ayah (AN)' => "ok\xDB\x9Devac",
+            'U+0890 (AN)' => "ok\xE0\xA2\x90evac",
+            'U+08E2 (AN)' => "ok\xE0\xA3\xA2evac",
+            // Invisible-neutral homograph class.
+            'U+200B ZWSP' => "ok\xE2\x80\x8Bevac",
+            'U+200D ZWJ (glyph joining)' => "ok\xE2\x80\x8Devac",
+            'U+FEFF zero-width no-break space' => "ok\xEF\xBB\xBFevac",
+            'U+00AD soft hyphen' => "ok\xC2\xADevac",
+        );
+
+        foreach ($hostile as $label => $value) {
+            try {
+                new HeaderMap(array('X-Test' => $value));
+                $this->fail("A header value carrying the invisible format character {$label} must be rejected.");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('GET', "https://api.example/cb{$value}");
+                $this->fail("A URL carrying the invisible format character {$label} must be rejected (one vocabulary, two surfaces).");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage());
+            }
+        }
+
+        /*
+         * The counter-pin (the curation is about INVISIBILITY and
+         * direction/joining effect, never about script): visible Arabic
+         * CONTENT stays legal obs-text — a real letter (U+0627 ALEF,
+         * bytes \xD8\xA7 — one byte-tail away from the banned
+         * \xD8[\x80-\x85] number-sign range) constructs and renders
+         * verbatim, exactly like the U+065C vowel sign beside it.
+         */
+        $visible_content = "ok\xD8\xA7\xD9\x9Cevac"; // ALEF + vowel-sign dot below.
+        $response = new HttpResponse(429, array('Retry-After' => $visible_content));
+        $this->assertSame($visible_content, $response->header('retry-after'));
+        $this->assertStringContainsString("Retry-After: {$visible_content}", (string) $response);
+    }
+
+    /**
      * Fix-round pin (t31-r9-1, the byte-swap half of the r8-5 decision):
      * the r8-5 ALM arm banned \xD9\x9C — the UTF-8 encoding of U+065C
      * ARABIC VOWEL SIGN DOT BELOW, a VISIBLE combining vowel sign
