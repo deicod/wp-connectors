@@ -443,6 +443,103 @@ FIXTURE
         );
     }
 
+    /**
+     * Fix-round pin (t31-r9-7): the conventions gate's unused-import
+     * scan covered only connectors/, so a dead import in shared/src
+     * passed every gate and then shipped into EVERY embedding plugin —
+     * the phantom-dependency drift the gate exists to kill, one tree
+     * further out. Pinned through the CLI itself against a scratch
+     * repo (the gate computes its roots from its own location, so the
+     * wiring — not just the scanner helper — is what's under test):
+     * a planted dead `use RuntimeException;` in the scratch shared
+     * tree fails the run naming the file, and the same repo without
+     * it stays green.
+     */
+    public function testTheConventionsGateScansTheSharedSourceTree(): void
+    {
+        $repo = sys_get_temp_dir() . '/wp-connectors-conventions-shared-' . uniqid('', true);
+        mkdir($repo . '/bin/lib', 0755, true);
+        mkdir($repo . '/shared/src/Clock', 0755, true);
+        mkdir($repo . '/connectors', 0755, true);
+        copy(dirname(__DIR__) . '/bin/check-conventions.php', $repo . '/bin/check-conventions.php');
+        copy(dirname(__DIR__) . '/bin/lib/plugin-tools.php', $repo . '/bin/lib/plugin-tools.php');
+        // The gate's repo-level checks need a CHANGELOG at the root.
+        file_put_contents($repo . '/CHANGELOG.md', "# scratch\n");
+        // A valid plugin so ONLY the unused-import verdict can fail the run.
+        $this->copyTree(__DIR__ . '/fixtures/plugins/example-connector', $repo . '/connectors/example-connector');
+
+        try {
+            // Control: the clean shared tree is invisible to the gate.
+            file_put_contents(
+                $repo . '/shared/src/Clock/ClockInterface.php',
+                "<?php\nnamespace Shared\\Clock;\ninterface ClockInterface {}\n"
+            );
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/check-conventions.php') . ' 2>&1', $cleanOutput, $cleanExit);
+            $this->assertSame(0, $cleanExit, "The clean scratch repo must pass the gate: " . implode("\n", $cleanOutput));
+
+            // The planted dead import in shared/src fails the run.
+            file_put_contents(
+                $repo . '/shared/src/Clock/DeadImport.php',
+                "<?php\nnamespace Shared\\Clock;\nuse RuntimeException;\ninterface DeadImport {}\n"
+            );
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/check-conventions.php') . ' 2>&1', $plantedOutput, $plantedExit);
+            $message = implode("\n", $plantedOutput);
+
+            $this->assertSame(1, $plantedExit, 'A dead import in shared/src must fail the conventions gate.');
+            $this->assertStringContainsString("unused import 'RuntimeException'", $message, 'The failure must be the unused-import vocabulary.');
+            $this->assertStringContainsString('Clock/DeadImport.php', $message, 'The failure must name the shared source file.');
+        } finally {
+            $this->removeTree($repo);
+        }
+    }
+
+    /**
+     * Copies a directory tree (the scratch repo's fixture plugin and gate files).
+     *
+     * @param string $from Absolute source directory.
+     * @param string $to   Absolute target directory.
+     * @return void
+     */
+    private function copyTree(string $from, string $to): void
+    {
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($from, \FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            if ($file->isDir()) {
+                continue;
+            }
+            $target = $to . '/' . str_replace($from . '/', '', $file->getPathname());
+            @mkdir(dirname($target), 0755, true);
+            copy($file->getPathname(), $target);
+        }
+    }
+
+    /**
+     * Removes a scratch tree (the tearDown rmdir only handles one level).
+     *
+     * @param string $dir Absolute directory.
+     * @return void
+     */
+    private function removeTree(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isDir()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+        @rmdir($dir);
+    }
+
     public function testADirectoryNamedPhpIsSkipped(): void
     {
         /*

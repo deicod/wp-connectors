@@ -83,6 +83,24 @@ if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
         ++$failures;
     }
 
+    /*
+     * The dev gate grows to the shared tree (review round t31-r9-7):
+     * the unused-import scan covered only connectors/, so a dead
+     * import in shared/src passed every gate and then shipped into
+     * EVERY embedding plugin — the phantom-dependency drift the gate
+     * exists to kill, one tree further out. Same scanner, same
+     * verdict vocabulary; the is_dir guard keeps the gate green on
+     * trees that carry no shared source (fixture repos).
+     */
+    if (is_dir($repoRoot . '/shared/src')) {
+        try {
+            $failures += wp_connectors_unused_import_violations($repoRoot . '/shared/src');
+        } catch (UnexpectedValueException $e) {
+            fwrite(STDERR, "conventions: FAIL shared/src: unreadable subdirectory — the unused-import scan aborted ({$e->getMessage()}).\n");
+            ++$failures;
+        }
+    }
+
     printf("conventions: %d plugin dir(s) checked, %d violation(s)\n", count($pluginRoots), $failures);
     exit($failures === 0 ? 0 : 1);
 }
