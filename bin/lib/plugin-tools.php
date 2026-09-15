@@ -500,15 +500,22 @@ function wp_connectors_name_run(array $tokens, $start)
  *   `\{`) is not reported itself, its MEMBERS are reported composed with
  *   the prefix (`use Deicod\WpConnectors\{Shared\Clock}` reports
  *   `Deicod\WpConnectors\Shared\Clock`); `as` aliases are not references
- *   and are not reported; a TRAIT-ADAPTATION block (`use SomeTrait {…}`
- *   — the brace glued to the clause with NO separator, multi-trait
- *   `use A, B {…}` lists included) is not an import at all: its first
- *   clause and every member name report as 'code' positions,
- *   un-composed (round t31-r10-1: the r8-noted misparse read the
- *   adaptation clause as a group prefix and composed the members against
- *   the TRAIT name, so a fully-qualified family reference inside the
- *   braces produced zero carriers — laundered past the detector, the
- *   build postcondition, and the sweep, reproduced as an exit-0 ship);
+ *   and are not reported (a QUALIFIED post-`as` spelling can never be an
+ *   alias and is reported un-composed, verifier round t31-r10-9); a
+ *   TRAIT-ADAPTATION block (`use SomeTrait {…}` — the brace glued to the
+ *   clause with NO separator) is not an import at all: the glued clause
+ *   and every member name report as 'code' positions, un-composed
+ *   (round t31-r10-1: the r8-noted misparse read the adaptation clause
+ *   as a group prefix and composed the members against the TRAIT name,
+ *   so a fully-qualified family reference inside the braces produced
+ *   zero carriers — laundered past the detector, the build
+ *   postcondition, and the sweep, reproduced as an exit-0 ship). A
+ *   MULTI-TRAIT list (`use A, B {…}`) arms the adaptation flag only at
+ *   the brace, so its earlier clauses report as 'use' import positions,
+ *   un-composed — a family clause there is still refused by both gates
+ *   through the rewrite-ownership verdict (the rewriter owns no
+ *   adaptation clause), never laundered (verifier round t31-r10-11
+ *   restating the classification honestly);
  * - 'code' — every other name position (inline references, catch
  *   clauses, attributes, `::class`, call names).
  *

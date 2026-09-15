@@ -619,6 +619,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             'qualified name after as, plain use (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\X as \\Deicod\\WpConnectors\\Shared\\Clock;\ninterface FqAliasFixture\n{\n}\n",
             'qualified name after as, group body (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\Stuff\\{ Y as \\Deicod\\WpConnectors\\Shared\\Clock };\ninterface FqGroupAliasFixture\n{\n}\n",
             'empty group body naming the vendor prefix (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{};\ninterface EmptyGroupFixture\n{\n}\n",
+            'multi-trait adaptation CLAUSE naming the family (t31-r10-11)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait ClauseListA { public function s(): void {} }\nfinal class ClauseListCarrier\n{\n    use ClauseListA, Deicod\\WpConnectors\\Shared\\Clock {\n        ClauseListA::s insteadof Clock;\n    }\n}\n",
         );
         /*
          * One FRESH scratch path per shape: the shared loud reader caches
@@ -652,8 +653,9 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // rewrite, so it must stay clean while its escaping twin above
         // refuses). A LEGAL trait adaptation (single- and multi-trait,
         // insteadof and as members, t31-r10-1) rides along clean: the
-        // adaptation's names are code positions now, and none of them
-        // spells the family.
+        // glued clause and the members report as code positions, the
+        // multi-trait clause list as un-composed import positions
+        // (t31-r10-11), and none of them spells the family.
         $clean = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-clean-');
         try {
             file_put_contents(

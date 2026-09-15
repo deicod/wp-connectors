@@ -2918,6 +2918,7 @@ FIXTURE;
             'qualified name after as, plain use (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\X as \\Deicod\\WpConnectors\\Shared\\Clock;\nclass FqAliasStore\n{\n}\n",
             'qualified name after as, group body (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\Stuff\\{ Y as \\Deicod\\WpConnectors\\Shared\\Clock };\nclass FqGroupAliasStore\n{\n}\n",
             'empty group body naming the vendor prefix (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{};\nclass EmptyGroupStore\n{\n}\n",
+            'multi-trait adaptation CLAUSE naming the family (t31-r10-11)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait ClauseListStoreA { public function s(): void {} }\nfinal class ClauseListStore\n{\n    use ClauseListStoreA, Deicod\\WpConnectors\\Shared\\Clock {\n        ClauseListStoreA::s insteadof Clock;\n    }\n}\n",
         );
         foreach ($survivors as $label => $hostile) {
             try {
