@@ -235,6 +235,9 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'https twin' => 'https://host.example:8443]/token',
             'userinfo does not hide it' => 'http://user:pw@host.example:80]/x',
             'a lone opener' => 'http://[::1/token',
+            'the empty literal (t31-r12-18)' => 'http://[]/x',
+            'a mid-host pair (t31-r12-18)' => 'http://a[b]/x',
+            'a mid-host pair with port (t31-r12-18)' => 'http://x[y]:8080/x',
         );
 
         foreach ($hostile_urls as $label => $url) {
@@ -242,14 +245,14 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
                 Url::parse_validated($url);
                 $this->fail(sprintf('A lone or doubled bracket in the authority (%s) must be rejected by the shared URL owner.', $label));
             } catch (\InvalidArgumentException $e) {
-                $this->assertStringContainsString('one well-formed IPv6 literal', $e->getMessage());
+                $this->assertStringContainsString('one well-formed IP literal', $e->getMessage());
             }
 
             try {
                 new HttpRequest('GET', $url);
                 $this->fail(sprintf('A lone or doubled bracket in the authority (%s) must be rejected by the request VO too.', $label));
             } catch (\InvalidArgumentException $e) {
-                $this->assertStringContainsString('one well-formed IPv6 literal', $e->getMessage());
+                $this->assertStringContainsString('one well-formed IP literal', $e->getMessage());
             }
         }
 
