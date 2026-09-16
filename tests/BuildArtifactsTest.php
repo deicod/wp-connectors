@@ -1998,7 +1998,10 @@ FIXTURE;
             } catch (RuntimeException $e) {
                 $this->assertStringContainsString('namespace segment', $e->getMessage());
             }
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'The seam refusal must precede the staging tree.');
+            // t31-ocr5-4: these pins rode assertDirectoryDoesNotExist on
+            // the pid-less `.stage-<slug>` name — a spelling nothing has
+            // created since t31-r10-4, so every one was vacuous.
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector', 'The seam refusal must precede the staging tree (any pid spelling).');
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The seam refusal must leave no zip.');
 
             // (b) A throw that lands MID-BUILD, after the stage tree and
@@ -2016,14 +2019,14 @@ FIXTURE;
             } catch (RuntimeException $e) {
                 $this->assertStringContainsString('not a regular file', $e->getMessage());
             }
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'A mid-build throw must tear the staging tree down.');
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector', 'A mid-build throw must tear the staging tree down (any pid spelling).');
 
             // Recovery: the same inputs build cleanly once the blocker
             // is gone (the failed run left nothing behind to collide).
             rmdir($blockedZip);
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $this->assertFileExists($zipPath);
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'The success path must tear the staging tree down too.');
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector', 'The success path must tear the staging tree down too (any pid spelling).');
 
             // (d) Verifier-round pin (t31-r3-16), restated for t31-r5-S:
             // a mid-build failure must leave the previous successful
@@ -2044,7 +2047,7 @@ FIXTURE;
             } catch (RuntimeException $e) {
                 $this->assertStringContainsString('survived the rewrite', $e->getMessage());
             }
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'Every failure path tears the staging tree down.');
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector', 'Every failure path tears the staging tree down (any pid spelling).');
             $this->assertSame($zipBefore, (string) file_get_contents($zipPath), 'A failure before the archive opens must not delete the previous good zip.');
             $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The sidecar must survive with the zip it describes.');
             $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'The manifest entry must stay consistent with the surviving artifact.');
@@ -2798,7 +2801,7 @@ FIXTURE;
                 $this->assertStringContainsString('shared/src', $e->getMessage());
             }
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'A refused build must leave no zip behind.');
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-example-connector', 'The seam refusal must precede the staging tree.');
+            $this->assertNoStageTree($scratch . '/dist', 'example-connector', 'The seam refusal must precede the staging tree (any pid spelling).');
 
             // The wholly empty directory refuses the same way.
             unlink($scratch . '/shared/src/README.md');
