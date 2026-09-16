@@ -80,6 +80,27 @@ final class InMemoryTokenStorage implements TokenStorageInterface
             ));
         }
 
+        /*
+         * The monotonicity leg of the fence (t31-ocr2-3): the CAS
+         * equality alone passes a grant whose OWN generation sits
+         * below the expectation — the finding's repro: a stale
+         * Connected grant at generation 3 saved with expected:4 over a
+         * persisted Revoked tombstone at 4 passed (4 === 4) and the
+         * persisted fence REGRESSED to 3, the revoked tokens
+         * resurrected. Every legitimate commit satisfies
+         * generation >= expected (the writer observed the persisted
+         * state and moved forward from it), so a lower-generation
+         * grant is a caller bug: rejected loudly, nothing committed —
+         * the same typed-rejection class the identity rule rides.
+         */
+        if ($grant->generation() < $expected_generation) {
+            throw new InvalidArgumentException(sprintf(
+                'The committed grant\'s generation (%d) must be at least the expected generation (%d) — a lower-generation save would regress the persisted fence and resurrect revoked tokens.',
+                $grant->generation(),
+                $expected_generation
+            ));
+        }
+
         $persisted = $this->grants[$provider_id] ?? null;
         $persisted_generation = null === $persisted
             ? TokenStorageInterface::EXPECT_NO_GRANT

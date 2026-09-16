@@ -460,6 +460,66 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->assertSame(1, $storage->saveCount('fixture-provider'));
     }
 
+    /**
+     * OCR-round-2 pin (t31-ocr2-3): the CAS fence's monotonicity leg.
+     * The equality-only fence judged PERSISTED === EXPECTED and never
+     * asked whether the GRANT ITSELF was stale — the finding's repro:
+     * a stale Connected grant at generation 3 saved with expected:4
+     * over a persisted Revoked tombstone at 4 PASSED (4 === 4), the
+     * persisted fence regressed to 3, and the revoked tokens
+     * resurrected. Every legitimate commit satisfies
+     * grant.generation() >= expected, so the contract (and the
+     * reference fake) REJECT a lower-generation grant loudly, nothing
+     * committed — the same typed-caller-bug class the provider
+     * identity rule rides, never a silent false that a caller could
+     * mistake for a fence verdict it could retry.
+     */
+    public function testASaveWhoseGrantIsStalerThanItsExpectationIsRejected(): void
+    {
+        $storage = new InMemoryTokenStorage();
+        $first = $this->connectedGrant(); // generation 3
+
+        $this->assertTrue($storage->save('fixture-provider', $first, TokenStorageInterface::EXPECT_NO_GRANT));
+        $tombstone = $first->revoke(); // generation 4
+        $this->assertTrue($storage->save('fixture-provider', $tombstone, 3));
+
+        // The repro: the stale grant (3) under an expectation (4) the
+        // persisted tombstone satisfies — equality passes, the fence
+        // would regress, so the save REFUSES.
+        try {
+            $storage->save('fixture-provider', $first, 4);
+            $this->fail('A grant staler than its own expectation must be rejected, never committed over the newer fence.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('must be at least the expected generation', $e->getMessage());
+        }
+
+        // Nothing committed: the tombstone stands, no tokens resurrected,
+        // and the rejected save is no commit.
+        $persisted = $storage->load('fixture-provider');
+        $this->assertSame(GrantState::Revoked, $persisted->state());
+        $this->assertSame(4, $persisted->generation());
+        $this->assertNull($persisted->token_set());
+        $this->assertSame(2, $storage->saveCount('fixture-provider'));
+
+        /*
+         * The legitimate legs stay green: EQUAL (the refresh commit —
+         * same generation, new token set) and HIGHER (the advanced
+         * generation a rotation or revoke rides).
+         */
+        $storage = new InMemoryTokenStorage();
+        $grant = $this->connectedGrant(); // generation 3
+        $this->assertTrue($storage->save('fixture-provider', $grant, TokenStorageInterface::EXPECT_NO_GRANT));
+        $this->assertTrue(
+            $storage->save('fixture-provider', $grant->with_token_set($this->tokenSet()), 3),
+            'An equal-generation commit is the legitimate refresh shape.'
+        );
+        $this->assertTrue(
+            $storage->save('fixture-provider', $grant->with_generation(4), 3),
+            'A higher-generation commit is the legitimate rotation shape.'
+        );
+        $this->assertSame(3, $storage->saveCount('fixture-provider'));
+    }
+
     public function testStorageIsKeyedPerProvider(): void
     {
         $storage = new InMemoryTokenStorage();

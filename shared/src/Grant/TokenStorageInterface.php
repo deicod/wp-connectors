@@ -19,6 +19,16 @@
  *   revoked meanwhile) discards its tokens instead of silently
  *   overwriting the newer grant. A false return is a fence verdict,
  *   never an error: the caller reloads and abandons its work.
+ * - Monotonic commit (OCR round 2, t31-ocr2-3): the CAS equality is
+ *   necessary but not sufficient — a grant whose OWN generation is
+ *   BELOW the stated expectation would pass an equality-only fence
+ *   (persisted 4, expected 4, stale grant at 3) and REGRESS the
+ *   persisted fence backwards, resurrecting revoked tokens. Every
+ *   legitimate commit satisfies grant.generation() >=
+ *   expected_generation (the writer observed the persisted state and
+ *   moved forward from it), so implementations REJECT a
+ *   lower-generation grant loudly (the typed caller-bug rejection,
+ *   nothing committed) instead of accepting the regression.
  * - Provider identity is ONE label, both spellings (OCR round 1,
  *   t31-ocr1-7): save()'s $provider_id parameter is the STORAGE KEY
  *   and MUST equal the grant's own provider_id() — the envelope binds
@@ -110,13 +120,23 @@ interface TokenStorageInterface {
 	 * rejection) and commit NOTHING — never a silent install of one
 	 * provider's grant under another's slot.
 	 *
+	 * Monotonicity (OCR round 2, t31-ocr2-3): the grant's OWN
+	 * generation must be at least $expected_generation. An
+	 * equality-only fence passes a stale grant whose generation sits
+	 * below the expectation (persisted 4, expected 4, grant at 3) and
+	 * the persisted fence REGRESSES — revoked tokens resurrect. Every
+	 * legitimate commit satisfies the inequality (the writer observed
+	 * the persisted state and moved forward from it), so a
+	 * lower-generation grant is a caller bug: implementations REJECT it
+	 * loudly and commit NOTHING.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param string      $provider_id         Provider label (must equal the grant's own).
-	 * @param StoredGrant $grant               The grant to persist.
+	 * @param StoredGrant $grant               The grant to persist (its generation must be at least $expected_generation).
 	 * @param int         $expected_generation The persisted generation this commit is fenced on (EXPECT_NO_GRANT when none).
 	 * @return bool True when the grant was committed; false when the precondition failed (nothing committed).
-	 * @throws InvalidArgumentException When $provider_id does not equal the grant's provider_id() (nothing committed).
+	 * @throws InvalidArgumentException When $provider_id does not equal the grant's provider_id(), or when the grant's generation is below $expected_generation (nothing committed either way).
 	 * @throws OAuthStorageException When the grant cannot be persisted.
 	 */
 	public function save( string $provider_id, StoredGrant $grant, int $expected_generation ): bool;
