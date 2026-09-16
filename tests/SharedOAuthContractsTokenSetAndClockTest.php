@@ -685,6 +685,38 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
      */
 
     /**
+     * OCR-round-1 pin (t31-ocr1-1): the reconstruction was the ONE
+     * unguarded createFromFormat() in the repo — on a false return the
+     * chained ->setTimezone() escaped as an engine Error ("Call to a
+     * member function setTimezone() on bool") instead of the class's
+     * documented InvalidArgumentException (AccessTokenSet's sibling
+     * guards its externally-spelled input). The false is not drivable
+     * through the public arithmetic on this build (the guarded int
+     * domain IS the 64-bit DateTime domain), so the pin drives the
+     * reconstruction seam directly — the closeArchiveOrThrow precedent
+     * — with a spelling the internal derivation cannot produce
+     * (seven-digit microseconds), and the guard answers in the
+     * documented rejection type. The legal spelling still rebuilds.
+     */
+    public function testARefusedReconstructionRejectsTypedInsteadOfEscapingAnEngineError(): void
+    {
+        $reconstruct = new \ReflectionMethod(InstantArithmetic::class, 'reconstruct');
+        $zone = new \DateTimeZone('Europe/Berlin');
+
+        try {
+            $reconstruct->invoke(null, 0, 1000000, $zone);
+            $this->fail('A refused engine reconstruction must reject with the documented type, never escape as an engine Error from the chained call.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('was refused by the engine', $e->getMessage());
+        }
+
+        $rebuilt = $reconstruct->invoke(null, 1760000000, 123456, $zone);
+        $this->assertSame(1760000000, $rebuilt->getTimestamp());
+        $this->assertSame('123456', $rebuilt->format('u'));
+        $this->assertSame('Europe/Berlin', $rebuilt->getTimezone()->getName());
+    }
+
+    /**
      * Verifier-round pin (t31-r1-18): minus_seconds(PHP_INT_MIN)
      * negated its int argument before the shift — the negation
      * overflowed to float and the engine threw a strict-types TypeError

@@ -25,6 +25,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Shared\Support;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use InvalidArgumentException;
 
 /**
@@ -92,7 +93,41 @@ final class InstantArithmetic {
 			throw new InvalidArgumentException( sprintf( 'A %d-second shift leaves the representable instant range — the request is misconfigured, and the alternative is a silently wrong instant.', $seconds ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
 		}
 
-		return DateTimeImmutable::createFromFormat( 'U u', sprintf( '%d %06d', $timestamp + $seconds, (int) $instant->format( 'u' ) ) )
-			->setTimezone( $timezone );
+		return self::reconstruct( $timestamp + $seconds, (int) $instant->format( 'u' ), $timezone );
+	}
+
+	/**
+	 * Rebuilds an instant from raw integer parts (timestamp + microseconds,
+	 * original timezone re-attached).
+	 *
+	 * The reconstruction seam exists because its one failure mode is not
+	 * drivable through the public arithmetic: the timestamp is guarded
+	 * into the int domain before it arrives, and 'u' is always the
+	 * engine's own six-digit spelling, so createFromFormat() succeeds on
+	 * every build this project supports (the 64-bit int domain IS the
+	 * DateTime domain). A build whose DateTime range is narrower than
+	 * the int domain would hand back false all the same, and the
+	 * documented failure shape is the rejection — never the engine
+	 * Error an unchecked false->setTimezone() escapes as (OCR round 1,
+	 * t31-ocr1-1; AccessTokenSet::parse_serialized_instant() guards its
+	 * sibling for externally-spelled input). The probe seam lets the
+	 * regression drive the guard with a spelling the internal
+	 * derivation cannot produce.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param int          $timestamp  Whole seconds since the epoch.
+	 * @param int          $microseconds Microseconds (0-999999 by derivation).
+	 * @param DateTimeZone $timezone  The zone to re-attach.
+	 * @return DateTimeImmutable The rebuilt instant.
+	 * @throws InvalidArgumentException When the engine refuses the derived spelling.
+	 */
+	private static function reconstruct( int $timestamp, int $microseconds, DateTimeZone $timezone ): DateTimeImmutable {
+		$parsed = DateTimeImmutable::createFromFormat( 'U u', sprintf( '%d %06d', $timestamp, $microseconds ) );
+		if ( false === $parsed ) {
+			throw new InvalidArgumentException( sprintf( 'The derived instant spelling (timestamp %d, microseconds %d) was refused by the engine — the request is misconfigured, and the alternative is a silently wrong instant.', $timestamp, $microseconds ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- validated ints in a developer-facing rejection; escaping belongs to the display layer.
+		}
+
+		return $parsed->setTimezone( $timezone );
 	}
 }
