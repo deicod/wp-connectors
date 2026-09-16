@@ -4289,6 +4289,34 @@ FIXTURE;
             $this->assertStringContainsString('cannot resolve', $e->getMessage(), 'The post-block verdict is the no-declaration-in-effect one — the ledger\'s answer matches the unbraced equivalent.');
         }
 
+        /*
+         * Verifier round t31-ocr4-9: INLINE HTML is not the block's
+         * grammar — a close tag inside a braced block exits PHP mode
+         * and the block CONTINUES at re-entry (only a CODE '}' closes
+         * it), but the masker blanks string/comment bytes only, so an
+         * HTML '}' once expired the block early (a resolvable relative
+         * refused as 'cannot resolve') and an HTML '{' over-counted
+         * depth (a post-block relative spliced against the expired
+         * declaration — the misattribution class the expiry kills).
+         * Both legs judge through the verdict the ledger hands the
+         * resolution, and PHP itself draws the same line (__NAMESPACE__
+         * echoes the block's namespace past an HTML '}').
+         */
+        $html_close = "<?php\nnamespace Other {\n?>\n}\n<?php\n    use namespace\\Foo;\n}\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($html_close, 'OpenAiOauth', 'shared/src/BracedHtmlClose.php');
+            $this->fail('A relative past an HTML \'}\' but still INSIDE the braced block must resolve against the block — the HTML brace is not the close.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('outside the shared-namespace family', $e->getMessage(), 'The block is still in effect at the use — the refusal is the resolved-foreign one, never \'cannot resolve\'.');
+        }
+        $html_open = "<?php\nnamespace Other {\n?>\n<div>{</div>\n<?php\n    interface InBlock\n    {\n    }\n}\nuse namespace\\Foo;\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($html_open, 'OpenAiOauth', 'shared/src/BracedHtmlOpen.php');
+            $this->fail('A relative AFTER a closed braced block stands in GLOBAL scope even when inline HTML carried an extra \'{\' — the HTML brace is not an opener.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('cannot resolve', $e->getMessage(), 'The verdict is the no-declaration-in-effect one — the HTML \'{\' never deepened the block.');
+        }
+
         // The group-use PREFIX shape — a parse-error spelling whose
         // members the rewrite owns no map for — refuses by name.
         $group_prefix = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors\\{Shared\\Clock};\ninterface GroupRelFixture\n{\n}\n";

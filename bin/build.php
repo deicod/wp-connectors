@@ -476,6 +476,33 @@ final class WpConnectorsBuild
                 }
                 if (null === $masked) {
                     $masked = wp_connectors_mask_string_contents(wp_connectors_strip_comments($source));
+                    /*
+                     * INLINE HTML is not the block's grammar (verifier
+                     * round t31-ocr4-9): a close tag inside a braced
+                     * block exits PHP mode and the block CONTINUES at
+                     * re-entry — only a CODE '}' closes it (probed via
+                     * __NAMESPACE__ echoing the block's namespace past
+                     * an HTML '}') — but the masker blanks string and
+                     * comment bytes only, so an HTML '{'/'}' counter-
+                     * feited the close (both directions reproduced:
+                     * an HTML '}' expired the block early and refused
+                     * a resolvable relative; an HTML '{' over-counted
+                     * depth and let a post-block relative splice
+                     * against the expired declaration — the exact
+                     * misattribution class this expiry exists to
+                     * kill). The spans are blanked HERE, in the
+                     * ledger's own view, never in the ONE masker
+                     * owner: its conventions consumers see inline HTML
+                     * deliberately (this judgment is the ledger's).
+                     */
+                    $at = 0;
+                    foreach ($tokens as $html_token) {
+                        $html_len = strlen(is_array($html_token) ? $html_token[1] : $html_token);
+                        if (T_INLINE_HTML === (is_array($html_token) ? $html_token[0] : null)) {
+                            $masked = substr($masked, 0, $at) . str_repeat(' ', $html_len) . substr($masked, $at + $html_len);
+                        }
+                        $at += $html_len;
+                    }
                 }
                 $expires = wp_connectors_matching_brace_end($masked, $brace_offset);
             }
