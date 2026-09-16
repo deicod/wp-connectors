@@ -3,7 +3,8 @@
  * Provider throttling (Task 3.1).
  *
  * The provider answered with a throttle response (HTTP 429 family).
- * Retryable: the refresh coordination honors the provider-supplied
+ * Retryable: the refresh coordination (Task 3.3 — the DESIGN intent,
+ * no coordination exists yet) will honor the provider-supplied
  * Retry-After when present, under the policy's cap — an oversized
  * throttle must not suppress refreshes far past the outage, and the
  * absence of a Retry-After falls back to bounded exponential backoff.

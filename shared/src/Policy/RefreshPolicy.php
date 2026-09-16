@@ -10,12 +10,13 @@
  * is named or defaulted here.
  *
  * Cooldown bounding rule: a provider-supplied Retry-After (in EITHER
- * form — seconds or HTTP-date, parsed to seconds by the HTTP utilities)
- * and the exponential-backoff fallback share ONE cap, so an oversized
- * throttle cannot suppress refreshes far past the outage. The
- * cap-bounded clamp lives here as pure math; the sequencing (persisted
- * cooldown, attempt counting, scheduling) is the refresh coordination's
- * job.
+ * form — seconds or HTTP-date; BOTH forms are the CALLER's parse to
+ * seconds, the Task 3.2 HTTP/provider layer — no Retry-After parsing
+ * lives in shared/src) and the exponential-backoff fallback share ONE
+ * cap, so an oversized throttle cannot suppress refreshes far past the
+ * outage. The cap-bounded clamp lives here as pure math; the sequencing
+ * (persisted cooldown, attempt counting, scheduling) is the refresh
+ * coordination's job (Task 3.3).
  *
  * @since 0.1.0
  *
