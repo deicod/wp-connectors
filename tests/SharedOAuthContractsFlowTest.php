@@ -351,4 +351,93 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         $pending = PendingAuthorization::for_pkce(7, 'fixture-provider', $pair, new \DateTimeImmutable());
         $this->assertStringNotContainsString($verifier, print_r($pending, true), 'A nesting carrier reaches its payload only through the payload\'s own masked dump.');
     }
+
+    /**
+     * OCR-round-3 pin (t31-ocr3-1): the serialize() channel — the
+     * direct follow-on of the ocr2-1 doctrine (the HTTP value objects
+     * closed it in t31-ocr1-8, the token carrier and grant in
+     * t31-ocr2-1) on the LAST credential-bearing VOs still open: the
+     * pair (the RFC 7636 confidential half), the device session (both
+     * device-flow codes), and the nesting carrier that holds either
+     * by value. serialize() bypasses __debugInfo() by engine design,
+     * so the r11-5 dump hooks alone left the ENGINE serialization
+     * emitting the raw property tree into every persistence or queue
+     * payload built from the value. __serialize() rides the SAME
+     * masked view as the dump (the carrier's payload rides as the
+     * OBJECT, so the nested hook applies), the reconstruction
+     * channels refuse, and var_export() stays the one NAMED-EXCLUDED
+     * channel (no engine hook exists — pinned exactly as excluded, a
+     * future engine hook tightens the contract instead of silently
+     * understating it; the t31-ocr1-8 shape).
+     */
+    public function testTheSerializeChannelRendersTheFlowCredentialsMaskedAndRefusesToRebuild(): void
+    {
+        $verifier = FakeSecrets::codeVerifier();
+        $pair = PkceCodePair::from_verifier($verifier);
+
+        $payload = serialize($pair);
+        $this->assertStringNotContainsString($verifier, $payload, 'serialize() must never carry the confidential verifier.');
+        $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($verifier), $payload, 'The verifier rides its masked form.');
+        $this->assertStringContainsString($pair->code_challenge(), $payload, 'The public challenge half rides the payload as itself.');
+
+        $device_code = FakeSecrets::deviceCode();
+        $user_code = 'BCJK-3502';
+        $session = new DeviceAuthorizationSession($device_code, $user_code, 'https://example.com/device', 5, new \DateTimeImmutable('+10 minutes'));
+
+        $payload = serialize($session);
+        $this->assertStringNotContainsString($device_code, $payload, 'serialize() must never carry the device code (the poll credential).');
+        $this->assertStringNotContainsString($user_code, $payload, 'serialize() must never carry the user code (the pairing capability).');
+        $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($device_code), $payload, 'The device code rides its masked form.');
+        $this->assertStringContainsString('https://example.com/device', $payload, 'The public verification URI rides the payload as itself.');
+
+        // The nesting carrier composes: its own facts render as
+        // themselves, and the payload rides as the OBJECT — the
+        // engine applies the payload's own __serialize() at that
+        // level, so the carrier delegates, it does not re-decide the
+        // mask.
+        $pendingDevice = PendingAuthorization::for_device(7, 'fixture-provider', $session, new \DateTimeImmutable());
+        $payload = serialize($pendingDevice);
+        $this->assertStringNotContainsString($device_code, $payload, 'serialize() of the carrier must never carry the raw device code.');
+        $this->assertStringNotContainsString($user_code, $payload, 'serialize() of the carrier must never carry the raw user code.');
+        $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($device_code), $payload, 'The nested session rides its OWN masked serialize form.');
+
+        $pendingPkce = PendingAuthorization::for_pkce(7, 'fixture-provider', $pair, new \DateTimeImmutable());
+        $payload = serialize($pendingPkce);
+        $this->assertStringNotContainsString($verifier, $payload, 'serialize() of the carrier must never carry the raw verifier.');
+
+        // A container holding each shape (the queue/cache form) rides
+        // the same hooks through the graph.
+        $container = serialize(array('pkce' => $pair, 'device' => $session, 'pending' => $pendingDevice));
+        $this->assertStringNotContainsString($verifier, $container);
+        $this->assertStringNotContainsString($device_code, $container);
+        $this->assertStringNotContainsString($user_code, $container);
+
+        // The masked snapshots are not round-trip payloads: rebuilding refuses.
+        foreach (array($pair, $session, $pendingDevice, $pendingPkce) as $safe) {
+            try {
+                unserialize(serialize($safe));
+                $this->fail('A masked flow VO must never reconstruct from its own safe form (' . get_class($safe) . ').');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
+            }
+        }
+
+        // The eval channel refuses typed directly.
+        foreach (array(PkceCodePair::class, DeviceAuthorizationSession::class, PendingAuthorization::class) as $vo) {
+            try {
+                $vo::__set_state(array('code_verifier' => 'raw'));
+                $this->fail("__set_state() must refuse the raw export as a reconstruction source ({$vo}).");
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('never a payload', $e->getMessage());
+            }
+        }
+
+        // The one EXCLUDED channel, pinned exactly: var_export() dumps
+        // the raw property tree through no engine hook (the nested
+        // payload dumps raw too), and evaluating the dump never
+        // reconstructs — by the engine's own parse of the raw tree or
+        // by the __set_state() refusal above.
+        $export = var_export($pair, true);
+        $this->assertStringContainsString($verifier, $export, 'The documented exclusion is exact: var_export() dumps the raw tree through no hook — which is precisely why its reconstruction channel refuses.');
+    }
 }
