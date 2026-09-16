@@ -52,22 +52,38 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
      * list — a seventh type added to shared/src/Exception/ would
      * silently escape every family pin (catchability, finality, the
      * payload API). The list is pinned against the DIRECTORY it
-     * summarizes: the glob's class names must equal the concrete list
+     * summarizes: the tree's class names must equal the concrete list
      * plus the two named family anchors (the abstract base, the
      * transient marker) — the family grows only by growing both
      * together, and a stray file in the directory fails the pin too.
+     *
+     * OCR round 6 (t31-ocr6-13): the derivation is RECURSIVE now —
+     * the round-5 glob was flat, so the same escape it killed
+     * reopened one level down: a type in a future Exception/
+     * SUBDIRECTORY (PSR-4 maps it; the one-type-per-file gate's file
+     * set covers it) would miss the flat glob and slip every family
+     * pin while the pin's own message claimed to cover the whole
+     * directory. Still a pure FILE-SET pin composing with the
+     * one-type-per-file gate (the r5 adjudication stands: no
+     * tokenizing the Exception files) — the walk only names files,
+     * the PSR-4 spelling comes from the path.
      */
     public function testTheConcreteTypeListCoversTheWholeExceptionDirectory(): void
     {
+        $dir = dirname(__DIR__) . '/shared/src/Exception';
+        $base = strlen($dir) + 1;
         $from_tree = array();
-        foreach (glob(dirname(__DIR__) . '/shared/src/Exception/*.php') ?: array() as $file) {
-            $from_tree[] = 'Deicod\\WpConnectors\\Shared\\Exception\\' . basename($file, '.php');
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $file) {
+            if (! $file->isFile() || 'php' !== strtolower($file->getExtension())) {
+                continue;
+            }
+            $from_tree[] = 'Deicod\\WpConnectors\\Shared\\Exception\\' . str_replace('/', '\\', substr($file->getPathname(), $base, -4));
         }
         $listed = array_merge($this->concreteTypes(), array(OAuthRuntimeException::class, OAuthTransientException::class));
         sort($from_tree);
         sort($listed);
 
-        $this->assertSame($from_tree, $listed, 'concreteTypes() must cover every type in shared/src/Exception/ — a new file there grows the list or fails this pin.');
+        $this->assertSame($from_tree, $listed, 'concreteTypes() must cover every type anywhere under shared/src/Exception/ — a new file there, at any depth, grows the list or fails this pin.');
     }
 
     public function testBaseIsAbstractSoOnlySpecificTypesAreThrown(): void
