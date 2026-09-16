@@ -631,17 +631,12 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             $this->assertTrue($zip->addFile($staged, 'staged-source.php'));
             unlink($staged);
             $addReportedFailure = true !== @$zip->addFile($staged, 'vanished-source.php');
-            $closeWarnings = array();
-            set_error_handler(static function (int $errno, string $errstr) use (&$closeWarnings): bool {
-                $closeWarnings[] = $errstr;
-
-                return true;
-            });
-            try {
-                $closeReportedFailure = true !== @$zip->close();
-            } finally {
-                restore_error_handler();
-            }
+            // The @ is the whole suppression (t31-ocr6-16, the round's
+            // own verifier pass): an error-handler capture here was
+            // dead code — collected, never asserted — and redundant
+            // beside @ (the suite's warning conversion ignores calls
+            // made under it). The boolean verdict is the pin.
+            $closeReportedFailure = true !== @$zip->close();
             $this->assertTrue(
                 $addReportedFailure || $closeReportedFailure,
                 'A vanished staged source must fail the add+close sequence by close time at the latest — whichever libzip build shape (stat-at-add or deferred read) this runtime rides, the sequence never silently succeeds.'
