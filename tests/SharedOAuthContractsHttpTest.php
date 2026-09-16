@@ -1464,6 +1464,18 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask(null));
         $this->assertSame('…', SecretMask::mask(''));
         $this->assertSame('…', SecretMask::mask('short'));
+
+        /*
+         * OCR-round-6 pin (t31-ocr6-1): the canonical RFC 8628 user code
+         * ('BCJK-3502', nine characters with its separator) sat one
+         * character above the old threshold of 8 and rendered '…3502' —
+         * half the code's entropy for a value that is itself a
+         * short-lived credential. OTP-class values render the bare mask
+         * now: the threshold boundary is pinned from both sides.
+         */
+        $this->assertSame('…', SecretMask::mask('BCJK-3502'), 'A nine-character user code renders the bare mask — never a visible tail on OTP-class values.');
+        $this->assertSame('…', SecretMask::mask('abcdefghijkl'), 'A twelve-character value sits at the threshold: bare mask.');
+        $this->assertSame('…jklm', SecretMask::mask('abcdefghijklm'), 'A thirteen-character value is the first to show the correlation tail.');
         $this->assertSame('…wxyz', SecretMask::mask('abcdefghijklmnopwxyz'));
     }
 
@@ -1474,13 +1486,13 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
      */
     public function testMaskOfMultibyteSecretsNeverSplitsACharacter(): void
     {
-        // 13 characters, 17 bytes; the four-character tail is entirely
+        // 14 characters, 18 bytes; the four-character tail is entirely
         // two-byte sequences.
-        $this->assertSame('…öööö', SecretMask::mask('aaaaaaaaöööö'));
+        $this->assertSame('…öööö', SecretMask::mask('aaaaaaaaaaöööö'));
 
         // Four-byte sequences (emoji): the tail covers four complete
         // characters, up to sixteen bytes.
-        $this->assertSame('…😀😀😀😀', SecretMask::mask('😀😀😀😀😀😀😀😀😀'));
+        $this->assertSame('…😀😀😀😀', SecretMask::mask('😀😀😀😀😀😀😀😀😀😀😀😀😀'));
 
         // Fewer than eight CHARACTERS shows nothing, however many bytes
         // the value carries (the old byte threshold split this shape).
@@ -1535,7 +1547,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
 
     public function testMaskedMultibyteSecretRendersThroughTheRequestForm(): void
     {
-        $token = 'xxxxxxxxé';
+        $token = 'xxxxxxxxxxxxé';
         $rendered = (string) new HttpRequest(
             'POST',
             'https://token-endpoint.example/',

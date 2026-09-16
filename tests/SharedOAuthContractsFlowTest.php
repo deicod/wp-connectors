@@ -348,6 +348,11 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($device_code), $dumped, 'The device code dumps in its masked form.');
         $this->assertStringContainsString('https://example.com/device', $dumped, 'The public verification URI dumps as itself.');
 
+        // OCR-round-6 pin (t31-ocr6-1): a nine-character user code
+        // renders the BARE mask in the dump channel — the old threshold
+        // of 8 showed '…3502', half the code's entropy.
+        $this->assertStringNotContainsString('3502', $dumped, 'The dump channel never shows a visible tail on OTP-class values (the RFC 8628 user-code shape).');
+
         $pending = PendingAuthorization::for_pkce(7, 'fixture-provider', $pair, new \DateTimeImmutable());
         $this->assertStringNotContainsString($verifier, print_r($pending, true), 'A nesting carrier reaches its payload only through the payload\'s own masked dump.');
     }
@@ -389,6 +394,11 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString($user_code, $payload, 'serialize() must never carry the user code (the pairing capability).');
         $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($device_code), $payload, 'The device code rides its masked form.');
         $this->assertStringContainsString('https://example.com/device', $payload, 'The public verification URI rides the payload as itself.');
+
+        // The serialize channel rides the same raised threshold
+        // (t31-ocr6-1): the nine-character user code is bare-masked
+        // here too — the tail never rides a snapshot payload either.
+        $this->assertStringNotContainsString('3502', $payload, 'serialize() never shows a visible tail on OTP-class values.');
 
         // The nesting carrier composes: its own facts render as
         // themselves, and the payload rides as the OBJECT — the

@@ -56,14 +56,27 @@ final class SecretMask {
 	/**
 	 * Shortest secret whose tail is shown at all.
 	 *
-	 * At or below this length, four visible characters would reveal half
-	 * the secret or more, so the mask shows nothing.
+	 * At or below this length, four visible characters would reveal a
+	 * third of the secret or more, so the mask shows nothing.
+	 *
+	 * OCR round 6 (t31-ocr6-1, the first shared/src security finding
+	 * since round 3 — a tail-length policy gap, not a new channel): the
+	 * canonical RFC 8628 user code ('BCJK-3502', nine characters with
+	 * its separator) sat one character above the old threshold of 8 and
+	 * rendered '…3502' — half the code's entropy on screen, for a value
+	 * that is ITSELF a short-lived credential a dump should never help
+	 * use. The visible-tail policy must never expose a tail of a value
+	 * that short: OTP-class values (user codes, device codes of 12
+	 * characters or fewer) render the bare mask; longer values keep the
+	 * correlation tail. The policy is one threshold at this owner —
+	 * every credential-bearing consumer (the flow VOs' codes, the token
+	 * set, masked headers) rides it, none re-decides it.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @var int
 	 */
-	const MIN_LENGTH_FOR_VISIBLE_TAIL = 8;
+	const MIN_LENGTH_FOR_VISIBLE_TAIL = 12;
 
 	/**
 	 * Header names (lowercase) whose values are always masked.
