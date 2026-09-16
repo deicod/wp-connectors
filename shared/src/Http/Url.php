@@ -160,6 +160,24 @@ final class Url {
 		}
 
 		/*
+		 * The CONTENT leg of the same screen (OCR round 2, t31-ocr2-5):
+		 * the pair leg validates placement and pairing, never the
+		 * literal itself — 'http://[abc]/x' passed every screen,
+		 * parse_url() returned host '[abc]', and the value object
+		 * constructed with an authority that is NOT an IPv6 literal,
+		 * contradicting the refusal message's own claim ("one
+		 * well-formed IP literal"). The rule enforces its own words
+		 * now: the bracketed literal must be a well-formed IPv6
+		 * address (the engine's FILTER_VALIDATE_IP probe on the inner
+		 * literal — brackets off), so a bracket spelling that merely
+		 * looks like an IP literal refuses exactly like its malformed
+		 * siblings.
+		 */
+		if ( $well_formed_bracket_pair && false === filter_var( (string) substr( $host_port, 1, (int) $bracket_end - 1 ), FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 ) ) {
+			throw new InvalidArgumentException( 'A bracketed host must be a well-formed IPv6 address ("[2001:db8::1]") — the bracket shape alone does not make an IP literal, and an authority like "[abc]" is a malformed host no client means to send.' );
+		}
+
+		/*
 		 * The glued-authority leg of the same screen (verifier round
 		 * t31-r11-3, generalized by t31-r11-11): the colon search
 		 * starts AFTER the closing ']', so anything glued straight to

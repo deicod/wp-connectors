@@ -301,6 +301,63 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-2 pin (t31-ocr2-5), beside the r11-11/r12-2 bracket
+     * pins: the screen validated placement and pairing, never the
+     * literal's CONTENT — 'http://[abc]/x' passed every screen and the
+     * VO constructed with an authority that is not an IPv6 literal,
+     * contradicting the refusal message's own claim ("one well-formed
+     * IP literal"). The literal itself is judged now (engine
+     * FILTER_VALIDATE_IP, IPV6 flag, on the inner literal), the
+     * garbage refuses, and the true literals stay green — including
+     * the glued-garbage twin, which still refuses at ITS screen (the
+     * inner literal '::1' is legal; the refusal is the glue's).
+     */
+    public function testABracketedHostThatIsNotAnIpv6LiteralIsRejected(): void
+    {
+        $hostile_urls = array(
+            'the repro (letters)' => 'http://[abc]/x',
+            'https twin' => 'https://[abc]/token',
+            'bad hex digit' => 'http://[1234::g]/x',
+            'five groups' => 'http://[1:2:3:4:5]/x',
+            'dotted quad inside brackets' => 'http://[127.0.0.1]/x',
+            'zone id spelling' => 'http://[fe80::1%25eth0]/x',
+            'userinfo does not hide it' => 'http://user:pw@[abc]/x',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A bracketed host that is not an IPv6 literal (%s) must be rejected by the shared URL owner.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must be a well-formed IPv6 address', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A bracketed host that is not an IPv6 literal (%s) must be rejected by the request VO too.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must be a well-formed IPv6 address', $e->getMessage());
+            }
+        }
+
+        // Glued garbage with a LEGAL inner literal still refuses at its
+        // own (glue) screen — the content leg does not swallow it.
+        try {
+            Url::parse_validated('http://[::1]x/');
+            $this->fail('Garbage glued to a legal IPv6 literal must still refuse.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('bracketed host must be followed by a colon port', $e->getMessage());
+        }
+
+        // The true literals stay green: loopback, full form, and the
+        // port-bearing shape with the rebuilt authority intact.
+        $this->assertSame('[::1]', Url::parse_validated('http://[::1]/token')['authority']);
+        $this->assertSame('[2001:db8::1]', Url::parse_validated('http://[2001:db8::1]/token')['authority']);
+        $this->assertSame('[2001:db8::1]:8443', Url::parse_validated('http://[2001:db8::1]:8443/token')['authority']);
+        $this->assertSame('[ffff::1]', Url::parse_validated('http://[FFFF::1]/token')['authority'], 'Uppercase hex is legal IPv6 (the rebuilt authority folds it, as every host folds).');
+    }
+
+    /**
      * Review-round pin (t31-r12-8): the post-parse host re-check. The
      * whole-URL UTF-8 probe at entry guarantees the INPUT bytes; the
      * rebuilt authority (parsed host + case fold) is re-validated on
