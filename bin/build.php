@@ -806,6 +806,24 @@ final class WpConnectorsBuild
      * and this seam does not misname it. Group-use bodies are OWNED
      * (the member rewrite carries their commas at depth ≥ 1).
      *
+     * The TRAIT-CONTEXT carve (verifier-pass fix t31-ocr7-7, over the
+     * r7-2 carve above — the correctness lens drove both misses): a
+     * use statement inside a NON-namespace block is a TRAIT use
+     * (imports live at the top level or inside a braced namespace
+     * block; trait clause lists live inside class bodies), and the
+     * r7-2 carve only knew the BRACED clause shape — a BRACELESS
+     * clause list (`use TraitA, FamilyTrait;`, legal PHP) wore the
+     * import-list class, and the comment label carried NO carve at
+     * all, so an adaptation carrying a comment wore 'move the comment
+     * outside the statement' — a dead errand: the identical shape
+     * minus the comment still refuses (the r10-1 doctrine owns that
+     * refusal; the rewriter owns no adaptation spelling). A trait use
+     * reports NO class — the anonymous verdict is its doctrine's own.
+     * The context is a brace-kind stack: every '{' outside a use
+     * statement opens a 'namespace' block (the brace follows the
+     * `namespace` keyword's declaration run) or an 'other' block; a
+     * use statement with any 'other' frame below it is a trait use.
+     *
      * @param string $source           The rewritten bytes (the postcondition's subject).
      * @param int    $reference_offset The surviving reference's byte offset.
      * @return string|null The named spelling class, or null (the anonymous backstop).
@@ -817,6 +835,8 @@ final class WpConnectorsBuild
         $offset = 0;
         $in_use = false;
         $hit = false;
+        $trait_context = false;
+        $context = array();
         $brace_depth = 0;
         $saw_statement_brace = false;
         $saw_depth_zero_comma = false;
@@ -831,11 +851,20 @@ final class WpConnectorsBuild
             if (! $in_use) {
                 if (T_USE === $id && wp_connectors_use_opens_import($tokens, $i)) {
                     $in_use = true;
+                    $trait_context = in_array('other', $context, true);
                     $brace_depth = 0;
                     $saw_statement_brace = false;
                     $saw_depth_zero_comma = false;
                     $saw_comment = false;
                     $terminated_by_close_tag = false;
+                } elseif ('{' === $token) {
+                    // The brace-kind stack (t31-ocr7-7): what OPENED the
+                    // block decides whether a use statement inside it is
+                    // an import (top level, or a braced namespace block)
+                    // or a trait clause list (any other block).
+                    $context[] = self::braceOpensNamespaceBlock($tokens, $i) ? 'namespace' : 'other';
+                } elseif ('}' === $token && $context !== array()) {
+                    array_pop($context);
                 }
 
                 continue;
@@ -872,6 +901,11 @@ final class WpConnectorsBuild
         if (! $hit) {
             return null;
         }
+        if ($trait_context) {
+            // A trait use carries no import class (t31-ocr7-7): the
+            // anonymous verdict IS its doctrine's refusal.
+            return null;
+        }
         $labels = array();
         if ($saw_depth_zero_comma && ! $saw_statement_brace) {
             $labels[] = 'a comma-separated import list (use A\\B, C\\D;) — the rewrite owns one import per statement; write one use per line';
@@ -885,6 +919,40 @@ final class WpConnectorsBuild
         }
 
         return $labels === array() ? null : implode('; ', $labels);
+    }
+
+    /**
+     * Whether a '{' token at an index opens a BRACED NAMESPACE BLOCK
+     * (the classifier's brace-kind stack, t31-ocr7-7) — the one block
+     * kind inside which a use statement is still an IMPORT.
+     *
+     * The brace opens a namespace block exactly when walking back over
+     * code tokens crosses only the declaration's name run (name tokens
+     * and separators, `namespace X {` and `namespace Deicod \
+     * \ WpConnectors {` alike) and lands on the `namespace` keyword —
+     * which includes the run-less global block `namespace {`. Every
+     * other brace (a class, a function, a control block) is 'other',
+     * and a use statement under it is a trait clause list.
+     *
+     * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
+     * @param int                                             $at     Index of the '{' token.
+     * @return bool True when the brace opens a namespace block.
+     */
+    private static function braceOpensNamespaceBlock(array $tokens, $at)
+    {
+        $previous = wp_connectors_previous_code_token_index($tokens, $at - 1);
+        while (null !== $previous) {
+            $previous_id = is_array($tokens[ $previous ]) ? $tokens[ $previous ][0] : null;
+            if (wp_connectors_is_name_token_id($previous_id) || T_NS_SEPARATOR === $previous_id) {
+                $previous = wp_connectors_previous_code_token_index($tokens, $previous - 1);
+
+                continue;
+            }
+
+            return T_NAMESPACE === $previous_id;
+        }
+
+        return false;
     }
 
     /**

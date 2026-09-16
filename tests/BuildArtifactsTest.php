@@ -3898,6 +3898,33 @@ FIXTURE;
         }
 
         /*
+         * Verifier-pass fix (t31-ocr7-7, over the r7-2 comma carve —
+         * the correctness lens drove both misses): TRAIT clause lists
+         * carry NO import class. The r7-2 carve knew only the braced
+         * shape (`use A, B {…}`); a BRACELESS clause list
+         * (`use TraitA, FamilyTrait;` inside a class — legal PHP, no
+         * '{' signal) wore the comma-list class, and the comment label
+         * had no carve at all, so a commented adaptation wore 'move
+         * the comment outside the statement' — a dead errand (the
+         * identical shape minus the comment still refuses: the r10-1
+         * doctrine owns the refusal, the rewriter owns no adaptation
+         * spelling). Both shapes keep the ANONYMOUS verdict now.
+         */
+        $trait_shapes = array(
+            'braceless trait clause list' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait TraitShapeA { public function s(): void {} }\nfinal class BracelessClauseStore\n{\n    use TraitShapeA, Deicod\\WpConnectors\\Shared\\ClockFamily;\n}\n",
+            'commented trait adaptation clause' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait CommentShapeA { public function s(): void {} }\nfinal class CommentedClauseStore\n{\n    use CommentShapeA, Deicod\\WpConnectors\\Shared\\ClockFamily { /* pick one */ CommentShapeA::s insteadof ClockFamily; }\n}\n",
+        );
+        foreach ($trait_shapes as $label => $source) {
+            try {
+                WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/TraitShape.php');
+                $this->fail("A family trait clause ({$label}) must refuse the rewrite — the rewriter owns no adaptation spelling.");
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('survived the rewrite', $e->getMessage(), "The refusal stands ({$label}).");
+                $this->assertStringNotContainsString('spelling class the rewrite does not own', $e->getMessage(), "A trait clause list wears NO import class ({$label}) — the anonymous verdict is its doctrine's own, and the class guidance would be a dead errand.");
+            }
+        }
+
+        /*
          * Soundness of the total scan (the round's design mandate,
          * verified empirically then pinned): scanning the REAL tree's
          * rewrites must stay clean for every legal suffix shape. A false
