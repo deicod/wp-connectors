@@ -219,6 +219,27 @@ final class HarnessCopyTreeTest extends TestCase
             $refuses($plain . '/root-link', 'root-link', 'A symlinked SOURCE ROOT must refuse the copy — the copy twin of rrmdir()\'s link-at-root guard.');
 
             /*
+             * The trailing-slash spelling (t31-ocr8-2): is_link()
+             * resolves THROUGH a trailing slash, so the pre-fix root
+             * guard passed — the only refusal left standing was the
+             * INCIDENTAL relativize verdict of the ocr6-4 arm (an
+             * unrelated class naming a doubled slash, not the link).
+             * The probe reads the slash-stripped spelling now: the
+             * verdict names the LINK class, never the disguise.
+             */
+            $caught = null;
+            try {
+                WpHarness::copyTree($plain . '/root-link/', $to);
+            } catch (RuntimeException $e) {
+                $caught = $e;
+            }
+            if (null === $caught) {
+                $this->fail('A TRAILING-SLASH symlinked SOURCE ROOT must refuse the copy — a slash is not a disguise.');
+            }
+            $this->assertStringContainsString('symlinked source tree', $caught->getMessage(), 'The verdict names the LINK class (the slash-stripped probe), never the incidental relativize refusal that fired pre-fix.');
+            $this->assertStringContainsString('root-link', $caught->getMessage());
+
+            /*
              * No nothing-landed assertion here (verifier round t31-ocr4-8):
              * copyTree() refuses at the first link the ITERATOR REACHES,
              * and yield order is the filesystem's (ext4 readdir order put

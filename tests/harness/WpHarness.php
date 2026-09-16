@@ -455,6 +455,17 @@ final class WpHarness
      */
     public static function rrmdir($dir)
     {
+        /*
+         * A trailing slash defeats is_link() (the engine's stat
+         * resolves THROUGH the link, so lstat never sees the link
+         * itself), and is_dir() then follows it — the walk below
+         * would empty the TARGET tree, the exact pre-plant shape the
+         * root guard exists to stop (OCR round 8, t31-ocr8-2). The
+         * root '/' itself must survive the strip.
+         */
+        if ('/' !== $dir) {
+            $dir = rtrim($dir, '/');
+        }
         if (is_link($dir)) {
             return;
         }
@@ -525,7 +536,16 @@ final class WpHarness
      */
     public static function copyTree($from, $to)
     {
-        if (is_link($from)) {
+        /*
+         * The root-link probe reads the slash-stripped spelling: a
+         * trailing slash defeats is_link() (stat resolves THROUGH the
+         * link), and the iterator would then walk the TARGET tree —
+         * the copy twin of rrmdir()'s guard, same bypass (t31-ocr8-2).
+         * Only the PROBE strips: a trailing-slash source keeps its
+         * own loud refusal at the relativize arm (t31-ocr6-4), so the
+         * refusal message still names the spelling the caller passed.
+         */
+        if (is_link('/' !== $from ? rtrim($from, '/') : $from)) {
             throw new RuntimeException('WpHarness::copyTree() refuses a symlinked source tree — never followed, never silently skipped: ' . $from);
         }
         if (! is_dir($from)) {

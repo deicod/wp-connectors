@@ -3292,6 +3292,20 @@ FIXTURE;
             $this->assertFileExists($victim . '/inner/keep.txt', 'The harness removal twin never deletes through a root link either — the target tree survives.');
             $this->assertFileExists($victim . '/keep2.txt', 'The harness removal twin never deletes through a root link either.');
             $this->assertTrue(is_link($harnessRootLink), 'A link at the harness removal root stands exactly where it is.');
+
+            /*
+             * The trailing-slash spelling (t31-ocr8-2): is_link()
+             * resolves THROUGH a trailing slash (lstat never sees the
+             * link), so the pre-fix guard passed and the walk emptied
+             * the TARGET tree — the exact pre-plant shape. The path is
+             * normalized before the probes now; the target survives,
+             * the link stands.
+             */
+            WpHarness::rrmdir($harnessRootLink . '/');
+
+            $this->assertFileExists($victim . '/inner/keep.txt', 'A TRAILING-SLASH link at the removal root is still a link — never deleted through.');
+            $this->assertFileExists($victim . '/keep2.txt', 'A TRAILING-SLASH link at the removal root is still a link — the target tree survives.');
+            $this->assertTrue(is_link($harnessRootLink), 'The trailing-slash spelling does not smuggle the link past the root guard.');
         } finally {
             if (is_link($scratch . '/stage-link')) {
                 unlink($scratch . '/stage-link');
