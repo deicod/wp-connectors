@@ -1502,6 +1502,27 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         // characters, up to sixteen bytes.
         $this->assertSame('…😀😀😀😀', SecretMask::mask('😀😀😀😀😀😀😀😀😀😀😀😀😀'));
 
+        /*
+         * OCR-round-8 legs (t31-ocr8-8): collapsing the grammar's two
+         * spellings drove their byte-equivalence (94,080 cases), and
+         * the drive REFUTED the regex twin's F4 clause — its
+         * quantifier demanded FIVE bytes (invalid, beyond U+10FFFF)
+         * and rejected the valid four-byte F4 plane, so mask() could
+         * ship an invalid-UTF-8 tail for the five-byte shape and shed
+         * the valid plane's complete characters. The walk (the render
+         * seam's table — engine-verified on both shapes) is the one
+         * spelling now; both legs were red under the regex twin.
+         */
+        // The valid four-byte F4 character (U+100000): the tail shows
+        // the COMPLETE character (the regex twin shed it to nothing).
+        $f4_char = "\xF4\x80\x80\x80";
+        $this->assertSame('…xxx' . $f4_char, SecretMask::mask('xxxxxxxxxxxx' . $f4_char), 'A U+100000 character is valid UTF-8 — its tail renders complete, never shed to the bare mask.');
+        $this->assertNotFalse(json_encode(SecretMask::mask('xxxxxxxxxxxx' . $f4_char)));
+        // The FIVE-byte F4 shape is invalid UTF-8 (beyond U+10FFFF):
+        // the regex twin called it valid — mask() would have shipped
+        // it raw. Every candidate slice carries it: the bare mask.
+        $this->assertSame('…', SecretMask::mask("xxxxxxxxxxxx\xF4\x80\x80\x80\x80"), 'The five-byte F4 shape is beyond U+10FFFF — never shipped as a tail the regex mistook for valid.');
+
         // Fewer than eight CHARACTERS shows nothing, however many bytes
         // the value carries (the old byte threshold split this shape).
         $this->assertSame('…', SecretMask::mask('ööö'));

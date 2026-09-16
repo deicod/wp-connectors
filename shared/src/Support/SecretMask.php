@@ -98,19 +98,6 @@ final class SecretMask {
 	const SENSITIVE_HEADER_NAMES = array( 'authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'location' );
 
 	/**
-	 * One well-formed UTF-8 sequence (the canonical byte grammar).
-	 *
-	 * Used to prove a candidate tail is standalone-valid UTF-8; no /u
-	 * modifier, so an arbitrary byte string is simply matched, never
-	 * rejected by the engine itself.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
-	 */
-	private const UTF8_SEQUENCE_PATTERN = '/\A(?:[\x00-\x7F]|[\xC2-\xDF][\x80-\xBF]|\xE0[\xA0-\xBF][\x80-\xBF]|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}|\xED[\x80-\x9F][\x80-\xBF]|\xF0[\x90-\xBF][\x80-\xBF]{2}|[\xF1-\xF3][\x80-\xBF]{3}|\xF4[\x80-\x8F][\x80-\xBF]{3})*\z/';
-
-	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
 	 *
 	 * Null and short values (at or below the minimum length, counted in
@@ -134,7 +121,7 @@ final class SecretMask {
 		// mid-sequence, or carrying one, is not); empty means the bare
 		// mask — never a partial character.
 		$tail = self::tail_bytes_of_last_characters( $value, self::VISIBLE_TAIL );
-		while ( '' !== $tail && 1 !== preg_match( self::UTF8_SEQUENCE_PATTERN, $tail ) ) {
+		while ( '' !== $tail && ! self::is_standalone_valid_utf8( $tail ) ) {
 			$tail = self::without_leading_character( $tail );
 		}
 
@@ -186,61 +173,114 @@ final class SecretMask {
 		$rendered = '';
 		$length   = \strlen( $value );
 		for ( $i = 0; $i < $length; ) {
-			$lead = \ord( $value[ $i ] );
-			if ( $lead < 0x80 ) {
-				$rendered .= $value[ $i ];
-				++$i;
+			$sequence = self::utf8_sequence_length_at( $value, $i );
+			if ( $sequence > 0 ) {
+				$rendered .= substr( $value, $i, $sequence );
+				$i        += $sequence;
 				continue;
 			}
 
 			/*
-			 * The canonical grammar (the table UTF8_SEQUENCE_PATTERN
-			 * spells as one regex): the lead byte's class fixes the
-			 * sequence length and the constraints that reject overlong
-			 * and out-of-range spellings. A byte (or run) the grammar
-			 * cannot accept percent-encodes ONE byte at a time — the
-			 * bytes after it get their own judgment.
+			 * A byte (or run) the canonical grammar cannot accept
+			 * percent-encodes ONE byte at a time — the bytes after it
+			 * get their own judgment.
 			 */
-			$sequence  = 0;
-			$first_min = 0x80;
-			$first_max = 0xBF;
-			if ( $lead >= 0xC2 && $lead <= 0xDF ) {
-				$sequence = 2;
-			} elseif ( 0xE0 === $lead ) {
-				$sequence  = 3;
-				$first_min = 0xA0;
-			} elseif ( ( $lead >= 0xE1 && $lead <= 0xEC ) || 0xEE === $lead || 0xEF === $lead ) {
-				$sequence = 3;
-			} elseif ( 0xED === $lead ) {
-				$sequence  = 3;
-				$first_max = 0x9F;
-			} elseif ( 0xF0 === $lead ) {
-				$sequence  = 4;
-				$first_min = 0x90;
-			} elseif ( $lead >= 0xF1 && $lead <= 0xF3 ) {
-				$sequence = 4;
-			} elseif ( 0xF4 === $lead ) {
-				$sequence  = 4;
-				$first_max = 0x8F;
-			}
-			$valid = $sequence > 0 && $i + $sequence <= $length;
-			if ( $valid ) {
-				$first = \ord( $value[ $i + 1 ] );
-				$valid = ( $first & 0xC0 ) === 0x80 && $first >= $first_min && $first <= $first_max;
-				for ( $j = 2; $valid && $j < $sequence; $j++ ) {
-					$valid = ( \ord( $value[ $i + $j ] ) & 0xC0 ) === 0x80;
-				}
-			}
-			if ( $valid ) {
-				$rendered .= substr( $value, $i, $sequence );
-				$i        += $sequence;
-			} else {
-				$rendered .= sprintf( '%%%02X', $lead );
-				++$i;
-			}
+			$rendered .= sprintf( '%%%02X', \ord( $value[ $i ] ) );
+			++$i;
 		}
 
 		return $rendered;
+	}
+
+	/**
+	 * The length of the well-formed UTF-8 sequence starting at $i, or 0
+	 * when the byte there begins none — the canonical byte grammar's ONE
+	 * spelling (OCR round 8, t31-ocr8-8: the regex table and the
+	 * hand-rolled lead/continuation walk this file carried were two
+	 * spellings of one grammar with no structural tie — a range fix
+	 * landing on one silently drifted the other; both consumers ride
+	 * this validator now, the regex twin is deleted).
+	 *
+	 * The lead byte's class fixes the sequence length and the
+	 * first-continuation constraints that reject overlong and
+	 * out-of-range spellings (C0/C1, E0 80-9F, ED A0-BF, F0 80-8F,
+	 * F4 90-BF); later continuation bytes must be 80-BF; a sequence
+	 * truncated by the string's end is not one. Byte-matched only,
+	 * never the /u modifier, so an arbitrary byte string is simply
+	 * judged, never rejected by the engine itself.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $value The bytes to judge.
+	 * @param int    $i     The offset of the candidate lead byte.
+	 * @return int The sequence's byte length (0 when no valid sequence starts at $i).
+	 */
+	private static function utf8_sequence_length_at( string $value, int $i ): int {
+		$length = \strlen( $value );
+		$lead   = \ord( $value[ $i ] );
+		if ( $lead < 0x80 ) {
+			return 1;
+		}
+
+		$sequence  = 0;
+		$first_min = 0x80;
+		$first_max = 0xBF;
+		if ( $lead >= 0xC2 && $lead <= 0xDF ) {
+			$sequence = 2;
+		} elseif ( 0xE0 === $lead ) {
+			$sequence  = 3;
+			$first_min = 0xA0;
+		} elseif ( ( $lead >= 0xE1 && $lead <= 0xEC ) || 0xEE === $lead || 0xEF === $lead ) {
+			$sequence = 3;
+		} elseif ( 0xED === $lead ) {
+			$sequence  = 3;
+			$first_max = 0x9F;
+		} elseif ( 0xF0 === $lead ) {
+			$sequence  = 4;
+			$first_min = 0x90;
+		} elseif ( $lead >= 0xF1 && $lead <= 0xF3 ) {
+			$sequence = 4;
+		} elseif ( 0xF4 === $lead ) {
+			$sequence  = 4;
+			$first_max = 0x8F;
+		}
+		if ( 0 === $sequence || $i + $sequence > $length ) {
+			return 0;
+		}
+
+		$first = \ord( $value[ $i + 1 ] );
+		if ( ( $first & 0xC0 ) !== 0x80 || $first < $first_min || $first > $first_max ) {
+			return 0;
+		}
+		for ( $j = 2; $j < $sequence; $j++ ) {
+			if ( ( \ord( $value[ $i + $j ] ) & 0xC0 ) !== 0x80 ) {
+				return 0;
+			}
+		}
+
+		return $sequence;
+	}
+
+	/**
+	 * Whether every byte of the value belongs to exactly one
+	 * well-formed sequence — mask()'s standalone-tail proof (the former
+	 * regex twin's charge, riding the one spelling since t31-ocr8-8).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $value The bytes to judge.
+	 * @return bool True when the whole value is well-formed UTF-8.
+	 */
+	private static function is_standalone_valid_utf8( string $value ): bool {
+		for ( $i = 0, $length = \strlen( $value ); $i < $length; ) {
+			$sequence = self::utf8_sequence_length_at( $value, $i );
+			if ( 0 === $sequence ) {
+				return false;
+			}
+			$i += $sequence;
+		}
+
+		return true;
 	}
 
 	/**
