@@ -222,10 +222,18 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
         $below_root = strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1;
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
-            $parts = explode(DIRECTORY_SEPARATOR, (string) substr($file->getPathname(), $below_root));
-            foreach ($parts as $part) {
-                if ($excluded !== array() && wp_connectors_segment_is_named($part, $excluded)) {
-                    continue 2;
+            // The segment walk exists ONLY to prune, and pruning is
+            // constant for the whole walk: with $prune_dev_segments
+            // false (the artifact scan) the inner guard was provably
+            // never true, yet the explode+segment loop still ran per
+            // file — skipped entirely now (t31-ocr9-6; behavior
+            // identical: nothing prunes either way).
+            if ($prune_dev_segments) {
+                $parts = explode(DIRECTORY_SEPARATOR, (string) substr($file->getPathname(), $below_root));
+                foreach ($parts as $part) {
+                    if (wp_connectors_segment_is_named($part, $excluded)) {
+                        continue 2;
+                    }
                 }
             }
             if (! $file->isFile() || $file->getSize() > 2 * 1024 * 1024) {

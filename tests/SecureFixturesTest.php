@@ -224,6 +224,45 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-9 pin (t31-ocr9-6): the artifact scan (prune off)
+     * never prunes — a dev-shaped segment inside a fully extracted
+     * artifact is the SIGNAL, not a skip (the r12-3 doctrine) — and
+     * the per-file segment walk is now skipped entirely when pruning
+     * is off (it existed only to prune; its inner guard was constant
+     * for the whole walk). This pins UNCHANGED VERDICTS over a fixture
+     * tree on both sides of the flag: the repo scan prunes the
+     * dev-shaped segment, the artifact scan reads straight through it,
+     * and neither verdict changes shape.
+     */
+    public function testTheArtifactScanNeverPrunesAndTheRepoScanKeepsItsVerdicts()
+    {
+        $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+
+        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-artifact-' . getmypid();
+        if (is_dir($tempDir)) {
+            WpHarness::rrmdir($tempDir);
+        }
+        mkdir($tempDir . '/VENDOR', 0755, true);
+        mkdir($tempDir . '/plain', 0755, true);
+        file_put_contents($tempDir . '/VENDOR/leak.conf', "api_key = {$zaiKey}\n");
+        file_put_contents($tempDir . '/plain/leak.conf', "api_key = {$zaiKey}\n");
+
+        try {
+            $repoReport = implode("\n", wp_connectors_scan_paths(array( $tempDir ), true));
+            $artifactReport = implode("\n", wp_connectors_scan_paths(array( $tempDir ), false));
+
+            $this->assertStringNotContainsString('VENDOR', $repoReport, 'The repo scan keeps pruning the dev-shaped segment.');
+            $this->assertStringContainsString('plain/leak.conf', $repoReport, 'The repo scan keeps its coverage verdict outside the segment.');
+
+            $this->assertStringContainsString('VENDOR/leak.conf', $artifactReport, 'The artifact scan reads straight through the dev-shaped segment — its verdict unchanged.');
+            $this->assertStringContainsString('plain/leak.conf', $artifactReport, 'The artifact scan keeps the plain verdict too.');
+            $this->assertStringNotContainsString($zaiKey, $artifactReport, 'Findings still never echo the secret itself.');
+        } finally {
+            WpHarness::rrmdir($tempDir);
+        }
+    }
+
+    /**
      * OCR-round-3 pin (t31-ocr3-5): the scanner library is
      * self-contained on its own load path. The prune's fold mechanic
      * (wp_connectors_segment_is_named()) lives in the vocabulary owner
