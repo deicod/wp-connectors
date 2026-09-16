@@ -87,9 +87,22 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     /**
      * The provider-neutrality pattern, DERIVED from the provider set
      * (t31-r10-6): every provider ID plus its vendor aliases, word-
-     * bounded and case-insensitive (PHP names are), preg_quoted so a
+     * fenced and case-insensitive (PHP names are), preg_quoted so a
      * dotted spelling ('z.ai') keeps its literal byte. Derived, never
      * hand-spelled — the set is the single vocabulary.
+     *
+     * The TRAILING fence is the r4-11 letter-aware lookahead, not
+     * '\b' (t31-ocr5-8, mirroring the WP_TOKEN_PATTERN mechanism this
+     * same file adjudicated for the WP stems): '\b' treats '_' as a
+     * word character, so every '_'-extended twin of a vocabulary word
+     * — claude_pro_fallback, openai_compat, zai_anthropic_default —
+     * could never match (verified: the old pattern refused none of
+     * them). The lookahead still refuses letter-extended lookalikes
+     * ('openaix' stays clean) and the LEADING '\b' still fences
+     * underscore-prefixed names ('my_zai_helper' stays clean, the
+     * r4-11 adjudication); '_' extensions over-block in the safe
+     * direction (a dev rephrases). The twin mechanisms are noted in
+     * the ledger — one owner if a third pattern ever needs the fence.
      *
      * @return string The banned-provider pattern.
      */
@@ -108,7 +121,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 return preg_quote($word, '/');
             },
             array_values(array_unique($words))
-        )) . ')\b/i';
+        )) . ')(?![A-Za-z])/i';
     }
 
     /**
@@ -484,6 +497,22 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
         foreach (array('azai', 'zaid', 'pro', 'oauth', 'provider', 'anthropicish') as $lookalike) {
             $this->assertSame(0, preg_match($pattern, "a {$lookalike} reminder"), "The derived pattern must not flag words outside the vocabulary: {$lookalike}.");
+        }
+
+        /*
+         * t31-ocr5-8: the '_'-extended twins (verified: the '\b'-fenced
+         * pattern refused NONE of them — '_' is a word character to
+         * \b, the exact mechanism this file adjudicated as a bug for
+         * the WP stems in r4-11) and the two controls of the
+         * letter-aware fence: letter-extensions stay clean,
+         * underscore-PREFIXED names stay clean (the leading-\b half of
+         * the r4-11 adjudication).
+         */
+        foreach (array('claude_pro_fallback', 'the openai_compat shim', 'an xai_grok bridge', 'zai_anthropic_default', 'grok_x2 mode') as $extended) {
+            $this->assertSame(1, preg_match($pattern, $extended), "The letter-aware fence must flag the '_'-extended twin: {$extended}.");
+        }
+        foreach (array('openaix lookalike', 'a my_zai_helper call', 'the prologue channel') as $control) {
+            $this->assertSame(0, preg_match($pattern, $control), "The fence must keep the r4-11 controls clean: {$control}.");
         }
     }
 
