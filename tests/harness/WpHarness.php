@@ -453,19 +453,44 @@ final class WpHarness
      * @param string $dir Absolute directory path.
      * @return void
      */
+    /**
+     * The spelling a LINK probe must read: trailing slashes and
+     * trailing '/.' components stripped, the root '/' itself kept.
+     *
+     * Each of those tails forces stat THROUGH a final symlink (lstat
+     * never sees the link itself), so an is_link() probe on the raw
+     * spelling passes a linked root straight through — the rrmdir()
+     * and copyTree() guards both probe THIS spelling (t31-ocr8-2's
+     * trailing slash, t31-ocr8-13's '/.' — one owner for the class).
+     *
+     * @param string $path The path as the caller spelled it.
+     * @return string The spelling an is_link() probe can trust.
+     */
+    private static function link_probe_spelling($path)
+    {
+        if ('/' === $path) {
+            return $path;
+        }
+        $path = rtrim($path, '/');
+        while ('/.' === substr($path, -2)) {
+            $path = rtrim(substr($path, 0, -2), '/');
+        }
+
+        return $path;
+    }
+
     public static function rrmdir($dir)
     {
         /*
-         * A trailing slash defeats is_link() (the engine's stat
-         * resolves THROUGH the link, so lstat never sees the link
-         * itself), and is_dir() then follows it — the walk below
-         * would empty the TARGET tree, the exact pre-plant shape the
-         * root guard exists to stop (OCR round 8, t31-ocr8-2). The
-         * root '/' itself must survive the strip.
+         * A trailing slash (or a trailing '/.' component — the same
+         * class one spelling over, t31-ocr8-13) defeats is_link():
+         * the engine's stat resolves THROUGH the final link, and
+         * is_dir() then follows it — the walk below would empty the
+         * TARGET tree, the exact pre-plant shape the root guard
+         * exists to stop (OCR round 8, t31-ocr8-2). The link-probe
+         * spelling strips both; the root '/' itself survives.
          */
-        if ('/' !== $dir) {
-            $dir = rtrim($dir, '/');
-        }
+        $dir = self::link_probe_spelling($dir);
         if (is_link($dir)) {
             return;
         }
@@ -538,15 +563,19 @@ final class WpHarness
     public static function copyTree($from, $to)
     {
         /*
-         * The root-link probe reads the slash-stripped spelling: a
-         * trailing slash defeats is_link() (stat resolves THROUGH the
-         * link), and the iterator would then walk the TARGET tree —
-         * the copy twin of rrmdir()'s guard, same bypass (t31-ocr8-2).
-         * Only the PROBE strips: a trailing-slash source keeps its
-         * own loud refusal at the relativize arm (t31-ocr6-4), so the
-         * refusal message still names the spelling the caller passed.
+         * The root-link probe reads the link-probe spelling (trailing
+         * slashes and trailing '/.' components stripped): each forces
+         * stat THROUGH the final link, and the iterator would then
+         * walk the TARGET tree — the copy twin of rrmdir()'s guard,
+         * same bypass family (t31-ocr8-2, the '/.' spelling closed in
+         * t31-ocr8-13). Only the PROBE normalizes: the walk below
+         * keeps seeing the spelling the caller passed (a
+         * trailing-slash source keeps its own loud refusal at the
+         * relativize arm, t31-ocr6-4, and a '/.'-spelled REAL source
+         * keeps copying — the iterator normalizes it), so the refusal
+         * message still names the spelling the caller passed.
          */
-        if (is_link('/' !== $from ? rtrim($from, '/') : $from)) {
+        if (is_link(self::link_probe_spelling($from))) {
             throw new RuntimeException('WpHarness::copyTree() refuses a symlinked source tree — never followed, never silently skipped: ' . $from);
         }
         if (! is_dir($from)) {

@@ -262,6 +262,30 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('root-link', $caught->getMessage());
 
             /*
+             * The '/.' spelling (t31-ocr8-13): stat resolves through
+             * it exactly as through the slash — pre-fix copyTree()
+             * COPIED the target tree through the link by this
+             * spelling (driven). The probe spelling strips it; and
+             * the CONTROL keeps its behavior: a '/.'-spelled REAL
+             * source still copies (the iterator normalizes it — the
+             * probe is the only thing that changed).
+             */
+            $caught = null;
+            try {
+                WpHarness::copyTree($plain . '/root-link/.', $to);
+            } catch (RuntimeException $e) {
+                $caught = $e;
+            }
+            if (null === $caught) {
+                $this->fail('A \'/.\'-spelled symlinked SOURCE ROOT must refuse the copy — a dot is not a disguise either.');
+            }
+            $this->assertStringContainsString('symlinked source tree', $caught->getMessage(), 'The verdict names the LINK class for the \'/.\' spelling too.');
+            $this->assertStringContainsString('root-link', $caught->getMessage());
+
+            WpHarness::copyTree($plain . '/src/.', $plain . '/dst-dot-control');
+            $this->assertFileExists($plain . '/dst-dot-control/real.php', 'A \'/.\'-spelled REAL source keeps copying — the probe is the only judgment that changed.');
+
+            /*
              * No nothing-landed assertion here (verifier round t31-ocr4-8):
              * copyTree() refuses at the first link the ITERATOR REACHES,
              * and yield order is the filesystem's (ext4 readdir order put

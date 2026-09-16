@@ -3306,6 +3306,19 @@ FIXTURE;
             $this->assertFileExists($victim . '/inner/keep.txt', 'A TRAILING-SLASH link at the removal root is still a link — never deleted through.');
             $this->assertFileExists($victim . '/keep2.txt', 'A TRAILING-SLASH link at the removal root is still a link — the target tree survives.');
             $this->assertTrue(is_link($harnessRootLink), 'The trailing-slash spelling does not smuggle the link past the root guard.');
+
+            /*
+             * The '/.' spelling (t31-ocr8-13, the verifier lens's
+             * one-spelling-over twin): stat resolves through a
+             * trailing '/.' exactly as it does through a trailing
+             * slash — pre-fix the walk EMPTIED the victim tree through
+             * this spelling. Same verdict as the slash leg.
+             */
+            WpHarness::rrmdir($harnessRootLink . '/.');
+
+            $this->assertFileExists($victim . '/inner/keep.txt', 'A TRAILING-/. link at the removal root is still a link — never deleted through.');
+            $this->assertFileExists($victim . '/keep2.txt', 'A TRAILING-/. link at the removal root is still a link — the target tree survives.');
+            $this->assertTrue(is_link($harnessRootLink), 'The \'/.\' spelling does not smuggle the link past the root guard either.');
         } finally {
             if (is_link($scratch . '/stage-link')) {
                 unlink($scratch . '/stage-link');
