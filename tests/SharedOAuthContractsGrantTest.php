@@ -645,6 +645,31 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-6 pin (t31-ocr6-3): the label's RENDERING leg rides the
+     * safe-debug doctrine (r4-13/r8-6) at this VO's seam. A lone 0xE9
+     * passes the constructor's control-byte screen by design (a config
+     * label is opaque; the byte is not a control byte), but rendered
+     * VERBATIM it made the dump and serialize forms invalid UTF-8 — the
+     * json_encode()-false log-drop class. Both channels escape it now,
+     * riding SecretMask::utf8_for_safe_render() — the ONE rendering
+     * owner PendingAuthorization's label leg rides too.
+     */
+    public function testAnInvalidUtf8ProviderLabelRendersEscapedInTheGrantSafeForms(): void
+    {
+        $grant = StoredGrant::in_state("fixture\xE9provider", 3, GrantState::ReconnectRequired);
+
+        foreach (array('dump' => print_r($grant, true), 'serialize' => serialize($grant)) as $channel => $rendered) {
+            $this->assertStringNotContainsString("\xE9", $rendered, "The raw invalid byte never rides the {$channel} form.");
+            $this->assertStringContainsString('fixture%E9provider', $rendered, "The label escapes exactly like the established safe-debug forms in the {$channel} channel.");
+            $this->assertNotFalse(json_encode($rendered), "The {$channel} form always json_encodes.");
+        }
+        $this->assertSame("fixture\xE9provider", $grant->provider_id(), 'The stored bytes are unchanged — the escape is render-only.');
+
+        $clean = StoredGrant::in_state('fixture-provider', 3, GrantState::ReconnectRequired);
+        $this->assertStringContainsString('fixture-provider', print_r($clean, true), 'A normal label renders as itself.');
+    }
+
+    /**
      * OCR-round-2 pin (t31-ocr2-1): the grant's serialize() channel.
      * The grant defines no storage serialization of its own — the
      * envelope owns that (Task 3.2) — but serialize() still had the raw

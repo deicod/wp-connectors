@@ -24,6 +24,7 @@ namespace Deicod\WpConnectors\Shared\Flow;
 
 use DateTimeImmutable;
 use Deicod\WpConnectors\Shared\Http\HeaderMap;
+use Deicod\WpConnectors\Shared\Support\SecretMask;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -312,6 +313,17 @@ final class PendingAuthorization {
 	 * engine applies its own __debugInfo()/__serialize() at that
 	 * level, keeping the masking decision the payload's.
 	 *
+	 * The label renders through SecretMask::utf8_for_safe_render()
+	 * (OCR round 6, t31-ocr6-3, the r4-13/r8-6 doctrine at this VO's
+	 * seam): the constructor's control-byte screen is byte-permissive
+	 * by design — a provider config label is opaque, and a lone 0xE9
+	 * is not a control byte — but its VERBATIM rendering made the
+	 * dump and serialize forms invalid UTF-8, the json_encode()-false
+	 * log-drop class. The rendered form escapes exactly like every
+	 * established safe-debug form ('%E9'), the stored bytes never
+	 * change; StoredGrant's label leg rides the same one rendering
+	 * owner.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, mixed> The carrier's public facts with the payload's masked rendering.
@@ -319,7 +331,7 @@ final class PendingAuthorization {
 	private function masked_view(): array {
 		return array(
 			'user_id'        => $this->user_id,
-			'provider_id'    => $this->provider_id,
+			'provider_id'    => SecretMask::utf8_for_safe_render( $this->provider_id ),
 			'created_at'     => $this->created_at,
 			'device_session' => $this->device_session,
 			'pkce_pair'      => $this->pkce_pair,

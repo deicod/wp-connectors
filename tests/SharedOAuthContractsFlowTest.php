@@ -452,6 +452,31 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-6 pin (t31-ocr6-3): the carrier's label renders through
+     * SecretMask::utf8_for_safe_render() — the same one rendering owner
+     * StoredGrant's label leg rides (the r4-13/r8-6 doctrine at the VO
+     * seams). A lone 0xE9 passes the constructor's control-byte screen
+     * by design (a config label is opaque), but verbatim it made the
+     * dump and serialize forms invalid UTF-8 — the json_encode()-false
+     * log-drop class. Escaped in both channels, stored bytes unchanged.
+     */
+    public function testAnInvalidUtf8ProviderLabelRendersEscapedInThePendingSafeForms(): void
+    {
+        $session = new DeviceAuthorizationSession(FakeSecrets::deviceCode(), 'BCJK-3502', 'https://example.com/device', 5, new \DateTimeImmutable('+10 minutes'));
+        $pending = PendingAuthorization::for_device(7, "fixture\xE9provider", $session, new \DateTimeImmutable());
+
+        foreach (array('dump' => print_r($pending, true), 'serialize' => serialize($pending)) as $channel => $rendered) {
+            $this->assertStringNotContainsString("\xE9", $rendered, "The raw invalid byte never rides the {$channel} form.");
+            $this->assertStringContainsString('fixture%E9provider', $rendered, "The label escapes exactly like the established safe-debug forms in the {$channel} channel.");
+            $this->assertNotFalse(json_encode($rendered), "The {$channel} form always json_encodes.");
+        }
+        $this->assertSame("fixture\xE9provider", $pending->provider_id(), 'The stored bytes are unchanged — the escape is render-only.');
+
+        $clean = PendingAuthorization::for_device(7, 'fixture-provider', $session, new \DateTimeImmutable());
+        $this->assertStringContainsString('fixture-provider', print_r($clean, true), 'A normal label renders as itself.');
+    }
+
+    /**
      * OCR-round-3 pin (t31-ocr3-2): the dump and serialize channels
      * cannot drift. The suite pinned print_r() alone since t31-r11-5,
      * so a future edit that re-decided ONE channel's mask (a hand-tailored
