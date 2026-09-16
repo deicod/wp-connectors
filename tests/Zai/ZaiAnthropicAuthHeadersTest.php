@@ -139,7 +139,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
                 fn() => (new ZaiAnthropicRequestAuthentication($uncarriable))->authenticateRequest(
                     new SdkRequest(HttpMethodEnum::POST(), 'https://api.z.ai/api/anthropic/v1/messages')
                 ),
-                'Uncarriable credential material must be refused before the header is built.'
+                'Uncarriable credential material must be refused before the header is built.', RuntimeException::class
             );
             $this->assertSame(
                 'The ' . ZaiAnthropicProviderAvailability::REFUSAL_LABEL . ' provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.',
@@ -162,7 +162,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
         // before any transport attempt, in the binding-failure family.
         $refusal = $this->refusalOf(
             fn() => $this->model('key-part-one,key-part-two')->generateTextResult($this->prompt()),
-            'Generation with uncarriable credential material must fail pre-transport.'
+            'Generation with uncarriable credential material must fail pre-transport.', RuntimeException::class
         );
         $this->assertStringContainsString('cannot carry it', $refusal->getMessage());
         $this->assertNoHttpRequests();
@@ -332,7 +332,7 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
 
         $refusal = $this->refusalOf(
             fn() => ZaiAnthropicRequestAuthentication::wrap( $subclass ),
-            'An API-key authentication subclass must be refused typed, never silently rebuilt.'
+            'An API-key authentication subclass must be refused typed, never silently rebuilt.', RuntimeException::class
         );
         $this->assertSame(
             'The ' . ZaiAnthropicProviderAvailability::REFUSAL_LABEL . ' provider refuses an API-key authentication subclass: its overridden behavior cannot ride this surface.',

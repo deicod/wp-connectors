@@ -291,7 +291,7 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
          */
         $refusal = $this->refusalOf(
             fn() => $GLOBALS['wpdb']->get_col('SELECT option_name FROM wp_options WHERE option_name LIKE \'x%\' ORDER BY option_name'),
-            'An unrecognized get_col() query shape must throw.'
+            'An unrecognized get_col() query shape must throw.', \RuntimeException::class
         );
         $this->assertStringContainsString('unsupported query shape', $refusal->getMessage());
         $this->assertStringContainsString('ORDER BY', $refusal->getMessage(), 'The diagnostic names the query it refused.');

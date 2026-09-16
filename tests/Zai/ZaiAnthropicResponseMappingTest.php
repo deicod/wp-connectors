@@ -6831,7 +6831,7 @@ $body = ''
 
         $refusal = $this->refusalOf(
             fn() => $this->model()->generateTextResult($this->prompt()),
-            "Status {$status} must throw."
+            "Status {$status} must throw.", \Exception::class
         );
         $this->assertInstanceOf($expectedClass, $refusal);
         $this->assertSame($status, $refusal->getCode());

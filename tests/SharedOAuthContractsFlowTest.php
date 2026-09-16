@@ -444,7 +444,7 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         foreach (array($pair, $session, $pendingDevice, $pendingPkce) as $safe) {
             $refusal = $this->refusalOf(
                 fn() => unserialize(serialize($safe)),
-                'A masked flow VO must never reconstruct from its own safe form (' . get_class($safe) . ').'
+                'A masked flow VO must never reconstruct from its own safe form (' . get_class($safe) . ').', \RuntimeException::class
             );
             $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
         }
@@ -453,7 +453,7 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         foreach (array(PkceCodePair::class, DeviceAuthorizationSession::class, PendingAuthorization::class) as $vo) {
             $refusal = $this->refusalOf(
                 fn() => $vo::__set_state(array('code_verifier' => 'raw')),
-                "__set_state() must refuse the raw export as a reconstruction source ({$vo})."
+                "__set_state() must refuse the raw export as a reconstruction source ({$vo}).", \RuntimeException::class
             );
             $this->assertStringContainsString('never a payload', $refusal->getMessage());
         }

@@ -2899,7 +2899,7 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
 
         $refusal = $this->refusalOf(
             fn() => $this->model()->generateTextResult($this->prompt()),
-            "Status {$status} must throw."
+            "Status {$status} must throw.", \Exception::class
         );
         $this->assertInstanceOf($expectedClass, $refusal);
         $this->assertSame($status, $refusal->getCode());
@@ -2930,7 +2930,7 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
 
             $refusal = $this->refusalOf(
                 fn() => $this->model()->generateTextResult($this->prompt()),
-                "Status {$status} must throw."
+                "Status {$status} must throw.", \Exception::class
             );
             $this->assertStringContainsString($needle, $refusal->getMessage(), "Status {$status} message must be actionable.");
             $this->assertStringNotContainsString('ignored upstream text', $refusal->getMessage());

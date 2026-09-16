@@ -707,15 +707,29 @@ abstract class WpConnectorsTestCase extends TestCase
      * fails OUTSIDE any catch, and the caller asserts its fragments on
      * the returned verdict.
      *
+     * The FAMILY pin (t31-ocr9-3): the r8 sweeps converted catches that
+     * declared an exception family (RuntimeException, \Exception) to
+     * this \Throwable owner — silently DROPPING the family the original
+     * catch enforced, so a stray TypeError/Error carrying the fragments
+     * passed green (driven: a planted TypeError-with-fragment kept the
+     * whole pin green at HEAD). The third parameter restores the pin:
+     * each converted site passes the family its ORIGINAL catch declared
+     * (the sweep commit carries the census, per file, from the r8
+     * diffs); \Throwable::class — the default — enforces nothing and is
+     * legitimate ONLY where the original catch was itself \Throwable.
+     *
      * @param callable $attempt     The guarded call, expected to throw.
      * @param string   $expectation The failure message for the no-throw case.
+     * @param string   $family      The exception family the site pins — the class its original catch declared; \Throwable::class (the default) pins nothing.
      * @return \Throwable The collected refusal.
      */
-    protected function refusalOf(callable $attempt, string $expectation): \Throwable
+    protected function refusalOf(callable $attempt, string $expectation, string $family = \Throwable::class): \Throwable
     {
         try {
             $attempt();
         } catch (\Throwable $e) {
+            $this->assertInstanceOf($family, $e, 'The refusal class is outside the family this site pins (expected ' . $family . ', got ' . get_class($e) . ') — the original catch declared ' . $family . ', and a stray Error carrying the fragments would otherwise pass silently (t31-ocr9-3).');
+
             return $e;
         }
 

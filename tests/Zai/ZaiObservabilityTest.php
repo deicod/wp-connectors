@@ -169,7 +169,7 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
 
         $refusal = $this->refusalOf(
             fn() => $this->model()->generateTextResult($this->prompt()),
-            'Expected a transport exception.'
+            'Expected a transport exception.', \Exception::class
         );
         $this->assertStringContainsString('blocked', $refusal->getMessage());
 

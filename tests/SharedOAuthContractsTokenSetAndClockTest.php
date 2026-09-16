@@ -816,14 +816,14 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         // The masked snapshot is not a round-trip payload: rebuilding refuses.
         $refusal = $this->refusalOf(
             fn() => unserialize($payload),
-            'A masked token set must never reconstruct from its own safe form.'
+            'A masked token set must never reconstruct from its own safe form.', \RuntimeException::class
         );
         $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
 
         // The var_export eval channel refuses the same way.
         $refusal = $this->refusalOf(
             fn() => AccessTokenSet::__set_state(array('access_token' => 'raw')),
-            '__set_state() must refuse the raw export as a reconstruction source.'
+            '__set_state() must refuse the raw export as a reconstruction source.', \RuntimeException::class
         );
         $this->assertStringContainsString('never a payload', $refusal->getMessage());
     }

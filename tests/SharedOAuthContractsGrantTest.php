@@ -702,14 +702,14 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         // The masked snapshot is not a round-trip payload: rebuilding refuses.
         $refusal = $this->refusalOf(
             fn() => unserialize($payload),
-            'A masked stored grant must never reconstruct from its own safe form.'
+            'A masked stored grant must never reconstruct from its own safe form.', \RuntimeException::class
         );
         $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
 
         // The eval channel refuses typed directly.
         $refusal = $this->refusalOf(
             fn() => StoredGrant::__set_state(array('provider_id' => 'fixture-provider')),
-            '__set_state() must refuse the raw export as a reconstruction source.'
+            '__set_state() must refuse the raw export as a reconstruction source.', \RuntimeException::class
         );
         $this->assertStringContainsString('never a payload', $refusal->getMessage());
 

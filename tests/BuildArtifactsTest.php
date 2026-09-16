@@ -334,7 +334,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         unlink($zipPath);
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::publishedChecksum($zipPath),
-            'A vanished published zip must refuse the success-line digest, never print it blank.'
+            'A vanished published zip must refuse the success-line digest, never print it blank.', \RuntimeException::class
         );
         $this->assertStringContainsString('cannot checksum the published', $refusal->getMessage());
         $this->assertStringContainsString(basename($zipPath), $refusal->getMessage(), 'The refusal names the artifact.');
@@ -348,7 +348,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         try {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::publishedChecksum($rebuilt),
-                'An unreadable published zip must refuse the success-line digest.'
+                'An unreadable published zip must refuse the success-line digest.', \RuntimeException::class
             );
             $this->assertStringContainsString('cannot checksum the published', $refusal->getMessage());
         } finally {
@@ -1056,7 +1056,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // The builder refuses to package it.
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir()),
-            'The build must refuse a plugin with two main files.'
+            'The build must refuse a plugin with two main files.', \RuntimeException::class
         );
         $this->assertStringContainsString('multiple main plugin files', $refusal->getMessage());
 
@@ -1577,7 +1577,7 @@ FIXTURE;
         // The builder refuses to package duplicate headers at all.
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir()),
-            'The build must refuse a plugin with duplicate headers.'
+            'The build must refuse a plugin with duplicate headers.', \RuntimeException::class
         );
         $this->assertStringContainsString('duplicate', $refusal->getMessage());
 
@@ -1605,7 +1605,7 @@ FIXTURE;
 
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir()),
-            'The build must refuse a header/constant version mismatch.'
+            'The build must refuse a header/constant version mismatch.', \RuntimeException::class
         );
         $this->assertStringContainsString('does not match header Version', $refusal->getMessage());
         $this->assertStringContainsString('EXAMPLE_CONNECTOR_VERSION', $refusal->getMessage());
@@ -1774,7 +1774,7 @@ FIXTURE;
                 file_put_contents($scratch . '/plugin/example-connector/build.json', $payload);
                 $refusal = $this->refusalOf(
                     fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                    "A malformed build.json ({$label}) must refuse the build, never silently skip embed_shared."
+                    "A malformed build.json ({$label}) must refuse the build, never silently skip embed_shared.", \RuntimeException::class
                 );
                 $this->assertStringContainsString('malformed', $refusal->getMessage());
                 $this->assertStringContainsString('build.json', $refusal->getMessage());
@@ -1857,7 +1857,7 @@ FIXTURE;
                 file_put_contents($scratch . '/plugin/example-connector/build.json', $payload);
                 $refusal = $this->refusalOf(
                     fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                    "A build.json outside the closed schema ({$label}) must refuse the build, never ship its consequence."
+                    "A build.json outside the closed schema ({$label}) must refuse the build, never ship its consequence.", \RuntimeException::class
                 );
                 $this->assertStringContainsString($fragment, $refusal->getMessage(), "The refusal must say why ({$label}): {$refusal->getMessage()}");
             }
@@ -1870,7 +1870,7 @@ FIXTURE;
             file_put_contents($scratch . '/plugin/example-connector/build.json', '{"embed_shared": true, "noted": {"embed_shared": "nested"}}');
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An unknown top-level key must refuse as unknown, never ride the duplicate fence.'
+                'An unknown top-level key must refuse as unknown, never ride the duplicate fence.', \RuntimeException::class
             );
             $this->assertStringContainsString('unknown key', $refusal->getMessage(), 'The nested same-name key must not count as a duplicate: ' . $refusal->getMessage());
 
@@ -1887,7 +1887,7 @@ FIXTURE;
             mkdir($scratch . '/plugin/example-connector/build.json');
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'A build.json that is not a regular file must refuse the build, never slip the seam silently.'
+                'A build.json that is not a regular file must refuse the build, never slip the seam silently.', \RuntimeException::class
             );
             $this->assertStringContainsString('not a regular file', $refusal->getMessage());
             rmdir($scratch . '/plugin/example-connector/build.json');
@@ -1910,7 +1910,7 @@ FIXTURE;
                 symlink($scratch . '/elsewhere-build.json', $scratch . '/plugin/example-connector/build.json');
                 $refusal = $this->refusalOf(
                     fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                    'A DANGLING build.json symlink must refuse the build — file_exists() follows links and the seam would silently skip to no-embed.'
+                    'A DANGLING build.json symlink must refuse the build — file_exists() follows links and the seam would silently skip to no-embed.', \RuntimeException::class
                 );
                 $this->assertStringContainsString('is a symlink', $refusal->getMessage());
                 unlink($scratch . '/plugin/example-connector/build.json');
@@ -1922,7 +1922,7 @@ FIXTURE;
                 symlink($scratch . '/outside-build.json', $scratch . '/plugin/example-connector/build.json');
                 $refusal = $this->refusalOf(
                     fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                    'An out-of-tree RESOLVING build.json symlink must refuse the build — the plugin\'s config may not be a link the release does not own.'
+                    'An out-of-tree RESOLVING build.json symlink must refuse the build — the plugin\'s config may not be a link the release does not own.', \RuntimeException::class
                 );
                 $this->assertStringContainsString('is a symlink', $refusal->getMessage());
                 $this->assertStringContainsString('outside-build.json', $refusal->getMessage(), 'The refusal names the link target.');
@@ -1983,7 +1983,7 @@ FIXTURE;
             file_put_contents($scratch . '/plugin/example-connector/build.json', '{"embed_shared": true, "namespace_suffix": "Evil$1"}');
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An illegal namespace_suffix must refuse the build.'
+                'An illegal namespace_suffix must refuse the build.', \RuntimeException::class
             );
             $this->assertStringContainsString('namespace segment', $refusal->getMessage());
             // t31-ocr5-4: these pins rode assertDirectoryDoesNotExist on
@@ -2003,7 +2003,7 @@ FIXTURE;
             mkdir($blockedZip, 0755, true);
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An un-landable zip path must fail the build.'
+                'An un-landable zip path must fail the build.', \RuntimeException::class
             );
             $this->assertStringContainsString('not a regular file', $refusal->getMessage());
             $this->assertNoStageTree($scratch . '/dist', 'example-connector', 'A mid-build throw must tear the staging tree down (any pid spelling).');
@@ -2030,7 +2030,7 @@ FIXTURE;
             file_put_contents($scratch . '/shared/src/Broken.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock /* interrupted */ as C;\ninterface Broken {}\n");
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'A postcondition-tripping shared source must fail the build mid-staging.'
+                'A postcondition-tripping shared source must fail the build mid-staging.', \RuntimeException::class
             );
             $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
             $this->assertNoStageTree($scratch . '/dist', 'example-connector', 'Every failure path tears the staging tree down (any pid spelling).');
@@ -2046,7 +2046,7 @@ FIXTURE;
             mkdir($stagingArchive, 0755, true);
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An un-creatable staging archive path must fail the build.'
+                'An un-creatable staging archive path must fail the build.', \RuntimeException::class
             );
             $this->assertStringContainsString('cannot create the staging archive', $refusal->getMessage());
             $this->assertSame($zipBefore, (string) file_get_contents($zipPath), 'A production failure must not touch the previous good zip.');
@@ -2290,7 +2290,7 @@ FIXTURE;
             $refused = null;
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An escaping include in a shared source must refuse the BUILD, not only the inspection.'
+                'An escaping include in a shared source must refuse the BUILD, not only the inspection.', \RuntimeException::class
             );
             $refused = $refusal->getMessage();
 
@@ -2394,7 +2394,7 @@ FIXTURE;
         try {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'A non-canonical extension casing in shared/src must refuse the build, never ship a class no loader reaches.'
+                'A non-canonical extension casing in shared/src must refuse the build, never ship a class no loader reaches.', \RuntimeException::class
             );
             $this->assertStringContainsString('non-canonical extension', $refusal->getMessage());
             $this->assertStringContainsString('ClockMath.PHP', $refusal->getMessage(), 'The refusal must name the file.');
@@ -2457,7 +2457,7 @@ FIXTURE;
                 );
                 $refusal = $this->refusalOf(
                     fn() => wp_connectors_php_source_files($scratch),
-                    'A trailing-0x' . bin2hex($tail) . ' near-source tail must refuse the collector.'
+                    'A trailing-0x' . bin2hex($tail) . ' near-source tail must refuse the collector.', \RuntimeException::class
                 );
                 $this->assertStringContainsString('NEAR-SOURCE', $refusal->getMessage());
                 $this->assertStringContainsString('ClockMath.php', $refusal->getMessage(), 'The refusal must name the file.');
@@ -2475,7 +2475,7 @@ FIXTURE;
                 );
                 $refusal = $this->refusalOf(
                     fn() => wp_connectors_php_source_files($scratch),
-                    'A leading-0x' . bin2hex($lead) . ' near-source spelling must refuse the collector.'
+                    'A leading-0x' . bin2hex($lead) . ' near-source spelling must refuse the collector.', \RuntimeException::class
                 );
                 $this->assertStringContainsString('NEAR-SOURCE', $refusal->getMessage());
                 $this->assertStringContainsString('ClockMath.php', $refusal->getMessage(), 'The refusal must name the file.');
@@ -2489,7 +2489,7 @@ FIXTURE;
             file_put_contents($scratch . '/Clock /Math.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\nfinal class Math {}\n");
             $refusal = $this->refusalOf(
                 fn() => wp_connectors_php_source_files($scratch),
-                'A directory segment carrying a trailing edge byte must refuse the collector.'
+                'A directory segment carrying a trailing edge byte must refuse the collector.', \RuntimeException::class
             );
             $this->assertStringContainsString('NEAR-SOURCE', $refusal->getMessage());
             $this->assertStringContainsString('Math.php', $refusal->getMessage(), 'The refusal must name the file under the junk segment.');
@@ -2543,7 +2543,7 @@ FIXTURE;
         try {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'A plugin-owned path colliding with an embed destination must refuse the build, never silently replace the author\'s file.'
+                'A plugin-owned path colliding with an embed destination must refuse the build, never silently replace the author\'s file.', \RuntimeException::class
             );
             $this->assertStringContainsString('collision', $refusal->getMessage());
             $this->assertStringContainsString('src/Shared/Clock/ClockInterface.php', $refusal->getMessage());
@@ -2572,7 +2572,7 @@ FIXTURE;
             );
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'A case-variant plugin path folding onto an embed destination must refuse the build.'
+                'A case-variant plugin path folding onto an embed destination must refuse the build.', \RuntimeException::class
             );
             $this->assertStringContainsString('case-insensitive collision', $refusal->getMessage());
         } finally {
@@ -2700,7 +2700,7 @@ FIXTURE;
             chmod($sharedSource, 0000);
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An unreadable shared source must refuse the build, never ship as a 0-byte library file.'
+                'An unreadable shared source must refuse the build, never ship as a 0-byte library file.', \RuntimeException::class
             );
             $this->assertStringContainsString('cannot be read', $refusal->getMessage());
             $this->assertStringContainsString('ClockInterface.php', $refusal->getMessage());
@@ -2713,7 +2713,7 @@ FIXTURE;
             file_put_contents($sharedSource, " \n\t\n");
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'A whitespace-only shared source must refuse the build, never rewrite to an empty file.'
+                'A whitespace-only shared source must refuse the build, never rewrite to an empty file.', \RuntimeException::class
             );
             $this->assertStringContainsString('declares no namespace', $refusal->getMessage());
             $this->assertStringContainsString('ClockInterface.php', $refusal->getMessage());
@@ -2723,7 +2723,7 @@ FIXTURE;
             chmod($pluginSource, 0000);
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An unreadable plugin file must refuse the build, never ship a 0-byte zip entry.'
+                'An unreadable plugin file must refuse the build, never ship a 0-byte zip entry.', \RuntimeException::class
             );
             $this->assertStringContainsString('cannot copy', $refusal->getMessage());
             $this->assertStringContainsString('ExampleProvider.php', $refusal->getMessage());
@@ -2770,7 +2770,7 @@ FIXTURE;
         try {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An embed requested against a source-less shared tree must refuse the build, never ship a library-less zip.'
+                'An embed requested against a source-less shared tree must refuse the build, never ship a library-less zip.', \RuntimeException::class
             );
             $this->assertStringContainsString('no PHP sources', $refusal->getMessage());
             $this->assertStringContainsString('shared/src', $refusal->getMessage());
@@ -2781,7 +2781,7 @@ FIXTURE;
             unlink($scratch . '/shared/src/README.md');
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An embed requested against an empty shared tree must refuse the build too.'
+                'An embed requested against an empty shared tree must refuse the build too.', \RuntimeException::class
             );
             $this->assertStringContainsString('no PHP sources', $refusal->getMessage());
 
@@ -2833,7 +2833,7 @@ FIXTURE;
             symlink($outside, $tempPlugin . '/assets/linked-asset.svg');
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir()),
-                'A symlink on a shipped path must still refuse the build.'
+                'A symlink on a shipped path must still refuse the build.', \RuntimeException::class
             );
             $this->assertStringContainsString('symlink', $refusal->getMessage());
             $this->assertStringContainsString('linked-asset.svg', $refusal->getMessage());
@@ -3203,7 +3203,7 @@ FIXTURE;
             symlink($victim, $scratch . '/dist/.stage-stage-demo-' . getmypid());
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist'),
-                'A symlink at the run\'s own stage name must refuse the build, never stage through the link.'
+                'A symlink at the run\'s own stage name must refuse the build, never stage through the link.', \RuntimeException::class
             );
             $this->assertStringContainsString('symlink', $refusal->getMessage());
             unlink($scratch . '/dist/.stage-stage-demo-999999998');
@@ -3617,7 +3617,7 @@ FIXTURE;
             chmod($manifestPath, 0000);
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An unreadable manifest must refuse the build, never land a one-entry replacement.'
+                'An unreadable manifest must refuse the build, never land a one-entry replacement.', \RuntimeException::class
             );
             $this->assertStringContainsString('cannot read the checksum manifest', $refusal->getMessage());
             $this->assertSame($zipBefore, (string) file_get_contents($zipPath), 'The previous good zip survives the refused merge byte-for-byte.');
@@ -3669,7 +3669,7 @@ FIXTURE;
             file_put_contents($mainPath, str_replace(array('Version:           0.1.0', "'0.1.0'"), array("Version:           {$traversal}", "'{$traversal}'"), $main));
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir()),
-                'A traversal-spelled Version header must refuse the build at the header gate.'
+                'A traversal-spelled Version header must refuse the build at the header gate.', \RuntimeException::class
             );
             $this->assertStringContainsString('version token', $refusal->getMessage());
             $this->assertStringContainsString($traversal, $refusal->getMessage());
@@ -3733,7 +3733,7 @@ FIXTURE;
         $refused = null;
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace("no tag here\n" . $declaration . "\nclass A {}\n", 'OpenAiOauth', 'shared/src/Clock/A.php'),
-            'A source with no PHP open tag must refuse — its generated copy would ship without the load-bearing provenance marker.'
+            'A source with no PHP open tag must refuse — its generated copy would ship without the load-bearing provenance marker.', \RuntimeException::class
         );
         $refused = $refusal->getMessage();
         $this->assertStringContainsString('provenance banner', $refused);
@@ -3760,7 +3760,7 @@ FIXTURE;
         foreach (array('Evil$1', 'X${1}Y', 'Z\\1W', '123Starts', '', 'Has-Dash') as $hostile) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($source, $hostile, 'shared/src/Storage/TokenStore.php'),
-                'A namespace_suffix that is not a namespace segment must be refused: ' . var_export($hostile, true)
+                'A namespace_suffix that is not a namespace segment must be refused: ' . var_export($hostile, true), \RuntimeException::class
             );
             $this->assertStringContainsString('namespace segment', $refusal->getMessage());
         }
@@ -3864,7 +3864,7 @@ FIXTURE;
         foreach ($survivors as $label => $hostile) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($hostile, 'OpenAiOauth', 'shared/src/Hostile.php'),
-                "A shared-namespace spelling the rewriter does not know ({$label}) must refuse the rewrite, never survive it."
+                "A shared-namespace spelling the rewriter does not know ({$label}) must refuse the rewrite, never survive it.", \RuntimeException::class
             );
             $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
             $this->assertStringContainsString('Hostile.php', $refusal->getMessage(), "The refusal must name the file ({$label}).");
@@ -3920,7 +3920,7 @@ FIXTURE;
         foreach ($unowned_spellings as $label => $row) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($row[0], 'OpenAiOauth', 'shared/src/UnownedSpelling.php'),
-                "A legal import spelling the rewrite does not own ({$label}) must refuse — never ship the family import un-rewritten."
+                "A legal import spelling the rewrite does not own ({$label}) must refuse — never ship the family import un-rewritten.", \RuntimeException::class
             );
             $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The postcondition seam stays the authority ({$label}).");
             $this->assertStringContainsString($row[1], $refusal->getMessage(), "The refusal NAMES the spelling class ({$label}) — never anonymous.");
@@ -3946,7 +3946,7 @@ FIXTURE;
         foreach ($trait_shapes as $label => $source) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/TraitShape.php'),
-                "A family trait clause ({$label}) must refuse the rewrite — the rewriter owns no adaptation spelling."
+                "A family trait clause ({$label}) must refuse the rewrite — the rewriter owns no adaptation spelling.", \RuntimeException::class
             );
             $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The refusal stands ({$label}).");
             $this->assertStringNotContainsString('spelling class the rewrite does not own', $refusal->getMessage(), "A trait clause list wears NO import class ({$label}) — the anonymous verdict is its doctrine's own, and the class guidance would be a dead errand.");
@@ -4001,7 +4001,7 @@ FIXTURE;
         $foreign = "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\nuse Deicod\\WpConnectors\\SharedStorage\\Widget;\nclass WidgetStore\n{\n}\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($foreign, 'OpenAiOauth', 'shared/src/Storage/WidgetStore.php'),
-            'A Shared-prefixed SIBLING namespace must refuse the rewrite (the r7 sibling doctrine), never stay untouched.'
+            'A Shared-prefixed SIBLING namespace must refuse the rewrite (the r7 sibling doctrine), never stay untouched.', \RuntimeException::class
         );
         $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
         $this->assertStringContainsString('WidgetStore.php', $refusal->getMessage());
@@ -4012,7 +4012,7 @@ FIXTURE;
         $interrupted = "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\nuse Deicod\\WpConnectors\\Shared\\Clock /* timing */ as C;\nclass ClockStore\n{\n}\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($interrupted, 'OpenAiOauth', 'shared/src/Storage/ClockStore.php'),
-            'An unhandled shared-namespace spelling must refuse the rewrite, never survive it.'
+            'An unhandled shared-namespace spelling must refuse the rewrite, never survive it.', \RuntimeException::class
         );
         $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
         $this->assertStringContainsString('ClockStore.php', $refusal->getMessage());
@@ -4069,7 +4069,7 @@ FIXTURE;
             $source = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n" . $tail;
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/TagBound.php'),
-                "A use statement's tracking state must die at every statement-boundary spelling ({$label}) — never eat the name run after the boundary."
+                "A use statement's tracking state must die at every statement-boundary spelling ({$label}) — never eat the name run after the boundary.", \RuntimeException::class
             );
             $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The refusal is the postcondition's ({$label}).");
             $this->assertStringContainsString('TagBound.php', $refusal->getMessage(), "The refusal must name the file ({$label}).");
@@ -4144,7 +4144,7 @@ FIXTURE;
         // rewritten, so the reference dangles inside the plugin.
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($escape, 'OpenAiOauth', 'shared/src/Relative.php'),
-            'A family-resolving relative under a non-owned declaration must refuse the rewrite, never ship un-rewritten.'
+            'A family-resolving relative under a non-owned declaration must refuse the rewrite, never ship un-rewritten.', \RuntimeException::class
         );
         $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
         $this->assertStringContainsString('Relative.php', $refusal->getMessage());
@@ -4202,7 +4202,7 @@ FIXTURE;
          */
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($corrupted, 'ExampleConnector', 'shared/src/Corrupt.php'),
-            'A relative laundering behind an invalid fully-qualified declaration must refuse the rewrite, exactly like its control.'
+            'A relative laundering behind an invalid fully-qualified declaration must refuse the rewrite, exactly like its control.', \RuntimeException::class
         );
         $this->assertStringContainsString('not a spelling PHP accepts', $refusal->getMessage());
 
@@ -4217,7 +4217,7 @@ FIXTURE;
         $this->assertContains(array( 'name' => 'Deicod\\WpConnectors\\Shared', 'lower' => 'deicod\\wpconnectors\\shared', 'kind' => 'code', 'offset' => 34, 'line' => 3 ), $found, 'The invalid fully-qualified family spelling reports as a code-position name, never a declaration.');
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($fq_family, 'ExampleConnector', 'shared/src/Fq.php'),
-            'A fully-qualified family declaration must refuse the rewrite.'
+            'A fully-qualified family declaration must refuse the rewrite.', \RuntimeException::class
         );
         $this->assertStringContainsString('not a spelling PHP accepts', $refusal->getMessage());
 
@@ -4275,7 +4275,7 @@ FIXTURE;
         $planted = "<?php\nnamespace Deicod;\n\$x = namespace \\WpConnectors\\Shared\\Clock::class;\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($planted, 'OpenAiOauth', 'shared/src/InterruptedCodeRel.php'),
-            'The keyword-interrupted relative operator in a code position must refuse the rewrite — it differs from its reporting fused twin only by whitespace the engine refuses.'
+            'The keyword-interrupted relative operator in a code position must refuse the rewrite — it differs from its reporting fused twin only by whitespace the engine refuses.', \RuntimeException::class
         );
         $this->assertStringContainsString('not a spelling PHP accepts', $refusal->getMessage());
         $this->assertStringContainsString('InterruptedCodeRel.php', $refusal->getMessage());
@@ -4287,7 +4287,7 @@ FIXTURE;
         $owned = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n\$x = namespace \\Forms\\Clock::class;\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($owned, 'OpenAiOauth', 'shared/src/OwnedBaseInterrupted.php'),
-            'An interrupted relative under an owned declaration must refuse the rewrite — the adaptation carve-out is for spellings PHP accepts.'
+            'An interrupted relative under an owned declaration must refuse the rewrite — the adaptation carve-out is for spellings PHP accepts.', \RuntimeException::class
         );
         $this->assertStringContainsString('outside a use statement', $refusal->getMessage());
 
@@ -4297,7 +4297,7 @@ FIXTURE;
         $foreign = "<?php\nnamespace Deicod;\nnamespace \\Junk;\ninterface ForeignFixture\n{\n}\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($foreign, 'OpenAiOauth', 'shared/src/ForeignInterrupted.php'),
-            'A non-family interrupted spelling must refuse the rewrite — the zip ships through no lint gate.'
+            'A non-family interrupted spelling must refuse the rewrite — the zip ships through no lint gate.', \RuntimeException::class
         );
         $this->assertStringContainsString('not a spelling PHP accepts', $refusal->getMessage());
 
@@ -4307,7 +4307,7 @@ FIXTURE;
         $fused = "<?php\nnamespace Deicod;\n\$x = namespace\\WpConnectors\\Shared\\Clock::class;\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($fused, 'OpenAiOauth', 'shared/src/FusedCodeRel.php'),
-            'The fused control must keep refusing via the postcondition.'
+            'The fused control must keep refusing via the postcondition.', \RuntimeException::class
         );
         $this->assertStringContainsString('relative position', $refusal->getMessage(), 'The fused twin refuses at the postcondition, not the shape fence — the fence never widened past the interrupted spelling.');
         // …and adaptation under an owned one (the sibling test's Carrier
@@ -4361,7 +4361,7 @@ FIXTURE;
         foreach ($refusals as $label => $source) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/IllegalKeyword.php'),
-                "A bare 'namespace' keyword in a never-legal shape must refuse the rewrite ({$label})."
+                "A bare 'namespace' keyword in a never-legal shape must refuse the rewrite ({$label}).", \RuntimeException::class
             );
             $this->assertStringContainsString('not a spelling PHP accepts', $refusal->getMessage(), "The refusal names the shape class ({$label}).");
             $this->assertStringContainsString('IllegalKeyword.php', $refusal->getMessage(), "The refusal names the file ({$label}).");
@@ -4464,7 +4464,7 @@ FIXTURE;
         $escaping = "<?php\nnamespace Other\\Tree;\nuse namespace\\Foo\\Bar;\ninterface EscapeFixture\n{\n}\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($escaping, 'OpenAiOauth', 'shared/src/EscapeFixture.php'),
-            'An escaping relative use import must refuse the rewrite, never ride verbatim.'
+            'An escaping relative use import must refuse the rewrite, never ride verbatim.', \RuntimeException::class
         );
         $this->assertStringContainsString('outside the shared-namespace family', $refusal->getMessage());
         $this->assertStringContainsString('Other\\Tree\\Foo\\Bar', $refusal->getMessage(), 'The refusal names the RESOLVED spelling.');
@@ -4474,7 +4474,7 @@ FIXTURE;
         $sibling = "<?php\nnamespace Deicod\\WpConnectors;\nuse namespace\\Zai\\Api;\ninterface SiblingFixture\n{\n}\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($sibling, 'OpenAiOauth', 'shared/src/SiblingFixture.php'),
-            'A sibling-resolving relative use import must refuse the rewrite.'
+            'A sibling-resolving relative use import must refuse the rewrite.', \RuntimeException::class
         );
         $this->assertStringContainsString('SIBLING', $refusal->getMessage());
 
@@ -4485,13 +4485,13 @@ FIXTURE;
         $unresolvable = "<?php\nuse namespace\\Foo\\Bar;\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($unresolvable, 'OpenAiOauth', 'shared/src/NoDecl.php'),
-            'A relative with no declaration in effect must refuse the rewrite.'
+            'A relative with no declaration in effect must refuse the rewrite.', \RuntimeException::class
         );
         $this->assertStringContainsString('cannot resolve', $refusal->getMessage());
         $multi_block = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors\\Shared\\Clock;\nnamespace Other;\nuse namespace\\Baz;\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($multi_block, 'OpenAiOauth', 'shared/src/MultiBlock.php'),
-            'A relative resolving against a LATER block\'s foreign declaration must refuse, never resolve against the first block.'
+            'A relative resolving against a LATER block\'s foreign declaration must refuse, never resolve against the first block.', \RuntimeException::class
         );
         $this->assertStringContainsString('outside the shared-namespace family', $refusal->getMessage(), 'The second block\'s relative resolves against the declaration in effect (Other), not the first block.');
 
@@ -4509,14 +4509,14 @@ FIXTURE;
         $braced_inside = "<?php\nnamespace Other {\n    use namespace\\Foo;\n}\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($braced_inside, 'OpenAiOauth', 'shared/src/BracedInside.php'),
-            'A relative INSIDE a braced block must still resolve against the block\'s declaration (and refuse as the foreign resolution it is).'
+            'A relative INSIDE a braced block must still resolve against the block\'s declaration (and refuse as the foreign resolution it is).', \RuntimeException::class
         );
         $this->assertStringContainsString('outside the shared-namespace family', $refusal->getMessage(), 'The in-block relative resolved against Other — the block is in effect inside its braces.');
         $this->assertStringContainsString('Other\\Foo', $refusal->getMessage(), 'The refusal names the resolved spelling.');
         $braced_after = "<?php\nnamespace Other {\n    interface InBlock\n    {\n    }\n}\nuse namespace\\Foo;\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($braced_after, 'OpenAiOauth', 'shared/src/BracedAfter.php'),
-            'A relative AFTER a closed braced block stands in GLOBAL scope — the block expired at its closing brace, never resolves against it.'
+            'A relative AFTER a closed braced block stands in GLOBAL scope — the block expired at its closing brace, never resolves against it.', \RuntimeException::class
         );
         $this->assertStringContainsString('cannot resolve', $refusal->getMessage(), 'The post-block verdict is the no-declaration-in-effect one — the ledger\'s answer matches the unbraced equivalent.');
 
@@ -4559,13 +4559,13 @@ FIXTURE;
         $html_close = "<?php\nnamespace Other {\n?>\n}\n<?php\n    use namespace\\Foo;\n}\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($html_close, 'OpenAiOauth', 'shared/src/BracedHtmlClose.php'),
-            'A relative past an HTML \'}\' but still INSIDE the braced block must resolve against the block — the HTML brace is not the close.'
+            'A relative past an HTML \'}\' but still INSIDE the braced block must resolve against the block — the HTML brace is not the close.', \RuntimeException::class
         );
         $this->assertStringContainsString('outside the shared-namespace family', $refusal->getMessage(), 'The block is still in effect at the use — the refusal is the resolved-foreign one, never \'cannot resolve\'.');
         $html_open = "<?php\nnamespace Other {\n?>\n<div>{</div>\n<?php\n    interface InBlock\n    {\n    }\n}\nuse namespace\\Foo;\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($html_open, 'OpenAiOauth', 'shared/src/BracedHtmlOpen.php'),
-            'A relative AFTER a closed braced block stands in GLOBAL scope even when inline HTML carried an extra \'{\' — the HTML brace is not an opener.'
+            'A relative AFTER a closed braced block stands in GLOBAL scope even when inline HTML carried an extra \'{\' — the HTML brace is not an opener.', \RuntimeException::class
         );
         $this->assertStringContainsString('cannot resolve', $refusal->getMessage(), 'The verdict is the no-declaration-in-effect one — the HTML \'{\' never deepened the block.');
 
@@ -4574,7 +4574,7 @@ FIXTURE;
         $group_prefix = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors\\{Shared\\Clock};\ninterface GroupRelFixture\n{\n}\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($group_prefix, 'OpenAiOauth', 'shared/src/GroupRelFixture.php'),
-            'A relative group-use PREFIX must refuse the rewrite.'
+            'A relative group-use PREFIX must refuse the rewrite.', \RuntimeException::class
         );
         $this->assertStringContainsString('group-use PREFIX', $refusal->getMessage());
 
@@ -4598,7 +4598,7 @@ FIXTURE;
         foreach ($group_members as $label => $source) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/GroupMemberFixture.php'),
-                "A relative group-use MEMBER must refuse the rewrite, never splice an illegal fully-qualified member ({$label})."
+                "A relative group-use MEMBER must refuse the rewrite, never splice an illegal fully-qualified member ({$label}).", \RuntimeException::class
             );
             $this->assertStringContainsString('group-use MEMBER', $refusal->getMessage(), "The refusal names the member shape ({$label}).");
         }
@@ -4704,7 +4704,7 @@ FIXTURE;
         foreach ($refusals as $label => $case) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($case[0], 'OpenAiOauth', 'shared/src/BareKeywordFixture.php'),
-                "An un-ownable keyword spelling must refuse the rewrite ({$label})."
+                "An un-ownable keyword spelling must refuse the rewrite ({$label}).", \RuntimeException::class
             );
             $this->assertStringContainsString($case[1], $refusal->getMessage(), "The refusal names the shape ({$label}).");
         }
@@ -4821,7 +4821,7 @@ FIXTURE;
         $this->assertSame(array( array( 'Deicod\\WpConnectors\\ExampleConnector', 'comment' ) ), $text_finding("/** @see \\Deicod\\WpConnectors\\ExampleConnector\\OAuth::start() */\ninterface DriftSweepFixture\n{\n}\n"), 'The sweep twin (no target) gives the same verdict.');
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($drift, 'ExampleConnector', 'shared/src/Drift.php'),
-            'A docblock naming a sibling under the building plugin\'s own segment must refuse the rewrite — never ship the dangling spelling the sweep refuses.'
+            'A docblock naming a sibling under the building plugin\'s own segment must refuse the rewrite — never ship the dangling spelling the sweep refuses.', \RuntimeException::class
         );
         $this->assertStringContainsString('Drift.php', $refusal->getMessage());
         $this->assertStringContainsString('Deicod\\WpConnectors\\ExampleConnector', $refusal->getMessage());
@@ -4837,7 +4837,7 @@ FIXTURE;
         // sibling REFUSES the rewrite, naming the sibling.
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($declaration . "/**\n * @throws \\Deicod\\WpConnectors\\Zai\\ApiClient\n */\ninterface DocSiblingStore\n{\n}\n", 'OpenAiOauth', 'shared/src/DocSibling.php'),
-            'A docblock naming a sibling must refuse the rewrite — the embedded copy would ship a reference to a namespace that does not exist inside the plugin.'
+            'A docblock naming a sibling must refuse the rewrite — the embedded copy would ship a reference to a namespace that does not exist inside the plugin.', \RuntimeException::class
         );
         $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
         $this->assertStringContainsString('DocSibling.php', $refusal->getMessage());
@@ -5073,7 +5073,7 @@ FIXTURE;
         try {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'A symlinked directory inside shared/src must refuse the embed build, never ship a library that silently drops it.'
+                'A symlinked directory inside shared/src must refuse the embed build, never ship a library that silently drops it.', \RuntimeException::class
             );
             $this->assertStringContainsString('symlink', $refusal->getMessage());
             $this->assertStringContainsString('LinkedDir', $refusal->getMessage());
@@ -5233,7 +5233,7 @@ FIXTURE;
         // The abort spelling: preg_replace()'s null.
         $refusal = $this->refusalOf(
             fn() => $guard->invoke(null, null, 'namespace declaration rewrite', 'shared/src/Http/Url.php'),
-            'A null preg_replace result must refuse the rewrite, never cast to an empty file.'
+            'A null preg_replace result must refuse the rewrite, never cast to an empty file.', \RuntimeException::class
         );
         $this->assertStringContainsString('aborted (PCRE)', $refusal->getMessage());
         $this->assertStringContainsString('namespace declaration rewrite', $refusal->getMessage());
@@ -5274,7 +5274,7 @@ FIXTURE;
             mkdir($scratch . '/dist/connectors-example-connector-0.1.0.zip.sha256');
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'A blocked sidecar landing must refuse the build, never exit 0 with a half-described artifact set.'
+                'A blocked sidecar landing must refuse the build, never exit 0 with a half-described artifact set.', \RuntimeException::class
             );
             $this->assertStringContainsString('not a regular file', $refusal->getMessage());
             $this->assertStringContainsString('connectors-example-connector-0.1.0.zip.sha256', $refusal->getMessage());
@@ -5301,7 +5301,7 @@ FIXTURE;
             mkdir($manifestPath, 0755, true);
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'A blocked manifest landing must refuse the build too.'
+                'A blocked manifest landing must refuse the build too.', \RuntimeException::class
             );
             $this->assertStringContainsString('not a regular file', $refusal->getMessage());
             $this->assertStringContainsString('checksums.txt', $refusal->getMessage());
@@ -5424,7 +5424,7 @@ FIXTURE;
                 file_put_contents($scratch . '/shared/src/Hostile.php', $source);
                 $refusal = $this->refusalOf(
                     fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                    "A shared source carrying an unrewritable namespace spelling ({$label}) must refuse the build, never package it."
+                    "A shared source carrying an unrewritable namespace spelling ({$label}) must refuse the build, never package it.", \RuntimeException::class
                 );
                 $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The refusal must say what happened ({$label}).");
                 $this->assertStringContainsString('shared/src/Hostile.php', $refusal->getMessage(), "The refusal must name the offending file ({$label}).");
@@ -5500,7 +5500,7 @@ FIXTURE;
             file_put_contents($damaged, str_replace('Plugin Name:', 'Plugin Void:', $source));
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($plugins['beta-demo'], $scratch . '/dist'),
-                'A headerless plugin must refuse the build.'
+                'A headerless plugin must refuse the build.', \RuntimeException::class
             );
             $this->assertStringContainsString('no main plugin file', $refusal->getMessage());
             // The finally twin of the old shape: the damaged source is
@@ -5584,7 +5584,7 @@ FIXTURE;
         try {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir()),
-                'A symlink inside the plugin tree must refuse the build, never skip it silently.'
+                'A symlink inside the plugin tree must refuse the build, never skip it silently.', \RuntimeException::class
             );
             $this->assertStringContainsString('symlink', $refusal->getMessage());
             $this->assertStringContainsString('leaked-config.txt', $refusal->getMessage());
