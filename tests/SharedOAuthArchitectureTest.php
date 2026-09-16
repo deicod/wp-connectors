@@ -1586,6 +1586,14 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
          */
         $probe = $scratch . '/capability-probe';
         if (! @symlink($scratch . '/Clock', $probe)) {
+            /*
+             * The skip predates the try that owns the finally below —
+             * markTestSkipped() throws, so the scratch tree leaked on
+             * exactly the hosts that take this path. Cleanup rides the
+             * skip itself (t31-ocr8-9); the leak shape is gone by
+             * construction.
+             */
+            WpHarness::rrmdir($scratch);
             $this->markTestSkipped('This host cannot create symlinks — the collector-refusal legs cannot run on it (t31-ocr6-11).');
         }
         unlink($probe);
