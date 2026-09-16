@@ -13,11 +13,17 @@
  * the port tests pinned assertSame on it — semantics no DECRYPTING
  * (real) adapter can honor: a real load reconstructs the object graph
  * from persisted bytes, so identity never survives the storage
- * boundary. The fake models that boundary now (a serialize/unserialize
- * round trip — exactly what a real adapter's encode/decode does to the
- * grant), so a test that leans on instance identity fails against the
- * fake exactly as it would against the envelope, instead of passing
- * here and breaking in Task 3.2.
+ * boundary. The fake models that boundary now (the token set rebuilds
+ * through its strict storage serialization, to_array()/from_array() —
+ * the exact payload a real adapter's encode/decode puts through the
+ * envelope; the grant itself re-states through its own private
+ * constructor in the class's scope, the hydration shape the VO's
+ * forward note reserves for Task 3.2's named producer — the old
+ * serialize()/unserialize() round trip is the channel the grant's
+ * masked __serialize() doctrine refuses by design, OCR round 2
+ * t31-ocr2-1), so a test that leans on instance identity fails
+ * against the fake exactly as it would against the envelope, instead
+ * of passing here and breaking in Task 3.2.
  *
  * @package wp-connectors
  */
@@ -27,6 +33,7 @@ declare(strict_types=1);
 use Deicod\WpConnectors\Shared\Grant\StoredGrant;
 use Deicod\WpConnectors\Shared\Http\HeaderMap;
 use Deicod\WpConnectors\Shared\Grant\TokenStorageInterface;
+use Deicod\WpConnectors\Shared\Token\AccessTokenSet;
 
 final class InMemoryTokenStorage implements TokenStorageInterface
 {
@@ -106,27 +113,34 @@ final class InMemoryTokenStorage implements TokenStorageInterface
     }
 
     /**
-     * A storage-round-trip copy of a grant (t31-r9-5): serialize out,
-     * unserialize back — the same whole-graph encode/decode a real
-     * (encrypted) adapter puts the grant through, so nothing the
-     * caller holds and nothing the caller gets back is the instance
-     * the other side holds. The construction is the boundary: a
-     * Revoked tombstone reconstructs too (the round trip bypasses the
-     * private constructor, the same forward note StoredGrant carries
-     * for Task 3.2's deliberate hydration producer).
+     * A storage-boundary copy of a grant (t31-r9-5): the token set
+     * rebuilds through its STRICT storage serialization
+     * (to_array()/from_array()) and the grant re-states through its own
+     * private constructor in the class's scope — the hydration shape
+     * StoredGrant's forward note reserves for Task 3.2's named producer
+     * (a persisted Revoked tombstone re-states as the tombstone it is;
+     * the full constructor validation re-runs on the way in). The same
+     * whole-graph value round trip a real (encrypted) adapter puts the
+     * grant through, so nothing the caller holds and nothing the caller
+     * gets back is the instance the other side holds.
      *
      * @param StoredGrant $grant The grant to detach.
      * @return StoredGrant A value-equal, instance-distinct copy.
-     * @throws RuntimeException When the round trip yields anything but the grant (never constructible for this VO graph).
      */
     private static function detachedCopy(StoredGrant $grant): StoredGrant
     {
-        $copy = unserialize(serialize($grant));
+        $token_set = null === $grant->token_set()
+            ? null
+            : AccessTokenSet::from_array($grant->token_set()->to_array());
 
-        if (!$copy instanceof StoredGrant) {
-            throw new RuntimeException('The in-memory storage fake could not reconstruct the stored grant — the storage round trip is broken.');
-        }
+        $restate = \Closure::bind(
+            static function (StoredGrant $grant, ?AccessTokenSet $token_set): StoredGrant {
+                return new StoredGrant($grant->provider_id(), $grant->generation(), $grant->state(), $token_set);
+            },
+            null,
+            StoredGrant::class
+        );
 
-        return $copy;
+        return $restate($grant, $token_set);
     }
 }

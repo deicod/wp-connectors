@@ -29,6 +29,7 @@ namespace Deicod\WpConnectors\Shared\Grant;
 use Deicod\WpConnectors\Shared\Http\HeaderMap;
 use Deicod\WpConnectors\Shared\Token\AccessTokenSet;
 use InvalidArgumentException;
+use RuntimeException;
 
 /**
  * Immutable, constructor-validated stored grant.
@@ -212,11 +213,99 @@ final class StoredGrant {
 	 * renders through that mask — one vocabulary, no second masking
 	 * decision to drift.
 	 *
+	 * Rides the same masked view as __serialize() below (OCR round 2,
+	 * t31-ocr2-1) — one vocabulary owner, both channels.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, mixed> The grant's public facts with the token set's masked dump.
 	 */
 	public function __debugInfo(): array {
+		return $this->masked_view();
+	}
+
+	/**
+	 * The serialize() channel rides the same masked view (OCR round 2,
+	 * t31-ocr2-1).
+	 *
+	 * Un-hooked, serialize() bypasses __debugInfo() by engine design and
+	 * emits the raw property tree — the nested token set's access and
+	 * refresh tokens in cleartext — for serialize() of the grant itself
+	 * and of every container holding it (a queue payload, a cache
+	 * entry). The grant's own facts (provider, generation, state) are
+	 * public and render as themselves; the token set rides the set's OWN
+	 * __serialize() (the engine serializes nested objects through their
+	 * hook), so the masking decision stays the set's — one doctrine, no
+	 * second owner to drift. The masked view is a SNAPSHOT, not a
+	 * round-trip payload: __unserialize() below refuses it, and storage
+	 * reconstruction belongs to the envelope's deliberate hydration
+	 * producer (the constructor's forward note), never to a
+	 * serialization of the safe form.
+	 *
+	 * var_export() stays the one channel EXCLUDED by engine design (no
+	 * hook exists — the raw dump is display material); its reconstruction
+	 * channel, __set_state(), refuses.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The grant's public facts with the token set's masked payload.
+	 */
+	public function __serialize(): array {
+		return $this->masked_view();
+	}
+
+	/**
+	 * A masked payload is not a reconstruction source — it refuses.
+	 *
+	 * The safe forms are lossy by design (the nested tokens are masked,
+	 * so nothing can rebuild a grant from them); unserialize() on the
+	 * __serialize() payload throws instead of half-initializing typed
+	 * properties against masked fields. Storage reconstruction is the
+	 * Task-3.2 envelope's deliberate hydration seam (re-stating
+	 * persisted facts, never minting), not this channel.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array<string, mixed> $data The masked payload (never a source of truth).
+	 * @return never
+	 * @throws RuntimeException Always — the masked snapshot is not a round-trip payload.
+	 */
+	public function __unserialize( array $data ): never { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- the engine hands the payload to the hook; the refusal is the contract, the payload is not read.
+		throw new RuntimeException( 'A masked stored grant is a snapshot, not a round-trip payload — reconstruct through the construction API, never from a serialization of its own safe form.' );
+	}
+
+	/**
+	 * The var_export() eval channel refuses the same way.
+	 *
+	 * The var_export() call itself dumps the raw property tree through
+	 * no hook (engine design — the one channel the masking contract
+	 * cannot ride, named as excluded in this class's docblocks), but the
+	 * dump it produces is executable code: evaluating it calls
+	 * __set_state(), which refuses — an exported grant never
+	 * reconstructs from its own raw dump.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array<string, mixed> $properties The exported property tree.
+	 * @return never
+	 * @throws RuntimeException Always — the raw dump is not a reconstruction source.
+	 */
+	public static function __set_state( array $properties ): never { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- the engine hands the export to the hook; the refusal is the contract, the tree is not read.
+		throw new RuntimeException( 'A masked stored grant cannot be reconstructed from an exported property tree — the raw dump is display material, never a payload.' );
+	}
+
+	/**
+	 * The masked snapshot the dump and serialize channels render — the
+	 * ONE view both hooks ride (OCR round 2, t31-ocr2-1), so the two
+	 * channels cannot drift. The token set rides as the OBJECT: the
+	 * engine applies its own __debugInfo()/__serialize() at that level,
+	 * keeping the masking decision the set's.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The grant's public facts with the token set's masked dump.
+	 */
+	private function masked_view(): array {
 		return array(
 			'provider_id' => $this->provider_id,
 			'generation'  => $this->generation,

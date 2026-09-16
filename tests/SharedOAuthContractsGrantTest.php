@@ -552,4 +552,65 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString($set->refresh_token(), $dumped, 'The dump must never carry the raw refresh token.');
         $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($set->access_token()), $dumped, 'The nested token set dumps in its masked form.');
     }
+
+    /**
+     * OCR-round-2 pin (t31-ocr2-1): the grant's serialize() channel.
+     * The grant defines no storage serialization of its own — the
+     * envelope owns that (Task 3.2) — but serialize() still had the raw
+     * property tree to dump: the nested token set's both tokens in
+     * cleartext, for serialize() of the grant AND of any container
+     * holding it. __serialize() rides the same masked view as the dump
+     * (the token set delegating through its own hook), the
+     * reconstruction channels refuse, and var_export() stays the one
+     * NAMED-EXCLUDED channel (no engine hook exists — pinned exactly as
+     * excluded, so a future engine hook tightens the contract instead
+     * of silently understating it; the t31-ocr1-8 shape).
+     */
+    public function testTheSerializeChannelRendersTheGrantMaskedAndRefusesToRebuild(): void
+    {
+        $set = $this->tokenSet();
+        $grant = StoredGrant::in_state('fixture-provider', 3, GrantState::Connected, $set);
+
+        $payload = serialize($grant);
+        $this->assertStringNotContainsString($set->access_token(), $payload, 'serialize() must never carry the raw access token.');
+        $this->assertStringNotContainsString($set->refresh_token(), $payload, 'serialize() must never carry the raw refresh token.');
+        $this->assertStringContainsString('fixture-provider', $payload, 'The grant\'s own public facts ride the payload as themselves.');
+        $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($set->access_token()), $payload, 'The nested token set rides its OWN masked serialize form — the grant delegates, it does not re-decide the mask.');
+
+        // A container holding the grant (the queue/cache shape) rides the
+        // same hooks through the graph.
+        $container = serialize(array('grants' => array($grant)));
+        $this->assertStringNotContainsString($set->access_token(), $container, 'A container holding the grant must never carry the raw access token.');
+        $this->assertStringNotContainsString($set->refresh_token(), $container, 'A container holding the grant must never carry the raw refresh token.');
+
+        // The masked snapshot is not a round-trip payload: rebuilding refuses.
+        try {
+            unserialize($payload);
+            $this->fail('A masked stored grant must never reconstruct from its own safe form.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
+        }
+
+        // The eval channel refuses typed directly.
+        try {
+            StoredGrant::__set_state(array('provider_id' => 'fixture-provider'));
+            $this->fail('__set_state() must refuse the raw export as a reconstruction source.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('never a payload', $e->getMessage());
+        }
+
+        // The one EXCLUDED channel, pinned exactly: var_export() dumps the
+        // raw property tree through no engine hook (the nested set dumps
+        // raw too), and evaluating the dump never reconstructs — by
+        // whichever refusal fires on this engine (the nested set's own
+        // __set_state() evaluates first).
+        $export = var_export($grant, true);
+        $this->assertStringContainsString($set->access_token(), $export, 'The documented exclusion is exact: var_export() dumps the raw tree through no hook — which is precisely why its reconstruction channel refuses.');
+        try {
+            eval('return ' . $export . ';');
+            $this->fail('Evaluating a var_export of a stored grant must never reconstruct one.');
+        } catch (\Throwable $reconstruction_refused) {
+            $this->addToAssertionCount(1);
+        }
+    }
 }

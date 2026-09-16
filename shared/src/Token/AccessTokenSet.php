@@ -35,6 +35,7 @@ use DateTimeZone;
 use Deicod\WpConnectors\Shared\Support\InstantArithmetic;
 use Deicod\WpConnectors\Shared\Support\SecretMask;
 use InvalidArgumentException;
+use RuntimeException;
 
 /**
  * Immutable, constructor-validated OAuth token set.
@@ -326,11 +327,95 @@ final class AccessTokenSet {
 	 * (SecretMask::mask(), the same owner the header renders ride); the
 	 * non-secret facts (lifetime, instants) render as themselves.
 	 *
+	 * Rides the same masked view as __serialize() below (OCR round 2,
+	 * t31-ocr2-1) — one vocabulary owner, both channels.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, mixed> Masked tokens plus the public facts, never containing token material.
 	 */
 	public function __debugInfo(): array {
+		return $this->masked_view();
+	}
+
+	/**
+	 * The serialize() channel rides the same masked view (OCR round 2,
+	 * t31-ocr2-1).
+	 *
+	 * Un-hooked, serialize() bypasses __debugInfo() by engine design and
+	 * emits the raw property tree — both token positions in cleartext —
+	 * for serialize() of the set itself and of every container holding it
+	 * (a queue payload, a cache entry, a StoredGrant whose own
+	 * __serialize() delegates here). The HTTP value objects closed exactly
+	 * this channel with HasMaskedHeaders::__serialize (t31-ocr1-8); this
+	 * is the same doctrine on the token carrier — the payload is
+	 * byte-identical in vocabulary to __debugInfo() above, so the dump
+	 * and serialize forms cannot drift. The masked view is a SNAPSHOT,
+	 * not a round-trip payload: to_array()/from_array() are the storage
+	 * round trip, and __unserialize() below refuses the safe form.
+	 *
+	 * var_export() stays the one channel EXCLUDED by engine design (no
+	 * hook exists — the raw dump is display material); its reconstruction
+	 * channel, __set_state(), refuses.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> Masked tokens plus the public facts, never containing token material.
+	 */
+	public function __serialize(): array {
+		return $this->masked_view();
+	}
+
+	/**
+	 * A masked payload is not a reconstruction source — it refuses.
+	 *
+	 * The safe forms are lossy by design (the tokens are masked, so
+	 * nothing can rebuild a token set from them); unserialize() on the
+	 * __serialize() payload throws instead of half-initializing typed
+	 * properties against masked fields. Storage reconstruction rides
+	 * from_array() on the to_array() payload (the envelope's inner
+	 * bytes), never a serialization of the safe form.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array<string, mixed> $data The masked payload (never a source of truth).
+	 * @return never
+	 * @throws RuntimeException Always — the masked snapshot is not a round-trip payload.
+	 */
+	public function __unserialize( array $data ): never { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- the engine hands the payload to the hook; the refusal is the contract, the payload is not read.
+		throw new RuntimeException( 'A masked token set is a snapshot, not a round-trip payload — reconstruct through the constructor or from_array(), never from a serialization of its own safe form.' );
+	}
+
+	/**
+	 * The var_export() eval channel refuses the same way.
+	 *
+	 * The var_export() call itself dumps the raw property tree through
+	 * no hook (engine design — the one channel the masking contract
+	 * cannot ride, named as excluded in this class's docblocks), but the
+	 * dump it produces is executable code: evaluating it calls
+	 * __set_state(), which refuses — an exported token set never
+	 * reconstructs from its own raw dump.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array<string, mixed> $properties The exported property tree.
+	 * @return never
+	 * @throws RuntimeException Always — the raw dump is not a reconstruction source.
+	 */
+	public static function __set_state( array $properties ): never { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- the engine hands the export to the hook; the refusal is the contract, the tree is not read.
+		throw new RuntimeException( 'A masked token set cannot be reconstructed from an exported property tree — the raw dump is display material, never a payload.' );
+	}
+
+	/**
+	 * The masked snapshot the dump and serialize channels render — the
+	 * ONE view both hooks ride (OCR round 2, t31-ocr2-1), so the two
+	 * channels cannot drift.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> Masked tokens plus the public facts, never containing token material.
+	 */
+	private function masked_view(): array {
 		return array(
 			'access_token'  => SecretMask::mask( $this->access_token ),
 			'refresh_token' => null === $this->refresh_token ? null : SecretMask::mask( $this->refresh_token ),

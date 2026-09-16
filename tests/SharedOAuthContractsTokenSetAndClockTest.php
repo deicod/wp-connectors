@@ -773,4 +773,52 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $this->assertStringNotContainsString($access, $dumped, 'The no-refresh set dumps masked too.');
         $this->assertStringContainsString((string) SecretMask::mask($access), $dumped);
     }
+
+    /**
+     * OCR-round-2 pin (t31-ocr2-1): the serialize() channel. serialize()
+     * bypasses __debugInfo() by engine design, so the r11-5 dump hook
+     * alone left the ENGINE serialization open — serialize() of the set
+     * (and of any container holding it) emitted the raw property tree,
+     * both tokens in cleartext, into every persistence or queue payload
+     * built from the value. __serialize() rides the SAME masked view as
+     * the dump now (one vocabulary owner), and the reconstruction
+     * channels refuse: the masked snapshot is lossy by design, and
+     * to_array()/from_array() are the storage round trip.
+     */
+    public function testTheSerializeChannelRendersMaskedAndRefusesToRebuild(): void
+    {
+        $access = FakeSecrets::accessToken();
+        $refresh = FakeSecrets::refreshToken();
+        $set = new AccessTokenSet($access, $refresh, 3600, $this->obtainedAt());
+
+        $payload = serialize($set);
+        $this->assertStringNotContainsString($access, $payload, 'serialize() must never carry the raw access token.');
+        $this->assertStringNotContainsString($refresh, $payload, 'serialize() must never carry the raw refresh token.');
+        $this->assertStringContainsString((string) SecretMask::mask($access), $payload, 'The payload is the masked dump vocabulary.');
+        $this->assertStringContainsString((string) SecretMask::mask($refresh), $payload, 'The refresh token rides the same masked vocabulary.');
+        $this->assertStringContainsString('3600', $payload, 'The non-secret facts (lifetime, instants) ride the payload as themselves.');
+
+        // A container holding the set rides the same hook — the engine
+        // serializes nested objects through their own __serialize(), so
+        // the queue/cache/graph shapes inherit the mask for free.
+        $container = serialize(array('grants' => array('fixture-provider' => $set)));
+        $this->assertStringNotContainsString($access, $container, 'A container holding the set must never carry the raw access token.');
+        $this->assertStringNotContainsString($refresh, $container, 'A container holding the set must never carry the raw refresh token.');
+
+        // The masked snapshot is not a round-trip payload: rebuilding refuses.
+        try {
+            unserialize($payload);
+            $this->fail('A masked token set must never reconstruct from its own safe form.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
+        }
+
+        // The var_export eval channel refuses the same way.
+        try {
+            AccessTokenSet::__set_state(array('access_token' => 'raw'));
+            $this->fail('__set_state() must refuse the raw export as a reconstruction source.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('never a payload', $e->getMessage());
+        }
+    }
 }
