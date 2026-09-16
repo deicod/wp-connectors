@@ -30,10 +30,13 @@ final class OAuthRateLimitException extends OAuthRuntimeException implements OAu
 	/**
 	 * Provider-supplied Retry-After in seconds, when known.
 	 *
-	 * Already-parsed by the HTTP utilities (both provider forms — seconds
-	 * and HTTP-date — land here as seconds); null when the provider sent
-	 * none. A NEGATIVE delta is meaningless but a parser can emit one
-	 * (a header spelling the past, an HTTP-date behind the reading),
+	 * An int SUPPLIED BY THE CALLER, already parsed to seconds (both
+	 * provider forms — seconds and HTTP-date — are the CALLER's parse;
+	 * no Retry-After parsing lives in shared/src, and the HTTP/
+	 * provider layer that will construct this exception is Task 3.2
+	 * scope); null when the provider sent none. A NEGATIVE delta is
+	 * meaningless but a parser can emit one (a header spelling the
+	 * past, an HTTP-date behind the reading),
 	 * so the constructor CLAMPS it to zero (t31-ocr2-7 — the same
 	 * reality RefreshPolicy::capped_retry_after_seconds() documents and
 	 * tests: negative clamps to zero, one truth on both sides); zero
@@ -55,7 +58,7 @@ final class OAuthRateLimitException extends OAuthRuntimeException implements OAu
 	 * @param string         $message            Safe, fixed message (no token material, no raw provider body).
 	 * @param int            $code               Exception code.
 	 * @param Throwable|null $previous           Previous exception, if any.
-	 * @param int|null       $retry_after_seconds Parsed Retry-After in seconds, or null when the provider supplied none; a negative value clamps to zero (a parser can emit one, and "retry immediately" is its meaning).
+	 * @param int|null       $retry_after_seconds Retry-After in seconds as supplied by the caller (already parsed; no parsing lives here), or null when the provider supplied none; a negative value clamps to zero (a parser can emit one, and "retry immediately" is its meaning).
 	 */
 	public function __construct( string $message = '', int $code = 0, ?Throwable $previous = null, ?int $retry_after_seconds = null ) {
 		parent::__construct( $message, $code, $previous );
