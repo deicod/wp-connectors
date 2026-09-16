@@ -84,17 +84,22 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
-     * OCR-round-7 pin (t31-ocr7-4): preconditions and
+     * OCR-round-7 pin (t31-ocr7-4; mechanism narrative corrected in
+     * t31-ocr7-8 over the refutation lens's driven probes — the guard
+     * stands, the first justification did not): preconditions and
      * self-containment. A missing or FILE source once reached the SPL
      * iterator constructor, whose UnexpectedValueException is another
      * library's vocabulary — the harness policy is the LOUD
-     * RuntimeException naming the path. A target that IS the source
-     * truncates its own inode (copy() opens the destination before
-     * reading the source), and a target INSIDE the source makes the
-     * lazy iterator enumerate its own output — an unbounded re-copy.
-     * All four shapes refuse before a single byte moves, one
-     * containment check, and the source tree survives the refusal
-     * intact.
+     * RuntimeException naming the path. A target that IS the source is
+     * a silent NO-OP success on this engine (probed: copy($f, $f)
+     * returns false with the bytes intact, and pre-round
+     * copyTree(src, src) returned normally having copied nothing), and
+     * a target INSIDE the source writes the copy into the tree it is
+     * reading (the SPL iterator does not re-enumerate the created
+     * target — one self-polluting duplication, driven: 5,000 files
+     * became exactly 10,000). All four shapes refuse before a single
+     * byte moves, one containment check, and the source tree survives
+     * the refusal intact.
      */
     public function testPreconditionAndSelfContainmentShapesRefuseBeforeIterating(): void
     {
@@ -129,16 +134,19 @@ final class HarnessCopyTreeTest extends TestCase
             // (a) A MISSING source: same verdict path.
             $refuses($from . '/no-such-tree', $from . '/dst-missing', 'A MISSING source must refuse with the policy exception.');
 
-            // (b) The self-copy: the target IS the source.
-            $refuses($from . '/src', $from . '/src', 'A self-copy must refuse — copy() would truncate the destination inode it is about to read.');
+            // (b) The self-copy: the target IS the source — a silent
+            // no-op success pre-round (the engine's same-file mercy,
+            // probed, never a contract).
+            $refuses($from . '/src', $from . '/src', 'A self-copy must refuse — pre-round it returned normally having copied nothing, a silent wrong outcome.');
 
             // (b) The nested target: the destination sits inside the
-            // source the lazy iterator is walking.
-            $refuses($from . '/src', $from . '/src/inside', 'A target inside the source must refuse — the iterator would enumerate its own output without bound.');
+            // source the lazy iterator is walking — the copy lands in
+            // the tree under test.
+            $refuses($from . '/src', $from . '/src/inside', 'A target inside the source must refuse — the copy would land inside the very tree it reads.');
 
             // The refusal precedes the byte work: the source tree is
-            // intact after every shape (the pre-fix self-copy is the
-            // truncation this leg guards against).
+            // intact after every shape (the pre-fix nested copy is the
+            // self-pollution this leg guards against).
             $this->assertSame('original bytes', (string) file_get_contents($from . '/src/file.php'), 'The source tree survives every refusal untouched.');
             $this->assertFileDoesNotExist($from . '/src/inside', 'The nested target was never created.');
         } finally {

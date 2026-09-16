@@ -490,20 +490,33 @@ final class WpHarness
      * inside it, file or directory shape — REFUSES loudly, one verdict
      * path for both shapes, the copy twin of rrmdir()'s root guard.
      *
-     * Preconditions and self-containment (OCR round 7, t31-ocr7-4): a
-     * MISSING or FILE source once reached the SPL iterator
-     * constructor, whose UnexpectedValueException is another library's
-     * vocabulary — the harness policy is the LOUD RuntimeException
-     * naming the path, so the guard precedes iteration. And a target
-     * that IS the source or sits INSIDE it is refused before the lazy
-     * iterator runs: a self-copy truncates the destination inode
-     * (copy() opens its destination before reading its source — the
-     * source's own bytes), and a nested target makes the iterator
-     * enumerate its own output (each copied file is a new entry, an
-     * unbounded re-copy). One containment check, realpath-based (the
-     * not-yet-created target is judged lexically — the harness's
-     * absolute scratch paths are the ceiling; a '..'-woven alias is
-     * out of scope), before a single byte moves.
+     * Preconditions and self-containment (OCR round 7, t31-ocr7-4;
+     * mechanism narrative CORRECTED in t31-ocr7-8 over the refutation
+     * lens's driven probes — the guard's policy stands, its first
+     * justification did not): a MISSING or FILE source once reached
+     * the SPL iterator constructor, whose UnexpectedValueException is
+     * another library's vocabulary — the harness policy is the LOUD
+     * RuntimeException naming the path, so the guard precedes
+     * iteration. And a target that IS the source or sits INSIDE it is
+     * refused before the lazy iterator runs. The mechanisms, as probed
+     * on this engine (8.5.10, tmpfs and ext4): a SELF-COPY is a
+     * silent no-op success — copy() refuses the same-file copy
+     * (returns false, no warning, bytes intact) and pre-round
+     * copyTree(src, src) returned normally having copied nothing, a
+     * silent wrong outcome riding the engine's same-file mercy, which
+     * is platform behavior, never a contract; a NESTED target writes
+     * the copy INTO the source it is reading — the SPL iterator does
+     * NOT re-enumerate the created target (driven: 5,000 source files
+     * became exactly 10,000 — one self-polluting duplication, not an
+     * unbounded loop), still wrong output landing inside the tree
+     * under test. One containment check, realpath-based (the
+     * not-yet-created target is judged lexically; the out-of-scope
+     * class is any alias the lexical path cannot see through — a
+     * '..'-woven alias, or an absent target reached through a
+     * SYMLINKED ancestor, whose realpath() is false for the missing
+     * leaf and whose copy would land physically inside the source —
+     * every real caller passes disjoint absolute scratch trees),
+     * before a single byte moves.
      *
      * @param string $from Absolute source directory.
      * @param string $to   Absolute target directory.
@@ -524,7 +537,7 @@ final class WpHarness
         // (absolute normalized scratch paths are the ceiling).
         $target_real = false !== realpath($to) ? realpath($to) : rtrim($to, '/');
         if ($target_real === $source_real || 0 === strpos($target_real, $source_real . '/')) {
-            throw new RuntimeException('WpHarness::copyTree() refuses a target that is the source itself or inside it — a self-copy truncates its own inode, a nested target enumerates its own output without bound: from ' . $from . ' into ' . $to);
+            throw new RuntimeException('WpHarness::copyTree() refuses a target that is the source itself or inside it — a self-copy is a silent no-op success riding the engine\'s same-file mercy, and a nested target writes the copy into the very tree it reads: from ' . $from . ' into ' . $to);
         }
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS)
