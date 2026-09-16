@@ -6,6 +6,102 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 1)
+
+First OCR-tool round (a complementary deterministic reviewer — alibaba
+open-code-review on glm-5.3 — over the full branch diff, 51/51 files);
+driver triage accepted 9/9 findings (none ledger-covered; the neighbors
+of earlier fixes adjudicated as seams those rounds missed, not dupes),
+fixed as t31-ocr1-1..9 — one commit per finding, the full offline
+check green after every commit, a regression per fix — plus a
+two-lens verifier pass (independent correctness + security agents
+over the whole round diff, every raised finding adversarially
+re-derived by the implementer and reproduced where drivable) that
+raised 8 distinct findings after cross-lens dedup (one found
+independently by both lenses) — one MEDIUM, four LOW, three notes —
+five fixed in-round as t31-ocr1-10..14 and three ledgered as stated
+boundaries. Suite 1599 → 1605 tests, 44742 → 44798 assertions,
+2 skipped unchanged.
+
+- **The one unguarded `createFromFormat()` is guarded (t31-ocr1-1)**:
+  InstantArithmetic's reconstruction chained `->setTimezone()` on a
+  parse it never checked — a false return escaped as an engine Error
+  instead of the documented InvalidArgumentException. The guard rides
+  the extracted `reconstruct()` seam (the false is not drivable
+  through the public arithmetic on a 64-bit build — the int domain IS
+  the DateTime domain), and the regression drives the seam with a
+  spelling the internal derivation cannot produce.
+- **The empty-host URL spelling refuses explicitly (t31-ocr1-2)**:
+  `parse_url()`'s answer for `http://:8080/` is build-dependent — some
+  builds in the supported floor return `host => ''` (key present,
+  empty), where the isset() gate passed and a hostless authority
+  constructed; this build returns false outright. The explicit `''`
+  leg refuses the spelling on every build.
+- **The removal seam never deletes through a link (t31-ocr1-3 +
+  t31-ocr1-11)**: the finally's stage teardown was the one seam
+  without the r10-10 link guard — a mid-build swap of the stage
+  directory for a symlink handed rrmdir() a linked root and the walk
+  emptied the TARGET tree (pre-fix body reproduced). The single-owner
+  fix hardens rrmdir() itself (a root link stands untouched; a linked
+  child is unlinked AS ITSELF, never descended into), and the
+  verifier round carried the same doctrine to the harness twin
+  (WpHarness::rrmdir — both lenses found it independently; the
+  tests' predictable /tmp scratch names are pre-plantable on a
+  shared host).
+- **The URL scheme/host folds ride AsciiFold (t31-ocr1-4)**: two
+  locale-sensitive `strtolower()` folds sat beside the ONE case-fold
+  owner while a Url.php docblock claimed the engine folds are
+  locale-independent "since PHP 8.2" — a claim AsciiFold's own
+  docblock contradicts. Both folds consume the byte table
+  (identical everywhere BY CONSTRUCTION), the docblock states the
+  fold owner instead of engine history, and the manufactured-locale
+  pin folds `SIMPLE-I.EXAMPLE` byte-identically under a live Turkish
+  locale (the glibc divergence is real at the libc level —
+  `tolower('I')=0xFD`, probed via a C probe; on this engine PHP's
+  own strtolower does not consult LC_CTYPE, probed over all 256
+  bytes, so the pin is argued-from-the-tables the r11-6 way).
+- **The scanner prune rides the vocabulary's own fold
+  (t31-ocr1-5 + t31-ocr1-12)**: the repo walk's prune list is a
+  SUBSET of the one development-entry vocabulary, judged by the same
+  fold the vocabulary owner rides — `wp_connectors_segment_is_named()`
+  is the extracted mechanic (a case-variant `VENDOR/` or `Tools/`
+  prunes exactly where the folded gates judge it a development
+  entry; `Tests/` and the dotless `phpunit.cache/` stay scanned —
+  vocabulary members the subset does not name). The verifier round
+  closed the seam beside it: the prune judged FULL pathname parts,
+  so a dev-named ANCESTOR of the scan root silently pruned the whole
+  scan (0 findings, exit 0 — reproduced under a `Dist/` ancestor;
+  the exact-case shape predates the round); segments BELOW the root
+  judge now.
+- **The locale snapshots query (t31-ocr1-6 + t31-ocr1-14)**:
+  `setlocale(LC_CTYPE, null)` SETS from the environment (reproduced)
+  — a null-"snapshot" could restore a different LC_CTYPE than the
+  one in effect. Both sites use the query spelling `'0'`, and the
+  verifier-hardened pin installs a locale differing from the
+  environment's and asserts the query leaves it standing (the naive
+  current==current shape was vacuous).
+- **save()'s provider identity is contract (t31-ocr1-7 +
+  t31-ocr1-13)**: the storage key MUST equal the grant's own label —
+  the port Task 3.2's adapters implement against now documents the
+  rule (a disagreement is a misrouted call; implementations REJECT
+  and commit nothing), and the reference fake enforces it — with the
+  caller-controlled key screened through the ONE control-byte guard
+  before it rides the rejection's message (the r13-2 class).
+- **serialize() rides the masked view (t31-ocr1-8)**: the redaction
+  docblocks claimed the masked contract for "the serialized form",
+  but `__debugInfo()` covers only the debugger channel — serialize()
+  and var_export() bypass it by engine design and dumped the raw
+  property tree (URL with query/userinfo, raw Authorization/Cookie,
+  body). `__serialize()` returns the byte-identical masked
+  vocabulary, `__unserialize()`/`__set_state()` refuse (snapshots,
+  not round-trip payloads), var_export() is the named exclusion, and
+  the pin asserts exactly that documented truth.
+- **The scratch-tree helpers live once (t31-ocr1-9 + t31-ocr1-10)**:
+  WpHarness::copyTree() joins rrmdir() as the ONE pair (one error
+  policy — loud), the per-test twins are gone, and the namespace-less
+  harness files take no non-compound use statements (the engine
+  warned on every load — ocr1-7's import, caught by the verifier).
+
 ### Fixed (shared — M3 Task 3.1, review round t31-r13)
 
 Fix round over round-13's three counted findings (one MEDIUM

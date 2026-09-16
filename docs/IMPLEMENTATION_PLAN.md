@@ -845,6 +845,48 @@ documented exception.
   symlink build.json shape forwarded onto the r6
   config-seam ledger line. Suite 1596 → 1599
   tests, 44708 → 44742 assertions, 2 skipped
+  unchanged. OCR-tool round t31-ocr1
+  (fourteen commits — the first pass of a
+  complementary deterministic reviewer over
+  the full branch diff, 9/9 findings accepted
+  at triage as seams the manual rounds
+  missed, plus five verifier-round commits):
+  the one unguarded createFromFormat() in
+  the repo rejects typed instead of escaping
+  an engine Error (InstantArithmetic's
+  reconstruction, guard at the extracted
+  seam); the empty-host URL spelling refuses
+  explicitly on every build; rrmdir never
+  deletes through a link at EITHER removal
+  seam (build + harness twin, the latter a
+  both-lens verifier find — the pre-fix body
+  reproduced emptying the target tree
+  through a planted root link); the URL
+  scheme/host folds ride AsciiFold with the
+  disputed engine-history docblock claim
+  gone (glibc's Turkish tolower divergence
+  C-probe verified; this engine's string
+  folds don't consult LC_CTYPE, probed over
+  256 bytes); the scanner prune rides the
+  development-entry vocabulary's own fold,
+  below the root only (a dev-named checkout
+  ancestor silently blinded the scan,
+  reproduced — exact-case shape pre-round);
+  setlocale snapshots query with '0' (null
+  SETS from env, reproduced) behind a
+  discriminating pin; save()'s provider
+  identity is contract with the reference
+  fake rejecting mismatched keys loudly and
+  screening the key through the control-byte
+  guard; serialize() rides the masked view
+  with __unserialize/__set_state refusing
+  and var_export the named exclusion; and
+  the scratch-tree helpers consolidated once
+  into the harness (loud policy, no
+  non-compound use statements in
+  namespace-less harness files — the
+  verifier's MEDIUM). Suite 1599 → 1605
+  tests, 44742 → 44798 assertions, 2 skipped
   unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
