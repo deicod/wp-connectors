@@ -1101,6 +1101,85 @@ OCR-tool round
   Suite 1618 → 1623 tests, 44985 →
   45028 assertions, 2 skipped
   unchanged.
+OCR-tool round
+  t31-ocr6 (sixteen commits — the
+  sixth pass, union coverage
+  complete, 13/13 findings accepted:
+  the FIRST shared/src security
+  finding since round 3 — the
+  SecretMask tail-length policy, not
+  a new channel): the visible-tail
+  threshold is 12 at the mask owner
+  (OTP-class values — RFC 8628 user
+  codes, device codes ≤ 12 chars —
+  render the bare mask; 'BCJK-3502'
+  once rendered '…3502', half the
+  code's entropy; raising only masks
+  more, no long-value render loses
+  its tail); the storage port's
+  control-byte screen is a
+  THREE-METHOD contract (load/delete
+  accept the same caller-controlled
+  key save() screens — one
+  screen_key() owner at three call
+  sites in the fake); provider_id
+  snapshots escape invalid UTF-8
+  through the r8-6 one rendering
+  owner (constructor stays
+  byte-permissive — a config label
+  is opaque; the exception-message
+  sprintf residual named for the
+  next round); copyTree()'s
+  prefix-strip no-match arm refuses
+  loudly (a trailing-slash source
+  once silently nested every file);
+  BOTH re-grown fixture-copy twins
+  ride the one copy owner
+  (makeScratchRepo's, the finding,
+  and copyFixturePlugin()'s, the
+  lens's catch — same str_replace
+  strip, same missing isLink()
+  guard, survived both ocr4 fencing
+  rounds); the prune flag is typed
+  bool; the forced-add pin pins the
+  add+close CONTRACT (libzip's
+  stat-at-add vs deferred-read is a
+  build detail); fixture mutations
+  derive their needles with asserted
+  counts; GrantState's header count
+  agrees with its list; the
+  nested-name pin names the real
+  pre-fix glue ('vendornested.php');
+  symlink-capability probes
+  @-suppress the probe call (the
+  warning conversion errors the test
+  at the call line before
+  markTestSkipped — both idiom
+  sites, driver-reproduced); the
+  locale-pressure half skips
+  visibly on manufacture failure;
+  and the exception-family pin sees
+  subdirectories (recursive
+  file-set derivation, still
+  composing with the
+  one-type-per-file gate). The
+  round's two-lens verifier pass
+  (152 driven tool calls, every fix
+  re-driven red/green) raised 2
+  distinct confirmed findings plus
+  one dead-code note — all three
+  fixed in-round (ocr6-14/15/16),
+  ZERO refuted; one finding's stated
+  mechanism corrected by the driver
+  in-commit (the collector-refusal
+  legs fail as a confusing red
+  through the RuntimeException-
+  swallowing catch on incapable
+  hosts, never a green pass — the
+  probe+skip fix is the same either
+  way). Suite 1623 → 1627 tests,
+  45028 → 45068 assertions, 2
+  skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

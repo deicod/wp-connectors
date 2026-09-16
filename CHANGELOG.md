@@ -6,6 +6,124 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 6)
+
+Sixth OCR-tool round (the same complementary deterministic reviewer,
+sixth pass over the branch diff, main + fill-in, union coverage
+complete); driver triage accepted all 13 findings — the FIRST
+shared/src security finding since round 3 (the SecretMask
+tail-length policy, not a new channel), control-byte/UTF-8
+screening obligations on the storage port and the provider_id
+snapshots, the copyTree fallback plus BOTH inline twins that
+re-grew the exact defect shapes ocr4-2/-3 killed, and test-infra
+lows. Fixed as t31-ocr6-1..13 — one commit per finding, the full
+offline check green after every commit, a regression per fix where
+meaningful. The round's two-lens verifier pass (independent
+correctness + refutation agents over the whole round diff via a
+deterministic workflow, 152 driven tool calls between them — every
+fix re-driven red/green through /tmp copies of the pre-round code)
+raised 2 distinct CONFIRMED findings (both lenses independently
+found the first) plus one dead-code note — all three fixed in-round
+as t31-ocr6-14/15/16, zero refuted; one finding's stated mechanism
+was corrected by the driver in-commit (ocr6-11's "silently pass
+green" is actually a confusing red through the RuntimeException-
+swallowing catch). Suite 1623 → 1627 tests, 45028 → 45068
+assertions, 2 skipped unchanged.
+
+- **The visible-tail policy never tails an OTP-class value
+  (t31-ocr6-1, security:low)**: SecretMask's threshold sat one
+  character under the canonical RFC 8628 user code — 'BCJK-3502'
+  (9 chars with separator) rendered '…3502', half a short-lived
+  credential's entropy on every safe debug form. MIN_LENGTH_FOR_
+  VISIBLE_TAIL 8 → 12 at the OWNER (every credential-bearing
+  consumer rides it; raising only masks more, no long-value render
+  loses its tail); boundary pinned from both sides, the canonical
+  user-code shape pinned bare-masked in both engine channels, the
+  mechanics pins re-lengthened past the new boundary.
+- **The storage key screens on ALL THREE port methods
+  (t31-ocr6-2, security:low)**: the control-byte obligation was
+  save()-only while load()/delete() accept the same caller-
+  controlled key — a 3.2 adapter embedding it in an
+  OAuthStorageException message on a failed load/delete reopens
+  the forged-log-line class. The contract states the three-method
+  obligation (header bullet + both docblocks); the reference fake
+  enforces it with ONE screen owner (screen_key()) at three call
+  sites.
+- **provider_id snapshots escape invalid UTF-8 (t31-ocr6-3,
+  bug:low ×2)**: a lone 0xE9 passes the control-byte screen (a
+  config label is opaque) but rendered verbatim made both VOs'
+  dump/serialize forms invalid UTF-8 — the json_encode-false
+  log-drop class. The RENDERED form routes through
+  SecretMask::utf8_for_safe_render() (the r8-6 one rendering
+  owner), the constructor stays byte-permissive by design; the
+  exception-message sprintf residual is named for the next round.
+- **copyTree()'s no-match arm refuses (t31-ocr6-4, bug:low)**: a
+  pathname not prefixed by `$from.'/'` (trailing-slash source)
+  kept its FULL absolute path as the relative tail — every file
+  silently nested under the target. Loud RuntimeException naming
+  path and prefix.
+- **BOTH fixture-copy twins ride the one copy owner
+  (t31-ocr6-5 + t31-ocr6-15, maintainability:medium + the lens's
+  catch)**: makeScratchRepo's inline copy (str_replace prefix
+  strip, no isLink() guard) re-grew the exact ocr4-2/-3 defect
+  shapes — and the verifier lens found BuildArtifactsTest::
+  copyFixturePlugin() still carrying the SAME surviving twin,
+  fixed in-round. Both ride WpHarness::copyTree(); the r6-7
+  pre-create concern is absorbed (per-file recursive mkdir,
+  order-free).
+- **The dev-segment prune flag is typed bool (t31-ocr6-6,
+  maintainability:low)**: documented bool, untyped under
+  strict_types — truthiness silently accepted 0/'0'/'' as disable
+  on a security-relevant control.
+- **The forced-add pin pins the CONTRACT (t31-ocr6-7, test:low)**:
+  add-time FALSE for a vanished staged source is a libzip-build
+  detail (stat-at-add vs deferred read); the pin now asserts the
+  add+close sequence never silently succeeds — failure observable
+  by close time at the latest, green on both libzip shapes.
+- **Mutation needles derive from the fixture (t31-ocr6-8,
+  test:low)**: the traversal row's two exact literals
+  ('Version:           0.1.0', "'0.1.0'") no-opped silently on
+  fixture drift, failing as a phantom build defect — needles are
+  regex-derived from what is there, each with an asserted
+  replacement count; a miss fails loudly at the mutation step.
+- **GrantState's count agrees with its list (t31-ocr6-9,
+  documentation:low)**: "three distinct classes" over four states
+  with the non-terminal one first — one LIVE state plus three
+  TERMINAL classes now.
+- **The nested-name pin's negative leg names the real glue
+  (t31-ocr6-10, test:low)**: it asserted 'vendor/nested.php', a
+  path that existed under NEITHER behavior (pre-fix str_replace
+  GLUES 'vendornested.php') — the leg asserts the glue shape now,
+  red under a hand-reverted str_replace strip.
+- **Symlink-capability probes fire as skips, not errors
+  (t31-ocr6-11 + t31-ocr6-14, test:medium + both lenses)**: the
+  collector-refusal legs had no probe — on an incapable host they
+  fail confusingly (fail() swallowed by the RuntimeException
+  catch, fragment assertions re-failing over the wrong message).
+  The probe idiom (create+unlink, named skip) was added — and the
+  verifier pass then caught that its unsuppressed symlink() WARNING
+  errors the test at the call line before markTestSkipped (driver-
+  reproduced under the repo's own phpunit config): the probe is
+  @-suppressed at both sites of the idiom, the round-4 origin
+  included.
+- **The locale-pressure half skips visibly (t31-ocr6-12,
+  test:low)**: a host without localedef/tr_TR silently skipped
+  the whole `if ($manufactured)` block while passing green under
+  a name claiming pressure was applied — markTestSkipped with the
+  exit code and what did not run.
+- **The exception-family pin sees subdirectories (t31-ocr6-13,
+  test:low)**: the round-5 exhaustiveness glob was FLAT — a type
+  in a future Exception/ subdirectory would slip every family pin
+  while the pin's message claimed whole-directory coverage
+  (planted GapException: round-5 pin green, new pin red). The
+  derivation is recursive, still a pure file-set pin composing
+  with the one-type-per-file gate.
+- **In-round verifier fixes (t31-ocr6-14/15/16)**: the @-suppressed
+  capability probe (above), the surviving copyFixturePlugin twin
+  (above), and one dead error-handler capture beside its own @ in
+  the forced-add leg — collected, never asserted, redundant under
+  @.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 5)
 
 Fifth OCR-tool round (the same complementary deterministic reviewer,
