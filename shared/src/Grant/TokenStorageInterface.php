@@ -118,7 +118,14 @@ interface TokenStorageInterface {
 	 * provider. A save whose key and label disagree is a misrouted
 	 * call: implementations REJECT it (the typed caller-bug
 	 * rejection) and commit NOTHING — never a silent install of one
-	 * provider's grant under another's slot.
+	 * provider's grant under another's slot. The caller-controlled key
+	 * is SCREENED FOR CONTROL BYTES (HeaderMap's one shared guard) and
+	 * rejected BEFORE any other judgment (t31-ocr1-13, stated here so
+	 * the docblock specifies everything the reference fake enforces):
+	 * an unscreened key cannot ride the mismatch rejection's sprintf —
+	 * a '\n'-bearing storage key would otherwise forge a line in the
+	 * log the exception lands in, the exact class every
+	 * provider-supplied string rides the guard for.
 	 *
 	 * Monotonicity (OCR round 2, t31-ocr2-3): the grant's OWN
 	 * generation must be at least $expected_generation. An
@@ -132,7 +139,7 @@ interface TokenStorageInterface {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param string      $provider_id         Provider label (must equal the grant's own).
+	 * @param string      $provider_id         Provider label (must equal the grant's own; screened for control bytes and rejected — typed, nothing committed — BEFORE any other judgment).
 	 * @param StoredGrant $grant               The grant to persist (its generation must be at least $expected_generation).
 	 * @param int         $expected_generation The persisted generation this commit is fenced on (EXPECT_NO_GRANT when none).
 	 * @return bool True when the grant was committed; false when the precondition failed (nothing committed).
