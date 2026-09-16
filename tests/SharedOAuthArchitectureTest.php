@@ -1566,6 +1566,24 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         mkdir($scratch . '/Clock', 0755, true);
         mkdir($scratch . '/Linked', 0755, true);
 
+        /*
+         * Capability probe (OCR round 6, t31-ocr6-11): on a host that
+         * cannot create symlinks the links never exist, the walk never
+         * refuses, and the fail() under each leg throws an
+         * AssertionFailedError — which EXTENDS RuntimeException, so
+         * the leg's own catch swallows it, and its message happens to
+         * carry every asserted fragment: the legs pass GREEN on
+         * exactly the hosts that never exercised them. Same idiom as
+         * the root-runner guard (t31-ocr4-1) and HarnessCopyTreeTest's
+         * probe: create+unlink a probe link in the scratch dir, skip
+         * with a named reason when the capability is missing.
+         */
+        $probe = $scratch . '/capability-probe';
+        if (! symlink($scratch . '/Clock', $probe)) {
+            $this->markTestSkipped('This host cannot create symlinks — the collector-refusal legs cannot run on it (t31-ocr6-11).');
+        }
+        unlink($probe);
+
         try {
             file_put_contents($scratch . '/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
             file_put_contents($scratch . '/Linked/LinkedSource.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Linked;\ninterface LinkedSource {}\n");
