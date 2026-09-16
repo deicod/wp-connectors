@@ -95,7 +95,11 @@ final class HarnessCopyTreeTest extends TestCase
     public function testBothSymlinkShapesRefuseTheCopyLoudly(): void
     {
         $probe = sys_get_temp_dir() . '/wpct-copytree-probe-' . uniqid('', true);
-        if (! symlink('/usr/bin/true', $probe)) {
+        // @-suppressed (t31-ocr6-14): a failing symlink() raises
+        // E_WARNING and the suite's warning conversion errors the test
+        // at the call line, never reaching this skip — the false
+        // return is the probe's signal, the diagnostic is not.
+        if (! @symlink('/usr/bin/true', $probe)) {
             $this->markTestSkipped('This host cannot create symlinks.');
         }
         unlink($probe);

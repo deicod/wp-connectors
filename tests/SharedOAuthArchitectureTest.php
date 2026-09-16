@@ -1576,10 +1576,16 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
          * exactly the hosts that never exercised them. Same idiom as
          * the root-runner guard (t31-ocr4-1) and HarnessCopyTreeTest's
          * probe: create+unlink a probe link in the scratch dir, skip
-         * with a named reason when the capability is missing.
+         * with a named reason when the capability is missing. The
+         * probe call is @-suppressed (t31-ocr6-14, both lenses,
+         * driver-reproduced): a failing symlink() raises E_WARNING,
+         * the suite's warning conversion turns it into a test ERROR
+         * at the call line, and the named skip the probe exists to
+         * produce never executes — the FALSE RETURN is the probe's
+         * signal, the diagnostic is not (the glm17-16 idiom).
          */
         $probe = $scratch . '/capability-probe';
-        if (! symlink($scratch . '/Clock', $probe)) {
+        if (! @symlink($scratch . '/Clock', $probe)) {
             $this->markTestSkipped('This host cannot create symlinks — the collector-refusal legs cannot run on it (t31-ocr6-11).');
         }
         unlink($probe);
