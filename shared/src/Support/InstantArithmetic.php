@@ -43,6 +43,7 @@ final class InstantArithmetic {
 	 * @param DateTimeImmutable $instant The base instant.
 	 * @param int               $seconds Seconds to add (absolute elapsed time).
 	 * @return DateTimeImmutable The shifted instant in the original timezone.
+	 * @throws InvalidArgumentException When the shift leaves the representable int-timestamp domain (offset_in_utc()'s range rejection — the documented behavior both public spellings ride).
 	 */
 	public static function plus_seconds( DateTimeImmutable $instant, int $seconds ): DateTimeImmutable {
 		return self::offset_in_utc( $instant, $seconds );
@@ -56,7 +57,7 @@ final class InstantArithmetic {
 	 * @param DateTimeImmutable $instant The base instant.
 	 * @param int               $seconds Seconds to subtract (absolute elapsed time).
 	 * @return DateTimeImmutable The shifted instant in the original timezone.
-	 * @throws InvalidArgumentException When the negation itself would overflow (PHP_INT_MIN — the shift is unrepresentable as an addition, never a silently wrong instant).
+	 * @throws InvalidArgumentException When the negation itself would overflow (PHP_INT_MIN — the shift is unrepresentable as an addition, never a silently wrong instant), or when the negated shift leaves the representable int-timestamp domain (offset_in_utc()'s range rejection — the documented behavior both public spellings ride).
 	 */
 	public static function minus_seconds( DateTimeImmutable $instant, int $seconds ): DateTimeImmutable {
 		if ( PHP_INT_MIN === $seconds ) {
