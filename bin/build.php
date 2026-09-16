@@ -520,10 +520,8 @@ final class WpConnectorsBuild
                  * r8-1 boundary owner, and the fence was blind to it)
                  * and `$x = namespace;` / `$x = namespace Junk;` (a
                  * declaration SHAPE in an expression POSITION is the
-                 * same never-legal class). The follower judgment
-                 * crosses mode boundaries (close tag, its inline
-                 * HTML, the re-entry tag) now, the allowed set is the
-                 * two legal declaration shapes plus the braced global
+                 * same never-legal class). The allowed set is the two
+                 * legal declaration shapes plus the braced global
                  * block, and a declaration-shaped keyword must STAND
                  * at a boundary (previous code token: start-of-file,
                  * an open/close tag, ';', '{', '}') — behind '=' or a
@@ -533,6 +531,20 @@ final class WpConnectorsBuild
                  * (`$x = 1; namespace Foo;` — a compile-time fatal,
                  * not a parse error) rides; refusing it needs
                  * statement-seen tracking, dev-time lint owns it.
+                 *
+                 * OCR round 7 (t31-ocr7-3): the follower must be
+                 * CODE-ADJACENT — the r5-9 widening crossed mode
+                 * boundaries to judge the tail behind them, which let
+                 * `namespace ?> html <?php Foo;` BIND Foo to the
+                 * keyword as its declaration name (a parse error php
+                 * -l rejects: the close tag terminates the bare
+                 * keyword's statement, the re-entered name is a fresh
+                 * statement PHP never attaches). A mode boundary ENDS
+                 * the follower scan now: the boundary spelling is
+                 * judged as the bare keyword alone (no follower), the
+                 * fence's own named refusal — the r5-9 tails keep
+                 * their verdicts ('\Junk' behind a boundary was never
+                 * a declaration shape; it refuses as no-follower too).
                  */
                 $follower = $i + 1;
                 $follower_id = null;
@@ -540,13 +552,18 @@ final class WpConnectorsBuild
                 while ($follower < $count) {
                     $probe = $tokens[ $follower ];
                     $probe_id = is_array($probe) ? $probe[0] : null;
-                    // Single-byte tokens (a null id) are CODE here: only
-                    // the trivia classes and the mode boundaries skip.
-                    if (T_WHITESPACE === $probe_id || T_COMMENT === $probe_id || T_DOC_COMMENT === $probe_id
-                        || T_CLOSE_TAG === $probe_id || T_OPEN_TAG === $probe_id || T_OPEN_TAG_WITH_ECHO === $probe_id || T_INLINE_HTML === $probe_id) {
+                    // Single-byte tokens (a null id) are CODE here:
+                    // only the trivia classes skip.
+                    if (T_WHITESPACE === $probe_id || T_COMMENT === $probe_id || T_DOC_COMMENT === $probe_id) {
                         ++$follower;
 
                         continue;
+                    }
+                    if (T_CLOSE_TAG === $probe_id || T_OPEN_TAG === $probe_id || T_OPEN_TAG_WITH_ECHO === $probe_id || T_INLINE_HTML === $probe_id) {
+                        // The keyword's follower never stands across a
+                        // mode boundary (t31-ocr7-3) — no follower, the
+                        // bare keyword's own verdict.
+                        break;
                     }
                     $follower_id = $probe_id;
                     $follower_token = $probe;

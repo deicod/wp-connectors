@@ -4302,6 +4302,16 @@ FIXTURE;
             'expression position, bare statement' => "<?php\nnamespace Deicod;\n\$x = namespace;\n",
             'expression position, end of file' => "<?php\nnamespace Deicod;\n\$x = namespace",
             'declaration shape in expression position' => "<?php\nnamespace Deicod;\n\$x = namespace Junk;\n",
+            /*
+             * OCR round 7 (t31-ocr7-3): the r5-9 follower crossed mode
+             * boundaries, so the re-entered NAME behind the HTML bound
+             * to the keyword as its declaration (a parse error php -l
+             * rejects) — the fence waved it and the postcondition
+             * caught the name one seam late as an anonymous code
+             * position. A boundary ends the scan now: the bare
+             * keyword's own named verdict.
+             */
+            'mode boundary between keyword and name' => "<?php\nnamespace ?> <p>hi</p> <?php Deicod\\WpConnectors\\Shared\\Clock;\n",
         );
         foreach ($refusals as $label => $source) {
             try {
