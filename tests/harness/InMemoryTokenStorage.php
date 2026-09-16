@@ -25,6 +25,7 @@
 declare(strict_types=1);
 
 use Deicod\WpConnectors\Shared\Grant\StoredGrant;
+use Deicod\WpConnectors\Shared\Http\HeaderMap;
 use Deicod\WpConnectors\Shared\Grant\TokenStorageInterface;
 
 final class InMemoryTokenStorage implements TokenStorageInterface
@@ -44,6 +45,17 @@ final class InMemoryTokenStorage implements TokenStorageInterface
 
     public function save(string $provider_id, StoredGrant $grant, int $expected_generation): bool
     {
+        /*
+         * The caller-controlled key rides the ONE control-byte guard
+         * before it rides any message (verifier round t31-ocr1-13):
+         * the grant's own label was screened at StoredGrant
+         * construction (r13-2), but the PARAMETER reached the
+         * rejection's sprintf unscreened — a '\n'-bearing key would
+         * forge a line in the log the exception lands in, the exact
+         * class every provider-supplied string rides the guard for.
+         */
+        HeaderMap::assert_no_control_bytes($provider_id, 'The storage key');
+
         /*
          * The provider-identity rule (t31-ocr1-7): the parameter is
          * the storage key and MUST equal the grant's own label — the

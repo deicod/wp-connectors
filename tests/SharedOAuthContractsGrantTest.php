@@ -501,6 +501,21 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->assertNull($storage->load('another-provider'), 'The mismatched save committed nothing under the wrong key.');
         $this->assertNull($storage->load($grant->provider_id()), 'The mismatched save committed nothing under the grant\'s own key either.');
         $this->assertSame(0, $storage->saveCount('another-provider'), 'The rejected save is no commit.');
+
+        /*
+         * Verifier-round leg (t31-ocr1-13): the caller-controlled key
+         * rides the ONE control-byte guard before it rides any
+         * message — a '\n'-bearing key rejects at the screen (the
+         * r13-2 class: an unscreened key reached the mismatch
+         * rejection's sprintf raw and would forge a line beside it).
+         */
+        try {
+            $storage->save("forged\nprovider", $grant, TokenStorageInterface::EXPECT_NO_GRANT);
+            $this->fail('A control-bearing storage key must reject at the screen, never reach the message.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringNotContainsString("\n", $e->getMessage(), 'The rejection message carries no forged line.');
+        }
+        $this->assertNull($storage->load("forged\nprovider"), 'The screened save committed nothing.');
     }
 
     public function testStorageDeleteRemovesAndIsANoopWhenAbsent(): void
