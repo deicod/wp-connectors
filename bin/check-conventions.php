@@ -33,7 +33,18 @@ if (wp_connectors_cli_entry(__FILE__)) {
         $pluginRoots[] = $dir;
     }
 
-    $failures = 0;
+    /*
+     * The closing summary counts by SOURCE (OCR round 5, t31-ocr5-2):
+     * one pooled count read as "N plugin dir(s) checked, M violation(s)"
+     * on a run whose only violations came from shared/src — dirs never
+     * scanned for them carried the count. Every number names the tree
+     * it counted: the plugin tree (the per-dir checks plus the
+     * connectors/ unused-import scan), the shared source tree, the
+     * repo-level checks.
+     */
+    $plugin_failures = 0;
+    $shared_failures = 0;
+    $repo_failures = 0;
     foreach ($pluginRoots as $pluginRoot) {
         $slug = basename($pluginRoot);
         $violations = array();
@@ -56,14 +67,14 @@ if (wp_connectors_cli_entry(__FILE__)) {
 
         foreach ($violations as $violation) {
             fwrite(STDERR, "conventions: FAIL {$violation}\n");
-            ++$failures;
+            ++$plugin_failures;
         }
     }
 
     // Repo-level checks.
     if (! is_file($repoRoot . '/CHANGELOG.md')) {
         fwrite(STDERR, "conventions: FAIL CHANGELOG.md is missing at the repository root.\n");
-        ++$failures;
+        ++$repo_failures;
     }
     /*
      * glm17-17: a subdirectory the iterator cannot OPEN mid-recursion
@@ -74,10 +85,10 @@ if (wp_connectors_cli_entry(__FILE__)) {
      * stack trace — and the partial count scanned so far is kept.
      */
     try {
-        $failures += wp_connectors_unused_import_violations($repoRoot . '/connectors');
+        $plugin_failures += wp_connectors_unused_import_violations($repoRoot . '/connectors');
     } catch (UnexpectedValueException $e) {
         fwrite(STDERR, "conventions: FAIL connectors: unreadable subdirectory — the unused-import scan aborted ({$e->getMessage()}).\n");
-        ++$failures;
+        ++$plugin_failures;
     }
 
     /*
@@ -91,14 +102,21 @@ if (wp_connectors_cli_entry(__FILE__)) {
      */
     if (is_dir($repoRoot . '/shared/src')) {
         try {
-            $failures += wp_connectors_unused_import_violations($repoRoot . '/shared/src');
+            $shared_failures += wp_connectors_unused_import_violations($repoRoot . '/shared/src');
         } catch (UnexpectedValueException $e) {
             fwrite(STDERR, "conventions: FAIL shared/src: unreadable subdirectory — the unused-import scan aborted ({$e->getMessage()}).\n");
-            ++$failures;
+            ++$shared_failures;
         }
     }
 
-    printf("conventions: %d plugin dir(s) checked, %d violation(s)\n", count($pluginRoots), $failures);
+    $failures = $plugin_failures + $shared_failures + $repo_failures;
+    printf(
+        "conventions: %d plugin dir(s) checked, %d plugin-tree violation(s), %d shared/src violation(s), %d repo violation(s)\n",
+        count($pluginRoots),
+        $plugin_failures,
+        $shared_failures,
+        $repo_failures
+    );
     exit($failures === 0 ? 0 : 1);
 }
 

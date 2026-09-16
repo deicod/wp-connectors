@@ -489,6 +489,18 @@ FIXTURE
             $this->assertSame(1, $plantedExit, 'A dead import in shared/src must fail the conventions gate.');
             $this->assertStringContainsString("unused import 'RuntimeException'", $message, 'The failure must be the unused-import vocabulary.');
             $this->assertStringContainsString('Clock/DeadImport.php', $message, 'The failure must name the shared source file.');
+            /*
+             * t31-ocr5-2: the summary attributes every count to its own
+             * tree. The pooled line read "1 plugin dir(s) checked, 1
+             * violation(s)" on this exact fixture — a shared/src-only
+             * red run whose plugin dirs (never scanned for the
+             * violation) carried the count.
+             */
+            $this->assertStringContainsString(
+                '1 plugin dir(s) checked, 0 plugin-tree violation(s), 1 shared/src violation(s), 0 repo violation(s)',
+                $message,
+                'A shared/src-only red run must not attribute its violations to the plugin dirs.'
+            );
         } finally {
             WpHarness::rrmdir($repo);
         }
