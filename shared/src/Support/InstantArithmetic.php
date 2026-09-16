@@ -67,6 +67,34 @@ final class InstantArithmetic {
 	}
 
 	/**
+	 * Whether a signed second offset would drive a timestamp below the
+	 * representable range (OCR round 2, t31-ocr2-6).
+	 *
+	 * This is the LOWER leg of offset_in_utc()'s guard, lifted to a
+	 * named predicate so every pre-check consumer shares the SAME
+	 * condition the guard enforces — RefreshPolicy's totality corner
+	 * used to spell the inequality by hand beside it, and nothing
+	 * structural tied the two (the exact drift the finding names). The
+	 * predicate takes the offset SIGNED, exactly as the guard sees it:
+	 * a caller about to SUBTRACT $skew seconds asks about the offset
+	 * -$skew. Note the asymmetry with the guard's callers:
+	 * minus_seconds() rejects a PHP_INT_MIN shift outright (the
+	 * negation itself overflows), so that one magnitude never reaches
+	 * this predicate through the arithmetic — a direct caller asking
+	 * about it gets the guard's own answer, not minus_seconds'
+	 * negation rejection.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param int $timestamp Whole-seconds timestamp of the base instant.
+	 * @param int $seconds   Signed seconds of the contemplated offset.
+	 * @return bool True when the offset would leave the representable int-timestamp domain below.
+	 */
+	public static function offset_would_underflow( int $timestamp, int $seconds ): bool {
+		return $seconds < 0 && $timestamp < PHP_INT_MIN - $seconds;
+	}
+
+	/**
 	 * Applies the offset to the raw timestamp, then restores the zone.
 	 *
 	 * The arithmetic is done on the INTEGER timestamp and reconstructed
@@ -89,7 +117,12 @@ final class InstantArithmetic {
 		$timezone  = $instant->getTimezone();
 		$timestamp = $instant->getTimestamp();
 
-		if ( ( $seconds > 0 && $timestamp > PHP_INT_MAX - $seconds ) || ( $seconds < 0 && $timestamp < PHP_INT_MIN - $seconds ) ) {
+		// The two legs of the representability guard: overflow above,
+		// and the named underflow predicate below (t31-ocr2-6) — the
+		// predicate is the SINGLE owner of the lower condition, shared
+		// with every pre-check consumer, so the guard and the
+		// pre-checks can never disagree.
+		if ( ( $seconds > 0 && $timestamp > PHP_INT_MAX - $seconds ) || self::offset_would_underflow( $timestamp, $seconds ) ) {
 			throw new InvalidArgumentException( sprintf( 'A %d-second shift leaves the representable instant range — the request is misconfigured, and the alternative is a silently wrong instant.', $seconds ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
 		}
 

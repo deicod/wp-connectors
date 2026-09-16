@@ -12,6 +12,7 @@
 declare(strict_types=1);
 
 use Deicod\WpConnectors\Shared\Policy\RefreshPolicy;
+use Deicod\WpConnectors\Shared\Support\InstantArithmetic;
 use Deicod\WpConnectors\Shared\Token\AccessTokenSet;
 
 final class SharedOAuthContractsPolicyTest extends WpConnectorsTestCase
@@ -238,6 +239,58 @@ final class SharedOAuthContractsPolicyTest extends WpConnectorsTestCase
             $edgePolicy->should_refresh($latest, new \DateTimeImmutable('@' . $thresholdTimestamp)),
             'The true threshold itself must refresh (boundary readings refresh).'
         );
+    }
+
+    /**
+     * OCR-round-2 pin (t31-ocr2-6): the totality guard consumes the
+     * arithmetic's OWN named predicate now
+     * (InstantArithmetic::offset_would_underflow()) — the guard's lower
+     * leg and the pre-check are one condition with one owner, never
+     * two hand-spelled inequalities free to drift. The EXACT boundary —
+     * expires_ts == PHP_INT_MIN + skew, the largest constructible
+     * spelling (a year-0000-floor reading) — pins identical behavior:
+     * the predicate answers false there (the threshold is exactly
+     * representable), the normal path computes it and lands on
+     * PHP_INT_MIN itself, one second of skew further out flips to the
+     * corner branch, and the POLICY answers the same on both sides.
+     */
+    public function testTheTotalityBoundaryRidesTheNamedUnderflowPredicate(): void
+    {
+        // The earliest constructible expiry: obtained-at at the
+        // year-0000 serialization floor, one-hour lifetime.
+        $expiry = -62167219200 + 3600;
+        $boundary_skew = $expiry - PHP_INT_MIN; // threshold == PHP_INT_MIN exactly.
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, new \DateTimeImmutable('@' . (-62167219200)));
+
+        // The predicate flips exactly at the boundary the guard owns.
+        $this->assertFalse(
+            InstantArithmetic::offset_would_underflow($expiry, -$boundary_skew),
+            'At threshold == PHP_INT_MIN the shift is still representable — no underflow.'
+        );
+        $this->assertTrue(
+            InstantArithmetic::offset_would_underflow($expiry, -($boundary_skew + 1)),
+            'One second of skew further out, the shift leaves the int-timestamp domain.'
+        );
+
+        // The normal path computes the boundary threshold exactly.
+        $this->assertSame(
+            PHP_INT_MIN,
+            InstantArithmetic::minus_seconds(new \DateTimeImmutable('@' . $expiry), $boundary_skew)->getTimestamp(),
+            'The boundary threshold is PHP_INT_MIN itself, computed by the guarded arithmetic.'
+        );
+
+        // The policy answers identically on both sides of the boundary.
+        $at = new RefreshPolicy($boundary_skew, 1, 60);
+        $this->assertTrue(
+            $at->should_refresh($set, new \DateTimeImmutable('@' . (-62167219200))),
+            'At the boundary every representable reading is at/past the PHP_INT_MIN threshold — refresh due, through the normal path.'
+        );
+        $beyond = new RefreshPolicy($boundary_skew + 1, 1, 60);
+        $this->assertTrue(
+            $beyond->should_refresh($set, new \DateTimeImmutable('@' . (-62167219200))),
+            'One skew further out, the corner branch answers the same.'
+        );
+        $this->assertTrue($beyond->should_refresh($set, new \DateTimeImmutable('2026-09-14T00:00:00+00:00')));
     }
 
     /* ---------------------------------------------------------------

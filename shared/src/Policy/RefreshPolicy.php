@@ -159,12 +159,16 @@ final class RefreshPolicy {
 		$expires_at = $token_set->expires_at();
 
 		/*
-		 * The unrepresentable corner, checked in the same arithmetic the
-		 * helper guards (a skew so large the subtraction would leave the
-		 * int-timestamp domain): the threshold lies before every
-		 * representable instant, so every reading is at or past it.
+		 * The unrepresentable corner, judged by the arithmetic's OWN
+		 * named predicate (t31-ocr2-6 — the hand-spelled inequality is
+		 * gone; InstantArithmetic::offset_would_underflow() is the one
+		 * owner of the condition the offset guard itself enforces, so
+		 * the pre-check and the guard cannot drift): a skew so large
+		 * the subtraction would leave the int-timestamp domain puts
+		 * the threshold before every representable instant, and every
+		 * reading is at or past it.
 		 */
-		if ( $expires_at->getTimestamp() < PHP_INT_MIN + $this->refresh_skew_seconds ) {
+		if ( InstantArithmetic::offset_would_underflow( $expires_at->getTimestamp(), -$this->refresh_skew_seconds ) ) {
 			return true;
 		}
 
