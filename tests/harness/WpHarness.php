@@ -490,7 +490,9 @@ final class WpHarness
      * Recursively copies a directory tree's FILES (test helper — the ONE
      * scratch-tree copy owner, t31-ocr1-9: UnusedImportScannerTest carried
      * this private beside its own @-suppressed removeTree twin; both moved
-     * here, one error policy — LOUD, like rrmdir()'s).
+     * here, one error policy — LOUD, like rrmdir()'s). Files ONLY: the
+     * walk is LEAVES_ONLY, so EMPTY source directories are silently
+     * dropped (no leaf, no copy, no target directory).
      *
      * The no-symlinks doctrine rides this twin too (OCR round 4,
      * t31-ocr4-3): rrmdir() (t31-ocr1-11) never follows a link — and a
@@ -604,9 +606,15 @@ final class WpHarness
                 // skipped dir links while copy() followed file links.
                 throw new RuntimeException('WpHarness::copyTree() refuses a symlinked entry — never followed, never silently skipped: ' . $file->getPathname());
             }
-            if ($file->isDir()) {
-                continue;
-            }
+            /*
+             * Directory entries are never yielded at all: the iterator
+             * runs LEAVES_ONLY (the RecursiveIteratorIterator default),
+             * so the only dir-shaped yields would be LINKED dirs — and
+             * the isLink() refusal above already owns those (t31-ocr8-4
+             * removed the dead isDir() continue this knowledge rode).
+             * The LEAVES_ONLY corollary stands: EMPTY source directories
+             * are silently dropped — no leaf, no copy, no target dir.
+             */
             /*
              * The relative path is a 0-position prefix strip, exactly
              * once (OCR round 4, t31-ocr4-2): str_replace() strips
