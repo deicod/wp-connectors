@@ -435,25 +435,6 @@ final class WpHarness
     }
 
     /**
-     * Recursively removes a directory (test helper — the ONE scratch-tree
-     * removal owner, t31-ocr1-9: the former per-test twins diverged in
-     * error policy; the harness policy is the loud one, and every test
-     * consumes it here).
-     *
-     * The no-symlinks doctrine rides this twin too (verifier round
-     * t31-ocr1-11, found independently by both lenses — the same round
-     * that hardened bin/build.php's rrmdir must not leave the harness
-     * twin walking links): a LINK at the removal root is never deleted
-     * through (is_dir follows links; the iterator constructed on a
-     * linked path walks the TARGET tree — the tests' predictable
-     * /tmp scratch names are pre-plantable on a shared host), and a
-     * linked child inside an owned tree is unlinked AS ITSELF, never
-     * descended into, never rmdir'd through.
-     *
-     * @param string $dir Absolute directory path.
-     * @return void
-     */
-    /**
      * The spelling a LINK probe must read: the same-directory tails —
      * trailing slashes and trailing '/.' components — AND the trailing
      * '/..' tails stripped, repeated, the root '/' itself kept.
@@ -518,6 +499,30 @@ final class WpHarness
         return $path;
     }
 
+    /**
+     * Recursively removes a directory (test helper — the ONE scratch-tree
+     * removal owner, t31-ocr1-9: the former per-test twins diverged in
+     * error policy; the harness policy is the loud one, and every test
+     * consumes it here).
+     *
+     * The no-symlinks doctrine rides this twin too (verifier round
+     * t31-ocr1-11, found independently by both lenses — the same round
+     * that hardened bin/build.php's rrmdir must not leave the harness
+     * twin walking links): a LINK at the removal root is never deleted
+     * through (is_dir follows links; the iterator constructed on a
+     * linked path walks the TARGET tree — the tests' predictable
+     * /tmp scratch names are pre-plantable on a shared host), and a
+     * linked child inside an owned tree is unlinked AS ITSELF, never
+     * descended into, never rmdir'd through.
+     *
+     * (The docblock sat orphaned above the spelling helpers' own
+     * docblocks — only the LAST block before a declaration attaches,
+     * so this @param/@return contract was dead text no tool ever read;
+     * moved to its declaration in t31-ocr9-7.)
+     *
+     * @param string $dir Absolute directory path.
+     * @return void
+     */
     public static function rrmdir($dir)
     {
         /*
