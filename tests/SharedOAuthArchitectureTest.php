@@ -1785,9 +1785,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             $this->assertNotFalse($namespaceResult, $relative . ': the namespace scan aborted (PCRE) — an abort is a REFUSAL, never a clean count.');
             $this->assertCount(1, $namespaceMatches[0], $relative . ' must declare exactly one namespace.');
 
-            // ... equal to Deicod\WpConnectors\Shared + its directory ...
+            // ... equal to the shared source namespace (derived from the
+            // ONE owner, t31-ocr7-5 — the sibling gates derive from
+            // wp_connectors_shared_source_namespace(); this gate's
+            // hand-spelled literal was the second owner of the spelling
+            // in one sweep) + its directory ...
             $directory = dirname($relative);
-            $expectedNamespace = 'Deicod\\WpConnectors\\Shared' . ('.' === $directory ? '' : str_replace('/', '\\', '\\' . $directory));
+            $expectedNamespace = wp_connectors_shared_source_namespace() . ('.' === $directory ? '' : str_replace('/', '\\', '\\' . $directory));
             $this->assertSame($expectedNamespace, $namespaceMatches[1][0], $relative . ' must follow PSR-4 (namespace matches path).');
 
             // ... and exactly one type whose name matches the file name.
