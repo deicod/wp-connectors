@@ -69,35 +69,42 @@ final class HarnessCopyTreeTest extends TestCase
         $to = $plain . '/dst';
 
         try {
+            /*
+             * The verdict is asserted OUTSIDE the catch (t31-ocr5-3):
+             * fail() throws AssertionFailedError, which EXTENDS
+             * RuntimeException — the old fail()-inside-try was swallowed
+             * by the very catch meant for copyTree(), so a no-throw
+             * regression still failed the test but as a confusing
+             * re-fail over the failure message, never the intended
+             * expectation.
+             */
+            $refuses = function (string $from, string $linkName, string $expectation) use ($to): void {
+                $caught = null;
+                try {
+                    WpHarness::copyTree($from, $to);
+                } catch (RuntimeException $e) {
+                    $caught = $e;
+                }
+                if (null === $caught) {
+                    $this->fail($expectation);
+                }
+                $this->assertStringContainsString($linkName, $caught->getMessage());
+            };
+
             // File shape inside the tree.
             symlink($plain . '/src/real.php', $plain . '/src/linked.php');
-            try {
-                WpHarness::copyTree($plain . '/src', $to);
-                $this->fail('A symlinked FILE inside the source tree must refuse the copy, never duplicate the target content.');
-            } catch (RuntimeException $e) {
-                $this->assertStringContainsString('linked.php', $e->getMessage());
-            }
+            $refuses($plain . '/src', 'linked.php', 'A symlinked FILE inside the source tree must refuse the copy, never duplicate the target content.');
 
             // Directory shape inside the tree — the same verdict path.
             unlink($plain . '/src/linked.php');
             mkdir($plain . '/target-tree', 0755, true);
             symlink($plain . '/target-tree', $plain . '/src/linked-dir');
-            try {
-                WpHarness::copyTree($plain . '/src', $to);
-                $this->fail('A symlinked DIRECTORY inside the source tree must refuse the copy too, never skip silently.');
-            } catch (RuntimeException $e) {
-                $this->assertStringContainsString('linked-dir', $e->getMessage());
-            }
+            $refuses($plain . '/src', 'linked-dir', 'A symlinked DIRECTORY inside the source tree must refuse the copy too, never skip silently.');
 
             // The source root itself a link: rrmdir()'s root guard, mirrored.
             unlink($plain . '/src/linked-dir');
             symlink($plain . '/src', $plain . '/root-link');
-            try {
-                WpHarness::copyTree($plain . '/root-link', $to);
-                $this->fail('A symlinked SOURCE ROOT must refuse the copy — the copy twin of rrmdir()\'s link-at-root guard.');
-            } catch (RuntimeException $e) {
-                $this->assertStringContainsString('root-link', $e->getMessage());
-            }
+            $refuses($plain . '/root-link', 'root-link', 'A symlinked SOURCE ROOT must refuse the copy — the copy twin of rrmdir()\'s link-at-root guard.');
 
             /*
              * No nothing-landed assertion here (verifier round t31-ocr4-8):
