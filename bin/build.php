@@ -354,7 +354,7 @@ final class WpConnectorsBuild
              * total authority — the class names what it caught).
              */
             $spelling_class = 'use' === $reference['kind']
-                ? self::unownedUseImportSpellingClass($final, $reference['offset'])
+                ? self::unownedUseImportSpellingClass($final, $reference['offset'], $reference['name'])
                 : null;
             throw new RuntimeException(sprintf(
                 'build: the reference %s (%s position) survived the rewrite in %s at byte offset %d — after the rewrite the embedded copy may reference only the plugin-private target Deicod\\WpConnectors\\%s\\Shared…, so every other reference to the shared-namespace family points at a namespace that does not exist inside the plugin; every legal use form is rewritten here or the build refuses, never an import that ships broken%s',
@@ -826,9 +826,10 @@ final class WpConnectorsBuild
      *
      * @param string $source           The rewritten bytes (the postcondition's subject).
      * @param int    $reference_offset The surviving reference's byte offset.
+     * @param string $reference_name   The surviving reference's name as spelled.
      * @return string|null The named spelling class, or null (the anonymous backstop).
      */
-    private static function unownedUseImportSpellingClass($source, $reference_offset)
+    private static function unownedUseImportSpellingClass($source, $reference_offset, $reference_name)
     {
         $tokens = token_get_all($source);
         $count = count($tokens);
@@ -842,6 +843,7 @@ final class WpConnectorsBuild
         $saw_depth_zero_comma = false;
         $saw_comment = false;
         $terminated_by_close_tag = false;
+        $use_keyword_text = null;
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[ $i ];
             $id = is_array($token) ? $token[0] : null;
@@ -852,6 +854,7 @@ final class WpConnectorsBuild
                 if (T_USE === $id && wp_connectors_use_opens_import($tokens, $i)) {
                     $in_use = true;
                     $trait_context = in_array('other', $context, true);
+                    $use_keyword_text = $text;
                     $brace_depth = 0;
                     $saw_statement_brace = false;
                     $saw_depth_zero_comma = false;
@@ -916,6 +919,35 @@ final class WpConnectorsBuild
         if ($saw_comment) {
             $labels[] = 'a comment inside the use statement — the rewrite owns comment-free statement bytes; move the comment outside the statement';
 
+        }
+        /*
+         * The case-variant axis (verifier-pass fix t31-ocr7-9, the
+         * refutation lens's driven counterexample): PHP accepts the
+         * keyword and resolves NAMES case-insensitively, while the
+         * rewrite's patterns match byte-exact spellings — `USE …` and
+         * `use DEICOD\…` are legal imports the mechanism does not own,
+         * and they refused anonymously, the exact defect class r7-2
+         * declared closed. Owning them would flip the r7-pinned
+         * case-variant refuse doctrine, so the seam REFUSES-NAMED:
+         * the class names which spelling deviates.
+         */
+        if (null !== $use_keyword_text && 'use' !== $use_keyword_text && 0 === strcasecmp($use_keyword_text, 'use')) {
+            $labels[] = 'a case-variant use keyword (the engine accepts USE/use alike; the rewrite\'s patterns match the lowercase spelling) — write the keyword lowercase';
+        }
+        $family = wp_connectors_shared_source_namespace();
+        $vendor = implode('\\', array_slice(explode('\\', $family), 0, -1));
+        $canonical = null;
+        $name_lower = strtolower($reference_name);
+        if (0 === strpos($name_lower, strtolower($family))) {
+            $canonical = $family;
+        } elseif (0 === strpos($name_lower, strtolower($vendor))) {
+            $canonical = $vendor;
+        }
+        if (null !== $canonical) {
+            $prefix = (string) substr($reference_name, 0, strlen($canonical));
+            if ($prefix !== $canonical && 0 === strcasecmp($prefix, $canonical)) {
+                $labels[] = 'a case-variant spelling of the family name (the engine resolves names case-insensitively; the rewrite\'s patterns match the declared spelling byte-exactly) — write the family spelling in its declared case';
+            }
         }
 
         return $labels === array() ? null : implode('; ', $labels);

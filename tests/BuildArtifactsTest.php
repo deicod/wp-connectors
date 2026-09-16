@@ -3886,6 +3886,25 @@ FIXTURE;
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock /* pick one */;\nclass CommentStore\n{\n}\n",
                 'a comment inside the use statement',
             ),
+            /*
+             * Verifier-pass fix (t31-ocr7-9, the refutation lens's
+             * driven counterexample): the case-insensitivity axis.
+             * The engine accepts the keyword case-variant and resolves
+             * NAMES case-insensitively; the rewrite's patterns match
+             * byte-exact spellings — both survived to the anonymous
+             * postcondition refusal, the exact class r7-2 declared
+             * closed. Owning them would flip the r7-pinned
+             * case-variant refuse doctrine (the battery's own
+             * 'case-variant use' leg), so the seam refuses NAMED.
+             */
+            'case-variant use keyword' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nUSE Deicod\\WpConnectors\\Shared\\Clock;\nclass UpperKeywordStore\n{\n}\n",
+                'a case-variant use keyword',
+            ),
+            'case-variant family name' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse DEICOD\\WpConnectors\\SHARED\\Clock;\nclass CaseNameStore\n{\n}\n",
+                'a case-variant spelling of the family name',
+            ),
         );
         foreach ($unowned_spellings as $label => $row) {
             try {
