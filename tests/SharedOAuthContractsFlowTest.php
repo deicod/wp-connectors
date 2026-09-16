@@ -200,6 +200,51 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         new PkceCodePair($verifier, 'not-a-valid-challenge!');
     }
 
+    /**
+     * OCR-round-2 pin (t31-ocr2-8): the constructor verifies the
+     * binding this VO exists to carry. Only S256 is supported and
+     * from_verifier() is the sole fresh producer, yet a hand-built or
+     * corrupted pair whose challenge != BASE64URL(SHA-256(verifier))
+     * was perfectly representable — grammar-clean, both halves in
+     * bounds — and failed far away at the provider as an opaque
+     * invalid_grant. The grammar-clean mismatch refuses AT
+     * CONSTRUCTION now (one derivation owner, constant-time compare);
+     * every fixture produced via from_verifier() stays green by
+     * construction (the only hand-built pair in this suite is the
+     * grammar reject above).
+     */
+    public function testAMismatchedChallengeRefusesAtConstruction(): void
+    {
+        $verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+
+        // The challenge of a DIFFERENT verifier: grammar-clean, wrong.
+        $other = PkceCodePair::from_verifier('aBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk');
+        try {
+            new PkceCodePair($verifier, $other->code_challenge());
+            $this->fail('A grammar-clean but mismatched challenge must refuse at construction.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('BASE64URL(SHA-256(code_verifier))', $e->getMessage());
+        }
+
+        // A one-character tamper of the true challenge: still
+        // grammar-clean, still wrong — the binding, not the charset,
+        // refuses it.
+        $true_challenge = PkceCodePair::from_verifier($verifier)->code_challenge();
+        $tampered = ('E' === $true_challenge[0] ? 'e' : 'E') . substr($true_challenge, 1);
+        try {
+            new PkceCodePair($verifier, $tampered);
+            $this->fail('A one-character tamper of the true challenge must refuse too.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('BASE64URL(SHA-256(code_verifier))', $e->getMessage());
+        }
+
+        // The RFC 7636 appendix-B pair reconstructs exactly (the
+        // rehydration shape the constructor serves).
+        $pair = new PkceCodePair($verifier, $true_challenge);
+        $this->assertSame('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM', $pair->code_challenge());
+        $this->assertSame($verifier, $pair->code_verifier());
+    }
+
     public function testPkcePairIsImmutableWithNoSetters(): void
     {
         $reflection = new \ReflectionClass(PkceCodePair::class);

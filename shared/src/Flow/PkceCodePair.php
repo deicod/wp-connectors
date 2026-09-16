@@ -58,14 +58,22 @@ final class PkceCodePair {
 	/**
 	 * Constructor.
 	 *
-	 * Direct construction serves rehydration; fresh pairs come from
-	 * from_verifier(), which derives the challenge.
+	 * Direct construction serves rehydration of pairs that were built by
+	 * from_verifier() — and the binding this VO exists to carry is
+	 * ENFORCED here (OCR round 2, t31-ocr2-8): the constructor verifies
+	 * the challenge equals BASE64URL(SHA-256(verifier)) (constant-time
+	 * compare) and rejects a mismatched pair loudly. Without the check
+	 * a hand-built or corrupted pair was perfectly representable and
+	 * failed far away at the provider as an opaque invalid_grant. There
+	 * is deliberately NO unverified rehydration path; if a legitimate
+	 * one ever appears it must be a named, gated constructor with its
+	 * own docblock — never a loosening of this one.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @param string $code_verifier  Code verifier (RFC 7636 charset, 43-128 chars).
-	 * @param string $code_challenge S256 code challenge (RFC 7636 charset, 43-128 chars).
-	 * @throws InvalidArgumentException When either half violates the charset or length bounds.
+	 * @param string $code_challenge S256 code challenge (RFC 7636 charset, 43-128 chars) — must equal BASE64URL(SHA-256($code_verifier)).
+	 * @throws InvalidArgumentException When either half violates the charset or length bounds, or when the challenge is not the verifier's S256 derivative.
 	 */
 	public function __construct( string $code_verifier, string $code_challenge ) {
 		if ( 1 !== preg_match( self::VERIFIER_PATTERN, $code_verifier ) ) {
@@ -73,6 +81,11 @@ final class PkceCodePair {
 		}
 		if ( 1 !== preg_match( self::VERIFIER_PATTERN, $code_challenge ) ) {
 			throw new InvalidArgumentException( 'The code challenge must use the code-verifier charset with 43-128 characters.' );
+		}
+		// The binding (t31-ocr2-8): one derivation owner (s256_challenge(),
+		// the same callable from_verifier() rides), compared constant-time.
+		if ( ! hash_equals( self::s256_challenge( $code_verifier ), $code_challenge ) ) {
+			throw new InvalidArgumentException( 'The code challenge must be BASE64URL(SHA-256(code_verifier)) — the S256 binding this pair exists to carry; a mismatched pair is not rehydration data, it is a corrupted pair, and refusing it here beats failing far away at the provider as an opaque invalid_grant.' );
 		}
 
 		$this->code_verifier  = $code_verifier;
@@ -83,7 +96,8 @@ final class PkceCodePair {
 	 * Derives the pair from a verifier, challenge = BASE64URL(SHA-256(verifier)).
 	 *
 	 * The RFC 7636 S256 transformation; the challenge is exactly 43
-	 * characters (32 bytes, no padding).
+	 * characters (32 bytes, no padding). The construction re-verifies
+	 * the binding through the constructor (one enforcement point).
 	 *
 	 * @since 0.1.0
 	 *
@@ -92,10 +106,23 @@ final class PkceCodePair {
 	 * @throws InvalidArgumentException When the verifier violates the charset or length bounds.
 	 */
 	public static function from_verifier( string $code_verifier ): self {
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- the RFC 7636 S256 challenge IS base64url(SHA-256(verifier)); this is the specification's own encoding, not obfuscation.
-		$challenge = rtrim( strtr( base64_encode( hash( 'sha256', $code_verifier, true ) ), '+/', '-_' ), '=' );
+		return new self( $code_verifier, self::s256_challenge( $code_verifier ) );
+	}
 
-		return new self( $code_verifier, $challenge );
+	/**
+	 * The RFC 7636 S256 derivation — the ONE owner of the binding math
+	 * (t31-ocr2-8): from_verifier() mints through it, the constructor
+	 * verifies through it, and the two can never disagree about what
+	 * the challenge of a verifier is.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $code_verifier Code verifier.
+	 * @return string The base64url, unpadded S256 challenge (exactly 43 characters).
+	 */
+	private static function s256_challenge( string $code_verifier ): string {
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- the RFC 7636 S256 challenge IS base64url(SHA-256(verifier)); this is the specification's own encoding, not obfuscation.
+		return rtrim( strtr( base64_encode( hash( 'sha256', $code_verifier, true ) ), '+/', '-_' ), '=' );
 	}
 
 	/**
