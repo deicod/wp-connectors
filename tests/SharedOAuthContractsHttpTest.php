@@ -311,11 +311,11 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
      * UTF-8 host — so the pin MANUFACTURES tr_TR.ISO-8859-9 (localedef
      * into a private LOCPATH, per the r11-6 attempt-and-restore shape)
      * and proves the invariant under pressure: the multibyte host
-     * validates byte-identically (the engine folds have been
-     * locale-independent since PHP 8.2, the strtolower-ascii RFC —
-     * this project's floor), and the guard itself fires on the exact
-     * mangled spelling the pre-8.2 fold produced (driven through the
-     * private probe, the closeArchiveOrThrow precedent).
+     * validates byte-identically (the fold rides AsciiFold's byte
+     * tables — t31-ocr1-4 — no locale to consult, identical by
+     * construction), and the guard itself fires on the exact
+     * mangled spelling a byte-mapping fold produces (driven through
+     * the private probe, the closeArchiveOrThrow precedent).
      */
     public function testAPostParseMangledHostRefusesUnderManufacturedLocalePressure(): void
     {
@@ -369,6 +369,23 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
                 $parts = Url::parse_validated($utf8_url);
                 $this->assertSame($c_locale_authority, $parts['authority'], 'The multibyte authority is byte-identical under the 8-bit LC_CTYPE.');
                 $this->assertSame('https://münchen.example/token', (new HttpRequest('GET', $utf8_url))->redacted_url());
+
+                /*
+                 * OCR-round-1 pin (t31-ocr1-4): the scheme and host
+                 * folds ride AsciiFold's byte tables, never the engine
+                 * strtolower() — whose byte mapping is a question about
+                 * the engine and the process locale: glibc's
+                 * tr_TR.ISO-8859-9 maps tolower('I') to the dotless ı
+                 * (0xFD — probed at the libc level on this host), so a
+                 * locale-consulting fold would rebuild 'SIMPLE-I' as
+                 * "s\xFDmple-\xFD". The byte table has no locale to
+                 * consult: the ASCII host folds identically under the
+                 * live Turkish locale and the C fold.
+                 */
+                $ascii_parts = Url::parse_validated('HTTPS://SIMPLE-I.EXAMPLE:8443/TOKEN');
+                $this->assertSame('https', $ascii_parts['scheme'], 'The scheme folds through the ASCII byte table under the Turkish locale — never a dotted-I spelling.');
+                $this->assertSame('simple-i.example:8443', $ascii_parts['authority'], 'The host folds through the ASCII byte table under the Turkish locale — never a dotless-I spelling.');
+                $this->assertSame('https://simple-i.example:8443/TOKEN', (new HttpRequest('GET', 'HTTPS://SIMPLE-I.EXAMPLE:8443/TOKEN'))->redacted_url());
             }
         } finally {
             /*

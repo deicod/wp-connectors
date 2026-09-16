@@ -16,6 +16,7 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Shared\Http;
 
+use Deicod\WpConnectors\Shared\Support\AsciiFold;
 use InvalidArgumentException;
 
 /**
@@ -90,7 +91,15 @@ final class Url {
 		if ( false === $parts || ! isset( $parts['scheme'], $parts['host'] ) || '' === $parts['host'] ) {
 			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
 		}
-		$scheme = strtolower( (string) $parts['scheme'] );
+		// The scheme fold is the LOCALE-INDEPENDENT byte table's (OCR
+		// round 1, t31-ocr1-4): the ONE fold owner every case-insensitive
+		// surface rides — never the engine strtolower(), whose byte
+		// mapping is a question about the engine and the process locale
+		// (glibc's tr_TR.ISO-8859-9 maps tolower('I') to the dotless ı,
+		// 0xFD — probed at the libc level on this host), while the byte
+		// table has no locale to consult and is identical everywhere by
+		// construction.
+		$scheme = AsciiFold::lower( (string) $parts['scheme'] );
 		if ( 'http' !== $scheme && 'https' !== $scheme ) {
 			throw new InvalidArgumentException( 'The URL scheme must be http or https.' );
 		}
@@ -183,7 +192,11 @@ final class Url {
 			throw new InvalidArgumentException( 'The URL port is out of range.' );
 		}
 
-		$authority = strtolower( (string) $parts['host'] );
+		// The host fold rides the same ONE owner (t31-ocr1-4): a host
+		// folds by the ASCII byte table in every locale, and the rebuilt
+		// authority below re-checks that nothing between the parse and
+		// this fold mangled the bytes.
+		$authority = AsciiFold::lower( (string) $parts['host'] );
 		if ( isset( $parts['port'] ) ) {
 			$authority .= ':' . (int) $parts['port'];
 		}
@@ -204,17 +217,20 @@ final class Url {
 	 *
 	 * The whole-URL UTF-8 probe at entry guarantees the INPUT bytes;
 	 * this re-check guarantees the OUTPUT side — the parsed host plus
-	 * the case fold — never mangles them. The engine's byte folds are
-	 * locale-independent since PHP 8.2 (the strtolower-ascii RFC — this
-	 * project's floor), so no spelling reaches here mangled today; the
-	 * 8-bit-LC_CTYPE mangler the screen guards against is real C-library
-	 * behavior (verified on this host: ctype_lower(0xE3) flips under a
-	 * manufactured tr_TR.ISO-8859-9 while strtolower(0xC3) stays put —
-	 * the exact tolower(0xC3)=0xE3 mapping that would break a UTF-8
-	 * host's second byte), and any future transformation between entry
-	 * and the rebuilt authority meets the abort-as-reject probe
-	 * instead of flowing into the json_encode-false log-drop class the
-	 * r4-13 entry gate exists to kill.
+	 * the case fold — never mangles them. The fold is AsciiFold's byte
+	 * table (t31-ocr1-4): identical in every locale BY CONSTRUCTION —
+	 * no engine mapping and no process locale to consult, so no
+	 * spelling reaches here mangled by the fold. The 8-bit-LC_CTYPE
+	 * mangler the screen guards against is real C-library behavior
+	 * (verified on this host: ctype_lower(0xE3) flips under a
+	 * manufactured tr_TR.ISO-8859-9 — ctype consults the live locale —
+	 * and glibc's tolower('I') maps to the dotless ı under the same
+	 * locale, the exact per-locale mapping class that would break a
+	 * byte if any fold ever consulted it), and any future
+	 * transformation between entry and the rebuilt authority meets the
+	 * abort-as-reject probe instead of flowing into the
+	 * json_encode-false log-drop class the r4-13 entry gate exists to
+	 * kill.
 	 *
 	 * @since 0.1.0
 	 *
