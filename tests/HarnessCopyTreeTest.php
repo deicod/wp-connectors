@@ -99,8 +99,15 @@ final class HarnessCopyTreeTest extends TestCase
                 $this->assertStringContainsString('root-link', $e->getMessage());
             }
 
-            // Nothing landed: every refusal fired before the first copy.
-            $this->assertFileDoesNotExist($to . '/real.php');
+            /*
+             * No nothing-landed assertion here (verifier round t31-ocr4-8):
+             * copyTree() refuses at the first link the ITERATOR REACHES,
+             * and yield order is the filesystem's (ext4 readdir order put
+             * the plain file before the link, tmpfs after — the original
+             * pin passed only via this host's tmpfs ordering); entries
+             * yielded before the link legitimately land, and that is not
+             * a property of the refusal.
+             */
         } finally {
             WpHarness::rrmdir($plain);
         }
