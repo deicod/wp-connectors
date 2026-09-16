@@ -383,11 +383,26 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 /**
  * Recursively removes a directory.
  *
+ * The no-symlinks doctrine the two sibling owners already carry
+ * (bin/build.php's rrmdir, t31-r3-era; tests/harness/WpHarness.php's,
+ * t31-ocr1-11 — and this third owner skipped it, found by the round-9
+ * refutation lens, t31-ocr9-10): a LINK at the removal root is never
+ * deleted through (is_dir() follows links; the iterator constructed
+ * on a linked path walks the TARGET tree — the workDir names here are
+ * fixed and predictable, pre-plantable on a shared host, and the lens
+ * DROVE a planted link emptying the victim tree through this owner),
+ * and a linked child inside an owned tree is unlinked AS ITSELF,
+ * never rmdir'd through (isDir() follows links — the ! isLink() guard
+ * keeps the linked dir on the unlink branch).
+ *
  * @param string $dir Absolute directory path.
  * @return void
  */
 function wp_connectors_inspect_rrmdir($dir)
 {
+    if (is_link($dir)) {
+        return;
+    }
     if (! is_dir($dir)) {
         return;
     }
@@ -396,7 +411,7 @@ function wp_connectors_inspect_rrmdir($dir)
         RecursiveIteratorIterator::CHILD_FIRST
     );
     foreach ($items as $item) {
-        if ($item->isDir()) {
+        if ($item->isDir() && ! $item->isLink()) {
             rmdir($item->getPathname());
         } else {
             unlink($item->getPathname());

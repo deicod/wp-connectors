@@ -3337,6 +3337,25 @@ FIXTURE;
             $this->assertFileExists($victim . '/keep2.txt', 'A TRAILING-/.. link at the removal root — the target tree survives.');
             $this->assertTrue(is_link($harnessRootLink), 'The \'/..\' spelling does not smuggle the link past the root guard either.');
             $this->assertDirectoryExists($scratch, 'The parent OF THE TARGET — the directory the \'..\' names — survives too: the walk never ran.');
+
+            /*
+             * The THIRD twin (t31-ocr9-10, the round-9 refutation
+             * lens over the r8/r9 link doctrine): the build side and
+             * the harness side carried the root-link guard; the
+             * inspector's own removal owner skipped it entirely —
+             * driven pre-fix: a link planted at its predictable
+             * workDir name EMPTIED the victim tree through this
+             * owner. Same doctrine, third leg: the root link stands,
+             * the target tree survives.
+             */
+            $inspectRootLink = $scratch . '/inspect-stage-link';
+            symlink($victim, $inspectRootLink);
+
+            wp_connectors_inspect_rrmdir($inspectRootLink);
+
+            $this->assertFileExists($victim . '/inner/keep.txt', 'The inspector removal twin never deletes through a root link — the target tree survives.');
+            $this->assertFileExists($victim . '/keep2.txt', 'The inspector removal twin never deletes through a root link either.');
+            $this->assertTrue(is_link($inspectRootLink), 'A link at the inspector removal root stands exactly where it is.');
         } finally {
             if (is_link($scratch . '/stage-link')) {
                 unlink($scratch . '/stage-link');
