@@ -159,6 +159,19 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertFileDoesNotExist($from . '/file.php', 'No collateral lands in the containing parent either.');
 
             /*
+             * (b-mirror-root) The ROOT collapse (t31-ocr9-9, the
+             * verifier's refutation lens over the round's own mirror
+             * code): a target whose existing ancestor resolves to '/'
+             * built the prefix '$target_real . '/' as '//' — a string
+             * no normalized path contains — so the filesystem root, an
+             * ancestor of EVERY source, passed BOTH containment guards
+             * and the copy attempted '/<relative>' writes (driven
+             * pre-fix). The root is the universal container; it
+             * refuses like any other containing target.
+             */
+            $refuses($from . '/src', sys_get_temp_dir() . '/..', 'A target collapsed to the filesystem ROOT contains every source — it must refuse like any other container.');
+
+            /*
              * The alias spellings of (b) (t31-ocr8-3, over the ocr7-8
              * named-alias class): the not-yet-created target was judged
              * purely lexically, and both aliases hid the physical

@@ -690,10 +690,17 @@ final class WpHarness
          * pre-fix: src/src/nested.php landed at src/nested.php, plus
          * collateral in the containing parent) — the copy twin of the
          * nested-target refusal, symmetric direction, the same
-         * ancestor-resolved containment owner.
+         * ancestor-resolved containment owner. The ROOT collapse
+         * (t31-ocr9-9, the verifier's refutation lens): an
+         * existing-ancestor target that resolves to '/' made the
+         * prefix '$target_real . '/' read '//' — a string no
+         * normalized path contains — so the filesystem root, an
+         * ancestor of EVERY source, passed both guards and the copy
+         * attempted '/<relative>' writes (driven); the root is judged
+         * as the universal container now.
          */
-        if (0 === strpos($source_real, $target_real . '/')) {
-            throw new RuntimeException('WpHarness::copyTree() refuses a target that CONTAINS the source — the mirror of the nested-target refusal: a nested same-name segment would resolve the copy inside the very tree it reads: from ' . $from . ' into ' . $to);
+        if ($target_real === '/' || 0 === strpos($source_real, $target_real . '/')) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a target that CONTAINS the source — the mirror of the nested-target refusal: a nested same-name segment would resolve the copy inside the very tree it reads, and a target collapsed to the filesystem ROOT contains every source: from ' . $from . ' into ' . $to);
         }
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS)
