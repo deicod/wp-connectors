@@ -119,7 +119,25 @@ final class Url {
 		 * (glm36-8) rides the same check: a PCRE failure refuses the
 		 * URL, never passes it.
 		 */
-		$after_scheme = (string) substr( $url, (int) strpos( $url, '://' ) + 3 );
+
+		/*
+		 * The scheme separator is probed before it is used (OCR round 4,
+		 * t31-ocr4-4): every sibling position probe in this file is
+		 * false !== first — this one coerced, and (int) false is 0, so a
+		 * schemeless spelling would have judged the authority math from
+		 * the string's first byte instead of refusing. The arm is
+		 * unreachable by construction (the scheme check above passed,
+		 * and parse_url() yields a scheme only for the 'scheme://'
+		 * spelling), but the file's own doctrine (t31-ocr1-2) refuses
+		 * to lean on build-dependent invariants the surrounding code
+		 * does not re-establish — so the invariant is named here, not
+		 * assumed.
+		 */
+		$scheme_separator = strpos( $url, '://' );
+		if ( false === $scheme_separator ) {
+			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
+		}
+		$after_scheme = (string) substr( $url, $scheme_separator + 3 );
 		$authority    = (string) substr( $after_scheme, 0, strcspn( $after_scheme, '/?#' ) );
 		$at           = strrpos( $authority, '@' );
 		$host_port    = false === $at ? $authority : (string) substr( $authority, $at + 1 );
