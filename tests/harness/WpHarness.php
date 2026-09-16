@@ -481,16 +481,36 @@ final class WpHarness
      * this private beside its own @-suppressed removeTree twin; both moved
      * here, one error policy — LOUD, like rrmdir()'s).
      *
+     * The no-symlinks doctrine rides this twin too (OCR round 4,
+     * t31-ocr4-3): rrmdir() (t31-ocr1-11) never follows a link — and a
+     * COPY has no safe silent spelling of that rule (removal may skip a
+     * link's content unseen; a copy that FOLLOWED duplicated the target
+     * tree's bytes, a copy that SKIPPED silently shipped a partial
+     * tree). So a link — the source root itself, or any linked entry
+     * inside it, file or directory shape — REFUSES loudly, one verdict
+     * path for both shapes, the copy twin of rrmdir()'s root guard.
+     *
      * @param string $from Absolute source directory.
      * @param string $to   Absolute target directory.
      * @return void
+     * @throws RuntimeException When the source (or any entry in it) is a symlink.
      */
     public static function copyTree($from, $to)
     {
+        if (is_link($from)) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a symlinked source tree — never followed, never silently skipped: ' . $from);
+        }
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS)
         );
         foreach ($iterator as $file) {
+            if ($file->isLink()) {
+                // One verdict for both shapes (t31-ocr4-3): the isLink()
+                // probe precedes isDir() — a linked DIRECTORY's isDir()
+                // follows the link, and the old shape-based split silently
+                // skipped dir links while copy() followed file links.
+                throw new RuntimeException('WpHarness::copyTree() refuses a symlinked entry — never followed, never silently skipped: ' . $file->getPathname());
+            }
             if ($file->isDir()) {
                 continue;
             }

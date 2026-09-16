@@ -45,4 +45,64 @@ final class HarnessCopyTreeTest extends TestCase
             WpHarness::rrmdir($to);
         }
     }
+
+    /**
+     * OCR-round-4 pin (t31-ocr4-3): both symlink shapes ride ONE
+     * verdict path now, the copy twin of rrmdir()'s no-symlinks
+     * doctrine (t31-ocr1-11). Pre-fix the shapes split: copy() FOLLOWED
+     * a linked file (content duplicated), the iterator silently SKIPPED
+     * a linked directory — neither is a copy a test can trust, so a
+     * link at the source root, inside the tree (file shape), or inside
+     * the tree (directory shape) refuses loudly naming the link.
+     */
+    public function testBothSymlinkShapesRefuseTheCopyLoudly(): void
+    {
+        $probe = sys_get_temp_dir() . '/wpct-copytree-probe-' . uniqid('', true);
+        if (! symlink('/usr/bin/true', $probe)) {
+            $this->markTestSkipped('This host cannot create symlinks.');
+        }
+        unlink($probe);
+
+        $plain = sys_get_temp_dir() . '/wpct-copytree-link-' . uniqid('', true);
+        mkdir($plain . '/src', 0755, true);
+        file_put_contents($plain . '/src/real.php', 'real bytes');
+        $to = $plain . '/dst';
+
+        try {
+            // File shape inside the tree.
+            symlink($plain . '/src/real.php', $plain . '/src/linked.php');
+            try {
+                WpHarness::copyTree($plain . '/src', $to);
+                $this->fail('A symlinked FILE inside the source tree must refuse the copy, never duplicate the target content.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('linked.php', $e->getMessage());
+            }
+
+            // Directory shape inside the tree — the same verdict path.
+            unlink($plain . '/src/linked.php');
+            mkdir($plain . '/target-tree', 0755, true);
+            symlink($plain . '/target-tree', $plain . '/src/linked-dir');
+            try {
+                WpHarness::copyTree($plain . '/src', $to);
+                $this->fail('A symlinked DIRECTORY inside the source tree must refuse the copy too, never skip silently.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('linked-dir', $e->getMessage());
+            }
+
+            // The source root itself a link: rrmdir()'s root guard, mirrored.
+            unlink($plain . '/src/linked-dir');
+            symlink($plain . '/src', $plain . '/root-link');
+            try {
+                WpHarness::copyTree($plain . '/root-link', $to);
+                $this->fail('A symlinked SOURCE ROOT must refuse the copy — the copy twin of rrmdir()\'s link-at-root guard.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('root-link', $e->getMessage());
+            }
+
+            // Nothing landed: every refusal fired before the first copy.
+            $this->assertFileDoesNotExist($to . '/real.php');
+        } finally {
+            WpHarness::rrmdir($plain);
+        }
+    }
 }
