@@ -45,6 +45,8 @@ final class InMemoryTokenStorage implements TokenStorageInterface
 
     public function load(string $provider_id): ?StoredGrant
     {
+        self::screen_key($provider_id);
+
         $grant = $this->grants[$provider_id] ?? null;
 
         return null === $grant ? null : self::detachedCopy($grant);
@@ -52,16 +54,7 @@ final class InMemoryTokenStorage implements TokenStorageInterface
 
     public function save(string $provider_id, StoredGrant $grant, int $expected_generation): bool
     {
-        /*
-         * The caller-controlled key rides the ONE control-byte guard
-         * before it rides any message (verifier round t31-ocr1-13):
-         * the grant's own label was screened at StoredGrant
-         * construction (r13-2), but the PARAMETER reached the
-         * rejection's sprintf unscreened — a '\n'-bearing key would
-         * forge a line in the log the exception lands in, the exact
-         * class every provider-supplied string rides the guard for.
-         */
-        HeaderMap::assert_no_control_bytes($provider_id, 'The storage key');
+        self::screen_key($provider_id);
 
         /*
          * The provider-identity rule (t31-ocr1-7): the parameter is
@@ -118,7 +111,29 @@ final class InMemoryTokenStorage implements TokenStorageInterface
 
     public function delete(string $provider_id): void
     {
+        self::screen_key($provider_id);
+
         unset($this->grants[$provider_id]);
+    }
+
+    /**
+     * The caller-controlled key rides the ONE control-byte guard on
+     * EVERY port method (verifier round t31-ocr1-13 for save; OCR round
+     * 6, t31-ocr6-2, for load()/delete()): the grant's own label was
+     * screened at StoredGrant construction (r13-2), but the PARAMETER
+     * reaches rejection and failure messages unscreened — a
+     * '\n'-bearing key forges a line in the log the exception lands
+     * in, the exact class every provider-supplied string rides the
+     * guard for, and a Task-3.2 adapter embedding the key in an
+     * OAuthStorageException message on a failed load or delete reopens
+     * it identically. One screen owner, three call sites.
+     *
+     * @param string $provider_id The caller-controlled storage key.
+     * @return void
+     */
+    private static function screen_key(string $provider_id): void
+    {
+        HeaderMap::assert_no_control_bytes($provider_id, 'The storage key');
     }
 
     /**

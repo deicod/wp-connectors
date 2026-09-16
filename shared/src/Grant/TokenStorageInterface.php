@@ -36,6 +36,14 @@
  *   misrouted call, never data to write. Implementations REJECT the
  *   mismatch (the typed caller-bug rejection, never a silent install
  *   of one provider's grant under another's slot) and commit nothing.
+ * - The caller-controlled key rides the control-byte screen on EVERY
+ *   method (OCR round 6, t31-ocr6-2): load() and delete() accept the
+ *   same $provider_id parameter save() does, and a Task-3.2 adapter
+ *   embedding the key in an OAuthStorageException message on a failed
+ *   load or delete reopens the forged-log-line class the save screen
+ *   closed (t31-ocr1-13) — an unscreened '\n'-bearing key forges a
+ *   line in the log the exception lands in. Implementations screen
+ *   the key FIRST on all three methods, before any other judgment.
  * - Atomicity within a committed save: readers observe either the
  *   previous grant or the new one, never a partial or merged state.
  * - Encrypted at rest with authenticated encryption; the envelope is
@@ -91,10 +99,18 @@ interface TokenStorageInterface {
 	 * in-memory fake round-trips a copy — review round t31-r9-5). Callers
 	 * compare grants by VALUE (the accessors), never by ===.
 	 *
+	 * The key rides the control-byte screen here too (OCR round 6,
+	 * t31-ocr6-2): $provider_id is the same caller-controlled string
+	 * save() screens, and a load failure embeds it in the typed
+	 * storage-failure message the same way — implementations screen it
+	 * before any other judgment (the header of this contract states the
+	 * three-method obligation).
+	 *
 	 * @since 0.1.0
 	 *
-	 * @param string $provider_id Provider label.
+	 * @param string $provider_id Provider label (screened for control bytes and rejected — typed — before any other judgment).
 	 * @return StoredGrant|null The stored grant, or null when none is stored.
+	 * @throws InvalidArgumentException When $provider_id carries control bytes.
 	 * @throws OAuthStorageException When stored state exists but cannot be read (corruption, unusable key material).
 	 */
 	public function load( string $provider_id ): ?StoredGrant;
@@ -153,10 +169,17 @@ interface TokenStorageInterface {
 	 *
 	 * Deleting an absent grant is a no-op, never an error.
 	 *
+	 * The key rides the control-byte screen here too (OCR round 6,
+	 * t31-ocr6-2): a delete failure embeds the same caller-controlled
+	 * string in its typed message a save failure does — implementations
+	 * screen it before any other judgment (the three-method obligation
+	 * this contract's header states).
+	 *
 	 * @since 0.1.0
 	 *
-	 * @param string $provider_id Provider label.
+	 * @param string $provider_id Provider label (screened for control bytes and rejected — typed — before any other judgment).
 	 * @return void
+	 * @throws InvalidArgumentException When $provider_id carries control bytes.
 	 * @throws OAuthStorageException When deletion fails.
 	 */
 	public function delete( string $provider_id ): void;

@@ -575,7 +575,38 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         } catch (\InvalidArgumentException $e) {
             $this->assertStringNotContainsString("\n", $e->getMessage(), 'The rejection message carries no forged line.');
         }
-        $this->assertNull($storage->load("forged\nprovider"), 'The screened save committed nothing.');
+        // No forged-key load probe here: load() screens its own key now
+        // (t31-ocr6-2, pinned in its own test below) — the
+        // committed-nothing fact rides the clean-key loads and the
+        // saveCount above.
+    }
+
+    /**
+     * OCR-round-6 pin (t31-ocr6-2): load() and delete() accept the same
+     * caller-controlled $provider_id save() does, and the port's
+     * contract screens the key on ALL THREE methods — a Task-3.2
+     * adapter embedding the key in an OAuthStorageException message on
+     * a failed load or delete reopens the forged-log-line class the
+     * save screen closed (t31-ocr1-13). The reference fake rides one
+     * screen owner (screen_key()) at three call sites; the pin drives
+     * each reader method with the same forged key the save pin uses.
+     */
+    public function testLoadAndDeleteScreenTheirKeysLikeSaveDoes(): void
+    {
+        $storage = new InMemoryTokenStorage();
+        $storage->save('fixture-provider', $this->connectedGrant(), TokenStorageInterface::EXPECT_NO_GRANT);
+
+        foreach (array('load' => $storage->load(...), 'delete' => $storage->delete(...)) as $method => $call) {
+            try {
+                $call("forged\nprovider");
+                $this->fail(ucfirst($method) . '() must screen its key — the same caller-controlled string save() refuses, never a silent no-op.');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not contain control characters', $e->getMessage(), "{$method}() refuses with the same screen shape as save().");
+                $this->assertStringNotContainsString("\n", $e->getMessage(), 'The rejection message carries no forged line.');
+            }
+        }
+
+        $this->assertNotNull($storage->load('fixture-provider'), 'The screened reader calls touched no persisted grant.');
     }
 
     public function testStorageDeleteRemovesAndIsANoopWhenAbsent(): void
