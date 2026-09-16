@@ -4236,6 +4236,63 @@ FIXTURE;
     }
 
     /**
+     * Verifier-lens pin over t31-ocr5-1's fence (t31-ocr5-9, the
+     * round's own refutation lens): the fence's first spelling owned
+     * only the '\'-led tail across whitespace/comments, so two classes
+     * of the SAME never-legal predicate shipped parse-error bytes at
+     * exit 0 through the seam — the keyword interrupted from its tail
+     * by a MODE BOUNDARY (`namespace ?> <?php \Junk;` — a close tag is
+     * trivia to the r8-1 boundary owner, but the fence's follower walk
+     * was blind to tags and inline HTML; the lens reproduced the ship
+     * end-to-end through buildPlugin with php -l red inside the zip)
+     * and the bare keyword in any non-declaration role (`$x =
+     * namespace;`, `$x = namespace` at EOF, `$x = namespace Junk;` — a
+     * declaration SHAPE in an expression POSITION). The fence is total
+     * now: outside a use statement the keyword must OPEN a declaration
+     * (a name, or a braced block) STANDING at a statement boundary,
+     * judged across mode boundaries; every other spelling refuses.
+     * The legal controls pin the fence's exactness — declarations,
+     * braced blocks (named and global), a declaration interrupted by a
+     * close tag, and the residual: a declaration-shaped keyword at a
+     * boundary but not first in the file (a compile-time fatal, not a
+     * parse error) still rides, dev-time lint owns it.
+     */
+    public function testABareNamespaceKeywordOutsideAUseStatementRefusesEveryIllegalShape(): void
+    {
+        $refusals = array(
+            'close tag + re-entry, relative tail' => "<?php\nnamespace Deicod;\n\$x = namespace ?> <?php \\Junk\\Clock;\n",
+            'close tag, inline-HTML tail (no re-entry)' => "<?php\nnamespace Deicod;\n\$x = namespace ?> \\Junk;\n",
+            'expression position, bare statement' => "<?php\nnamespace Deicod;\n\$x = namespace;\n",
+            'expression position, end of file' => "<?php\nnamespace Deicod;\n\$x = namespace",
+            'declaration shape in expression position' => "<?php\nnamespace Deicod;\n\$x = namespace Junk;\n",
+        );
+        foreach ($refusals as $label => $source) {
+            try {
+                WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/IllegalKeyword.php');
+                $this->fail("A bare 'namespace' keyword in a never-legal shape must refuse the rewrite ({$label}).");
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('not a spelling PHP accepts', $e->getMessage(), "The refusal names the shape class ({$label}).");
+                $this->assertStringContainsString('IllegalKeyword.php', $e->getMessage(), "The refusal names the file ({$label}).");
+            }
+        }
+
+        $controls = array(
+            'plain declaration' => "<?php\nnamespace Deicod;\ninterface LegalFixture\n{\n}\n",
+            'qualified declaration' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface LegalFixture\n{\n}\n",
+            'braced global block' => "<?php\nnamespace {\ninterface LegalFixture\n{\n}\n}\n",
+            'braced named block' => "<?php\nnamespace Deicod {\ninterface LegalFixture\n{\n}\n}\ninterface AfterBlock\n{\n}\n",
+            'declaration interrupted by a close tag' => "<?php\nnamespace Deicod ?> <?php\n\$x = 1;\n",
+            'declaration after declare()' => "<?php\ndeclare(strict_types=1);\nnamespace Deicod;\ninterface LegalFixture\n{\n}\n",
+            'second declaration after a use block' => "<?php\nnamespace A;\nuse RuntimeException;\nnamespace B;\ninterface LegalFixture\n{\n}\n",
+            'residual: declaration at a boundary, not first' => "<?php\n\$x = 1;\nnamespace Deicod;\ninterface LegalFixture\n{\n}\n",
+        );
+        foreach ($controls as $label => $source) {
+            $rewritten = WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/LegalKeyword.php');
+            $this->assertStringContainsString('Do not edit here', $rewritten ?: '', "The legal spelling rides the whole seam — banner, rewrite, postcondition ({$label}).");
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r11-1): the rewriter owns the
      * `namespace\`-relative USE spelling. A relative use statement is a
      * parse error the engine never accepts (verified on 8.5.10), and

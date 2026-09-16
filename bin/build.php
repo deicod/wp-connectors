@@ -559,38 +559,78 @@ final class WpConnectorsBuild
 
                 continue;
             }
-            if (T_NAMESPACE === $id && ! $use_open && ! wp_connectors_namespace_opens_declaration($tokens, $i)) {
+            if (T_NAMESPACE === $id && ! $use_open) {
                 /*
-                 * OCR round 5 (t31-ocr5-1): the interrupted-keyword
-                 * ownership extends to every position OUTSIDE a use
-                 * statement. Inside one the gate below owns the bare
-                 * keyword (r11-10); outside one the keyword separated
-                 * from its '\' — `namespace \Foo` in an expression, a
-                 * declaration slot, anywhere — is the same parse-error
-                 * spelling the engine never accepts (php -l: unexpected
-                 * token "namespace"), but the family detector's walk
-                 * DROPS a bare keyword that opens no legal declaration
-                 * (the r8-10 rule that keeps it from corrupting the
-                 * resolution base) and reports only the following name
-                 * run — `WpConnectors\Shared\Clock`, a name no family
-                 * predicate matches — so the fused twin's 'relative'
-                 * report never happens and the bytes rode the rewrite,
-                 * the postcondition, and the sweep at exit 0 (reproduced
-                 * through this seam: the zip would ship the parse-error
-                 * line; the build runs no lint gate over its output).
-                 * The rewriter owns exactly this predicate — never-legal
-                 * spellings that could reach the zip — so it refuses the
-                 * shape here, family-resolving or not, base owned or
-                 * not: the spelling adapts nowhere, there is no legal
-                 * form to preserve.
+                 * OCR round 5 (t31-ocr5-1, widened by t31-ocr5-9 — the
+                 * verifier lens's two findings on the round's own
+                 * fence): outside a use statement the bare keyword is
+                 * legal in EXACTLY one role — OPENING a declaration (a
+                 * name, or a braced block) standing at a statement
+                 * boundary. Everything else is a parse error the
+                 * engine never accepts (php -l: unexpected token
+                 * "namespace"), while the family detector's walk DROPS
+                 * a bare keyword that opens no legal declaration (the
+                 * r8-10 rule keeps it from corrupting the resolution
+                 * base) and reports only the following name run — so
+                 * the bytes rode the rewrite, the postcondition, and
+                 * the sweep at exit 0 (reproduced: the zip ships the
+                 * parse-error line; the build runs no lint gate over
+                 * its output). The fence's first spelling owned only
+                 * the '\'-led tail across whitespace/comments: the
+                 * lens shipped `namespace ?> <?php \Junk;` (a MODE
+                 * BOUNDARY between keyword and tail is trivia to the
+                 * r8-1 boundary owner, and the fence was blind to it)
+                 * and `$x = namespace;` / `$x = namespace Junk;` (a
+                 * declaration SHAPE in an expression POSITION is the
+                 * same never-legal class). The follower judgment
+                 * crosses mode boundaries (close tag, its inline
+                 * HTML, the re-entry tag) now, the allowed set is the
+                 * two legal declaration shapes plus the braced global
+                 * block, and a declaration-shaped keyword must STAND
+                 * at a boundary (previous code token: start-of-file,
+                 * an open/close tag, ';', '{', '}') — behind '=' or a
+                 * name or a separator it is mid-expression, never a
+                 * declaration. Residual, named: a declaration-shaped
+                 * keyword at a boundary but not first in the file
+                 * (`$x = 1; namespace Foo;` — a compile-time fatal,
+                 * not a parse error) rides; refusing it needs
+                 * statement-seen tracking, dev-time lint owns it.
                  */
-                $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
-                $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
-                if (T_NS_SEPARATOR === $follower_id || T_NAME_FULLY_QUALIFIED === $follower_id) {
-                    throw new RuntimeException("build: the bare 'namespace' keyword outside a use statement in {$sourceVersion} is not a spelling PHP accepts — the relative operator only ever parses as one fused token, and the build runs no lint gate over the zip's bytes, so the rewrite refuses the parse-error spelling rather than shipping it at exit 0; write the family spelling");
-                }
+                $follower = $i + 1;
+                $follower_id = null;
+                $follower_token = null;
+                while ($follower < $count) {
+                    $probe = $tokens[ $follower ];
+                    $probe_id = is_array($probe) ? $probe[0] : null;
+                    // Single-byte tokens (a null id) are CODE here: only
+                    // the trivia classes and the mode boundaries skip.
+                    if (T_WHITESPACE === $probe_id || T_COMMENT === $probe_id || T_DOC_COMMENT === $probe_id
+                        || T_CLOSE_TAG === $probe_id || T_OPEN_TAG === $probe_id || T_OPEN_TAG_WITH_ECHO === $probe_id || T_INLINE_HTML === $probe_id) {
+                        ++$follower;
 
-                continue;
+                        continue;
+                    }
+                    $follower_id = $probe_id;
+                    $follower_token = $probe;
+
+                    break;
+                }
+                $opens_shape = T_STRING === $follower_id || T_NAME_QUALIFIED === $follower_id || '{' === $follower_token;
+                if ($opens_shape) {
+                    // The backward twin of the mid-name walk's own
+                    // trivia vocabulary: the keyword's previous CODE
+                    // token decides whether it stands at a boundary.
+                    $previous = wp_connectors_previous_code_token_index($tokens, $i - 1);
+                    $previous_id = null !== $previous && is_array($tokens[ $previous ]) ? $tokens[ $previous ][0] : null;
+                    $previous_token = null !== $previous ? $tokens[ $previous ] : null;
+                    $at_boundary = null === $previous
+                        || ';' === $previous_token || '{' === $previous_token || '}' === $previous_token
+                        || T_OPEN_TAG === $previous_id || T_CLOSE_TAG === $previous_id;
+                    if ($at_boundary) {
+                        continue;
+                    }
+                }
+                throw new RuntimeException("build: the bare 'namespace' keyword outside a use statement in {$sourceVersion} is not a spelling PHP accepts — outside one the keyword only ever opens a declaration (a name, or a braced block) standing at a statement boundary; the build runs no lint gate over the zip's bytes, so the rewrite refuses the parse-error spelling rather than shipping it at exit 0; write the family spelling");
             }
             if ($use_open && wp_connectors_is_use_statement_boundary($token, $id)) {
                 $use_open = false;
