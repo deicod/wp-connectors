@@ -56,6 +56,36 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
         new OAuthRuntimeException('never');
     }
 
+    /**
+     * OCR-round-2 pin (t31-ocr2-9): every concrete type is FINAL.
+     * Finality is the fence that makes "is this retryable?" answerable
+     * by type alone: a subclass of a non-final TERMINAL type that
+     * implements OAuthTransientException would satisfy BOTH the
+     * marker check (instanceof OAuthTransientException) and the
+     * terminal catch arm (instanceof OAuthTerminalAuthException) —
+     * two contradictory reactions to one thrown object, with no
+     * type-level way to pick. The taxonomy tests above pin the
+     * current six; this pin holds the fence itself (it fails the
+     * moment a concrete type loses `final`, whatever its name).
+     */
+    public function testEveryConcreteExceptionTypeIsFinal(): void
+    {
+        foreach ($this->concreteTypes() as $type) {
+            $reflection = new \ReflectionClass($type);
+            $this->assertTrue(
+                $reflection->isFinal(),
+                $type . ' must be final — a subclass could implement the transient marker beside its terminal catch arm, and "is this retryable?" would stop being answerable by type alone.'
+            );
+        }
+
+        // The fence's other post: the marker stays an INTERFACE — an
+        // uninstantiable, un-extended type tag, not a class a
+        // subclass could descend from.
+        $marker = new \ReflectionClass(OAuthTransientException::class);
+        $this->assertTrue($marker->isInterface());
+        $this->assertSame(array(), $marker->getInterfaceNames(), 'The transient marker extends nothing — it is a bare tag.');
+    }
+
     public function testTransientPairIsDistinguishableByTypeAlone(): void
     {
         $transient = array(
