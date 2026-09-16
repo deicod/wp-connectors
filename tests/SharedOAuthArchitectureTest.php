@@ -909,15 +909,45 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
              * the "\n"-only count/scan mislocated the reported line on
              * CR-only files (line 1 and the whole file as the excerpt;
              * the engine counts \r as a terminator too).
+             *
+             * An ABORT in the /u derivation is a REFUSAL, never a
+             * mislocated report (t31-ocr5-10, the refutation lens over
+             * ocr5-7): on invalid-UTF-8 bytes both /\R/u calls return
+             * false SILENTLY — the count degraded to line 1 with the
+             * whole file as the excerpt, the exact pre-fix symptom,
+             * on an input class the main patterns (no /u flag) still
+             * match. The function's own r2-16 doctrine, one layer in.
              */
             $terminators = array();
-            preg_match_all('/\R/u', substr($contents, 0, $match[0][1]), $terminators, PREG_OFFSET_CAPTURE);
+            $count_result = preg_match_all('/\R/u', substr($contents, 0, $match[0][1]), $terminators, PREG_OFFSET_CAPTURE);
+            if (false === $count_result) {
+                $this->fail(
+                    sprintf(
+                        '%s: %s — the diagnostic\'s line-count derivation aborted (PCRE: %s); an abort is a REFUSAL, never a mislocated report.',
+                        $label,
+                        $path,
+                        preg_last_error_msg()
+                    )
+                );
+            }
             $line_start = 0;
             foreach ($terminators[0] as $terminator) {
                 $line_start = $terminator[1] + strlen($terminator[0]);
             }
             $line_end = strlen($contents);
-            if (preg_match('/\R/u', $contents, $terminus, PREG_OFFSET_CAPTURE, $line_start)) {
+            $terminus = array();
+            $end_result = preg_match('/\R/u', $contents, $terminus, PREG_OFFSET_CAPTURE, $line_start);
+            if (false === $end_result) {
+                $this->fail(
+                    sprintf(
+                        '%s: %s — the diagnostic\'s line-end derivation aborted (PCRE: %s); an abort is a REFUSAL, never a mislocated report.',
+                        $label,
+                        $path,
+                        preg_last_error_msg()
+                    )
+                );
+            }
+            if (1 === $end_result) {
                 $line_end = $terminus[0][1];
             }
             $this->fail(
@@ -1198,6 +1228,36 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 $this->assertStringNotContainsString('# line one', $e->getMessage(), 'The excerpt must not swallow the earlier CR-separated lines.');
             }
             $this->assertTrue($failed, 'The planted spelling (line 4) must trip the probe pattern at all.');
+        } finally {
+            unlink($probe);
+        }
+    }
+
+    /**
+     * OCR-round-5 pin (t31-ocr5-10, the round's refutation lens over
+     * ocr5-7): the \R diagnostic's two /u calls abort SILENTLY on
+     * invalid-UTF-8 bytes (false return, no warning) — the count
+     * degraded to line 1 with the WHOLE FILE as the excerpt, the
+     * exact symptom ocr5-7 killed, on an input class the main
+     * patterns (no /u flag) still match byte-wise. The abort is a
+     * REFUSAL now — the gate's own r2-16 doctrine, one layer in.
+     */
+    public function testTheWholeFileDiagnosticRefusesWhenItsLineDerivationAborts(): void
+    {
+        $gate = new \ReflectionMethod($this, 'assertPatternAbsentWholeFile');
+
+        $probe = tempnam(sys_get_temp_dir(), 'wpct-badutf8-diag-');
+        try {
+            file_put_contents($probe, "<?php\n# bad \xB1 byte here\nadd_action('init', 'f');\n# line four");
+            $failed = false;
+            try {
+                $gate->invoke($this, $probe, '/add_action/', 'invalid-UTF-8 probe');
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $failed = true;
+                $this->assertStringContainsString('line-count derivation aborted', $e->getMessage(), 'The refusal names the aborting derivation.');
+                $this->assertStringContainsString('REFUSAL', $e->getMessage(), 'The refusal wears the abort doctrine\'s vocabulary.');
+            }
+            $this->assertTrue($failed, 'The planted match must fail the gate at all.');
         } finally {
             unlink($probe);
         }
