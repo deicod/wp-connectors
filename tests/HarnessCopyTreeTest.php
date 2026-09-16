@@ -145,6 +145,20 @@ final class HarnessCopyTreeTest extends TestCase
             $refuses($from . '/src', $from . '/src/inside', 'A target inside the source must refuse — the copy would land inside the very tree it reads.');
 
             /*
+             * (b-mirror) The MIRROR relation (t31-ocr9-2): the target
+             * CONTAINS the source — pre-fix the guard passed it, and a
+             * nested same-name segment resolved the copy INSIDE the
+             * tree being read (driven: src/src/nested.php landed at
+             * src/nested.php, plus collateral in the containing
+             * parent). Same containment owner, symmetric direction.
+             */
+            mkdir($from . '/src/src', 0755, true);
+            file_put_contents($from . '/src/src/nested.php', 'nested bytes');
+            $refuses($from . '/src', $from, 'A target that CONTAINS the source must refuse — the mirror of the nested-target refusal.');
+            $this->assertFileDoesNotExist($from . '/src/nested.php', 'The mis-nested landing (the nested segment resolving inside the tree being read) never happens.');
+            $this->assertFileDoesNotExist($from . '/file.php', 'No collateral lands in the containing parent either.');
+
+            /*
              * The alias spellings of (b) (t31-ocr8-3, over the ocr7-8
              * named-alias class): the not-yet-created target was judged
              * purely lexically, and both aliases hid the physical

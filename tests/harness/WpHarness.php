@@ -592,7 +592,11 @@ final class WpHarness
      * NOT re-enumerate the created target (driven: 5,000 source files
      * became exactly 10,000 — one self-polluting duplication, not an
      * unbounded loop), still wrong output landing inside the tree
-     * under test. One containment check, realpath-based, before a
+     * under test. The MIRROR relation refuses too (t31-ocr9-2): a
+     * target that CONTAINS the source lets a nested same-name segment
+     * resolve the copy inside the tree being read — the symmetric
+     * direction, same owner. One containment check, realpath-based,
+     * before a
      * single byte moves: the not-yet-created target is judged through
      * its nearest EXISTING ancestor (t31-ocr8-3 — the former purely
      * lexical judgment could not see through a '..'-woven alias or an
@@ -603,7 +607,7 @@ final class WpHarness
      * @param string $from Absolute source directory.
      * @param string $to   Absolute target directory.
      * @return void
-     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing or not a directory, or the target is the source itself or inside it.
+     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing or not a directory, or the target is the source itself, inside it, or contains it.
      */
     public static function copyTree($from, $to)
     {
@@ -672,6 +676,19 @@ final class WpHarness
         }
         if ($target_real === $source_real || 0 === strpos($target_real, $source_real . '/')) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target that is the source itself or inside it — a self-copy is a silent no-op success riding the engine\'s same-file mercy, and a nested target writes the copy into the very tree it reads: from ' . $from . ' into ' . $to);
+        }
+        /*
+         * The MIRROR relation (t31-ocr9-2): the target CONTAINS the
+         * source — copyTree('/a/src', '/a') passed the check above,
+         * and a nested same-name segment ('/a/src/src/file.php')
+         * resolved the copy INSIDE the tree being read (driven
+         * pre-fix: src/src/nested.php landed at src/nested.php, plus
+         * collateral in the containing parent) — the copy twin of the
+         * nested-target refusal, symmetric direction, the same
+         * ancestor-resolved containment owner.
+         */
+        if (0 === strpos($source_real, $target_real . '/')) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a target that CONTAINS the source — the mirror of the nested-target refusal: a nested same-name segment would resolve the copy inside the very tree it reads: from ' . $from . ' into ' . $to);
         }
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS)
