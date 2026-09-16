@@ -197,7 +197,7 @@ function wp_connectors_scan_string($contents, $label)
  * @param bool         $prune_dev_segments  Whether to skip development-tree segments (the repository scan's concept; artifact scans never prune).
  * @return list<string> Findings.
  */
-function wp_connectors_scan_paths(array $roots, $prune_dev_segments = true)
+function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
 {
     $findings = array();
     $excluded = $prune_dev_segments ? array( '.git', 'vendor', 'node_modules', 'dist', 'tools', '.phpunit.cache' ) : array();
