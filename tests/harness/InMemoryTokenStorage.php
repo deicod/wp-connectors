@@ -25,6 +25,7 @@
 declare(strict_types=1);
 
 use Deicod\WpConnectors\Shared\Grant\StoredGrant;
+use InvalidArgumentException;
 use Deicod\WpConnectors\Shared\Grant\TokenStorageInterface;
 
 final class InMemoryTokenStorage implements TokenStorageInterface
@@ -44,6 +45,23 @@ final class InMemoryTokenStorage implements TokenStorageInterface
 
     public function save(string $provider_id, StoredGrant $grant, int $expected_generation): bool
     {
+        /*
+         * The provider-identity rule (t31-ocr1-7): the parameter is
+         * the storage key and MUST equal the grant's own label — the
+         * reference fake used to key blindly by parameter, so
+         * save('provider-a', $grantForProviderB) silently installed
+         * B's grant under A's slot, exactly the shape the port's
+         * docblock now forbids implementations to accept. Rejected
+         * loudly, nothing committed under either key.
+         */
+        if ($provider_id !== $grant->provider_id()) {
+            throw new InvalidArgumentException(sprintf(
+                'The storage key (%s) and the grant\'s provider label (%s) must agree — a mismatched save is a misrouted call, never a silent install under the wrong slot.',
+                $provider_id,
+                $grant->provider_id()
+            ));
+        }
+
         $persisted = $this->grants[$provider_id] ?? null;
         $persisted_generation = null === $persisted
             ? TokenStorageInterface::EXPECT_NO_GRANT

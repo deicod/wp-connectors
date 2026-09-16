@@ -475,6 +475,34 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->assertSame($grant->generation(), $loaded->generation());
     }
 
+    /**
+     * OCR-round-1 pin (t31-ocr1-7): save()'s provider-identity rule —
+     * the $provider_id parameter is the storage key and MUST equal the
+     * grant's own provider_id(). The reference fake used to key blindly
+     * by parameter, so save('provider-a', $grantForProviderB) silently
+     * installed B's grant under A's slot — the exact shape the port's
+     * contract (Task 3.2's adapters implement against it) now forbids:
+     * implementations REJECT the mismatch, never silently persist. The
+     * fake throws the typed caller-bug rejection and commits nothing
+     * under either key.
+     */
+    public function testAMismatchedProviderSaveIsRejectedLoudly(): void
+    {
+        $storage = new InMemoryTokenStorage();
+        $grant = $this->connectedGrant(); // labeled 'fixture-provider'
+
+        try {
+            $storage->save('another-provider', $grant, TokenStorageInterface::EXPECT_NO_GRANT);
+            $this->fail('A save whose storage key disagrees with the grant\'s label must be rejected, never silently installed under the wrong slot.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('must agree', $e->getMessage());
+        }
+
+        $this->assertNull($storage->load('another-provider'), 'The mismatched save committed nothing under the wrong key.');
+        $this->assertNull($storage->load($grant->provider_id()), 'The mismatched save committed nothing under the grant\'s own key either.');
+        $this->assertSame(0, $storage->saveCount('another-provider'), 'The rejected save is no commit.');
+    }
+
     public function testStorageDeleteRemovesAndIsANoopWhenAbsent(): void
     {
         $storage = new InMemoryTokenStorage();

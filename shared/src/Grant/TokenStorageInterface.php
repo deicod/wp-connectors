@@ -19,6 +19,13 @@
  *   revoked meanwhile) discards its tokens instead of silently
  *   overwriting the newer grant. A false return is a fence verdict,
  *   never an error: the caller reloads and abandons its work.
+ * - Provider identity is ONE label, both spellings (OCR round 1,
+ *   t31-ocr1-7): save()'s $provider_id parameter is the STORAGE KEY
+ *   and MUST equal the grant's own provider_id() — the envelope binds
+ *   its ciphertext to the provider, so a key/label disagreement is a
+ *   misrouted call, never data to write. Implementations REJECT the
+ *   mismatch (the typed caller-bug rejection, never a silent install
+ *   of one provider's grant under another's slot) and commit nothing.
  * - Atomicity within a committed save: readers observe either the
  *   previous grant or the new one, never a partial or merged state.
  * - Encrypted at rest with authenticated encryption; the envelope is
@@ -44,6 +51,7 @@ declare( strict_types=1 );
 namespace Deicod\WpConnectors\Shared\Grant;
 
 use Deicod\WpConnectors\Shared\Exception\OAuthStorageException;
+use InvalidArgumentException;
 
 /**
  * Contract for per-provider grant persistence.
@@ -94,12 +102,21 @@ interface TokenStorageInterface {
 	 * grant. A false return is not an error; the caller reloads and
 	 * abandons its in-flight work.
 	 *
+	 * Provider identity (t31-ocr1-7): $provider_id is the storage key
+	 * and MUST equal the grant's own provider_id() — the two spellings
+	 * name ONE label, and the envelope binds its ciphertext to the
+	 * provider. A save whose key and label disagree is a misrouted
+	 * call: implementations REJECT it (the typed caller-bug
+	 * rejection) and commit NOTHING — never a silent install of one
+	 * provider's grant under another's slot.
+	 *
 	 * @since 0.1.0
 	 *
-	 * @param string      $provider_id         Provider label.
+	 * @param string      $provider_id         Provider label (must equal the grant's own).
 	 * @param StoredGrant $grant               The grant to persist.
 	 * @param int         $expected_generation The persisted generation this commit is fenced on (EXPECT_NO_GRANT when none).
 	 * @return bool True when the grant was committed; false when the precondition failed (nothing committed).
+	 * @throws InvalidArgumentException When $provider_id does not equal the grant's provider_id() (nothing committed).
 	 * @throws OAuthStorageException When the grant cannot be persisted.
 	 */
 	public function save( string $provider_id, StoredGrant $grant, int $expected_generation ): bool;
