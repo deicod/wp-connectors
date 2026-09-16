@@ -744,7 +744,10 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * AND the whole walk AND the exit() — a require ran the lint.
      * t31-r12-11 folds the four in-diff scripts' guard + diagnostics
      * into the ONE helper (wp_connectors_cli_entry()) and adds
-     * check-conventions.php to the require side. Pinned through a
+     * check-conventions.php to the require side. t31-ocr3-8 closes
+     * the sweep: scan-secrets.php — the last script wearing the
+     * file-top diagnostics — rides the helper too, and every leg above
+     * extends to all five entry scripts. Pinned through a
      * child process because the in-process ini state belongs to
      * PHPUnit's own runner, not to this test.
      */
@@ -754,6 +757,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             . ' require ' . var_export(realpath(__DIR__ . '/../bin/inspect-artifact.php'), true) . ';'
             . ' require ' . var_export(realpath(__DIR__ . '/../bin/lint-php.php'), true) . ';'
             . ' require ' . var_export(realpath(__DIR__ . '/../bin/check-conventions.php'), true) . ';'
+            . ' require ' . var_export(realpath(__DIR__ . '/../bin/scan-secrets.php'), true) . ';'
             . ' echo ini_get("display_errors");';
         exec(escapeshellarg(PHP_BINARY) . ' -d display_errors=0 -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
 
@@ -761,7 +765,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertSame(
             array('0'),
             $output,
-            'Requiring bin/build.php, bin/inspect-artifact.php, bin/lint-php.php, and bin/check-conventions.php into a host process must leave display_errors exactly as the host set it and must not run any walk — the diagnostics and the walks belong to the CLI guard, not the file scope.'
+            'Requiring bin/build.php, bin/inspect-artifact.php, bin/lint-php.php, bin/check-conventions.php, and bin/scan-secrets.php into a host process must leave display_errors exactly as the host set it and must not run any walk — the diagnostics and the walks belong to the CLI guard, not the file scope.'
         );
 
         /*
@@ -783,10 +787,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertSame(0, $gpcLintExit);
         $this->assertStringContainsString('file(s) checked', implode("\n", $gpcLintOutput), 'The lint still runs its walk under GPC.');
 
-        // The helper is the single spelling (t31-r12-11): every in-diff
-        // entry script consumes wp_connectors_cli_entry() and none
-        // carries a hand-rolled copy of the guard anymore.
-        foreach (array('build.php', 'inspect-artifact.php', 'lint-php.php', 'check-conventions.php') as $entry) {
+        /*
+         * OCR round 3 (t31-ocr3-8): scan-secrets.php rides the helper
+         * too — the GPC leg proves its guard still fires (the scan runs
+         * and says so, never a silent exit-0 no-op), closing the
+         * t31-r12-11 sweep at all five entry scripts.
+         */
+        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg(realpath(__DIR__ . '/../bin/scan-secrets.php')) . ' tests/fixtures 2>&1', $gpcScanOutput, $gpcScanExit);
+        $this->assertSame(0, $gpcScanExit, 'Under variables_order=GPC the scanner\'s CLI guard still fires — never a silent exit-0 no-op.');
+        $this->assertStringContainsString('finding(s)', implode("\n", $gpcScanOutput), 'The scan still runs its walk under GPC.');
+
+        // The helper is the single spelling (t31-r12-11; all five since
+        // t31-ocr3-8): every entry script consumes
+        // wp_connectors_cli_entry() and none carries a hand-rolled copy
+        // of the guard anymore.
+        foreach (array('build.php', 'inspect-artifact.php', 'lint-php.php', 'check-conventions.php', 'scan-secrets.php') as $entry) {
             $source = (string) file_get_contents(__DIR__ . '/../bin/' . $entry);
             $this->assertStringContainsString('wp_connectors_cli_entry(__FILE__)', $source, "{$entry} consumes the ONE CLI-entry helper.");
             $this->assertStringNotContainsString("realpath(\$argv[0]) === __FILE__", $source, "{$entry} carries no hand-rolled guard copy.");
