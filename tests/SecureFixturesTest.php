@@ -198,17 +198,25 @@ final class SecureFixturesTest extends WpConnectorsTestCase
              * same tree under Dst/ found) — the exact-case shape was
              * pre-round, the ocr1-5 fold widened it to every casing.
              * Ancestors are not this walk's dev tree; only segments
-             * BELOW the root judge.
+             * BELOW the root judge. The ancestor segment is a
+             * CASE-VARIANT of an actually-excluded name (OCR round 4,
+             * t31-ocr4-6): the former 'Dist-ancestor-<pid>' spelling
+             * matched nothing under EITHER judging, so the sub-test
+             * stayed green over the regression it documented — full-
+             * pathname judging must match this segment (and prune, and
+             * find nothing) for the pin to kill the below-root slice's
+             * removal.
              */
-            $ancestor = dirname($tempDir) . '/Dist-ancestor-' . getmypid();
+            $holder = dirname($tempDir) . '/wp-connectors-scan-ancestor-' . getmypid();
+            $ancestor = $holder . '/DIST';
             mkdir($ancestor . '/root', 0755, true);
             file_put_contents($ancestor . '/root/leak.conf', "api_key = {$zaiKey}\n");
             try {
                 $ancestorReport = implode("\n", wp_connectors_scan_paths(array( $ancestor . '/root' )));
-                $this->assertStringContainsString('root/leak.conf', $ancestorReport, 'A dev-named ANCESTOR of the scan root never prunes the scan itself.');
+                $this->assertStringContainsString('root/leak.conf', $ancestorReport, 'A dev-named ANCESTOR (case-variant, the folded spelling) of the scan root never prunes the scan itself.');
                 $this->assertStringContainsString('zai-key', $ancestorReport);
             } finally {
-                WpHarness::rrmdir($ancestor);
+                WpHarness::rrmdir($holder);
             }
         } finally {
             WpHarness::rrmdir($tempDir);
