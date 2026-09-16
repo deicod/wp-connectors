@@ -454,19 +454,58 @@ final class WpHarness
      * @return void
      */
     /**
-     * The spelling a LINK probe must read: trailing slashes and
-     * trailing '/.' components stripped, the root '/' itself kept.
+     * The spelling a LINK probe must read: the same-directory tails —
+     * trailing slashes and trailing '/.' components — AND the trailing
+     * '/..' tails stripped, repeated, the root '/' itself kept.
      *
-     * Each of those tails forces stat THROUGH a final symlink (lstat
-     * never sees the link itself), so an is_link() probe on the raw
-     * spelling passes a linked root straight through — the rrmdir()
+     * Each of the first two tails forces stat THROUGH a final symlink
+     * (lstat never sees the link itself), so an is_link() probe on the
+     * raw spelling passes a linked root straight through — the rrmdir()
      * and copyTree() guards both probe THIS spelling (t31-ocr8-2's
      * trailing slash, t31-ocr8-13's '/.' — one owner for the class).
+     *
+     * The '/..' tail is the third member of that family (t31-ocr9-1,
+     * refuting round 8's "names the parent" carve-out with driven
+     * evidence): yes, it names a parent — the LINK TARGET'S parent, so
+     * rrmdir('link/..') walked and deleted THROUGH the link with a
+     * strictly LARGER blast radius than the target (driven pre-fix:
+     * the walk entered the target's parent and removed entries through
+     * the link spelling before breaking), and copyTree('link/..')
+     * copied that parent tree through it (driven). The carve-out's
+     * lesson, for the ledger: a naming argument is not a driven
+     * justification.
+     *
+     * Unlike '/' and '/.', a stripped '/..' names a DIFFERENT
+     * directory, so only the PROBE reads this spelling — the WALKS
+     * keep their own: rrmdir() rides same_directory_spelling(), and
+     * copyTree() below keeps the caller's spelling for the walk.
      *
      * @param string $path The path as the caller spelled it.
      * @return string The spelling an is_link() probe can trust.
      */
     private static function link_probe_spelling($path)
+    {
+        $path = self::same_directory_spelling($path);
+        while ('/..' === substr($path, -3)) {
+            $path = self::same_directory_spelling(rtrim(substr($path, 0, -3), '/'));
+        }
+
+        return $path;
+    }
+
+    /**
+     * The spelling that names the caller's SAME directory: trailing
+     * slashes and trailing '/.' components stripped, repeated, the
+     * root '/' itself kept — the WALK spelling. Each of those tails
+     * names the directory the caller named, so the walk may ride the
+     * clean spelling (t31-ocr8-2's trailing slash, t31-ocr8-13's '/.');
+     * a '/..' tail does NOT (it names the parent), so it survives here
+     * and only the link probe above strips it (t31-ocr9-1).
+     *
+     * @param string $path The path as the caller spelled it.
+     * @return string The same directory, spelled without the tails a probe cannot trust.
+     */
+    private static function same_directory_spelling($path)
     {
         if ('/' === $path) {
             return $path;
@@ -483,15 +522,21 @@ final class WpHarness
     {
         /*
          * A trailing slash (or a trailing '/.' component — the same
-         * class one spelling over, t31-ocr8-13) defeats is_link():
-         * the engine's stat resolves THROUGH the final link, and
-         * is_dir() then follows it — the walk below would empty the
-         * TARGET tree, the exact pre-plant shape the root guard
-         * exists to stop (OCR round 8, t31-ocr8-2). The link-probe
-         * spelling strips both; the root '/' itself survives.
+         * class one spelling over, t31-ocr8-13 — or a trailing '/..',
+         * the third member, t31-ocr9-1) defeats is_link(): the
+         * engine's stat resolves THROUGH the final link, and is_dir()
+         * then follows it — the walk below would empty the TARGET tree
+         * ('/..' the tree of the target's PARENT — a strictly larger
+         * blast radius, driven), the exact pre-plant shape the root
+         * guard exists to stop (OCR round 8, t31-ocr8-2). The link
+         * probe reads link_probe_spelling(), which strips all three
+         * tails; the walk rides same_directory_spelling() — the
+         * same-directory tails only, because a stripped '/..' would
+         * name a DIFFERENT directory than the caller's path. The root
+         * '/' itself survives both.
          */
-        $dir = self::link_probe_spelling($dir);
-        if (is_link($dir)) {
+        $dir = self::same_directory_spelling($dir);
+        if (is_link(self::link_probe_spelling($dir))) {
             return;
         }
         if (! is_dir($dir)) {
@@ -564,16 +609,20 @@ final class WpHarness
     {
         /*
          * The root-link probe reads the link-probe spelling (trailing
-         * slashes and trailing '/.' components stripped): each forces
-         * stat THROUGH the final link, and the iterator would then
-         * walk the TARGET tree — the copy twin of rrmdir()'s guard,
-         * same bypass family (t31-ocr8-2, the '/.' spelling closed in
-         * t31-ocr8-13). Only the PROBE normalizes: the walk below
-         * keeps seeing the spelling the caller passed (a
-         * trailing-slash source keeps its own loud refusal at the
-         * relativize arm, t31-ocr6-4, and a '/.'-spelled REAL source
-         * keeps copying — the iterator normalizes it), so the refusal
-         * message still names the spelling the caller passed.
+         * slashes, trailing '/.' components, and trailing '/..' tails
+         * stripped): each forces stat THROUGH the final link — '/..'
+         * through the whole link to its target's PARENT (driven
+         * pre-fix: copyTree('link/..') copied that parent tree
+         * through the link) — and the iterator would then walk the
+         * TARGET tree, the copy twin of rrmdir()'s guard, same bypass
+         * family (t31-ocr8-2, the '/.' spelling closed in
+         * t31-ocr8-13, the '/..' tail in t31-ocr9-1). Only the PROBE
+         * normalizes: the walk below keeps seeing the spelling the
+         * caller passed (a trailing-slash source keeps its own loud
+         * refusal at the relativize arm, t31-ocr6-4, and a
+         * '/.'-spelled REAL source keeps copying — the iterator
+         * normalizes it), so the refusal message still names the
+         * spelling the caller passed.
          */
         if (is_link(self::link_probe_spelling($from))) {
             throw new RuntimeException('WpHarness::copyTree() refuses a symlinked source tree — never followed, never silently skipped: ' . $from);

@@ -3319,6 +3319,24 @@ FIXTURE;
             $this->assertFileExists($victim . '/inner/keep.txt', 'A TRAILING-/. link at the removal root is still a link — never deleted through.');
             $this->assertFileExists($victim . '/keep2.txt', 'A TRAILING-/. link at the removal root is still a link — the target tree survives.');
             $this->assertTrue(is_link($harnessRootLink), 'The \'/.\' spelling does not smuggle the link past the root guard either.');
+
+            /*
+             * The '/..' spelling (t31-ocr9-1, refuting round 8's
+             * "names the parent" carve-out with driven evidence): the
+             * parent it names is the LINK TARGET'S parent — a strictly
+             * LARGER blast radius than the target (driven pre-fix:
+             * the walk entered that parent tree and removed entries
+             * through the link spelling before breaking). The probe
+             * strips this third tail too: the walk never runs, the
+             * victim stands, and the parent-of-the-target ($scratch
+             * itself here) stands with it.
+             */
+            WpHarness::rrmdir($harnessRootLink . '/..');
+
+            $this->assertFileExists($victim . '/inner/keep.txt', 'A TRAILING-/.. link at the removal root never deletes through to the target\'s PARENT.');
+            $this->assertFileExists($victim . '/keep2.txt', 'A TRAILING-/.. link at the removal root — the target tree survives.');
+            $this->assertTrue(is_link($harnessRootLink), 'The \'/..\' spelling does not smuggle the link past the root guard either.');
+            $this->assertDirectoryExists($scratch, 'The parent OF THE TARGET — the directory the \'..\' names — survives too: the walk never ran.');
         } finally {
             if (is_link($scratch . '/stage-link')) {
                 unlink($scratch . '/stage-link');

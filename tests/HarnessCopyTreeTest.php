@@ -286,6 +286,37 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertFileExists($plain . '/dst-dot-control/real.php', 'A \'/.\'-spelled REAL source keeps copying — the probe is the only judgment that changed.');
 
             /*
+             * The '/..' spelling (t31-ocr9-1, the third stat-transparent
+             * tail): the parent it names is the LINK TARGET'S parent —
+             * pre-fix copyTree() COPIED that parent tree through the
+             * link by this spelling (driven). The probe strips it; the
+             * verdict names the LINK class. The CONTROL keeps its
+             * behavior: a '/..'-spelled REAL source still copies the
+             * tree it names (the iterator resolves it) — only the
+             * link judgment changed.
+             */
+            $caught = null;
+            try {
+                WpHarness::copyTree($plain . '/root-link/..', $to);
+            } catch (RuntimeException $e) {
+                $caught = $e;
+            }
+            if (null === $caught) {
+                $this->fail('A \'/..\'-spelled symlinked SOURCE ROOT must refuse the copy — the parent it names is the TARGET\'S parent, a larger blast radius than the target.');
+            }
+            $this->assertStringContainsString('symlinked source tree', $caught->getMessage(), 'The verdict names the LINK class for the \'/..\' spelling too.');
+            $this->assertStringContainsString('root-link', $caught->getMessage());
+
+            $dotdotHolder = sys_get_temp_dir() . '/wpct-copytree-dotdot-' . uniqid('', true);
+            $dotdotOut = sys_get_temp_dir() . '/wpct-copytree-dotdot-out-' . uniqid('', true);
+            mkdir($dotdotHolder . '/tree', 0755, true);
+            file_put_contents($dotdotHolder . '/tree/real.php', 'real bytes');
+            WpHarness::copyTree($dotdotHolder . '/tree/..', $dotdotOut);
+            $this->assertFileExists($dotdotOut . '/tree/real.php', 'A \'/..\'-spelled REAL source keeps copying the tree it names — the probe is the only judgment that changed.');
+            WpHarness::rrmdir($dotdotHolder);
+            WpHarness::rrmdir($dotdotOut);
+
+            /*
              * No nothing-landed assertion here (verifier round t31-ocr4-8):
              * copyTree() refuses at the first link the ITERATOR REACHES,
              * and yield order is the filesystem's (ext4 readdir order put
