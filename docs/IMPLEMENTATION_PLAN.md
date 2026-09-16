@@ -1046,6 +1046,61 @@ OCR-tool round
   owner). Suite 1616 → 1618 tests, 44974
   → 44985 assertions, 2 skipped
   unchanged.
+OCR-tool round
+  t31-ocr5 (ten commits — the fifth
+  pass, union coverage complete, 9/9
+  findings accepted: ONE seam edge and
+  eight test-infra pins, shared/src
+  still clean): the build rewriter owns
+  the bare `namespace` keyword TOTALLY
+  outside use statements — a keyword
+  that does not open a declaration (a
+  name, or a braced block) standing at
+  a statement boundary refuses loudly,
+  judged across mode boundaries (the
+  detector's walk drops the bare
+  keyword per the r8-10 rule, and the
+  zip ships through no lint gate — the
+  interrupted relative spelling once
+  rode every gate at exit 0); the
+  conventions summary counts by source
+  (plugin-tree / shared/src / repo — a
+  pooled count attributed shared/src
+  violations to plugin dirs); the
+  symlink-refusal legs assert OUTSIDE
+  the catch (AssertionFailedError
+  extends RuntimeException — the
+  fail()-inside-try was swallowed by
+  the catch meant for copyTree); five
+  vacuous pid-less stage pins ride the
+  glob helper; the exception-family
+  list is pinned against its directory
+  (glob == list + anchors, composing
+  with the one-type-per-file gate); the
+  payload-API audit covers INHERITED
+  methods over a reflection-derived
+  \Exception baseline; the whole-file
+  diagnostic speaks \R and refuses on
+  /u abort; and the provider pattern's
+  trailing fence is the r4-11
+  letter-aware lookahead (the '_'-extended
+  twins once escaped it — the
+  exact mechanism the file adjudicated
+  for the WP stems). The round's
+  two-lens verifier pass (140 driven
+  tool calls) verified all eight fixes
+  red/green — correctness lens ZERO
+  findings — while the refutation
+  lens's 4 findings triaged 3 confirmed
+  (fixed in-round: the fence's mode-
+  boundary blindness and expression-
+  position shapes, one predicate; the
+  diagnostic's silent /u abort) and 1
+  REFUTED (the claimed escape already
+  owned by the one-type-per-file gate).
+  Suite 1618 → 1623 tests, 44985 →
+  45028 assertions, 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

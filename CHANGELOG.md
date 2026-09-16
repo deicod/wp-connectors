@@ -6,6 +6,89 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 5)
+
+Fifth OCR-tool round (the same complementary deterministic reviewer,
+fifth pass over the branch diff, main + fill-in with union coverage
+complete); driver triage accepted all 9 findings — ONE seam edge
+(bug:medium, the build rewriter) and EIGHT test-infrastructure pins:
+the trajectory holds — shared/src stays clean, the loop keeps
+scraping the harness. Fixed as t31-ocr5-1..8 — one commit per
+finding, the full offline check green after every commit, a
+regression per fix. The round's two-lens verifier pass (independent
+correctness + refutation agents over the whole round diff via a
+deterministic workflow, 140 driven tool calls between them) verified
+all 8 fixes red/green in both directions — the correctness lens
+raised ZERO findings — while the refutation lens raised 4: three
+CONFIRMED at the seam and fixed in-round (t31-ocr5-9, two fence
+gaps in the round's own ocr5-1 fix; t31-ocr5-10, a silent /u abort
+in the round's own ocr5-7 diagnostic), one REFUTED by the driver
+(the claimed escape was already owned by the one-type-per-file
+gate). Suite 1618 → 1623 tests, 44985 → 45028 assertions, 2 skipped
+unchanged.
+
+- **The interrupted `namespace` keyword refuses at EVERY position
+  outside a use statement (t31-ocr5-1 + t31-ocr5-9, bug:medium +
+  the lens's two fence gaps)**: the family detector's walk drops a
+  bare keyword that opens no legal declaration (the r8-10 base-
+  integrity rule) and reports only the following name run — a name
+  no family predicate matches — so `namespace \WpConnectors\Shared\
+  Clock` in a code position never produced the fused twin's
+  'relative' report and the parse-error bytes rode the rewrite, the
+  postcondition, and the sweep into a lintless zip at exit 0
+  (reproduced; php -l "unexpected token namespace"). The rewriter
+  owns the predicate totally now: the keyword must open a
+  declaration (a name, or a braced block) standing at a statement
+  boundary, judged across mode boundaries (a close tag, its inline
+  HTML, the re-entry tag — the lens shipped `namespace ?> <?php
+  \Junk;` end-to-end through the first fence); every other spelling
+  — including `$x = namespace;` and a declaration SHAPE in an
+  expression POSITION (`$x = namespace Junk;`) — refuses.
+- **The conventions summary counts by SOURCE (t31-ocr5-2,
+  maintainability:low)**: one pooled count read "N plugin dir(s)
+  checked, M violation(s)" on a shared/src-only red run — dirs
+  never scanned for them carried the count. One line, three named
+  buckets: plugin-tree / shared/src / repo.
+- **fail() never stands inside the catch's own reach
+  (t31-ocr5-3, test:low)**: PHPUnit's AssertionFailedError extends
+  RuntimeException, so the symlink-refusal legs' fail()-inside-try
+  was swallowed by the very catch meant for copyTree() — collect
+  the exception inside, fail()/assert outside (one shared closure,
+  same three pins).
+- **The stage-residue pins ride the glob helper (t31-ocr5-4,
+  test:low ×2, vacuous)**: five assertions pinned the pid-less
+  `.stage-example-connector` spelling, dead since t31-r10-4's
+  `.stage-<slug>-<pid>` rename — every one now rides
+  assertNoStageTree() (globs `.stage-<slug>*`) and can fail again.
+- **The exception-family list is pinned against its directory
+  (t31-ocr5-5, test:low)**: concreteTypes() was a hardcoded six with
+  no exhaustiveness guard — a seventh type would silently escape
+  every family pin. The glob's class set must equal the list plus
+  the two named anchors; together with the one-type-per-file gate
+  (which the verifier lens missed — its "escape" was already
+  refused there) the family grows only by growing both.
+- **The payload-API audit covers INHERITED methods (t31-ocr5-6,
+  test:low)**: the declaring-class filter let a base-class
+  raw_payload() pass invisible. All public non-static methods now,
+  with the baseline derived from the engine's own \Exception
+  reflection — the allow set never drifts with PHP versions.
+- **The whole-file diagnostic speaks \R (t31-ocr5-7 +
+  t31-ocr5-10, test:low ×2)**: the line number/excerpt derivation
+  used "\n"-only semantics while the file's own r8-11 pin demands
+  \R everywhere — on a CR-only file it reported line 1 with the
+  whole file as the excerpt. The derivation rides the reader's
+  \R-aware splitting now, and both /u calls REFUSE on abort
+  (invalid UTF-8 degraded silently to the same line-1 symptom —
+  the lens's find over the round's own fix).
+- **The provider pattern's fences are letter-aware (t31-ocr5-8,
+  test:medium)**: the trailing `\b` could never match the
+  '_'-extended twins of its own vocabulary (`claude_pro_fallback`,
+  `openai_compat`, `zai_anthropic_default`) — `_` is a word
+  character to `\b`, the exact mechanism this file adjudicated as
+  a bug for the WP stems (t31-r4-11). The r4-11 lookahead
+  `(?![A-Za-z])` now, leading `\b` kept per the adjudication;
+  the twin mechanisms are ledgered.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 4)
 
 Fourth OCR-tool round (the same complementary deterministic reviewer,
