@@ -5,10 +5,13 @@
  * The lifecycle states a stored grant carries. Transient failures are
  * deliberately NOT a state: a grant under cooldown, throttle, or outage
  * remains Connected — retryability is the refresh policy's business and
- * must never be persisted as a lifecycle change. The terminal model has
- * three distinct classes, each with a different admin outcome:
+ * must never be persisted as a lifecycle change. The model is one LIVE
+ * state (Connected, listed first) plus three distinct TERMINAL classes,
+ * each terminal class with a different admin outcome (OCR round 6,
+ * t31-ocr6-9, doc-only: the old header said "three distinct classes"
+ * over a four-item list whose first item was the non-terminal one):
  *
- * - Connected — usable token set present.
+ * - Connected — usable token set present (the live state).
  * - ReconnectRequired — dead grant (the definitive authorization class:
  *   invalid grant / revoked grant); the admin surface shows
  *   "Re-connect required".
