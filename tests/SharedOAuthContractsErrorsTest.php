@@ -263,6 +263,21 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
 
         // The transient marker stays an empty marker.
         $this->assertSame(array(), (new \ReflectionClass(OAuthTransientException::class))->getMethods());
+
+        /*
+         * OCR-round-8 pin (t31-ocr8-6): the audit above walks METHODS
+         * only — a public PROPERTY carrying raw payload passed it
+         * entirely. The family's API is methods-only; no concrete type
+         * (nor anything it inherits) may expose a public property.
+         */
+        foreach ($this->concreteTypes() as $type) {
+            $props = (new \ReflectionClass($type))->getProperties(\ReflectionProperty::IS_PUBLIC);
+            $this->assertSame(
+                array(),
+                $props,
+                $type . ' must expose no public properties — the family\'s API is methods-only; a public property is a payload channel the method audit never saw.'
+            );
+        }
     }
 
     public function testRateLimitCarriesPreviousExceptionAndStandardExceptionBehavior(): void
