@@ -877,6 +877,27 @@ final class WpConnectorsBuild
         $sharedSources = array();
         $pluginSuffix = '';
         $buildConfig = $pluginDir . '/build.json';
+        /*
+         * A SYMLINK at the config path refuses FIRST (OCR round 3,
+         * t31-ocr3-3): file_exists() and is_file() both FOLLOW links, so
+         * a DANGLING build.json symlink read as absent — the seam never
+         * ran, $embedShared stayed false, and a library-less zip built
+         * and published at exit 0 — exactly the silent-no-embed class
+         * the seam exists to kill (t31-r4-17 closed the directory
+         * spelling one gate below; this is its link sibling, which
+         * skips the seam entirely instead of slipping the is_file()
+         * gate). A RESOLVING link is refused by the same check, never
+         * read through: a config the plugin does not own byte-for-byte
+         * (an out-of-tree target can change out from under the release)
+         * is not a config seam this build vouches for — the
+         * no-symlinks doctrine (t31-r4-16) applied at the one path the
+         * collector's walk never sees (build.json never ships, so the
+         * shipped-path fence cannot catch it).
+         */
+        if (is_link($buildConfig)) {
+            $target = (string) readlink($buildConfig);
+            throw new RuntimeException("build: {$slug}: build.json is a symlink (-> {$target}) — dangling or resolving, a link is never silently skipped (a dangling link reads absent and the embed quietly turns off) and never read through (a link's bytes are not the plugin's own); make build.json a regular file");
+        }
         if (file_exists($buildConfig)) {
             /*
              * A build.json that is not a REGULAR FILE refuses (verifier

@@ -1899,6 +1899,45 @@ FIXTURE;
             rmdir($scratch . '/plugin/example-connector/build.json');
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build must leave no zip behind.');
 
+            /*
+             * OCR-round-3 pin (t31-ocr3-3): the DIRECTORY row above
+             * slipped the is_file() gate, but a SYMLINK skips the seam
+             * itself — file_exists() follows links, so a DANGLING
+             * build.json read as absent, the embed silently turned
+             * off, and a library-less zip built and published at exit 0
+             * (reproduced pre-fix). Both link shapes refuse at the
+             * seam now: the dangling link (invisible to file_exists())
+             * and the out-of-tree resolver (is_file() follows it, so a
+             * config the plugin does not own would otherwise be read
+             * through). A regular build.json keeps building — the
+             * controls below ride the same seam.
+             */
+            if (function_exists('symlink')) {
+                symlink($scratch . '/elsewhere-build.json', $scratch . '/plugin/example-connector/build.json');
+                try {
+                    WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                    $this->fail('A DANGLING build.json symlink must refuse the build — file_exists() follows links and the seam would silently skip to no-embed.');
+                } catch (RuntimeException $e) {
+                    $this->assertStringContainsString('is a symlink', $e->getMessage());
+                }
+                unlink($scratch . '/plugin/example-connector/build.json');
+
+                // A link that RESOLVES (out of the plugin tree, to a
+                // perfectly valid embed config) refuses identically —
+                // the old seam would have READ it through is_file().
+                file_put_contents($scratch . '/outside-build.json', "{\"embed_shared\": true}\n");
+                symlink($scratch . '/outside-build.json', $scratch . '/plugin/example-connector/build.json');
+                try {
+                    WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                    $this->fail('An out-of-tree RESOLVING build.json symlink must refuse the build — the plugin\'s config may not be a link the release does not own.');
+                } catch (RuntimeException $e) {
+                    $this->assertStringContainsString('is a symlink', $e->getMessage());
+                    $this->assertStringContainsString('outside-build.json', $e->getMessage(), 'The refusal names the link target.');
+                }
+                unlink($scratch . '/plugin/example-connector/build.json');
+                $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused link legs must leave no zip behind.');
+            }
+
             // Controls, through the same seam: the explicit-equal suffix
             // and the explicit opt-out both build, each with exactly the
             // embed state the config names.
