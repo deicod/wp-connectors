@@ -601,18 +601,27 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $this->assertSame(\DateTimeImmutable::class, (string) $method->getReturnType());
     }
 
-    public function testSystemClockReturnsMonotonicallySaneUtcNow(): void
+    /**
+     * OCR-round-3 correction (t31-ocr3-6): the port disclaims
+     * monotonicity ("monotonicity is the wall clock's, not the port's",
+     * ClockInterface::now()) and this pin asserted it anyway —
+     * $second >= $first fails on an NTP step between two adjacent
+     * now() calls, an intermittent CI flake the CONTRACT says is
+     * legal. The weakened pin is what the port guarantees: every
+     * reading is an instant inside a sanity window around time(), in
+     * the UTC zone. Deterministic by construction — no ordering claim
+     * between readings remains.
+     */
+    public function testSystemClockReturnsUtcNowInsideTheSanityWindow(): void
     {
         $clock = new SystemClock();
 
-        $first = $clock->now();
-        $second = $clock->now();
-
-        $this->assertInstanceOf(\DateTimeImmutable::class, $first);
-        $this->assertGreaterThanOrEqual(time() - 5, $first->getTimestamp());
-        $this->assertLessThanOrEqual(time() + 5, $first->getTimestamp());
-        $this->assertGreaterThanOrEqual($first, $second);
-        $this->assertSame('UTC', $first->getTimezone()->getName());
+        foreach (array($clock->now(), $clock->now()) as $reading) {
+            $this->assertInstanceOf(\DateTimeImmutable::class, $reading);
+            $this->assertGreaterThanOrEqual(time() - 5, $reading->getTimestamp());
+            $this->assertLessThanOrEqual(time() + 5, $reading->getTimestamp());
+            $this->assertSame('UTC', $reading->getTimezone()->getName());
+        }
     }
 
     public function testDeterministicClockControlsAndAdvancesTheReading(): void
