@@ -17,12 +17,15 @@ final class HarnessCopyTreeTest extends TestCase
      * str_replace($from . '/', '', …), which strips EVERY occurrence —
      * a source tree containing the source dir's own name as a NESTED
      * segment silently copied to the wrong target: both occurrences
-     * eaten, the nested file landing at the collapsed path. The
+     * eaten, the nested file landing at the collapsed GLUED path
+     * ('vendornested.php' — the two stripped halves fused). The
      * reproducer replays the ENTIRE source path as literal nested
      * directory names under vendor/ (a relative source root, or any
      * checkout whose full path repeats inside itself, is the same
      * shape); the prefix strip is positional now — position 0, exactly
-     * once.
+     * once. (The negative leg originally asserted 'vendor/nested.php'
+     * — a path that existed under NEITHER behavior, an inert pin
+     * swapped for the real glue shape in OCR round 6, t31-ocr6-10.)
      */
     public function testANestedSameNameSegmentCopiesToItsExactTarget(): void
     {
@@ -39,7 +42,7 @@ final class HarnessCopyTreeTest extends TestCase
 
             $this->assertFileExists($to . '/plain.php');
             $this->assertSame('nested bytes', (string) file_get_contents($to . '/vendor' . $from . '/nested.php'), 'The nested same-name path keeps its exact position — only the SOURCE prefix strips, never a nested repetition.');
-            $this->assertFileDoesNotExist($to . '/vendor/nested.php', 'The pre-fix str_replace() target (every occurrence stripped) must not appear.');
+            $this->assertFileDoesNotExist($to . '/vendornested.php', 'The pre-fix str_replace() glue target (every occurrence stripped, the halves fused) must not appear — this leg is the regression detector for a return to str_replace().');
         } finally {
             WpHarness::rrmdir($holder);
             WpHarness::rrmdir($to);
