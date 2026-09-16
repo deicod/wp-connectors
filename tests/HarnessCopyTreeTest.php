@@ -144,6 +144,28 @@ final class HarnessCopyTreeTest extends TestCase
             // the tree under test.
             $refuses($from . '/src', $from . '/src/inside', 'A target inside the source must refuse — the copy would land inside the very tree it reads.');
 
+            /*
+             * The alias spellings of (b) (t31-ocr8-3, over the ocr7-8
+             * named-alias class): the not-yet-created target was judged
+             * purely lexically, and both aliases hid the physical
+             * landing — a '..'-woven target and a target reached
+             * through a SYMLINKED ancestor ride a spelling the lexical
+             * prefix check cannot see through. The nearest EXISTING
+             * ancestor decides now; both refuse, and both share (b)'s
+             * physical landing spot.
+             */
+            $refuses($from . '/src', $from . '/decoy/../src/inside', 'A \'..\'-woven target that lands inside the source must refuse — the spelling is not the location.');
+            if (function_exists('symlink')) {
+                symlink($from . '/src', $from . '/ancestor-link');
+                $refuses($from . '/src', $from . '/ancestor-link/inside', 'A target reached through a SYMLINKED ancestor of the source must refuse — the link is not a door.');
+
+                // The control: the same ancestor walk keeps judging a
+                // NORMAL disjoint target by its own (existing or
+                // created-fresh) location — the copy still lands.
+                WpHarness::copyTree($from . '/src', $from . '/fresh-outside');
+                $this->assertFileExists($from . '/fresh-outside/file.php', 'A normal disjoint target still copies through the ancestor-resolved containment check.');
+            }
+
             // The refusal precedes the byte work: the source tree is
             // intact after every shape (the pre-fix nested copy is the
             // self-pollution this leg guards against).

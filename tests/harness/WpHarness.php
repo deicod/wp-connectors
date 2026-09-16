@@ -520,14 +520,13 @@ final class WpHarness
      * NOT re-enumerate the created target (driven: 5,000 source files
      * became exactly 10,000 — one self-polluting duplication, not an
      * unbounded loop), still wrong output landing inside the tree
-     * under test. One containment check, realpath-based (the
-     * not-yet-created target is judged lexically; the out-of-scope
-     * class is any alias the lexical path cannot see through — a
-     * '..'-woven alias, or an absent target reached through a
-     * SYMLINKED ancestor, whose realpath() is false for the missing
-     * leaf and whose copy would land physically inside the source —
-     * every real caller passes disjoint absolute scratch trees),
-     * before a single byte moves.
+     * under test. One containment check, realpath-based, before a
+     * single byte moves: the not-yet-created target is judged through
+     * its nearest EXISTING ancestor (t31-ocr8-3 — the former purely
+     * lexical judgment could not see through a '..'-woven alias or an
+     * absent target reached through a SYMLINKED ancestor; the
+     * ancestor resolution closes both spellings, and the lexical
+     * ceiling remains only for a chain nothing of which exists).
      *
      * @param string $from Absolute source directory.
      * @param string $to   Absolute target directory.
@@ -552,10 +551,45 @@ final class WpHarness
             throw new RuntimeException('WpHarness::copyTree() refuses a source that is not a readable directory — the loud policy, never the SPL iterator\'s surprise: ' . $from);
         }
         $source_real = realpath($from);
-        // A not-yet-created target is the copy's own normal shape;
-        // realpath cannot speak for it, so the lexical path is judged
-        // (absolute normalized scratch paths are the ceiling).
-        $target_real = false !== realpath($to) ? realpath($to) : rtrim($to, '/');
+        /*
+         * A not-yet-created target is the copy's own normal shape, but
+         * its LEXICAL spelling cannot see through the alias class the
+         * ocr7-8 ledger named out-of-scope — a '..'-woven target, or
+         * an absent target reached through a SYMLINKED ancestor
+         * (realpath() is false for the missing leaf, so both rode the
+         * spelling and the copy landed physically inside the source).
+         * The nearest EXISTING ancestor carries the truth (t31-ocr8-3):
+         * walk up to the first component that exists, resolve THAT
+         * (realpath sees through links and dots alike), and re-attach
+         * the not-yet-existing remainder — the remainder holds no
+         * symlinks (the walk stopped at the first existing component),
+         * so a lexical '.'/'..' collapse over the resolved base IS the
+         * physical path. Nothing on the chain existing at all (a
+         * dangling-link ancestor) keeps the lexical ceiling: absolute
+         * normalized scratch paths.
+         */
+        $ancestor = rtrim($to, '/');
+        while ('' !== $ancestor && '/' !== $ancestor && ! is_dir($ancestor) && ! is_link($ancestor)) {
+            $ancestor = dirname($ancestor);
+        }
+        $ancestor_real = realpath($ancestor);
+        if (false !== $ancestor_real) {
+            $remainder = substr(rtrim($to, '/'), strlen($ancestor));
+            $collapsed = array();
+            foreach (explode('/', $ancestor_real . $remainder) as $segment) {
+                if ('' === $segment || '.' === $segment) {
+                    continue;
+                }
+                if ('..' === $segment) {
+                    array_pop($collapsed);
+                    continue;
+                }
+                $collapsed[] = $segment;
+            }
+            $target_real = '/' . implode('/', $collapsed);
+        } else {
+            $target_real = rtrim($to, '/');
+        }
         if ($target_real === $source_real || 0 === strpos($target_real, $source_real . '/')) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target that is the source itself or inside it — a self-copy is a silent no-op success riding the engine\'s same-file mercy, and a nested target writes the copy into the very tree it reads: from ' . $from . ' into ' . $to);
         }
