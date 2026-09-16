@@ -887,7 +887,59 @@ documented exception.
   namespace-less harness files — the
   verifier's MEDIUM). Suite 1599 → 1605
   tests, 44742 → 44798 assertions, 2 skipped
-  unchanged.
+  unchanged. OCR-tool round t31-ocr2 (eleven
+  commits — the second pass of the same
+  deterministic reviewer, two runs over the
+  full branch diff, 13/13 findings accepted,
+  THREE of them direct follow-ons of the
+  round-1 fixes: the tool auditing our own
+  work): serialize() masked on the token VOs
+  (AccessTokenSet + StoredGrant hook
+  __serialize() to the dump's own masked
+  view, reconstruction refuses, and the
+  storage fake's detachment moved off the
+  closed channel to the strict-storage
+  re-state through the private-constructor
+  hydration the VO's forward note names) and
+  on HeaderMap itself (parity with its own
+  drift doctrine, pinned against print_r());
+  the storage CAS fence gained its
+  monotonicity leg (a grant staler than its
+  own expectation regressed the persisted
+  fence and resurrected revoked tokens — the
+  contract requires generation >= expected
+  now, the fake rejects lower loudly); the
+  save() docblock states the control-byte
+  screen the fake performs; a bracketed URL
+  host must BE a well-formed IPv6 literal,
+  not merely a well-placed bracket pair; the
+  refresh totality corner consumes
+  InstantArithmetic's own named underflow
+  predicate (the guard's lower leg, one
+  owner); negative Retry-After has one truth
+  — the constructor clamps to zero, the
+  parser reality the policy already
+  documented; the PKCE constructor enforces
+  the S256 binding (constant-time, one
+  derivation owner); and three test-side
+  fences: exception finality pinned, the PCRE
+  burner's abort pinned deterministic via a
+  small backtrack limit restored in finally,
+  and the namespace scan reads
+  abort-as-refusal. The round's two-lens
+  verifier pass (a deterministic workflow:
+  independent correctness + security agents,
+  every finding to an adversarial refuter
+  with driven probes) raised 3 raw — one a
+  both-lens find — deduped to 2, BOTH refuted
+  (the flow VOs' serialize exposure is
+  pre-existing, producer-gated, and twice
+  ledger-covered by name; the rate-limit
+  accessor's RAW adjective is an adjudication
+  record whose re-open condition is unmet)
+  and ledgered as boundaries. Suite 1605 →
+  1613 tests, 44798 → 44911 assertions, 2
+  skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

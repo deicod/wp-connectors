@@ -6,6 +6,121 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 2)
+
+Second OCR-tool round (the same complementary deterministic reviewer —
+alibaba open-code-review on glm-5.3 — two passes over the full branch
+diff, union coverage 54/54 files); driver triage accepted 13/13
+findings after tool dedup — THREE of them direct follow-ons of the
+round-1 fixes (the serialize-masking doctrine's unextended VOs, the
+storage fake's unfenced monotonicity, the undocumented control-byte
+screen), the tool auditing our own prior round's work, not re-deriving
+it — fixed as t31-ocr2-1..11 — one commit per finding, the full
+offline check green after every commit, a regression per fix (all
+eleven). A two-lens verifier pass (independent correctness + security
+agents over the whole round diff via a deterministic workflow, every
+raised finding driven to an adversarial skeptic prompted to refute,
+probes executed where drivable) raised 3 raw findings — one found
+independently by both lenses — deduped to 2 unique, BOTH refuted
+high-confidence (one pre-existing outside the round's seams and twice
+ledger-covered by name, one a below-the-bar wording nit on an
+adjudication record whose re-open condition is unmet; both refutations
+re-derived by the driver) — nothing to fix in-round, both ledgered as
+boundaries. Suite 1605 → 1613 tests, 44798 → 44911 assertions,
+2 skipped unchanged.
+
+- **serialize() is masked on the token VOs (t31-ocr2-1, security:high)**:
+  AccessTokenSet and StoredGrant hooked only `__debugInfo()` —
+  serialize() bypasses it by engine design, so serialize() of the set,
+  the grant, or any container holding them emitted both token
+  positions in cleartext. Both VOs hook `__serialize()` to the SAME
+  masked view the dump renders (one owner per VO; the grant's nested
+  set delegates through its own hook), `__unserialize()`/`__set_state()`
+  refuse (masked snapshots are lossy by design — to_array()/from_array()
+  are the storage round trip), and var_export() stays the one
+  named-excluded channel. The reference storage fake — whose
+  detached-copy boundary rode exactly the closed serialize() channel —
+  re-states through the strict storage serialization plus the
+  class-scope private-constructor hydration the StoredGrant forward
+  note reserves for Task 3.2's named producer.
+- **HeaderMap's serialize channel has the parity its doctrine demands
+  (t31-ocr2-2, security:high)**: the map hooked only `__debugInfo()`,
+  so a bare serialize($map) dumped the folded header index with full
+  Authorization/Cookie values — the cleartext its own docblock forbids
+  ("the dump mirrors the masked map so the two channels cannot
+  drift"). `__serialize()` rides the same masked view (one source,
+  both channels, pinned to agree with print_r()), reconstruction
+  refuses.
+- **The storage fence is monotonic (t31-ocr2-3, bug:medium)**: save()'s
+  CAS judged only PERSISTED === EXPECTED — a stale grant whose OWN
+  generation sat below the expectation passed (persisted 4, expected
+  4, grant at 3) and REGRESSED the persisted fence, resurrecting
+  revoked tokens. The contract now requires grant.generation() >=
+  expected_generation (every legitimate commit satisfies it: the
+  writer observed the persisted state and moved forward from it) and
+  the reference fake rejects a lower-generation grant loudly, nothing
+  committed — the same typed-caller-bug class the provider-identity
+  rule rides.
+- **The save() contract states the control-byte screen (t31-ocr2-4,
+  documentation:low)**: the reference fake screens the
+  caller-controlled $provider_id before any other judgment (the
+  round-1 verifier's fix), but the docblock never said so — a Task
+  3.2 adapter implementing exactly the written contract could
+  legitimately skip the screen and let an unscreened key ride a
+  rejection message. The docblock now specifies everything the fake
+  enforces.
+- **A bracketed host must BE an IPv6 literal (t31-ocr2-5, bug:low)**:
+  the URL bracket screen validated placement and pairing, never
+  content — 'http://[abc]/x' passed every screen and constructed an
+  authority that is not an IP literal, contradicting the refusal
+  message's own claim. The inner literal is judged now
+  (FILTER_VALIDATE_IP, IPV6 flag); garbage refuses, true literals
+  stay green, and glued garbage with a legal inner literal still
+  refuses at its own (glue) screen.
+- **The totality guard's overflow predicate has one owner
+  (t31-ocr2-6, maintainability:low)**: RefreshPolicy's unrepresentable-
+  threshold corner spelled the InstantArithmetic overflow inequality by
+  hand beside the arithmetic's own guard — nothing structural tied
+  them. The lower leg of the guard is the named public predicate
+  `InstantArithmetic::offset_would_underflow()` now, the guard consumes
+  it, the policy consumes it, and the exact boundary
+  (expires_ts == PHP_INT_MIN + skew) pins identical behavior on both
+  sides.
+- **Negative Retry-After has one truth (t31-ocr2-7,
+  documentation:low)**: the rate-limit exception's input contract said
+  both parser forms "land here as seconds" (and the policy documents
+  and tests negative clamping — implying negatives flow from parsers)
+  while its constructor REJECTED them. The parser reality wins: the
+  constructor clamps a negative delta to zero ("retry immediately"),
+  null stays the distinct "provider sent none", both docblocks state
+  the one rule, and the pin rides both sides.
+- **The PKCE pair enforces its own invariant (t31-ocr2-8,
+  maintainability:low)**: only S256 is supported and from_verifier()
+  was the sole producer, yet a hand-built or corrupted pair whose
+  challenge != BASE64URL(SHA-256(verifier)) was representable and
+  failed far away at the provider as an opaque invalid_grant. The
+  constructor verifies the binding (constant-time compare through the
+  one derivation owner from_verifier() also rides); no unverified
+  rehydration path exists.
+- **Exception finality is pinned (t31-ocr2-9, test:low)**: finality is
+  the fence making "is this retryable?" answerable by type — a
+  subclass of a non-final terminal type implementing the transient
+  marker would satisfy both the marker check and the terminal catch
+  arm. The pin holds `final` on every concrete OAuth exception type
+  (and the marker stays a bare extending-nothing interface tag).
+- **The PCRE burner trips deterministically (t31-ocr2-10,
+  test:medium)**: the abort depended on the host's pcre.* ini — a
+  host with a raised backtrack limit could let the burner's match
+  complete and change the failure surface. A small pinned
+  pcre.backtrack_limit wraps the burner invocation (restored in
+  finally on every exit path), probed abort-deterministic as low as
+  256 while the clean twin needs nowhere near it.
+- **The namespace scan reads abort-as-refusal (t31-ocr2-11, test:low)**:
+  a PCRE abort degraded the PSR-4 sweep's namespace scan to [] and the
+  failure surfaced as the misleading "must declare exactly one
+  namespace". The result is captured and asserted not-false with the
+  file named — the doctrine its own type-scan sibling already spells.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 1)
 
 First OCR-tool round (a complementary deterministic reviewer — alibaba
