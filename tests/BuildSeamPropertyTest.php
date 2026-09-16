@@ -319,11 +319,29 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // t31-r5-15: the header's bytes reached the artifact
                 // filename and staging paths unchecked — a traversal
                 // spelling staged the archive and sidecar OUTSIDE dist/.
+                // The mutation needles are DERIVED from the fixture at
+                // runtime (OCR round 6, t31-ocr6-8): the row used to
+                // str_replace two exact literals ('Version:           0.1.0'
+                // with its 11-space alignment, "'0.1.0'"), so any fixture
+                // drift (header respacing, a version bump) made the
+                // replace a silent no-op, the mutation landed nothing,
+                // and the row failed as a phantom build defect. A needle
+                // miss now fails loudly AT THE MUTATION STEP, naming
+                // which spelling drifted.
                 'expect' => 'LOUD',
                 'apply' => static function (array $scratch): void {
                     $mainPath = $scratch['plugin'] . '/example-connector.php';
+                    $main = (string) file_get_contents($mainPath);
                     $traversal = '0.1/../../../vsec-precious';
-                    file_put_contents($mainPath, str_replace(array('Version:           0.1.0', "'0.1.0'"), array("Version:           {$traversal}", "'{$traversal}'"), (string) file_get_contents($mainPath)));
+                    if (1 !== preg_match('/Version:([ \t]++)(\S++)/', $main, $header)) {
+                        throw new RuntimeException('version-header-traversal: the fixture header carries no Version line — the mutation needle drifted.');
+                    }
+                    $mutated = str_replace($header[0], 'Version:' . $header[1] . $traversal, $main, $headerCount);
+                    $mutated = str_replace("'" . $header[2] . "'", "'{$traversal}'", $mutated, $quotedCount);
+                    if (1 > $headerCount || 1 > $quotedCount) {
+                        throw new RuntimeException(sprintf('version-header-traversal: the mutation needle missed the fixture (header spelling matched %d, quoted spelling matched %d) — the fixture drifted; refusing to run a no-op mutation as a phantom build defect.', $headerCount, $quotedCount));
+                    }
+                    file_put_contents($mainPath, $mutated);
                 },
                 'fragment' => 'version token',
             ),
