@@ -1358,6 +1358,148 @@ OCR-tool round
   45095 → 45129
   assertions, 2 skipped
   unchanged.
+OCR-tool round
+  t31-ocr9 (twelve
+  commits — the ninth
+  pass, main 56/61 +
+  the fill-in over
+  tests/Zai, 10/10
+  findings accepted,
+  8 fix commits + 3
+  verifier-pass fixes
+  + the docs): r8's
+  '/..' carve-out RE-
+  FUTED by driven
+  evidence — the
+  parent it names is
+  the LINK TARGET'S
+  parent, so
+  rrmdir('link/..')
+  deleted THROUGH the
+  link with a LARGER
+  blast radius than
+  the target and
+  copyTree('link/..')
+  copied the parent
+  tree through it; the
+  tail joins the stat-
+  transparent family
+  in link_probe_
+  spelling() while
+  same_directory_
+  spelling() (the old
+  body) stays the WALK
+  spelling — a
+  stripped '/..' names
+  a different
+  directory. THE
+  CARVE-OUT RULE
+  ledgered: carve-outs
+  need DRIVEN
+  justification, never
+  naming arguments
+  (r8's build.php
+  no-caller conclusion
+  re-driven and still
+  holds). copyTree
+  refuses the MIRROR
+  containment (target
+  CONTAINS source —
+  driven: a nested
+  same-name segment
+  resolved the copy
+  inside the tree
+  being read), plus
+  the verifier-driven
+  ROOT collapse (a
+  target resolving to
+  '/' built the prefix
+  '//' and passed both
+  guards — the root,
+  ancestor of every
+  source, refuses as
+  the universal
+  container now).
+  THE ROUND'S CLASS
+  LESSON ledgered: the
+  r8 refusalOf() sweep
+  mechanically dropped
+  the exception FAMILY
+  each original catch
+  enforced (a planted
+  TypeError carrying
+  the fragments kept
+  the pin green —
+  driven); refusalOf()
+  pins the family its
+  site's original
+  catch declared (97
+  sites: 94 family
+  args from the r8
+  DIFFS — the census
+  source of truth,
+  commit prose was
+  wrong twice — + 3
+  legitimate \Throwable
+  defaults), and
+  mechanical refactors
+  must carry the
+  ORIGINAL contract's
+  full semantics,
+  enforced by a
+  census. The THIRD
+  removal owner
+  (bin/inspect-
+  artifact.php's
+  rrmdir) joined the
+  link doctrine its
+  siblings already
+  carried (planted-
+  link drive emptied
+  the victim). The
+  Retry-After future-
+  claim class swept to
+  its siblings (Re-
+  freshPolicy's header
+  and the exception's
+  file header matched
+  to the no-parser
+  reality; parser =
+  3.2, coordination =
+  3.3 design intent);
+  GrantState words the
+  terminal classes as
+  terminal-INTENT (the
+  r2-3 adjudication:
+  the VO is transition-
+  permissive). Scanner
+  prune walk skipped
+  when pruning is off
+  (constant guard,
+  artifact path); rrm-
+  dir's docblock
+  attached to its
+  declaration. The
+  round's two-lens
+  verifier pass (111
+  driven tool calls):
+  correctness 8/8
+  HOLDS (97-site
+  census re-derived
+  exactly; one prose
+  miscount — ocr9-6's
+  message said 1628
+  tests/45355, true
+  1629/45357 —
+  corrected in the
+  round record),
+  refutation 3 findings
+  — ALL fixed in-round
+  (ocr9-9/10/11), ZERO
+  refuted. Suite 1628 →
+  1629 tests, 45129 →
+  45362 assertions, 2
+  skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

@@ -6,6 +6,81 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 9)
+
+Ninth OCR-tool round (main 56/61 + the fill-in over tests/Zai); driver
+triage accepted all 10 findings — two real bug:medium in WpHarness, one
+performance:low, and one class regression our own round-8 sweep
+introduced (the dropped exception families). Fixed as t31-ocr9-1..8 —
+one commit per finding (the family class sweep = one commit), the full
+offline check green after every commit. The round's two-lens verifier
+pass (independent correctness + refutation agents) held every fix
+claim — the correctness lens re-derived the 97-site family census
+exactly and found one prose miscount (corrected in the round record) —
+and the refutation lens raised 3 findings, all fixed in-round as
+t31-ocr9-9/10/11. Suite 1628 → 1629 tests, 45129 → 45362 assertions,
+2 skipped unchanged.
+
+- **The trailing '/..' tail is the third stat-transparent link-probe
+  family member (t31-ocr9-1, bug:medium)** — and round 8's carve-out
+  ("it names the parent") is refuted by driven evidence: the parent it
+  names is the LINK TARGET'S parent, so `rrmdir('link/..')` walked and
+  deleted through the link with a strictly larger blast radius than
+  the target, and `copyTree('link/..')` copied the whole parent tree
+  through it (both driven). `link_probe_spelling()` strips the '/..'
+  tail too (interleaved with '/' and '/.' to a fixpoint), but a
+  stripped '/..' names a DIFFERENT directory — so the helpers split:
+  the probe reads `link_probe_spelling()`, the walks ride
+  `same_directory_spelling()` (rrmdir) or the caller's spelling
+  (copyTree); real-'..'-spelled sources keep their pre-fix semantics
+  (copy control pinned). Ledgered lesson: a carve-out needs a DRIVEN
+  justification, never a naming argument.
+- **copyTree() refuses the MIRROR containment (t31-ocr9-2,
+  bug:medium)**: a target that CONTAINS the source —
+  `copyTree('/a/src', '/a')` — passed the guard, and a nested
+  same-name segment resolved the copy INSIDE the tree being read
+  (driven: src/src/nested.php landed at src/nested.php). Same
+  ancestor-resolved owner as the nested-target refusal, symmetric
+  direction; the refutation lens then drove the ROOT collapse (a
+  target resolving to '/' built the prefix '//' and passed both
+  guards — the root is an ancestor of every source), closed in
+  t31-ocr9-9 by judging the root as the universal container.
+- **refusalOf() enforces the exception FAMILY its site's original
+  catch declared (t31-ocr9-3, test:medium, 97 sites)**: the round-8
+  sweeps silently dropped the family when converting catches to the
+  \Throwable collector — a planted TypeError carrying the fragments
+  kept the whole pin green (driven). Every converted site now passes
+  its original family (census re-derived from the r8 diffs: 94 family
+  args — 90 RuntimeException-family, 4 \Exception-family — plus 3
+  sites whose original catch was \Throwable, legitimately on the
+  no-op default); the family assert fails loudly naming expected and
+  got. The round's class lesson, ledgered: mechanical refactors must
+  carry the ORIGINAL contract's full semantics, enforced by a census.
+- **The third removal owner joined the link doctrine (t31-ocr9-10,
+  bug:low)**: bin/inspect-artifact.php's rrmdir had no link guard at
+  all — a planted symlink at its predictable workDir name emptied the
+  victim tree (driven). It carries its build-side twin's exact guard
+  now (root-link return, `! isLink()` child branch); the probe-spelling
+  machinery is deliberately absent (no caller passes any tail spelling
+  — re-driven).
+- **The Retry-After future-claim class is swept to its sibling owners
+  (t31-ocr9-4 + t31-ocr9-11, documentation:low)**: no Retry-After
+  parsing exists in shared/src — the property docblock, RefreshPolicy's
+  header, and the exception's file header now all state what IS (an
+  int supplied by the caller, already parsed; the HTTP/provider layer
+  that will parse is Task 3.2 scope, the coordination that will honor
+  it Task 3.3 design intent). GrantState's header words the terminal
+  classes as terminal-INTENT (t31-ocr9-5): the VO is
+  transition-permissive by design (the t31-r2-3 adjudication).
+- **Small fixes (t31-ocr9-6/7/8)**: the secret scanner's per-file
+  segment walk is skipped entirely when pruning is off (its guard was
+  constant for the whole walk — pure per-file overhead on the
+  artifact-scan path; both sides of the flag pinned over one fixture
+  tree); rrmdir()'s docblock moved to its declaration (only the last
+  docblock before a function attaches — the spelling helpers'
+  docblocks had orphaned it); the OAuthRateLimitException @param block
+  re-spaced to the one common alignment column.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 8)
 
 Eighth OCR-tool round (the same complementary deterministic reviewer,
