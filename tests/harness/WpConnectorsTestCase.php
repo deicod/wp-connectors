@@ -685,6 +685,45 @@ abstract class WpConnectorsTestCase extends TestCase
 
     /*
      * ---------------------------------------------------------------
+     * Refusal verdicts (t31-ocr8-1, the fail()-masking class sweep).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Runs one guarded call that must refuse, and returns the collected
+     * exception for the caller's fragment assertions.
+     *
+     * The swept shape — $this->fail() INSIDE the try, fragments asserted
+     * in the catch — was broken per spelling: PHPUnit's
+     * AssertionFailedError EXTENDS RuntimeException, so a no-throw
+     * regression (the guarded call returning normally) landed the
+     * fail() message IN the catch, and the fragment assertions ran
+     * against the FAIL MESSAGE itself — a vacuous pass wherever the
+     * message carried the fragment (green despite the regression), a
+     * confusing re-fail over the failure message everywhere else. The
+     * t31-ocr5-3/ocr6-3 fix established the shape inline for
+     * HarnessCopyTreeTest; this owner completes the sweep for every
+     * other site: the exception is collected inside, the no-throw case
+     * fails OUTSIDE any catch, and the caller asserts its fragments on
+     * the returned verdict.
+     *
+     * @param callable $attempt     The guarded call, expected to throw.
+     * @param string   $expectation The failure message for the no-throw case.
+     * @return \Throwable The collected refusal.
+     */
+    protected function refusalOf(callable $attempt, string $expectation): \Throwable
+    {
+        try {
+            $attempt();
+        } catch (\Throwable $e) {
+            return $e;
+        }
+
+        $this->fail($expectation);
+    }
+
+    /*
+     * ---------------------------------------------------------------
      * Directory-suite helpers (glm15-19: the selectEndpoint()/idList()
      * twins lived privately in both directory suites, one settings class
      * apart, with docblocks already drifted from their assertions).

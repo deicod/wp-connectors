@@ -289,13 +289,12 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
          * shape throws now; extending the stub to a new query family is
          * a conscious edit, never a silent empty.
          */
-        try {
-            $GLOBALS['wpdb']->get_col('SELECT option_name FROM wp_options WHERE option_name LIKE \'x%\' ORDER BY option_name');
-            $this->fail('An unrecognized get_col() query shape must throw.');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('unsupported query shape', $e->getMessage());
-            $this->assertStringContainsString('ORDER BY', $e->getMessage(), 'The diagnostic names the query it refused.');
-        }
+        $refusal = $this->refusalOf(
+            fn() => $GLOBALS['wpdb']->get_col('SELECT option_name FROM wp_options WHERE option_name LIKE \'x%\' ORDER BY option_name'),
+            'An unrecognized get_col() query shape must throw.'
+        );
+        $this->assertStringContainsString('unsupported query shape', $refusal->getMessage());
+        $this->assertStringContainsString('ORDER BY', $refusal->getMessage(), 'The diagnostic names the query it refused.');
     }
 
     public function testOutboundHttpIsBlockedUnlessMocked()
