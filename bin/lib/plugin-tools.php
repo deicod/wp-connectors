@@ -3155,7 +3155,10 @@ function wp_connectors_path_edge_junk()
  * when a dev tool actually starts dropping it in plugin trees. The
  * segment COMPARISON is owned by wp_connectors_is_development_entry()
  * below (case-insensitive, t31-r6-3) — never in_array/array_intersect
- * at a consumer.
+ * at a consumer. (The fold MECHANIC is
+ * wp_connectors_segment_is_named()'s, t31-ocr1-5: a consumer judging
+ * a SUBSET of this vocabulary shares the same fold through that
+ * owner, never a byte-exact twin.)
  *
  * @return list<string> Sorted development-entry names (segments and files).
  */
@@ -3172,6 +3175,39 @@ function wp_connectors_development_entry_names()
         'webpack.config.js', 'vite.config.js',
         'build.json', '.distignore',
     );
+}
+
+/**
+ * Whether a path segment IS one of the given names, judged by the ONE
+ * fold the development-entry vocabulary rides (OCR round 1, t31-ocr1-5).
+ *
+ * The fold mechanic — trailing-edge-junk strip, then case-insensitive
+ * compare — was welded inside the vocabulary owner, so a consumer that
+ * needs "is this segment one of THESE names" (the secret scanner's
+ * repo-walk prune, a documented SUBSET of the vocabulary) had no owner
+ * to consume and hand-spelled a byte-exact twin (array_intersect): a
+ * case-variant 'VENDOR/' or 'Tools/' was a development entry to the
+ * builder, inspector, and lint (all folded) while the repo walk still
+ * descended it. The mechanic lives HERE, one owner: the vocabulary
+ * judgment below delegates to it, and subset consumers judge by the
+ * same fold — same trailing-junk strip (the ONE edge-junk owner's
+ * class; the LEADING side stays, the vocabulary's own dot-led names),
+ * same case-insensitive compare, never a byte-exact twin at a consumer.
+ *
+ * @param string $segment One path segment (a basename is one).
+ * @param list<string> $names Canonical spellings to judge against.
+ * @return bool True when the segment matches one of the names in any case.
+ */
+function wp_connectors_segment_is_named($segment, array $names)
+{
+    $segment = rtrim((string) $segment, wp_connectors_path_edge_junk());
+    foreach ($names as $name) {
+        if (0 === strcasecmp($segment, (string) $name)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -3199,21 +3235,17 @@ function wp_connectors_development_entry_names()
  * preserve the odd spelling. The junk class is the ONE edge-junk
  * owner's; the LEADING side is deliberately not stripped (the
  * vocabulary's own members may begin with a dot — ltrim would
- * destroy the '.git' family).
+ * destroy the '.git' family). The fold itself is
+ * wp_connectors_segment_is_named()'s (t31-ocr1-5): the vocabulary is
+ * this judgment's own charge, the MECHANIC is shared with subset
+ * consumers through that one owner.
  *
  * @param string $segment One path segment (a basename is one).
  * @return bool True when the segment matches a vocabulary name in any case.
  */
 function wp_connectors_is_development_entry($segment)
 {
-    $segment = rtrim((string) $segment, wp_connectors_path_edge_junk());
-    foreach (wp_connectors_development_entry_names() as $development_entry) {
-        if (0 === strcasecmp($segment, $development_entry)) {
-            return true;
-        }
-    }
-
-    return false;
+    return wp_connectors_segment_is_named($segment, wp_connectors_development_entry_names());
 }
 
 /**

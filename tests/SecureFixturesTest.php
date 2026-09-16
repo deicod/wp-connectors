@@ -145,6 +145,55 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString($githubToken, $report);
     }
 
+    /**
+     * OCR-round-1 pin (t31-ocr1-5): the repo walk's prune list is a
+     * SUBSET of the one development-entry vocabulary, and it is judged
+     * by the vocabulary's OWN fold — never the byte-exact
+     * array_intersect the prune used to spell. A case-variant 'VENDOR/'
+     * or 'Tools/' is a development entry to the builder, inspector,
+     * and lint (all folded); the repo walk prunes it in exactly those
+     * spellings now. The subset boundary stays sharp in every casing:
+     * 'Tests/' IS a development entry to the folded gates but is NOT
+     * one of the pruned names — the repo scan covers tests by
+     * contract, so a live-looking key under it still FINDS.
+     */
+    public function testTheRepoWalkPruneFoldsLikeTheDevelopmentEntryVocabulary()
+    {
+        $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+
+        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-prune-' . getmypid();
+        if (is_dir($tempDir)) {
+            WpHarness::rrmdir($tempDir);
+        }
+        mkdir($tempDir . '/VENDOR', 0755, true);
+        mkdir($tempDir . '/Tools', 0755, true);
+        mkdir($tempDir . '/Tests', 0755, true);
+        mkdir($tempDir . '/phpunit.cache', 0755, true);
+        foreach (array( 'VENDOR', 'Tools', 'Tests' ) as $prunedOrCovered) {
+            file_put_contents($tempDir . '/' . $prunedOrCovered . '/leak.conf', "api_key = {$zaiKey}\n");
+        }
+        file_put_contents($tempDir . '/phpunit.cache/cached.xml', "<r>{$zaiKey}</r>\n");
+
+        try {
+            $report = implode("\n", wp_connectors_scan_paths(array( $tempDir )));
+
+            // Case-variant spellings of PRUNED names: never descended.
+            $this->assertStringNotContainsString('VENDOR', $report, 'A case-variant vendor segment prunes exactly where the folded gates judge it a development entry.');
+            $this->assertStringNotContainsString('Tools', $report, 'A case-variant tools segment prunes exactly where the folded gates judge it a development entry.');
+            // A vocabulary member the subset does not name: still this
+            // scan's charge, in any casing.
+            $this->assertStringContainsString('Tests/leak.conf', $report, 'Tests is not one of the pruned names — the repo scan covers it in every casing.');
+            $this->assertStringContainsString('zai-key', $report);
+            // The dotless cache spelling is not the subset's '.phpunit.cache'
+            // either — scanned, not skipped.
+            $this->assertStringContainsString('phpunit.cache/cached.xml', $report, 'The prune subset names the dotted .phpunit.cache only; the dotless spelling stays scanned.');
+            // Findings still never echo the secret itself.
+            $this->assertStringNotContainsString($zaiKey, $report);
+        } finally {
+            WpHarness::rrmdir($tempDir);
+        }
+    }
+
     public function testScannerDoesNotBypassOnGenericProseWords()
     {
         // Regression for the over-broad marker allowlist: generic words like

@@ -166,7 +166,13 @@ function wp_connectors_scan_string($contents, $label)
  * stays the repo walk's own traversal concept — a SUBSET of the one
  * development-entry vocabulary, not a second vocabulary: pruning more
  * of it would blind the repo scan to root config files it covers by
- * contract.)
+ * contract. The SUBSET is judged by the vocabulary's own fold —
+ * wp_connectors_segment_is_named(), the mechanic
+ * wp_connectors_is_development_entry() rides (t31-ocr1-5) — so a
+ * case-variant 'VENDOR/' or 'Tools/' prunes exactly where the folded
+ * gates judge it a development entry, and 'Tests/' stays scanned:
+ * a vocabulary member the subset does not name is this scan's charge,
+ * not its skip. Never a byte-exact array_intersect twin here.)
  *
  * @param list<string> $roots               Absolute paths (files or directories).
  * @param bool         $prune_dev_segments  Whether to skip development-tree segments (the repository scan's concept; artifact scans never prune).
@@ -190,8 +196,10 @@ function wp_connectors_scan_paths(array $roots, $prune_dev_segments = true)
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
             $parts = explode(DIRECTORY_SEPARATOR, $file->getPathname());
-            if (array_intersect($parts, $excluded) !== array()) {
-                continue;
+            foreach ($parts as $part) {
+                if ($excluded !== array() && wp_connectors_segment_is_named($part, $excluded)) {
+                    continue 2;
+                }
             }
             if (! $file->isFile() || $file->getSize() > 2 * 1024 * 1024) {
                 continue;

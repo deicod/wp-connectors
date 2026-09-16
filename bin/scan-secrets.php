@@ -18,6 +18,10 @@ declare(strict_types=1);
 error_reporting(E_ALL);
 ini_set('display_errors', '1');
 
+// plugin-tools first (the inspect-artifact order): the scanner's
+// prune consumes the vocabulary fold owner it carries
+// (wp_connectors_segment_is_named(), t31-ocr1-5).
+require_once __DIR__ . '/lib/plugin-tools.php';
 require_once __DIR__ . '/lib/secret-scanner.php';
 
 // Guarded so tests can require this file for the helpers.
