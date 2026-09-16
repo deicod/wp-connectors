@@ -990,6 +990,62 @@ OCR-tool round
   between them) raised ZERO findings.
   Suite 1613 → 1616 tests, 44911 →
   44974 assertions, 2 skipped unchanged.
+OCR-tool round
+  t31-ocr4 (nine commits — the fourth
+  pass, 12/12 findings accepted, SIX one
+  defect class swept together; the
+  trajectory is the signal: shared/src
+  correctness and security findings are
+  EMPTY — the loop is scraping the test
+  harness now): every chmod-0000 leg
+  skips under a root runner (uid 0 reads
+  through mode 0000; ONE guard in the
+  harness parent, row-level skips in the
+  build-seam battery — never a
+  whole-battery skip — and a grep census
+  that every leg is guarded);
+  WpHarness::copyTree() strips the source
+  prefix positionally (str_replace()
+  stripped every occurrence — a source
+  path repeating inside itself collapsed)
+  and refuses symlinks of BOTH shapes
+  loudly (the copy twin of rrmdir()'s
+  no-symlinks doctrine: a linked file was
+  followed, a linked dir silently
+  skipped); Url's scheme-separator probe
+  is false-first like every sibling (the
+  construction-unreachable arm guarded
+  per the file's own doctrine); the
+  rewrite ledger expires BRACED namespace
+  blocks at their closing brace (a
+  post-block use is legal PHP in global
+  scope and misattributed to the expired
+  declaration); the ancestor-boundary
+  sub-test's ancestor is a real
+  case-variant above the root (the former
+  spelling matched nothing — the pin
+  stayed green over the regression it
+  documented); and the concurrent-build
+  legs collect proc exits before
+  asserting (an in-loop assertion leaked
+  un-reaped children racing their own
+  cleanup). The round's two-lens verifier
+  pass (deterministic workflow,
+  independent correctness + refutation
+  agents, 67 driven tool calls between
+  them) raised 2 findings — one per lens,
+  both reproduced — fixed in-round: the
+  symlink pin's nothing-landed assertion
+  over-claimed (yield order is the
+  filesystem's — false-fail on ext4) and
+  the ledger's brace view left inline
+  HTML unmasked (an HTML '{'/'}'
+  counterfeited the block close both
+  directions; blanked in the ledger's own
+  view, never in the shared masker
+  owner). Suite 1616 → 1618 tests, 44974
+  → 44985 assertions, 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

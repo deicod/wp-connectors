@@ -6,6 +6,79 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 4)
+
+Fourth OCR-tool round (the same complementary deterministic reviewer,
+fourth pass over the branch diff); driver triage accepted all 12
+findings — SIX of them one defect class (root-runner chmod-0000
+brittleness) swept as one class. The trajectory this round is the
+signal: shared/src carries ZERO correctness or security findings —
+one unreachable-invariant guard (Url.php) is the round's only
+production-source touch beside bin/build.php's braced-namespace
+ledger, and everything else lives in the TEST INFRASTRUCTURE — the
+loop is scraping the harness now. Fixed as t31-ocr4-1..7 — one
+commit per finding (the class sweep one commit), the full offline
+check green after every commit, a regression per fix where
+meaningful. The round's two-lens verifier pass (independent
+correctness + refutation agents over the whole round diff via a
+deterministic workflow, 67 driven tool calls between them) raised 2
+findings — one per lens, both reproduced — and both were fixed
+in-round as t31-ocr4-8/9. Suite 1616 → 1618 tests, 44974 → 44985
+assertions, 2 skipped unchanged.
+
+- **chmod-0000 legs skip under a root runner (t31-ocr4-1, test:medium
+  ×6, one class sweep)**: uid 0 reads through mode 0000, so every
+  permission-bit refusal leg flips on a root CI container — the
+  expected refusal never fires and a fail()/battery "silent third"
+  fires instead. One guard lives ONCE in the harness parent
+  (runningAsRootRunner() + skipChmod0000LegOnRootRunner(),
+  posix_getuid-based, named skip reason); the three battery-table
+  chmod rows skip ROW-LEVEL (never a whole-battery skip), and the
+  opendir-probe twin in SelfContainmentLoopWritesTest stays its own
+  owner. Grep census: every chmod(…,0000) leg is guarded.
+- **copyTree() strips the source prefix positionally (t31-ocr4-2,
+  bug:low)**: str_replace() stripped EVERY occurrence, so a source
+  path repeating inside itself copied to the collapsed wrong target.
+  Position 0, exactly once — with a red/green regression that replays
+  the entire source path as nested literal dirs.
+- **copyTree() refuses symlinks of both shapes (t31-ocr4-3 +
+  t31-ocr4-8, other:low + test:medium)**: a linked FILE was followed
+  by copy() (content duplicated), a linked DIRECTORY silently skipped
+  — one policy now, the copy twin of rrmdir()'s no-symlinks doctrine:
+  a link (root, file shape, or dir shape) refuses loudly naming the
+  link. The verifier lens then caught the new pin's nothing-landed
+  assertion over-claiming (the refusal fires at the first link the
+  ITERATOR reaches; yield order is the filesystem's — false-fail on
+  ext4, reproduced): the order-dependent assertion is gone.
+- **Url's scheme-separator probe is false-first (t31-ocr4-4,
+  maintainability:low)**: the ONE sibling position probe in the file
+  without its `false !==` spelling — `(int) false` is 0 — now refuses
+  loudly on the (construction-unreachable) missing-scheme spelling,
+  per the file's own no-unreestablished-invariants doctrine.
+- **Braced namespace blocks expire in the rewrite ledger
+  (t31-ocr4-5 + t31-ocr4-9, bug:low ×2)**: `namespace X { … }` once
+  stayed in effect to EOF, so a post-block use statement (legal PHP
+  in global scope) misattributed to the expired declaration. The
+  block's closing brace offset is recorded through the ONE
+  brace-matching owner over the masked view. The refutation lens
+  then reproduced both directions of an inline-HTML counterfeit
+  (an HTML '}' expired early, an HTML '{' delayed the close — PHP
+  itself continues the block past a close tag; only a CODE '}' closes
+  it): inline-HTML spans are blanked in the ledger's OWN view, never
+  in the masker owner its conventions consumers share.
+- **The ancestor-boundary sub-test kills its regression
+  (t31-ocr4-6, test:medium)**: 'Dist-ancestor-<pid>' matched no
+  excluded name under EITHER judging, so the below-root pin
+  (t31-ocr1-12) stayed green over the regression it documented. The
+  ancestor is a real case-variant ('DIST') above the root now —
+  verified: with the below-root slice removed the test fails exactly
+  as the round-1 reproduction described.
+- **Concurrent-build legs collect exits before asserting
+  (t31-ocr4-7, test:low ×2)**: the assertion stood INSIDE the
+  proc_close() loop, so a failing child aborted the reaping and
+  leaked builds writing into the scratch tree the finally then
+  rrmdirs — collect all exits first, assert after.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 3)
 
 Third OCR-tool round (the same complementary deterministic reviewer,
