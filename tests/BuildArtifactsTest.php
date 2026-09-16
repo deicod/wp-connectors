@@ -341,6 +341,9 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         }
 
         // The chmod-000 window (non-root spelling, restored in finally).
+        // Root-runner skip (t31-ocr4-1): uid 0 reads through mode 0000,
+        // so the window never opens there.
+        $this->skipChmod0000LegOnRootRunner('the chmod-000 published-zip window of the success-line digest pin');
         $rebuilt = $this->buildFixture();
         chmod($rebuilt, 0000);
         try {
@@ -2704,6 +2707,11 @@ FIXTURE;
             $manifestBefore = (string) file_get_contents($scratch . '/dist/checksums.txt');
 
             // (a) An unreadable shared source (non-root chmod spelling).
+            // Root-runner skip (t31-ocr4-1): this guard covers BOTH
+            // chmod-0000 legs of this test — (a) here and (c) below — a
+            // skip aborts the rest, and the whitespace leg (b) between
+            // them rides the same skip on a root container.
+            $this->skipChmod0000LegOnRootRunner('the unreadable-source legs of the loud-read pin');
             // t31-r8-4 supersession: the refusal fires at the collector's
             // PSR-4 casing fence now — the config seam, before any
             // filesystem mutation — with readSharedSource's own loud read
@@ -3568,6 +3576,10 @@ FIXTURE;
             $zipBefore = (string) file_get_contents($zipPath);
             $sidecarBefore = (string) file_get_contents($zipPath . '.sha256');
 
+            // Root-runner skip (t31-ocr4-1): uid 0 reads the chmod-0000
+            // manifest, the merge lands, and the refusal leg below (plus
+            // the recovery leg after it) cannot fire.
+            $this->skipChmod0000LegOnRootRunner('the unreadable-manifest leg of the manifest-merge pin');
             chmod($manifestPath, 0000);
             try {
                 WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
@@ -4557,6 +4569,10 @@ FIXTURE;
         $staged = tempnam(sys_get_temp_dir(), 'wpct-zip-staged-');
         $bad = tempnam(sys_get_temp_dir(), 'wpct-zip-bad-');
         try {
+            // Root-runner skip (t31-ocr4-1): uid 0 reads the staged
+            // source through mode 0000, close() succeeds, and the
+            // finalization refusal never fires.
+            $this->skipChmod0000LegOnRootRunner('the staged-source chmod-0000 leg of the finalization pin');
             file_put_contents($staged, 'staged content');
             chmod($staged, 0000);
             $zip = new ZipArchive();

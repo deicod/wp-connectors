@@ -167,6 +167,40 @@ abstract class WpConnectorsTestCase extends TestCase
         }
     }
 
+    /**
+     * Whether the test process runs as root (uid 0) — the root CI
+     * container shape under which every chmod-0000 permission leg flips
+     * (OCR round 4, t31-ocr4-1, the class sweep): uid 0 reads through
+     * mode 0000, so the expected refusal never fires and the leg fails
+     * as a false silent-third alarm instead. The functional twin of
+     * this guard is the opendir probe (SelfContainmentLoopWritesTest),
+     * which owns its own skip; the uid spelling serves the legs whose
+     * refusal cannot be probed without driving the whole leg.
+     *
+     * @return bool True when the process cannot be denied by permission bits.
+     */
+    protected static function runningAsRootRunner(): bool
+    {
+        return function_exists('posix_getuid') && 0 === posix_getuid();
+    }
+
+    /**
+     * The shared skip for one chmod-0000 leg (t31-ocr4-1) — consume at
+     * the leg. On a mid-test leg the skip aborts the rest of the test,
+     * so place it at the FIRST chmod-0000 leg of the test.
+     *
+     * @param string $leg The leg's name (the skip's named reason).
+     * @return void
+     */
+    protected function skipChmod0000LegOnRootRunner(string $leg): void
+    {
+        if (self::runningAsRootRunner()) {
+            $this->markTestSkipped(
+                "{$leg}: chmod-0000 does not block reads for uid 0 — the permission-bit refusal cannot fire in a root container (t31-ocr4-1)."
+            );
+        }
+    }
+
     /*
      * ---------------------------------------------------------------
      * Deterministic clock.

@@ -59,8 +59,14 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $run = array( 'CLEAN' => 0, 'LOUD' => 0 );
 
         foreach ($this->states() as $state_id => $state) {
-            ++$run[$state['expect']];
             $verdict = $this->runState($state_id, $state);
+            if ('SKIP' === $verdict['class']) {
+                // Row-level skip (t31-ocr4-1): a chmod-0000 row on a
+                // root runner skips ITSELF, never the battery — the
+                // other states stay charged.
+                continue;
+            }
+            ++$run[$state['expect']];
             if ('FAIL' === $verdict['class']) {
                 $failures[] = sprintf("[%s] expected %s: %s", $state_id, $state['expect'], $verdict['why']);
             }
@@ -83,9 +89,12 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      *
      * Each row: 'expect' ('CLEAN' or 'LOUD'), 'apply' (mutates the
      * seeded scratch), an optional refusal-message fragment the LOUD
-     * row must carry, and optional CLEAN-state extra assertions.
+     * row must carry, optional CLEAN-state extra assertions, and an
+     * optional 'skip_on_root' flag for the chmod-0000 rows (uid 0
+     * reads through mode 0000, t31-ocr4-1 — the row skips itself on a
+     * root runner instead of failing as a false silent third).
      *
-     * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable}>
+     * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool}>
      */
     private function states(): array
     {
@@ -124,6 +133,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     chmod($scratch['shared'] . '/Clock/ClockInterface.php', 0000);
                 },
                 'fragment' => 'cannot be read',
+                'skip_on_root' => true,
             ),
             'shared-source-whitespace-only' => array(
                 // t31-r5-2's empty half: rewriteSharedNamespace('') returns
@@ -145,6 +155,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     chmod($scratch['plugin'] . '/src/Provider/ExampleProvider.php', 0000);
                 },
                 'fragment' => 'cannot copy',
+                'skip_on_root' => true,
             ),
             'shared-tree-empty' => array(
                 // t31-r5-4: is_dir() passed while the tree carried no PHP
@@ -326,6 +337,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     chmod($scratch['dist'] . '/checksums.txt', 0000);
                 },
                 'fragment' => 'cannot read the checksum manifest',
+                'skip_on_root' => true,
             ),
             'zip-staging-path-blocked' => array(
                 // t31-r5-S: leftover junk at the (PID-unique) staging
@@ -348,6 +360,13 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      */
     private function runState(string $state_id, array $state): array
     {
+        // Row-level root-runner skip (t31-ocr4-1): a chmod-0000 row's
+        // LOUD expectation cannot fire when uid 0 reads through mode
+        // 0000 — the row skips itself, never the battery.
+        if (! empty($state['skip_on_root']) && self::runningAsRootRunner()) {
+            return array('class' => 'SKIP', 'why' => 'chmod-0000 does not block reads for uid 0 — the permission-bit refusal cannot fire in a root container (t31-ocr4-1).');
+        }
+
         $scratch = $this->makeScratchRepo($state_id);
         try {
             // Seed: one previous GOOD build of the same inputs.
@@ -605,6 +624,12 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             $zip = new ZipArchive();
             $this->assertTrue($zip->open($closeTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE));
             $this->assertTrue($zip->addFile($staged, 'staged-source.php'));
+            // Root-runner skip (t31-ocr4-1), consumed BEFORE the chmod:
+            // uid 0 reads the staged source through mode 0000, close()
+            // succeeds, and the refusal below never fires. The guard
+            // fires before the mode change, so the archive's implicit
+            // close on teardown still sees a readable source.
+            $this->skipChmod0000LegOnRootRunner('the forced-close chmod-0000 leg of the staging-path pin');
             chmod($staged, 0000);
             $finalize = new ReflectionMethod(WpConnectorsBuild::class, 'closeArchiveOrThrow');
             $refused = null;
