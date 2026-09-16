@@ -76,7 +76,18 @@ final class Url {
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- the WordPress helper does not exist in this provider-neutral source (WordPress is reached only through ports); parse_url's shape is adequate for constructor validation.
 		$parts = parse_url( $url );
-		if ( false === $parts || ! isset( $parts['scheme'], $parts['host'] ) ) {
+
+		/*
+		 * The empty-host spelling is refused EXPLICITLY (OCR round 1,
+		 * t31-ocr1-2): parse_url()'s answer for 'http://:8080/' is
+		 * build-dependent — some builds in the supported floor return
+		 * host => '' (the key PRESENT but empty), where isset() passes
+		 * and a hostless authority would construct ('http://user@:8080/'
+		 * likewise); this build returns false outright. The explicit ''
+		 * leg refuses the spelling on every build — a host of zero
+		 * bytes is no host, whatever spelling the engine hands back.
+		 */
+		if ( false === $parts || ! isset( $parts['scheme'], $parts['host'] ) || '' === $parts['host'] ) {
 			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
 		}
 		$scheme = strtolower( (string) $parts['scheme'] );

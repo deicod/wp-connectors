@@ -102,6 +102,45 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-1 pin (t31-ocr1-2): the empty-host spellings
+     * ('http://:8080/', 'http://user@:8080/') are refused EXPLICITLY,
+     * not by engine accident. parse_url()'s answer for them is
+     * build-dependent — some builds in the supported floor return
+     * host => '' (key present, empty string), where isset() passed and
+     * a hostless authority constructed; this build returns false
+     * outright. The explicit '' leg refuses the spelling on every
+     * build, and the legal-host mirrors stay constructible unchanged.
+     */
+    public function testAnEmptyHostSpellingIsRefusedExplicitlyOnEveryBuild(): void
+    {
+        $hostile_urls = array(
+            'empty host with port' => 'http://:8080/',
+            'empty host behind userinfo' => 'http://user@:8080/',
+            'empty host no port' => 'http://:/path',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('An empty-host URL (%s) must be refused by the shared URL owner on every build.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('absolute with a scheme and host', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('An empty-host URL (%s) must be refused by the request VO too.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('absolute with a scheme and host', $e->getMessage());
+            }
+        }
+
+        // The legal mirrors stay constructible, host and port intact.
+        $this->assertSame('host.example:8080', Url::parse_validated('http://host.example:8080/')['authority']);
+        $this->assertSame('host.example:8080', Url::parse_validated('http://user@host.example:8080/')['authority'], 'Userinfo does not change the host; an empty host behind userinfo is not a host.');
+    }
+
+    /**
      * Fix-round pin (t31-r4-12): parse_url() silently truncates a
      * malformed raw port — 'https://host.example:443x/' parses as port
      * 443 (reproduced) — while url() still carries ':443x': a
