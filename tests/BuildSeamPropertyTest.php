@@ -687,24 +687,19 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         );
 
         $plugin = $root . '/plugin/example-connector';
-        // The plugin root exists before the copy loop rides it
-        // (t31-r6-7): the loop's first mkdir came from a subdirectory
-        // entry, so a readdir order yielding a root FILE first broke
-        // the copy — directory-entry order is not a contract.
-        mkdir($plugin, 0755, true);
-        $fixtureRoot = realpath(__DIR__ . '/fixtures/plugins/example-connector');
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::SELF_FIRST
-        );
-        foreach ($iterator as $item) {
-            $target = $plugin . '/' . str_replace($fixtureRoot . '/', '', $item->getPathname());
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        /*
+         * The fixture tree rides the ONE scratch-tree copy owner
+         * (OCR round 6, t31-ocr6-5): this inline twin (str_replace
+         * prefix strip, no isLink() guard) had re-grown the exact two
+         * defect shapes ocr4-2/-3 killed in WpHarness::copyTree() —
+         * every-occurrence stripping on a nested same-name segment and
+         * silent link-following — in the one place the battery's own
+         * verdicts would never reach. copyTree() also owns the
+         * root-exists guarantee the old pre-create carried (it mkdirs
+         * each target's dirname recursively, order-free — t31-r6-7's
+         * readdir-order concern was the inline loop's own).
+         */
+        WpHarness::copyTree(realpath(__DIR__ . '/fixtures/plugins/example-connector'), $plugin);
         file_put_contents($plugin . '/build.json', "{\"embed_shared\": true}\n");
 
         return array(
