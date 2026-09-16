@@ -351,7 +351,10 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $manufactured = true;
         }
 
-        $previous = setlocale(LC_CTYPE, null);
+        // The '0' spelling QUERIES (t31-ocr1-6): null behaves like ""
+        // and SETS from the environment, so the snapshot must not
+        // itself mutate the process locale.
+        $previous = setlocale(LC_CTYPE, '0');
         $previousLocpath = getenv('LOCPATH');
         try {
             if ($manufactured) {

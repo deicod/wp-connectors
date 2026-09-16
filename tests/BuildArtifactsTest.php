@@ -3346,12 +3346,20 @@ FIXTURE;
      * fails), so on it the divergence is argued from the fold tables
      * like AsciiFold's own docblock argues it — the spelling pins hold
      * everywhere, the locale pressure rides wherever the locale exists.
-     * setlocale is process-global: attempted and restored in a finally
-     * so no other test sees it.
+     * setlocale is process-global: QUERIED with the '0' spelling
+     * (t31-ocr1-6 — null behaves like "" and SETS from the
+     * environment, so a null-"snapshot" could restore a DIFFERENT
+     * LC_CTYPE than the one in effect), attempted and restored in a
+     * finally so no other test sees it.
      */
     public function testTheSlugToIdentifierFoldIsLocaleIndependent(): void
     {
-        $previous = setlocale(LC_CTYPE, null);
+        $previous = setlocale(LC_CTYPE, '0');
+        // The QUERY spelling changes nothing (t31-ocr1-6): it returns
+        // the current spelling and mutates no process state, so the
+        // pin below cannot itself be the leak the finally guards
+        // against.
+        $this->assertSame($previous, setlocale(LC_CTYPE, '0'), 'The setlocale query spelling must read the locale, never set it.');
         try {
             setlocale(LC_CTYPE, 'tr_TR.UTF-8');
 
