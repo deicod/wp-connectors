@@ -181,6 +181,11 @@ final class RefreshPolicy {
 	 * Clamps a provider-supplied Retry-After (already parsed to seconds,
 	 * either form) under the policy's cap.
 	 *
+	 * Negative values clamp to zero — the SAME truth the rate-limit
+	 * exception's constructor states on its own payload (t31-ocr2-7:
+	 * a parser can emit a negative delta, "retry immediately" is its
+	 * meaning, and the two sides document one rule, not two).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param int $retry_after_seconds Parsed Retry-After seconds (negative values clamp to zero).

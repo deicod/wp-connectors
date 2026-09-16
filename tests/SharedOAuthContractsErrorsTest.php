@@ -99,13 +99,32 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
         $this->assertNull($withoutValue->retry_after_seconds());
     }
 
-    public function testRateLimitAcceptsZeroButRejectsNegativeRetryAfter(): void
+    /**
+     * OCR-round-2 pin (t31-ocr2-7): the input contract and the
+     * constructor agreed on nothing for negative Retry-After — the
+     * property docblock said both parser forms "land here as seconds"
+     * (and the policy documents/tests negative clamping, implying
+     * negatives flow from parsers) while the constructor REJECTED
+     * them. One truth now, the parser reality: a negative delta is
+     * meaningless but a parser can emit one (a header spelling the
+     * past), so it clamps to zero — "retry immediately" — while null
+     * stays "the provider sent none", the two facts distinct. Pinned
+     * beside the policy's own clamp pin: one rule, both sides.
+     */
+    public function testRateLimitClampsNegativeRetryAfterToZero(): void
     {
         $zero = new OAuthRateLimitException('throttled', 0, null, 0);
         $this->assertSame(0, $zero->retry_after_seconds());
 
-        $this->expectException(\InvalidArgumentException::class);
-        new OAuthRateLimitException('throttled', 0, null, -1);
+        $this->assertSame(0, (new OAuthRateLimitException('throttled', 0, null, -1))->retry_after_seconds(), 'A parser-emitted negative clamps to zero — retry immediately.');
+        $this->assertSame(0, (new OAuthRateLimitException('throttled', 0, null, PHP_INT_MIN))->retry_after_seconds(), 'Even the extreme negative spelling clamps to the same zero.');
+
+        // Null stays a DISTINCT fact: the provider sent none.
+        $this->assertNull((new OAuthRateLimitException('throttled'))->retry_after_seconds());
+
+        // The policy side states the same rule (pinned in the policy
+        // suite too — one truth, both sides).
+        $this->assertSame(0, (new \Deicod\WpConnectors\Shared\Policy\RefreshPolicy(0, 1, 60))->capped_retry_after_seconds(-5));
     }
 
     /**

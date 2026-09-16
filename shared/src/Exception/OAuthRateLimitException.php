@@ -32,8 +32,14 @@ final class OAuthRateLimitException extends OAuthRuntimeException implements OAu
 	 *
 	 * Already-parsed by the HTTP utilities (both provider forms — seconds
 	 * and HTTP-date — land here as seconds); null when the provider sent
-	 * none. Never trusted unbounded: the policy caps what any consumer
-	 * derives from it.
+	 * none. A NEGATIVE delta is meaningless but a parser can emit one
+	 * (a header spelling the past, an HTTP-date behind the reading),
+	 * so the constructor CLAMPS it to zero (t31-ocr2-7 — the same
+	 * reality RefreshPolicy::capped_retry_after_seconds() documents and
+	 * tests: negative clamps to zero, one truth on both sides); zero
+	 * reads "retry immediately", null reads "the provider sent none" —
+	 * the two facts stay distinct. Never trusted unbounded: the policy
+	 * caps what any consumer derives from it.
 	 *
 	 * @since 0.1.0
 	 *
@@ -49,17 +55,12 @@ final class OAuthRateLimitException extends OAuthRuntimeException implements OAu
 	 * @param string         $message            Safe, fixed message (no token material, no raw provider body).
 	 * @param int            $code               Exception code.
 	 * @param Throwable|null $previous           Previous exception, if any.
-	 * @param int|null       $retry_after_seconds Parsed Retry-After in seconds, or null when the provider supplied none.
-	 * @throws \InvalidArgumentException When the Retry-After value is negative.
+	 * @param int|null       $retry_after_seconds Parsed Retry-After in seconds, or null when the provider supplied none; a negative value clamps to zero (a parser can emit one, and "retry immediately" is its meaning).
 	 */
 	public function __construct( string $message = '', int $code = 0, ?Throwable $previous = null, ?int $retry_after_seconds = null ) {
-		if ( null !== $retry_after_seconds && $retry_after_seconds < 0 ) {
-			throw new \InvalidArgumentException( 'The Retry-After seconds must be null or non-negative.' );
-		}
-
 		parent::__construct( $message, $code, $previous );
 
-		$this->retry_after_seconds = $retry_after_seconds;
+		$this->retry_after_seconds = null === $retry_after_seconds ? null : max( 0, $retry_after_seconds );
 	}
 
 	/**
