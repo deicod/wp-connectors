@@ -277,6 +277,33 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
                 $props,
                 $type . ' must expose no public properties — the family\'s API is methods-only; a public property is a payload channel the method audit never saw.'
             );
+
+            /*
+             * OCR-round-8 verifier-pass pin (t31-ocr8-14): the IS_PUBLIC
+             * probe sees nothing of a PROTECTED or PRIVATE property —
+             * and print_r()/var_export()/serialize() dump those RAW
+             * (driven with a planted protected string), the exact
+             * channel this audit fences; the methods-only pin even
+             * BLOCKED the family's own mitigation (a __debugInfo()
+             * override would fail the declaring-class check above).
+             * The family's data carrier is ONE parsed int, declared
+             * once; every property the FAMILY declares — any
+             * visibility, inherited included — must be that one. A new
+             * declared property of any visibility is a payload
+             * candidate and fails here, consciously.
+             */
+            $family_properties = array('retry_after_seconds');
+            $declared = array();
+            foreach ((new \ReflectionClass($type))->getProperties() as $property) {
+                if (0 === strpos($property->getDeclaringClass()->getName(), 'Deicod\\WpConnectors\\')) {
+                    $declared[] = $property->getName();
+                }
+            }
+            $this->assertSame(
+                array(),
+                array_values(array_diff($declared, $family_properties)),
+                $type . ' declares unexpected properties (' . implode(', ', $declared) . ') — the family\'s carrier is the one parsed int; print_r()/var_export() dump non-public properties raw, so a new declared property of any visibility is a payload candidate.'
+            );
         }
     }
 
