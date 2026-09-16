@@ -1154,6 +1154,90 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-1 pin (t31-ocr1-8): the docblocks claimed the masked
+     * contract for "the serialized form", but __debugInfo() only covers
+     * print_r()/var_dump()/debugger views — serialize() and
+     * var_export() bypass it by engine design and dumped the raw
+     * property tree (the full URL with query and userinfo, the raw
+     * Authorization/Cookie values, the body). serialize() rides the
+     * SAME masked view through __serialize() now (byte-identical
+     * vocabulary to the dump form), and neither channel reconstructs:
+     * __unserialize() refuses the masked snapshot and __set_state()
+     * refuses the raw export. var_export() itself stays the one
+     * NAMED-EXCLUDED channel (no engine hook exists — the docblock
+     * pins the exclusion instead of pretending coverage).
+     */
+    public function testTheSerializeChannelRendersMaskedAndRefusesToRebuild(): void
+    {
+        $token = FakeSecrets::accessToken();
+        $session = 'wpct_fixture_session_' . bin2hex(random_bytes(8));
+        $request = new HttpRequest(
+            'POST',
+            'https://host.example/callback?access_token=' . $token . '&extra=1',
+            array('Authorization' => 'Bearer ' . $token, 'Cookie' => 'session=' . $session),
+            'grant_type=refresh_token&refresh_token=' . $token
+        );
+
+        $payload = serialize($request);
+
+        $this->assertStringNotContainsString($token, $payload, 'serialize() must never carry the raw bearer/refresh token.');
+        $this->assertStringNotContainsString($session, $payload, 'serialize() must never carry the raw cookie.');
+        $this->assertStringNotContainsString('access_token', $payload, 'The URL query is dropped in the serialized form.');
+        $this->assertStringNotContainsString('grant_type', $payload, 'The body is omitted in the serialized form.');
+        $this->assertStringContainsString('[body omitted]', $payload, 'The payload is the masked debug vocabulary.');
+
+        // The masked snapshot is not a round-trip payload: rebuilding refuses.
+        try {
+            unserialize($payload);
+            $this->fail('A masked HTTP value object must never reconstruct from its own safe form.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
+        }
+
+        // The one EXCLUDED channel, pinned exactly as the docblock
+        // documents it: var_export() dumps the raw property tree
+        // through no engine hook. The exclusion is engine design, and
+        // the pin keeps the docblock honest — if a future engine ever
+        // routes var_export() through __debugInfo()/__serialize(), it
+        // fails here and the contract tightens instead of silently
+        // understating its own coverage.
+        $export = var_export($request, true);
+        $this->assertStringContainsString($token, $export, 'The documented exclusion is exact: var_export() dumps the raw tree through no hook — which is precisely why its reconstruction channel refuses.');
+
+        // The eval channel refuses: the raw dump is display material,
+        // never executable reconstruction. (The nested HeaderMap export
+        // evaluates first and dies on its own missing __set_state
+        // before the outer refusal on this engine — any Throwable is
+        // the pin: NO reconstruction, by whichever refusal fires.)
+        try {
+            eval('return ' . $export . ';');
+            $this->fail('Evaluating a var_export of a request VO must never reconstruct one.');
+        } catch (\Throwable $reconstruction_refused) {
+            $this->addToAssertionCount(1);
+        }
+
+        // The trait's own refusal is pinned typed directly.
+        try {
+            HttpRequest::__set_state(array('method' => 'GET'));
+            $this->fail('__set_state() must refuse the raw export as a reconstruction source.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('never a payload', $e->getMessage());
+        }
+
+        // The response side rides the same trait channels.
+        $response = new \Deicod\WpConnectors\Shared\Http\HttpResponse(302, array('Location' => 'https://client.example/cb?code=' . $token));
+        $responsePayload = serialize($response);
+        $this->assertStringNotContainsString($token, $responsePayload, 'The response serializes masked too — the Location query never rides the payload.');
+        $this->assertStringContainsString('[body omitted]', $responsePayload);
+        try {
+            unserialize($responsePayload);
+            $this->fail('A masked response must never reconstruct from its own safe form either.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
+        }
+    }
+
+    /**
      * Review-round pin (t31-r12-4, driver adjudication on vendor-doc
      * proof): RFC 6749 section 4.1.2 mandates the authorization code in
      * the redirect's Location query — a 302's Location IS a

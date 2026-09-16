@@ -14,10 +14,15 @@
  * entirely. A request carrying an Authorization header, a
  * token-bearing URL, or a token-bearing body therefore cannot leak it
  * through any string interpolation, log call, or exception message.
- * The SERIALIZATION channel rides the same contract: __debugInfo()
- * (t31-r11-5) mirrors the masked vocabulary, so print_r()/var_dump()
- * and every debugger view render the redacted URL, the masked header
- * map, and an omitted body — never the raw property tree.
+ * The dump and serialization channels ride the same contract:
+ * __debugInfo() (t31-r11-5) mirrors the masked vocabulary for
+ * print_r()/var_dump() and every debugger view, and __serialize()
+ * (t31-ocr1-8) rides it for serialize() — both render the redacted
+ * URL, the masked header map, and an omitted body, never the raw
+ * property tree. var_export() is the one channel EXCLUDED by engine
+ * design (no hook exists — it dumps the raw property tree); its eval
+ * refuses through __set_state(), and no shipped code feeds these VOs
+ * to var_export().
  *
  * @since 0.1.0
  *

@@ -28,6 +28,8 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Shared\Http;
 
+use RuntimeException;
+
 /**
  * The shared header facade for the HTTP value objects.
  *
@@ -128,14 +130,14 @@ trait HasMaskedHeaders {
 	}
 
 	/**
-	 * Safe debug rendering for the serialization channel — print_r(),
+	 * Safe debug rendering for the debugger channel — print_r(),
 	 * var_dump(), and every debugger that walks object properties
 	 * (verifier round t31-r11-5).
 	 *
 	 * Mirrors __toString()'s vocabulary exactly — the VO's head fields,
 	 * the masked header map (HeaderMap's own __debugInfo owner), body
-	 * omitted — so the string form and the serialized form cannot
-	 * drift. Without it the engine dumps the raw property tree.
+	 * omitted — so the string form and the dump form cannot drift.
+	 * Without it the engine dumps the raw property tree.
 	 *
 	 * @since 0.1.0
 	 *
@@ -149,5 +151,74 @@ trait HasMaskedHeaders {
 				'body'    => '[body omitted]',
 			)
 		);
+	}
+
+	/**
+	 * The serialize() channel rides the same masked view (OCR round 1,
+	 * t31-ocr1-8).
+	 *
+	 * Un-hooked, serialize() bypasses __debugInfo() by engine design and
+	 * dumps the raw property tree — the full URL with its
+	 * query and userinfo, the raw Authorization/Cookie header values,
+	 * the body — into every persistence or queue payload built from
+	 * the VO. The payload is byte-identical in vocabulary to
+	 * __debugInfo() above (the same head fields, the same masked map,
+	 * the same omitted-body marker), so the string, dump, and
+	 * serialize forms cannot drift. The masked view is a SNAPSHOT, not
+	 * a round-trip payload: __unserialize() below refuses it — these
+	 * VOs reconstruct through their constructors, never from their own
+	 * safe forms.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The masked payload fields, never containing secrets.
+	 */
+	public function __serialize(): array {
+		return array_merge(
+			$this->safe_debug_head_fields(),
+			array(
+				'headers' => $this->header_map()->masked_headers(),
+				'body'    => '[body omitted]',
+			)
+		);
+	}
+
+	/**
+	 * A masked payload is not a reconstruction source — it refuses.
+	 *
+	 * These VOs are request/response snapshots; the safe forms are
+	 * lossy by design (the URL loses its query and userinfo, the body
+	 * is omitted), so nothing can rebuild a value object from them.
+	 * unserialize() on the __serialize() payload throws instead of
+	 * half-initializing typed properties against masked fields.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array<string, mixed> $data The masked payload (never a source of truth).
+	 * @return never
+	 * @throws RuntimeException Always — the masked snapshot is not a round-trip payload.
+	 */
+	public function __unserialize( array $data ): never { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- the engine hands the payload to the hook; the refusal is the contract, the payload is not read.
+		throw new RuntimeException( 'A masked HTTP value object is a snapshot, not a round-trip payload — reconstruct through the constructor, never from a serialization of its own safe form.' );
+	}
+
+	/**
+	 * The var_export() eval channel refuses the same way.
+	 *
+	 * The var_export() call itself dumps the raw property tree through
+	 * no hook (engine design — the one channel the masking contract
+	 * cannot ride, named as excluded in the consuming VOs' docblocks),
+	 * but the dump it produces is executable code: evaluating it calls
+	 * __set_state(), which refuses — an exported request or response
+	 * never reconstructs from its own raw dump.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array<string, mixed> $properties The exported property tree.
+	 * @return never
+	 * @throws RuntimeException Always — the raw dump is not a reconstruction source.
+	 */
+	public static function __set_state( array $properties ): never { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- the engine hands the export to the hook; the refusal is the contract, the tree is not read.
+		throw new RuntimeException( 'A masked HTTP value object cannot be reconstructed from an exported property tree — the raw dump is display material, never a payload.' );
 	}
 }
