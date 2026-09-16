@@ -25,7 +25,6 @@
 declare(strict_types=1);
 
 use Deicod\WpConnectors\Shared\Grant\StoredGrant;
-use InvalidArgumentException;
 use Deicod\WpConnectors\Shared\Grant\TokenStorageInterface;
 
 final class InMemoryTokenStorage implements TokenStorageInterface
