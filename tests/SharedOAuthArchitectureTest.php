@@ -873,15 +873,30 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             );
         }
         if (1 === $result) {
-            $before = substr($contents, 0, $match[0][1]);
-            $line_start = false === ($last_newline = strrpos($before, "\n")) ? 0 : $last_newline + 1;
-            $line_end = (int) strpos($contents . "\n", "\n", $line_start);
+            /*
+             * The diagnostic rides the SAME \R line semantics the
+             * reader (numberedLines()) splits by — ONE line-semantics
+             * owner (t31-r8-11's rule, applied here by t31-ocr5-7):
+             * the "\n"-only count/scan mislocated the reported line on
+             * CR-only files (line 1 and the whole file as the excerpt;
+             * the engine counts \r as a terminator too).
+             */
+            $terminators = array();
+            preg_match_all('/\R/u', substr($contents, 0, $match[0][1]), $terminators, PREG_OFFSET_CAPTURE);
+            $line_start = 0;
+            foreach ($terminators[0] as $terminator) {
+                $line_start = $terminator[1] + strlen($terminator[0]);
+            }
+            $line_end = strlen($contents);
+            if (preg_match('/\R/u', $contents, $terminus, PREG_OFFSET_CAPTURE, $line_start)) {
+                $line_end = $terminus[0][1];
+            }
             $this->fail(
                 sprintf(
                     '%s: %s:%d — %s',
                     $label,
                     $path,
-                    substr_count($before, "\n") + 1,
+                    count($terminators[0]) + 1,
                     trim(substr($contents, $line_start, $line_end - $line_start))
                 )
             );
@@ -1118,6 +1133,44 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             $gate->invoke($this, $clean);
         } finally {
             unlink($clean);
+        }
+    }
+
+    /**
+     * OCR-round-5 pin (t31-ocr5-7): the whole-file diagnostic numbers
+     * and excerpts the match's line with the SAME \R semantics the
+     * reader (numberedLines()) splits by — t31-r8-11's ONE-semantics
+     * rule, which the diagnostic's own "\n"-only derivation violated:
+     * on a CR-only file every \r is a line terminator to the engine,
+     * so the derivation reported line 1 with the WHOLE FILE as the
+     * excerpt. Driven on purpose-built content through the gate's own
+     * seam: the planted spelling on line 4 of a lone-\r file must be
+     * reported as line 4 (a "\n"-only count says line 1), excerpting
+     * only its own line.
+     */
+    public function testTheWholeFileDiagnosticNumbersCrOnlyLinesCorrectly(): void
+    {
+        $gate = new \ReflectionMethod($this, 'assertPatternAbsentWholeFile');
+
+        $probe = tempnam(sys_get_temp_dir(), 'wpct-cr-lines-');
+        try {
+            file_put_contents($probe, "<?php\r# line one\r# line two\rstatic \$planted = 1;\r# line four\r");
+            $failed = false;
+            try {
+                $gate->invoke($this, $probe, '/static\s+\$\w+/', 'CR-only probe');
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $failed = true;
+                $this->assertStringContainsString(
+                    ':4 —',
+                    $e->getMessage(),
+                    'The diagnostic must count the lone-\r terminators the engine itself counts (a "\n"-only count reports line 1).'
+                );
+                $this->assertStringContainsString('static $planted = 1;', $e->getMessage(), 'The excerpt is the match\'s own line.');
+                $this->assertStringNotContainsString('# line one', $e->getMessage(), 'The excerpt must not swallow the earlier CR-separated lines.');
+            }
+            $this->assertTrue($failed, 'The planted spelling (line 4) must trip the probe pattern at all.');
+        } finally {
+            unlink($probe);
         }
     }
 
