@@ -494,7 +494,21 @@ final class WpHarness
             if ($file->isDir()) {
                 continue;
             }
-            $target = $to . '/' . str_replace($from . '/', '', $file->getPathname());
+            /*
+             * The relative path is a 0-position prefix strip, exactly
+             * once (OCR round 4, t31-ocr4-2): str_replace() strips
+             * EVERY occurrence, so a source tree containing the source
+             * dir's own name as a nested segment
+             * (…/example-connector/vendor/example-connector/file.php)
+             * silently copied to the wrong target — the first segment
+             * splice ate the nested one too.
+             */
+            $relative = $file->getPathname();
+            $prefix = $from . '/';
+            if (0 === strpos($relative, $prefix)) {
+                $relative = substr($relative, strlen($prefix));
+            }
+            $target = $to . '/' . $relative;
             if (! is_dir(dirname($target))) {
                 mkdir(dirname($target), 0755, true);
             }
