@@ -1257,6 +1257,107 @@ OCR-tool round
   tests, 45068 → 45095
   assertions, 2 skipped
   unchanged.
+OCR-tool round
+  t31-ocr8 (fifteen
+  commits — the eighth pass,
+  main + two fill-ins, union
+  coverage complete, 15/15
+  findings accepted, 11 fix
+  commits + 3 verifier-pass
+  fixes + the docs): the
+  fail()-inside-catch masking
+  class swept to ONE owner —
+  refusalOf() hoisted on
+  WpConnectorsTestCase
+  (collect inside, fail on
+  no-throw OUTSIDE, caller
+  asserts fragments on the
+  returned verdict), 72 sites
+  round one and 25 more the
+  verifier's refutation lens
+  found under the census's
+  own tokenizer blind spot
+  (PHP 8 tokenizes
+  \RuntimeException as
+  T_NAME_FULLY_QUALIFIED —
+  the FQ catch spelling was
+  invisible to a T_STRING
+  census; four sites
+  partially masked TODAY,
+  two at the widest
+  catch (\Throwable)
+  spelling) — the double
+  class lesson ledgered:
+  sweep the SHAPE, and
+  match every spelling the
+  engine tokenizes; a
+  census claiming
+  completeness needs an
+  independent re-derivation.
+  The link-probe class has
+  ONE owner
+  (link_probe_spelling():
+  trailing '/' AND '/.'
+  both force stat through
+  a final link — both
+  spellings driven red
+  both rounds; '/..' is
+  out, it names the
+  parent); copyTree's
+  containment sees through
+  the '..'-woven and
+  symlinked-ancestor alias
+  class via the nearest
+  EXISTING ancestor
+  (degenerate '/'/''
+  targets accepted
+  without fix — no
+  caller, ledgered). The
+  exceptions family's
+  payload audit pins
+  declaring-class,
+  IS_PUBLIC, and the
+  DECLARED property set
+  exactly (print_r dumps
+  non-public properties
+  raw — driven). lint-php
+  consumes its OWN named
+  exclusion subset (the
+  vocabulary ride silently
+  cut nested tests trees
+  from coverage). Secret-
+  Mask's UTF-8 grammar is
+  ONE spelling and the
+  collapse REFUTED the
+  regex twin (its F4
+  quantifier demanded
+  five bytes: the invalid
+  beyond-U+10FFFF shape
+  accepted — mask() could
+  ship invalid UTF-8 —
+  and the valid
+  U+100000 plane shed to
+  the bare mask); the
+  walk matches the engine
+  on every disagreement
+  class (both lenses'
+  corpora, 220k+ cases).
+  The round's two-lens
+  verifier pass (222
+  driven tool calls):
+  correctness 11/11 HOLDS
+  (one prose miscount
+  corrected in the round
+  record), refutation 4
+  findings — 3 fixed
+  in-round (ocr8-12/13/
+  14), 1 accepted-
+  without-fix, ZERO
+  refuted. Suite 1628
+  tests unchanged,
+  45095 → 45129
+  assertions, 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

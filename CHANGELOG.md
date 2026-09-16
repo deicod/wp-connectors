@@ -6,6 +6,132 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 8)
+
+Eighth OCR-tool round (the same complementary deterministic reviewer,
+eighth pass over the branch diff, main + two fill-ins, union coverage
+complete — the final fill-in unblocked by escalating the reviewer's
+provider timeout 900→1800s); driver triage accepted all 15 findings,
+the largest cluster (5) being the fail()-inside-catch masking class in
+BuildArtifactsTest. Fixed as t31-ocr8-1..11 — one commit per finding
+(the class sweep = one commit), the full offline check green after
+every commit, a regression per fix where meaningful. The round's
+two-lens verifier pass (independent correctness + refutation agents
+over the whole round diff, 222 driven tool calls between them) raised
+4 refutation findings + 1 correctness finding: 3 fixed in-round as
+t31-ocr8-12/13/14 (the census's own tokenizer blind spot — 25 further
+masked sites under the fully-qualified catch spelling; the '/.'
+twin of the trailing-slash link bypass; the non-public property
+payload channel), 1 accepted-without-fix (degenerate copyTree
+targets, ledgered), 1 corrected in the round record (the sweep
+commit's prose site-count, 72 not 74). Suite 1628 tests unchanged,
+45095 → 45129 assertions, 2 skipped unchanged.
+
+- **The fail()-masking class is swept by ONE owner
+  (t31-ocr8-1 + t31-ocr8-12, test:medium)**: AssertionFailedError
+  extends RuntimeException, so a `$this->fail()` inside a try whose
+  catch asserted fragments was vacuous per spelling whenever the fail
+  message carried the fragment — driven on the exact leg (a no-throw
+  stub passed both fragments against the fail message and the body
+  continued green). The ocr6-3 fix had swept ONE file; this round
+  found five more sites in the OTHER file — and the census behind the
+  sweep found 72 sites (67 BuildArtifactsTest + 5 across four more
+  files), all converted to `refusalOf()` hoisted on
+  WpConnectorsTestCase (collect inside, fail on no-throw OUTSIDE any
+  catch, caller asserts fragments on the returned verdict). The
+  verifier's refutation lens then found the census ITSELF blind: PHP 8
+  tokenizes `\RuntimeException` as T_NAME_FULLY_QUALIFIED, not
+  T_STRING, so every fully-qualified catch spelling was invisible —
+  25 more sites in seven files (four partially masked TODAY, the
+  fragment literally inside the fail message; two at the widest
+  `catch (\Throwable)` spelling whose whole catch was an assertion
+  count — fully vacuous), all converted in t31-ocr8-12; both lenses'
+  independent censuses now read zero tree-wide. The double class
+  lesson: sweep the SHAPE (not the file), and match the shape's every
+  spelling the engine tokenizes — a census must be re-derived by an
+  independent eye before it can claim "complete".
+- **The link-probe spelling is ONE owner (t31-ocr8-2 +
+  t31-ocr8-13, security:low ×2)**: a trailing slash defeats `is_link()`
+  (stat resolves through the link), so `rrmdir('link/')` emptied the
+  TARGET tree and `copyTree('link/')` walked it — and the first fix's
+  slash-only normalization was bypassed one spelling over by `/.`,
+  which forces the same through-resolution (both spellings driven red
+  both rounds). `link_probe_spelling()` (trailing slashes and trailing
+  '/.' components, the root '/' preserved) is the one owner both
+  guards probe; rrmdir() normalizes wholesale, copyTree() normalizes
+  the root-link PROBE only (a trailing-slash REAL source keeps its
+  ocr6-4 relativize refusal; a '/.'-spelled REAL source keeps copying
+  — pinned as the control). A trailing '/..' is deliberately out:
+  it names the link target's PARENT, not a disguise of the final
+  component. bin/build.php's own is_link guards inspected and left
+  alone — internally constructed paths only (no CLI dist-dir argument
+  exists; unknown getopt args are ignored), no reachable spelling.
+- **copyTree() containment sees through the alias class
+  (t31-ocr8-3, maintainability:low)**: the not-yet-created target was
+  judged purely lexically, so a '..'-woven target and a target behind
+  a SYMLINKED ancestor both landed physically inside the source while
+  the spelling looked foreign (the ocr7-8 ledger's named out-of-scope
+  class). The guard judges through the nearest EXISTING ancestor now
+  (walk up to the first component that exists, realpath THAT,
+  re-attach the not-yet-existing remainder with a lexical '.'
+  collapse — the remainder holds no symlinks by construction); a
+  nothing-exists chain (a dangling-link ancestor) keeps the lexical
+  ceiling. The '..'-woven leg's copy SUCCEEDED at HEAD before the fix
+  (mkdir happily followed the dots into the tree under test).
+- **The dead LEAVES_ONLY branch is gone, the knowledge kept
+  (t31-ocr8-4, maintainability:low)**: `if ($file->isDir()) continue;`
+  was unreachable (the iterator runs LEAVES_ONLY; the only dir-shaped
+  yields are links, owned by the isLink() refusal above) — deleted,
+  the comment names the actual semantics, and the docblock states the
+  corollary: EMPTY source directories are silently dropped.
+- **The no-payload-API audit sees overrides, properties, and the
+  declared set (t31-ocr8-5 + t31-ocr8-6 + t31-ocr8-14, test:low ×3)**:
+  the name-based audit let a concrete `__toString` override wear an
+  allowed spelling (the override IS the payload channel) — the
+  DECLARING CLASS decides now (engine-declared or a family addition);
+  the methods-only API is pinned against public properties; and the
+  verifier's channel: print_r()/var_export() dump PROTECTED and
+  PRIVATE properties raw (driven), which the IS_PUBLIC probe never
+  saw and which the methods-only contract even blocked mitigating
+  (a __debugInfo override would fail the declaring-class pin) — the
+  pin holds the family's DECLARED property set exactly (the one
+  parsed int, retry_after_seconds); a new declared property of any
+  visibility fails the pin, consciously.
+- **The lint gate's exclusion is its OWN named subset
+  (t31-ocr8-7, test:low)**: riding the whole development-entry
+  vocabulary (r12-9) silently narrowed lint COVERAGE — the
+  vocabulary's 'tests'/'test'/'.github' entries made a future
+  connectors/<slug>/tests/ tree escape php -l (the old hand-rolled
+  list never excluded tests). The gate consumes its own named subset
+  (the generated/third-party class: vendor, node_modules, tools,
+  dist, .git, both cache spellings) through the ONE fold owner —
+  the coverage decision is explicit at the list; a nested tests-named
+  tree is LINTED again (red-driven: a broken nested test invisible at
+  HEAD, failing post-fix), the real tree unchanged (174 files both
+  sides).
+- **SecretMask's UTF-8 grammar is ONE spelling — and the collapse
+  found a latent BUG (t31-ocr8-8, maintainability:low)**: the
+  canonical-grammar regex and utf8_for_safe_render()'s hand-rolled
+  table were two spellings of one grammar with no structural tie;
+  both sites ride `utf8_sequence_length_at()` now and the regex is
+  deleted. The byte-equivalence drive (94k+ cases, re-driven by both
+  lenses with own seeds — 126k+) REFUTED the regex twin instead of
+  confirming it: its F4 clause's quantifier demanded FIVE bytes, so
+  it accepted the invalid beyond-U+10FFFF five-byte shape (mask()
+  could ship it raw, breaking its own never-invalid contract) and
+  rejected the valid U+100000..U+10FFFF plane (mask() shed those
+  complete characters to the bare mask). The walk matches the engine
+  (`//u`) on every disagreement class; both F4 legs pinned red-green.
+- **The skip owns its cleanup (t31-ocr8-9), the zipEntryNames twin
+  is hoisted (t31-ocr8-10), the shared exec() output is reset
+  (t31-ocr8-11, test:low/maintainability:low)**: the capability-probe
+  skip leaked the scratch tree on exactly the hosts that take it
+  (markTestSkipped throws before the try owning rrmdir); the
+  verbatim zipEntryNames() twin in two suites is one protected owner
+  on WpConnectorsTestCase; and the two CLI-seam pins reset their
+  by-ref `$output` before each exec() (exec appends — fragments were
+  asserted over the earlier run's lines too).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 7)
 
 Seventh OCR-tool round (the same complementary deterministic reviewer,
