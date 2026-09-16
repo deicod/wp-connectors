@@ -25,6 +25,7 @@ namespace Deicod\WpConnectors\Shared\Http;
 use Deicod\WpConnectors\Shared\Support\AsciiFold;
 use Deicod\WpConnectors\Shared\Support\SecretMask;
 use InvalidArgumentException;
+use RuntimeException;
 
 /**
  * Immutable, constructor-validated HTTP header map.
@@ -354,11 +355,95 @@ final class HeaderMap {
 	 * render owner as rendered_lines()), so the two channels cannot
 	 * drift.
 	 *
+	 * Rides the same masked view as __serialize() below (OCR round 2,
+	 * t31-ocr2-2) — one vocabulary owner, both channels.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, mixed> The masked map, wrapped under 'headers'.
 	 */
 	public function __debugInfo(): array {
+		return $this->masked_view();
+	}
+
+	/**
+	 * The serialize() channel rides the same masked view (OCR round 2,
+	 * t31-ocr2-2).
+	 *
+	 * Un-hooked, serialize() bypasses __debugInfo() by engine design and
+	 * dumps $headers_by_lowercase with the FULL Authorization/Cookie
+	 * values — the exact cleartext the dump channel's own doctrine ("the
+	 * dump mirrors the masked map so the two channels cannot drift")
+	 * forbids, one engine spelling away. The payload is byte-identical
+	 * in vocabulary to __debugInfo() above (one view, both hooks), and
+	 * the masked view is a SNAPSHOT, not a round-trip payload:
+	 * __unserialize() below refuses it — a header map reconstructs
+	 * through its constructor, never from a serialization of its own
+	 * safe form. The HTTP value objects that EMBED a map delegate their
+	 * own __serialize() masking to this owner (HasMaskedHeaders rides
+	 * masked_headers(); t31-ocr1-8 / t31-ocr2-2, one doctrine).
+	 *
+	 * var_export() stays the one channel EXCLUDED by engine design (no
+	 * hook exists — the raw dump is display material); its
+	 * reconstruction channel, __set_state(), refuses.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The masked map, wrapped under 'headers'.
+	 */
+	public function __serialize(): array {
+		return $this->masked_view();
+	}
+
+	/**
+	 * A masked payload is not a reconstruction source — it refuses.
+	 *
+	 * The safe forms are lossy by design (sensitive values are masked,
+	 * so nothing can rebuild a header map from them); unserialize() on
+	 * the __serialize() payload throws instead of half-initializing
+	 * typed properties against masked fields.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array<string, mixed> $data The masked payload (never a source of truth).
+	 * @return never
+	 * @throws RuntimeException Always — the masked snapshot is not a round-trip payload.
+	 */
+	public function __unserialize( array $data ): never { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- the engine hands the payload to the hook; the refusal is the contract, the payload is not read.
+		throw new RuntimeException( 'A masked header map is a snapshot, not a round-trip payload — reconstruct through the constructor, never from a serialization of its own safe form.' );
+	}
+
+	/**
+	 * The var_export() eval channel refuses the same way.
+	 *
+	 * The var_export() call itself dumps the raw property tree through
+	 * no hook (engine design — the one channel the masking contract
+	 * cannot ride, named as excluded in this class's docblocks), but the
+	 * dump it produces is executable code: evaluating it calls
+	 * __set_state(), which refuses — an exported header map never
+	 * reconstructs from its own raw dump.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array<string, mixed> $properties The exported property tree.
+	 * @return never
+	 * @throws RuntimeException Always — the raw dump is not a reconstruction source.
+	 */
+	public static function __set_state( array $properties ): never { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- the engine hands the export to the hook; the refusal is the contract, the tree is not read.
+		throw new RuntimeException( 'A masked header map cannot be reconstructed from an exported property tree — the raw dump is display material, never a payload.' );
+	}
+
+	/**
+	 * The masked snapshot the dump and serialize channels render — the
+	 * ONE view both hooks ride (OCR round 2, t31-ocr2-2), so the two
+	 * channels cannot drift. The value side is masked_headers()'s own
+	 * (the one header-render owner).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The masked map, wrapped under 'headers'.
+	 */
+	private function masked_view(): array {
 		return array( 'headers' => $this->masked_headers() );
 	}
 

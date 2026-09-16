@@ -1206,8 +1206,8 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
 
         // The eval channel refuses: the raw dump is display material,
         // never executable reconstruction. (The nested HeaderMap export
-        // evaluates first and dies on its own missing __set_state
-        // before the outer refusal on this engine — any Throwable is
+        // evaluates first and dies on its own __set_state() refusal
+        // before the outer one on this engine — any Throwable is
         // the pin: NO reconstruction, by whichever refusal fires.)
         try {
             eval('return ' . $export . ';');
@@ -1234,6 +1234,62 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $this->fail('A masked response must never reconstruct from its own safe form either.');
         } catch (\RuntimeException $e) {
             $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
+        }
+    }
+
+    /**
+     * OCR-round-2 pin (t31-ocr2-2): the map itself — the ocr1-8 pass
+     * hooked the serialize channel on the REQUEST and RESPONSE facades
+     * (HasMaskedHeaders), but HeaderMap hooked only __debugInfo(), so a
+     * bare serialize($map) still dumped $headers_by_lowercase with the
+     * full Authorization/Cookie values, the exact cleartext the map's
+     * own doctrine ("the dump mirrors the masked map so the two
+     * channels cannot drift") forbids. __serialize() rides the SAME
+     * masked view as the dump (one owner), the reconstruction channels
+     * refuse, and serialize() and print_r() are pinned to AGREE — the
+     * parity the doctrine names.
+     */
+    public function testTheHeaderMapItselfSerializesMaskedAndRefusesToRebuild(): void
+    {
+        $token = FakeSecrets::accessToken();
+        $session = 'wpct_fixture_session_' . bin2hex(random_bytes(8));
+        $map = new HeaderMap(array(
+            'Authorization' => 'Bearer ' . $token,
+            'Cookie' => 'session=' . $session,
+            'Content-Type' => 'application/json',
+        ));
+
+        $payload = serialize($map);
+        $this->assertStringNotContainsString($token, $payload, 'serialize() of the bare map must never carry the raw bearer token.');
+        $this->assertStringNotContainsString($session, $payload, 'serialize() of the bare map must never carry the raw cookie.');
+        $this->assertStringContainsString('Content-Type', $payload, 'Non-sensitive names ride the payload as themselves.');
+        $this->assertStringContainsString('application/json', $payload, 'Non-sensitive values ride the payload as themselves.');
+
+        // PARITY, the doctrine's own claim: serialize() and print_r()
+        // agree on every value the map renders — the masked spelling
+        // appears in BOTH channels, never the raw one in either.
+        $dumped = print_r($map, true);
+        $masked_authorization = (string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask('Bearer ' . $token);
+        $masked_cookie = (string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask('session=' . $session);
+        $this->assertStringContainsString($masked_authorization, $payload, 'The serialize form carries the masked Authorization spelling.');
+        $this->assertStringContainsString($masked_authorization, $dumped, 'The dump form carries the same masked spelling.');
+        $this->assertStringContainsString($masked_cookie, $payload, 'The cookie value rides masked in the serialize form.');
+        $this->assertStringContainsString($masked_cookie, $dumped, 'The cookie value rides masked in the dump form too — the two channels cannot drift.');
+
+        // The masked snapshot is not a round-trip payload: rebuilding refuses.
+        try {
+            unserialize($payload);
+            $this->fail('A masked header map must never reconstruct from its own safe form.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
+        }
+
+        // The eval channel refuses typed directly.
+        try {
+            HeaderMap::__set_state(array('headers' => array()));
+            $this->fail('__set_state() must refuse the raw export as a reconstruction source.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('never a payload', $e->getMessage());
         }
     }
 
