@@ -184,26 +184,35 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
      * The family must never grow an API that carries raw provider payloads
      * or credentials: the only additions over the standard exception API
      * are the rate-limit's parsed Retry-After seconds.
+     *
+     * OCR-round-5 widening (t31-ocr5-6): the audit covers INHERITED
+     * public methods too — the declaring-class filter let a
+     * base-class raw_payload() pass invisible (the docblock contract is
+     * the FAMILY's API, not each type's own). The standard baseline is
+     * derived from the engine's own \Exception reflection, so the allow
+     * set never drifts with PHP versions.
      */
     public function testExceptionTypesDeclareNoPayloadOrCredentialCarryingApi(): void
     {
         $allowed = array('retry_after_seconds');
+        foreach ((new \ReflectionClass(\Exception::class))->getMethods(\ReflectionMethod::IS_PUBLIC) as $standard) {
+            if (! $standard->isStatic()) {
+                $allowed[] = $standard->getName();
+            }
+        }
 
         foreach ($this->concreteTypes() as $type) {
-            $reflection = new \ReflectionClass($type);
-            $own = array();
-            foreach ($reflection->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
-                if ($method->getDeclaringClass()->getName() === $type
-                    && !$method->isStatic()
-                    && '__construct' !== $method->getName()) {
-                    $own[] = $method->getName();
+            $api = array();
+            foreach ((new \ReflectionClass($type))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+                if (! $method->isStatic() && '__construct' !== $method->getName()) {
+                    $api[] = $method->getName();
                 }
             }
-            $extra = array_values(array_diff($own, $allowed));
+            $extra = array_values(array_diff($api, $allowed));
             $this->assertSame(
                 array(),
                 $extra,
-                $type . ' declares unexpected own methods: ' . implode(', ', $extra)
+                $type . ' exposes unexpected API (own or inherited): ' . implode(', ', $extra)
             );
         }
 
