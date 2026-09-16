@@ -1609,9 +1609,14 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             // doctrine, one layer up from the line reader).
             $contents = $this->fileContents($path);
 
-            // Exactly one namespace declaration ...
+            // Exactly one namespace declaration — with the abort-as-refusal
+            // read the type scan below already spells (t31-ocr2-11): a
+            // PCRE abort degraded $namespaceMatches to [] and the failure
+            // surfaced as the misleading 'must declare exactly one
+            // namespace'; the abort is a REFUSAL that names its file.
             $namespaceMatches = array();
-            preg_match_all('/^namespace\s+([A-Za-z0-9_\\\\]+);/m', $contents, $namespaceMatches);
+            $namespaceResult = preg_match_all('/^namespace\s+([A-Za-z0-9_\\\\]+);/m', $contents, $namespaceMatches);
+            $this->assertNotFalse($namespaceResult, $relative . ': the namespace scan aborted (PCRE) — an abort is a REFUSAL, never a clean count.');
             $this->assertCount(1, $namespaceMatches[0], $relative . ' must declare exactly one namespace.');
 
             // ... equal to Deicod\WpConnectors\Shared + its directory ...
