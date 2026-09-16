@@ -3238,6 +3238,24 @@ FIXTURE;
 
             $this->assertFileExists($victim . '/inner/keep.txt', 'A linked child never drags its target into the removal — the target tree survives.');
             $this->assertDirectoryDoesNotExist($tree, 'The owned tree itself is removed, link and all.');
+
+            /*
+             * The HARNESS twin (verifier round t31-ocr1-11, both lenses
+             * independently): WpHarness::rrmdir() became the one
+             * test-side removal owner in this same round without the
+             * link doctrine its build-side twin just gained — and the
+             * tests' predictable /tmp scratch names make a planted root
+             * link pre-plantable with no race. Same legs, same doctrine:
+             * a root link stands untouched, the target tree survives.
+             */
+            $harnessRootLink = $scratch . '/harness-stage-link';
+            symlink($victim, $harnessRootLink);
+
+            WpHarness::rrmdir($harnessRootLink);
+
+            $this->assertFileExists($victim . '/inner/keep.txt', 'The harness removal twin never deletes through a root link either — the target tree survives.');
+            $this->assertFileExists($victim . '/keep2.txt', 'The harness removal twin never deletes through a root link either.');
+            $this->assertTrue(is_link($harnessRootLink), 'A link at the harness removal root stands exactly where it is.');
         } finally {
             if (is_link($scratch . '/stage-link')) {
                 unlink($scratch . '/stage-link');

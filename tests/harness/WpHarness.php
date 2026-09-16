@@ -440,11 +440,24 @@ final class WpHarness
      * error policy; the harness policy is the loud one, and every test
      * consumes it here).
      *
+     * The no-symlinks doctrine rides this twin too (verifier round
+     * t31-ocr1-11, found independently by both lenses — the same round
+     * that hardened bin/build.php's rrmdir must not leave the harness
+     * twin walking links): a LINK at the removal root is never deleted
+     * through (is_dir follows links; the iterator constructed on a
+     * linked path walks the TARGET tree — the tests' predictable
+     * /tmp scratch names are pre-plantable on a shared host), and a
+     * linked child inside an owned tree is unlinked AS ITSELF, never
+     * descended into, never rmdir'd through.
+     *
      * @param string $dir Absolute directory path.
      * @return void
      */
     public static function rrmdir($dir)
     {
+        if (is_link($dir)) {
+            return;
+        }
         if (! is_dir($dir)) {
             return;
         }
@@ -453,7 +466,7 @@ final class WpHarness
             RecursiveIteratorIterator::CHILD_FIRST
         );
         foreach ($items as $item) {
-            if ($item->isDir()) {
+            if ($item->isDir() && ! $item->isLink()) {
                 rmdir($item->getPathname());
             } else {
                 unlink($item->getPathname());
