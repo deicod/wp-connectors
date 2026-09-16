@@ -1063,6 +1063,18 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      * burner is generated at runtime (a ~100 KB hostile shape is not
      * a fixture the tree should carry); the canary records its flag
      * OUTSIDE the catch (glm29-16).
+     *
+     * OCR round 2 (t31-ocr2-10): the abort itself is pinned
+     * DETERMINISTIC now — the burner's trip rode the HOST's
+     * pcre.backtrack_limit (nothing pinned it), so a host with a
+     * raised limit could let the match COMPLETE and change the
+     * failure surface (a located hit instead of the abort refusal).
+     * A small pinned backtrack limit wraps the burner invocation and
+     * is restored on every exit path: the abort happens on every
+     * host (probed: the burner aborts with the limit as low as 256,
+     * and the clean twin below — whose docblock claims only that
+     * padding does not trip anything — needs nowhere near even that;
+     * it runs at the restored host default).
      */
     public function testAPcreAbortRefusesTheWholeFileGateNeverPassesIt(): void
     {
@@ -1079,15 +1091,21 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         try {
             file_put_contents($burner, '<?php' . str_pad('// ', 50000, 'x') . "\n static " . str_pad('', 50000, 'y') . $violation);
 
-            $aborted = false;
+            $host_backtrack_limit = (string) ini_get('pcre.backtrack_limit');
+            ini_set('pcre.backtrack_limit', '1024');
             try {
-                $gate->invoke($this, $burner);
-            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-                $aborted = true;
-                $this->assertStringContainsString('PCRE abort', $e->getMessage(), 'The abort refusal must name itself, not masquerade as a located hit or a clean pass.');
-                $this->assertStringContainsString(basename($burner), $e->getMessage());
+                $aborted = false;
+                try {
+                    $gate->invoke($this, $burner);
+                } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                    $aborted = true;
+                    $this->assertStringContainsString('PCRE abort', $e->getMessage(), 'The abort refusal must name itself, not masquerade as a located hit or a clean pass.');
+                    $this->assertStringContainsString(basename($burner), $e->getMessage());
+                }
+                $this->assertTrue($aborted, 'A file that trips the pinned PCRE limit must be REFUSED, never swept as clean (the verifier reproduced a real violation passing silently behind a burner).');
+            } finally {
+                ini_set('pcre.backtrack_limit', $host_backtrack_limit);
             }
-            $this->assertTrue($aborted, 'A file that trips the PCRE recursion limit must be REFUSED, never swept as clean (the verifier reproduced a real violation passing silently behind a burner).');
         } finally {
             unlink($burner);
         }
