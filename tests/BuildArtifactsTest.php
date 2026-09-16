@@ -5583,29 +5583,6 @@ FIXTURE;
     }
 
     /**
-     * The entry names of a zip, in zip order.
-     *
-     * t31-r3-12: the numFiles loop had one verbatim copy per
-     * zip-inspecting test; one helper owns the open/read/close shape
-     * (and the loud open failure) now.
-     *
-     * @param string $zipPath Absolute zip path.
-     * @return list<string> Entry names.
-     */
-    private function zipEntryNames(string $zipPath): array
-    {
-        $zip = new ZipArchive();
-        $this->assertTrue($zip->open($zipPath), "The built zip must open: {$zipPath}");
-        $names = array();
-        for ($i = 0; $i < $zip->numFiles; ++$i) {
-            $names[] = $zip->getNameIndex($i);
-        }
-        $zip->close();
-
-        return $names;
-    }
-
-    /**
      * Creates a zip of a deliberately flawed plugin in dist/.
      *
      * @param string $slug          Plugin slug.

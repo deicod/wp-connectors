@@ -724,6 +724,37 @@ abstract class WpConnectorsTestCase extends TestCase
 
     /*
      * ---------------------------------------------------------------
+     * Artifact helpers.
+     */
+
+    /**
+     * The entry names of a zip, in zip order.
+     *
+     * t31-r3-12 owned the numFiles loop's one helper; t31-ocr8-10
+     * hoists it — the helper had settled into a verbatim twin copy in
+     * two suites (BuildArtifactsTest, BuildSeamPropertyTest), and a
+     * fix to the open/read/close shape (or the loud open failure)
+     * landing on one twin silently left the other suite reading zips
+     * through the old shape. One owner here; both consumers ride it.
+     *
+     * @param string $zipPath Absolute zip path.
+     * @return list<string> Entry names.
+     */
+    protected function zipEntryNames(string $zipPath): array
+    {
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($zipPath), "The built zip must open: {$zipPath}");
+        $names = array();
+        for ($i = 0; $i < $zip->numFiles; ++$i) {
+            $names[] = $zip->getNameIndex($i);
+        }
+        $zip->close();
+
+        return $names;
+    }
+
+    /*
+     * ---------------------------------------------------------------
      * Directory-suite helpers (glm15-19: the selectEndpoint()/idList()
      * twins lived privately in both directory suites, one settings class
      * apart, with docblocks already drifted from their assertions).

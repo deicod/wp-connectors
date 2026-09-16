@@ -758,25 +758,6 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
     }
 
     /**
-     * The entry names of a zip, in zip order.
-     *
-     * @param string $zipPath Absolute zip path.
-     * @return list<string> Entry names.
-     */
-    private function zipEntryNames(string $zipPath): array
-    {
-        $zip = new ZipArchive();
-        $this->assertTrue($zip->open($zipPath), "The built zip must open: {$zipPath}");
-        $names = array();
-        for ($i = 0; $i < $zip->numFiles; ++$i) {
-            $names[] = $zip->getNameIndex($i);
-        }
-        $zip->close();
-
-        return $names;
-    }
-
-    /**
      * Fix-round pin (t31-r9-4, extended by t31-r10-3 and t31-r12-11):
      * the file-scope error_reporting(E_ALL) + ini_set('display_errors',
      * '1') ran in every process that REQUIRED these files, not just
