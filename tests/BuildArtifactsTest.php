@@ -3373,11 +3373,25 @@ FIXTURE;
     public function testTheSlugToIdentifierFoldIsLocaleIndependent(): void
     {
         $previous = setlocale(LC_CTYPE, '0');
-        // The QUERY spelling changes nothing (t31-ocr1-6): it returns
-        // the current spelling and mutates no process state, so the
-        // pin below cannot itself be the leak the finally guards
-        // against.
-        $this->assertSame($previous, setlocale(LC_CTYPE, '0'), 'The setlocale query spelling must read the locale, never set it.');
+        /*
+         * The QUERY spelling must be a read, never a set (t31-ocr1-6,
+         * the verifier-hardened pin): the naive shape (current ==
+         * current) is vacuous — null sets-then-returns the
+         * environment's spelling and would pass it too. The pin
+         * installs a locale that DIFFERS from the environment's and
+         * asserts the query leaves it standing; null installs the
+         * environment's here (reproduced: 'C' in effect +
+         * LC_CTYPE=C.UTF-8 -> null returns and leaves 'C.UTF-8').
+         */
+        $previousLcCtypeEnv = getenv('LC_CTYPE');
+        try {
+            putenv('LC_CTYPE=C.UTF-8');
+            setlocale(LC_CTYPE, 'C');
+            $this->assertSame('C', setlocale(LC_CTYPE, '0'), 'The setlocale query spelling must read the locale, never install the environment\'s.');
+        } finally {
+            putenv(false === $previousLcCtypeEnv ? 'LC_CTYPE' : 'LC_CTYPE=' . $previousLcCtypeEnv);
+            setlocale(LC_CTYPE, $previous);
+        }
         try {
             setlocale(LC_CTYPE, 'tr_TR.UTF-8');
 
