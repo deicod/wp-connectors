@@ -433,103 +433,24 @@ final class WpConnectorsBuild
         $count = count($tokens);
 
         /*
-         * The file's namespace declarations in effect order, legal
-         * shapes only — judged by the ONE declaration-shape owner
-         * (wp_connectors_namespace_opens_declaration(), the r8-10 rule
-         * the detector's classification walk rides: `namespace \X;`
-         * and other parse-error spellings must not corrupt the
-         * resolution base) — each with the byte offset its name run
-         * starts at: a relative resolves against the declaration IN
-         * EFFECT where it stands, not the file's first (multi-block
-         * files).
-         *
-         * A BRACED block expires (OCR round 4, t31-ocr4-5): the ledger
-         * once let `namespace X { … }` stay in effect to EOF, but after
-         * the closing brace the file is GLOBAL scope — a use statement
-         * after the block is legal PHP the walk misattributed to the
-         * expired declaration. The block's closing brace offset is
-         * recorded now (the ONE brace-matching owner over the
-         * string-masked view, so a '}' in a string or comment cannot
-         * counterfeit the close; its unbalanced policy — EOF, never
-         * under-bounds — is inherited verbatim), and the expiry follows
-         * it: global scope after the block, no declaration in effect.
+         * The file's namespace declarations ride the ONE declaration
+         * ledger (OCR round 7, t31-ocr7-1): a relative resolves against
+         * the declaration IN EFFECT where it stands, not the file's
+         * first (multi-block files), and a braced block EXPIRES at its
+         * closing brace (t31-ocr4-5, this walk's own history — global
+         * scope after the block; the close is matched through the ONE
+         * brace-matching owner over the string-masked view with the
+         * inline-HTML spans blanked in the ledger's own view,
+         * t31-ocr4-9). The ledger lived here as a private of this walk
+         * until the round found the DETECTOR's resolution walk running
+         * a hand-rolled twin that never expired a block — the defect
+         * class this fix swept to one owner
+         * (wp_connectors_namespace_declaration_ledger(), beside the
+         * declaration-shape predicate both rides).
          */
-        $declarations = array();
-        $offset = 0;
-        $masked = null;
-        for ($i = 0; $i < $count; ++$i) {
-            $token = $tokens[ $i ];
-            $id = is_array($token) ? $token[0] : null;
-            $text = is_array($token) ? $token[1] : $token;
-            $token_offset = $offset;
-            $offset += strlen($text);
-            if (T_NAMESPACE !== $id) {
-                continue;
-            }
-            if (! wp_connectors_namespace_opens_declaration($tokens, $i)) {
-                continue;
-            }
-            $run = wp_connectors_name_run($tokens, wp_connectors_next_code_token_index($tokens, $i + 1));
-            $expires = null;
-            $after_run = wp_connectors_next_code_token_index($tokens, $run['end'] + 1);
-            if (null !== $after_run && '{' === $tokens[ $after_run ]) {
-                // The opening brace's byte offset: cumulative text
-                // length up to (exclusive) its token index.
-                $brace_offset = 0;
-                for ($j = 0; $j < $after_run; ++$j) {
-                    $brace_offset += strlen(is_array($tokens[ $j ]) ? $tokens[ $j ][1] : $tokens[ $j ]);
-                }
-                if (null === $masked) {
-                    $masked = wp_connectors_mask_string_contents(wp_connectors_strip_comments($source));
-                    /*
-                     * INLINE HTML is not the block's grammar (verifier
-                     * round t31-ocr4-9): a close tag inside a braced
-                     * block exits PHP mode and the block CONTINUES at
-                     * re-entry — only a CODE '}' closes it (probed via
-                     * __NAMESPACE__ echoing the block's namespace past
-                     * an HTML '}') — but the masker blanks string and
-                     * comment bytes only, so an HTML '{'/'}' counter-
-                     * feited the close (both directions reproduced:
-                     * an HTML '}' expired the block early and refused
-                     * a resolvable relative; an HTML '{' over-counted
-                     * depth and let a post-block relative splice
-                     * against the expired declaration — the exact
-                     * misattribution class this expiry exists to
-                     * kill). The spans are blanked HERE, in the
-                     * ledger's own view, never in the ONE masker
-                     * owner: its conventions consumers see inline HTML
-                     * deliberately (this judgment is the ledger's).
-                     */
-                    $at = 0;
-                    foreach ($tokens as $html_token) {
-                        $html_len = strlen(is_array($html_token) ? $html_token[1] : $html_token);
-                        if (T_INLINE_HTML === (is_array($html_token) ? $html_token[0] : null)) {
-                            $masked = substr($masked, 0, $at) . str_repeat(' ', $html_len) . substr($masked, $at + $html_len);
-                        }
-                        $at += $html_len;
-                    }
-                }
-                $expires = wp_connectors_matching_brace_end($masked, $brace_offset);
-            }
-            $declarations[] = array('offset' => $token_offset, 'display' => $run['name'], 'expires' => $expires);
-        }
-        $declaration_in_effect = static function (int $at_offset) use ($declarations): ?string {
-            $display = null;
-            foreach ($declarations as $declaration) {
-                if ($declaration['offset'] > $at_offset) {
-                    break;
-                }
-                if (null !== $declaration['expires'] && $at_offset > $declaration['expires']) {
-                    // The braced block closed — global scope follows,
-                    // not the previous declaration (t31-ocr4-5).
-                    $display = null;
-                    continue;
-                }
-                $display = $declaration['display'];
-            }
-
-            return $display;
-        };
+        $declaration_in_effect = wp_connectors_declaration_in_effect(
+            wp_connectors_namespace_declaration_ledger($tokens, $source)
+        );
 
         /*
          * Every T_NAME_RELATIVE run inside an open use statement, with
@@ -766,7 +687,8 @@ final class WpConnectorsBuild
                 throw new RuntimeException("build: a use statement's relative operator may not stand mid-name or in the alias slot ({$spelling_display}) in {$sourceVersion} — the splice once started at the keyword and left the preceding separator, shipping a double-separated parse error at exit 0; the rewrite owns the operator only as the import's leading name (use namespace\\… / use function|const namespace\\…), and a degenerate spelling gets no map — write the family spelling");
             }
 
-            $declared_display = $declaration_in_effect($token_offset);
+            $declaration = $declaration_in_effect($token_offset);
+            $declared_display = null !== $declaration ? $declaration['display'] : null;
             if (null === $declared_display || '' === $declared_display) {
                 throw new RuntimeException("build: the relative use import {$spelling_display} in {$sourceVersion} cannot resolve — no namespace declaration is in effect there, and a relative spelling resolves against the file's own declaration");
             }

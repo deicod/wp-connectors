@@ -4436,6 +4436,29 @@ FIXTURE;
         }
 
         /*
+         * OCR round 7 (t31-ocr7-1): the OTHER declaration ledger — the
+         * DETECTOR's resolution walk carried the same no-expiry defect
+         * the r4-5 round fixed only in the rewriter's: after a braced
+         * `namespace Other { … }` its incremental base kept Other in
+         * effect to EOF, so a post-block relative resolved
+         * `Other\Deicod\…` — NOT family — and laundered past both gates
+         * invisible (the pre-fix verdict of this very leg: zero
+         * references). The detector rides the ONE ledger now (with the
+         * rewriter's, one expiry semantics): post-block resolves
+         * GLOBAL, and the family spelling reports under the relative
+         * kind exactly like its unbraced control.
+         */
+        $detector_escape = "<?php\nnamespace Other {\n    interface InBlock\n    {\n    }\n}\n\$x = namespace\\Deicod\\WpConnectors\\Shared\\Clock::class;\n";
+        $found = wp_connectors_shared_family_references($detector_escape);
+        $this->assertCount(1, $found, 'A family-resolving relative after a closed braced block resolves GLOBAL — the expired declaration never launders it into a non-family name.');
+        $this->assertSame(array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( $found[0]['name'], $found[0]['kind'] ), 'The post-block verdict is the global-resolution one, the same answer the rewriter\'s ledger (the r4-5 legs above) hands its walk.');
+        // The unbraced control: the same spelling under NO declaration
+        // resolves identically — the block's expiry is what changed,
+        // nothing else.
+        $found = wp_connectors_shared_family_references("<?php\n\$x = namespace\\Deicod\\WpConnectors\\Shared\\Clock::class;\n");
+        $this->assertCount(1, $found, 'The global-scope control reports the same reference — the braced file now matches its unbraced equivalent.');
+
+        /*
          * Verifier round t31-ocr4-9: INLINE HTML is not the block's
          * grammar — a close tag inside a braced block exits PHP mode
          * and the block CONTINUES at re-entry (only a CODE '}' closes

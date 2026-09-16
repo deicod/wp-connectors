@@ -504,6 +504,143 @@ function wp_connectors_namespace_opens_declaration(array $tokens, $at)
 }
 
 /**
+ * The file's namespace declarations in effect order, legal shapes only,
+ * each with its braced-block expiry — the ONE declaration ledger (OCR
+ * round 7, t31-ocr7-1).
+ *
+ * The ledger this function owns was born in the rewriter's resolution
+ * walk (bin/build.php, rewriteRelativeUseImports()) and carried its
+ * braced-block expiry from OCR round 4 (t31-ocr4-5): after
+ * `namespace X { … }` PHP is GLOBAL scope, so the block's closing brace
+ * offset ends the declaration — recorded through the ONE brace-matching
+ * owner (wp_connectors_matching_brace_end()) over the string-masked
+ * view, so a '}' in a string or comment cannot counterfeit the close
+ * (its unbalanced policy — EOF, never under-bounds — is inherited
+ * verbatim). INLINE HTML is not the block's grammar either (verifier
+ * round t31-ocr4-9): a close tag inside a braced block exits PHP mode
+ * and the block CONTINUES at re-entry — only a CODE '}' closes it — so
+ * the inline-HTML spans are blanked in the ledger's own masked view,
+ * never in the ONE masker (its conventions consumers see inline HTML
+ * deliberately; this judgment is the ledger's).
+ *
+ * The DETECTOR's resolution walk (wp_connectors_shared_family_references())
+ * kept its own hand-rolled twin of this ledger — an incremental
+ * "latest declaration reference wins" that never expired a braced
+ * block: after `namespace X { … }` the walk left X in effect to EOF,
+ * contradicting the PHP resolution it documents ("the one PHP itself
+ * performs") and drifting from the rewriter's ledger one braced file
+ * at a time — the ocr4-5 defect class reprised in the sibling ledger
+ * (the r4 fix owned only build.php's). Both consumers ride THIS owner
+ * now: one resolution semantics at the sweep, the build postcondition,
+ * and the relative-use rewrite, by construction.
+ *
+ * A `use namespace Foo;` interrupted spelling lands in the ledger as a
+ * declaration (the shape predicate judges the keyword's follower, not
+ * the enclosing statement) — the rewriter's ledger always held that
+ * reading, and one vocabulary across both consumers is the contract;
+ * such bytes are a parse error PHP never accepts, so every verdict
+ * over them is a refusal somewhere on the chain.
+ *
+ * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
+ * @param string                                          $source The source bytes the tokens lexed (the masked view derives from them).
+ * @return list<array{offset: int, display: string, lower: string, expires: int|null}>
+ *         Declarations in source order: the T_NAMESPACE keyword's byte
+ *         offset, the declared name as spelled and lowercased, and the
+ *         closing-brace byte offset a braced block expires at (null for
+ *         an unbraced declaration — in effect to EOF or the next one).
+ */
+function wp_connectors_namespace_declaration_ledger(array $tokens, $source)
+{
+    $declarations = array();
+    $count = count($tokens);
+    $offset = 0;
+    $masked = null;
+    for ($i = 0; $i < $count; ++$i) {
+        $token = $tokens[ $i ];
+        $id = is_array($token) ? $token[0] : null;
+        $text = is_array($token) ? $token[1] : $token;
+        $token_offset = $offset;
+        $offset += strlen($text);
+        if (T_NAMESPACE !== $id) {
+            continue;
+        }
+        if (! wp_connectors_namespace_opens_declaration($tokens, $i)) {
+            continue;
+        }
+        $run = wp_connectors_name_run($tokens, wp_connectors_next_code_token_index($tokens, $i + 1));
+        $expires = null;
+        $after_run = wp_connectors_next_code_token_index($tokens, $run['end'] + 1);
+        if (null !== $after_run && '{' === $tokens[ $after_run ]) {
+            // The opening brace's byte offset: cumulative text length up
+            // to (exclusive) its token index.
+            $brace_offset = 0;
+            for ($j = 0; $j < $after_run; ++$j) {
+                $brace_offset += strlen(is_array($tokens[ $j ]) ? $tokens[ $j ][1] : $tokens[ $j ]);
+            }
+            if (null === $masked) {
+                $masked = wp_connectors_mask_string_contents(wp_connectors_strip_comments($source));
+                // The inline-HTML blanking in the LEDGER's own view
+                // (t31-ocr4-9): an HTML '{'/'}' is not the block's
+                // grammar, so its bytes must not counterfeit either
+                // brace direction here.
+                $at = 0;
+                foreach ($tokens as $html_token) {
+                    $html_len = strlen(is_array($html_token) ? $html_token[1] : $html_token);
+                    if (T_INLINE_HTML === (is_array($html_token) ? $html_token[0] : null)) {
+                        $masked = substr($masked, 0, $at) . str_repeat(' ', $html_len) . substr($masked, $at + $html_len);
+                    }
+                    $at += $html_len;
+                }
+            }
+            $expires = wp_connectors_matching_brace_end($masked, $brace_offset);
+        }
+        $declarations[] = array(
+            'offset' => $token_offset,
+            'display' => $run['name'],
+            'lower' => strtolower($run['name']),
+            'expires' => $expires,
+        );
+    }
+
+    return $declarations;
+}
+
+/**
+ * The declaration a byte offset resolves against — the ledger's query
+ * seam (t31-ocr7-1): a relative spelling resolves against the
+ * declaration IN EFFECT where it stands, not the file's first.
+ *
+ * A braced block whose closing brace passed leaves GLOBAL scope in
+ * effect (null) until a later declaration supersedes it — the expiry
+ * semantics t31-ocr4-5 gave the rewriter's ledger, worn on the one
+ * owner both consumers ride.
+ *
+ * @param list<array{offset: int, display: string, lower: string, expires: int|null}> $ledger
+ *        The ledger (wp_connectors_namespace_declaration_ledger()).
+ * @return Closure(int): ?array The entry in effect at an offset, or null (global scope).
+ */
+function wp_connectors_declaration_in_effect(array $ledger)
+{
+    return static function (int $at_offset) use ($ledger): ?array {
+        $entry = null;
+        foreach ($ledger as $declaration) {
+            if ($declaration['offset'] > $at_offset) {
+                break;
+            }
+            if (null !== $declaration['expires'] && $at_offset > $declaration['expires']) {
+                // The braced block closed — global scope follows, not
+                // the previous declaration (t31-ocr4-5).
+                $entry = null;
+                continue;
+            }
+            $entry = $declaration;
+        }
+
+        return $entry;
+    };
+}
+
+/**
  * Whether a token id may begin (or continue) an assembled name run.
  *
  * @param int $id Token id.
@@ -1210,16 +1347,29 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
     $tokens = token_get_all($source);
 
     $references = array();
-    $declared_lower = null;
-    $declared_display = '';
+    /*
+     * The declaration base rides the ONE ledger with braced-block
+     * expiry (OCR round 7, t31-ocr7-1): this walk's own incremental
+     * tracking kept a braced `namespace X { … }` in effect to EOF — the
+     * ocr4-5 defect class in the sibling ledger (the r4 fix owned only
+     * the rewriter's). A relative resolves against the declaration IN
+     * EFFECT at its offset, one semantics with the rewriter's
+     * resolution walk (and with PHP: global scope after the block).
+     */
+    $declaration_in_effect = wp_connectors_declaration_in_effect(
+        wp_connectors_namespace_declaration_ledger($tokens, $source)
+    );
     foreach (wp_connectors_name_references_from_tokens($tokens) as $reference) {
-        if ('declaration' === $reference['kind']) {
-            $declared_lower = $reference['lower'];
-            $declared_display = $reference['name'];
-        }
         if (0 === strpos($reference['lower'], 'namespace\\')) {
             $tail_lower = substr($reference['lower'], strlen('namespace\\'));
-            $resolved_lower = (null !== $declared_lower && '' !== $declared_lower ? $declared_lower . '\\' : '') . $tail_lower;
+            $declaration = $declaration_in_effect($reference['offset']);
+            $declared_lower = null;
+            $declared_display = '';
+            if (null !== $declaration) {
+                $declared_lower = $declaration['lower'];
+                $declared_display = $declaration['display'];
+            }
+            $resolved_lower = (null !== $declared_lower ? $declared_lower . '\\' : '') . $tail_lower;
             /*
              * The use position carries NO carve-out (t31-r11-1): the
              * spelling never adapts (a parse error in PHP), so a
@@ -1230,7 +1380,7 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
             $use_position = 'use' === $reference['kind'];
             if ($is_family($resolved_lower) && ($use_position || null === $declared_lower || ! $rewrite_owns($declared_lower))) {
                 $references[] = array(
-                    'name' => (null !== $declared_lower && '' !== $declared_lower ? $declared_display . '\\' : '') . substr($reference['name'], strlen('namespace\\')),
+                    'name' => (null !== $declared_lower ? $declared_display . '\\' : '') . substr($reference['name'], strlen('namespace\\')),
                     'lower' => $resolved_lower,
                     'kind' => 'relative',
                     'offset' => $reference['offset'],
