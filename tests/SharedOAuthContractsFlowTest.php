@@ -348,10 +348,21 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($device_code), $dumped, 'The device code dumps in its masked form.');
         $this->assertStringContainsString('https://example.com/device', $dumped, 'The public verification URI dumps as itself.');
 
-        // OCR-round-6 pin (t31-ocr6-1): a nine-character user code
-        // renders the BARE mask in the dump channel — the old threshold
-        // of 8 showed '…3502', half the code's entropy.
-        $this->assertStringNotContainsString('3502', $dumped, 'The dump channel never shows a visible tail on OTP-class values (the RFC 8628 user-code shape).');
+        /*
+         * OCR-round-6 pin (t31-ocr6-1), derived since t31-ocr7-6: a
+         * nine-character user code renders the BARE mask in the dump
+         * channel — the old threshold of 8 showed '…3502', half the
+         * code's entropy. The pin rides the DERIVED pair above (the
+         * raw codes never ride, the device code rides exactly the mask
+         * computed from the SAME code) because the channel literal it
+         * once used (not-contains '3502') collided with the mask's own
+         * output: the device code's random 4-hex tail spells '3502'
+         * once per 65,536 runs and failed the pin spuriously. The
+         * bare-mask shape itself is pinned deterministically at the
+         * mask owner (SharedOAuthContractsHttpTest, t31-ocr6-1's
+         * threshold leg) — a threshold regression fails THERE, never
+         * here on a coin flip.
+         */
 
         $pending = PendingAuthorization::for_pkce(7, 'fixture-provider', $pair, new \DateTimeImmutable());
         $this->assertStringNotContainsString($verifier, print_r($pending, true), 'A nesting carrier reaches its payload only through the payload\'s own masked dump.');
@@ -395,10 +406,17 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         $this->assertStringContainsString((string) \Deicod\WpConnectors\Shared\Support\SecretMask::mask($device_code), $payload, 'The device code rides its masked form.');
         $this->assertStringContainsString('https://example.com/device', $payload, 'The public verification URI rides the payload as itself.');
 
-        // The serialize channel rides the same raised threshold
-        // (t31-ocr6-1): the nine-character user code is bare-masked
-        // here too — the tail never rides a snapshot payload either.
-        $this->assertStringNotContainsString('3502', $payload, 'serialize() never shows a visible tail on OTP-class values.');
+        /*
+         * The serialize channel rides the same derived pin (t31-ocr6-1,
+         * t31-ocr7-6): the nine-character user code is bare-masked here
+         * too — the tail never rides a snapshot payload. Same
+         * derivation as the dump channel above: the derived pair (raw
+         * never rides, masked form computed from the SAME code rides)
+         * carries the invariant; the '3502' literal is gone from this
+         * channel too for the same 1/65,536 collision with the device
+         * code's own random mask tail, and the threshold shape lives at
+         * the mask owner (SharedOAuthContractsHttpTest).
+         */
 
         // The nesting carrier composes: its own facts render as
         // themselves, and the payload rides as the OBJECT — the
