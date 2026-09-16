@@ -6,6 +6,93 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 7)
+
+Seventh OCR-tool round (the same complementary deterministic reviewer,
+seventh pass over the branch diff, main + fill-in, union coverage
+complete); driver triage accepted all 8 findings (6 commits — the
+two ×2 groups rode one commit each) — the ocr4-5 braced-namespace
+expiry defect class REPRISED in the sibling declaration ledger
+(the r4 fix owned only the rewriter's), two rewrite-seam
+legal-spelling gaps, copyTree precondition/self-containment guards,
+and two nondeterministic test tails. Fixed as t31-ocr7-1..6 — one
+commit per finding, the full offline check green after every
+commit, a regression per fix where meaningful. The round's
+two-lens verifier pass (independent correctness + refutation
+agents over the whole round diff via a deterministic workflow
+under the round's ultracode directive, 127 driven tool calls)
+raised 3 accepted findings — the correctness lens's trait-clause
+mislabel (both lenses' copyTree mechanism refutations converged)
+and the refutation lens's case-insensitivity axis — all three
+fixed in-round as t31-ocr7-7/8/9, zero refuted; one named
+residual ledgered for the next round (declaration-position
+unowned spellings still refuse anonymously). Suite 1627 → 1628
+tests, 45068 → 45095 assertions, 2 skipped unchanged.
+
+- **The declaration ledger is ONE owner (t31-ocr7-1, bug:medium)**:
+  the detector's resolution walk kept a braced `namespace X { … }`
+  in effect to EOF — after the block PHP is global scope — so a
+  post-block family-resolving relative resolved `X\Deicod\…`, not
+  family, and LAUNDERED past both gates invisible while the
+  rewriter's own ledger (t31-ocr4-5) refused the same bytes. The
+  ledger is a shared owner now (wp_connectors_namespace_declaration_
+  ledger() + wp_connectors_declaration_in_effect() in
+  bin/lib/plugin-tools.php, verbatim extraction of the rewriter's);
+  the rewriter's walk and the detector's walk both consume it — one
+  resolution semantics at the sweep, the build postcondition, and
+  the relative-use rewrite. Census (both bin/ files swept): exactly
+  the two existed; the name walk's classification state and the
+  PSR-4 fence's counting ledger are not in-effect twins.
+- **Legal import spellings refuse NAMED, never anonymous
+  (t31-ocr7-2 + t31-ocr7-7 + t31-ocr7-9, bug:low)**: comma lists
+  (`use A\B, C\D;`), close-tag-terminated statements, and comments
+  inside the statement are legal PHP the use pattern's byte grammar
+  cannot see — they refused at the postcondition with the anonymous
+  "spelling survived" text. The classifier names the class on the
+  throw path (green builds pay nothing): the three surveyed classes
+  refuse named, grouped `use …\{B, C};` stays OWNED, trait clause
+  lists carry NO class (the brace-kind-stack carve — a use inside a
+  non-namespace block is a trait use; the verifier lens caught the
+  braceless shape and the un-carved comment label misnaming
+  adaptations), and the case-variant axis (a `USE` keyword, a
+  case-variant family prefix) refuses named — owning it would flip
+  the r7-pinned case-variant refuse doctrine, so the seam names the
+  class instead.
+- **The bare-keyword fence's follower must be code-adjacent
+  (t31-ocr7-3, bug:low)**: the follower walk treated PHP mode
+  boundaries as trivia, so `namespace ?> html <?php Foo;` bound the
+  re-entered name to the keyword as its declaration (a php -l
+  parse error) and waved the fence. A mode boundary ENDS the scan
+  now — the boundary spelling is judged as the bare keyword alone,
+  the fence's own named refusal; the r5-9 tails and every legal
+  control keep their verdicts (verified verdict-diffed both ends,
+  including a worse shape the fix killed for free: a braced global
+  block behind a boundary once shipped at exit 0).
+- **copyTree() preconditions and self-containment (t31-ocr7-4 +
+  t31-ocr7-8, bug:low ×2)**: a missing or FILE source refused with
+  the SPL iterator's UnexpectedValueException, not the documented
+  LOUD policy; a self-copy target and a target inside the source
+  ran unguarded (probed mechanisms, corrected in-round: the
+  self-copy is a silent no-op success on this engine; the nested
+  copy is one self-polluting duplication — the SPL iterator never
+  re-enumerates). All four shapes refuse with the policy exception
+  before a single byte moves, one realpath-based containment check;
+  the lexical carve-out names its class ('..'-woven and
+  symlinked-ancestor aliases).
+- **The PSR-4 gate derives the namespace (t31-ocr7-5,
+  maintainability:low)**: the one-type-per-file gate hand-spelled
+  'Deicod\WpConnectors\Shared' while sibling gates derive from
+  wp_connectors_shared_source_namespace() — two owners of one
+  spelling in one sweep. The gate consumes the owner's derivation.
+- **The OTP-class tail pin derives from the actual value
+  (t31-ocr7-6, test:low ×2)**: the dump and serialize channels'
+  not-contains-'3502' literal collided with the mask's OWN output —
+  the device code's random 4-hex tail spells '3502' once per 65,536
+  runs (brute-forced ≈1/60,000 over 300k codes) and failed the pin
+  spuriously. The pin rides the derived pair (the raw code never
+  rides; mask($device_code) from the SAME code rides); the
+  bare-mask shape stays pinned deterministically at the mask owner.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 6)
 
 Sixth OCR-tool round (the same complementary deterministic reviewer,

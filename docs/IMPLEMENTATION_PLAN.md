@@ -1180,6 +1180,83 @@ OCR-tool round
   way). Suite 1623 → 1627 tests,
   45028 → 45068 assertions, 2
   skipped unchanged.
+OCR-tool round
+  t31-ocr7 (nine commits — the
+  seventh pass, union coverage
+  complete, 8/8 findings accepted,
+  6 commits + 3 verifier-pass
+  fixes): the ocr4-5 braced-
+  namespace expiry defect class
+  REPRISED in the sibling
+  declaration ledger — the
+  DETECTOR's resolution walk kept
+  a braced block in effect to EOF
+  while the rewriter's ledger
+  (fixed in r4) refused the same
+  bytes; the ledger is ONE shared
+  owner now
+  (wp_connectors_namespace_
+  declaration_ledger() +
+  wp_connectors_declaration_in_
+  effect() in plugin-tools.php,
+  verbatim extraction), detector
+  and rewriter both ride it — the
+  class lesson ledgered: sweep the
+  CLASS, not the site. Legal
+  import spellings the use
+  pattern's byte grammar cannot
+  see (comma lists, close-tag
+  termination, comments inside)
+  refuse NAMED at the postcondi-
+  tion's throw path (green builds
+  pay nothing), with the verifier
+  pass's two additions: the
+  TRAIT-CONTEXT carve (a use
+  inside a non-namespace block is
+  a trait clause list, NO class —
+  the r10-1 doctrine's own
+  refusal) and the CASE-VARIANT
+  axis (USE keyword, case-variant
+  family prefix) refusing named —
+  owning it would flip the
+  r7-pinned refuse doctrine. The
+  bare-keyword fence's follower is
+  code-adjacent (a mode boundary
+  ENDS the scan; the lens's
+  verdict-diff killed a braced-
+  global-block-behind-a-boundary
+  exit-0 ship for free).
+  copyTree() refuses missing/file
+  sources and self/nested targets
+  before iterating (mechanisms
+  PROBED and corrected in-round
+  over both lenses' convergent
+  refutations: the self-copy is a
+  silent no-op success on this
+  engine, the nested copy one
+  self-polluting duplication —
+  never truncation, never
+  unbounded). The PSR-4 gate
+  derives the namespace from the
+  one owner. The OTP-class tail
+  pins derive from the actual
+  values (the '3502' channel
+  literal collided with the
+  device code's own random mask
+  tail at 1/65,536). The round's
+  two-lens verifier pass (127
+  driven tool calls, both lenses
+  driven at both ends) raised 3
+  accepted findings, all fixed
+  in-round (ocr7-7/8/9), ZERO
+  refuted; one named residual
+  ledgered (declaration-position
+  unowned spellings still
+  anonymous — the next round's
+  candidate). Suite 1627 → 1628
+  tests, 45068 → 45095
+  assertions, 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
