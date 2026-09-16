@@ -594,11 +594,17 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             $this->assertFileExists($seedZip);
 
             // (a) zip-ADD failure: a staged source that vanishes before
-            // its add is the one spelling addFile() reports AT add time
-            // (empirically: returns false, with libzip's own warning) —
-            // the production loop's checked add turns exactly this
-            // return into the 'cannot add' refusal, at the staging
-            // path, before anything lands.
+            // its add. The pin is the CONTRACT, not libzip's reporting
+            // detail (OCR round 6, t31-ocr6-7): builds differ on
+            // whether addFile() stats at add (returns false here) or
+            // defers the read to close() — build.php's own
+            // closeArchiveOrThrow comment asserts the deferred shape —
+            // so the pinned fact is that the full add+close sequence
+            // NEVER silently succeeds: the failure is observable by
+            // close time at the latest, which is exactly the channel
+            // the production checked add ('cannot add … to') and the
+            // checked close ('cannot finalize …') each turn into the
+            // build's refusal. Green on both libzip behaviors.
             $staged = $scratch['root'] . '/staged-source.php';
             file_put_contents($staged, "<?php\n// staged\n");
             $addTemp = $scratch['dist'] . '/.add-probe.zip';
@@ -606,13 +612,22 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             $this->assertTrue($zip->open($addTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE));
             $this->assertTrue($zip->addFile($staged, 'staged-source.php'));
             unlink($staged);
-            $this->assertFalse(
-                @$zip->addFile($staged, 'vanished-source.php'),
-                'A vanished staged source must report false at add time — the failure channel the production add loop checks.'
+            $addReportedFailure = true !== @$zip->addFile($staged, 'vanished-source.php');
+            $closeWarnings = array();
+            set_error_handler(static function (int $errno, string $errstr) use (&$closeWarnings): bool {
+                $closeWarnings[] = $errstr;
+
+                return true;
+            });
+            try {
+                $closeReportedFailure = true !== @$zip->close();
+            } finally {
+                restore_error_handler();
+            }
+            $this->assertTrue(
+                $addReportedFailure || $closeReportedFailure,
+                'A vanished staged source must fail the add+close sequence by close time at the latest — whichever libzip build shape (stat-at-add or deferred read) this runtime rides, the sequence never silently succeeds.'
             );
-            // The close is cleanup only (it fails on the unlinked source —
-            // the deferred-read behavior the close row below drives).
-            @$zip->close();
             @unlink($addTemp);
 
             // (b) forced CLOSE failure: a staged source unreadable at
