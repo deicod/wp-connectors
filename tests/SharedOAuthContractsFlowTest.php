@@ -440,4 +440,49 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         $export = var_export($pair, true);
         $this->assertStringContainsString($verifier, $export, 'The documented exclusion is exact: var_export() dumps the raw tree through no hook — which is precisely why its reconstruction channel refuses.');
     }
+
+    /**
+     * OCR-round-3 pin (t31-ocr3-2): the dump and serialize channels
+     * cannot drift. The suite pinned print_r() alone since t31-r11-5,
+     * so a future edit that re-decided ONE channel's mask (a hand-tailored
+     * __serialize() here, a diverging __debugInfo() there) would have
+     * passed green with the two engine channels disagreeing about what
+     * a credential renders as. Both hooks are public and both ride the
+     * ONE masked_view() by doctrine — so the strongest pin is direct:
+     * same object, both hooks, identical arrays; and the masked
+     * rendering print_r() shows is byte-present in serialize() while
+     * the credential itself is byte-absent from BOTH channels.
+     */
+    public function testTheDumpAndSerializeChannelsCannotDrift(): void
+    {
+        $verifier = FakeSecrets::codeVerifier();
+        $masked = \Deicod\WpConnectors\Shared\Support\SecretMask::mask($verifier);
+        $pair = PkceCodePair::from_verifier($verifier);
+        $this->assertSame($pair->__debugInfo(), $pair->__serialize(), 'The pair\'s two render hooks are the ONE masked view.');
+
+        $device_code = FakeSecrets::deviceCode();
+        $session = new DeviceAuthorizationSession($device_code, 'BCJK-3502', 'https://example.com/device', 5, new \DateTimeImmutable('+10 minutes'));
+        $this->assertSame($session->__debugInfo(), $session->__serialize(), 'The session\'s two render hooks are the ONE masked view.');
+
+        $pendingDevice = PendingAuthorization::for_device(7, 'fixture-provider', $session, new \DateTimeImmutable());
+        $this->assertSame($pendingDevice->__debugInfo(), $pendingDevice->__serialize(), 'The carrier\'s two render hooks are the ONE masked view.');
+        $pendingPkce = PendingAuthorization::for_pkce(7, 'fixture-provider', $pair, new \DateTimeImmutable());
+        $this->assertSame($pendingPkce->__debugInfo(), $pendingPkce->__serialize());
+
+        // The composition the hooks promise, at the byte level, on both
+        // engine channels: each VO's OWN masked spelling appears in
+        // print_r() AND in serialize(), and the credential appears in
+        // neither channel.
+        foreach (array(
+            'PKCE pair' => array($pair, $masked, $verifier),
+            'device session' => array($session, \Deicod\WpConnectors\Shared\Support\SecretMask::mask($device_code), $device_code),
+            'pending device flow' => array($pendingDevice, \Deicod\WpConnectors\Shared\Support\SecretMask::mask($device_code), $device_code),
+            'pending PKCE flow' => array($pendingPkce, $masked, $verifier),
+        ) as $label => $case) {
+            foreach (array('print_r' => print_r($case[0], true), 'serialize' => serialize($case[0])) as $channel => $rendered) {
+                $this->assertStringContainsString($case[1], $rendered, "The masked credential spelling rides the {$channel} channel of the {$label}.");
+                $this->assertStringNotContainsString($case[2], $rendered, "The credential never rides the {$channel} channel of the {$label}.");
+            }
+        }
+    }
 }
