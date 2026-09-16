@@ -5079,6 +5079,10 @@ FIXTURE;
             // entry (and sidecar, and zip) must survive untouched.
             $betaZip = $repo . '/dist/connectors-beta-demo-1.0.0.zip';
             $betaSidecarBefore = (string) file_get_contents($betaZip . '.sha256');
+            // exec() APPENDS by ref — reset, or this run's lines ride
+            // the first run's (t31-ocr8-11).
+            $output = array();
+            $exit = 0;
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=alpha-demo 2>&1', $output, $exit);
             $this->assertSame(0, $exit);
 
@@ -5121,6 +5125,14 @@ FIXTURE;
             // the Plugin Name header, so the rebuild refuses it.
             file_put_contents($repo . '/connectors/beta-demo/beta-demo.php', "<?php\necho 'header lost';\n");
 
+            /*
+             * exec() APPENDS by ref (t31-ocr8-11): without the reset,
+             * this run's fragments were asserted over the first run's
+             * lines too — an earlier run's output could satisfy a
+             * fragment the failing run never printed.
+             */
+            $output = array();
+            $exit = 0;
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' 2>&1', $output, $exit);
             $this->assertSame(1, $exit, 'The failing rebuild must exit non-zero.');
             $this->assertStringContainsString('no main plugin file', implode("\n", $output));
