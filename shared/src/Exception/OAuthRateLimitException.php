@@ -55,9 +55,9 @@ final class OAuthRateLimitException extends OAuthRuntimeException implements OAu
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param string         $message            Safe, fixed message (no token material, no raw provider body).
-	 * @param int            $code               Exception code.
-	 * @param Throwable|null $previous           Previous exception, if any.
+	 * @param string         $message             Safe, fixed message (no token material, no raw provider body).
+	 * @param int            $code                Exception code.
+	 * @param Throwable|null $previous            Previous exception, if any.
 	 * @param int|null       $retry_after_seconds Retry-After in seconds as supplied by the caller (already parsed; no parsing lives here), or null when the provider supplied none; a negative value clamps to zero (a parser can emit one, and "retry immediately" is its meaning).
 	 */
 	public function __construct( string $message = '', int $code = 0, ?Throwable $previous = null, ?int $retry_after_seconds = null ) {
