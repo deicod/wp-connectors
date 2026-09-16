@@ -141,19 +141,26 @@ final class ToolchainSmokeTest extends TestCase
     }
 
     /**
-     * Review-round pin (t31-r12-9): the lint gate's exclusion rides the
-     * ONE development-entry vocabulary, judged root-relative with the
-     * owner's case fold. The hand-rolled case-sensitive list had
-     * drifted: the dotless 'phpunit.cache/' and a 'VENDOR/' spelling
-     * were LINTED while the builder excluded and the inspector
-     * rejected both spellings — the exact drift the owner's docblock
-     * forbids. Driven as a child process against a scratch copy of the
-     * tool (the real script's roots are its own __DIR__), with the
-     * tests ROOT carrying a real source (the root itself is the gate's
-     * charge, never a development entry) and a broken file outside any
-     * dev entry as the still-fails control.
+     * Review-round pin (t31-r12-9, narrowed in OCR round 8 t31-ocr8-7):
+     * the lint gate's exclusion is the gate's OWN NAMED SUBSET of the
+     * development-entry vocabulary — generated and third-party trees
+     * (vendor/, tools/, dist/, node_modules/, both cache spellings),
+     * judged root-relative through the vocabulary owner's one fold
+     * (the hand-rolled case-sensitive list had drifted: the dotless
+     * 'phpunit.cache/' and a 'VENDOR/' spelling were LINTED while the
+     * builder excluded and the inspector rejected both — the exact
+     * drift the owner's docblock forbids). The ocr8-7 narrowing: the
+     * r12-9 ride on the WHOLE vocabulary was a silent COVERAGE cut —
+     * the vocabulary's 'tests'/'test'/'.github' entries are
+     * release-exclusion concerns, and a nested tests-named tree under
+     * a connector root is this gate's charge exactly as the tests ROOT
+     * is (the pre-ocr8 gate skipped it unseen). Driven as a child
+     * process against a scratch copy of the tool (the real script's
+     * roots are its own __DIR__), with broken files inside the
+     * excluded spellings (must be SKIPPED) and inside a nested tests
+     * tree (must be LINTED).
      */
-    public function testLintPhpExclusionsRideTheDevelopmentEntryVocabulary(): void
+    public function testLintPhpExclusionsAreTheGatesOwnNamedSubset(): void
     {
         $scratch = sys_get_temp_dir() . '/wpct-lint-' . getmypid();
         if (is_dir($scratch)) {
@@ -165,12 +172,16 @@ final class ToolchainSmokeTest extends TestCase
 
         try {
             // Real sources: one under tests/ (the root lints), one under
-            // connectors/; then the drifted spellings with parse-broken
-            // PHP inside — both must be SKIPPED, not linted.
+            // connectors/, one under a NESTED tests-named tree (the
+            // ocr8-7 coverage — the vocabulary ride skipped it); then
+            // the drifted spellings with parse-broken PHP inside — both
+            // must be SKIPPED, not linted.
             mkdir($scratch . '/tests/unit', 0755, true);
             file_put_contents($scratch . '/tests/unit/RealTest.php', "<?php\n// lintable tests-root source\n");
             mkdir($scratch . '/connectors/demo', 0755, true);
             file_put_contents($scratch . '/connectors/demo/demo.php', "<?php\n// lintable connector source\n");
+            mkdir($scratch . '/connectors/demo/tests', 0755, true);
+            file_put_contents($scratch . '/connectors/demo/tests/NestedTest.php', "<?php\n// lintable NESTED tests-named source\n");
             mkdir($scratch . '/connectors/demo/phpunit.cache', 0755, true);
             file_put_contents($scratch . '/connectors/demo/phpunit.cache/broken.php', "<?php this is not php");
             mkdir($scratch . '/connectors/demo/VENDOR', 0755, true);
@@ -181,21 +192,29 @@ final class ToolchainSmokeTest extends TestCase
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
             $report = implode("\n", $output);
 
-            $this->assertSame(0, $exit, "The drift spellings must be skipped by the ONE vocabulary, not linted: {$report}");
-            // Two real sources plus the copied tool files under bin/ (the
+            $this->assertSame(0, $exit, "The drift spellings must be skipped by the ONE fold, not linted: {$report}");
+            // Three real sources plus the copied tool files under bin/ (the
             // tool lints its own tree too): every root stays in charge,
-            // nothing else narrowed.
-            $this->assertStringContainsString('4 file(s) checked, 0 failure(s)', $report);
+            // and the NESTED tests tree stays in coverage.
+            $this->assertStringContainsString('5 file(s) checked, 0 failure(s)', $report, 'The nested tests-named source must be counted — the vocabulary ride silently cut it.');
             $this->assertStringNotContainsString('broken.php', $report);
 
-            // The still-fails control: a broken file on no dev-entry path
-            // keeps failing the lint — the exclusion narrowed nothing else.
+            /*
+             * The still-fails controls: a broken file on no excluded
+             * path keeps failing the lint, and — the ocr8-7 leg — a
+             * parse-broken file under a NESTED tests-named tree fails
+             * it too (red at HEAD: the pre-ocr8 vocabulary ride skipped
+             * the whole tree, exit 0, no failure).
+             */
             file_put_contents($scratch . '/connectors/demo/broken-too.php', "<?php nor is this");
+            file_put_contents($scratch . '/connectors/demo/tests/broken-nested.php', "<?php neither is this nested one");
             $output = array();
             $exit = 0;
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
+            $combined = implode("\n", $output);
             $this->assertSame(1, $exit, 'A parse-broken real source still fails the lint.');
-            $this->assertStringContainsString('broken-too.php', implode("\n", $output));
+            $this->assertStringContainsString('broken-too.php', $combined);
+            $this->assertStringContainsString('broken-nested.php', $combined, 'A parse-broken source under a NESTED tests-named tree must FAIL the lint — tests are the gate\'s charge, never a release exclusion.');
         } finally {
             WpHarness::rrmdir($scratch);
         }

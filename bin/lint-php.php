@@ -2,9 +2,12 @@
 /**
  * PHP syntax check (php -l) over all repository PHP sources.
  *
- * Excludes development entries (the ONE shared vocabulary's segments —
- * vendor/, tools/, tests-nested trees, caches — in any casing) below
- * each walked root. Exits non-zero if any file fails to parse.
+ * Excludes the gate's OWN named subset of the development-entry
+ * vocabulary — generated and third-party trees (vendor/, tools/,
+ * dist/, node_modules/, the cache spellings) in any casing — below
+ * each walked root. Tests trees are NOT excluded: they are this
+ * gate's charge, at the root and nested. Exits non-zero if any file
+ * fails to parse.
  *
  * @package wp-connectors
  */
@@ -23,6 +26,18 @@ if (wp_connectors_cli_entry(__FILE__)) {
 
     $roots = array(__DIR__ . '/../connectors', __DIR__ . '/../shared', __DIR__ . '/../bin', __DIR__ . '/../tests');
 
+    /*
+     * The lint gate's OWN exclusion subset, named here (t31-ocr8-7):
+     * generated and third-party trees only — the old hand-rolled
+     * list's entries plus both cache spellings the r12-9 drift round
+     * proved reachable. Deliberately NOT carried from the vocabulary:
+     * 'tests'/'test'/'.github' and the config FILE names — those are
+     * release-exclusion concerns, and a nested tests-named tree under
+     * a connector root is this gate's own charge (the vocabulary ride
+     * silently dropped it from coverage).
+     */
+    $lint_excludes = array('vendor', 'node_modules', 'tools', 'dist', '.git', '.phpunit.cache', 'phpunit.cache');
+
     $files = array();
     foreach ($roots as $root) {
         if (!is_dir($root)) {
@@ -40,20 +55,26 @@ if (wp_connectors_cli_entry(__FILE__)) {
                 continue;
             }
             /*
-             * The exclusion rides the ONE development-entry vocabulary
-             * (review round t31-r12-9): the hand-rolled case-sensitive
-             * list here had already drifted from the owner — the
-             * dotless 'phpunit.cache/' and a 'VENDOR/' spelling were
-             * linted while the builder excluded and the inspector
-             * rejected both spellings, the exact drift the owner's
-             * docblock forbids. Judged on the segments BELOW the root
-             * (folding included): the roots themselves — tests among
-             * them — are this gate's own charge, not development
-             * entries.
+             * The exclusion rides the gate's OWN NAMED SUBSET of the
+             * development-entry vocabulary (review round t31-r12-9 put
+             * the walk on the vocabulary's owner fold; OCR round 8,
+             * t31-ocr8-7, took the subset back): the full vocabulary
+             * is a RELEASE-exclusion list, and riding it whole
+             * silently narrowed lint COVERAGE — the vocabulary's
+             * 'tests'/'test'/'.github' entries made a future
+             * connectors/<slug>/tests/ tree escape php -l, though a
+             * connector's own tests are this gate's charge exactly as
+             * the tests ROOT is (nothing in the old hand-rolled list
+             * ever excluded them). The subset below is the generated
+             * and third-party class only — the old list's entries
+             * plus both cache spellings the r12-9 drift round proved
+             * reachable — judged through the ONE fold owner the
+             * vocabulary docblock prescribes for subset consumers,
+             * never a byte-exact twin.
              */
             $relative = (string) substr($file->getPathname(), strlen($root) + 1);
             foreach (explode(DIRECTORY_SEPARATOR, $relative) as $segment) {
-                if (wp_connectors_is_development_entry($segment)) {
+                if (wp_connectors_segment_is_named($segment, $lint_excludes)) {
                     continue 2;
                 }
             }
