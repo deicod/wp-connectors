@@ -230,6 +230,35 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
                 $extra,
                 $type . ' exposes unexpected API (own or inherited): ' . implode(', ', $extra)
             );
+
+            /*
+             * OCR-round-8 pin (t31-ocr8-5): the name diff above is
+             * NAME-based — a concrete type REDECLARING an allowed name
+             * (a future __toString override appending the raw provider
+             * body) wore an allowed spelling and passed invisible.
+             * The DECLARING CLASS decides now: a non-static public
+             * method is either the engine's own (declared outside the
+             * family, un-overridden standard behavior) or one of the
+             * family's allowed additions (__construct,
+             * retry_after_seconds). Anything else the family declares
+             * — a concrete override, a base method beyond the allow
+             * set — is the payload channel and fails.
+             */
+            $family_additions = array('__construct', 'retry_after_seconds');
+            foreach ((new \ReflectionClass($type))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+                if ($method->isStatic()) {
+                    continue;
+                }
+                $declared_by = $method->getDeclaringClass()->getName();
+                if (0 !== strpos($declared_by, 'Deicod\\WpConnectors\\')) {
+                    continue;
+                }
+                $this->assertContains(
+                    $method->getName(),
+                    $family_additions,
+                    $type . ' carries ' . $method->getName() . ' declared by ' . $declared_by . ' — the family contract is the base behavior; a family-declared override is the payload channel.'
+                );
+            }
         }
 
         // The transient marker stays an empty marker.
