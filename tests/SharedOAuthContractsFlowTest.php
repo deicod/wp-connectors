@@ -442,22 +442,20 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
 
         // The masked snapshots are not round-trip payloads: rebuilding refuses.
         foreach (array($pair, $session, $pendingDevice, $pendingPkce) as $safe) {
-            try {
-                unserialize(serialize($safe));
-                $this->fail('A masked flow VO must never reconstruct from its own safe form (' . get_class($safe) . ').');
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
-            }
+            $refusal = $this->refusalOf(
+                fn() => unserialize(serialize($safe)),
+                'A masked flow VO must never reconstruct from its own safe form (' . get_class($safe) . ').'
+            );
+            $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
         }
 
         // The eval channel refuses typed directly.
         foreach (array(PkceCodePair::class, DeviceAuthorizationSession::class, PendingAuthorization::class) as $vo) {
-            try {
-                $vo::__set_state(array('code_verifier' => 'raw'));
-                $this->fail("__set_state() must refuse the raw export as a reconstruction source ({$vo}).");
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('never a payload', $e->getMessage());
-            }
+            $refusal = $this->refusalOf(
+                fn() => $vo::__set_state(array('code_verifier' => 'raw')),
+                "__set_state() must refuse the raw export as a reconstruction source ({$vo})."
+            );
+            $this->assertStringContainsString('never a payload', $refusal->getMessage());
         }
 
         // The one EXCLUDED channel, pinned exactly: var_export() dumps

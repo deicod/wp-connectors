@@ -6829,15 +6829,14 @@ $body = ''
 
         $this->queueSdkResponse($status, array('Content-Type' => 'application/json'), $body);
 
-        try {
-            $this->model()->generateTextResult($this->prompt());
-            $this->fail("Status {$status} must throw.");
-        } catch (\Exception $e) {
-            $this->assertInstanceOf($expectedClass, $e);
-            $this->assertSame($status, $e->getCode());
-            $this->assertRedacted($e->getMessage(), $secret);
-            $this->assertStringNotContainsString('invalid x-api-key', $e->getMessage(), 'Upstream error text must not be copied.');
-        }
+        $refusal = $this->refusalOf(
+            fn() => $this->model()->generateTextResult($this->prompt()),
+            "Status {$status} must throw."
+        );
+        $this->assertInstanceOf($expectedClass, $refusal);
+        $this->assertSame($status, $refusal->getCode());
+        $this->assertRedacted($refusal->getMessage(), $secret);
+        $this->assertStringNotContainsString('invalid x-api-key', $refusal->getMessage(), 'Upstream error text must not be copied.');
     }
 
     /**

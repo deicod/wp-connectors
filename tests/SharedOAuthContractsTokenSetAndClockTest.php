@@ -576,14 +576,13 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $set = new AccessTokenSet($access, null, 3600, $this->obtainedAt());
         $property = new \ReflectionProperty(AccessTokenSet::class, 'access_token');
 
-        try {
-            $property->setValue($set, 'overwritten');
-            $this->fail('Writing an initialized readonly property must fail on every supported runtime.');
-        } catch (\Throwable $e) {
-            // Error on newer runtimes, ReflectionException on older ones —
-            // either refusal proves the immutability; the value pin below
-            // carries the behavioral half.
-        }
+        $refusal = $this->refusalOf(
+            fn() => $property->setValue($set, 'overwritten'),
+            'Writing an initialized readonly property must fail on every supported runtime.'
+        );
+        // Error on newer runtimes, ReflectionException on older ones —
+        // either refusal proves the immutability; the value pin below
+        // carries the behavioral half.
 
         $this->assertSame($access, $set->access_token());
     }
@@ -815,19 +814,17 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $this->assertStringNotContainsString($refresh, $container, 'A container holding the set must never carry the raw refresh token.');
 
         // The masked snapshot is not a round-trip payload: rebuilding refuses.
-        try {
-            unserialize($payload);
-            $this->fail('A masked token set must never reconstruct from its own safe form.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => unserialize($payload),
+            'A masked token set must never reconstruct from its own safe form.'
+        );
+        $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
 
         // The var_export eval channel refuses the same way.
-        try {
-            AccessTokenSet::__set_state(array('access_token' => 'raw'));
-            $this->fail('__set_state() must refuse the raw export as a reconstruction source.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('never a payload', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => AccessTokenSet::__set_state(array('access_token' => 'raw')),
+            '__set_state() must refuse the raw export as a reconstruction source.'
+        );
+        $this->assertStringContainsString('never a payload', $refusal->getMessage());
     }
 }

@@ -1252,12 +1252,11 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertStringContainsString('[body omitted]', $payload, 'The payload is the masked debug vocabulary.');
 
         // The masked snapshot is not a round-trip payload: rebuilding refuses.
-        try {
-            unserialize($payload);
-            $this->fail('A masked HTTP value object must never reconstruct from its own safe form.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => unserialize($payload),
+            'A masked HTTP value object must never reconstruct from its own safe form.'
+        );
+        $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
 
         // The one EXCLUDED channel, pinned exactly as the docblock
         // documents it: var_export() dumps the raw property tree
@@ -1274,32 +1273,33 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         // evaluates first and dies on its own __set_state() refusal
         // before the outer one on this engine — any Throwable is
         // the pin: NO reconstruction, by whichever refusal fires.)
-        try {
-            eval('return ' . $export . ';');
-            $this->fail('Evaluating a var_export of a request VO must never reconstruct one.');
-        } catch (\Throwable $reconstruction_refused) {
-            $this->addToAssertionCount(1);
-        }
+        // The refusal-verdict owner (t31-ocr8-12): the old
+        // fail()-inside-try with a \Throwable catch was the masking
+        // class in its widest spelling — a no-throw reconstruction
+        // landed the fail() IN the catch and passed vacuously.
+        $this->refusalOf(
+            fn() => eval('return ' . $export . ';'),
+            'Evaluating a var_export of a request VO must never reconstruct one.'
+        );
+        $this->addToAssertionCount(1);
 
         // The trait's own refusal is pinned typed directly.
-        try {
-            HttpRequest::__set_state(array('method' => 'GET'));
-            $this->fail('__set_state() must refuse the raw export as a reconstruction source.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('never a payload', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => HttpRequest::__set_state(array('method' => 'GET')),
+            '__set_state() must refuse the raw export as a reconstruction source.'
+        );
+        $this->assertStringContainsString('never a payload', $refusal->getMessage());
 
         // The response side rides the same trait channels.
         $response = new \Deicod\WpConnectors\Shared\Http\HttpResponse(302, array('Location' => 'https://client.example/cb?code=' . $token));
         $responsePayload = serialize($response);
         $this->assertStringNotContainsString($token, $responsePayload, 'The response serializes masked too — the Location query never rides the payload.');
         $this->assertStringContainsString('[body omitted]', $responsePayload);
-        try {
-            unserialize($responsePayload);
-            $this->fail('A masked response must never reconstruct from its own safe form either.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => unserialize($responsePayload),
+            'A masked response must never reconstruct from its own safe form either.'
+        );
+        $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
     }
 
     /**
@@ -1342,20 +1342,18 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertStringContainsString($masked_cookie, $dumped, 'The cookie value rides masked in the dump form too — the two channels cannot drift.');
 
         // The masked snapshot is not a round-trip payload: rebuilding refuses.
-        try {
-            unserialize($payload);
-            $this->fail('A masked header map must never reconstruct from its own safe form.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => unserialize($payload),
+            'A masked header map must never reconstruct from its own safe form.'
+        );
+        $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
 
         // The eval channel refuses typed directly.
-        try {
-            HeaderMap::__set_state(array('headers' => array()));
-            $this->fail('__set_state() must refuse the raw export as a reconstruction source.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('never a payload', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => HeaderMap::__set_state(array('headers' => array())),
+            '__set_state() must refuse the raw export as a reconstruction source.'
+        );
+        $this->assertStringContainsString('never a payload', $refusal->getMessage());
     }
 
     /**

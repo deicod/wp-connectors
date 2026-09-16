@@ -1293,13 +1293,12 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             // The vocabulary refuses the non-canonical casing loudly,
             // naming the file — never silently skipped (r3-9's defect),
             // never silently shipped-dead (r5-3's defect).
-            try {
-                wp_connectors_php_source_files($scratch);
-                $this->fail('A non-canonical extension casing must refuse the shared-source vocabulary, never ride it silently in either direction.');
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('non-canonical extension', $e->getMessage());
-                $this->assertStringContainsString('ClockMath.PHP', $e->getMessage());
-            }
+            $refusal = $this->refusalOf(
+                fn() => wp_connectors_php_source_files($scratch),
+                'A non-canonical extension casing must refuse the shared-source vocabulary, never ride it silently in either direction.'
+            );
+            $this->assertStringContainsString('non-canonical extension', $refusal->getMessage());
+            $this->assertStringContainsString('ClockMath.PHP', $refusal->getMessage());
 
             // The content gates stay case-insensitive for EXISTING files
             // (the classify half of the r3-9/r4-9 owner, driven the way
@@ -1356,15 +1355,14 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             // THE REPRO: the directory casing diverges from the declared
             // namespace's — refuses loudly, naming the file and BOTH
             // spellings (declared vs staged).
-            try {
-                wp_connectors_php_source_files($scratch);
-                $this->fail('A directory casing disagreeing with the declared namespace must refuse the shared-source vocabulary, never stage a class the shipped autoloader cannot spell.');
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('Helper.php', $e->getMessage(), 'The refusal must name the file.');
-                $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Tools', $e->getMessage(), 'The refusal must name the declared spelling.');
-                $this->assertStringContainsString('tools', $e->getMessage(), 'The refusal must name the staged spelling.');
-                $this->assertStringContainsString('autoloader', $e->getMessage(), 'The refusal must state the load consequence.');
-            }
+            $refusal = $this->refusalOf(
+                fn() => wp_connectors_php_source_files($scratch),
+                'A directory casing disagreeing with the declared namespace must refuse the shared-source vocabulary, never stage a class the shipped autoloader cannot spell.'
+            );
+            $this->assertStringContainsString('Helper.php', $refusal->getMessage(), 'The refusal must name the file.');
+            $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Tools', $refusal->getMessage(), 'The refusal must name the declared spelling.');
+            $this->assertStringContainsString('tools', $refusal->getMessage(), 'The refusal must name the staged spelling.');
+            $this->assertStringContainsString('autoloader', $refusal->getMessage(), 'The refusal must state the load consequence.');
 
             // The clean direction: the case-consistent spelling of the
             // same tree collects — at any depth, and at the root.
@@ -1383,39 +1381,36 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             WpHarness::rrmdir($scratch . '/Tools');
             mkdir($scratch . '/Http', 0755, true);
             file_put_contents($scratch . '/Http/Request.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Http\\Message;\ninterface Request\n{\n}\n");
-            try {
-                wp_connectors_php_source_files($scratch);
-                $this->fail('A declared-namespace depth disagreeing with the staged path depth must refuse the vocabulary.');
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('Request.php', $e->getMessage());
-                $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Http\\Message', $e->getMessage());
-            }
+            $refusal = $this->refusalOf(
+                fn() => wp_connectors_php_source_files($scratch),
+                'A declared-namespace depth disagreeing with the staged path depth must refuse the vocabulary.'
+            );
+            $this->assertStringContainsString('Request.php', $refusal->getMessage());
+            $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Http\\Message', $refusal->getMessage());
             unlink($scratch . '/Http/Request.php');
             rmdir($scratch . '/Http');
 
             // A missing declaration refuses: the embed stages under
             // src/Shared/, a tree only the slug-derived prefix addresses.
             file_put_contents($scratch . '/Global.php', "<?php\ninterface GlobalThing\n{\n}\n");
-            try {
-                wp_connectors_php_source_files($scratch);
-                $this->fail('A shared source declaring no namespace must refuse the vocabulary — it stages onto a tree no autoload path addresses.');
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('Global.php', $e->getMessage());
-                $this->assertStringContainsString('declares no namespace', $e->getMessage());
-            }
+            $refusal = $this->refusalOf(
+                fn() => wp_connectors_php_source_files($scratch),
+                'A shared source declaring no namespace must refuse the vocabulary — it stages onto a tree no autoload path addresses.'
+            );
+            $this->assertStringContainsString('Global.php', $refusal->getMessage());
+            $this->assertStringContainsString('declares no namespace', $refusal->getMessage());
             unlink($scratch . '/Global.php');
 
             // A declaration OUTSIDE the tree root refuses the same way:
             // the rewrite never touches it, so the staged path maps no
             // autoloadable class.
             file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod;\ninterface Root\n{\n}\n");
-            try {
-                wp_connectors_php_source_files($scratch);
-                $this->fail('A shared source declaring outside the tree root must refuse the vocabulary.');
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('Root.php', $e->getMessage());
-                $this->assertStringContainsString('Deicod\\WpConnectors\\Shared', $e->getMessage());
-            }
+            $refusal = $this->refusalOf(
+                fn() => wp_connectors_php_source_files($scratch),
+                'A shared source declaring outside the tree root must refuse the vocabulary.'
+            );
+            $this->assertStringContainsString('Root.php', $refusal->getMessage());
+            $this->assertStringContainsString('Deicod\\WpConnectors\\Shared', $refusal->getMessage());
             unlink($scratch . '/Root.php');
 
             /*
@@ -1430,14 +1425,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
              * spellings named.
              */
             file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\nnamespace Deicod\\WpConnectors\\Shared\\Http;\ninterface DeepRoot\n{\n}\n");
-            try {
-                wp_connectors_php_source_files($scratch);
-                $this->fail('A multi-block shared source must refuse the vocabulary — a second block stages nowhere the autoloader addresses.');
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('Root.php', $e->getMessage());
-                $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Http', $e->getMessage(), 'The refusal names the second block.');
-                $this->assertStringContainsString('one file per namespace', $e->getMessage(), 'The refusal states the fix.');
-            }
+            $refusal = $this->refusalOf(
+                fn() => wp_connectors_php_source_files($scratch),
+                'A multi-block shared source must refuse the vocabulary — a second block stages nowhere the autoloader addresses.'
+            );
+            $this->assertStringContainsString('Root.php', $refusal->getMessage());
+            $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Http', $refusal->getMessage(), 'The refusal names the second block.');
+            $this->assertStringContainsString('one file per namespace', $refusal->getMessage(), 'The refusal states the fix.');
             unlink($scratch . '/Root.php');
 
             // The single-block control stays green through the same
@@ -1611,27 +1605,25 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
             // A symlinked FILE refuses, naming link and target.
             symlink($scratch . '/Linked/LinkedSource.php', $scratch . '/LinkedFile.php');
-            try {
-                wp_connectors_php_source_files($scratch);
-                $this->fail('A symlinked file inside the shared source tree must refuse the walk, never skip silently.');
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('symlink', $e->getMessage());
-                $this->assertStringContainsString('LinkedFile.php', $e->getMessage());
-                $this->assertStringContainsString('LinkedSource.php', $e->getMessage());
-            }
+            $refusal = $this->refusalOf(
+                fn() => wp_connectors_php_source_files($scratch),
+                'A symlinked file inside the shared source tree must refuse the walk, never skip silently.'
+            );
+            $this->assertStringContainsString('symlink', $refusal->getMessage());
+            $this->assertStringContainsString('LinkedFile.php', $refusal->getMessage());
+            $this->assertStringContainsString('LinkedSource.php', $refusal->getMessage());
             unlink($scratch . '/LinkedFile.php');
 
             // A symlinked DIRECTORY refuses the same way — this is the
             // reproduced shape: loads in dev, invisible to the sweep,
             // missing from every zip.
             symlink($scratch . '/Linked', $scratch . '/LinkedDir');
-            try {
-                wp_connectors_php_source_files($scratch);
-                $this->fail('A symlinked directory inside the shared source tree must refuse the walk, never skip silently.');
-            } catch (\RuntimeException $e) {
-                $this->assertStringContainsString('symlink', $e->getMessage());
-                $this->assertStringContainsString('LinkedDir', $e->getMessage());
-            }
+            $refusal = $this->refusalOf(
+                fn() => wp_connectors_php_source_files($scratch),
+                'A symlinked directory inside the shared source tree must refuse the walk, never skip silently.'
+            );
+            $this->assertStringContainsString('symlink', $refusal->getMessage());
+            $this->assertStringContainsString('LinkedDir', $refusal->getMessage());
         } finally {
             // The linked DIRECTORY must go as a link (unlink), never as a
             // directory — rrmdir walks into it otherwise.

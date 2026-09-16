@@ -700,20 +700,18 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString($set->refresh_token(), $container, 'A container holding the grant must never carry the raw refresh token.');
 
         // The masked snapshot is not a round-trip payload: rebuilding refuses.
-        try {
-            unserialize($payload);
-            $this->fail('A masked stored grant must never reconstruct from its own safe form.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('not a round-trip payload', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => unserialize($payload),
+            'A masked stored grant must never reconstruct from its own safe form.'
+        );
+        $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
 
         // The eval channel refuses typed directly.
-        try {
-            StoredGrant::__set_state(array('provider_id' => 'fixture-provider'));
-            $this->fail('__set_state() must refuse the raw export as a reconstruction source.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('never a payload', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => StoredGrant::__set_state(array('provider_id' => 'fixture-provider')),
+            '__set_state() must refuse the raw export as a reconstruction source.'
+        );
+        $this->assertStringContainsString('never a payload', $refusal->getMessage());
 
         // The one EXCLUDED channel, pinned exactly: var_export() dumps the
         // raw property tree through no engine hook (the nested set dumps
@@ -722,11 +720,14 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         // __set_state() evaluates first).
         $export = var_export($grant, true);
         $this->assertStringContainsString($set->access_token(), $export, 'The documented exclusion is exact: var_export() dumps the raw tree through no hook — which is precisely why its reconstruction channel refuses.');
-        try {
-            eval('return ' . $export . ';');
-            $this->fail('Evaluating a var_export of a stored grant must never reconstruct one.');
-        } catch (\Throwable $reconstruction_refused) {
-            $this->addToAssertionCount(1);
-        }
+        // The refusal-verdict owner (t31-ocr8-12): the old
+        // fail()-inside-try with a \Throwable catch was the masking
+        // class in its widest spelling — a no-throw reconstruction
+        // landed the fail() IN the catch and passed vacuously.
+        $this->refusalOf(
+            fn() => eval('return ' . $export . ';'),
+            'Evaluating a var_export of a stored grant must never reconstruct one.'
+        );
+        $this->addToAssertionCount(1);
     }
 }
