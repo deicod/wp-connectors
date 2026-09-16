@@ -940,6 +940,56 @@ documented exception.
   and ledgered as boundaries. Suite 1605 →
   1613 tests, 44798 → 44911 assertions, 2
   skipped unchanged.
+OCR-tool round
+  t31-ocr3 (eight commits — the third
+  pass of the same deterministic
+  reviewer, 9/9 findings accepted,
+  several the tool's audit of our own
+  prior rounds: the round-2 serialize
+  refutation's named re-open condition
+  — "a round finding that names them" —
+  fired): the serialize-masking doctrine
+  covers the last credential-bearing VOs
+  (the PKCE pair, the device session,
+  and the pending-authorization carrier
+  whose payload rides as the OBJECT so
+  the mask decision stays the payload's),
+  both render hooks pinned to the ONE
+  masked view so the dump and serialize
+  channels cannot drift; a build.json
+  symlink — dangling or resolving —
+  refuses at the config seam
+  (file_exists() follows links, so a
+  dangling link silently meant no-embed
+  and a library-less zip at exit 0); a
+  mid-name or alias-slot relative
+  operator in a use statement refuses
+  loudly (the splice once started at the
+  keyword, left the preceding separator
+  standing, and shipped a
+  double-separated parse error at exit 0
+  — reproduced and php -l-verified; the
+  uninterrupted mid-name spelling demotes
+  the keyword to a plain name piece on
+  this lexer, a legal non-family import
+  that rides untouched); the scanner
+  library owns its plugin-tools
+  dependency by require_once (a fresh
+  process requiring only
+  secret-scanner.php fataled mid-scan
+  before); the clock pin drops the
+  ordering assertion the port disclaims;
+  the instant arithmetic declares its
+  range rejection on both public
+  spellings; and the fifth entry script
+  rides wp_connectors_cli_entry(),
+  closing the r12-11 sweep. The round's
+  two-lens verifier pass (deterministic
+  workflow, independent correctness +
+  security agents, 79 driven tool calls
+  between them) raised ZERO findings.
+  Suite 1613 → 1616 tests, 44911 →
+  44974 assertions, 2 skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

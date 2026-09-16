@@ -6,6 +6,91 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 3)
+
+Third OCR-tool round (the same complementary deterministic reviewer,
+third pass over the branch diff); driver triage accepted all 9
+findings (2 security:high, 3 bug/maintainability:medium, 4 low) —
+the tool auditing our own prior rounds' fixes as much as the branch:
+ocr3-1 extends the ocr2-1 serialize doctrine to the last
+credential-bearing VOs (the round-2 verifier had refuted exactly this
+exposure as producer-gated with the named re-open condition "a round
+finding that names them" — the tool's finding named exactly them),
+and ocr3-3/ocr3-8 close shapes the ledger lines themselves forward
+(the dangling build.json symlink onto the config-seam line, the last
+entry script onto the r12-11 sweep). Fixed as t31-ocr3-1..8 — one
+commit per finding, the full offline check green after every commit,
+a regression per fix. The round's two-lens verifier pass (independent
+correctness + security agents over the whole round diff via a
+deterministic workflow, 79 driven tool calls between them) raised
+ZERO findings on either lens. Suite 1613 → 1616 tests, 44911 → 44974
+assertions, 2 skipped unchanged.
+
+- **serialize() is masked on the flow VOs (t31-ocr3-1, security:high)**:
+  PkceCodePair, DeviceAuthorizationSession, and the nesting carrier
+  PendingAuthorization hooked only `__debugInfo()` — serialize()
+  bypasses it by engine design, so serialize() of the pair (the RFC
+  7636 confidential half), the session (both device-flow codes), or
+  any container holding them emitted the raw credentials. All three
+  ride the ocr2-1 doctrine now: `masked_view()` is the ONE view the
+  dump and serialize hooks render (the carrier's payload rides as the
+  OBJECT, so the masking decision stays the payload's — the
+  StoredGrant shape), `__unserialize()`/`__set_state()` refuse the
+  lossy safe forms, and var_export() stays the one named-excluded
+  channel.
+- **The two render channels cannot drift (t31-ocr3-2, test:medium)**:
+  the flow suite pinned print_r() only, so a future edit re-deciding
+  one channel's mask would pass green with the engine channels
+  disagreeing. The pin is direct — same object, both public hooks,
+  identical arrays — beside the byte-level composition pin (each
+  VO's own masked spelling in BOTH channels, the credential in
+  neither).
+- **A build.json symlink refuses at the config seam (t31-ocr3-3,
+  bug:medium)**: `file_exists()` follows links, so a DANGLING
+  build.json symlink read as absent — the seam never ran, the embed
+  silently turned off, and a library-less zip built and published at
+  exit 0 (the t31-r4-17 directory shape's link sibling, one gate
+  further out). `is_link()` fires FIRST: dangling and resolving
+  (out-of-tree) links both refuse naming the target; a regular
+  build.json builds unchanged.
+- **A mid-name relative use refuses loudly (t31-ocr3-4, bug:medium)**:
+  `use Foo\ namespace \Bar;` (and the comment-interrupted spelling,
+  which arrives as the fused T_NAME_RELATIVE) and the alias slot
+  (`use Foo as namespace\Bar;`) spliced FROM the keyword, left the
+  preceding separator standing, and shipped `use Foo\ \Deicod\…` — a
+  double-separated parse error the postcondition waved through — at
+  exit 0 (reproduced through the real rewriter, php -l-verified). The
+  judgment is positional through a backward twin of the walk's own
+  trivia vocabulary: the operator is only the grammar's as the
+  import's LEADING name; every leading spelling (fused, interrupted,
+  function/const kinds) still rewrites.
+- **The scanner library owns its load path (t31-ocr3-5,
+  maintainability:medium)**: the repo-walk prune's fold mechanic
+  lives in the vocabulary owner (plugin-tools.php) and the scanner
+  relied on callers loading it first — a fresh process requiring only
+  bin/lib/secret-scanner.php fataled mid-scan on the first walked
+  entry. The dependency is declared by require_once INSIDE the
+  library (one-way: plugin-tools stays dependency-free); a subprocess
+  regression pins the fresh-process load pattern scanning and pruning.
+- **The clock pin asserts the port's contract (t31-ocr3-6, test:low)**:
+  the SystemClock pin asserted `$second >= $first`, which an NTP step
+  between adjacent now() calls breaks — an intermittent CI flake and
+  a contract violation (ClockInterface disclaims monotonicity by
+  docblock). The weakened pin is deterministic: every reading inside
+  the ±5s sanity window around time(), in UTC.
+- **The instant arithmetic declares its range rejection
+  (t31-ocr3-7, documentation:low)**: plus_seconds() carried no
+  @throws and minus_seconds() documented only the PHP_INT_MIN
+  negation, yet both ride offset_in_utc()'s representable-range
+  guard; both @throws tags name it now.
+- **All five entry scripts ride the CLI helper (t31-ocr3-8,
+  maintainability:low)**: scan-secrets.php — the last bin/ CLI
+  wearing file-top error_reporting()/ini_set() calls that ran in
+  every requiring process (the r9-4 class) — consumes
+  wp_connectors_cli_entry()/wp_connectors_cli_args(); the GPC guard
+  pin and the require-side display_errors pin cover all five, and
+  the ledger's r12-11 line records the sweep closed.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 2)
 
 Second OCR-tool round (the same complementary deterministic reviewer —
