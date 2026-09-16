@@ -490,15 +490,41 @@ final class WpHarness
      * inside it, file or directory shape — REFUSES loudly, one verdict
      * path for both shapes, the copy twin of rrmdir()'s root guard.
      *
+     * Preconditions and self-containment (OCR round 7, t31-ocr7-4): a
+     * MISSING or FILE source once reached the SPL iterator
+     * constructor, whose UnexpectedValueException is another library's
+     * vocabulary — the harness policy is the LOUD RuntimeException
+     * naming the path, so the guard precedes iteration. And a target
+     * that IS the source or sits INSIDE it is refused before the lazy
+     * iterator runs: a self-copy truncates the destination inode
+     * (copy() opens its destination before reading its source — the
+     * source's own bytes), and a nested target makes the iterator
+     * enumerate its own output (each copied file is a new entry, an
+     * unbounded re-copy). One containment check, realpath-based (the
+     * not-yet-created target is judged lexically — the harness's
+     * absolute scratch paths are the ceiling; a '..'-woven alias is
+     * out of scope), before a single byte moves.
+     *
      * @param string $from Absolute source directory.
      * @param string $to   Absolute target directory.
      * @return void
-     * @throws RuntimeException When the source (or any entry in it) is a symlink.
+     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing or not a directory, or the target is the source itself or inside it.
      */
     public static function copyTree($from, $to)
     {
         if (is_link($from)) {
             throw new RuntimeException('WpHarness::copyTree() refuses a symlinked source tree — never followed, never silently skipped: ' . $from);
+        }
+        if (! is_dir($from)) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a source that is not a readable directory — the loud policy, never the SPL iterator\'s surprise: ' . $from);
+        }
+        $source_real = realpath($from);
+        // A not-yet-created target is the copy's own normal shape;
+        // realpath cannot speak for it, so the lexical path is judged
+        // (absolute normalized scratch paths are the ceiling).
+        $target_real = false !== realpath($to) ? realpath($to) : rtrim($to, '/');
+        if ($target_real === $source_real || 0 === strpos($target_real, $source_real . '/')) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a target that is the source itself or inside it — a self-copy truncates its own inode, a nested target enumerates its own output without bound: from ' . $from . ' into ' . $to);
         }
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS)

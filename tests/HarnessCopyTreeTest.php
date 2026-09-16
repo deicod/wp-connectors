@@ -84,6 +84,69 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-7 pin (t31-ocr7-4): preconditions and
+     * self-containment. A missing or FILE source once reached the SPL
+     * iterator constructor, whose UnexpectedValueException is another
+     * library's vocabulary — the harness policy is the LOUD
+     * RuntimeException naming the path. A target that IS the source
+     * truncates its own inode (copy() opens the destination before
+     * reading the source), and a target INSIDE the source makes the
+     * lazy iterator enumerate its own output — an unbounded re-copy.
+     * All four shapes refuse before a single byte moves, one
+     * containment check, and the source tree survives the refusal
+     * intact.
+     */
+    public function testPreconditionAndSelfContainmentShapesRefuseBeforeIterating(): void
+    {
+        $from = sys_get_temp_dir() . '/wpct-copytree-guard-' . uniqid('', true);
+        mkdir($from . '/src', 0755, true);
+        file_put_contents($from . '/src/file.php', 'original bytes');
+        $file_source = $from . '/plain.txt';
+        file_put_contents($file_source, 'a file, not a tree');
+
+        try {
+            // The verdict is asserted OUTSIDE the catch (t31-ocr5-3):
+            // fail() throws AssertionFailedError, which EXTENDS
+            // RuntimeException, and the old fail()-inside-try was
+            // swallowed by the very catch meant for copyTree().
+            $refuses = function (string $f, string $t, string $naming) use ($from): void {
+                $caught = null;
+                try {
+                    WpHarness::copyTree($f, $t);
+                } catch (RuntimeException $e) {
+                    $caught = $e;
+                }
+                if (null === $caught) {
+                    $this->fail($naming);
+                }
+                $this->assertStringContainsString('WpHarness::copyTree() refuses', $caught->getMessage(), 'The policy exception, never the SPL iterator\'s vocabulary.');
+                $this->assertStringContainsString($f, $caught->getMessage(), $naming);
+            };
+
+            // (a) A FILE source: not a tree, refuses naming the path.
+            $refuses($file_source, $from . '/dst-file', 'A FILE source must refuse with the policy exception, never the SPL iterator surprise.');
+
+            // (a) A MISSING source: same verdict path.
+            $refuses($from . '/no-such-tree', $from . '/dst-missing', 'A MISSING source must refuse with the policy exception.');
+
+            // (b) The self-copy: the target IS the source.
+            $refuses($from . '/src', $from . '/src', 'A self-copy must refuse — copy() would truncate the destination inode it is about to read.');
+
+            // (b) The nested target: the destination sits inside the
+            // source the lazy iterator is walking.
+            $refuses($from . '/src', $from . '/src/inside', 'A target inside the source must refuse — the iterator would enumerate its own output without bound.');
+
+            // The refusal precedes the byte work: the source tree is
+            // intact after every shape (the pre-fix self-copy is the
+            // truncation this leg guards against).
+            $this->assertSame('original bytes', (string) file_get_contents($from . '/src/file.php'), 'The source tree survives every refusal untouched.');
+            $this->assertFileDoesNotExist($from . '/src/inside', 'The nested target was never created.');
+        } finally {
+            WpHarness::rrmdir($from);
+        }
+    }
+
+    /**
      * OCR-round-4 pin (t31-ocr4-3): both symlink shapes ride ONE
      * verdict path now, the copy twin of rrmdir()'s no-symlinks
      * doctrine (t31-ocr1-11). Pre-fix the shapes split: copy() FOLLOWED
