@@ -47,6 +47,29 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * OCR-round-5 pin (t31-ocr5-5): concreteTypes() is a hardcoded
+     * list — a seventh type added to shared/src/Exception/ would
+     * silently escape every family pin (catchability, finality, the
+     * payload API). The list is pinned against the DIRECTORY it
+     * summarizes: the glob's class names must equal the concrete list
+     * plus the two named family anchors (the abstract base, the
+     * transient marker) — the family grows only by growing both
+     * together, and a stray file in the directory fails the pin too.
+     */
+    public function testTheConcreteTypeListCoversTheWholeExceptionDirectory(): void
+    {
+        $from_tree = array();
+        foreach (glob(dirname(__DIR__) . '/shared/src/Exception/*.php') ?: array() as $file) {
+            $from_tree[] = 'Deicod\\WpConnectors\\Shared\\Exception\\' . basename($file, '.php');
+        }
+        $listed = array_merge($this->concreteTypes(), array(OAuthRuntimeException::class, OAuthTransientException::class));
+        sort($from_tree);
+        sort($listed);
+
+        $this->assertSame($from_tree, $listed, 'concreteTypes() must cover every type in shared/src/Exception/ — a new file there grows the list or fails this pin.');
+    }
+
     public function testBaseIsAbstractSoOnlySpecificTypesAreThrown(): void
     {
         $reflection = new \ReflectionClass(OAuthRuntimeException::class);
