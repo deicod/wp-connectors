@@ -4247,6 +4247,33 @@ FIXTURE;
             $this->assertStringContainsString('outside the shared-namespace family', $e->getMessage(), 'The second block\'s relative resolves against the declaration in effect (Other), not the first block.');
         }
 
+        /*
+         * OCR round 4 (t31-ocr4-5): a BRACED namespace block expires at
+         * its closing brace. The ledger once let `namespace X { … }`
+         * stay in effect to EOF, so a use statement after the block —
+         * legal PHP standing in GLOBAL scope — misattributed to the
+         * expired declaration (pre-fix this very leg refused as
+         * 'outside the shared-namespace family': resolved against
+         * Other). Inside the block the declaration still resolves; the
+         * post-block verdict is the no-declaration one, exactly the
+         * unbraced equivalent (a file with no declaration at all).
+         */
+        $braced_inside = "<?php\nnamespace Other {\n    use namespace\\Foo;\n}\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($braced_inside, 'OpenAiOauth', 'shared/src/BracedInside.php');
+            $this->fail('A relative INSIDE a braced block must still resolve against the block\'s declaration (and refuse as the foreign resolution it is).');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('outside the shared-namespace family', $e->getMessage(), 'The in-block relative resolved against Other — the block is in effect inside its braces.');
+            $this->assertStringContainsString('Other\\Foo', $e->getMessage(), 'The refusal names the resolved spelling.');
+        }
+        $braced_after = "<?php\nnamespace Other {\n    interface InBlock\n    {\n    }\n}\nuse namespace\\Foo;\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($braced_after, 'OpenAiOauth', 'shared/src/BracedAfter.php');
+            $this->fail('A relative AFTER a closed braced block stands in GLOBAL scope — the block expired at its closing brace, never resolves against it.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('cannot resolve', $e->getMessage(), 'The post-block verdict is the no-declaration-in-effect one — the ledger\'s answer matches the unbraced equivalent.');
+        }
+
         // The group-use PREFIX shape — a parse-error spelling whose
         // members the rewrite owns no map for — refuses by name.
         $group_prefix = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors\\{Shared\\Clock};\ninterface GroupRelFixture\n{\n}\n";

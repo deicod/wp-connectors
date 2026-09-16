@@ -437,9 +437,21 @@ final class WpConnectorsBuild
          * starts at: a relative resolves against the declaration IN
          * EFFECT where it stands, not the file's first (multi-block
          * files).
+         *
+         * A BRACED block expires (OCR round 4, t31-ocr4-5): the ledger
+         * once let `namespace X { … }` stay in effect to EOF, but after
+         * the closing brace the file is GLOBAL scope — a use statement
+         * after the block is legal PHP the walk misattributed to the
+         * expired declaration. The block's closing brace offset is
+         * recorded now (the ONE brace-matching owner over the
+         * string-masked view, so a '}' in a string or comment cannot
+         * counterfeit the close; its unbalanced policy — EOF, never
+         * under-bounds — is inherited verbatim), and the expiry follows
+         * it: global scope after the block, no declaration in effect.
          */
         $declarations = array();
         $offset = 0;
+        $masked = null;
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[ $i ];
             $id = is_array($token) ? $token[0] : null;
@@ -453,13 +465,33 @@ final class WpConnectorsBuild
                 continue;
             }
             $run = wp_connectors_name_run($tokens, wp_connectors_next_code_token_index($tokens, $i + 1));
-            $declarations[] = array('offset' => $token_offset, 'display' => $run['name']);
+            $expires = null;
+            $after_run = wp_connectors_next_code_token_index($tokens, $run['end'] + 1);
+            if (null !== $after_run && '{' === $tokens[ $after_run ]) {
+                // The opening brace's byte offset: cumulative text
+                // length up to (exclusive) its token index.
+                $brace_offset = 0;
+                for ($j = 0; $j < $after_run; ++$j) {
+                    $brace_offset += strlen(is_array($tokens[ $j ]) ? $tokens[ $j ][1] : $tokens[ $j ]);
+                }
+                if (null === $masked) {
+                    $masked = wp_connectors_mask_string_contents(wp_connectors_strip_comments($source));
+                }
+                $expires = wp_connectors_matching_brace_end($masked, $brace_offset);
+            }
+            $declarations[] = array('offset' => $token_offset, 'display' => $run['name'], 'expires' => $expires);
         }
         $declaration_in_effect = static function (int $at_offset) use ($declarations): ?string {
             $display = null;
             foreach ($declarations as $declaration) {
                 if ($declaration['offset'] > $at_offset) {
                     break;
+                }
+                if (null !== $declaration['expires'] && $at_offset > $declaration['expires']) {
+                    // The braced block closed — global scope follows,
+                    // not the previous declaration (t31-ocr4-5).
+                    $display = null;
+                    continue;
                 }
                 $display = $declaration['display'];
             }
