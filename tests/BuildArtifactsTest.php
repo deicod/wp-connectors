@@ -3183,6 +3183,70 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-1 pin (t31-ocr1-3): the finally's stage teardown was
+     * the ONE removal seam without a link guard — the r10-10 doctrine
+     * ("never delete through a link") covered the sweep seam and the
+     * build-start refusal, but a mid-build swap of the stage directory
+     * for a symlink hands rrmdir() a LINK at the root: is_dir()
+     * follows it, the RecursiveDirectoryIterator constructed on the
+     * linked path walks the TARGET tree, and the loop empties it. The
+     * guard lives in rrmdir() itself (the single-owner fix — every
+     * call site inherits it); this pin drives the removal seam
+     * directly with both shapes: a link AT the root (the stage-teardown
+     * class) and a link INSIDE the tree (a child whose isDir() would
+     * otherwise take the rmdir branch). The teardown class is not
+     * drivable end-to-end without racing the build's own finally, so
+     * the seam is probed the processIsAlive way.
+     */
+    public function testTheRemovalSeamNeverDeletesThroughALink(): void
+    {
+        if (! function_exists('symlink')) {
+            $this->markTestSkipped('This host cannot create symlinks.');
+        }
+        $scratch = self::distDir() . '/.rrmdir-link-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch, 0755, true);
+        $remove = new ReflectionMethod(WpConnectorsBuild::class, 'rrmdir');
+
+        try {
+            // The root-link leg: the stage-teardown shape. The target
+            // tree must survive intact and the link must stand.
+            $victim = $scratch . '/victim';
+            mkdir($victim . '/inner', 0755, true);
+            file_put_contents($victim . '/inner/keep.txt', 'survivor');
+            file_put_contents($victim . '/keep2.txt', 'survivor');
+            $rootLink = $scratch . '/stage-link';
+            symlink($victim, $rootLink);
+
+            $remove->invoke(null, $rootLink);
+
+            $this->assertFileExists($victim . '/inner/keep.txt', 'A link at the removal root is never deleted through — the target tree must survive intact.');
+            $this->assertFileExists($victim . '/keep2.txt', 'A link at the removal root is never deleted through — the target tree must survive intact.');
+            $this->assertTrue(is_link($rootLink), 'A link at the removal root stands exactly where it is.');
+
+            // The child-link leg: a link INSIDE a tree the removal owns
+            // is removed AS ITSELF (unlink), never descended into, never
+            // rmdir'd through — and the real siblings still go.
+            $tree = $scratch . '/owned-tree';
+            mkdir($tree, 0755, true);
+            file_put_contents($tree . '/real.txt', 'goes');
+            symlink($victim, $tree . '/child-link');
+
+            $remove->invoke(null, $tree);
+
+            $this->assertFileExists($victim . '/inner/keep.txt', 'A linked child never drags its target into the removal — the target tree survives.');
+            $this->assertDirectoryDoesNotExist($tree, 'The owned tree itself is removed, link and all.');
+        } finally {
+            if (is_link($scratch . '/stage-link')) {
+                unlink($scratch . '/stage-link');
+            }
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r11-2): an INVISIBLE /proc entry is not a
      * death verdict. Under hidepid=2 another user's live build is
      * invisible in /proc while it runs, and the old liveness shortcut —

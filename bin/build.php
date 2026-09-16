@@ -1668,11 +1668,24 @@ final class WpConnectorsBuild
     /**
      * Recursively removes a directory.
      *
+     * The no-symlinks doctrine lives HERE, at the one removal seam
+     * (verifier round t31-r10-10's class, single-owner hardening OCR
+     * round 1, t31-ocr1-3): the stage seams around it refuse or skip
+     * links, but the finally's teardown is reachable with a LINK at
+     * the stage name — a mid-build swap of the stage directory for a
+     * link — and is_dir() FOLLOWS links, so the iterator constructed
+     * on the linked path walks the TARGET tree and the loop empties
+     * it. A link at the removal root is never deleted through: the
+     * call returns, and the link stands exactly where it is.
+     *
      * @param string $dir Absolute directory path.
      * @return void
      */
     private static function rrmdir($dir)
     {
+        if (is_link($dir)) {
+            return;
+        }
         if (! is_dir($dir)) {
             return;
         }
@@ -1682,7 +1695,15 @@ final class WpConnectorsBuild
         );
         foreach ($items as $item) {
             /** @var SplFileInfo $item */
-            if ($item->isDir()) {
+            /*
+             * A LINK entry is removed AS ITSELF (unlink removes the
+             * link, never its target): isDir() follows links, so a
+             * linked child would otherwise take the rmdir branch. The
+             * walk does not descend into linked children (no
+             * FOLLOW_SYMLINKS flag), so their target trees stand
+             * untouched.
+             */
+            if ($item->isDir() && ! $item->isLink()) {
                 rmdir($item->getPathname());
             } else {
                 unlink($item->getPathname());
