@@ -15,10 +15,26 @@
  * Findings deliberately never include the matched text — only file, line,
  * and pattern — so the scanner itself can never leak a secret into logs.
  *
+ * SELF-CONTAINED LOAD PATH (OCR round 3, t31-ocr3-5): the repo-walk
+ * prune judges segments through the ONE fold mechanic
+ * (wp_connectors_segment_is_named(), t31-ocr1-5), which lives in this
+ * library's sibling — the vocabulary owner — and the dependency is
+ * declared HERE, by require_once, so requiring THIS file alone yields
+ * a working scanner (tests/SecureFixturesTest.php requires exactly
+ * this one file; pre-round that load pattern worked only when the
+ * test bootstrap had happened to load plugin-tools first, and a
+ * consumer requiring only the scanner fataled mid-scan on the first
+ * walked entry). The direction is one-way by construction:
+ * plugin-tools.php requires nothing from this library and stays
+ * dependency-free; a consumer requiring both, in either order, is
+ * unaffected (require_once both ways).
+ *
  * @package wp-connectors
  */
 
 declare(strict_types=1);
+
+require_once __DIR__ . '/plugin-tools.php';
 
 /**
  * Returns the secret patterns this repository guards against.

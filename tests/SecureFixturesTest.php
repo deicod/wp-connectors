@@ -215,6 +215,52 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * OCR-round-3 pin (t31-ocr3-5): the scanner library is
+     * self-contained on its own load path. The prune's fold mechanic
+     * (wp_connectors_segment_is_named()) lives in the vocabulary owner
+     * (plugin-tools.php), and the scanner used to rely on its CALLERS
+     * having loaded plugin-tools first — this suite's own require at
+     * the top of this file is exactly that load pattern, which worked
+     * only because the test bootstrap happened to load plugin-tools
+     * before PHPUnit reached it. A fresh process requiring ONLY
+     * bin/lib/secret-scanner.php fataled mid-scan on the first walked
+     * entry ("Call to undefined function"). The dependency is declared
+     * by require_once INSIDE the library now: a subprocess proves the
+     * fresh-process load pattern works AND prunes case-variant dev
+     * segments exactly as the in-process battery above pins.
+     */
+    public function testRequiringOnlyTheScannerLibraryScansAndPrunes()
+    {
+        $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+
+        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-only-' . getmypid();
+        if (is_dir($tempDir)) {
+            WpHarness::rrmdir($tempDir);
+        }
+        mkdir($tempDir . '/VENDOR', 0755, true);
+        mkdir($tempDir . '/plain', 0755, true);
+        file_put_contents($tempDir . '/VENDOR/leak.conf', "api_key = {$zaiKey}\n");
+        file_put_contents($tempDir . '/plain/leak.conf', "api_key = {$zaiKey}\n");
+
+        try {
+            $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/lib/secret-scanner.php'), true) . ';'
+                . ' foreach (wp_connectors_scan_paths(array(' . var_export($tempDir, true) . ')) as $finding) { echo $finding, "\n"; }';
+            $output = array();
+            $exit = 1;
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+
+            $report = implode("\n", $output);
+            $this->assertSame(0, $exit, "A fresh process requiring ONLY the scanner library must scan, never fatal mid-walk: {$report}");
+            $this->assertStringContainsString('plain/leak.conf', $report, 'The fresh-process scan finds the live-looking key outside the pruned segments.');
+            $this->assertStringContainsString('zai-key', $report);
+            $this->assertStringNotContainsString('VENDOR', $report, 'The case-variant dev segment prunes exactly as the in-process battery pins.');
+            $this->assertStringNotContainsString($zaiKey, $report, 'Findings still never echo the secret itself.');
+        } finally {
+            WpHarness::rrmdir($tempDir);
+        }
+    }
+
     public function testScannerDoesNotBypassOnGenericProseWords()
     {
         // Regression for the over-broad marker allowlist: generic words like
