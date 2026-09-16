@@ -172,7 +172,10 @@ function wp_connectors_scan_string($contents, $label)
  * case-variant 'VENDOR/' or 'Tools/' prunes exactly where the folded
  * gates judge it a development entry, and 'Tests/' stays scanned:
  * a vocabulary member the subset does not name is this scan's charge,
- * not its skip. Never a byte-exact array_intersect twin here.)
+ * not its skip. Never a byte-exact array_intersect twin here. The
+ * judgment rides segments BELOW the root only (t31-ocr1-12): the
+ * scan root's ANCESTORS are not this walk's dev tree, and judging
+ * them let a dev-named checkout ancestor blind the whole scan.)
  *
  * @param list<string> $roots               Absolute paths (files or directories).
  * @param bool         $prune_dev_segments  Whether to skip development-tree segments (the repository scan's concept; artifact scans never prune).
@@ -193,9 +196,17 @@ function wp_connectors_scan_paths(array $roots, $prune_dev_segments = true)
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
         );
+        // The prune judges segments BELOW the root only (verifier round
+        // t31-ocr1-12) — the lint walk's shape: the full pathname's
+        // ANCESTORS are not this walk's dev tree, and judging them let a
+        // 'dist'-shaped checkout ancestor blind the whole scan silently
+        // (reproduced: 0 findings under a Dist/ ancestor, 1 under Dst/
+        // — the exact-case shape was pre-round, the fold widened it to
+        // every casing).
+        $below_root = strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1;
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
-            $parts = explode(DIRECTORY_SEPARATOR, $file->getPathname());
+            $parts = explode(DIRECTORY_SEPARATOR, (string) substr($file->getPathname(), $below_root));
             foreach ($parts as $part) {
                 if ($excluded !== array() && wp_connectors_segment_is_named($part, $excluded)) {
                     continue 2;

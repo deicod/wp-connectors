@@ -189,6 +189,27 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             $this->assertStringContainsString('phpunit.cache/cached.xml', $report, 'The prune subset names the dotted .phpunit.cache only; the dotless spelling stays scanned.');
             // Findings still never echo the secret itself.
             $this->assertStringNotContainsString($zaiKey, $report);
+
+            /*
+             * The below-root boundary (verifier round t31-ocr1-12): the
+             * prune judged FULL pathname parts, so a dev-named ANCESTOR
+             * of the scan root pruned everything under it silently
+             * (reproduced: 0 findings under a Dist/ ancestor while the
+             * same tree under Dst/ found) — the exact-case shape was
+             * pre-round, the ocr1-5 fold widened it to every casing.
+             * Ancestors are not this walk's dev tree; only segments
+             * BELOW the root judge.
+             */
+            $ancestor = dirname($tempDir) . '/Dist-ancestor-' . getmypid();
+            mkdir($ancestor . '/root', 0755, true);
+            file_put_contents($ancestor . '/root/leak.conf', "api_key = {$zaiKey}\n");
+            try {
+                $ancestorReport = implode("\n", wp_connectors_scan_paths(array( $ancestor . '/root' )));
+                $this->assertStringContainsString('root/leak.conf', $ancestorReport, 'A dev-named ANCESTOR of the scan root never prunes the scan itself.');
+                $this->assertStringContainsString('zai-key', $ancestorReport);
+            } finally {
+                WpHarness::rrmdir($ancestor);
+            }
         } finally {
             WpHarness::rrmdir($tempDir);
         }
