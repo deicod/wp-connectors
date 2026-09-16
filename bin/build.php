@@ -381,7 +381,12 @@ final class WpConnectorsBuild
      * makes the lexer emit a bare T_NAMESPACE plus pieces, an equally
      * illegal spelling that once rode this step untouched. Inside an
      * open use statement the bare keyword is owned the same way:
-     * resolved across the trivia, rewritten, or refused.
+     * resolved across the trivia, rewritten, or refused. Outside a use
+     * statement the keyword's ownership is REFUSAL (OCR round 5,
+     * t31-ocr5-1): the interrupted spelling is a parse error in every
+     * code position — it adapts nowhere — and the detector's walk drops
+     * the bare keyword (the r8-10 rule), so this step is the only gate
+     * between the bytes and a lintless zip.
      *
      * Relatives that cannot be carried through the family rewrite
      * refuse loudly, never ride: a file with no namespace declaration
@@ -551,6 +556,39 @@ final class WpConnectorsBuild
                 // (wp_connectors_use_opens_import()).
                 $use_open = wp_connectors_use_opens_import($tokens, $i);
                 $group_depth = 0;
+
+                continue;
+            }
+            if (T_NAMESPACE === $id && ! $use_open && ! wp_connectors_namespace_opens_declaration($tokens, $i)) {
+                /*
+                 * OCR round 5 (t31-ocr5-1): the interrupted-keyword
+                 * ownership extends to every position OUTSIDE a use
+                 * statement. Inside one the gate below owns the bare
+                 * keyword (r11-10); outside one the keyword separated
+                 * from its '\' — `namespace \Foo` in an expression, a
+                 * declaration slot, anywhere — is the same parse-error
+                 * spelling the engine never accepts (php -l: unexpected
+                 * token "namespace"), but the family detector's walk
+                 * DROPS a bare keyword that opens no legal declaration
+                 * (the r8-10 rule that keeps it from corrupting the
+                 * resolution base) and reports only the following name
+                 * run — `WpConnectors\Shared\Clock`, a name no family
+                 * predicate matches — so the fused twin's 'relative'
+                 * report never happens and the bytes rode the rewrite,
+                 * the postcondition, and the sweep at exit 0 (reproduced
+                 * through this seam: the zip would ship the parse-error
+                 * line; the build runs no lint gate over its output).
+                 * The rewriter owns exactly this predicate — never-legal
+                 * spellings that could reach the zip — so it refuses the
+                 * shape here, family-resolving or not, base owned or
+                 * not: the spelling adapts nowhere, there is no legal
+                 * form to preserve.
+                 */
+                $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
+                $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
+                if (T_NS_SEPARATOR === $follower_id || T_NAME_FULLY_QUALIFIED === $follower_id) {
+                    throw new RuntimeException("build: the bare 'namespace' keyword outside a use statement in {$sourceVersion} is not a spelling PHP accepts — the relative operator only ever parses as one fused token, and the build runs no lint gate over the zip's bytes, so the rewrite refuses the parse-error spelling rather than shipping it at exit 0; write the family spelling");
+                }
 
                 continue;
             }

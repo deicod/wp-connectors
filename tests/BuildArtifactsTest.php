@@ -4100,16 +4100,28 @@ FIXTURE;
         $found = wp_connectors_shared_family_references($corrupted);
         $this->assertCount(1, $found, 'The junk spelling corrupts nothing: the family-resolving relative still reports.');
         $this->assertSame(array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( $found[0]['name'], $found[0]['kind'] ));
+        /*
+         * Since t31-ocr5-1 the BUILD refusal fires one seam earlier: the
+         * `namespace \Junk;` line itself is the interrupted keyword the
+         * rewriter refuses outside use statements (the detector legs
+         * above still pin the r8-10 base-integrity property — the junk
+         * corrupts nothing — and the reporting is what the
+         * postcondition rides, so the launder-proof verdict chain is
+         * unchanged).
+         */
         try {
             WpConnectorsBuild::rewriteSharedNamespace($corrupted, 'ExampleConnector', 'shared/src/Corrupt.php');
             $this->fail('A relative laundering behind an invalid fully-qualified declaration must refuse the rewrite, exactly like its control.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('survived the rewrite', $e->getMessage());
+            $this->assertStringContainsString('not a spelling PHP accepts', $e->getMessage());
         }
 
         // A fully-qualified FAMILY declaration (`namespace \Deicod\…`)
         // is a code-position name now — refused by both consumers, one
-        // verdict, never a declaration that overwrites the base.
+        // verdict, never a declaration that overwrites the base. The
+        // BUILD refusal is the t31-ocr5-1 shape fence (the same
+        // interrupted-keyword spelling), one seam earlier than the
+        // postcondition's 'code position' verdict.
         $fq_family = "<?php\nnamespace Deicod;\nnamespace \\Deicod\\WpConnectors\\Shared;\ninterface FqFixture\n{\n}\n";
         $found = wp_connectors_shared_family_references($fq_family);
         $this->assertContains(array( 'name' => 'Deicod\\WpConnectors\\Shared', 'lower' => 'deicod\\wpconnectors\\shared', 'kind' => 'code', 'offset' => 34, 'line' => 3 ), $found, 'The invalid fully-qualified family spelling reports as a code-position name, never a declaration.');
@@ -4117,7 +4129,7 @@ FIXTURE;
             WpConnectorsBuild::rewriteSharedNamespace($fq_family, 'ExampleConnector', 'shared/src/Fq.php');
             $this->fail('A fully-qualified family declaration must refuse the rewrite.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('code position', $e->getMessage());
+            $this->assertStringContainsString('not a spelling PHP accepts', $e->getMessage());
         }
 
         /*
@@ -4144,6 +4156,80 @@ FIXTURE;
             }, wp_connectors_shared_family_references($rewritten, 'Deicod\\WpConnectors\\OpenAiOauth\\Shared')),
             'On the rewritten bytes the relative resolves under the target root and reports nothing — the declaration is the only family reference (the ownership half of the carve-out).'
         );
+    }
+
+    /**
+     * OCR round 5 (t31-ocr5-1): the INTERRUPTED relative operator in a
+     * CODE position — `$x = namespace \WpConnectors\Shared\Clock;`, the
+     * keyword separated from its '\' — is a parse error the engine never
+     * accepts, but the family detector's walk drops the bare keyword
+     * (the r8-10 rule keeps it from corrupting the resolution base) and
+     * reports only the following name run, `WpConnectors\Shared\Clock` —
+     * a name no family predicate matches. The FUSED twin reports as a
+     * 'relative' family reference; the interrupted twin reported
+     * NOTHING, so the bytes rode the rewrite, the postcondition, and the
+     * sweep at exit 0 (reproduced red through this seam: the rewrite
+     * returned with the parse-error line intact, php -l-verified as
+     * `unexpected token "namespace"`; the build runs no lint gate over
+     * the zip's output). The rewriter owns the predicate — never-legal
+     * spellings that could reach the zip — and refuses the shape at
+     * every position outside a use statement, family-resolving or not,
+     * base owned or not: the spelling adapts nowhere (the r8-2
+     * adaptation premise is false for it even under an owned
+     * declaration — the bytes are a parse error before any resolution).
+     */
+    public function testAnInterruptedRelativeOperatorInACodePositionRefusesTheRewrite(): void
+    {
+        // THE REPRO: the fused twin under a non-owned declaration refuses
+        // via the postcondition ('relative position') — the interrupted
+        // twin shipped at exit 0.
+        $planted = "<?php\nnamespace Deicod;\n\$x = namespace \\WpConnectors\\Shared\\Clock::class;\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($planted, 'OpenAiOauth', 'shared/src/InterruptedCodeRel.php');
+            $this->fail('The keyword-interrupted relative operator in a code position must refuse the rewrite — it differs from its reporting fused twin only by whitespace the engine refuses.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('not a spelling PHP accepts', $e->getMessage());
+            $this->assertStringContainsString('InterruptedCodeRel.php', $e->getMessage());
+        }
+
+        // The carve-out position refuses too: under an OWNED declaration
+        // the fused relative adapts by construction (t31-r11-1), but the
+        // interrupted twin adapts nowhere — the parse error survives any
+        // declaration rewrite.
+        $owned = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n\$x = namespace \\Forms\\Clock::class;\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($owned, 'OpenAiOauth', 'shared/src/OwnedBaseInterrupted.php');
+            $this->fail('An interrupted relative under an owned declaration must refuse the rewrite — the adaptation carve-out is for spellings PHP accepts.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('outside a use statement', $e->getMessage());
+        }
+
+        // The non-family twin refuses too — the fence owns the SHAPE,
+        // not the family-ness (`namespace \Junk;` once rode at exit 0 in
+        // this very declaration slot).
+        $foreign = "<?php\nnamespace Deicod;\nnamespace \\Junk;\ninterface ForeignFixture\n{\n}\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($foreign, 'OpenAiOauth', 'shared/src/ForeignInterrupted.php');
+            $this->fail('A non-family interrupted spelling must refuse the rewrite — the zip ships through no lint gate.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('not a spelling PHP accepts', $e->getMessage());
+        }
+
+        // The fence is spelling-exact: the FUSED code-position relative
+        // keeps its own verdicts — refusal under a non-owned base
+        // (postcondition, 'relative position')…
+        $fused = "<?php\nnamespace Deicod;\n\$x = namespace\\WpConnectors\\Shared\\Clock::class;\n";
+        try {
+            WpConnectorsBuild::rewriteSharedNamespace($fused, 'OpenAiOauth', 'shared/src/FusedCodeRel.php');
+            $this->fail('The fused control must keep refusing via the postcondition.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('relative position', $e->getMessage(), 'The fused twin refuses at the postcondition, not the shape fence — the fence never widened past the interrupted spelling.');
+        }
+        // …and adaptation under an owned one (the sibling test's Carrier
+        // pin, unchanged).
+        $adapting = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n\$x = namespace\\FormsFixture;\n";
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($adapting, 'OpenAiOauth', 'shared/src/AdaptingFused.php');
+        $this->assertStringContainsString('namespace\\FormsFixture', $rewritten, 'The fused code-position relative still rides verbatim under an owned declaration.');
     }
 
     /**
