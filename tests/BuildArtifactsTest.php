@@ -3058,8 +3058,16 @@ FIXTURE;
                 fclose($pipes[0]);
             }
 
+            // Close/collect EVERY exit before asserting (t31-ocr4-7): an
+            // assertion inside the loop aborted the foreach and leaked
+            // the remaining children — un-reaped builds kept writing
+            // into the scratch repo the outer finally then rrmdirs, a
+            // failing leg racing its own cleanup.
+            $exits = array();
             foreach ($handles as $slug => $handle) {
-                $exit = proc_close($handle);
+                $exits[ $slug ] = proc_close($handle);
+            }
+            foreach ($exits as $slug => $exit) {
                 $this->assertSame(0, $exit, "The concurrent build of {$slug} must succeed.");
             }
 
@@ -3106,8 +3114,15 @@ FIXTURE;
                 );
             }
 
+            // Same shape as the manifest-race leg above (t31-ocr4-7):
+            // collect both exits, assert afterward — never leak a child
+            // by aborting the reaping loop.
+            $exits = array();
             foreach ($handles as $handle) {
-                $this->assertSame(0, proc_close($handle), 'A concurrent same-plugin build must survive its sibling: the stage trees are pid-disjoint.');
+                $exits[] = proc_close($handle);
+            }
+            foreach ($exits as $exit) {
+                $this->assertSame(0, $exit, 'A concurrent same-plugin build must survive its sibling: the stage trees are pid-disjoint.');
             }
             $this->assertSame(array(), glob($repo . '/dist/.stage-race-same-demo*') ?: array(), 'No stage tree of any pid may survive the pair.');
             $this->assertStringContainsString('connectors-race-same-demo-1.0.0.zip  ', (string) file_get_contents($repo . '/dist/checksums.txt'));
