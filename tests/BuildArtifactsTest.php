@@ -5497,32 +5497,23 @@ FIXTURE;
      * one helper now, so a fixture-layout change (a new source file, a
      * renamed asset) rides one site.
      *
+     * t31-ocr6-15 (verifier-lens find over t31-ocr6-5, driver-confirmed):
+     * the helper's own loop was the SURVIVING inline twin of the one
+     * ocr6-5 deleted from makeScratchRepo — str_replace every-occurrence
+     * prefix strip (the ocr4-2 mis-nesting shape) and no isLink() guard
+     * (the ocr4-3 follow/skip shape), over the SAME example-connector
+     * fixture, predating and surviving both fencing rounds. It rides
+     * WpHarness::copyTree(), the ONE scratch-tree copy owner; the
+     * r6-7 pre-create is absorbed the same way (copyTree mkdirs each
+     * target's dirname recursively, order-free).
+     *
      * @param string $targetDir Absolute target directory (the plugin root
      *                          inside it is created as needed).
      * @return string The target directory, for call-site chaining.
      */
     private function copyFixturePlugin(string $targetDir): string
     {
-        $fixtureRoot = __DIR__ . '/fixtures/plugins/' . self::FIXTURE;
-        // The plugin root is created BEFORE the copy loop (verifier
-        // round t31-r6-7): the loop relied on a subdirectory
-        // (assets/src) being yielded before the first root-level FILE
-        // — its mkdir(..., true) was what created the root — so on a
-        // filesystem whose readdir order yields readme.txt first (a
-        // tmpfs clone demonstrated it), copy() failed against a root
-        // that did not exist yet and every fixture-copy test errored
-        // in setup. Directory-entry order is not a contract.
-        mkdir($targetDir, 0755, true);
-        $fixture = new RecursiveDirectoryIterator($fixtureRoot, FilesystemIterator::SKIP_DOTS);
-        foreach (new RecursiveIteratorIterator($fixture, RecursiveIteratorIterator::SELF_FIRST) as $item) {
-            $relative = str_replace($fixtureRoot . '/', '', $item->getPathname());
-            $target = $targetDir . '/' . $relative;
-            if ($item->isDir()) {
-                mkdir($target, 0755, true);
-            } else {
-                copy($item->getPathname(), $target);
-            }
-        }
+        WpHarness::copyTree(__DIR__ . '/fixtures/plugins/' . self::FIXTURE, $targetDir);
 
         return $targetDir;
     }
