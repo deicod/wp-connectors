@@ -372,7 +372,11 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
      * tables — t31-ocr1-4 — no locale to consult, identical by
      * construction), and the guard itself fires on the exact
      * mangled spelling a byte-mapping fold produces (driven through
-     * the private probe, the closeArchiveOrThrow precedent).
+     * the private probe, the closeArchiveOrThrow precedent). A host
+     * that cannot manufacture the locale skips VISIBLY (t31-ocr6-12):
+     * the spelling pins above the skip still ran, the pressure half is
+     * named as not-run — never silently green under a name claiming
+     * pressure was applied.
      */
     public function testAPostParseMangledHostRefusesUnderManufacturedLocalePressure(): void
     {
@@ -397,15 +401,21 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         /*
          * Manufacture the 8-bit locale (localedef into a private
          * LOCPATH). Everything is attempted and restored (r11-6's
-         * shape): a host without localedef or without the tr_TR source
-         * rides the spelling pins above instead.
+         * shape) — and a host that cannot manufacture it (no localedef
+         * on a minimal CI image, no tr_TR source, Windows) now skips
+         * VISIBLY (OCR round 6, t31-ocr6-12): the pressure half used
+         * to fall through `if ($manufactured)` silently, the test
+         * passing green under a name claiming pressure was applied.
+         * The spelling pins above still ran; the skip names what did
+         * not. The established idiom: markTestSkipped at the
+         * manufacture failure, never a silent half.
          */
         $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
         @mkdir($locpath, 0755, true);
-        $manufactured = false;
         exec('localedef -i tr_TR -f ISO-8859-9 ' . escapeshellarg($locpath . '/tr_TR.ISO-8859-9') . ' 2>/dev/null', $localedefOutput, $localedefExit);
-        if (0 === $localedefExit) {
-            $manufactured = true;
+        if (0 !== $localedefExit) {
+            WpHarness::rrmdir($locpath);
+            $this->markTestSkipped('The tr_TR.ISO-8859-9 pressure locale could not be manufactured on this host (localedef exit ' . $localedefExit . ': no localedef, or no tr_TR source) — the LC_CTYPE pressure half did not run; the spelling pins above this point already passed (t31-ocr6-12).');
         }
 
         // The '0' spelling QUERIES (t31-ocr1-6): null behaves like ""
@@ -414,39 +424,37 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $previous = setlocale(LC_CTYPE, '0');
         $previousLocpath = getenv('LOCPATH');
         try {
-            if ($manufactured) {
-                putenv('LOCPATH=' . $locpath);
-                $this->assertNotFalse(setlocale(LC_CTYPE, 'tr_TR.ISO-8859-9'), 'The manufactured locale must install.');
+            putenv('LOCPATH=' . $locpath);
+            $this->assertNotFalse(setlocale(LC_CTYPE, 'tr_TR.ISO-8859-9'), 'The manufactured locale must install.');
 
-                // The locale is LIVE (ctype consults it) — the pressure
-                // is real, not a setlocale that silently fell back.
-                $this->assertTrue(ctype_lower("\xE3"), 'ctype consults the manufactured 8-bit LC_CTYPE (0xE3 is a lowercase letter in ISO-8859-9) — the pressure is live.');
+            // The locale is LIVE (ctype consults it) — the pressure
+            // is real, not a setlocale that silently fell back.
+            $this->assertTrue(ctype_lower("\xE3"), 'ctype consults the manufactured 8-bit LC_CTYPE (0xE3 is a lowercase letter in ISO-8859-9) — the pressure is live.');
 
-                // The invariant: the multibyte host validates and the
-                // rebuilt authority is byte-identical to the C-locale
-                // parse — the fold stayed UTF-8-clean under pressure,
-                // and the re-check is the guard that keeps it so.
-                $parts = Url::parse_validated($utf8_url);
-                $this->assertSame($c_locale_authority, $parts['authority'], 'The multibyte authority is byte-identical under the 8-bit LC_CTYPE.');
-                $this->assertSame('https://münchen.example/token', (new HttpRequest('GET', $utf8_url))->redacted_url());
+            // The invariant: the multibyte host validates and the
+            // rebuilt authority is byte-identical to the C-locale
+            // parse — the fold stayed UTF-8-clean under pressure,
+            // and the re-check is the guard that keeps it so.
+            $parts = Url::parse_validated($utf8_url);
+            $this->assertSame($c_locale_authority, $parts['authority'], 'The multibyte authority is byte-identical under the 8-bit LC_CTYPE.');
+            $this->assertSame('https://münchen.example/token', (new HttpRequest('GET', $utf8_url))->redacted_url());
 
-                /*
-                 * OCR-round-1 pin (t31-ocr1-4): the scheme and host
-                 * folds ride AsciiFold's byte tables, never the engine
-                 * strtolower() — whose byte mapping is a question about
-                 * the engine and the process locale: glibc's
-                 * tr_TR.ISO-8859-9 maps tolower('I') to the dotless ı
-                 * (0xFD — probed at the libc level on this host), so a
-                 * locale-consulting fold would rebuild 'SIMPLE-I' as
-                 * "s\xFDmple-\xFD". The byte table has no locale to
-                 * consult: the ASCII host folds identically under the
-                 * live Turkish locale and the C fold.
-                 */
-                $ascii_parts = Url::parse_validated('HTTPS://SIMPLE-I.EXAMPLE:8443/TOKEN');
-                $this->assertSame('https', $ascii_parts['scheme'], 'The scheme folds through the ASCII byte table under the Turkish locale — never a dotted-I spelling.');
-                $this->assertSame('simple-i.example:8443', $ascii_parts['authority'], 'The host folds through the ASCII byte table under the Turkish locale — never a dotless-I spelling.');
-                $this->assertSame('https://simple-i.example:8443/TOKEN', (new HttpRequest('GET', 'HTTPS://SIMPLE-I.EXAMPLE:8443/TOKEN'))->redacted_url());
-            }
+            /*
+             * OCR-round-1 pin (t31-ocr1-4): the scheme and host
+             * folds ride AsciiFold's byte tables, never the engine
+             * strtolower() — whose byte mapping is a question about
+             * the engine and the process locale: glibc's
+             * tr_TR.ISO-8859-9 maps tolower('I') to the dotless ı
+             * (0xFD — probed at the libc level on this host), so a
+             * locale-consulting fold would rebuild 'SIMPLE-I' as
+             * "s\xFDmple-\xFD". The byte table has no locale to
+             * consult: the ASCII host folds identically under the
+             * live Turkish locale and the C fold.
+             */
+            $ascii_parts = Url::parse_validated('HTTPS://SIMPLE-I.EXAMPLE:8443/TOKEN');
+            $this->assertSame('https', $ascii_parts['scheme'], 'The scheme folds through the ASCII byte table under the Turkish locale — never a dotted-I spelling.');
+            $this->assertSame('simple-i.example:8443', $ascii_parts['authority'], 'The host folds through the ASCII byte table under the Turkish locale — never a dotless-I spelling.');
+            $this->assertSame('https://simple-i.example:8443/TOKEN', (new HttpRequest('GET', 'HTTPS://SIMPLE-I.EXAMPLE:8443/TOKEN'))->redacted_url());
         } finally {
             /*
              * LOCPATH is restored BEFORE the locale, and the locale
