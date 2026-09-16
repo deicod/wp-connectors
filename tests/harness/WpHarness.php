@@ -521,13 +521,21 @@ final class WpHarness
              * dir's own name as a nested segment
              * (…/example-connector/vendor/example-connector/file.php)
              * silently copied to the wrong target — the first segment
-             * splice ate the nested one too.
+             * splice ate the nested one too. A pathname the prefix does
+             * NOT prefix refuses loudly (OCR round 6, t31-ocr6-4): the
+             * old no-match arm kept the FULL absolute path as the
+             * "relative" tail, so every file silently landed nested
+             * under the target (reachable via a trailing-slash $from,
+             * whose iterator pathnames never start with the
+             * double-slash prefix) — the exact silent mis-nesting this
+             * loud-policy copy owner exists to prevent.
              */
             $relative = $file->getPathname();
             $prefix = $from . '/';
-            if (0 === strpos($relative, $prefix)) {
-                $relative = substr($relative, strlen($prefix));
+            if (0 !== strpos($relative, $prefix)) {
+                throw new RuntimeException('WpHarness::copyTree() cannot relativize ' . $relative . ' against the source prefix ' . $prefix . ' — every file would silently land nested under the target (a trailing-slash source is the reachable spelling).');
             }
+            $relative = substr($relative, strlen($prefix));
             $target = $to . '/' . $relative;
             if (! is_dir(dirname($target))) {
                 mkdir(dirname($target), 0755, true);

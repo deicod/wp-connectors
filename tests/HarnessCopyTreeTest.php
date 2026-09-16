@@ -47,6 +47,40 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-6 pin (t31-ocr6-4): the prefix strip's no-match arm
+     * kept the FULL absolute path as the relative tail — reachable via
+     * a trailing-slash $from, whose iterator pathnames never start with
+     * the doubled slash of $from.'/', so every file silently landed
+     * nested under the target with no error. The no-match arm refuses
+     * loudly now, naming the path and the expected prefix.
+     */
+    public function testATrailingSlashSourceRefusesInsteadOfSilentlyNesting(): void
+    {
+        $from = sys_get_temp_dir() . '/wpct-copytree-slash-' . uniqid('', true);
+        $to = sys_get_temp_dir() . '/wpct-copytree-slash-dst-' . uniqid('', true);
+        mkdir($from . '/src', 0755, true);
+        file_put_contents($from . '/src/file.php', 'bytes');
+
+        try {
+            $caught = null;
+            try {
+                WpHarness::copyTree($from . '/', $to);
+            } catch (RuntimeException $e) {
+                $caught = $e;
+            }
+            if (null === $caught) {
+                $this->fail('A trailing-slash source must refuse the copy loudly, never nest every file under the target.');
+            }
+            $this->assertStringContainsString($from . '/src/file.php', $caught->getMessage(), 'The refusal names the path it could not relativize.');
+            $this->assertStringContainsString($from . '//', $caught->getMessage(), 'The refusal names the prefix it expected.');
+            $this->assertFileDoesNotExist($to, 'Nothing landed under the target.');
+        } finally {
+            WpHarness::rrmdir($from);
+            WpHarness::rrmdir($to);
+        }
+    }
+
+    /**
      * OCR-round-4 pin (t31-ocr4-3): both symlink shapes ride ONE
      * verdict path now, the copy twin of rrmdir()'s no-symlinks
      * doctrine (t31-ocr1-11). Pre-fix the shapes split: copy() FOLLOWED
