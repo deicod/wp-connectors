@@ -3861,6 +3861,43 @@ FIXTURE;
         }
 
         /*
+         * OCR round 7 (t31-ocr7-2): LEGAL import spellings the rewriter
+         * does not OWN refuse with the spelling class NAMED — never the
+         * anonymous postcondition refusal alone. Survey verdicts:
+         * comma-list, close-tag termination, comment inside the
+         * statement — REFUSE-NAMED (the pattern's byte grammar cannot
+         * see them; php -l accepts all three); grouped
+         * `use Deicod\WpConnectors\{Shared\Clock, …};` — OWNED, pinned
+         * above (the member rewrite carries the body's commas at brace
+         * depth, the legs at the groupUse battery). The refusal keeps
+         * the anonymous seam's text (the postcondition stays the total
+         * authority) and appends the class sentence.
+         */
+        $unowned_spellings = array(
+            'comma-separated import list' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock, Other\\X;\nclass CommaStore\n{\n}\n",
+                'comma-separated import list',
+            ),
+            'close-tag-terminated import' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock ?>\n<p>x</p>\n<?php\nclass TagStore\n{\n}\n",
+                'close-tag-terminated import',
+            ),
+            'comment inside the import statement' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock /* pick one */;\nclass CommentStore\n{\n}\n",
+                'a comment inside the use statement',
+            ),
+        );
+        foreach ($unowned_spellings as $label => $row) {
+            try {
+                WpConnectorsBuild::rewriteSharedNamespace($row[0], 'OpenAiOauth', 'shared/src/UnownedSpelling.php');
+                $this->fail("A legal import spelling the rewrite does not own ({$label}) must refuse — never ship the family import un-rewritten.");
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('survived the rewrite', $e->getMessage(), "The postcondition seam stays the authority ({$label}).");
+                $this->assertStringContainsString($row[1], $e->getMessage(), "The refusal NAMES the spelling class ({$label}) — never anonymous.");
+            }
+        }
+
+        /*
          * Soundness of the total scan (the round's design mandate,
          * verified empirically then pinned): scanning the REAL tree's
          * rewrites must stay clean for every legal suffix shape. A false

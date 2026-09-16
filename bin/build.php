@@ -340,13 +340,30 @@ final class WpConnectorsBuild
             if ($is_target && ('declaration' === $reference['kind'] || 'use' === $reference['kind'])) {
                 continue;
             }
+            /*
+             * The NAMED-refusal seam for legal import spellings the
+             * rewriter does not OWN (OCR round 7, t31-ocr7-2): comma
+             * lists, close-tag termination, comments inside the
+             * statement — legal PHP (php -l-verified) the use-statement
+             * pattern's byte grammar cannot see, which once surfaced as
+             * the ANONYMOUS postcondition refusal below ("a spelling
+             * survived", class unnamed). The seam doctrine is own-or-
+             * refuse-named; the classifier runs ONLY on this throw
+             * path, so green builds pay nothing, and its sentence
+             * rides the anonymous text (the postcondition stays the
+             * total authority — the class names what it caught).
+             */
+            $spelling_class = 'use' === $reference['kind']
+                ? self::unownedUseImportSpellingClass($final, $reference['offset'])
+                : null;
             throw new RuntimeException(sprintf(
-                'build: the reference %s (%s position) survived the rewrite in %s at byte offset %d — after the rewrite the embedded copy may reference only the plugin-private target Deicod\\WpConnectors\\%s\\Shared…, so every other reference to the shared-namespace family points at a namespace that does not exist inside the plugin; every legal use form is rewritten here or the build refuses, never an import that ships broken',
+                'build: the reference %s (%s position) survived the rewrite in %s at byte offset %d — after the rewrite the embedded copy may reference only the plugin-private target Deicod\\WpConnectors\\%s\\Shared…, so every other reference to the shared-namespace family points at a namespace that does not exist inside the plugin; every legal use form is rewritten here or the build refuses, never an import that ships broken%s',
                 $reference['name'],
                 $reference['kind'],
                 $sourceVersion,
                 $reference['offset'],
-                $pluginSuffix
+                $pluginSuffix,
+                null !== $spelling_class ? '; spelling class the rewrite does not own: ' . $spelling_class : ''
             ));
         }
 
@@ -745,6 +762,112 @@ final class WpConnectorsBuild
         }
 
         return $result;
+    }
+
+    /**
+     * The spelling class of the use statement a surviving import
+     * reference stands in, when the statement carries one the rewrite's
+     * byte grammar does not own — OCR round 7, t31-ocr7-2.
+     *
+     * LEGAL import spellings exist that the use-statement pattern
+     * cannot match (php -l-verified): a comma-separated list
+     * (`use A\B, C\D;`), a close-tag-terminated statement
+     * (`use A\B ?> html`), and a comment inside the statement — the
+     * pattern's regex sees bytes, and a comma, a mode boundary, or a
+     * comment breaks the `\s*;`-terminated shape it owns. Such bytes
+     * once refused only at the postcondition with the ANONYMOUS
+     * "spelling survived" text; the seam doctrine is own-or-refuse-
+     * NAMED, so this classifier names the class on the throw path
+     * (green builds never call it). The verdict was always REFUSE —
+     * the family import must be rewritten or the build stops — only
+     * the diagnostic was anonymous.
+     *
+     * The surveyed comma carve: a ',' at brace depth 0 names an import
+     * LIST only when no depth-0 '{' follows in the statement —
+     * `use A, B {…}` is a trait-adaptation CLAUSE list (its commas
+     * precede the block), a spelling with its own ledgered doctrine,
+     * and this seam does not misname it. Group-use bodies are OWNED
+     * (the member rewrite carries their commas at depth ≥ 1).
+     *
+     * @param string $source           The rewritten bytes (the postcondition's subject).
+     * @param int    $reference_offset The surviving reference's byte offset.
+     * @return string|null The named spelling class, or null (the anonymous backstop).
+     */
+    private static function unownedUseImportSpellingClass($source, $reference_offset)
+    {
+        $tokens = token_get_all($source);
+        $count = count($tokens);
+        $offset = 0;
+        $in_use = false;
+        $hit = false;
+        $brace_depth = 0;
+        $saw_statement_brace = false;
+        $saw_depth_zero_comma = false;
+        $saw_comment = false;
+        $terminated_by_close_tag = false;
+        for ($i = 0; $i < $count; ++$i) {
+            $token = $tokens[ $i ];
+            $id = is_array($token) ? $token[0] : null;
+            $text = is_array($token) ? $token[1] : $token;
+            $token_offset = $offset;
+            $offset += strlen($text);
+            if (! $in_use) {
+                if (T_USE === $id && wp_connectors_use_opens_import($tokens, $i)) {
+                    $in_use = true;
+                    $brace_depth = 0;
+                    $saw_statement_brace = false;
+                    $saw_depth_zero_comma = false;
+                    $saw_comment = false;
+                    $terminated_by_close_tag = false;
+                }
+
+                continue;
+            }
+            if ($token_offset <= $reference_offset && $reference_offset < $offset) {
+                $hit = true;
+            }
+            if (wp_connectors_is_use_statement_boundary($token, $id)) {
+                if ($hit) {
+                    $terminated_by_close_tag = T_CLOSE_TAG === $id;
+
+                    break;
+                }
+                $in_use = false;
+
+                continue;
+            }
+            if ('{' === $token) {
+                if (0 === $brace_depth) {
+                    $saw_statement_brace = true;
+                }
+                ++$brace_depth;
+            } elseif ('}' === $token) {
+                --$brace_depth;
+                if ($brace_depth < 0) {
+                    $brace_depth = 0;
+                }
+            } elseif (',' === $token && 0 === $brace_depth) {
+                $saw_depth_zero_comma = true;
+            } elseif (T_COMMENT === $id || T_DOC_COMMENT === $id) {
+                $saw_comment = true;
+            }
+        }
+        if (! $hit) {
+            return null;
+        }
+        $labels = array();
+        if ($saw_depth_zero_comma && ! $saw_statement_brace) {
+            $labels[] = 'a comma-separated import list (use A\\B, C\\D;) — the rewrite owns one import per statement; write one use per line';
+        }
+        if ($terminated_by_close_tag) {
+            $labels[] = 'a close-tag-terminated import (use A\\B ?> …) — the rewrite owns semicolon-terminated statements; end the import with a \';\'';
+        }
+        if ($saw_comment) {
+            $labels[] = 'a comment inside the use statement — the rewrite owns comment-free statement bytes; move the comment outside the statement';
+
+        }
+
+        return $labels === array() ? null : implode('; ', $labels);
     }
 
     /**
