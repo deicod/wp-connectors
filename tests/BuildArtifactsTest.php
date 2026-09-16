@@ -4335,6 +4335,39 @@ FIXTURE;
                 "<?php\nnamespace Other;\nuse namespace \\Foo;\ninterface BareKeywordFixture\n{\n}\n",
                 'outside the shared-namespace family',
             ),
+            /*
+             * OCR round 3 (t31-ocr3-4): the MID-NAME and alias-slot
+             * spellings. The keyword reaches the walk as the bare
+             * T_NAMESPACE behind a separator plus trivia (whitespace or
+             * a comment — the comment-interrupted shape arrives as the
+             * FUSED T_NAME_RELATIVE the finding names; the
+             * uninterrupted `use Foo\namespace\Bar;` spelling demotes
+             * the keyword to a plain name piece on this lexer, a LEGAL
+             * non-family import the rewrite never sees), and the splice
+             * once started AT the keyword: `use Foo\ namespace \Bar;`
+             * shipped `use Foo\ \Deicod\…` — a double-separated parse
+             * error the postcondition waved through (the glued run
+             * reports target-prefixed 'use') — at exit 0 (reproduced
+             * through the real rewriter, php -l-verified). The alias
+             * slot is the same class: a fully-qualified name spliced
+             * where the grammar wants an identifier. All three refuse —
+             * the operator is only the grammar's as the import's
+             * LEADING name (the controls above: leading fused and
+             * interrupted spellings and the function/const kinds still
+             * rewrite).
+             */
+            'mid-name keyword, space-interrupted' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Foo\\ namespace \\Clock;\ninterface MidNameRelFixture\n{\n}\n",
+                'mid-name or in the alias slot',
+            ),
+            'mid-name keyword, comment-interrupted (fused token)' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Foo\\/* c */namespace\\Clock;\ninterface MidNameRelFixture\n{\n}\n",
+                'mid-name or in the alias slot',
+            ),
+            'alias-slot keyword' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Foo as namespace\\Clock;\ninterface AliasSlotRelFixture\n{\n}\n",
+                'mid-name or in the alias slot',
+            ),
         );
         foreach ($refusals as $label => $case) {
             try {

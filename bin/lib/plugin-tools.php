@@ -388,6 +388,38 @@ function wp_connectors_next_code_token_index(array $tokens, $from)
 }
 
 /**
+ * The index of the first non-trivia token at or before a position, or
+ * null — the backward twin of wp_connectors_next_code_token_index()
+ * (OCR round 3, t31-ocr3-4).
+ *
+ * The use-rewrite walk needed to ask what code token PRECEDES a
+ * relative keyword inside an open use statement: the relative operator
+ * is only the grammar's as the import's LEADING name (directly after
+ * `use`, `use function`, or `use const`), and the judgment is
+ * positional — the previous code token says which element the keyword
+ * stands at. Hand-rolling the backward trivia walk at the consumer
+ * would be a second copy of the trivia vocabulary its forward twin
+ * owns; the twin lives beside the sibling, one owner.
+ *
+ * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
+ * @param int                                             $from   Index to start at (inclusive).
+ * @return int|null The previous code-token index, or null before the start.
+ */
+function wp_connectors_previous_code_token_index(array $tokens, $from)
+{
+    for ($i = $from; $i >= 0; --$i) {
+        $id = is_array($tokens[ $i ]) ? $tokens[ $i ][0] : null;
+        if (null !== $id && (T_WHITESPACE === $id || T_COMMENT === $id || T_DOC_COMMENT === $id)) {
+            continue;
+        }
+
+        return $i;
+    }
+
+    return null;
+}
+
+/**
  * Whether the `use` keyword token at an index OPENS a namespace import
  * statement — the closure-use fence, ONE owner since t31-r13-3.
  *

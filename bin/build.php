@@ -391,10 +391,17 @@ final class WpConnectorsBuild
      * landing on a family SIBLING the rewrite owns no spelling of, the
      * group-use PREFIX shape (`use namespace\Foo\{Bar};` — a
      * parse-error spelling whose members the rewrite owns no map for),
-     * and any relative standing inside a group BODY
+     * any relative standing inside a group BODY
      * (`use Other\{namespace\Foo};` — the grammar forbids the
      * fully-qualified member the rewrite would emit, verifier round
-     * t31-r11-9, so the rewrite owns no map for such a member either).
+     * t31-r11-9, so the rewrite owns no map for such a member either),
+     * and — since OCR round 3, t31-ocr3-4 — any relative standing
+     * MID-NAME or in the alias slot (`use Foo\ namespace \Bar;`,
+     * `use Foo as namespace\Bar;`): the splice once started at the
+     * keyword and left the preceding separator standing, so these
+     * degenerate spellings shipped double-separated parse errors at
+     * exit 0; the rewrite owns the operator only as the import's
+     * LEADING name.
      * Within the real build none of these can occur: the shared-source
      * staging gate requires every shared file to declare a namespace
      * under the tree root, so every relative resolves inside the owned
@@ -525,6 +532,11 @@ final class WpConnectorsBuild
              * spelling this step owns.
              */
             $fused = T_NAME_RELATIVE === $id;
+            // The trigger's own token index: the walk reassigns $i to
+            // the name run's end below, and the mid-name judgment (the
+            // backward walk at the bottom) must judge what precedes the
+            // KEYWORD, not what precedes the run.
+            $trigger_index = $i;
             $run_index = $i;
             if (! $fused) {
                 // The keyword's own extent starts the splice; the tail
@@ -582,6 +594,39 @@ final class WpConnectorsBuild
                 if (null !== $after_separator && '{' === $tokens[ $after_separator ]) {
                     throw new RuntimeException("build: a group-use PREFIX may not be a namespace-relative spelling ({$spelling_display}) in {$sourceVersion} — the rewrite owns no map for such a prefix's members; write the family spelling");
                 }
+            }
+
+            /*
+             * MID-NAME and alias-position keywords (OCR round 3,
+             * t31-ocr3-4): the relative operator parses only as the
+             * import's LEADING name — the previous code token inside
+             * the open statement must be the `use` keyword itself or
+             * the `function`/`const` kind keywords, judged through the
+             * backward twin of the walk's own trivia vocabulary. A
+             * keyword behind a name or separator (`use Foo\ namespace
+             * \Bar;`, and the comment-interrupted spelling of the same
+             * shape) once spliced FROM the keyword and left the preceding
+             * separator standing — `use Foo\ \Deicod\…`, a
+             * double-separated spelling the engine rejects, shipped at
+             * exit 0 through the postcondition (the glued run reports
+             * target-prefixed 'use' at its second separator) — and the
+             * alias slot (`use Foo as namespace\Bar;`) spliced a
+             * fully-qualified name where the grammar wants an
+             * identifier, the same exit-0 parse error. A mid-name
+             * relative is degenerate; the rewrite owns no map for it —
+             * refuse, the doctrine over the splice-the-whole-tail
+             * alternative (there is no legal spelling to preserve).
+             * The FUSED mid-name shape (`use Foo\namespace\Bar;`) never
+             * reaches here on this engine: after a separator the lexer
+             * demotes the keyword to a plain name piece, so that
+             * spelling is a legal import of a non-family class and
+             * rides untouched like every non-family import (probed on
+             * 8.5.10).
+             */
+            $previous = wp_connectors_previous_code_token_index($tokens, $trigger_index - 1);
+            $previous_id = null !== $previous && is_array($tokens[ $previous ]) ? $tokens[ $previous ][0] : null;
+            if (T_USE !== $previous_id && T_FUNCTION !== $previous_id && T_CONST !== $previous_id) {
+                throw new RuntimeException("build: a use statement's relative operator may not stand mid-name or in the alias slot ({$spelling_display}) in {$sourceVersion} — the splice once started at the keyword and left the preceding separator, shipping a double-separated parse error at exit 0; the rewrite owns the operator only as the import's leading name (use namespace\\… / use function|const namespace\\…), and a degenerate spelling gets no map — write the family spelling");
             }
 
             $declared_display = $declaration_in_effect($token_offset);
