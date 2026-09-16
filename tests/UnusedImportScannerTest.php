@@ -466,7 +466,8 @@ FIXTURE
         // The gate's repo-level checks need a CHANGELOG at the root.
         file_put_contents($repo . '/CHANGELOG.md', "# scratch\n");
         // A valid plugin so ONLY the unused-import verdict can fail the run.
-        $this->copyTree(__DIR__ . '/fixtures/plugins/example-connector', $repo . '/connectors/example-connector');
+        // The scratch-tree helpers are the harness's ONE pair (t31-ocr1-9).
+        WpHarness::copyTree(__DIR__ . '/fixtures/plugins/example-connector', $repo . '/connectors/example-connector');
 
         try {
             // Control: the clean shared tree is invisible to the gate.
@@ -489,55 +490,8 @@ FIXTURE
             $this->assertStringContainsString("unused import 'RuntimeException'", $message, 'The failure must be the unused-import vocabulary.');
             $this->assertStringContainsString('Clock/DeadImport.php', $message, 'The failure must name the shared source file.');
         } finally {
-            $this->removeTree($repo);
+            WpHarness::rrmdir($repo);
         }
-    }
-
-    /**
-     * Copies a directory tree (the scratch repo's fixture plugin and gate files).
-     *
-     * @param string $from Absolute source directory.
-     * @param string $to   Absolute target directory.
-     * @return void
-     */
-    private function copyTree(string $from, string $to): void
-    {
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($from, \FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($iterator as $file) {
-            if ($file->isDir()) {
-                continue;
-            }
-            $target = $to . '/' . str_replace($from . '/', '', $file->getPathname());
-            @mkdir(dirname($target), 0755, true);
-            copy($file->getPathname(), $target);
-        }
-    }
-
-    /**
-     * Removes a scratch tree (the tearDown rmdir only handles one level).
-     *
-     * @param string $dir Absolute directory.
-     * @return void
-     */
-    private function removeTree(string $dir): void
-    {
-        if (! is_dir($dir)) {
-            return;
-        }
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
-        foreach ($iterator as $item) {
-            if ($item->isDir()) {
-                @rmdir($item->getPathname());
-            } else {
-                @unlink($item->getPathname());
-            }
-        }
-        @rmdir($dir);
     }
 
     public function testADirectoryNamedPhpIsSkipped(): void

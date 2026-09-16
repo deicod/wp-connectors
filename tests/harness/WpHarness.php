@@ -435,7 +435,10 @@ final class WpHarness
     }
 
     /**
-     * Recursively removes a directory (test helper).
+     * Recursively removes a directory (test helper — the ONE scratch-tree
+     * removal owner, t31-ocr1-9: the former per-test twins diverged in
+     * error policy; the harness policy is the loud one, and every test
+     * consumes it here).
      *
      * @param string $dir Absolute directory path.
      * @return void
@@ -457,6 +460,33 @@ final class WpHarness
             }
         }
         rmdir($dir);
+    }
+
+    /**
+     * Recursively copies a directory tree's FILES (test helper — the ONE
+     * scratch-tree copy owner, t31-ocr1-9: UnusedImportScannerTest carried
+     * this private beside its own @-suppressed removeTree twin; both moved
+     * here, one error policy — LOUD, like rrmdir()'s).
+     *
+     * @param string $from Absolute source directory.
+     * @param string $to   Absolute target directory.
+     * @return void
+     */
+    public static function copyTree($from, $to)
+    {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            if ($file->isDir()) {
+                continue;
+            }
+            $target = $to . '/' . str_replace($from . '/', '', $file->getPathname());
+            if (! is_dir(dirname($target))) {
+                mkdir(dirname($target), 0755, true);
+            }
+            copy($file->getPathname(), $target);
+        }
     }
 
     /**

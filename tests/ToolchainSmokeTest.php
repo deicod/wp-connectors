@@ -157,7 +157,7 @@ final class ToolchainSmokeTest extends TestCase
     {
         $scratch = sys_get_temp_dir() . '/wpct-lint-' . getmypid();
         if (is_dir($scratch)) {
-            $this->rrmdir($scratch);
+            WpHarness::rrmdir($scratch);
         }
         mkdir($scratch . '/bin/lib', 0755, true);
         copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php');
@@ -197,33 +197,8 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertSame(1, $exit, 'A parse-broken real source still fails the lint.');
             $this->assertStringContainsString('broken-too.php', implode("\n", $output));
         } finally {
-            $this->rrmdir($scratch);
+            WpHarness::rrmdir($scratch);
         }
-    }
-
-    /**
-     * Recursively removes a directory.
-     *
-     * @param string $dir Absolute directory path.
-     * @return void
-     */
-    private function rrmdir(string $dir): void
-    {
-        if (! is_dir($dir)) {
-            return;
-        }
-        $items = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
-        foreach ($items as $item) {
-            if ($item->isDir()) {
-                rmdir($item->getPathname());
-            } else {
-                unlink($item->getPathname());
-            }
-        }
-        rmdir($dir);
     }
 
     /**
