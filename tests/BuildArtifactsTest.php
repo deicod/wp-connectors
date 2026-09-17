@@ -5705,6 +5705,29 @@ FIXTURE;
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock as C extra;\ninterface TailRiderFixture\n{\n}\n",
                 'after the alias only the terminator may follow',
             ),
+            /*
+             * The identifier-slot reserved vocabulary (the refutation
+             * lens over the round's OWN tail gate, caught in the
+             * verifier pass): 'self'/'true'/'int' lex as plain
+             * T_STRING, so the first cut of the alias grammar
+             * accepted them and the rewrite SHIPPED
+             * 'use \…\Clock as self;' — an engine-illegal alias, php
+             * -l exit 255 on the shipped bytes. Fourteen spellings,
+             * case-insensitively (php -l-derived on this engine):
+             * self/parent, the three literals, the type keywords.
+             */
+            'keyword alias: self' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock as self;\ninterface TailRiderFixture\n{\n}\n",
+                'must be one plain identifier',
+            ),
+            'keyword alias: True (case-folded)' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock as True;\ninterface TailRiderFixture\n{\n}\n",
+                'must be one plain identifier',
+            ),
+            'keyword alias: Int (case-folded type keyword)' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock as Int;\ninterface TailRiderFixture\n{\n}\n",
+                'must be one plain identifier',
+            ),
             'brace group without its separator' => array(
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors {Shared\\Clock};\ninterface TailRiderFixture\n{\n}\n",
                 'parse-error bytes ride the relative use import',

@@ -795,21 +795,36 @@ final class WpConnectorsBuild
 
                         continue;
                     }
-                    $tail_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
+                    $rider_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
 
-                    throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — the rewrite owns the statement through its terminator, and rider bytes it cannot map (here: '{$tail_display}') ship beside the rewritten name as legal-looking output the engine then rejects; the legal tail is an optional alias ('as Name') before the terminator; write the import without the rider bytes");
+                    throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — the rewrite owns the statement through its terminator, and rider bytes it cannot map (here: '{$rider_display}') ship beside the rewritten name as legal-looking output the engine then rejects; the legal tail is an optional alias ('as Name') before the terminator; write the import without the rider bytes");
                 }
                 if ('alias-identifier' === $tail_expect) {
-                    if (T_STRING !== $tail_id) {
-                        $tail_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
-
-                        throw new RuntimeException("build: the alias of a relative use import ({$spelling_display}) must be one plain identifier in {$sourceVersion} — the grammar accepts nothing else in the slot, and the rewrite refuses the spelling rather than shipping it (here: '{$tail_display}')");
+                    $rider_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
+                    /*
+                     * The identifier-slot reserved vocabulary (the
+                     * refutation lens over this round's own gate,
+                     * t31-ocr16-4): fourteen spellings lex as plain
+                     * T_STRING yet are forbidden in the alias slot —
+                     * self/parent, the three literals, and the type
+                     * keywords (php -l-derived on this engine, CASE-
+                     * INSENSITIVELY: 'as self'/'as True'/'as Int'
+                     * all refuse). Accepting them shipped the
+                     * rewritten import with the engine-illegal alias
+                     * intact — this fix's own exit-0 parse-error
+                     * class, caught by the round's verifier pass.
+                     * The fold rides the ONE ASCII owner (the
+                     * r11-6/ocr10-4 doctrine).
+                     */
+                    $reserved_alias = array('self', 'parent', 'true', 'false', 'null', 'int', 'float', 'bool', 'string', 'void', 'iterable', 'object', 'mixed', 'never');
+                    if (T_STRING !== $tail_id || in_array(wp_connectors_ascii_lower((string) $rider_display), $reserved_alias, true)) {
+                        throw new RuntimeException("build: the alias of a relative use import ({$spelling_display}) must be one plain identifier in {$sourceVersion} — the grammar accepts nothing else in the slot (a keyword spelling, case-insensitively, included), and the rewrite refuses the spelling rather than shipping it (here: '{$rider_display}')");
                     }
                     $tail_expect = 'terminator-only';
                 } elseif (! wp_connectors_is_use_statement_boundary($tail_token, $tail_id) && ',' !== $tail_token) {
-                    $tail_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
+                    $rider_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
 
-                    throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — after the alias only the terminator may follow, and rider bytes (here: '{$tail_display}') ship beside the rewritten name as legal-looking output the engine then rejects; write the import without the rider bytes");
+                    throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — after the alias only the terminator may follow, and rider bytes (here: '{$rider_display}') ship beside the rewritten name as legal-looking output the engine then rejects; write the import without the rider bytes");
                 } else {
                     $tail_expect = 'terminated';
 
