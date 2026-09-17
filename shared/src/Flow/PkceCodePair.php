@@ -32,11 +32,17 @@ final class PkceCodePair {
 	/**
 	 * RFC 7636 code verifier: unreserved charset, 43-128 characters.
 	 *
+	 * The dash sits LAST in the class (OCR round 20, t31-ocr20-7): between
+	 * `0-9` and `.` it formed the incidental range `-.` (0x2D-0x2E —
+	 * exactly the two intended bytes, so the behavior was always right,
+	 * but the intent read as an accident one edit away from a real
+	 * range).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var string
 	 */
-	const VERIFIER_PATTERN = '/^[A-Za-z0-9-._~]{43,128}\z/';
+	const VERIFIER_PATTERN = '/^[A-Za-z0-9._~-]{43,128}\z/';
 
 	/**
 	 * The code verifier (this side's secret half).
