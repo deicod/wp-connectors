@@ -96,6 +96,30 @@ final class InstantArithmetic {
 	}
 
 	/**
+	 * Whether a signed second offset would drive a timestamp above the
+	 * representable range.
+	 *
+	 * The UPPER leg of offset_in_utc()'s guard, named for exactly the
+	 * reason its underflow sibling was (OCR round 17, t31-ocr17-7,
+	 * the twin of t31-ocr2-6): the condition was hand-spelled at the
+	 * guard while its lower sibling already lived as a named predicate
+	 * every pre-check consumer shares — two legs of one invariant, one
+	 * with a single owner and one free to drift. Named now, beside the
+	 * sibling, with the same contract shape: the offset arrives
+	 * SIGNED exactly as the guard sees it, and a pre-check consumer
+	 * asks about the offset it is about to apply.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param int $timestamp Whole-seconds timestamp of the base instant.
+	 * @param int $seconds   Signed seconds of the contemplated offset.
+	 * @return bool True when the offset would leave the representable int-timestamp domain above.
+	 */
+	public static function offset_would_overflow( int $timestamp, int $seconds ): bool {
+		return $seconds > 0 && $timestamp > PHP_INT_MAX - $seconds;
+	}
+
+	/**
 	 * Applies the offset to the raw timestamp, then restores the zone.
 	 *
 	 * The arithmetic is done on the INTEGER timestamp and reconstructed
@@ -118,12 +142,12 @@ final class InstantArithmetic {
 		$timezone  = $instant->getTimezone();
 		$timestamp = $instant->getTimestamp();
 
-		// The two legs of the representability guard: overflow above,
-		// and the named underflow predicate below (t31-ocr2-6) — the
-		// predicate is the SINGLE owner of the lower condition, shared
-		// with every pre-check consumer, so the guard and the
-		// pre-checks can never disagree.
-		if ( ( $seconds > 0 && $timestamp > PHP_INT_MAX - $seconds ) || self::offset_would_underflow( $timestamp, $seconds ) ) {
+		// The two legs of the representability guard ride their named
+		// predicates — overflow above (t31-ocr17-7), underflow below
+		// (t31-ocr2-6): each predicate is the SINGLE owner of its
+		// condition, shared with every pre-check consumer, so the guard
+		// and the pre-checks can never disagree.
+		if ( self::offset_would_overflow( $timestamp, $seconds ) || self::offset_would_underflow( $timestamp, $seconds ) ) {
 			throw new InvalidArgumentException( sprintf( 'A %d-second shift leaves the representable instant range — the request is misconfigured, and the alternative is a silently wrong instant.', $seconds ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
 		}
 

@@ -293,6 +293,50 @@ final class SharedOAuthContractsPolicyTest extends WpConnectorsTestCase
         $this->assertTrue($beyond->should_refresh($set, new \DateTimeImmutable('2026-09-14T00:00:00+00:00')));
     }
 
+    /**
+     * OCR-round-17 pin (t31-ocr17-7): the guard's UPPER leg rides its
+     * own named predicate now (InstantArithmetic::offset_would_overflow(),
+     * the twin of t31-ocr2-6's underflow) — both legs of the
+     * representability invariant have a single named owner, so the
+     * guard and any future pre-check consumer can never drift. The
+     * EXACT boundary pins both sides of the flip, and the arithmetic
+     * answers the same on each side of it: at the largest
+     * representable sum the shift computes, one second further out
+     * refuses with the range rejection.
+     */
+    public function testTheOverflowLegRidesTheNamedOverflowPredicate(): void
+    {
+        // The predicate flips exactly at the boundary the guard owns:
+        // (PHP_INT_MAX - 5) + 5 is exactly PHP_INT_MAX; +6 leaves the domain.
+        $this->assertFalse(
+            InstantArithmetic::offset_would_overflow(PHP_INT_MAX - 5, 5),
+            'At sum == PHP_INT_MAX the shift is still representable — no overflow.'
+        );
+        $this->assertTrue(
+            InstantArithmetic::offset_would_overflow(PHP_INT_MAX - 5, 6),
+            'One second further out, the shift leaves the int-timestamp domain.'
+        );
+        // The sign gate: a non-positive offset never overflows via this leg
+        // (the underflow twin owns that direction).
+        $this->assertFalse(
+            InstantArithmetic::offset_would_overflow(PHP_INT_MAX, -1),
+            'A negative offset is the underflow predicate\'s direction — this leg stays silent.'
+        );
+
+        // The arithmetic answers identically on both sides of the boundary.
+        $this->assertSame(
+            PHP_INT_MAX,
+            InstantArithmetic::plus_seconds(new \DateTimeImmutable('@' . (PHP_INT_MAX - 5)), 5)->getTimestamp(),
+            'The boundary sum is PHP_INT_MAX itself, computed by the guarded arithmetic.'
+        );
+        try {
+            InstantArithmetic::plus_seconds(new \DateTimeImmutable('@' . (PHP_INT_MAX - 5)), 6);
+            $this->fail('One second past the boundary must refuse — a silently saturated instant is never the answer.');
+        } catch (\InvalidArgumentException $caught) {
+            $this->assertStringContainsString('representable instant range', $caught->getMessage(), 'The overflow refusal wears the range rejection\'s vocabulary, the same rejection the underflow leg throws.');
+        }
+    }
+
     /* ---------------------------------------------------------------
      * Retry-After capping (both provider forms share the cap).
      * ---------------------------------------------------------------
