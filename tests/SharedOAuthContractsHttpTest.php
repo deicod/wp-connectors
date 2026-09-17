@@ -414,8 +414,16 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
          * FATALS the leg with an undefined-function Error (@ cannot
          * suppress a missing function) instead of this visible skip.
          */
-        if (! self::canSpawnChildren()) {
-            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the localedef pressure locale cannot be manufactured; the LC_CTYPE pressure half did not run (the spelling pins above this point already passed).');
+        /*
+         * The guard declares the TRIPLE (OCR round 22's verifier
+         * pass, rd-2 — the t31-ocr22-4 class over this consumer):
+         * this leg putenv()s LOCPATH in the PARENT before the
+         * locale installs, so a putenv-disabled host fataled at the
+         * putenv (driven: 'Call to undefined function putenv()') —
+         * an Error mid-test, never the visible skip.
+         */
+        if (! self::canSpawnChildren('putenv')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg/putenv in disable_functions — the localedef pressure locale cannot be manufactured (the pressure leg sets LOCPATH through putenv in this very process); the LC_CTYPE pressure half did not run (the spelling pins above this point already passed).');
         }
         $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
         @mkdir($locpath, 0755, true);

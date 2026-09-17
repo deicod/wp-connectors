@@ -3317,8 +3317,13 @@ FIXTURE;
              * skips the pressure half, naming what did not run — the
              * C-locale controls above already passed.)
              */
-            if (! self::canSpawnChildren()) {
-                $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the localedef pressure locale cannot be manufactured; the locale-pressure half did not run (the C-locale controls above already passed).');
+            // The guard declares the TRIPLE (OCR round 22's verifier
+            // pass, rd-2 — the t31-ocr22-4 class over this consumer):
+            // the pressure leg putenv()s LOCPATH in the PARENT before
+            // the locale installs, so a putenv-disabled host fataled
+            // at the putenv (driven) instead of this visible skip.
+            if (! self::canSpawnChildren('putenv')) {
+                $this->markTestSkipped('This host has exec/escapeshellarg/putenv in disable_functions — the localedef pressure locale cannot be manufactured (the pressure leg sets LOCPATH through putenv in this very process); the locale-pressure half did not run (the C-locale controls above already passed).');
             }
             $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
             @mkdir($locpath, 0755, true);
@@ -5303,8 +5308,13 @@ FIXTURE;
          * undefined-function Error — @ cannot suppress it — instead of
          * the visible skip. The spelling pins above already passed.
          */
-        if (! self::canSpawnChildren()) {
-            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the localedef pressure locale cannot be manufactured; the locale-pressure half did not run (the fold-table and C-locale verdict pins above already passed).');
+        // The guard declares the TRIPLE (OCR round 22's verifier pass,
+        // rd-2 — the t31-ocr22-4 class over this consumer): the
+        // pressure leg putenv()s LOCPATH in the PARENT before the
+        // locale installs, so a putenv-disabled host fataled at the
+        // putenv (driven) instead of this visible skip.
+        if (! self::canSpawnChildren('putenv')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg/putenv in disable_functions — the localedef pressure locale cannot be manufactured (the pressure leg sets LOCPATH through putenv in this very process); the locale-pressure half did not run (the fold-table and C-locale verdict pins above already passed).');
         }
         $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
         @mkdir($locpath, 0755, true);
