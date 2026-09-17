@@ -33,7 +33,7 @@ require_once __DIR__ . '/lib/secret-scanner.php';
  * Inspects a zip archive and returns violations.
  *
  * @param string $zipPath  Absolute path to the zip.
- * @param string $workDir  Directory to extract into (created, then removed).
+ * @param string $workDir  Extraction BASE: a pre-existing tree at this path is removed, and extraction lands in a fresh uniquely-suffixed SIBLING of it (t31-ocr10-2 — never the plantable name itself), removed on every exit.
  * @return list<string> Violation messages (empty = artifact accepted).
  */
 function wp_connectors_inspect_artifact($zipPath, $workDir)
