@@ -189,7 +189,9 @@ final class DeviceAuthorizationSession {
 	 * that binds an authorization to this session at the verification
 	 * page, and a dump is a display surface, not a trust boundary. Both
 	 * mask through the one vocabulary (SecretMask::mask()); the
-	 * verification URI and the timing facts are public.
+	 * verification URI renders in its REDACTED shape (scheme://host[:port]
+	 * /path, the HttpRequest redaction seam — userinfo, query, and
+	 * fragment dropped, t31-ocr14-1) and the timing facts are public.
 	 *
 	 * Rides the same masked view as __serialize() below (OCR round 3,
 	 * t31-ocr3-1) — one vocabulary owner, both channels.
@@ -275,17 +277,38 @@ final class DeviceAuthorizationSession {
 	/**
 	 * The masked snapshot the dump and serialize channels render — the
 	 * ONE view both hooks ride (OCR round 3, t31-ocr3-1), so the two
-	 * channels cannot drift.
+	 * channels cannot drift. The verification URI renders redacted
+	 * (t31-ocr14-1): scheme://host[:port]/path only, never the
+	 * userinfo, query, or fragment a credential-carrying URI would
+	 * leak in cleartext.
 	 *
 	 * @since 0.1.0
 	 *
-	 * @return array<string, mixed> Masked codes plus the public facts, never containing the credentials.
+	 * @return array<string, mixed> Masked codes, the redacted verification URI, and the public facts, never containing the credentials.
 	 */
 	private function masked_view(): array {
+		/*
+		 * The URI renders through the ONE redaction seam the HTTP
+		 * contract owns (OCR round 14, t31-ocr14-1): the
+		 * scheme://authority/path rebuild from Url::parse_validated()
+		 * — HttpRequest::redacted_url()'s own shape — drops userinfo,
+		 * query, and fragment. A provider-supplied verification_uri
+		 * can carry credentials in any of the three (throttled
+		 * providers embed one-time tokens in the query; parse_validated
+		 * accepts userinfo by design), and the masked view rendered the
+		 * raw string verbatim — the exact cleartext class the VO's own
+		 * masking exists to prevent. The parse cannot throw here: the
+		 * constructor already validated this exact string. The RAW
+		 * property stays intact for the authorization redirect
+		 * (verification_uri() below) — the browser needs the full URI;
+		 * only the VIEW is masked.
+		 */
+		$uri = Url::parse_validated( $this->verification_uri );
+
 		return array(
 			'device_code'      => SecretMask::mask( $this->device_code ),
 			'user_code'        => SecretMask::mask( $this->user_code ),
-			'verification_uri' => $this->verification_uri,
+			'verification_uri' => $uri['scheme'] . '://' . $uri['authority'] . $uri['path'],
 			'interval_seconds' => $this->interval_seconds,
 			'expires_at'       => $this->expires_at,
 		);

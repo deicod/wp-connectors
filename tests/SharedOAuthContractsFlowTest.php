@@ -468,6 +468,35 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-14 pin (t31-ocr14-1): the verification URI renders in
+     * its REDACTED shape in both masked channels — the scheme://host[:port]
+     * /path rebuild Url::parse_validated() feeds HttpRequest's
+     * redacted_url(). A credential-carrying URI (userinfo per the HTTP
+     * contract's own constructible pin, a one-time token in the query
+     * the way throttled providers embed them) rendered its credentials
+     * in cleartext into every masked view before — the exact class the
+     * VO's masking exists to prevent. The RAW property stays intact:
+     * the authorization redirect needs the full URI, only the view is
+     * masked.
+     */
+    public function testACredentialBearingVerificationUriRendersRedactedInTheMaskedChannels(): void
+    {
+        $rawUri = 'https://user:pw@example.com:8443/device?user_code=BCJK-3502#frag';
+        $session = new DeviceAuthorizationSession(FakeSecrets::deviceCode(), 'BCJK-3502', $rawUri, 5, new \DateTimeImmutable('+10 minutes'));
+
+        foreach (array('dump' => print_r($session, true), 'serialize' => serialize($session)) as $channel => $rendered) {
+            $this->assertStringNotContainsString('user:pw', $rendered, "The userinfo never rides the masked {$channel} view.");
+            $this->assertStringNotContainsString('BCJK-3502', $rendered, "The query's token material (and the masked code's own tail) never rides the {$channel} view.");
+            $this->assertStringNotContainsString('?user_code', $rendered, "The query never rides the {$channel} view.");
+            $this->assertStringNotContainsString('#frag', $rendered, "The fragment never rides the {$channel} view.");
+            $this->assertStringContainsString('https://example.com:8443/device', $rendered, "The {$channel} view carries the URI's redacted shape (scheme, authority, path).");
+        }
+
+        // The redirect channel keeps the FULL URI — the browser needs it.
+        $this->assertSame($rawUri, $session->verification_uri(), 'The raw property is intact for the authorization redirect; only the view is masked.');
+    }
+
+    /**
      * OCR-round-6 pin (t31-ocr6-3): the carrier's label renders through
      * SecretMask::utf8_for_safe_render() — the same one rendering owner
      * StoredGrant's label leg rides (the r4-13/r8-6 doctrine at the VO
