@@ -41,7 +41,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     $violations = array();
     $zip = new ZipArchive();
     if (true !== $zip->open($zipPath)) {
-        return array( sprintf('inspect: cannot open %s as a zip archive.', basename($zipPath)) );
+        return array( sprintf('inspect: cannot open %s as a zip archive.', wp_connectors_printable(basename($zipPath))) );
     }
 
     // Forbidden entries are matched on whole path segments/files, so entries
@@ -321,7 +321,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          */
         $zip = new ZipArchive();
         if (true !== $zip->open($zipPath)) {
-            $violations[] = sprintf('inspect: cannot open %s as a zip archive for independent extraction.', basename($zipPath));
+            $violations[] = sprintf('inspect: cannot open %s as a zip archive for independent extraction.', wp_connectors_printable(basename($zipPath)));
 
             return $violations;
         }
@@ -358,7 +358,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         if (true !== $extracted) {
             $violations[] = sprintf(
                 'inspect: cannot extract %s — %s; the artifact is judged whole or not at all, never over a partial extraction tree.',
-                basename($zipPath),
+                wp_connectors_printable(basename($zipPath)),
                 '' !== $extract_reason ? $extract_reason : 'extraction returned failure without a diagnostic'
             );
 
@@ -553,6 +553,6 @@ if (wp_connectors_cli_entry(__FILE__)) {
     foreach ($violations as $violation) {
         fwrite(STDERR, $violation . "\n");
     }
-    printf("inspect: %s %s (%d violation(s))\n", basename($zipPath), $violations === array() ? 'ACCEPTED' : 'REJECTED', count($violations));
+    printf("inspect: %s %s (%d violation(s))\n", wp_connectors_printable(basename($zipPath)), $violations === array() ? 'ACCEPTED' : 'REJECTED', count($violations));
     exit($violations === array() ? 0 : 1);
 }
