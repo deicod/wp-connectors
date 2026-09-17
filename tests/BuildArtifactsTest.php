@@ -3130,9 +3130,18 @@ FIXTURE;
                 $violations = wp_connectors_inspect_artifact($hostileZip, self::distDir() . '/.inspect-deventry-hostile');
                 $this->assertNotSame(array(), $violations, 'A crafted zip carrying any development-entry spelling must reject.');
                 $report = implode("\n", $violations);
-                $this->assertStringContainsString('phpunit.cache/cached.xml', $report);
-                $this->assertStringContainsString('.phpunit.cache/cached.xml', $report);
-                $this->assertStringContainsString('webpack.config.js', $report);
+                /*
+                 * Quote-bounded full paths (t31-ocr11-17): the bare
+                 * 'phpunit.cache/cached.xml' fragment was satisfied by
+                 * the DOTTED twin's line alone ('.phpunit.cache/
+                 * cached.xml' CONTAINS it), so the dotless spelling
+                 * the round fixed was never independently pinned — a
+                 * dotless-miss regression passed. The refusal line
+                 * quotes the entry name; the quote is the boundary.
+                 */
+                $this->assertStringContainsString('"deventry-demo/phpunit.cache/cached.xml"', $report, 'The DOTLESS cache spelling is named on its own line — never as the dotted twin\'s substring.');
+                $this->assertStringContainsString('"deventry-demo/.phpunit.cache/cached.xml"', $report, 'The dotted cache spelling is named on its own line.');
+                $this->assertStringContainsString('"deventry-demo/webpack.config.js"', $report, 'The bundler config spelling is named on its own line.');
             } finally {
                 @unlink($hostileZip);
                 @unlink($hostileZip . '.sha256');
