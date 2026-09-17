@@ -141,7 +141,15 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             );
             $this->assertSame('FAIL', $verdict['class'], 'A corrupt artifact is a FAIL row, never an assertion abort or an engine ValueError.');
             $this->assertStringContainsString('could not reopen the artifact', $verdict['why'], 'The row names its owner: the independent-extraction reopen gate.');
-            $this->assertStringContainsString('19', $verdict['why'], 'The row names the ER_* return (19 = ER_NOZIP on a corrupt archive).');
+            /*
+             * The return is pinned by its CONSTANT, never its numeric
+             * literal (t31-ocr20-9): '19' coupled the row to this
+             * engine's libzip mapping — the stable spelling of the
+             * contract is ZipArchive::ER_NOZIP, the enum the engine
+             * itself defines (same value here; a mapping change would
+             * move the constant with it, not the literal).
+             */
+            $this->assertStringContainsString((string) ZipArchive::ER_NOZIP, $verdict['why'], 'The row names the ER_* return (ER_NOZIP on a corrupt archive).');
         } finally {
             WpHarness::rrmdir($scratch['root']);
         }
