@@ -540,6 +540,59 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-10 verifier-pass pin (t31-ocr10-17): the unique-dir
+     * retry loop's own failure premise is CAPTURED, never leaked — on
+     * an unwritable parent each of the 16 retries once raised a RAW
+     * 'mkdir(): Permission denied' warning to output (driven pre-fix,
+     * 16 lines of it) before the polite refusal printed. The r12-19
+     * capture doctrine (one screen below, for extractTo()) now rides
+     * the loop that shares its screen: zero leaked bytes with
+     * display_errors forced on, and the refusal names the captured
+     * reason. Root-runner skip: uid 0 writes through 0555, the
+     * refusal cannot fire (the t31-ocr4-1 guard).
+     */
+    public function testTheUniqueDirRetryLoopCapturesItsOwnFailure(): void
+    {
+        if (self::runningAsRootRunner()) {
+            $this->markTestSkipped('chmod-0555 does not block writes for uid 0 — the unwritable-parent refusal cannot fire in a root container (t31-ocr4-1).');
+        }
+        $scratch = self::distDir() . '/.inspect-mkdir-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/parent', 0755, true);
+        chmod($scratch . '/parent', 0555);
+        $slug = 'mkdirexhaust-demo';
+        $zipPath = $scratch . "/connectors-{$slug}-1.0.0.zip";
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString("{$slug}/{$slug}.php", "<?php\n");
+        $zip->close();
+
+        try {
+            $level = error_reporting(E_ALL);
+            $display = ini_set('display_errors', '1');
+            ob_start();
+            try {
+                $violations = wp_connectors_inspect_artifact($zipPath, $scratch . '/parent/sub');
+                $leaked = (string) ob_get_contents();
+            } finally {
+                ob_end_clean();
+                ini_set('display_errors', (string) $display);
+                error_reporting($level);
+            }
+
+            $this->assertSame('', $leaked, 'The retry loop\'s raw mkdir() warnings must not leak to output — the refusal names the captured reason instead.');
+            $this->assertCount(1, $violations, 'The creation refusal is the one verdict: ' . implode("\n", $violations));
+            $this->assertStringContainsString('cannot create a unique extraction directory', $violations[0]);
+            $this->assertStringNotContainsString("\n", $violations[0], 'The captured reason renders through the printable seam — no raw newlines.');
+        } finally {
+            chmod($scratch . '/parent', 0755);
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * OCR-round-10 pin (t31-ocr10-2, security): the extraction dir is
      * UNIQUE-OWNED — the WRITE half of the planted-link threat
      * t31-ocr9-10 closed for deletion. The workDir spellings are fixed
@@ -551,8 +604,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      * tree). A random unique suffix cannot be pre-planted.
      */
     public function testTheExtractionDirectoryIsUniqueOwnedNeverAPlantedName(): void
-    {
-        $scratch = self::distDir() . '/.inspect-unique-' . getmypid();
+    {        $scratch = self::distDir() . '/.inspect-unique-' . getmypid();
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }

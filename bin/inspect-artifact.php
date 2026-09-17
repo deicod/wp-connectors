@@ -251,15 +251,39 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
      * stays as depth. mkdir() is the race-free creation (a pre-existing
      * name of any kind fails it, retried on a fresh suffix).
      */
+    /*
+     * The retry loop's own failure premise is CAPTURED, never leaked
+     * (t31-ocr10-17, the verifier's refutation lens — the r12-19
+     * doctrine one screen below, applied to the loop that shares its
+     * screen): on an unwritable parent the 16 retries each raised a
+     * RAW 'mkdir(): Permission denied' warning to output before the
+     * polite refusal printed (driven). The capture is
+     * exception-safe (the r12-20 finally) and the refusal names the
+     * captured reason through the printable seam.
+     */
     $extractDir = '';
-    for ($attempt = 0; $attempt < 16 && '' === $extractDir; ++$attempt) {
-        $candidate = $workDir . '-' . bin2hex(random_bytes(8));
-        if (mkdir($candidate, 0755, true)) {
-            $extractDir = $candidate;
+    $create_reason = '';
+    set_error_handler(static function ( $errno, $errstr ) use ( &$create_reason ) {
+        $create_reason = wp_connectors_printable((string) $errstr);
+
+        return true;
+    });
+    try {
+        for ($attempt = 0; $attempt < 16 && '' === $extractDir; ++$attempt) {
+            $candidate = $workDir . '-' . bin2hex(random_bytes(8));
+            if (mkdir($candidate, 0755, true)) {
+                $extractDir = $candidate;
+            }
         }
+    } finally {
+        restore_error_handler();
     }
     if ('' === $extractDir) {
-        $violations[] = sprintf('inspect: cannot create a unique extraction directory under %s — the artifact is judged whole or not at all.', wp_connectors_printable($workDir));
+        $violations[] = sprintf(
+            'inspect: cannot create a unique extraction directory under %s — %s; the artifact is judged whole or not at all.',
+            wp_connectors_printable($workDir),
+            '' !== $create_reason ? $create_reason : 'creation returned failure without a diagnostic'
+        );
 
         return $violations;
     }
