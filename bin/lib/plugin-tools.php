@@ -933,8 +933,12 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                              * silence). An empty group statement reports
                              * its prefix; every legal body (a member, an
                              * aliased member, a function/const member)
-                             * reports at least one name and never trips
-                             * the fence.
+                             * reports at least one name, and a body of
+                             * only non-composing members (absolute-only,
+                             * t31-ocr11-4) carries no composed spelling
+                             * for the prefix — the fence trips there
+                             * too, and the prefix reports itself,
+                             * judged exactly once.
                              */
                             $references[] = array(
                                 'name' => $group_prefix_display,
@@ -1077,9 +1081,24 @@ function wp_connectors_name_references_from_tokens(array $tokens)
         }
         $declaration_pending = false;
 
-        // A reported name inside an open group statement is a MEMBER —
-        // the empty-body fence below rides the flag.
-        if ($use_open && null !== $group_prefix && ! $adaptation_block) {
+        /*
+         * The fence arms only on a member the prefix actually COMPOSED
+         * (OCR round 11, t31-ocr11-4): an ABSOLUTE member deliberately
+         * reports un-composed (t31-r10-9) and a RELATIVE one resolves
+         * against the declaration, never the prefix (t31-ocr11-1) —
+         * either once armed the flag, so a body nothing composes kept
+         * the fence silent and the PREFIX's own spelling was judged
+         * nowhere: `use Deicod\WpConnectors\{\Zai\Api};` reported only
+         * `Zai\Api` while the family-spelled prefix itself went
+         * unreported through every gate (driven red at HEAD: zero
+         * family references). Arming on composition keeps ONE verdict
+         * path: a composed member carries the prefix's spelling into
+         * its own report (`Prefix\Member` — the family predicate
+         * judges it there), and a body nothing composes (empty,
+         * absolute-only, relative-only, qualified-alias-only) trips
+         * the fence and the prefix reports itself.
+         */
+        if ($use_open && null !== $group_prefix && ! $adaptation_block && ! $is_absolute_run && ! $is_relative_run && ! $alias_position) {
             $group_member_seen = true;
         }
 

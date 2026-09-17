@@ -4670,6 +4670,49 @@ FIXTURE;
     }
 
     /**
+     * OCR round 11 (t31-ocr11-4): the empty-body fence armed on ANY
+     * reported member — including an ABSOLUTE member deliberately NOT
+     * composed (t31-r10-9) — so a body nothing composes kept the fence
+     * silent and the GROUP PREFIX's own spelling was judged nowhere:
+     * `use Deicod\WpConnectors\{\Zai\Api};` reported only `Zai\Api`
+     * while the family-spelled prefix went unreported through every
+     * gate (driven red at HEAD: zero family references). The fence
+     * arms on COMPOSITION now — one verdict path: a composed member
+     * carries the prefix's spelling into its own report, and a body
+     * nothing composes trips the fence and the prefix reports itself.
+     */
+    public function testAGroupPrefixWithOnlyNonComposingMembersReportsThePrefix(): void
+    {
+        // (a) THE REPRO: an absolute-only body — the prefix reports
+        // itself (red at HEAD: the absolute member armed the fence and
+        // the family prefix never reported).
+        $absolute_only = "<?php\nnamespace Deicod;\nuse Deicod\\WpConnectors\\{\\Zai\\Api};\ninterface AbsoluteOnlyFixture\n{\n}\n";
+        $found = wp_connectors_shared_family_references($absolute_only);
+        $this->assertContains(array( 'name' => 'Deicod\\WpConnectors', 'lower' => 'deicod\\wpconnectors', 'kind' => 'use' ), array_map(static function (array $reference): array {
+            return array( 'name' => $reference['name'], 'lower' => $reference['lower'], 'kind' => $reference['kind'] );
+        }, $found), 'A family-spelled group PREFIX with a body nothing composes reports itself — the prefix is never laundered by its own members.');
+
+        // (b) Control, the composed half of the one verdict path: a
+        // composed member carries the prefix's spelling and the prefix
+        // does NOT report separately.
+        $composed = "<?php\nnamespace Deicod;\nuse Deicod\\WpConnectors\\{Zai\\Api};\ninterface ComposedFixture\n{\n}\n";
+        $found = wp_connectors_shared_family_references($composed);
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\Zai\\Api', 'use' ) ), array_map(static function (array $reference): array {
+            return array( $reference['name'], $reference['kind'] );
+        }, $found), 'A composed member is the prefix\'s one carrier — the composed name reports, the prefix never reports twice.');
+
+        // (c) The relative-only body rides BOTH doctrines (t31-ocr11-1
+        // + this round): the member resolves against the declaration
+        // (un-composed, kind 'relative'), and the prefix — composed
+        // with nothing — reports itself.
+        $relative_only = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{namespace\\Clock};\ninterface RelativeOnlyFixture\n{\n}\n";
+        $found = wp_connectors_shared_family_references($relative_only);
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\Shared', 'declaration' ), array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( 'Deicod\\WpConnectors', 'use' ) ), array_map(static function (array $reference): array {
+            return array( $reference['name'], $reference['kind'] );
+        }, $found), 'A relative-only body reports the resolved member AND the prefix (the file\'s own declaration beside them) — nothing composes, everything is judged.');
+    }
+
+    /**
      * OCR round 5 (t31-ocr5-1): the INTERRUPTED relative operator in a
      * CODE position — `$x = namespace \WpConnectors\Shared\Clock;`, the
      * keyword separated from its '\' — is a parse error the engine never
