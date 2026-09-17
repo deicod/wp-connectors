@@ -811,8 +811,24 @@ abstract class WpConnectorsTestCase extends TestCase
             )
         );
         $names = array();
-        for ($i = 0; $i < $zip->numFiles; ++$i) {
-            $names[] = $zip->getNameIndex($i);
+        /*
+         * Every name read is GATED (OCR round 11, t31-ocr11-10):
+         * getNameIndex() returns string|false — a malformed central
+         * directory hands back false, which violated the list<string>
+         * contract and coerced/dropped silently downstream. A false
+         * FAILS loudly naming the index and the file count (the raw
+         * return the engine can explain on this build —
+         * ZipArchive::lastErrorCode() is not compiled here, the
+         * ocr10-16 finding), never a coerced list.
+         */
+        $count = (int) $zip->numFiles;
+        for ($i = 0; $i < $count; ++$i) {
+            $name = $zip->getNameIndex($i);
+            if (false === $name) {
+                $zip->close();
+                $this->fail(sprintf('The zip must name every entry: getNameIndex(%1$d) returned false over %2$d file(s) — a malformed central directory, never a coerced list<string> (t31-ocr11-10).', $i, $count));
+            }
+            $names[] = $name;
         }
         $zip->close();
 
