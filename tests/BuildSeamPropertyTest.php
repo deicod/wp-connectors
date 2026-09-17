@@ -55,6 +55,18 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      */
     public function testThePublicationInvariantHoldsOverEveryAdversarialBuildState(): void
     {
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this consumer): every state's soundness walk
+         * php -l's each shipped entry through a spawned engine, and
+         * on a disable_functions host the first loop iteration was an
+         * undefined-function \Error mid-battery. The probe sits at
+         * the TEST, once — never one skip per state iteration.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the battery\'s soundness walk cannot run (every state\'s php -l loop rides a child process); the publication invariant half did not run.');
+        }
+
         $failures = array();
         $run = array( 'CLEAN' => 0, 'LOUD' => 0 );
 
@@ -932,6 +944,19 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      */
     public function testRequiringTheBuildAndInspectFilesNeverFlipsDisplayErrors(): void
     {
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this consumer — five spawn sites, one guard):
+         * every leg of this pin (the display_errors require, both GPC
+         * guards, the forged-name refusal, the scan-secrets sweep)
+         * verdicts through a spawned engine, and on a
+         * disable_functions host the first spawn was an
+         * undefined-function \Error before a single verdict.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the require-side legs cannot run (all five entry-script probes spawn child processes).');
+        }
+
         $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/build.php'), true) . ';'
             . ' require ' . var_export(realpath(__DIR__ . '/../bin/inspect-artifact.php'), true) . ';'
             . ' require ' . var_export(realpath(__DIR__ . '/../bin/lint-php.php'), true) . ';'

@@ -423,6 +423,17 @@ FIXTURE
      */
     public function testTheTrailingCommentFlagMessagePrintsTheCleanQualifiedName(): void
     {
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this child-process consumer): the STDERR
+         * channel is captured through a spawned engine, and on a
+         * disable_functions host the first spawn was an
+         * undefined-function \Error instead of the visible skip.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the STDERR-channel message leg cannot run (the clean-name verdict rides a child process).');
+        }
+
         file_put_contents($this->root . '/fixture.php', "<?php\nuse Vendor\\Pkg\\DeadThing /* note */;\n");
 
         $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/check-conventions.php'), true) . ';'
@@ -457,6 +468,18 @@ FIXTURE
      */
     public function testTheConventionsGateScansTheSharedSourceTree(): void
     {
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this child-process consumer): both gate runs
+         * (clean control and planted dead import) spawn the scratch
+         * repo's check-conventions.php through a child process, and
+         * on a disable_functions host the first spawn was an
+         * undefined-function \Error instead of the visible skip.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the scratch-repo gate legs cannot run (both verdicts ride child processes).');
+        }
+
         $repo = sys_get_temp_dir() . '/wp-connectors-conventions-shared-' . uniqid('', true);
         mkdir($repo . '/bin/lib', 0755, true);
         mkdir($repo . '/shared/src/Clock', 0755, true);

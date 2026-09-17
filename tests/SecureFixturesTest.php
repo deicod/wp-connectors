@@ -279,6 +279,17 @@ final class SecureFixturesTest extends WpConnectorsTestCase
      */
     public function testRequiringOnlyTheScannerLibraryScansAndPrunes()
     {
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this child-process consumer): the
+         * fresh-process load pattern rides a spawned engine, and on a
+         * disable_functions host the spawn was an undefined-function
+         * \Error instead of the visible skip.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the fresh-process leg cannot run (the scanner loads through a spawned engine).');
+        }
+
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
         $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-only-' . getmypid() . '-' . bin2hex(random_bytes(4));
