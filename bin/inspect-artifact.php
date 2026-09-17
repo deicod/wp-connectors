@@ -555,7 +555,13 @@ if (wp_connectors_cli_entry(__FILE__)) {
     }
     $zipPath = (string) $cliArgs[1];
     if (! is_file($zipPath)) {
-        fwrite(STDERR, "inspect: no such file: {$zipPath}\n");
+        // The path rides the printable seam (t31-ocr11-25, the round's
+        // verifier lens over ocr11-13's sweep): basename() spellings
+        // already ride it, and this full-path line is the same
+        // caller-controlled class — a newline in the argument once
+        // forged a verdict-lookalike line in the inspector's own
+        // STDERR (driven by the lens).
+        fwrite(STDERR, 'inspect: no such file: ' . wp_connectors_printable($zipPath) . "\n");
         exit(2);
     }
     $violations = wp_connectors_inspect_artifact($zipPath, sys_get_temp_dir() . '/wp-connectors-inspect-' . getmypid());

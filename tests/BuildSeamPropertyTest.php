@@ -882,6 +882,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertSame(2, $gpcExit, 'Under variables_order=GPC the CLI guard still fires — never a silent exit-0 no-op.');
         $this->assertStringContainsString('no such file', implode("\n", $gpcOutput));
 
+        /*
+         * OCR round 11 (t31-ocr11-25): the guard's no-such-file line
+         * interpolated the RAW caller path — basename() spellings
+         * already rode the printable seam (ocr11-13), and this
+         * full-path line is the same class one screen above: driven by
+         * the lens, a newline in the argument forged a
+         * verdict-lookalike line in the inspector's own STDERR. The
+         * line rides the seam now (the forged text stays on the
+         * refusal's own line, every control a space).
+         */
+        $forgedArg = "/no-such\ninspect: totally-legit.zip ACCEPTED (0 violation(s))\n.zip";
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(realpath(__DIR__ . '/../bin/inspect-artifact.php')) . ' ' . escapeshellarg($forgedArg) . ' 2>&1', $forgedOutput, $forgedExit);
+        $this->assertSame(2, $forgedExit, 'The forged-name refusal still exits 2.');
+        $this->assertStringNotContainsString("\ninspect: totally-legit", implode("\n", $forgedOutput), 'A newline in the caller path cannot START a verdict line — the guard line rides the printable seam.');
+
         exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg(realpath(__DIR__ . '/../bin/lint-php.php')) . ' 2>&1', $gpcLintOutput, $gpcLintExit);
         $this->assertSame(0, $gpcLintExit);
         $this->assertStringContainsString('file(s) checked', implode("\n", $gpcLintOutput), 'The lint still runs its walk under GPC.');
