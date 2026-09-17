@@ -3957,6 +3957,20 @@ FIXTURE;
 
         $pid_file = $scratch . '/live-pid.txt';
         try {
+            /*
+             * $live initializes NULL before the spawn (t31-ocr21 pass,
+             * verifier sc-1): proc_open() reports every environmental
+             * refusal as an E_WARNING plus false, and under this
+             * harness's failOnWarning the warning THROWS at the call —
+             * before the assignment — so an uninitialized $live reached
+             * the finally's null-guard as an undefined-variable error
+             * thrown FROM the finally, unwinding past the rrmdir the
+             * try exists to reach (the verifier's exact-shape probe:
+             * the sentinel tree outlives the run). Null-initialized,
+             * the warn-throw unwinds through the reap-guard (nothing
+             * spawned to reap) into the rrmdir on every exit path.
+             */
+            $live = null;
             $live_pipes = array();
             $live = proc_open(
                 'exec ' . escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('file_put_contents(' . var_export($pid_file, true) . ', (string) getmypid()); sleep(60);'),
