@@ -6,6 +6,146 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 16)
+
+Sixteenth OCR-tool round (62/62, complete): 33 findings, raw count but
+~15 distinct classes (9 ungated-write sites + 3 staging-leak heads +
+2 exec-guard heads + 5 doc-glitch singles inflate the raw figure) —
+driver triage accepted all. The substantive core: one security:high
+(the inspector's edge-junk `'..'` bypass), one test:high whose premise
+the round REFUTED on the runner (the `var_export()` enum pin), three
+bug:medium, and the tail of low test/doc hygiene. Fixed as
+t31-ocr16-1..15 — one commit per finding (classes folded: the ×16
+ungated writes in one census commit; the ×2 exec and ×2
+staging/pid heads one commit each; the seven tail singles batched
+where doctrinal), twenty commits including the verifier-pass close,
+the full offline check green after every commit. Trajectory
+27→10→11→7→11→33 — the spike is the audit shape: the round censused
+the test-hygiene classes prior doctrines had named but never driven to
+zero. The two-lens verifier pass: the refutation lens caught ONE
+surviving counterexample in the round's own tail gate (keyword aliases
+that lex as plain `T_STRING`) plus the closure's own variable
+collision, both closed in-round; the correctness lens re-drove every
+red at the pre-fix sources and ran a 6-probe boundary battery — zero
+false refusals, zero fix findings. Suite 1645 → 1650 tests,
+45385 → 45446 assertions (every per-commit delta measured from
+output), 2 skipped unchanged.
+
+- **The `'..'` traversal refusal owns every spelling that RESOLVES to
+  `'..'` (t31-ocr16-1, security:high)** — the byte-exact segment
+  check judged only the plain `'..'` while the duplicate fence's own
+  edge-junk vocabulary knows the trailing junk collapses: `'.. '`
+  (trailing space) and `'...'` (dots-only run) are the PARENT token
+  to every path-normalizing host, and a zip carrying them judged at 0
+  traversal violations (driven on a scratch zip). The refusal re-rides
+  the ONE edge-junk owner's class, derived (class minus the dot — the
+  dot is stripped and counted as the run's own byte): trailing
+  space/control junk first, the LEADING side stays, then a dots-only
+  remainder of two or more dots refuses — `'.'`, `'x..'`, `'..x'`,
+  `'a.b'` judge as content (twelve boundary spellings unit-probed).
+- **The `var_export()` enum pin is green and its engine premise is
+  pinned (t31-ocr16-2, refutation of record)** — the claim that
+  var_export() throws on enums since 8.1 is false on this runner and
+  per the engine record (the 8.1-era defect was the missing leading
+  backslash, corrected in 8.2.0 — the project floor); the export
+  carries the raw token and eval refuses through the nested set's
+  `__set_state()` (driven). One premise assertion now fails as itself
+  if an engine ever stops exporting enums — never as an opaque
+  mid-leg Error.
+- **The corrupt-artifact FAIL row is reachable and unmasked
+  (t31-ocr16-3, bug:medium)** — the classifyClean reopen branch sat
+  below the shared zipEntryNames owner (whose open gate aborts the
+  battery as a raw assertion on any corrupt zip) and carried
+  `close()` on the never-opened handle (a ValueError on PHP ≥ 8,
+  probed). The soundness reopen owns the first zip judgment now
+  (a pure block relocation — no existing verdict moved), and the
+  failure arm closes only a handle that opened.
+- **The relative-use splice owns the statement tail
+  (t31-ocr16-4, bug:medium)** — `use namespace\Clock SystemClock;`
+  shipped at exit 0 as legal-looking output with the parse-error
+  rider intact beside the rewritten name (php -l rejected the shipped
+  line, driven). The tail is judged through the lexer's own
+  boundaries: optional `as` + one plain identifier, terminated by the
+  ONE boundary set or a comma (a comma-listed member rewrites in
+  place, pinned green); anything else refuses naming the rider bytes.
+  The verifier pass closed the round's own first cut twice: keyword
+  aliases that lex as plain `T_STRING` (`as self`/`as True`/`as Int`)
+  now refuse through a php -l-derived fourteen-word identifier-slot
+  vocabulary (case-insensitive, the ASCII owner's fold), and the
+  closure's `$tail_display` name collision (which silently dropped
+  every aliased import's last below-root segment) is dead — the
+  walk's variable is `$rider_display`.
+- **The ancestor walk's `'/'` sentinel refuses (t31-ocr16-5,
+  bug:medium)** — an all-nonexistent target chain walked to the
+  sentinel, passed every guard, and died in raw mkdir()/copy()
+  warnings at the filesystem root's first level, RETURNING NORMALLY
+  having moved nothing (driven). The sentinel gets its siblings'
+  vocabulary: a policy refusal naming the chain, before the iterator.
+- **A dangling symlink in the target chain refuses with the policy
+  vocabulary (t31-ocr16-6, bug:low)** — the walk stops at the link,
+  `is_file()` follows it (false), realpath answers false, and the
+  landing once died through the link in raw engine warnings with a
+  normal return (driven). Link-to-FILE keeps the file verdict,
+  link-to-DIR keeps resolving through realpath (the alias doctrine);
+  the dangling twin refuses as a malformed chain first.
+- **`\u{0}` resolves to the NUL byte (t31-ocr16-7, bug:low)** — the
+  exclusive `> 0` range guard kept the literal `\u{0}` bytes in the
+  value; the range is `>= 0` WITH a digit-presence term, so the
+  empty-braces `\u{}` (a compile error the engine never resolves)
+  and the over-range spellings stay literal — both boundaries pinned.
+- **The empty-tails sibling pattern is the baseline
+  (t31-ocr16-8, maintainability:low)** — an empty `$excluded_tails`
+  built the exclusion lookahead over an EMPTY alternation, and the
+  pattern silently refused every stem+continuation spelling (the
+  separator-position artifact, driven); the clause exists only when a
+  tail does, pinned with the with-tails control.
+- **The interrupted relative operator's separator is REQUIRED
+  (t31-ocr16-9, maintainability:low)** — `use namespace Clock;` (a
+  parse error php -l rejects) was silently rewritten into a legal
+  import at exit 0 (driven). The gate owns BOTH lexer spellings the
+  separator arrives in: the standalone token behind a comment, and
+  the one baked into a fully-qualified piece after a whitespace
+  interruption — every interrupted row and the fused/aliased/
+  function/const controls unchanged.
+- **The classifier's brace stack survives interpolation
+  (t31-ocr16-10, bug:low)** — `"{$a}"` lexes T_CURLY_OPEN plus a
+  plain `'}'`, and the plain closer popped a frame never pushed: the
+  stack ran one short per interpolation, and a trait clause list
+  after an interpolation-bearing method wore the import-list errand
+  (driven). Interpolation openers push their own frame on both
+  spellings; the trait verdict is the twins' shared doctrine again.
+- **The by-value capture premise refuted, the shape pinned
+  (t31-ocr16-11, test:low)** — a by-value closure `use` capture
+  re-initializes per call (probed; the described mutation is
+  by-reference semantics the site never carried). The closure derives
+  from the untouched source per call and the provider gains the
+  second `$without` row pinning two consecutive calls end-to-end.
+- **The exec-capability doctrine reaches the lint drivers
+  (t31-ocr16-12, test:medium)** — under `disable_functions(exec)` the
+  first child-process call was an undefined-function Error (driven at
+  HEAD); both drivers skip visibly at the gate now, and the
+  exclusions driver's skip message states plainly that the
+  still-fails controls verdict through a spawned engine too — the
+  canSymlink promise is only reached on hosts where it holds.
+- **The SharedOAuthArchitectureTest write census reads ALL GATED
+  (t31-ocr16-13, test:low)** — sixteen ungated fixture writes
+  converted (the census lists every site; the four prior gates kept):
+  a failed write left its probe EMPTY and every leg failed with a
+  misleading verdict instead of naming the write.
+- **The lint drivers' scratch trees are random-suffixed and staged
+  inside the try (t31-ocr16-14, test:low)** — the pid-only names were
+  the pre-plantable spelling and the staging rode outside the owning
+  finally; zero leaked trees verified after the run.
+- **The seven tail singles (t31-ocr16-15, test/documentation:low)**
+  — the battery row-shape docblocks carry the skip flags and the
+  'SKIP' verdict; the inspector's `@param` names the unique-sibling
+  extraction contract; the exactly-once patch claim is a real
+  substr_count pin; the capture-handler pin matches STRUCTURE by
+  regex (variable-token-proof); the brace-line glitch and the
+  four-backslash fixture row are aligned with their siblings; the
+  short-write wrapper's `url_stat()` answers the protocol's `false`
+  (stat unavailable), adjudicated over the ledger option.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 15)
 
 Fifteenth OCR-tool round (62/62, complete): 11 findings, driver triage

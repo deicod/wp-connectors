@@ -2329,6 +2329,150 @@ OCR-tool round
   verdict — no pin
   lost), 2 skipped
   unchanged.
+OCR-tool round
+  t31-ocr16 (twenty
+  commits — the
+  sixteenth pass,
+  62/62 complete,
+  33/33 findings
+  accepted, raw 33
+  but ~15 distinct
+  classes: 9
+  ungated-write
+  sites + 3
+  staging leaks +
+  2 exec guards +
+  5 doc-glitch
+  singles inflate
+  the count; the
+  trajectory
+  27→10→11→7→11→33
+  is the audit
+  shape — the
+  round censused
+  the test-hygiene
+  classes prior
+  doctrines named
+  but never drove
+  to zero): the
+  substantive
+  closes are the
+  security:high
+  edge-junk '..'
+  bypass (the
+  traversal
+  refusal now owns
+  every spelling
+  that RESOLVES to
+  '..' — trailing
+  junk stripped,
+  dots-only runs of
+  two or more
+  counted, twelve
+  boundary
+  spellings
+  unit-probed, the
+  pre-fix zip
+  judged at 0
+  traversal
+  violations), a
+  REFUTED test:high
+  premise (the
+  var_export enum
+  pin is green on
+  every supported
+  engine — the 8.1
+  defect was the
+  missing
+  backslash,
+  fixed in 8.2.0,
+  the project
+  floor; the
+  engine premise
+  is now pinned as
+  itself), and
+  three bug:medium
+  (the classify
+  Clean reopen
+  gate hoisted to
+  own the
+  corrupt-artifact
+  FAIL row, its
+  ValueError
+  close dead; the
+  relative-use
+  tail riders
+  judged through
+  the lexer's own
+  boundaries with
+  the comma list
+  green and the
+  keyword-alias
+  vocabulary
+  php-l-derived;
+  the ancestor
+  walk's '/'
+  sentinel
+  refusing before
+  the iterator).
+  The round's TWO
+  REFUTED PREMISES
+  derived before
+  any fix
+  (var_export
+  throws on enums;
+  by-value use
+  captures mutate
+  across calls —
+  both false,
+  probed, ledgered
+  with re-open
+  rules). The
+  two-lens
+  verifier pass:
+  refutation
+  caught ONE
+  surviving
+  counterexample
+  in the round's
+  OWN tail gate
+  (keyword aliases
+  lexing as plain
+  T_STRING) and
+  the closure's
+  $tail_display
+  collision
+  (silently
+  dropping every
+  aliased import's
+  last below-root
+  segment), both
+  closed
+  in-round;
+  correctness
+  re-drove every
+  red at the
+  pre-fix sources
+  and ran a
+  6-probe boundary
+  battery — zero
+  false refusals,
+  zero fix
+  findings. Suite
+  1645 → 1650
+  tests,
+  45385 → 45446
+  assertions
+  (every per-
+  commit delta
+  measured from
+  output; the
+  class-only
+  commits moved
+  zero by
+  construction), 2
+  skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
