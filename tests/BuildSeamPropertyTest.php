@@ -641,7 +641,14 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             file_put_contents($staged, "<?php\n// staged\n");
             $addTemp = $scratch['dist'] . '/.add-probe.zip';
             $zip = new ZipArchive();
-            $this->assertTrue($zip->open($addTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+            $this->assertTrue(
+                true === ($opened = $zip->open($addTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+                sprintf(
+                    '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr10-16).',
+                    $addTemp,
+                    var_export($opened, true)
+                )
+            );
             $this->assertTrue($zip->addFile($staged, 'staged-source.php'));
             unlink($staged);
             $addReportedFailure = true !== @$zip->addFile($staged, 'vanished-source.php');
@@ -664,7 +671,14 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             $closeTemp = $scratch['dist'] . '/.close-probe.zip';
             file_put_contents($staged, "<?php\n// staged\n");
             $zip = new ZipArchive();
-            $this->assertTrue($zip->open($closeTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+            $this->assertTrue(
+                true === ($opened = $zip->open($closeTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+                sprintf(
+                    '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr10-16).',
+                    $closeTemp,
+                    var_export($opened, true)
+                )
+            );
             $this->assertTrue($zip->addFile($staged, 'staged-source.php'));
             // Root-runner skip (t31-ocr4-1), consumed BEFORE the chmod:
             // uid 0 reads the staged source through mode 0000, close()

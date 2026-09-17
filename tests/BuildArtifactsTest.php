@@ -5182,7 +5182,14 @@ FIXTURE;
         $good = tempnam(sys_get_temp_dir(), 'wpct-zip-good-');
         try {
             $zip = new ZipArchive();
-            $this->assertTrue($zip->open($good, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+            $this->assertTrue(
+                true === ($opened = $zip->open($good, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+                sprintf(
+                    '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr10-16).',
+                    $good,
+                    var_export($opened, true)
+                )
+            );
             $zip->addFromString('entry.txt', 'data');
             $finalize->invoke(null, $zip, 'good.zip');
             $this->assertFileExists($good, 'A finalized archive lands on disk.');
@@ -5205,7 +5212,14 @@ FIXTURE;
             file_put_contents($staged, 'staged content');
             chmod($staged, 0000);
             $zip = new ZipArchive();
-            $this->assertTrue($zip->open($bad, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+            $this->assertTrue(
+                true === ($opened = $zip->open($bad, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+                sprintf(
+                    '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr10-16).',
+                    $bad,
+                    var_export($opened, true)
+                )
+            );
             $this->assertTrue($zip->addFile($staged, 'staged.txt'));
 
             $warnings = array();
