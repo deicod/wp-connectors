@@ -2115,33 +2115,13 @@ FIXTURE;
              * seam now: the dangling link (invisible to file_exists())
              * and the out-of-tree resolver (is_file() follows it, so a
              * config the plugin does not own would otherwise be read
-             * through). A regular build.json keeps building — the
-             * controls below ride the same seam.
+             * through). The legs ride the CAPABILITY probe after the
+             * controls below (t31-ocr11-8 over t31-ocr10-14: the gate
+             * was function_exists — a host can have the function
+             * without the privilege, and the suite converts the failed
+             * call's warning to an error — and a mid-test invisible
+             * skip; the visible skip names what already passed).
              */
-            if (function_exists('symlink')) {
-                symlink($scratch . '/elsewhere-build.json', $scratch . '/plugin/example-connector/build.json');
-                $refusal = $this->refusalOf(
-                    fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                    'A DANGLING build.json symlink must refuse the build — file_exists() follows links and the seam would silently skip to no-embed.', \RuntimeException::class
-                );
-                $this->assertStringContainsString('is a symlink', $refusal->getMessage());
-                unlink($scratch . '/plugin/example-connector/build.json');
-
-                // A link that RESOLVES (out of the plugin tree, to a
-                // perfectly valid embed config) refuses identically —
-                // the old seam would have READ it through is_file().
-                file_put_contents($scratch . '/outside-build.json', "{\"embed_shared\": true}\n");
-                symlink($scratch . '/outside-build.json', $scratch . '/plugin/example-connector/build.json');
-                $refusal = $this->refusalOf(
-                    fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                    'An out-of-tree RESOLVING build.json symlink must refuse the build — the plugin\'s config may not be a link the release does not own.', \RuntimeException::class
-                );
-                $this->assertStringContainsString('is a symlink', $refusal->getMessage());
-                $this->assertStringContainsString('outside-build.json', $refusal->getMessage(), 'The refusal names the link target.');
-                unlink($scratch . '/plugin/example-connector/build.json');
-                $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused link legs must leave no zip behind.');
-            }
-
             // Controls, through the same seam: the explicit-equal suffix
             // and the explicit opt-out both build, each with exactly the
             // embed state the config names.
@@ -2160,6 +2140,35 @@ FIXTURE;
             foreach ($optOutEntries as $entry) {
                 $this->assertStringNotContainsString('src/Shared/', $entry, 'An explicit false must not embed the shared library.');
             }
+
+            if (! self::canSymlink()) {
+                $this->markTestSkipped('This host cannot create symlinks — the build.json link legs did not run (the seam legs and controls above already passed).');
+            }
+            $zipsBeforeLinkLegs = glob($scratch . '/dist/*.zip') ?: array();
+            // The controls' last write left a REAL build.json behind —
+            // the dangling-link leg needs the name free.
+            unlink($scratch . '/plugin/example-connector/build.json');
+            symlink($scratch . '/elsewhere-build.json', $scratch . '/plugin/example-connector/build.json');
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
+                'A DANGLING build.json symlink must refuse the build — file_exists() follows links and the seam would silently skip to no-embed.', \RuntimeException::class
+            );
+            $this->assertStringContainsString('is a symlink', $refusal->getMessage());
+            unlink($scratch . '/plugin/example-connector/build.json');
+
+            // A link that RESOLVES (out of the plugin tree, to a
+            // perfectly valid embed config) refuses identically —
+            // the old seam would have READ it through is_file().
+            file_put_contents($scratch . '/outside-build.json', "{\"embed_shared\": true}\n");
+            symlink($scratch . '/outside-build.json', $scratch . '/plugin/example-connector/build.json');
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
+                'An out-of-tree RESOLVING build.json symlink must refuse the build — the plugin\'s config may not be a link the release does not own.', \RuntimeException::class
+            );
+            $this->assertStringContainsString('is a symlink', $refusal->getMessage());
+            $this->assertStringContainsString('outside-build.json', $refusal->getMessage(), 'The refusal names the link target.');
+            unlink($scratch . '/plugin/example-connector/build.json');
+            $this->assertSame($zipsBeforeLinkLegs, glob($scratch . '/dist/*.zip') ?: array(), 'The refused link legs must leave no zip behind (the controls\' zips survive untouched).');
         } finally {
             WpHarness::rrmdir($scratch);
         }
@@ -3312,11 +3321,23 @@ FIXTURE;
         try {
             $handles = array();
             for ($i = 0; $i < 2; ++$i) {
-                $handles[] = proc_open(
+                /*
+                 * The spawn is GATED and the pipes RESET per iteration
+                 * (t31-ocr11-8, the t31-ocr10-13 doctrine on this
+                 * loop's own spawns): proc_open() returns
+                 * resource|false — an ungated false reached the reaping
+                 * loop's proc_close() as a TypeError under PHP 8, an
+                 * engine vocabulary in place of the environmental
+                 * verdict the gate names.
+                 */
+                $pipes = array();
+                $handle = proc_open(
                     escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=race-same-demo',
                     array( 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
                     $pipes
                 );
+                $this->assertIsResource($handle, "The same-plugin concurrent build #{$i} must spawn — an unspawnable leg is environmental, never a proc_close() TypeError on a false.");
+                $handles[] = $handle;
             }
 
             // Same shape as the manifest-race leg above (t31-ocr4-7):
@@ -3348,11 +3369,18 @@ FIXTURE;
         file_put_contents($scratch . '/plugin/stage-demo/src/autoload.php', "<?php\nspl_autoload_register( static function ( string \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\StageDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n");
 
         $pid_file = $scratch . '/live-pid.txt';
+        $live_pipes = array();
         $live = proc_open(
             'exec ' . escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('file_put_contents(' . var_export($pid_file, true) . ', (string) getmypid()); sleep(60);'),
             array( 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
             $live_pipes
         );
+        // The spawn is GATED (t31-ocr11-8, the t31-ocr10-13 doctrine):
+        // an ungated false reached part 3's proc_terminate() as a
+        // TypeError — the finally's is_resource() guard made the
+        // unwind safe, but the leg's own verdict wore the engine's
+        // vocabulary.
+        $this->assertIsResource($live, 'The live sibling run must spawn — the sweep legs judge a live process, never a false.');
 
         try {
             $deadline = microtime(true) + 10.0;
@@ -3415,8 +3443,14 @@ FIXTURE;
              * THROUGH (is_dir follows links; the sweep would have
              * emptied the target tree, reproduced end-to-end by the
              * verifier), and a link at the run's OWN stage name refuses
-             * the build loudly.
+             * the build loudly. The legs ride the CAPABILITY probe
+             * (t31-ocr11-8): a bare symlink() call errors the suite on
+             * exactly the hosts without the privilege (failOnWarning),
+             * and the skip is visible, naming what already passed.
              */
+            if (! self::canSymlink()) {
+                $this->markTestSkipped('This host cannot create symlinks — the stage-sweep link legs (part 4) did not run (parts 1-3 above already passed).');
+            }
             $victim = $scratch . '/victim';
             mkdir($victim . '/inner', 0755, true);
             file_put_contents($victim . '/inner/keep.txt', 'survivor');
@@ -5535,6 +5569,12 @@ FIXTURE;
      */
     public function testASymlinkInTheSharedSourceTreeRefusesTheEmbedBuild(): void
     {
+        // The whole pin is link-bearing (t31-ocr11-8): the capability
+        // probe gates it visibly — a bare symlink() would error the
+        // suite on a host without the privilege.
+        if (! self::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the linked shared-source refusal cannot be driven on it.');
+        }
         $scratch = self::distDir() . '/.embed-symlink';
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
@@ -6050,6 +6090,11 @@ FIXTURE;
      */
     public function testASymlinkInThePluginTreeRefusesTheBuild()
     {
+        // The whole pin is link-bearing (t31-ocr11-8): the capability
+        // probe gates it visibly.
+        if (! self::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the in-tree leak-link refusal cannot be driven on it.');
+        }
         $tempPlugin = self::distDir() . '/.symlink-test/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
