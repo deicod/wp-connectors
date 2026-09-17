@@ -1698,7 +1698,18 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
             $literal = ('b' === $text[0] || 'B' === $text[0]) ? substr($text, 1) : $text;
             $quote = $literal[0];
             $value = wp_connectors_unescape_php_string_literal($quote, substr($literal, 1, -1));
-            if ($is_family(wp_connectors_ascii_lower($value))) {
+            /*
+             * The leading-backslash tolerance every other family fold
+             * carries (OCR round 20, t31-ocr20-3): the value lens
+             * judged the RAW computed value, so a literal whose value
+             * is the FULLY-QUALIFIED family name (\Deicod\…) matched
+             * no predicate — the one spelling the text lens cannot
+             * rescue either when the backslash arrives through an
+             * escape (octal \134, hex \x5C). The lens folds through
+             * the same ltrim the target fold and the text finding's
+             * 'lower' twin ride.
+             */
+            if ($is_family(wp_connectors_ascii_lower(ltrim($value, '\\')))) {
                 $push_text_finding('string', $token_offset, $value);
             }
 
@@ -1729,7 +1740,11 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
                     $body .= $chunk[0];
                 }
                 $value = "'" === $heredoc_quote ? $body : wp_connectors_unescape_php_string_literal('"', $body);
-                if ($is_family(wp_connectors_ascii_lower($value))) {
+                // The same leading-backslash tolerance the quoted
+                // literal's value lens rides (t31-ocr20-3) — a heredoc
+                // resolves the full escape table, so the fully-qualified
+                // family value can arrive through an escape here too.
+                if ($is_family(wp_connectors_ascii_lower(ltrim($value, '\\')))) {
                     $push_text_finding('string', $heredoc_offset, $value);
                 }
             }

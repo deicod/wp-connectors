@@ -4782,6 +4782,24 @@ FIXTURE;
             'b-prefixed class-string, double-quoted, judged by value (t31-r10-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BPrefixStore\n{\n    public function name(): string\n    {\n        return b\"Deicod\\\\WpConnectors\\\\Shared\\\\Clock\";\n    }\n}\n",
             'B-prefixed class-string, single-quoted, judged by value (t31-r10-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BPrefixStore\n{\n    public function name(): string\n    {\n        return B'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\n    }\n}\n",
             'b-prefixed hex-escaped class-string, judged by value (t31-r10-2)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BPrefixStore\n{\n    public function name(): string\n    {\n        return b\"\\x44eicod\\\\WpConnectors\\\\Shared\\\\Clock\";\n    }\n}\n",
+            /*
+             * OCR round 20 (t31-ocr20-3): the value lens judged the raw
+             * computed value without the leading-backslash tolerance
+             * every other family fold carries (the target fold at the
+             * detector's own head, the text finding's 'lower' twin), so
+             * a literal whose VALUE is the FULLY-QUALIFIED family name
+             * — the leading backslash produced by an ESCAPE the text
+             * lens cannot see (octal \134, hex \x5C), the double-
+             * backslash twin was already caught by the text lens's
+             * unescaped view — matched NO family predicate: the class
+             * string laundered past both gates at zero references
+             * (driven red at HEAD). The lens folds through the same
+             * tolerance now; the heredoc twin rides the same value
+             * lens (a nowdoc body carries no escapes, so its value is
+             * its bytes and the text lens already owned it).
+             */
+            'escaped fully-qualified class-string, judged by value (t31-ocr20-3)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass FqValueStore\n{\n    public function name(): string\n    {\n        return \"\\134Deicod\\\\WpConnectors\\\\Shared\\\\Clock\";\n    }\n}\n",
+            'escaped fully-qualified heredoc, judged by value (t31-ocr20-3)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass FqHeredocStore\n{\n    public function name(): string\n    {\n        return <<<EOT\n\\134Deicod\\\\WpConnectors\\\\Shared\\\\Clock\nEOT;\n    }\n}\n",
             'fully-qualified group member against a non-family prefix (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\Stuff\\{ \\Deicod\\WpConnectors\\Shared\\Clock };\nclass FqMemberStore\n{\n}\n",
             'qualified name after as, plain use (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\X as \\Deicod\\WpConnectors\\Shared\\Clock;\nclass FqAliasStore\n{\n}\n",
             'qualified name after as, group body (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\Stuff\\{ Y as \\Deicod\\WpConnectors\\Shared\\Clock };\nclass FqGroupAliasStore\n{\n}\n",
