@@ -157,6 +157,20 @@ final class ToolchainSmokeTest extends TestCase
      */
     public function testTheBelowRootOffsetToleratesATrailingSeparatorRootSpelling(): void
     {
+        /*
+         * The child-process capability gate (OCR round 16,
+         * t31-ocr16-12, the t31-ocr6-12 doctrine the suite's other
+         * exec consumers already carry): this whole test drives the
+         * lint through a child process — under
+         * disable_functions(exec) the bare call was an
+         * undefined-function \Error (a fatal, never a verdict). It
+         * skips VISIBLY instead, naming the capability and what did
+         * not run.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process lint legs cannot run (t31-ocr16-12).');
+        }
+
         $scratch = sys_get_temp_dir() . '/wpct-lint-trailroot-' . getmypid();
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
@@ -211,6 +225,25 @@ final class ToolchainSmokeTest extends TestCase
      */
     public function testLintPhpExclusionsAreTheGatesOwnNamedSubset(): void
     {
+        /*
+         * The child-process capability gate (OCR round 16,
+         * t31-ocr16-12, the t31-ocr6-12 doctrine): under
+         * disable_functions(exec) the first child-process lint call
+         * was an undefined-function \Error — a FATAL before the
+         * battery's own controls, which also exec (their verdicts
+         * are engine-spawned), and before the canSymlink skip
+         * below, whose message promises "the still-fails controls
+         * above already ran" — a promise nothing could keep on a
+         * host where the test dies at its first exec. The skip is
+         * visible and first now: on exec-capable hosts (the only
+         * ones that reach it) the controls DO run before the
+         * symlink skip, and the promise holds; on exec-less hosts
+         * the test names the capability and stops — never a fatal.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process lint legs cannot run, the still-fails controls included (they verdict through a spawned engine); the canSymlink promise below is never reached here (t31-ocr16-12).');
+        }
+
         $scratch = sys_get_temp_dir() . '/wpct-lint-' . getmypid();
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
