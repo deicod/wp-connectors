@@ -522,6 +522,7 @@ final class WpHarness
      *
      * @param string $dir Absolute directory path.
      * @return void
+     * @throws RuntimeException When the spelling collapses to the filesystem root (t31-ocr10-1) — the universal tree is never a scratch dir.
      */
     public static function rrmdir($dir)
     {
@@ -546,6 +547,22 @@ final class WpHarness
         }
         if (! is_dir($dir)) {
             return;
+        }
+        /*
+         * The ROOT collapse (t31-ocr10-1, the deletion twin of
+         * copyTree's ocr9-9 mirror clause): same_directory_spelling()
+         * keeps a '/..' tail for the walk (it names a different
+         * directory), so rrmdir(sys_get_temp_dir() . '/..'), rrmdir('/'),
+         * any scratch spelling collapsing to '/' passed the probes
+         * above and CHILD_FIRST deleted the ROOT's children (driven:
+         * rrmdir('/') walked straight into unlink()/rmdir() over the
+         * filesystem root; rrmdir('scratch/sub/..') deleted the
+         * PARENT's entries through the collapse). The root is judged
+         * exactly as copyTree judges it — the universal tree, never a
+         * scratch dir — and refused loudly naming the spelling.
+         */
+        if ('/' === realpath($dir)) {
+            throw new RuntimeException('WpHarness::rrmdir() refuses a spelling that collapses to the filesystem ROOT — the universal tree is never a scratch dir: ' . $dir);
         }
         $items = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),

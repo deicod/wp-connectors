@@ -3356,6 +3356,32 @@ FIXTURE;
             $this->assertFileExists($victim . '/inner/keep.txt', 'The inspector removal twin never deletes through a root link — the target tree survives.');
             $this->assertFileExists($victim . '/keep2.txt', 'The inspector removal twin never deletes through a root link either.');
             $this->assertTrue(is_link($inspectRootLink), 'A link at the inspector removal root stands exactly where it is.');
+
+            /*
+             * The ROOT collapse (t31-ocr10-1, the deletion twin of
+             * copyTree's ocr9-9 mirror clause): the walk spelling keeps
+             * a '/..' tail, so a scratch spelling collapsing to '/'
+             * passed every guard and CHILD_FIRST deleted the root's
+             * children (driven red pre-fix: rrmdir('/') walked into
+             * unlink()/rmdir() over the filesystem root, and a
+             * scratch/sub/.. spelling deleted the PARENT's entries
+             * through the collapse). Both spellings the finding names
+             * refuse LOUDLY now, naming the spelling; the walk never
+             * runs.
+             */
+            foreach (array(
+                'the literal root' => '/',
+                'the collapse spelling' => sys_get_temp_dir() . '/..',
+            ) as $rootLabel => $rootSpelling) {
+                $refusal = $this->refusalOf(
+                    fn() => WpHarness::rrmdir($rootSpelling),
+                    "A root-collapsing spelling must refuse the removal loudly ({$rootLabel}), never delete the root's children.", \RuntimeException::class
+                );
+                $this->assertStringContainsString('collapses to the filesystem ROOT', $refusal->getMessage(), "The refusal names the root class ({$rootLabel}).");
+                $this->assertStringContainsString($rootSpelling, $refusal->getMessage(), "The refusal names the spelling the caller passed ({$rootLabel}).");
+            }
+            $this->assertDirectoryExists($scratch, 'The pin\'s own scratch tree survives the root-collapse legs — the walk never ran.');
+            $this->assertFileExists($victim . '/keep2.txt', 'The victim tree survives the root-collapse legs untouched.');
         } finally {
             if (is_link($scratch . '/stage-link')) {
                 unlink($scratch . '/stage-link');
