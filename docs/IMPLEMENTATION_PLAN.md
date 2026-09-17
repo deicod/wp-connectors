@@ -2621,6 +2621,247 @@ OCR-tool round
   from output),
   2 skipped
   unchanged.
+OCR-tool round
+  t31-ocr18
+  (SIX commits —
+  the
+  eighteenth
+  pass, 62/62
+  complete, 9/9
+  findings
+  accepted,
+  classes
+  folded (×3
+  exec-gate
+  sites one
+  commit, ×3
+  staging/
+  spawn heads
+  one);
+  trajectory
+  27→10→11→7→
+  11→33→9→9 —
+  the
+  plateau):
+  the round's
+  substantive
+  item is the
+  never-green
+  data row and
+  ITS HISTORY —
+  premise
+  REFUTED at
+  birth (the
+  'sydney
+  fall-back'
+  DST row born
+  consistent
+  in 7c6a754,
+  never edited
+  since, runs
+  green every
+  build — no
+  skip flag,
+  no provider
+  filter; the
+  quoted
+  '01:00:00'
+  is a
+  spelling the
+  row never
+  carried)
+  while the
+  derivation
+  found what
+  seventeen
+  green runs
+  had hidden:
+  HALF THE ROW
+  SET never
+  crossed its
+  transition
+  (a fall-back
+  transition
+  sits one
+  ambiguous
+  wall hour
+  after any
+  unambiguous
+  pre-
+  transition
+  reading, so
+  the 3600s
+  fall-back
+  lifetimes
+  ended short
+  of every
+  transition,
+  and the
+  delta
+  assertion is
+  zone-
+  independent
+  arithmetic —
+  a window
+  with no
+  transition
+  exercises no
+  transition)
+  — closed:
+  fall-back
+  lifetimes
+  3600→7200,
+  expiry
+  constants
+  re-derived,
+  and a
+  per-row pin
+  asserts the
+  crossing
+  premise
+  (reading
+  offset ≠
+  expiry
+  offset; a
+  stale tzdata
+  reddens the
+  premise
+  itself); the
+  pin's
+  ceiling (a
+  transition
+  exactly AT
+  the expiry
+  instant — no
+  current row
+  is there)
+  ledgered.
+  The r17-
+  named
+  exec-gate
+  tail
+  converted
+  (five tests
+  gated, both
+  disable
+  directions
+  driven, the
+  pre-fix
+  fatal driven
+  first); the
+  census
+  remainder is
+  15 sites,
+  ALL in
+  BuildArtifacts
+  Test (the
+  17-site
+  census's
+  '7 in
+  BuildArtifacts'
+  column was
+  the seven
+  php -l
+  loops —
+  partial,
+  not wrong);
+  staging
+  moved inside
+  the try (a
+  failed copy
+  leaked the
+  scratch
+  tree); both
+  spawn loops
+  collect-
+  before-
+  assert (the
+  ocr4-7
+  doctrine on
+  the SPAWN
+  loop — a
+  mid-loop
+  assertion
+  aborted with
+  earlier
+  children
+  still
+  writing
+  under the
+  finally's
+  rrmdir); Url
+  rides
+  HeaderMap's
+  control-byte
+  callable and
+  the masked
+  debug twin
+  extracts to
+  one private
+  owner — both
+  byte-
+  identity
+  md5-verified
+  by the
+  verifier.
+  Two-lens
+  verifier
+  pass (both
+  lenses
+  driven): ZERO
+  surviving
+  counter-
+  examples
+  (every DST
+  row
+  re-derived,
+  the census
+  re-counted
+  site by
+  site); one
+  PRE-EXISTING
+  ±1 ledgered
+  (a
+  conditional
+  cleanup
+  assertion
+  keyed on
+  leftover
+  dist/
+  checksums.
+  txt runner
+  state —
+  every round
+  delta exact
+  in either
+  state;
+  re-open when
+  absolute
+  totals
+  become
+  load-
+  bearing).
+  Suite 1651
+  tests,
+  45493 →
+  45499 →
+  45493
+  assertions
+  (every
+  per-commit
+  delta
+  measured
+  from output:
+  +6 the
+  crossing
+  pins, 0 the
+  guards by
+  construction,
+  −6 the
+  spawn-loop
+  restructure),
+  2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

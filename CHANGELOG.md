@@ -6,6 +6,78 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 18)
+
+Eighteenth OCR-tool round (62/62, complete): 9 findings, driver triage
+accepted all — trajectory 27→10→11→7→11→33→9→9, the residual plateau
+two rounds deep. Fixed as t31-ocr18-1..5 — one commit per finding,
+classes folded (the three exec-gate sites one class commit; the three
+staging/spawn-heads one class commit) — five fix commits plus the docs
+record, the full offline check green after every one. The two-lens
+verifier pass ran as a two-agent workflow, both lenses driven: the
+refutation lens found ZERO surviving counterexamples (every DST row
+independently re-derived, both disable_functions directions driven,
+message/payload byte-identity md5-verified pre vs post); the
+independent-correctness lens re-drove every claim and confirmed every
+census line number, surfacing one pre-existing runner-state ±1 in the
+suite total (ledgered, not a round defect). Suite 1651 tests,
+45493 → 45499 → 45493 assertions (every per-commit delta measured from
+output: +6 the crossing pins, 0 the guards by construction, −6 the
+spawn-loop restructure), 2 skipped unchanged.
+
+- **The headliner data row was never red — and the derivation found
+  what seventeen green runs had hidden (t31-ocr18-1, the round's
+  test:high)** — the finding claimed the 'sydney fall-back' DST row
+  read '01:00:00' against 01:30 constants and failed
+  deterministically since birth. Refuted before any fix: the row was
+  born internally consistent in the round-1 commit, never edited
+  since (git -G over all history), runs on every build (the provider
+  is unfiltered — six rows, thirty assertions), and passes. What the
+  derivation DID surface, driven: **half the row set never crossed
+  its transition** — a fall-back transition sits one ambiguous wall
+  hour after any unambiguous pre-transition reading, so the
+  3600-second fall-back lifetimes ended one wall hour short of every
+  transition (offsets identical across all three windows), and the
+  battery's zone-independent delta assertion could not notice — a
+  window with no transition exercises no transition. The three
+  fall-back lifetimes are 7200 seconds now (readings keep their
+  unambiguous spellings; every window crosses strictly), the expiry
+  constants re-derived, and a new per-row assertion pins the crossing
+  premise itself — the reading's offset and the derived expiry's must
+  differ, so a row whose dates ever drift off a transition day goes
+  red on the premise instead of passing vacuously. Process lesson,
+  ledgered: a data row's premise needs its own pin, or a vacuous row
+  stays green indefinitely.
+- **The r17-named exec-gate tail converted (t31-ocr18-2)** — the five
+  ungated consumers across UnusedImportScanner (two tests),
+  BuildSeamProperty (the five-site require-side pin plus the battery's
+  per-state php -l loop, its probe at the test top per the doctrine),
+  and SecureFixtures (the fresh-process scanner leg) carry the
+  established two-function capability guard; driven under
+  `-d disable_functions=exec` all five answer visible skips at zero
+  assertions (the pre-fix fatal was driven first at a representative
+  site). Live ungated remainder, mechanically censused: **15 sites,
+  every one in BuildArtifactsTest** — BuildSeamProperty,
+  UnusedImportScanner, and SecureFixtures now read zero.
+- **Staging inside the try; spawn loops collect-before-assert
+  (t31-ocr18-3)** — the conventions-gate scratch repo staged before
+  its try/finally owned it (a failed copy leaked the partial tree),
+  and both concurrent-build legs asserted each spawn mid-loop (a
+  failed spawn aborted the loop with earlier children still writing
+  into the repo the finally rrmdirs underneath them). Staging moved
+  inside the try; both loops collect spawn refusals and assert after
+  the reap — every child finishes before any verdict renders (the
+  t31-ocr4-7 doctrine extended to the spawn loop).
+- **Two one-owner folds (t31-ocr18-4 + t31-ocr18-5)** — Url's inline
+  control-byte screen was a verbatim twin of
+  `HeaderMap::assert_no_control_bytes()` (same predicate, same
+  rejection sentence); Url rides the shared callable now with its
+  field label, the thrown rejection byte-identical. And
+  `HasMaskedHeaders::__debugInfo()/__serialize()` carried
+  byte-identical bodies; both hooks ride one private
+  `masked_debug_payload()` owner. Pure relocations, md5-verified
+  byte-identical pre vs post by the verifier.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 17)
 
 Seventeenth OCR-tool round (62/62, complete): 9 findings, driver triage
