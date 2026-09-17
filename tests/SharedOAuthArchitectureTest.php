@@ -707,7 +707,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         foreach ($offenders as $label => $source) {
             $scratch = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-');
             try {
-                file_put_contents($scratch, $source);
+                // The write is gated (t31-ocr15-6, the ocr12-7 discipline
+                // this loop's own clean twin already carries): a failed
+                // write left the tempnam EMPTY, the gate judged empty
+                // content, and the offender leg failed with a MISLEADING
+                // no-violation message instead of naming the write.
+                $this->assertNotFalse(
+                    file_put_contents($scratch, $source),
+                    "The offender fixture ({$label}) must land at {$scratch} — a failed write runs the gate over EMPTY content and the leg fails misleadingly, never over the write that failed."
+                );
                 try {
                     $gate->invoke($this, $scratch);
                     $this->fail("A family reference the rewrite does not own ({$label}) must fail the gate, never ride the old every-use-statement whitelist.");
@@ -1190,7 +1198,14 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
          */
         $burner = tempnam(sys_get_temp_dir(), 'wpct-pcre-burner-');
         try {
-            file_put_contents($burner, '<?php' . str_pad('// ', 50000, 'x') . "\n static " . str_pad('', 50000, 'y') . $violation);
+            // The write is gated (t31-ocr15-6): a failed write left the
+            // tempnam EMPTY — padding-free, far under every backtrack
+            // limit — and the burner leg failed as 'no abort', a
+            // MISLEADING verdict over content the write never landed.
+            $this->assertNotFalse(
+                file_put_contents($burner, '<?php' . str_pad('// ', 50000, 'x') . "\n static " . str_pad('', 50000, 'y') . $violation),
+                "The burner fixture must land at {$burner} — a failed write runs the gate over EMPTY content and the abort leg fails misleadingly, never over the write that failed."
+            );
 
             $host_backtrack_limit = (string) ini_get('pcre.backtrack_limit');
             ini_set('pcre.backtrack_limit', '1024');
