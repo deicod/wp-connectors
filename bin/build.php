@@ -360,12 +360,14 @@ final class WpConnectorsBuild
                 ? self::unownedUseImportSpellingClass($final, $reference['offset'], $reference['name'])
                 : null;
             throw new RuntimeException(sprintf(
-                'build: the reference %s (%s position) survived the rewrite in %s at byte offset %d — after the rewrite the embedded copy may reference only the plugin-private target Deicod\\WpConnectors\\%s\\Shared…, so every other reference to the shared-namespace family points at a namespace that does not exist inside the plugin; every legal use form is rewritten here or the build refuses, never an import that ships broken%s',
+                'build: the reference %s (%s position) survived the rewrite in %s at byte offset %d — after the rewrite the embedded copy may reference only the plugin-private target %s…, so every other reference to the shared-namespace family points at a namespace that does not exist inside the plugin; every legal use form is rewritten here or the build refuses, never an import that ships broken%s',
                 $reference['name'],
                 $reference['kind'],
                 $sourceVersion,
                 $reference['offset'],
-                $pluginSuffix,
+                // The target's OWN derived spelling (t31-ocr11-11) —
+                // display rides the same derivation the verdict judged.
+                $target,
                 null !== $spelling_class ? '; spelling class the rewrite does not own: ' . $spelling_class : ''
             ));
         }
@@ -1371,7 +1373,17 @@ final class WpConnectorsBuild
                 $derivedSuffix = self::namespaceSuffixFromSlug($slug);
                 $pluginSuffix = array_key_exists('namespace_suffix', $config) ? $config['namespace_suffix'] : $derivedSuffix;
                 if ($pluginSuffix !== $derivedSuffix) {
-                    throw new RuntimeException("build: {$slug}: build.json namespace_suffix '{$pluginSuffix}' does not match the slug-derived autoloader prefix Deicod\\WpConnectors\\{$derivedSuffix}\\ the plugin ships (src/autoload.php binds it, the conventions gate enforces it, and the build emits no autoloader of its own) — the shared library would embed under Deicod\\WpConnectors\\{$pluginSuffix}\\Shared, a namespace nothing loads: every gate green, the plugin fataled on install. Set namespace_suffix to '{$derivedSuffix}' or drop the key");
+                    /*
+                     * The refusal's family spellings derive from the ONE
+                     * owner (t31-ocr11-11) — display-only derivation, the
+                     * logic already did: a hand-spelled family in the
+                     * sentence drifts the day the owner's spelling changes
+                     * (the r9-9 derivation doctrine, worn on diagnostics).
+                     */
+                    $suffix_segments = explode('\\', wp_connectors_shared_source_namespace());
+                    $vendor_prefix = implode('\\', array_slice($suffix_segments, 0, -1));
+                    $family_leaf = $suffix_segments[count($suffix_segments) - 1];
+                    throw new RuntimeException("build: {$slug}: build.json namespace_suffix '{$pluginSuffix}' does not match the slug-derived autoloader prefix {$vendor_prefix}\\{$derivedSuffix}\\ the plugin ships (src/autoload.php binds it, the conventions gate enforces it, and the build emits no autoloader of its own) — the shared library would embed under {$vendor_prefix}\\{$pluginSuffix}\\{$family_leaf}, a namespace nothing loads: every gate green, the plugin fataled on install. Set namespace_suffix to '{$derivedSuffix}' or drop the key");
                 }
                 self::assertNamespaceSegment($pluginSuffix);
             }
