@@ -389,48 +389,61 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->extractTo($extractDir);
         $zip->close();
 
-        // Independent extraction contains exactly the plugin dir, no dev files.
-        $this->assertFileExists($extractDir . '/' . self::FIXTURE . '/example-connector.php');
-        $this->assertFileDoesNotExist($extractDir . '/' . self::FIXTURE . '/vendor');
-        $this->assertFileDoesNotExist($extractDir . '/' . self::FIXTURE . '/composer.json');
-
-        // LICENSE from the repo root is embedded.
-        $this->assertFileExists($extractDir . '/' . self::FIXTURE . '/LICENSE');
-
-        // All shipped PHP parses after extraction elsewhere.
         /*
-         * The exec-capability guard (t31-ocr20-5, the ocr18-2/ocr16-12
-         * doctrine over this consumer): the parse sweep below lints
-         * every shipped source through a spawned engine, and on a
-         * disable_functions host the first loop iteration was an
-         * undefined-function \Error mid-test — the extraction and
-         * entry-set assertions above already passed.
+         * Creation-to-cleanup under ONE finally (the verifier pass over
+         * t31-ocr20-5, the t31-ocr16-14 scratch-staging class): the
+         * body below ends in a capability skip whose throw once
+         * stranded the extraction tree — the trailing rrmdir was a
+         * STATEMENT, not a finally, and tearDown unlinks only the
+         * connectors-* artifacts. The tree is removed on every exit
+         * path now (an assertion failure, the skip, and the happy
+         * path alike).
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
-            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the post-extraction php -l sweep cannot run; the extraction, entry-set, and LICENSE assertions above already passed.');
-        }
-        $count = 0;
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($extractDir, FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($iterator as $file) {
-            // The extension judgment rides the ONE owner (t31-r5-9): the
-            // exact-case getExtension() check skipped '.PHP' entries while
-            // every gate had migrated to the shared judgment — a false
-            // green for exactly the parse-broken-.PHP class (the sibling
-            // spellings at the enumeration and src/Shared-only sweeps
-            // rode hand-rolled strtolower variants of the same drift).
-            if (! wp_connectors_is_php_source($file->getPathname())) {
-                continue;
+        try {
+            // Independent extraction contains exactly the plugin dir, no dev files.
+            $this->assertFileExists($extractDir . '/' . self::FIXTURE . '/example-connector.php');
+            $this->assertFileDoesNotExist($extractDir . '/' . self::FIXTURE . '/vendor');
+            $this->assertFileDoesNotExist($extractDir . '/' . self::FIXTURE . '/composer.json');
+
+            // LICENSE from the repo root is embedded.
+            $this->assertFileExists($extractDir . '/' . self::FIXTURE . '/LICENSE');
+
+            // All shipped PHP parses after extraction elsewhere.
+            /*
+             * The exec-capability guard (t31-ocr20-5, the ocr18-2/ocr16-12
+             * doctrine over this consumer): the parse sweep below lints
+             * every shipped source through a spawned engine, and on a
+             * disable_functions host the first loop iteration was an
+             * undefined-function \Error mid-test — the extraction and
+             * entry-set assertions above already passed.
+             */
+            if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+                $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the post-extraction php -l sweep cannot run; the extraction, entry-set, and LICENSE assertions above already passed.');
             }
-            ++$count;
-            $output = array();
-            $exit = 0;
-            exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($file->getPathname()) . ' 2>&1', $output, $exit);
-            $this->assertSame(0, $exit, 'php -l failed: ' . implode("\n", $output));
+            $count = 0;
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($extractDir, FilesystemIterator::SKIP_DOTS)
+            );
+            foreach ($iterator as $file) {
+                // The extension judgment rides the ONE owner (t31-r5-9): the
+                // exact-case getExtension() check skipped '.PHP' entries while
+                // every gate had migrated to the shared judgment — a false
+                // green for exactly the parse-broken-.PHP class (the sibling
+                // spellings at the enumeration and src/Shared-only sweeps
+                // rode hand-rolled strtolower variants of the same drift).
+                if (! wp_connectors_is_php_source($file->getPathname())) {
+                    continue;
+                }
+                ++$count;
+                $output = array();
+                $exit = 0;
+                exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($file->getPathname()) . ' 2>&1', $output, $exit);
+                $this->assertSame(0, $exit, 'php -l failed: ' . implode("\n", $output));
+            }
+            $this->assertGreaterThan(4, $count, 'Fixture zip should contain the main file, autoloader, and source classes.');
+        } finally {
+            WpHarness::rrmdir($extractDir);
         }
-        $this->assertGreaterThan(4, $count, 'Fixture zip should contain the main file, autoloader, and source classes.');
-        WpHarness::rrmdir($extractDir);
     }
 
     public function testInspectorRejectsRepoRelativeInclude()
