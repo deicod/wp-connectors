@@ -398,4 +398,48 @@ final class SelfContainmentCompoundWritesTest extends TestCase
 
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'Reads through the map and other-variable destructuring stay clean.');
     }
+
+    /**
+     * OCR round 11 (t31-ocr11-14): the optional $scanRoot held its
+     * docblock invariant — absolute and inside $pluginDir — only by
+     * caller discipline: a planted OUTSIDE root walked foreign
+     * territory under the plugin anchor and answered zero violations
+     * (driven red at HEAD), and a relative spelling walked the CWD.
+     * Both refuse at the function boundary now, naming both paths —
+     * the invariant is enforced, never assumed.
+     */
+    public function testAnOutsideOrRelativeScanRootRefusesAtTheBoundary(): void
+    {
+        // A SIBLING of the plugin root — outside must not sit inside it.
+        $outside = sys_get_temp_dir() . '/wpct-scanroot-outside-' . uniqid('', true);
+        mkdir($outside . '/sub', 0755, true);
+        file_put_contents($outside . '/sub/spy.php', "<?php\n\$f = dirname(__DIR__, 2) . '/../escape.php';\nrequire \$f;\n");
+
+        try {
+            $caught = null;
+            try {
+                wp_connectors_self_containment_violations($this->root, $outside);
+            } catch (\InvalidArgumentException $e) {
+                $caught = $e;
+            }
+            if (null === $caught) {
+                $this->fail('An outside scan root must refuse at the boundary — it once walked foreign territory under the plugin anchor silently.');
+            }
+            $this->assertStringContainsString('scan root', $caught->getMessage(), 'The refusal names the invariant.');
+            $this->assertStringContainsString($outside, $caught->getMessage(), 'The refusal names the scan root.');
+            $this->assertStringContainsString($this->root, $caught->getMessage(), 'The refusal names the plugin directory.');
+
+            $caught = null;
+            try {
+                wp_connectors_self_containment_violations($this->root, 'relative/scan');
+            } catch (\InvalidArgumentException $e) {
+                $caught = $e;
+            }
+            if (null === $caught) {
+                $this->fail('A relative scan root must refuse at the boundary — it once walked the working directory.');
+            }
+        } finally {
+            WpHarness::rrmdir($outside);
+        }
+    }
 }

@@ -3139,7 +3139,34 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
      * inside the artifact and stays legal, exactly as the full-tree
      * walk and the inspector judged it.
      */
-    $scanRoot = null === $scanRoot ? $pluginDir : rtrim((string) $scanRoot, '/');
+    /*
+     * The scan root is VALIDATED at the boundary (OCR round 11,
+     * t31-ocr11-14): the docblock invariant — absolute and inside
+     * $pluginDir — held only by caller discipline, and a relative or
+     * outside root silently walked foreign territory under the
+     * plugin-dir anchor (driven red at HEAD: an outside root walked
+     * and answered zero violations). The spelling must be absolute,
+     * and its RESOLUTION must sit inside the plugin directory's —
+     * realpath on both sides, so a '..'-woven spelling cannot pass
+     * lexically and walk physically elsewhere; the iterator requires
+     * both to exist regardless.
+     */
+    if (null !== $scanRoot) {
+        $scanRoot = rtrim((string) $scanRoot, '/');
+        $plugin_real = realpath($pluginDir);
+        $scan_real = realpath($scanRoot);
+        if ('' === $scanRoot || '/' !== $scanRoot[0]
+            || false === $plugin_real || false === $scan_real
+            || ($scan_real !== $plugin_real && 0 !== strpos($scan_real, $plugin_real . '/'))) {
+            throw new InvalidArgumentException(sprintf(
+                'the scan root must be an absolute path inside the plugin directory, never a relative or outside walk under the plugin anchor — scan root: %s; plugin directory: %s',
+                $scanRoot,
+                $pluginDir
+            ));
+        }
+    } else {
+        $scanRoot = $pluginDir;
+    }
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($scanRoot, FilesystemIterator::SKIP_DOTS)
     );
