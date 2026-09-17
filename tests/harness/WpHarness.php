@@ -744,6 +744,20 @@ final class WpHarness
          * normalized scratch paths.
          */
         /*
+         * A target whose spelling names no directory (t31-ocr11-22,
+         * the round's verifier lens over the ocr11-5 walk): '' and
+         * root-separator-only spellings reach the walk (driven red at
+         * HEAD: the landing '$to . '/' . $relative' wrote at the
+         * FILESYSTEM ROOT — permission-denied warnings unprivileged,
+         * real root writes as uid 0) — pre-ocr11-5 the empty spelling
+         * was refused by the mirror clause's lexical accident, and
+         * the absolute-spelling walk removed the accident. No
+         * directory named, no copy — the refusal names both paths.
+         */
+        if ('' === rtrim((string) $to, '/')) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a target that names no directory (empty, or root separators only) — the landing would be the filesystem root: from ' . $from . ' into ' . $to);
+        }
+        /*
          * The containment walk judges an ABSOLUTE spelling (OCR round
          * 11, t31-ocr11-5): a RELATIVE target bottoms out at
          * dirname('dst') === '.' — a ONE-BYTE ancestor whose strlen

@@ -148,6 +148,20 @@ final class HarnessCopyTreeTest extends TestCase
             // probed, never a contract).
             $refuses($from . '/src', $from . '/src', 'A self-copy must refuse — pre-round it returned normally having copied nothing, a silent wrong outcome.');
 
+            /*
+             * (b-empty) The degenerate targets (t31-ocr11-22, the
+             * round-11 verifier lens): '' and root-separator-only
+             * spellings once reached the copy loop and attempted
+             * FILESYSTEM-ROOT writes (driven red at HEAD: copy() over
+             * '/<relative>' with permission-denied warnings — real
+             * writes as uid 0). The ocr11-5 absolute walk removed the
+             * lexical accident that used to refuse the empty spelling;
+             * the guard is explicit now.
+             */
+            $refuses($from . '/src', '', 'An EMPTY target must refuse — the landing would be the filesystem root.');
+            $refuses($from . '/src', '/', 'A root-only target must refuse — the landing would be the filesystem root.');
+            $refuses($from . '/src', '//', 'A root-separators-only target must refuse — the landing would be the filesystem root.');
+
             // (b) The nested target: the destination sits inside the
             // source the lazy iterator is walking — the copy lands in
             // the tree under test.
