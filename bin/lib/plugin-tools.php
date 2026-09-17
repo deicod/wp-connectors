@@ -330,7 +330,22 @@ function wp_connectors_family_sibling_pattern(array $excluded_tails)
         )) . '(?![A-Za-z0-9_])';
     }
 
-    return '/(?<![A-Za-z0-9_])' . $stem . '(?![A-Za-z0-9_])(?!' . $separator . '(?:' . implode('|', $excluded) . '))(?:' . $separator . '[A-Za-z_][A-Za-z0-9_]*)?/i';
+    /*
+     * The exclusion lookahead exists only when a tail does (OCR
+     * round 16, t31-ocr16-8): an empty $excluded_tails built the
+     * lookahead over an EMPTY alternation — '(?!' . $separator .
+     * '(?:))' — and an empty alternation matches at every position,
+     * so the negative lookahead failed at every SEPARATOR-following
+     * position and the pattern silently degraded below its baseline
+     * (driven: the bare vendor stem matched while the stem plus a
+     * sibling continuation — the vocabulary's own core spelling —
+     * did NOT; the with-tails pattern matches both). No tails, no
+     * clause: the pattern then IS the baseline (stem, optional
+     * continuation) with nothing excluded.
+     */
+    $exclusion_lookahead = array() === $excluded ? '' : '(?!' . $separator . '(?:' . implode('|', $excluded) . '))';
+
+    return '/(?<![A-Za-z0-9_])' . $stem . '(?![A-Za-z0-9_])' . $exclusion_lookahead . '(?:' . $separator . '[A-Za-z_][A-Za-z0-9_]*)?/i';
 }
 
 /**

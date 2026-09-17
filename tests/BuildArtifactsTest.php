@@ -5733,6 +5733,37 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-16 pin (t31-ocr16-8): the sibling pattern's exclusion
+     * lookahead exists only when a tail does. An empty $excluded_tails
+     * built the lookahead over an EMPTY alternation — and an empty
+     * alternation matches at every position, so the negative lookahead
+     * failed at every separator-following position and the pattern
+     * silently degraded below its own baseline (driven at HEAD: the
+     * bare vendor stem matched while the stem plus a sibling
+     * continuation — the vocabulary's own core spelling — did not).
+     * The pattern's only caller always passes at least the source
+     * tail, so the empty shape is a latent seam of the helper —
+     * pinned here so the seam degrades to no-exclusions, never to a
+     * separator-position artifact.
+     */
+    public function testTheSiblingPatternsWithNoExcludedTailsBehaveAsTheBaseline(): void
+    {
+        $pattern = wp_connectors_family_sibling_pattern(array());
+
+        $this->assertSame(1, preg_match($pattern, 'deicod\\wpconnectors'), 'The bare vendor stem matches — the baseline core.');
+        $this->assertSame(1, preg_match($pattern, 'Deicod\\WpConnectors\\Zai'), 'The stem plus a sibling continuation matches — no separator-position artifact (red at HEAD: the empty alternation made the lookahead forbid every separator).');
+        $this->assertSame(0, preg_match($pattern, 'other vendor text'), 'Unrelated text never matches.');
+        $this->assertSame(0, preg_match($pattern, 'xdeicod\\wpconnectors'), 'A name fragment never matches — the lookbehind holds in the empty-tails shape too.');
+
+        // The with-tails control: the SAME spellings judge identically
+        // through the exclusion-carrying pattern (the tail itself
+        // excluded, the sibling continuation matched).
+        $with_tails = wp_connectors_family_sibling_pattern(array('shared'));
+        $this->assertSame(1, preg_match($with_tails, 'Deicod\\WpConnectors\\Zai'), 'The with-tails baseline matches the sibling continuation — the empty-tails shape agrees with it, never less.');
+        $this->assertSame(0, preg_match($with_tails, 'Deicod\\WpConnectors\\Shared'), 'The excluded tail itself does not match through the with-tails control.');
+    }
+
+    /**
      * Fix-round pin (t31-r8-3): the text lens applies the FULL family
      * vocabulary. It tried only the source spelling and the consumer's
      * target pattern, so a docblock `@throws` naming a SIBLING under
