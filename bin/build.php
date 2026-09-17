@@ -2230,21 +2230,40 @@ final class WpConnectorsBuild
             new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
             RecursiveIteratorIterator::CHILD_FIRST
         );
-        foreach ($items as $item) {
-            /** @var SplFileInfo $item */
-            /*
-             * A LINK entry is removed AS ITSELF (unlink removes the
-             * link, never its target): isDir() follows links, so a
-             * linked child would otherwise take the rmdir branch. The
-             * walk does not descend into linked children (no
-             * FOLLOW_SYMLINKS flag), so their target trees stand
-             * untouched.
-             */
-            if ($item->isDir() && ! $item->isLink()) {
-                rmdir($item->getPathname());
-            } else {
-                unlink($item->getPathname());
+        try {
+            foreach ($items as $item) {
+                /** @var SplFileInfo $item */
+                /*
+                 * A LINK entry is removed AS ITSELF (unlink removes the
+                 * link, never its target): isDir() follows links, so a
+                 * linked child would otherwise take the rmdir branch. The
+                 * walk does not descend into linked children (no
+                 * FOLLOW_SYMLINKS flag), so their target trees stand
+                 * untouched.
+                 */
+                if ($item->isDir() && ! $item->isLink()) {
+                    rmdir($item->getPathname());
+                } else {
+                    unlink($item->getPathname());
+                }
             }
+        } catch (UnexpectedValueException $walk_refusal) {
+            /*
+             * A subdirectory the iterator cannot OPEN mid-recursion
+             * aborts the walk (glm31-4's class, fenced at the shared
+             * scan one file over) — and this owner runs from the
+             * finally teardown (and the startup reclaim beside it),
+             * where an exception in a finally REPLACES the primary
+             * failure in flight: the build answered the teardown's SPL
+             * vocabulary instead of its own refusal (OCR round 23,
+             * t31-ocr23-1, driven both arms). The teardown's contract
+             * is the SILENT degrade (the glob() fence's own shape: an
+             * engine refusal becomes "nothing more to remove", never a
+             * verdict): the partial removal stands, the unopened
+             * subtree stays for the sweep's next run, and the primary
+             * verdict surfaces untouched.
+             */
+            return;
         }
         rmdir($dir);
     }

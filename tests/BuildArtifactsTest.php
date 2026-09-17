@@ -2343,6 +2343,70 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-23 pin (t31-ocr23-1): buildPlugin()'s FINALLY teardown
+     * walks the stage through rrmdir(), whose RecursiveDirectoryIterator
+     * had no guard against the UnexpectedValueException a subdirectory
+     * it cannot OPEN raises mid-recursion (glm31-4's class, on the walk
+     * the teardown owns) — and an exception thrown in a finally REPLACES
+     * the primary failure in flight, so the build answered the teardown's
+     * SPL vocabulary instead of its own refusal. The teardown rides the
+     * silent contract now (the walk wrapped; an iteration refusal is
+     * swallowed — the partial removal stands, the primary verdict
+     * surfaces). Driven red at HEAD through BOTH unguarded arms of the
+     * same owner: the hostile tree sits at THIS RUN'S OWN stage name, so
+     * at HEAD the startup reclaim (the same rrmdir, one screen above the
+     * try) throws first — the drive answers the SPL message either way;
+     * post-fix both arms swallow and the run reaches the try, where a
+     * landing-preflight PRIMARY failure (a directory at the manifest
+     * landing target) answers in the build's own vocabulary.
+     */
+    public function testTheFinallyTeardownNeverMasksThePrimaryFailureOverAHostileStageTree(): void
+    {
+        $scratch = self::distDir() . '/.teardown-masking';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+
+        // The teardown-hostile tree at this run's own stage name: a
+        // subdirectory this process cannot open. The opendir probe is
+        // the capability signal (glm17-16: uid 0 reads through mode
+        // 0000, the t31-ocr4-1 doctrine) — a host that opens it cannot
+        // construct the hostile shape at all.
+        $stage = $scratch . '/dist/.stage-example-connector-' . getmypid();
+        mkdir($stage . '/locked/inner', 0755, true);
+        file_put_contents($stage . '/locked/inner/orphan.txt', 'a crashed run\'s scratch');
+        chmod($stage . '/locked', 0000);
+        $probe = @opendir($stage . '/locked');
+        if (false !== $probe) {
+            closedir($probe);
+            chmod($stage . '/locked', 0755);
+            WpHarness::rrmdir($scratch);
+            $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the teardown-hostile stage tree is unconstructible here.');
+        }
+
+        // The PRIMARY failure: a directory at the manifest landing
+        // target. The preflight refuses it with the stage fully
+        // populated — the exact try-body state whose in-flight verdict
+        // the finally must carry, never replace.
+        mkdir($scratch . '/dist/checksums.txt');
+
+        try {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
+                'The landing preflight must refuse the run — a silent success here means the drive never reached the try.', \RuntimeException::class
+            );
+            $this->assertStringContainsString('is not a regular file', $refusal->getMessage(), 'The PRIMARY refusal surfaces — the teardown no longer answers in the SPL iterator\'s vocabulary over it.');
+            $this->assertStringContainsString('checksums.txt', $refusal->getMessage(), 'The primary names the landing target the preflight judged.');
+            $this->assertSame(array(), glob($scratch . '/dist/connectors-example-connector-*') ?: array(), 'The preflight refusal precedes every landing — nothing published.');
+        } finally {
+            chmod($stage . '/locked', 0755);
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r4 K2), end-to-end through the seam: build.json
      * is a CLOSED SCHEMA now, not container shape. The seam had closed
      * "silently skips the embed" one spelling at a time (the decode
