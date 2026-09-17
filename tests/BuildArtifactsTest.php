@@ -4653,6 +4653,43 @@ FIXTURE;
         $this->assertSame(array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( $found[0]['name'], $found[0]['kind'] ), 'The member resolves exactly like its plain-use twin: declared namespace + relative tail.');
 
         /*
+         * The verifier's completion sweep (t31-ocr11-21, the round-11
+         * refutation lens over the first cut): the guard rode a
+         * CASE-SENSITIVE byte match and the fused token only — the
+         * keyword is case-insensitive PHP (an UPPERCASE fused spelling
+         * still lexes T_NAME_RELATIVE) and the INTERRUPTED spellings
+         * arrive as keyword + separator + name (the fused token never
+         * forms), so four spellings of the SAME member still composed
+         * or resolved nowhere and laundered at ZERO references while
+         * the rewriter (token-id-keyed) refused every one — verdict
+         * drift. Relativeness rides the TOKEN ID and the pending arm
+         * now, and the ledger never opens a declaration from a
+         * namespace keyword inside a use statement (the corrupted base
+         * re-based every LATER relative — the r8-10 misattribution
+         * class, driven red at HEAD through the bare-keyword spelling).
+         */
+        $relative_member_spellings = array(
+            'fused UPPERCASE keyword' => 'use Psr\\Log\\{NAMESPACE\\WpConnectors\\Shared\\Clock};',
+            'fused mixed-case keyword' => 'use Psr\\Log\\{NameSpace\\WpConnectors\\Shared\\Clock};',
+            'interrupted by whitespace' => 'use Psr\\Log\\{namespace \\WpConnectors\\Shared\\Clock};',
+            'interrupted by a comment' => 'use Psr\\Log\\{namespace/* c */\\WpConnectors\\Shared\\Clock};',
+            'bare keyword, no separator' => 'use Psr\\Log\\{namespace WpConnectors\\Shared\\Clock};',
+            'interrupted PLAIN use' => 'use namespace \\WpConnectors\\Shared\\Clock;',
+        );
+        foreach ($relative_member_spellings as $label => $statement) {
+            $found = wp_connectors_shared_family_references("<?php\nnamespace Deicod;\n{$statement}\ninterface GroupRelativeMemberFixture\n{\n}\n");
+            $this->assertCount(1, $found, "Every spelling of a family-resolving relative use member reports — case, interruption, and separator-drop are one operator ({$label}; red at HEAD: zero references).");
+            $this->assertSame(array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( $found[0]['name'], $found[0]['kind'] ), "The spelling resolves exactly like its fused lowercase twin ({$label}).");
+        }
+        // The base-integrity half (the r8-10 class, driven red at HEAD
+        // through the ledger corruption): an interrupted relative use
+        // must not re-base the relatives that FOLLOW it.
+        $corrupting = "<?php\nnamespace Deicod;\nuse namespace Foo;\n\$x = namespace\\WpConnectors\\Shared\\Clock::class;\n";
+        $found = wp_connectors_shared_family_references($corrupting);
+        $this->assertCount(1, $found, 'An interrupted relative use corrupts no resolution base — the later legal relative still resolves against the true declaration.');
+        $this->assertSame(array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( $found[0]['name'], $found[0]['kind'] ));
+
+        /*
          * Verifier round t31-r8-10: a fully-qualified (parse-error)
          * namespace spelling is NOT a declaration — the walk first
          * classified `namespace \Junk;` as one, letting the invalid

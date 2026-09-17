@@ -539,12 +539,22 @@ function wp_connectors_namespace_opens_declaration(array $tokens, $at)
  * now: one resolution semantics at the sweep, the build postcondition,
  * and the relative-use rewrite, by construction.
  *
- * A `use namespace Foo;` interrupted spelling lands in the ledger as a
- * declaration (the shape predicate judges the keyword's follower, not
- * the enclosing statement) — the rewriter's ledger always held that
- * reading, and one vocabulary across both consumers is the contract;
- * such bytes are a parse error PHP never accepts, so every verdict
- * over them is a refusal somewhere on the chain.
+ * A `namespace` keyword inside an OPEN USE STATEMENT never opens a
+ * declaration (t31-ocr11-21, the round's verifier lens): the
+ * interrupted relative-member spelling (`use P\{namespace Wp…}`,
+ * keyword + name with the separator dropped) once landed in the
+ * ledger as a declaration — the shape predicate judged the follower,
+ * not the enclosing statement — and the corrupted base laundered
+ * LATER relatives exactly like the r8-10 junk spelling (`use
+ * namespace Foo;` reading as `namespace Foo;` re-based every
+ * following resolution). Both spellings are parse errors PHP never
+ * accepts (inside a use statement the bare keyword is the relative
+ * operator mid-spelling, never a declaration keyword), so the ledger
+ * skips them: declarations are file-level statements, and one
+ * vocabulary across both consumers is the contract — every verdict
+ * over the bytes themselves stays a refusal somewhere on the chain
+ * (the rewriter's group-use-MEMBER and interrupted-keyword refusals
+ * own them there).
  *
  * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
  * @param string                                          $source The source bytes the tokens lexed (the masked view derives from them).
@@ -560,12 +570,35 @@ function wp_connectors_namespace_declaration_ledger(array $tokens, $source)
     $count = count($tokens);
     $offset = 0;
     $masked = null;
+    $use_open = false;
     for ($i = 0; $i < $count; ++$i) {
         $token = $tokens[ $i ];
         $id = is_array($token) ? $token[0] : null;
         $text = is_array($token) ? $token[1] : $token;
         $token_offset = $offset;
         $offset += strlen($text);
+        if (T_USE === $id) {
+            // The closure-use fence rides its ONE owner; a use
+            // statement (import or trait adaptation) is a region no
+            // file-level declaration can open inside of.
+            $use_open = wp_connectors_use_opens_import($tokens, $i);
+
+            continue;
+        }
+        if ($use_open) {
+            /*
+             * A namespace keyword met inside an open use statement is
+             * the INTERRUPTED relative spelling (t31-ocr11-21) — never
+             * a declaration, and never a base corruption for the
+             * relatives that follow; the statement's boundary (the ONE
+             * owner's set) ends the region.
+             */
+            if (wp_connectors_is_use_statement_boundary($token, $id)) {
+                $use_open = false;
+            }
+
+            continue;
+        }
         if (T_NAMESPACE !== $id) {
             continue;
         }
@@ -833,6 +866,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
     $skip_alias = false;
     $declaration_pending = false;
     $adaptation_block = false;
+    $relative_member_pending = false;
 
     for ($i = 0; $i < $count; ++$i) {
         $token = $tokens[ $i ];
@@ -853,10 +887,35 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             $awaiting_group_prefix = true;
             $skip_alias = false;
             $adaptation_block = false;
+            $relative_member_pending = false;
 
             continue;
         }
         if (T_NAMESPACE === $id) {
+            /*
+             * Inside an open use statement the bare keyword is never
+             * legal PHP (the r11-10 rewriter doctrine), so every
+             * T_NAMESPACE met there is a RELATIVE-member spelling in
+             * progress — the INTERRUPTED relative (t31-ocr11-21, the
+             * round-11 verifier's refutation lens over t31-ocr11-1's
+             * first cut): trivia between the keyword and the name
+             * drops the fused T_NAME_RELATIVE token, the pieces arrive
+             * as keyword + separator + name, and the name run alone
+             * read as an ordinary member — the group prefix composed
+             * it (`Psr\Log\WpConnectors\…`) or its fully-qualified
+             * spelling reported un-resolved, and a family-resolving
+             * member laundered past the detector at zero references
+             * while the rewriter (token-id-keyed, case-independent)
+             * refused the same bytes. The keyword ARMS the pending
+             * flag; the run branch re-attaches the `namespace\`
+             * prefix and the relative judgment rides it.
+             */
+            if ($use_open) {
+                $relative_member_pending = true;
+                $declaration_pending = false;
+
+                continue;
+            }
             // The legal-shape judgment rides its ONE owner
             // (wp_connectors_namespace_opens_declaration(), the r8-10
             // rule); the parse-error spellings fall to 'code'
@@ -974,6 +1033,17 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                 // Whitespace, comments, commas, and the `function`/`const`
                 // kind keywords of an import are trivia to this walk.
                 $declaration_pending = false;
+                /*
+                 * The interrupted-relative arm dies with its own
+                 * grammar (t31-ocr11-21): only TRIVIA and the SEPARATOR
+                 * may stand between the keyword and its name (the run
+                 * assembly's own tolerance); anything else — a comma,
+                 * a brace, a boundary, an `as` — is a dangling keyword
+                 * whose next name is an ordinary member again.
+                 */
+                if (T_NS_SEPARATOR !== $id && T_WHITESPACE !== $id && T_COMMENT !== $id && T_DOC_COMMENT !== $id) {
+                    $relative_member_pending = false;
+                }
 
                 continue;
             }
@@ -1010,11 +1080,10 @@ function wp_connectors_name_references_from_tokens(array $tokens)
          * owed on the import side too.
          */
         /*
-         * A RELATIVE run (leading `namespace\` — the fused
-         * T_NAME_RELATIVE token, the only spelling that assembles to
-         * one; the keyword alone is never a T_STRING) resolves against
-         * the file's DECLARED namespace, never a group prefix (OCR
-         * round 11, t31-ocr11-1): PHP's relative operator ignores the
+         * A RELATIVE run (the keyword's T_NAME_RELATIVE token, or the
+         * INTERRUPTED keyword's pending arm) resolves against the
+         * file's DECLARED namespace, never a group prefix (OCR round
+         * 11, t31-ocr11-1): PHP's relative operator ignores the
          * group's prefix entirely, so composing `use
          * Psr\Log\{namespace\WpConnectors\…}` spelled
          * `Psr\Log\namespace\WpConnectors\…` — a name no family
@@ -1024,9 +1093,26 @@ function wp_connectors_name_references_from_tokens(array $tokens)
          * spelling intact, and the detector resolves it through the
          * declaration ledger exactly like every other relative (the
          * use position keeps no carve-out — t31-r11-1).
+         *
+         * RELATIVENESS rides the TOKEN ID plus the arm, never a byte
+         * comparison (t31-ocr11-21, the round's verifier lens over
+         * the first cut): the lexer emits T_NAME_RELATIVE for the
+         * keyword in ANY case (`NAMESPACE\…` fused — the keyword is
+         * case-insensitive PHP), and the case-sensitive strpos missed
+         * every uppercase spelling, composing the member and
+         * laundering it; the interrupted spelling (the keyword, trivia,
+         * then the name — whitespace or a comment between) arrives as
+         * keyword + separator + name,
+         * the arm carries the relativeness across the trivia, and the
+         * `namespace\` prefix is re-attached to the report so the
+         * detector's resolution sees the operator it must resolve.
          */
         $is_absolute_run = '\\' === ($run['name'][0] ?? '');
-        $is_relative_run = 0 === strpos((string) $run['name'], 'namespace\\');
+        $is_relative_run = T_NAME_RELATIVE === $id || $relative_member_pending;
+        if ($relative_member_pending) {
+            $display = 'namespace\\' . ltrim($display, '\\');
+            $relative_member_pending = false;
+        }
         $is_qualified_run = false !== strpos((string) $run['name'], '\\');
         $alias_position = false;
         if ($skip_alias) {
