@@ -1326,35 +1326,53 @@ function wp_connectors_unescape_php_string_literal($quote, $inner)
             $close = strpos($inner, '}', $i + 2);
             if (false !== $close) {
                 $digits = substr($inner, $i + 2, $close - $i - 2);
-                $codepoint = (int) hexdec($digits);
                 /*
                  * The legal NUL escape rides the range (OCR round 16,
                  * t31-ocr16-7): \u{0} is a codepoint the engine
                  * resolves (to the NUL byte — eval-verified), and the
                  * exclusive `> 0` guard dropped it into the
                  * unrecognized-escape branch, keeping the literal
-                 * '\u{0}' bytes in the value. The range check is the
-                 * whole judgment — anything with at least one hex
-                 * digit, up to 0x10ffff, resolves; the EMPTY braces
-                 * spelling (\u{}, a compile error the engine never
-                 * resolves) and the over-range spellings stay in the
-                 * unrecognized branch, their literal bytes kept.
+                 * '\u{0}' bytes in the value. The judgment is the
+                 * HEX-DIGIT-ALONE check plus the range — anything made
+                 * of hex digits only, up to 0x10ffff, resolves; the
+                 * EMPTY braces spelling (\u{}, a compile error the
+                 * engine never resolves) and the over-range spellings
+                 * stay in the unrecognized branch, their literal bytes
+                 * kept.
+                 *
+                 * The hex check is VALIDATED BEFORE hexdec() (OCR round
+                 * 23, t31-ocr23-4): hexdec() ignores every non-hex
+                 * byte it meets — '\u{zz}' converted to 0 (the NUL
+                 * byte), '\u{1z}' to 1, '\u{ 41 }' to 0x41 — while the
+                 * engine refuses every such spelling at compile time
+                 * (php -l-verified: Invalid UTF-8 codepoint escape
+                 * sequence), so the model diverged from the lexer it
+                 * exists to mirror, inventing values for literals no
+                 * runtime ever computes. The conversion also
+                 * DEPRECATES on non-hex input (8.5's 'Invalid
+                 * characters passed' notice — the r11-8 octal doctrine,
+                 * a notice raised mid-gate). The non-hex spellings join
+                 * the unrecognized branch: the engine's own refusal
+                 * spelling kept, byte for byte.
                  */
-                if ('' !== $digits && $codepoint >= 0 && $codepoint <= 0x10ffff) {
-                    // UTF-8 encoded in place (mbstring is not a dependency
-                    // of this tooling; the encoder is four ranges).
-                    if ($codepoint < 0x80) {
-                        $value .= chr($codepoint);
-                    } elseif ($codepoint < 0x800) {
-                        $value .= chr(0xc0 | ($codepoint >> 6)) . chr(0x80 | ($codepoint & 0x3f));
-                    } elseif ($codepoint < 0x10000) {
-                        $value .= chr(0xe0 | ($codepoint >> 12)) . chr(0x80 | (($codepoint >> 6) & 0x3f)) . chr(0x80 | ($codepoint & 0x3f));
-                    } else {
-                        $value .= chr(0xf0 | ($codepoint >> 18)) . chr(0x80 | (($codepoint >> 12) & 0x3f)) . chr(0x80 | (($codepoint >> 6) & 0x3f)) . chr(0x80 | ($codepoint & 0x3f));
-                    }
-                    $i = $close;
+                if ('' !== $digits && ctype_xdigit($digits)) {
+                    $codepoint = (int) hexdec($digits);
+                    if ($codepoint <= 0x10ffff) {
+                        // UTF-8 encoded in place (mbstring is not a dependency
+                        // of this tooling; the encoder is four ranges).
+                        if ($codepoint < 0x80) {
+                            $value .= chr($codepoint);
+                        } elseif ($codepoint < 0x800) {
+                            $value .= chr(0xc0 | ($codepoint >> 6)) . chr(0x80 | ($codepoint & 0x3f));
+                        } elseif ($codepoint < 0x10000) {
+                            $value .= chr(0xe0 | ($codepoint >> 12)) . chr(0x80 | (($codepoint >> 6) & 0x3f)) . chr(0x80 | ($codepoint & 0x3f));
+                        } else {
+                            $value .= chr(0xf0 | ($codepoint >> 18)) . chr(0x80 | (($codepoint >> 12) & 0x3f)) . chr(0x80 | (($codepoint >> 6) & 0x3f)) . chr(0x80 | ($codepoint & 0x3f));
+                        }
+                        $i = $close;
 
-                    continue;
+                        continue;
+                    }
                 }
             }
             $value .= '\\' . $next;

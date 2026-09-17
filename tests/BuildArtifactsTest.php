@@ -6382,6 +6382,37 @@ FIXTURE;
         $this->assertSame("\0", wp_connectors_unescape_php_string_literal('"', '\\u{0}'), '\u{0} resolves to the NUL byte exactly as the engine computes it.');
         $this->assertSame("\\u{}", wp_connectors_unescape_php_string_literal('"', '\\u{}'), 'The EMPTY braces spelling stays literal — the engine never resolves it (a compile error), so neither does the unescaper.');
         $this->assertSame("\\u{110000}", wp_connectors_unescape_php_string_literal('"', '\\u{110000}'), 'An over-range codepoint stays literal — the unrecognized branch keeps the engine\'s own refusal spelling.');
+
+        /*
+         * OCR round 23 (t31-ocr23-4): the hex-VALIDATED braces. The
+         * engine refuses every non-hex-digit spelling at compile time
+         * (php -l-verified: "\u{zz}" and "\u{ 41 }" are both Invalid
+         * UTF-8 codepoint escape sequences), but hexdec() ignores the
+         * offending bytes — '\u{zz}' modeled as the NUL byte and
+         * '\u{ 41 }' as 'A', values no runtime computes for literals
+         * the engine never compiles, and a DEPRECATION raised mid-gate
+         * on top (the 8.5 'Invalid characters passed' notice, the
+         * r11-8 doctrine this battery exists for). The digits must be
+         * hex ALONE: such spellings stay literal, the engine's own
+         * refusal spelling kept like the empty-braces and over-range
+         * siblings above.
+         */
+        $hex_deprecations = array();
+        set_error_handler(static function (int $errno, string $message) use (&$hex_deprecations): bool {
+            if (E_DEPRECATED === $errno || E_USER_DEPRECATED === $errno) {
+                $hex_deprecations[] = $message;
+            }
+
+            return true;
+        });
+        try {
+            $non_hex = wp_connectors_unescape_php_string_literal('"', '\\u{zz}\\u{1z}\\u{ 41 }');
+        } finally {
+            restore_error_handler();
+        }
+        $this->assertSame("\\u{zz}\\u{1z}\\u{ 41 }", $non_hex, 'Non-hex braces spellings stay literal — the engine refuses them at compile time (red at HEAD: \'\\u{zz}\' modeled as the NUL byte, \'\\u{ 41 }\' as \'A\'), so the unescaper keeps the engine\'s own refusal spelling.');
+        $this->assertSame(array(), $hex_deprecations, 'A non-hex \u{} spelling must not raise the hexdec() deprecation mid-gate — the hex judgment precedes the conversion (the r11-8 doctrine).');
+        $this->assertSame('A', wp_connectors_unescape_php_string_literal('"', '\\u{41}'), 'The plain hex control still resolves — the guard narrows exactly the non-hex class.');
     }
 
     /**
