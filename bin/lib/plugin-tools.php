@@ -3235,7 +3235,11 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
      * and its RESOLUTION must sit inside the plugin directory's —
      * realpath on both sides, so a '..'-woven spelling cannot pass
      * lexically and walk physically elsewhere; the iterator requires
-     * both to exist regardless.
+     * both to exist regardless. The root must also NAME A DIRECTORY
+     * (t31-ocr11-26, the round's verifier lens): a FILE inside the
+     * plugin passed the containment check and died in the iterator
+     * constructor's UnexpectedValueException — the engine's
+     * vocabulary on a boundary the guard owns.
      */
     if (null !== $scanRoot) {
         $scanRoot = rtrim((string) $scanRoot, '/');
@@ -3243,9 +3247,10 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
         $scan_real = realpath($scanRoot);
         if ('' === $scanRoot || '/' !== $scanRoot[0]
             || false === $plugin_real || false === $scan_real
+            || ! is_dir($scan_real)
             || ($scan_real !== $plugin_real && 0 !== strpos($scan_real, $plugin_real . '/'))) {
             throw new InvalidArgumentException(sprintf(
-                'the scan root must be an absolute path inside the plugin directory, never a relative or outside walk under the plugin anchor — scan root: %s; plugin directory: %s',
+                'the scan root must be an absolute DIRECTORY path inside the plugin directory, never a relative, outside, or non-directory walk under the plugin anchor — scan root: %s; plugin directory: %s',
                 $scanRoot,
                 $pluginDir
             ));

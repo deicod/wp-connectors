@@ -438,6 +438,27 @@ final class SelfContainmentCompoundWritesTest extends TestCase
             if (null === $caught) {
                 $this->fail('A relative scan root must refuse at the boundary — it once walked the working directory.');
             }
+
+            /*
+             * (t31-ocr11-26, the verifier lens): a FILE inside the
+             * plugin passed the containment check and died in the
+             * iterator constructor's UnexpectedValueException — the
+             * engine's vocabulary on a boundary the guard owns. A
+             * non-directory root refuses with the policy class now.
+             */
+            $fileRoot = $this->root . '/plain.txt';
+            file_put_contents($fileRoot, 'a file, not a walk root');
+            $caught = null;
+            try {
+                wp_connectors_self_containment_violations($this->root, $fileRoot);
+            } catch (\InvalidArgumentException $e) {
+                $caught = $e;
+            }
+            if (null === $caught) {
+                $this->fail('A FILE scan root must refuse at the boundary — it once died in the iterator constructor\'s engine vocabulary.');
+            }
+            $this->assertStringContainsString($fileRoot, $caught->getMessage(), 'The non-directory refusal names the scan root.');
+            unlink($fileRoot);
         } finally {
             WpHarness::rrmdir($outside);
         }
