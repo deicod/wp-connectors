@@ -2205,6 +2205,130 @@ OCR-tool round
   measured from
   output), 2 skipped
   unchanged.
+OCR-tool round
+  t31-ocr15 (eight
+  commits — the
+  fifteenth pass,
+  62/62 complete,
+  11/11 findings
+  accepted; the
+  trajectory 27→10→
+  11→7→11): the
+  round's substantive
+  SECURITY close is
+  the sensitive-name
+  CLASS rule — the
+  closed six-spelling
+  catalog let
+  'api-key' (the
+  documented auth
+  header of a whole
+  cloud-AI vendor
+  class, an
+  archetypal 3.7
+  transport binding)
+  render its full
+  secret verbatim
+  while 'x-api-key'
+  sat covered (the
+  r12-4 leak class
+  reopened); the
+  policy now judges
+  any folded name
+  that IS a
+  credential token,
+  or whose final
+  hyphen-token is
+  one (api-key,
+  subscription-key,
+  auth-token, auth
+  — the boundary is
+  the hyphen), with
+  NO extension seam
+  (3.7's decision,
+  ledgered). The
+  expectation domain
+  joined save()'s
+  contract (below
+  EXPECT_NO_GRANT is
+  a caller typo,
+  rejected typed —
+  never a silent
+  false to retry
+  on); the
+  is-a-php-source
+  fold rides the
+  ASCII owner (the
+  census leaves
+  THREE live folds —
+  the scanner's
+  extension gate and
+  the two
+  plugin-header key
+  folds — so the
+  ocr13-1
+  class-terminal
+  promise stays
+  open); the grant
+  serialize pin
+  names WHICH guard
+  fires (nested
+  members rebuild
+  before the
+  enclosing hook —
+  the set-less
+  shape is the leg
+  that reaches the
+  grant's own);
+  refusalOf() is ONE
+  static on WpHarness
+  (hoisted over the
+  wrapper — the
+  plain-TestCase
+  suites ride it —
+  and the '$caught =
+  null' census reads
+  zero); the README
+  leg, the burner,
+  and the offender
+  loop carry loud
+  existence/write
+  gates; the '/..'
+  control's scratch
+  pair rides a
+  finally. The
+  round's two-lens
+  verifier pass CLEAN
+  on both lenses for
+  fix behavior (zero
+  fix findings, both
+  behavior reds
+  re-reproduced on a
+  scratch worktree;
+  a 36-probe
+  boundary battery
+  over the suffix
+  rule — zero
+  surviving
+  counterexamples).
+  Suite
+  1643 → 1645 tests,
+  45543 → 45385
+  assertions (every
+  per-commit delta
+  measured from
+  output; the −221
+  at ocr15-7 is the
+  family check's
+  spelling moving
+  from
+  assertInstanceOf
+  to the owner's
+  identical
+  instanceof
+  verdict — no pin
+  lost), 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

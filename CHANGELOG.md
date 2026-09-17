@@ -6,6 +6,78 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 15)
+
+Fifteenth OCR-tool round (62/62, complete): 11 findings, driver triage
+accepted all — one security:medium headliner, one maintainability:medium +
+low pair, one maintainability:low ×2 pair, and test/style hygiene for the
+rest. Fixed as t31-ocr15-1..8 — one commit per finding (three class
+folds: the expectation-domain pair, the ×2 fixture-write gates, the
+refusalOf sweep), eight commits, the full offline check green after every
+commit — plus the round's two-lens verifier pass, clean on both lenses
+for fix behavior (correctness: zero fix findings, both behavior reds
+re-reproduced on a scratch worktree at the pre-fix sources; refutation:
+a 36-probe boundary battery over the new suffix rule with zero surviving
+counterexamples, and the bin/ ASCII-fold census re-derived over the whole
+tree — three live folds remain, ledgered). The trajectory 27→10→11→7→11:
+the round's substantive security close is the sensitive-name CLASS rule.
+Suite 1643 → 1645 tests, 45543 → 45385 assertions (the −221 is the
+refusalOf family check's spelling moving from assertInstanceOf to the
+owner's identical instanceof verdict — no pin lost), 2 skipped unchanged.
+
+- **The sensitive-header policy judges the CLASS, not the spelling
+  (t31-ocr15-1, security:medium)** — the closed six-entry catalog let
+  'api-key' (the documented authentication header of a whole cloud-AI
+  vendor class, an archetypal 3.7 transport binding) render its full
+  secret verbatim through every safe debug form while 'x-api-key' sat
+  covered — the r12-4 leak class reopened under another
+  vendor-documented name. `SecretMask` gains the suffix rule: any folded
+  name that IS a credential token, or whose final hyphen-token is one
+  (`api-key`, `subscription-key`, `auth-token`, `auth`), is sensitive —
+  future vendor spellings mask the day they appear. The boundary is the
+  hyphen ('x-api-keychain' is not the class); no extension seam is added
+  (3.7's decision, ledgered).
+- **The save() expectation domain is contract, both sites of the pair
+  (t31-ocr15-2, maintainability:low ×2)** — an expected_generation below
+  `EXPECT_NO_GRANT` (-1) names no observable state, so a typo'd -2
+  answered a SILENT false a caller could retry on forever — the exact
+  caller-bug class the identity and monotonicity rules reject typed. The
+  contract states the domain; the reference fake rejects below-sentinel
+  expectations with the typed rejection, nothing committed.
+- **The is-a-php-source fold rides the ASCII owner, with the census
+  (t31-ocr15-3, style:low)** — `wp_connectors_is_php_source()` folded
+  through locale-consulting `strtolower()`; it rides
+  `wp_connectors_ascii_lower()` now (behavior-identical, pinned by the
+  '.PHP' extension tests). The census: the bin/ tree does NOT read zero —
+  the secret scanner's extension gate and the two plugin-header name-key
+  folds remain, each ledgered for its own finding.
+- **The grant serialize pin names WHICH guard fires (t31-ocr15-4,
+  test:low)** — the engine rebuilds nested members before the enclosing
+  `__unserialize()` hook, so a Connected grant never reaches
+  `StoredGrant::__unserialize()` (the token set's own refusal fires
+  first, probed); the pin asserts each leg on its own fragment and adds
+  the set-less shape that DOES reach the grant's hook.
+- **The sweep's README leg existence-checks its path (t31-ocr15-5,
+  test:low)** — an absent README made realpath() answer false and the
+  failure land late and misleading inside the reader; the check is loud
+  at the array-build site, naming the path.
+- **The last two unchecked fixture writes are gated
+  (t31-ocr15-6, test:low ×2)** — the PCRE burner and the offender loop
+  left empty tempnam files on a failed write, failing with misleading
+  'no abort'/'no violation' verdicts; both mirror their clean twins'
+  ocr12-7 gates.
+- **The refusal verdict has ONE owner across the suite
+  (t31-ocr15-7, maintainability:medium + low)** — the implementation is
+  hoisted to `WpHarness::refusalOf()` (the canSymlink hoist shape; two
+  offending suites extend the bare TestCase, not the wrapper), the
+  wrapper delegates, and every hand-rolled
+  `$caught = null`/try/catch/fail-if-null shape in tests/ rides the
+  owner with its original catch's family — the census grep reads zero.
+- **The '/..' control leg's scratch pair rides a finally
+  (t31-ocr15-8, test:low)** — an assertion failure between creation and
+  inline cleanup leaked both temp trees; every exit path removes them
+  now.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 14)
 
 Fourteenth OCR-tool round (62/62, complete): 7 findings, driver triage
