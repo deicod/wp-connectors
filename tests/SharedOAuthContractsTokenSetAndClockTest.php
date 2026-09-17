@@ -285,6 +285,35 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
      * ---------------------------------------------------------------
      */
 
+    /*
+     * OCR-round-18 adjudication (t31-ocr18-1): the finding claimed the
+     * 'sydney fall-back' row was internally inconsistent ('01:00:00'
+     * reading pinned against the 01:30 constants) and red since birth.
+     * REFUTED, derived before any fix: the row was born in the round-1
+     * commit (7c6a754) as '01:30:00' + 14:30Z/15:30Z — arithmetically
+     * consistent (01:30 AEDT = 14:30Z, +3600 = 15:30Z) — and never
+     * edited since (git -G over all history); it RUNS on every build
+     * (the provider is not filtered: six rows, thirty assertions, no
+     * skip flag) and passes. The quoted '01:00:00' is a spelling the
+     * row never carried.
+     *
+     * What the derivation DID surface, driven: half the row set never
+     * crossed its transition. A fall-back transition sits one AMBIGUOUS
+     * wall hour after any unambiguous pre-transition reading, so a
+     * 3600-second lifetime from these readings ends one wall hour
+     * BEFORE the transition (berlin: expiry 00:00Z vs transition
+     * 01:00Z; new york: 05:30Z vs 06:00Z; sydney: 15:30Z vs 16:00Z —
+     * offsets driven unchanged across every fall-back window), and the
+     * delta assertion is zone-independent arithmetic: a window with no
+     * transition exercises no transition. The fall-back lifetimes are
+     * 7200 seconds now (the readings keep their unambiguous
+     * pre-transition spellings; berlin's moves 01:00 -> 01:30 to
+     * mirror its spring sibling, every window crossing strictly), and
+     * the crossing premise is PINNED in the test body: a row whose
+     * dates ever drift off a transition day goes red on the offset
+     * assertion instead of passing vacuously.
+     */
+
     /**
      * Review-round pin (t31-r1-1 + t31-r1-2): named-timezone readings
      * whose lifetime crosses a DST transition — spring-forward AND
@@ -303,11 +332,11 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
     {
         return array(
             'berlin spring-forward' => array('Europe/Berlin', '2026-03-29 01:30:00.250000', 7200, '2026-03-29T00:30:00.250000+00:00', '2026-03-29T02:30:00.250000+00:00'),
-            'berlin fall-back' => array('Europe/Berlin', '2026-10-25 01:00:00', 3600, '2026-10-24T23:00:00.000000+00:00', '2026-10-25T00:00:00.000000+00:00'),
+            'berlin fall-back' => array('Europe/Berlin', '2026-10-25 01:30:00', 7200, '2026-10-24T23:30:00.000000+00:00', '2026-10-25T01:30:00.000000+00:00'),
             'new york spring-forward' => array('America/New_York', '2026-03-08 01:30:00', 7200, '2026-03-08T06:30:00.000000+00:00', '2026-03-08T08:30:00.000000+00:00'),
-            'new york fall-back' => array('America/New_York', '2026-11-01 00:30:00', 3600, '2026-11-01T04:30:00.000000+00:00', '2026-11-01T05:30:00.000000+00:00'),
+            'new york fall-back' => array('America/New_York', '2026-11-01 00:30:00', 7200, '2026-11-01T04:30:00.000000+00:00', '2026-11-01T06:30:00.000000+00:00'),
             'sydney spring-forward' => array('Australia/Sydney', '2026-10-04 01:30:00', 7200, '2026-10-03T15:30:00.000000+00:00', '2026-10-03T17:30:00.000000+00:00'),
-            'sydney fall-back' => array('Australia/Sydney', '2026-04-05 01:30:00', 3600, '2026-04-04T14:30:00.000000+00:00', '2026-04-04T15:30:00.000000+00:00'),
+            'sydney fall-back' => array('Australia/Sydney', '2026-04-05 01:30:00', 7200, '2026-04-04T14:30:00.000000+00:00', '2026-04-04T16:30:00.000000+00:00'),
         );
     }
 
@@ -336,6 +365,18 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
             $expires_in,
             $set->expires_at()->getTimestamp() - $set->obtained_at()->getTimestamp(),
             'The derived expiry must be exactly expires_in absolute seconds after the reading.'
+        );
+
+        // The crossing premise itself, pinned (t31-ocr18-1): the delta
+        // assertion above is zone-independent, so it alone would pass a
+        // window containing no transition at all — exactly what half the
+        // row set was at HEAD. The reading's offset and the derived
+        // expiry's must DIFFER; a row whose dates drift off its zone's
+        // transition day goes red here instead of passing vacuously.
+        $this->assertNotSame(
+            $obtained_at->getOffset(),
+            $set->expires_at()->getOffset(),
+            'Every provider row must genuinely cross its zone\'s DST transition — the reading\'s offset and the derived expiry\'s must differ.'
         );
 
         // The reading's timezone stays attached to the derived expiry.
