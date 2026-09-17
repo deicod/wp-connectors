@@ -263,6 +263,23 @@ final class HarnessCopyTreeTest extends TestCase
                 symlink($from . '/src', $from . '/ancestor-link');
                 $refuses($from . '/src', $from . '/ancestor-link/inside', 'A target reached through a SYMLINKED ancestor of the source must refuse — the link is not a door.');
 
+                /*
+                 * The DANGLING twin (OCR round 16, t31-ocr16-6, the
+                 * t31-ocr10-10 vocabulary-leak class reopened one
+                 * shape deeper): the walk stops at a link, is_file()
+                 * FOLLOWS it (false for a dangling one), realpath()
+                 * answers false, and the lexical containment fallback
+                 * once let the landing die THROUGH the link in raw
+                 * engine warnings ('mkdir(): No such file or
+                 * directory') with copyTree() RETURNING NORMALLY
+                 * having moved nothing (driven at HEAD). A link
+                 * resolving to nothing is a malformed chain exactly
+                 * like the regular-file crossing: the sibling
+                 * vocabulary refuses it, before any byte moves.
+                 */
+                symlink($from . '/no-such-target', $from . '/dangling-link');
+                $refuses($from . '/src', $from . '/dangling-link/inside', 'A target whose chain crosses a DANGLING symlink must refuse — the link resolves to nothing, no directory can be created through it, and the landing would die in the engine\'s vocabulary, never the policy\'s.');
+
                 // The control: the same ancestor walk keeps judging a
                 // NORMAL disjoint target by its own (existing or
                 // created-fresh) location — the copy still lands.

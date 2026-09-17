@@ -842,6 +842,27 @@ final class WpHarness
         if (is_file($ancestor)) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain crosses a regular FILE — no directory can be created through it: from ' . $from . ' into ' . $to . ' (the crossing component: ' . $ancestor . ')');
         }
+        /*
+         * The DANGLING-link twin (OCR round 16, t31-ocr16-6, the
+         * ocr10-10 vocabulary-leak class reopened one shape deeper):
+         * the walk stops at a link (is_link is a stop condition), but
+         * is_file() FOLLOWS it — a link to a file refuses above, a
+         * link to a directory resolves through realpath below, and a
+         * DANGLING link answers false to both, so it fell to
+         * realpath()'s false and the LEXICAL containment fallback:
+         * the verdict judged a spelling, then the landing's recursive
+         * mkdir died THROUGH the dangling link in raw engine
+         * warnings (driven: 'mkdir(): No such file or directory',
+         * copy() failing behind it, copyTree() RETURNING NORMALLY
+         * having moved nothing — the silent third in the engine's
+         * vocabulary, never the policy's). A link resolving to
+         * nothing is a malformed chain exactly like the file: no
+         * directory can be created through it, and the refusal names
+         * it with the same vocabulary.
+         */
+        if (is_link($ancestor) && ! is_dir($ancestor) && ! is_file($ancestor)) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain crosses a DANGLING symlink — the link resolves to nothing, so no directory can be created through it and the landing would die in the engine\'s vocabulary: from ' . $from . ' into ' . $to . ' (the crossing component: ' . $ancestor . ')');
+        }
         $ancestor_real = realpath($ancestor);
         if (false !== $ancestor_real) {
             $remainder = substr(rtrim($to_walk, '/'), strlen($ancestor));
