@@ -631,6 +631,42 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-19 pin (t31-ocr19-4): the refusal owner's
+     * family-mismatch verdict CHAINS the original exception. The
+     * mismatch branch is where an unexpected exception IS the signal —
+     * pre-fix the verdict named the pinned family and the caught class
+     * but constructed the AssertionFailedError WITHOUT the previous
+     * argument, so the original's real message and stack trace were
+     * discarded at the exact seam where diagnosis matters most. The
+     * owner cannot collect its own verdict (it throws where its
+     * callers' guarded calls refuse), so the leg hand-rolls the one
+     * try/catch this owner's own regression needs: a planted
+     * TypeError outside the pinned family fails the verdict with the
+     * chain intact — the SAME instance rides getPrevious() (driven
+     * once with the planted exception: PHPUnit 9's own __toString
+     * strips the previous chain from the rendered string, so the
+     * chain-bearing construction is the pin, and any renderer that
+     * walks the chain reaches the real message and stack).
+     */
+    public function testTheFamilyMismatchVerdictCarriesTheOriginalException(): void
+    {
+        $planted = new \TypeError('planted: the real message and stack are the diagnosis');
+
+        try {
+            WpHarness::refusalOf(
+                fn(): \TypeError => throw $planted,
+                'The planted TypeError must fail the family verdict, never return.',
+                RuntimeException::class
+            );
+            $this->fail('A class outside the pinned family must fail the verdict.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $verdict) {
+            $this->assertStringContainsString('RuntimeException', $verdict->getMessage(), 'The verdict names the pinned family.');
+            $this->assertStringContainsString('TypeError', $verdict->getMessage(), 'The verdict names the caught class.');
+            $this->assertSame($planted, $verdict->getPrevious(), 'The original exception rides the chain — never discarded at the diagnosis seam (this engine\'s PHPUnit 9 __toString strips the previous chain from the rendered string, so the CHAIN ITSELF is the pin: getPrevious() is the planted instance, and any renderer that walks it reaches the real message and stack).');
+        }
+    }
+
+    /**
      * OCR round 11 (t31-ocr11-5): the ancestor walk mangled a
      * not-yet-existing RELATIVE target — dirname('dst') === '.' is a
      * ONE-BYTE ancestor whose strlen ate the first byte of the

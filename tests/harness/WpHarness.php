@@ -1113,6 +1113,14 @@ final class WpHarness
      * keeps a thin delegate so its subclasses' $this->refusalOf() call
      * sites are untouched; this static is the one implementation.
      *
+     * The family-mismatch verdict CHAINS the original exception (OCR
+     * round 19, t31-ocr19-4): an unexpected exception IS the signal —
+     * the verdict names the pinned family and the caught class, and
+     * the original rides the previous-exception chain so its real
+     * message and stack trace are one __toString away in the failure
+     * output, not discarded at the exact seam where diagnosis matters
+     * most.
+     *
      * @param callable $attempt     The guarded call, expected to throw.
      * @param string   $expectation The failure message for the no-throw case.
      * @param string   $family      The exception family the site pins — the class its original catch declared; \Throwable::class pins nothing and is legitimate only where the original catch was itself \Throwable.
@@ -1126,7 +1134,9 @@ final class WpHarness
         } catch (\Throwable $e) {
             if (! $e instanceof $family) {
                 throw new \PHPUnit\Framework\AssertionFailedError(
-                    'The refusal class is outside the family this site pins (expected ' . $family . ', got ' . get_class($e) . ') — the original catch declared ' . $family . ', and a stray Error carrying the fragments would otherwise pass silently (t31-ocr9-3).'
+                    'The refusal class is outside the family this site pins (expected ' . $family . ', got ' . get_class($e) . ') — the original catch declared ' . $family . ', and a stray Error carrying the fragments would otherwise pass silently (t31-ocr9-3).',
+                    0,
+                    $e
                 );
             }
 
