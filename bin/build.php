@@ -726,6 +726,75 @@ final class WpConnectorsBuild
                 throw new RuntimeException("build: a use statement's relative operator may not stand mid-name or in the alias slot ({$spelling_display}) in {$sourceVersion} — the splice once started at the keyword and left the preceding separator, shipping a double-separated parse error at exit 0; the rewrite owns the operator only as the import's leading name (use namespace\\… / use function|const namespace\\…), and a degenerate spelling gets no map — write the family spelling");
             }
 
+            /*
+             * The statement-TAIL rider judgment (OCR round 16,
+             * t31-ocr16-4): the splice covers the keyword through the
+             * name run — everything the statement carries AFTER the
+             * run rides verbatim beside the rewritten name. `as
+             * Alias` before the terminator is the one rider the
+             * splice can leave standing as legal output; anything
+             * else once shipped legal-LOOKING output with the
+             * parse-error bytes intact (driven at HEAD:
+             * `use namespace\Clock SystemClock;` exited 0 as
+             * `use \…\Clock SystemClock;`, php -l rejecting the
+             * shipped line; the postcondition sees only family
+             * references, so the rider was judged by nobody — the
+             * exact 'zip ships the parse-error line at exit 0' class
+             * this step exists to refuse). The tail is judged
+             * through the lexer's own boundaries now: from the run's
+             * end, code token by code token, the allowed grammar is
+             * an optional `as` + one identifier, terminated by the
+             * statement-boundary set (the ONE boundary owner) or a
+             * ',' — a comma list's remainder is the NEXT import's
+             * own judgment, each member carrying its own trigger
+             * through this walk. Anything else — a second name, a
+             * brace without its separator, an operator, EOF without
+             * a terminator — refuses loudly, never legalizes.
+             */
+            $tail_index = wp_connectors_next_code_token_index($tokens, $run['end'] + 1);
+            $tail_expect = 'rider-or-terminator';
+            while (null !== $tail_index) {
+                $tail_token = $tokens[ $tail_index ];
+                $tail_id = is_array($tail_token) ? $tail_token[0] : null;
+                if ('rider-or-terminator' === $tail_expect) {
+                    if (wp_connectors_is_use_statement_boundary($tail_token, $tail_id) || ',' === $tail_token) {
+                        $tail_expect = 'terminated';
+
+                        break;
+                    }
+                    if (T_AS === $tail_id) {
+                        $tail_expect = 'alias-identifier';
+
+                        $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
+
+                        continue;
+                    }
+                    $tail_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
+
+                    throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — the rewrite owns the statement through its terminator, and rider bytes it cannot map (here: '{$tail_display}') ship beside the rewritten name as legal-looking output the engine then rejects; the legal tail is an optional alias ('as Name') before the terminator; write the import without the rider bytes");
+                }
+                if ('alias-identifier' === $tail_expect) {
+                    if (T_STRING !== $tail_id) {
+                        $tail_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
+
+                        throw new RuntimeException("build: the alias of a relative use import ({$spelling_display}) must be one plain identifier in {$sourceVersion} — the grammar accepts nothing else in the slot, and the rewrite refuses the spelling rather than shipping it (here: '{$tail_display}')");
+                    }
+                    $tail_expect = 'terminator-only';
+                } elseif (! wp_connectors_is_use_statement_boundary($tail_token, $tail_id) && ',' !== $tail_token) {
+                    $tail_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
+
+                    throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — after the alias only the terminator may follow, and rider bytes (here: '{$tail_display}') ship beside the rewritten name as legal-looking output the engine then rejects; write the import without the rider bytes");
+                } else {
+                    $tail_expect = 'terminated';
+
+                    break;
+                }
+                $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
+            }
+            if ('terminated' !== $tail_expect) {
+                throw new RuntimeException("build: a relative use import ({$spelling_display}) carries no terminator in {$sourceVersion} — the statement never closes, and the rewrite refuses the unterminated spelling rather than splicing a name into bytes the engine cannot parse");
+            }
+
             $declaration = $declaration_in_effect($token_offset);
             $declared_display = null !== $declaration ? $declaration['display'] : null;
             if (null === $declared_display || '' === $declared_display) {

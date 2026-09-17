@@ -5389,6 +5389,15 @@ FIXTURE;
         $this->assertStringContainsString('use function \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\now;', $rewritten);
         $this->assertStringContainsString('use const \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\TICK;', $rewritten);
 
+        // A comma-LIST member rides the same splice (the tail judgment
+        // owns t31-ocr16-4: the list separator is a legal rider — the
+        // next import carries its own trigger through the walk); the
+        // rewritten member keeps its meaning beside the untouched
+        // non-family one.
+        $listed = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock, Other\\Thing;\ninterface ListFixture\n{\n}\n";
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($listed, 'OpenAiOauth', 'shared/src/ListFixture.php');
+        $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock, Other\\Thing;', $rewritten, 'A comma-listed relative member rewrites in place — the separator is a rider the grammar allows, never a refusal.');
+
         // A separator-INTERRUPTED relative (the walk reassembles; the
         // splice replaces the whole run) resolves like its contiguous
         // twin.
@@ -5639,6 +5648,33 @@ FIXTURE;
             'alias-slot keyword' => array(
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Foo as namespace\\Clock;\ninterface AliasSlotRelFixture\n{\n}\n",
                 'mid-name or in the alias slot',
+            ),
+            /*
+             * OCR round 16 (t31-ocr16-4): the statement-TAIL riders.
+             * The splice covers the keyword through the name run, and
+             * everything after the run once rode verbatim beside the
+             * rewritten name — `use namespace\Clock SystemClock;`
+             * shipped at exit 0 as `use \…\Clock SystemClock;`
+             * (driven: php -l rejects the shipped line — the exact
+             * 'zip ships the parse-error line' class this step exists
+             * to refuse; the postcondition sees only family
+             * references, so the rider was judged by nobody). The
+             * legal tail is an optional alias before the terminator;
+             * the tail is judged through the lexer's own boundaries
+             * now, and the direct-brace group spelling (no separator
+             * before '{') rides the same refusal.
+             */
+            'rider bytes after the name run' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock SystemClock;\ninterface TailRiderFixture\n{\n}\n",
+                'parse-error bytes ride the relative use import',
+            ),
+            'rider bytes after the alias' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock as C extra;\ninterface TailRiderFixture\n{\n}\n",
+                'after the alias only the terminator may follow',
+            ),
+            'brace group without its separator' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors {Shared\\Clock};\ninterface TailRiderFixture\n{\n}\n",
+                'parse-error bytes ride the relative use import',
             ),
         );
         foreach ($refusals as $label => $case) {
