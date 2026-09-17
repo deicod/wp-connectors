@@ -6378,6 +6378,45 @@ FIXTURE;
     }
 
     /*
+     * The prune's name/checksum split (t31-ocr14-3): the writer joins
+     * name . '  ' . checksum, and an entry name containing a double
+     * space must survive the split — the first-gap spelling read
+     * 'double  space.zip' as 'double' and pruned the LIVE entry.
+     */
+    public function testTheManifestPruneSplitsAtTheWritersSeparatorNotTheFirstNameGap()
+    {
+        $scratch = self::distDir() . '/.prune-dblspace-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch, 0755, true);
+        try {
+            // The live artifact whose NAME carries a double space (a
+            // plugin-dir basename spelling the writer would faithfully
+            // join), plus a genuinely stale line — the merge keeps the
+            // first and drops the second.
+            $artifact = $scratch . '/double  space.zip';
+            file_put_contents($artifact, 'artifact bytes');
+            $digest = hash_file('sha256', $artifact);
+            file_put_contents(
+                $scratch . '/checksums.txt',
+                "double  space.zip  {$digest}\nvanished.zip  " . str_repeat('a', 64) . "\n"
+            );
+
+            $merge = new \ReflectionMethod(WpConnectorsBuild::class, 'manifestLinesWithout');
+            $lines = $merge->invoke(null, $scratch . '/checksums.txt', 'unrelated.zip');
+
+            $this->assertSame(
+                array("double  space.zip  {$digest}"),
+                $lines,
+                'The double-space entry name survives the split (red as the first-gap spelling: it read "double", named no file, and pruned the live entry) while the vanished artifact\'s line dies by the regeneration rule.'
+            );
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /*
      * Manifest regeneration prunes (t31-r12-7): the header contract
      * says "dist/checksums.txt is regenerated" — a connector whose zip
      * is deleted out-of-band must not leave a stale line behind.

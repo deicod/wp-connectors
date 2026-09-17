@@ -1838,8 +1838,19 @@ final class WpConnectorsBuild
                  * the same rule. The prune runs INSIDE the merge lock,
                  * so a concurrent run only ever prunes against the
                  * LANDED artifact set.
+                 *
+                 * The split finds the separator FROM THE RIGHT (OCR
+                 * round 14, t31-ocr14-3): the writer joins
+                 * name . '  ' . checksum (64 hex bytes, no spaces), and
+                 * strstr()'s FIRST-gap split read an entry name
+                 * containing a double space ('double  space.zip') as
+                 * 'double' — pruning a LIVE entry as stale (or keeping
+                 * nothing at all where the tail named no file). The
+                 * writer's own join shape is the anchor: the last '  '
+                 * is the separator it wrote, whatever the name carries.
                  */
-                $entry_name = strstr($line, '  ', true);
+                $separator = strrpos($line, '  ');
+                $entry_name = false === $separator ? false : substr($line, 0, $separator);
                 if (false === $entry_name || ! is_file(dirname($manifestPath) . '/' . $entry_name)) {
                     continue;
                 }
