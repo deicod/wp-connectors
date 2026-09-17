@@ -140,6 +140,155 @@ final class HarnessCopyTreeTest extends TestCase
             // (a) A MISSING source: same verdict path.
             $refuses($from . '/no-such-tree', $from . '/dst-missing', 'A MISSING source must refuse with the policy exception.');
 
+            // (b) The self-copy: the target IS the source — a silent
+            // no-op success pre-round (the engine's same-file mercy,
+            // probed, never a contract).
+            $refuses($from . '/src', $from . '/src', 'A self-copy must refuse — pre-round it returned normally having copied nothing, a silent wrong outcome.');
+
+            // (b) The nested target: the destination sits inside the
+            // source the lazy iterator is walking — the copy lands in
+            // the tree under test.
+            $refuses($from . '/src', $from . '/src/inside', 'A target inside the source must refuse — the copy would land inside the very tree it reads.');
+
+            /*
+             * (b-mirror) The MIRROR relation (t31-ocr9-2): the target
+             * CONTAINS the source — pre-fix the guard passed it, and a
+             * nested same-name segment resolved the copy INSIDE the
+             * tree being read (driven: src/src/nested.php landed at
+             * src/nested.php, plus collateral in the containing
+             * parent). Same containment owner, symmetric direction.
+             */
+            mkdir($from . '/src/src', 0755, true);
+            file_put_contents($from . '/src/src/nested.php', 'nested bytes');
+            $refuses($from . '/src', $from, 'A target that CONTAINS the source must refuse — the mirror of the nested-target refusal.');
+            $this->assertFileDoesNotExist($from . '/src/nested.php', 'The mis-nested landing (the nested segment resolving inside the tree being read) never happens.');
+            $this->assertFileDoesNotExist($from . '/file.php', 'No collateral lands in the containing parent either.');
+
+            /*
+             * The alias spellings of (b) (t31-ocr8-3, over the ocr7-8
+             * named-alias class): the not-yet-created target was judged
+             * purely lexically, and both aliases hid the physical
+             * landing — a '..'-woven target and a target reached
+             * through a SYMLINKED ancestor ride a spelling the lexical
+             * prefix check cannot see through. The nearest EXISTING
+             * ancestor decides now; both refuse, and both share (b)'s
+             * physical landing spot.
+             */
+            $refuses($from . '/src', $from . '/decoy/../src/inside', 'A \'..\'-woven target that lands inside the source must refuse — the spelling is not the location.');
+            /*
+             * (c) The FILE-in-chain target (t31-ocr10-10): the ancestor
+             * walk once stepped PAST a regular file in the chain (not a
+             * dir, not a link — exactly its walk-on conditions), judged
+             * containment against an ancestor ABOVE it, passed, and the
+             * copy died later in mkdir() as a raw E_WARNING instead of
+             * the policy exception the @throws contract promises. The
+             * walk stops at any existing component now.
+             */
+            $refuses($from . '/src', $from . '/plain.txt/inside', 'A target whose chain crosses a regular FILE must refuse with the policy exception naming the crossing — never a raw mkdir() warning from the byte work.');
+            // The linked-ancestor legs ride the CAPABILITY probe
+            // (t31-ocr10-14): function_exists('symlink') is true on
+            // hosts that cannot use it, and the bare call fatals the
+            // battery mid-test — the probe gates the legs instead.
+            if (WpHarness::canSymlink()) {
+                symlink($from . '/src', $from . '/ancestor-link');
+                $refuses($from . '/src', $from . '/ancestor-link/inside', 'A target reached through a SYMLINKED ancestor of the source must refuse — the link is not a door.');
+
+                /*
+                 * The DANGLING twin (OCR round 16, t31-ocr16-6, the
+                 * t31-ocr10-10 vocabulary-leak class reopened one
+                 * shape deeper): the walk stops at a link, is_file()
+                 * FOLLOWS it (false for a dangling one), realpath()
+                 * answers false, and the lexical containment fallback
+                 * once let the landing die THROUGH the link in raw
+                 * engine warnings ('mkdir(): No such file or
+                 * directory') with copyTree() RETURNING NORMALLY
+                 * having moved nothing (driven at HEAD). A link
+                 * resolving to nothing is a malformed chain exactly
+                 * like the regular-file crossing: the sibling
+                 * vocabulary refuses it, before any byte moves.
+                 */
+                symlink($from . '/no-such-target', $from . '/dangling-link');
+                $refuses($from . '/src', $from . '/dangling-link/inside', 'A target whose chain crosses a DANGLING symlink must refuse — the link resolves to nothing, no directory can be created through it, and the landing would die in the engine\'s vocabulary, never the policy\'s.');
+
+                /*
+                 * The POP-ABOVE-ANCHOR shapes (OCR round 17's verifier
+                 * refutation, t31-ocr17-9, closed in-round): a '..' in
+                 * the remainder pops the lexical collapse ABOVE the
+                 * anchor the walk resolved, and the post-pop descent
+                 * crosses a link nothing resolved — driven at the
+                 * round's own HEAD, the dir-link spelling RETURNED
+                 * NORMALLY with the copy landed INSIDE the source
+                 * (the plain spelling of the same landing refuses),
+                 * and the FILE-link variant died in raw mkdir()/copy()
+                 * warnings. The collapsed resolution walks the same
+                 * judgment now: the dir-link shape refuses through
+                 * containment's own vocabulary, the file-link shape
+                 * through the crossing gate.
+                 */
+                mkdir($from . '/pop-anchor', 0755, true);
+                symlink($from . '/src', $from . '/pop-link');
+                symlink($file_source, $from . '/pop-file-link');
+                $refuses($from . '/src', $from . '/pop-anchor/b/../../pop-link/dst', 'A \'..\' that pops the collapse above its anchor is judged where the chain RESOLVES — a descent crossing a link into the source is the nested target, whatever the spelling.');
+                $this->assertFileDoesNotExist($from . '/src/dst', 'Nothing lands inside the source through a pop-above-anchor descent (driven at the round\'s HEAD as a normal return with the copy inside the very tree it read).');
+                $refuses($from . '/src', $from . '/pop-anchor/c/../../pop-file-link/dst', 'A pop-above-anchor descent crossing a link to a FILE refuses through the crossing gate — never raw mkdir() warnings.');
+
+                // The control: the same ancestor walk keeps judging a
+                // NORMAL disjoint target by its own (existing or
+                // created-fresh) location — the copy still lands.
+                WpHarness::copyTree($from . '/src', $from . '/fresh-outside');
+                $this->assertFileExists($from . '/fresh-outside/file.php', 'A normal disjoint target still copies through the ancestor-resolved containment check.');
+            }
+
+            // The refusal precedes the byte work: the source tree is
+            // intact after every shape (the pre-fix nested copy is the
+            // self-pollution this leg guards against).
+            $this->assertSame('original bytes', (string) file_get_contents($from . '/src/file.php'), 'The source tree survives every refusal untouched.');
+            $this->assertFileDoesNotExist($from . '/src/inside', 'The nested target was never created.');
+        } finally {
+            WpHarness::rrmdir($from);
+        }
+    }
+
+    /**
+     * OCR-round-22 split (t31-ocr22-2): every root-ANCHORED leg of
+     * the precondition battery above rode spellings whose premise is
+     * POSIX root resolution — the t31-ocr11-2 doctrine the legs' own
+     * docblocks carry: POSIX resolves '.' and '..' AT the root to the
+     * root itself on every host, and the guards spell their root
+     * clauses '/'. composer declares php >= 8.2 with no platform
+     * constraint, and the harness gates its host variance through
+     * capability probes (canSymlink(), canSpawnChildren()) — but
+     * nothing gated THIS class: on a non-POSIX host the spellings
+     * resolve through a different root and the legs would misjudge
+     * (or walk) through no defect of the contract they pin. The
+     * platform probe gates the battery visibly; on a POSIX host
+     * every leg is exact, moved byte-identical from the battery it
+     * grew in (with its own round docblocks).
+     */
+    public function testRootAnchoredSpellingsRefuseBeforeIteratingOnPosixHosts(): void
+    {
+        if (DIRECTORY_SEPARATOR !== '/') {
+            $this->markTestSkipped('The root-anchor spellings ride POSIX root resolution (the t31-ocr11-2 doctrine) — this host\'s platform separator is not the POSIX one, and the legs would judge a different root than the one they pin.');
+        }
+
+        $from = sys_get_temp_dir() . '/wpct-copytree-root-' . uniqid('', true);
+        mkdir($from . '/src', 0755, true);
+        file_put_contents($from . '/src/file.php', 'original bytes');
+
+        try {
+            // The same refusal owner the parent battery rides
+            // (t31-ocr15-7): the family the original catch declared
+            // rides the third parameter.
+            $refuses = function (string $f, string $t, string $naming) use ($from): void {
+                $caught = WpHarness::refusalOf(
+                    fn() => WpHarness::copyTree($f, $t),
+                    $naming,
+                    RuntimeException::class
+                );
+                $this->assertStringContainsString('WpHarness::copyTree() refuses', $caught->getMessage(), 'The policy exception, never the SPL iterator\'s vocabulary.');
+                $this->assertStringContainsString($f, $caught->getMessage(), $naming);
+            };
+
             /*
              * (a-root) The SOURCE-side root collapse (t31-ocr12-3, the
              * THIRD symmetry: rrmdir() refuses '/', the target side
@@ -159,11 +308,6 @@ final class HarnessCopyTreeTest extends TestCase
             $refuses('/', $from . '/dst-root-src', 'A source collapsed to the filesystem ROOT must refuse — the universal container is not a copyable tree.');
             $refuses('/..', $from . '/dst-root-src', 'A \'/..\'-spelled source resolves to the filesystem ROOT on every POSIX host — the same refusal.');
             $this->assertFileDoesNotExist($from . '/dst-root-src', 'The root-source refusal moved no byte — the target was never created, never populated.');
-
-            // (b) The self-copy: the target IS the source — a silent
-            // no-op success pre-round (the engine's same-file mercy,
-            // probed, never a contract).
-            $refuses($from . '/src', $from . '/src', 'A self-copy must refuse — pre-round it returned normally having copied nothing, a silent wrong outcome.');
 
             /*
              * (b-empty) The degenerate targets (t31-ocr11-22, the
@@ -250,25 +394,6 @@ final class HarnessCopyTreeTest extends TestCase
             $refuses($from . '/src', '/../' . $firstLevel, 'A \'..\'-woven target whose RESOLUTION has no existing component must refuse — the anchor the walk found is not the landing the collapse names.');
             $this->assertFileDoesNotExist($firstLevel, 'No byte lands at the root\'s first level — the refusal precedes the byte work (driven at HEAD as real first-level writes).');
 
-            // (b) The nested target: the destination sits inside the
-            // source the lazy iterator is walking — the copy lands in
-            // the tree under test.
-            $refuses($from . '/src', $from . '/src/inside', 'A target inside the source must refuse — the copy would land inside the very tree it reads.');
-
-            /*
-             * (b-mirror) The MIRROR relation (t31-ocr9-2): the target
-             * CONTAINS the source — pre-fix the guard passed it, and a
-             * nested same-name segment resolved the copy INSIDE the
-             * tree being read (driven: src/src/nested.php landed at
-             * src/nested.php, plus collateral in the containing
-             * parent). Same containment owner, symmetric direction.
-             */
-            mkdir($from . '/src/src', 0755, true);
-            file_put_contents($from . '/src/src/nested.php', 'nested bytes');
-            $refuses($from . '/src', $from, 'A target that CONTAINS the source must refuse — the mirror of the nested-target refusal.');
-            $this->assertFileDoesNotExist($from . '/src/nested.php', 'The mis-nested landing (the nested segment resolving inside the tree being read) never happens.');
-            $this->assertFileDoesNotExist($from . '/file.php', 'No collateral lands in the containing parent either.');
-
             /*
              * (b-mirror-root) The ROOT collapse (t31-ocr9-9, the
              * verifier's refutation lens over the round's own mirror
@@ -289,86 +414,9 @@ final class HarnessCopyTreeTest extends TestCase
              */
             $refuses($from . '/src', '/..', 'A target collapsed to the filesystem ROOT contains every source — it must refuse like any other container.');
 
-            /*
-             * The alias spellings of (b) (t31-ocr8-3, over the ocr7-8
-             * named-alias class): the not-yet-created target was judged
-             * purely lexically, and both aliases hid the physical
-             * landing — a '..'-woven target and a target reached
-             * through a SYMLINKED ancestor ride a spelling the lexical
-             * prefix check cannot see through. The nearest EXISTING
-             * ancestor decides now; both refuse, and both share (b)'s
-             * physical landing spot.
-             */
-            $refuses($from . '/src', $from . '/decoy/../src/inside', 'A \'..\'-woven target that lands inside the source must refuse — the spelling is not the location.');
-            /*
-             * (c) The FILE-in-chain target (t31-ocr10-10): the ancestor
-             * walk once stepped PAST a regular file in the chain (not a
-             * dir, not a link — exactly its walk-on conditions), judged
-             * containment against an ancestor ABOVE it, passed, and the
-             * copy died later in mkdir() as a raw E_WARNING instead of
-             * the policy exception the @throws contract promises. The
-             * walk stops at any existing component now.
-             */
-            $refuses($from . '/src', $from . '/plain.txt/inside', 'A target whose chain crosses a regular FILE must refuse with the policy exception naming the crossing — never a raw mkdir() warning from the byte work.');
-            // The linked-ancestor legs ride the CAPABILITY probe
-            // (t31-ocr10-14): function_exists('symlink') is true on
-            // hosts that cannot use it, and the bare call fatals the
-            // battery mid-test — the probe gates the legs instead.
-            if (WpHarness::canSymlink()) {
-                symlink($from . '/src', $from . '/ancestor-link');
-                $refuses($from . '/src', $from . '/ancestor-link/inside', 'A target reached through a SYMLINKED ancestor of the source must refuse — the link is not a door.');
-
-                /*
-                 * The DANGLING twin (OCR round 16, t31-ocr16-6, the
-                 * t31-ocr10-10 vocabulary-leak class reopened one
-                 * shape deeper): the walk stops at a link, is_file()
-                 * FOLLOWS it (false for a dangling one), realpath()
-                 * answers false, and the lexical containment fallback
-                 * once let the landing die THROUGH the link in raw
-                 * engine warnings ('mkdir(): No such file or
-                 * directory') with copyTree() RETURNING NORMALLY
-                 * having moved nothing (driven at HEAD). A link
-                 * resolving to nothing is a malformed chain exactly
-                 * like the regular-file crossing: the sibling
-                 * vocabulary refuses it, before any byte moves.
-                 */
-                symlink($from . '/no-such-target', $from . '/dangling-link');
-                $refuses($from . '/src', $from . '/dangling-link/inside', 'A target whose chain crosses a DANGLING symlink must refuse — the link resolves to nothing, no directory can be created through it, and the landing would die in the engine\'s vocabulary, never the policy\'s.');
-
-                /*
-                 * The POP-ABOVE-ANCHOR shapes (OCR round 17's verifier
-                 * refutation, t31-ocr17-9, closed in-round): a '..' in
-                 * the remainder pops the lexical collapse ABOVE the
-                 * anchor the walk resolved, and the post-pop descent
-                 * crosses a link nothing resolved — driven at the
-                 * round's own HEAD, the dir-link spelling RETURNED
-                 * NORMALLY with the copy landed INSIDE the source
-                 * (the plain spelling of the same landing refuses),
-                 * and the FILE-link variant died in raw mkdir()/copy()
-                 * warnings. The collapsed resolution walks the same
-                 * judgment now: the dir-link shape refuses through
-                 * containment's own vocabulary, the file-link shape
-                 * through the crossing gate.
-                 */
-                mkdir($from . '/pop-anchor', 0755, true);
-                symlink($from . '/src', $from . '/pop-link');
-                symlink($file_source, $from . '/pop-file-link');
-                $refuses($from . '/src', $from . '/pop-anchor/b/../../pop-link/dst', 'A \'..\' that pops the collapse above its anchor is judged where the chain RESOLVES — a descent crossing a link into the source is the nested target, whatever the spelling.');
-                $this->assertFileDoesNotExist($from . '/src/dst', 'Nothing lands inside the source through a pop-above-anchor descent (driven at the round\'s HEAD as a normal return with the copy inside the very tree it read).');
-                $refuses($from . '/src', $from . '/pop-anchor/c/../../pop-file-link/dst', 'A pop-above-anchor descent crossing a link to a FILE refuses through the crossing gate — never raw mkdir() warnings.');
-
-                // The control: the same ancestor walk keeps judging a
-                // NORMAL disjoint target by its own (existing or
-                // created-fresh) location — the copy still lands.
-                WpHarness::copyTree($from . '/src', $from . '/fresh-outside');
-                $this->assertFileExists($from . '/fresh-outside/file.php', 'A normal disjoint target still copies through the ancestor-resolved containment check.');
-            }
-
             // The refusal precedes the byte work: the source tree is
-            // intact after every shape (the pre-fix nested copy is the
-            // self-pollution this leg guards against).
+            // intact after every shape.
             $this->assertSame('original bytes', (string) file_get_contents($from . '/src/file.php'), 'The source tree survives every refusal untouched.');
-            $this->assertFileDoesNotExist($from . '/src/inside', 'The nested target was never created.');
         } finally {
             WpHarness::rrmdir($from);
         }
