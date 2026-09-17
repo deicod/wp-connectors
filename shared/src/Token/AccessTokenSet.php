@@ -235,7 +235,25 @@ final class AccessTokenSet {
 		if ( $expires_in <= 0 ) {
 			throw new InvalidArgumentException( sprintf( 'The expires_in offset must be a positive number of seconds, %d given.', $expires_in ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
 		}
-		if ( $expires_in > self::SERIALIZABLE_EXPIRY_CEILING - $obtained_at->getTimestamp() ) {
+
+		/*
+		 * Overflow-free spelling (t31-ocr12-5): the former
+		 * 'expires_in > ceiling - obtained_at' subtracted the READING
+		 * from the ceiling, and an obtained-at deep enough (below
+		 * 253402300799 - PHP_INT_MAX, ~year -292277022365) promoted
+		 * that difference to float — the verdict rode approximation on
+		 * exactly the readings nearest the domain edge, and stayed
+		 * correct only because the floor guard below caught them
+		 * after. The subtraction now runs on the operand the
+		 * constructor has already bounded: expires_in is a validated
+		 * positive int, so 'ceiling - expires_in' bottoms at
+		 * 253402300799 - PHP_INT_MAX, which sits above PHP_INT_MIN —
+		 * it never leaves the int domain, and the reading is compared
+		 * untouched. Same algebra ('reading plus lifetime must not
+		 * pass the last UTC second of year 9999'), no spelling of it
+		 * that degrades at the edge.
+		 */
+		if ( $obtained_at->getTimestamp() > self::SERIALIZABLE_EXPIRY_CEILING - $expires_in ) {
 			throw new InvalidArgumentException( sprintf( 'The derived expiry must stay within the serializable range (the last UTC second of year 9999); obtained-at plus %d seconds does not.', $expires_in ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a validated int in a developer-facing rejection; escaping belongs to the display layer.
 		}
 		if ( $obtained_at->getTimestamp() < self::SERIALIZABLE_OBTAINED_FLOOR ) {
