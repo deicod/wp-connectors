@@ -579,7 +579,12 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      */
     public function testTheZipEntryNamesOpenGateFailsLoudlyOnACorruptArchive()
     {
-        $corrupt = sys_get_temp_dir() . '/wpct-corrupt-' . getmypid() . '.zip';
+        // Random-suffixed scratch name (t31-ocr12-8, the canSymlink
+        // probe's own shape): a pid-only suffix is enumerable on a
+        // shared host, and a pre-planted file at the predicted path is
+        // read as "the corrupt archive" — a neighbor's plant steering
+        // this leg's fixture (the naming shape t31-ocr10-18 rejects).
+        $corrupt = sys_get_temp_dir() . '/wpct-corrupt-' . getmypid() . '-' . bin2hex(random_bytes(4)) . '.zip';
         file_put_contents($corrupt, 'this is not a zip archive');
         try {
             $caught = null;
