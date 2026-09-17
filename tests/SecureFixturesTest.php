@@ -127,7 +127,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
         $githubToken = 'ghp_' . bin2hex(random_bytes(18));
 
-        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-' . getmypid();
+        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (is_dir($tempDir)) {
             WpHarness::rrmdir($tempDir);
         }
@@ -161,7 +161,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     {
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
-        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-prune-' . getmypid();
+        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-prune-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (is_dir($tempDir)) {
             WpHarness::rrmdir($tempDir);
         }
@@ -207,7 +207,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
              * find nothing) for the pin to kill the below-root slice's
              * removal.
              */
-            $holder = dirname($tempDir) . '/wp-connectors-scan-ancestor-' . getmypid();
+            $holder = dirname($tempDir) . '/wp-connectors-scan-ancestor-' . getmypid() . '-' . bin2hex(random_bytes(4));
             $ancestor = $holder . '/DIST';
             mkdir($ancestor . '/root', 0755, true);
             file_put_contents($ancestor . '/root/leak.conf', "api_key = {$zaiKey}\n");
@@ -238,7 +238,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     {
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
-        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-artifact-' . getmypid();
+        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-artifact-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (is_dir($tempDir)) {
             WpHarness::rrmdir($tempDir);
         }
@@ -281,7 +281,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     {
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
-        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-only-' . getmypid();
+        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-only-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (is_dir($tempDir)) {
             WpHarness::rrmdir($tempDir);
         }
