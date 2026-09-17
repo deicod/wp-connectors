@@ -3309,7 +3309,22 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
             || false === $plugin_real || false === $scan_real
             || ! is_dir($scan_real)
             || ($scan_real !== $plugin_real && 0 !== strpos($scan_real, $plugin_real . '/'))) {
-            throw new InvalidArgumentException(sprintf(
+            /*
+             * The refusal carries the CHANNEL's own class (OCR round
+             * 23, t31-ocr23-3): it once threw
+             * InvalidArgumentException — a LogicException, outside
+             * build's `catch (RuntimeException)` — breaking the
+             * failure channel the glm31-4 sibling comment below
+             * deliberately preserves (build's refusing
+             * RuntimeException carries this walk's every other
+             * refusal; UnexpectedValueException already means
+             * something else there, the guarded abort). A firing
+             * boundary was an uncaught fatal exiting 255 where every
+             * sibling refusal reaches the build's named exit-1
+             * verdict; the boundary speaks the channel's vocabulary
+             * now.
+             */
+            throw new RuntimeException(sprintf(
                 'the scan root must be an absolute DIRECTORY path inside the plugin directory, never a relative, outside, or non-directory walk under the plugin anchor — scan root: %s; plugin directory: %s',
                 $scanRoot,
                 $pluginDir
