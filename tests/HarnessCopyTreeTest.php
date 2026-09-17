@@ -175,6 +175,34 @@ final class HarnessCopyTreeTest extends TestCase
              * lexical accident that used to refuse the empty spelling;
              * the guard is explicit now.
              */
+            /*
+             * The safety net BEFORE the destructive legs (OCR round
+             * 17, t31-ocr17-3): their safety rests entirely on the
+             * production refusal — a regressed guard would attempt
+             * filesystem-ROOT writes as this very test runs. The pin
+             * holds the REFUSAL PRECONDITION itself: each degenerate
+             * spelling must resolve to the root or to nothing, never
+             * to a work dir, so a spelling that resolved somewhere
+             * real fails the pin loudly BEFORE the copy is ever
+             * attempted.
+             */
+            foreach (array('/', '//') as $rootOnly) {
+                $this->assertSame(
+                    '/',
+                    realpath($rootOnly),
+                    'The leg\'s own precondition: the root-separator spelling resolves to the filesystem ROOT the guard refuses — a spelling resolving elsewhere would point this leg\'s landing at a real tree.'
+                );
+            }
+            /*
+             * The empty spelling is pinned the way its own refusal
+             * judges it — lexically, because the RESOLUTION probe
+             * disagrees with the landing rule here (driven while
+             * writing this pin: realpath('') answers the CWD on this
+             * engine, a work dir); is_dir('') is the engine's own
+             * "names no directory", the fact the ocr11-22 refusal
+             * stands on.
+             */
+            $this->assertFalse(is_dir(''), 'The leg\'s own precondition: the EMPTY spelling names no directory the engine would walk — its landing would be the filesystem root, never a resolved work dir.');
             $refuses($from . '/src', '', 'An EMPTY target must refuse — the landing would be the filesystem root.');
             $refuses($from . '/src', '/', 'A root-only target must refuse — the landing would be the filesystem root.');
             $refuses($from . '/src', '//', 'A root-separators-only target must refuse — the landing would be the filesystem root.');
@@ -191,9 +219,15 @@ final class HarnessCopyTreeTest extends TestCase
              * (driven: '/<all-nonexistent>/dest' — permission-denied
              * unprivileged, REAL first-level writes as uid 0) and
              * RETURNED NORMALLY having moved nothing. The sentinel
-             * refuses like its siblings now, naming the chain.
+             * refuses like its siblings now, naming the chain. The
+             * leg's precondition rides the same safety net (the
+             * t31-ocr17-3 class): the chain's first component must
+             * NOT exist before the leg runs, or the refusal is
+             * testing a landing that is not first-level-beneath-root.
              */
-            $refuses($from . '/src', '/wpct-ocr16-root-sentinel-' . uniqid('', true) . '/dest', 'A target whose chain has NO existing component must refuse — the walk bottomed out at the filesystem ROOT sentinel, and the landing would create the first component directly beneath it.');
+            $sentinelChain = '/wpct-ocr16-root-sentinel-' . uniqid('', true) . '/dest';
+            $this->assertFileDoesNotExist(dirname($sentinelChain), 'The leg\'s own precondition: the sentinel chain\'s first component does not exist — the landing the refusal governs is first-level-beneath-root.');
+            $refuses($from . '/src', $sentinelChain, 'A target whose chain has NO existing component must refuse — the walk bottomed out at the filesystem ROOT sentinel, and the landing would create the first component directly beneath it.');
             /*
              * (b-landing-sentinel) The landing policy judges the
              * RESOLUTION (OCR round 17, t31-ocr17-1, the round's

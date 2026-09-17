@@ -4103,6 +4103,21 @@ FIXTURE;
                 'the root dot spelling' => '/.',
                 'the double-slash spelling' => '//',
             ) as $rootLabel => $rootSpelling) {
+                /*
+                 * The safety net BEFORE the destructive leg (OCR round
+                 * 17, t31-ocr17-3): these legs' safety rests entirely
+                 * on the production refusal — a regressed guard would
+                 * walk the root's children as this very test runs. The
+                 * pin holds the REFUSAL PRECONDITION itself: the
+                 * spelling must resolve to the filesystem ROOT the
+                 * guard names, so a spelling that resolved elsewhere
+                 * (a platform normalization drift, a guard judging a
+                 * different collapse) fails the pin loudly BEFORE the
+                 * removal is ever attempted — the leg is only
+                 * meaningful, and only safe to run, over the tree its
+                 * refusal claims.
+                 */
+                $this->assertSame('/', realpath($rootSpelling), "The leg's own precondition ({$rootLabel}): the spelling resolves to the filesystem ROOT the guard refuses — a spelling resolving elsewhere would point this leg's removal at the wrong tree.");
                 $refusal = $this->refusalOf(
                     fn() => WpHarness::rrmdir($rootSpelling),
                     "A root-collapsing spelling must refuse the removal loudly ({$rootLabel}), never delete the root's children.", \RuntimeException::class
