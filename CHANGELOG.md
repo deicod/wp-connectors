@@ -6,7 +6,144 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
-### Fixed (shared — M3 Task 3.1, OCR round 10)
+### Fixed (shared — M3 Task 3.1, OCR round 11)
+
+Eleventh OCR-tool round (61/61, complete): 27 findings, driver triage
+accepted all. Fixed as t31-ocr11-1..20 — one commit per finding (the
+same-class groups ride one commit each), the full offline check green
+after every commit — plus the round's two-lens verifier pass, whose
+findings are all fixed in-round as t31-ocr11-21..26. The count
+trajectory 19→27 is not divergence: the reviewer now reaches seams the
+older doctrines never touched — the group-use composition internals
+(two of the four bug:high/medium detector findings live inside `use
+P\{…}` bodies) and the HOST-PORTABILITY of the test suite itself — and
+the loop converges when a round finds nothing NEW, not when counts
+fall. The round's headline lesson (r11-2): a TEST was hostile to its
+own host — `sys_get_temp_dir().'/..'` legs are destructive exactly
+where the temp tree is deep (macOS), the production root guard being
+CORRECT — tests carry the portability doctrine the production code
+already keeps. Suite 1634 → 1637 tests, assertions 45417 → 45466 (all
+recorded absolute figures re-measured +1 on this runner today,
+uniformly from the pre-round base — see the round record in the
+refutation ledger; every per-commit delta exact), 2 skipped unchanged.
+
+- **A RELATIVE group-use member resolves through the DECLARED
+  namespace, never the group prefix (t31-ocr11-1 + t31-ocr11-21,
+  bug:high)** — `use Psr\Log\{namespace\WpConnectors\Shared\Clock};`
+  in a file declaring `namespace Deicod;` resolves to the FAMILY name,
+  but the walk composed `Psr\Log\namespace\…` — a name no predicate
+  matches — and the spelling laundered past both gates at zero
+  references. The first cut guarded the fused lowercase token only;
+  the verifier lens drove four more spellings of the same operator
+  still laundering (the UPPERCASE/mixed-case fused keyword — the
+  lexer's T_NAME_RELATIVE is case-insensitive; the interrupted
+  `namespace \…` and comment-separated spellings — keyword +
+  separator + name, the fused token never forms; the bare
+  keyword + bare name) and, deepest, the LEDGER opening a declaration
+  from the bare-keyword spelling inside the use statement, re-basing
+  every LATER relative (the r8-10 misattribution class on the round's
+  own resolution owner). Relativeness rides the TOKEN ID plus a
+  pending arm the keyword sets inside an open use statement, and the
+  ledger skips every namespace keyword inside one (declarations are
+  file-level); seven spellings pinned family-detected, all red at
+  HEAD.
+- **The root-collapse legs are ROOT-ANCHORED, never a temp-parent
+  '..' (t31-ocr11-2, bug:high)** — the `sys_get_temp_dir().'/..'`
+  legs collapsed to '/' only where the temp dir sits directly beneath
+  it; on hosts whose temp tree is deep (macOS TMPDIR) the spelling
+  resolved to the temp dir's REAL parent, passed the production guard
+  (correct, matching its contract), and the TEST ITSELF walked and
+  deleted the host's tree. POSIX resolves '.' and '..' AT the root to
+  the root on every host — '/', '/.', '/..' drive the root clauses
+  harmlessly everywhere; the production code is unchanged.
+- **The duplicate-entry fence folds CASE, TRAILING EDGE-JUNK, and
+  SEGMENT COLLAPSE (t31-ocr11-3 + t31-ocr11-24,
+  security:medium/low)** — Windows strips trailing dots/spaces/controls
+  per component, and '.'/empty segments name the same file at
+  extraction on EVERY host (driven here: `p/./logo.png` beside
+  `p/logo.png` lands one file, the first copy's bytes judged by
+  nobody); the fence's key composes the codebase's own owners —
+  ascii_lower + path_edge_junk per segment, the dot/empty segments
+  dropped — with '..' outside the fold (the traversal refusal owns
+  it). Trailing-dot, trailing-space, dot-segment, and empty-segment
+  twins all refuse, red at HEAD.
+- **The empty-body fence arms on COMPOSITION (t31-ocr11-4,
+  bug:medium)** — an absolute-only (or, since this round,
+  relative-only) group body once armed `$group_member_seen` and the
+  FAMILY-spelled prefix went unreported through every gate; the fence
+  arms on members actually composed with the prefix now — one verdict
+  path: a composed member carries the prefix's spelling, a body
+  nothing composes trips the fence and the prefix reports itself,
+  judged exactly once.
+- **copyTree() judges and names its target through the TRUE tree
+  (t31-ocr11-5 + t31-ocr11-22, bug:medium)** — a not-yet-existing
+  RELATIVE target bottomed out at the one-byte '.' ancestor whose
+  strlen ate the first byte of the remainder ('dst' → 'st'), and both
+  containment verdicts judged a tree the caller never named (driven:
+  a legal copy wrongly refused through the mangled spelling). The
+  walk judges a cwd-prepended ABSOLUTE spelling; the verifier lens
+  then drove the walk's own regression — the EMPTY and
+  root-separators-only targets passed both checks and attempted
+  FILESYSTEM-ROOT writes (pre-fix they were refused by a lexical
+  accident the walk removed) — and the degenerate target refuses
+  explicitly, naming both paths.
+- **The suite's own hygiene class (t31-ocr11-6/7/16/17/18/19,
+  test:medium/low)** — classifyClean()'s reopen/extract gates (a
+  failed open walked an empty dir and the soundness half passed
+  vacuously); the battery's artifact name derived from the fixture's
+  Version header (a fixture bump reddened 5+ rows as phantom
+  defects); the battery's scratch roots temp-rooted and
+  random-suffixed (fixed names under repo dist/ collided between
+  concurrent runs); the dev-entry pins quote-bounded (the dotless
+  spelling was satisfied by the dotted twin's line alone); the
+  bundler fixtures carry real newlines; the license-snapshot reopen
+  strictly gated (the ocr10-16 shape).
+- **The spawn/link capability class swept (t31-ocr11-8 +
+  t31-ocr11-23, test:medium/low)** — the concurrency loops' ungated
+  proc_open spawns (a false reached proc_close() as a TypeError);
+  every symlink leg rides canSymlink() with VISIBLE skips (the
+  function_exists gate was both wrong — the function exists without
+  the privilege — and invisible mid-test); the one inline @symlink
+  probe twin the sweep missed fatals under disable_functions(symlink)
+  — @ cannot suppress a missing-function Error — and rides the owner.
+- **canSymlink() is ONE owner, hoisted and guarded (t31-ocr11-9)** —
+  the probe lives on WpHarness (loaded for every test through
+  wp-stubs), function_exists-guarded so the disable_functions host
+  answers false instead of fataling the battery the probe exists to
+  protect; the WpConnectorsTestCase wrapper delegates, the private
+  twin in HarnessCopyTreeTest is deleted.
+- **Boundary contracts enforced, not assumed (t31-ocr11-10/14/15/26)** —
+  zipEntryNames() gates getNameIndex()'s string|false (a malformed
+  central directory coerced silently); the self-containment scanRoot
+  validates absolute + realpath-inside + DIRECTORY (a file root died
+  in the iterator's engine vocabulary); wp_connectors_cli_args()
+  answers [] wherever no argv is bound (read through the symbol
+  table — the `global` binding is one the analyzer must model as
+  always populated).
+- **Display and fold doctrines (t31-ocr11-11/12/13/25)** — the two
+  build refusals derive their family spellings from the owner; the
+  sibling-pattern folds ride the ASCII owner; every caller-controlled
+  path interpolation in the inspector — the four basename() sites and
+  the CLI guard's full-path line — renders through the printable seam
+  (a newline in the path once forged a verdict-lookalike line).
+- **rrmdir()'s realpath-false is the policy refusal
+  (t31-ocr11-20)** — a TOCTOU/open_basedir false fell through to the
+  SPL iterator's vocabulary; false never reaches an iterator again
+  (the copyTree t31-ocr10-9 twin's shape).
+
+The round's verifier pass (independent correctness + refutation
+agents, every finding driven): correctness re-derived the 26-commit
+count chain at every commit (all green, every delta exact, all five
+red-at-HEAD replays confirmed, message-vs-diff audit clean) and found
+the assertion figures each exactly +1 above the recorded claims —
+uniformly from the pre-round base (round 10's ledgered 45417 measures
+45418 today, deterministically; origin unisolated, recorded as a
+trace); refutation confirmed two defects in the round's own first
+cuts (the ocr11-1 completion above; the ocr11-5 empty-target
+regression) and drove four traces — all six fixed in-round as
+t31-ocr11-21..26, zero refuted, plus one named residual ledgered (the
+EOF-unterminated group statement reports nothing — pre-existing since
+t31-r10-9, the next round's candidate).
 
 Tenth OCR-tool round — the FIRST fully complete pass (61/61, no
 fill-in): 19 findings, driver triage accepted all. Two high (the

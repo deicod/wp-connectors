@@ -1707,6 +1707,169 @@ OCR-tool round
   said 45380, true
   45379 — the
   correctness lens).
+OCR-tool round
+  t31-ocr11 (twenty-six
+  commits — the
+  eleventh pass, 61/61
+  complete, 27/27
+  findings accepted:
+  the reviewer reached
+  the group-use
+  COMPOSITION internals
+  and the suite's own
+  HOST-PORTABILITY;
+  19→27 is the loop's
+  shape, not
+  divergence — it
+  converges when a
+  round finds nothing
+  NEW): a relative
+  group-use member
+  never composes with
+  its prefix (the
+  operator resolves
+  against the DECLARED
+  namespace; the
+  verifier pass
+  completed the guard
+  — token-id
+  relativeness in any
+  case, a pending arm
+  for the interrupted
+  spellings, and the
+  LEDGER never opening
+  a declaration from a
+  namespace keyword
+  inside a use
+  statement, the
+  r8-10 corruption
+  class on the round's
+  own resolution
+  owner); the
+  root-collapse TEST
+  legs are ROOT-
+  ANCHORED, never a
+  temp-parent '..'
+  (deep-temp hosts
+  made them
+  destructive, the
+  production guard
+  correct — tests
+  carry the
+  portability doctrine
+  too); the duplicate
+  fence folds case +
+  trailing edge-junk +
+  segment collapse
+  ('.'/empty segments
+  name the same file
+  at extraction,
+  driven); the group
+  fence arms on
+  COMPOSITION (a body
+  nothing composes
+  reports its prefix,
+  judged once);
+  copyTree() judges
+  its target through
+  an ABSOLUTE
+  spelling and
+  refuses the
+  degenerate targets
+  the new walk
+  un-refused (the
+  ''-target
+  filesystem-root
+  regression, driven
+  by the lens); the
+  suite's hygiene
+  class (strict
+  reopen/extract
+  gates, the battery
+  artifact name
+  derived from the
+  fixture header,
+  temp+random scratch
+  roots, quote-bounded
+  dev-entry pins,
+  real fixture
+  newlines); the
+  spawn/link
+  capability sweep
+  completed (canSymlink()
+  is ONE owner on
+  WpHarness,
+  function_exists-
+  guarded — an
+  ungated @symlink
+  probe FATALS under
+  disable_functions,
+  the last inline
+  twin driven and
+  swept); boundary
+  contracts enforced
+  (zipEntryNames'
+  string|false gate,
+  the scanRoot
+  absolute+inside+
+  DIRECTORY
+  validation, cli_args
+  answering [] outside
+  a CLI process
+  through the symbol
+  table); display and
+  fold doctrines
+  (derived refusal
+  spellings, ASCII
+  folds, every
+  caller-path
+  interpolation in
+  the inspector on
+  the printable seam
+  — the CLI guard's
+  full-path line once
+  forged a verdict
+  line, driven);
+  rrmdir()'s
+  realpath-false is
+  the policy refusal.
+  The round's two-lens
+  verifier pass
+  (every finding
+  driven) re-derived
+  the 26-commit count
+  chain at EVERY
+  commit (all green,
+  deltas exact, five
+  red-at-HEAD replays
+  confirmed,
+  message-vs-diff
+  audit clean) and
+  found the assertion
+  figures each +1
+  above the recorded
+  claims, uniformly
+  from the pre-round
+  base (origin
+  unisolated,
+  ledgered as a
+  trace); refutation
+  confirmed 2 + drove
+  4 traces — all six
+  fixed in-round
+  (ocr11-21..26), ZERO
+  refuted, one named
+  residual (the EOF-
+  unterminated group
+  statement — the
+  next round's
+  candidate). Suite
+  1634 → 1637 tests,
+  45417 → 45466
+  assertions as
+  measured (+1-offset
+  trace applies), 2
+  skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
