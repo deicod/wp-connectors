@@ -194,11 +194,18 @@ abstract class WpConnectorsTestCase extends TestCase
      * twin: link-bearing legs and rows skip on the probe's answer,
      * never fatal the battery.
      *
+     * The probe name is RANDOM-suffixed (t31-ocr10-18, the
+     * verifier's trace over the round's own new probe): a predictable
+     * pid-based name is pre-plantable on a shared host (the ocr10-2
+     * threat model), and a planted entry flips the probe false —
+     * silently suppressing every link-bearing leg. Impact is skipped
+     * legs only; the suffix makes the flip unplantable.
+     *
      * @return bool True when a probe link can be created and removed.
      */
     protected static function canSymlink(): bool
     {
-        $probe = sys_get_temp_dir() . '/wpct-capability-' . getmypid();
+        $probe = sys_get_temp_dir() . '/wpct-capability-' . getmypid() . '-' . bin2hex(random_bytes(4));
         $ok = @symlink('/usr/bin/true', $probe);
         if ($ok) {
             @unlink($probe);

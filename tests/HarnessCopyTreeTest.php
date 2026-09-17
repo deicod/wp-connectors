@@ -22,7 +22,9 @@ final class HarnessCopyTreeTest extends TestCase
      */
     private static function canSymlink(): bool
     {
-        $probe = sys_get_temp_dir() . '/wpct-copytree-capability-' . getmypid();
+        // Random-suffixed (t31-ocr10-18): a predictable probe name is
+        // pre-plantable — the shared owner's doctrine, worn on the twin.
+        $probe = sys_get_temp_dir() . '/wpct-copytree-capability-' . getmypid() . '-' . bin2hex(random_bytes(4));
         $ok = @symlink('/usr/bin/true', $probe);
         if ($ok) {
             @unlink($probe);
