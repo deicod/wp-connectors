@@ -452,6 +452,40 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('development entry', implode("\n", $violations));
     }
 
+    /**
+     * OCR-round-10 pin (t31-ocr10-8): the embed-territory exemption
+     * keys on the ARCHIVE-CONTROLLED top-level name — a hostile zip
+     * whose single top-level dir IS a development entry ('vendor',
+     * the t31-r5-5 exemption territory 'vendor/src/Shared/…' spelled
+     * from a dev-entry root, driven) exempted everything under it
+     * from dev-entry classification: composer.json and vendor/ under
+     * the hostile 'src/Shared' rode the exemption un-flagged. The
+     * exemption requires the top-level name to NOT be a development
+     * entry, judged through the ONE vocabulary owner — the embed
+     * territory only exists under a REAL plugin slug.
+     */
+    public function testADevEntryTopLevelDirectoryIsNeverAnEmbedTerritory(): void
+    {
+        $head = "Plugin Name:       vendor\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       vendor\nAuthor:            x\n";
+        $zipPath = self::distDir() . '/connectors-vendor-1.0.0.zip';
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('vendor/vendor.php', "<?php\n/**\n * {$head} */\ndefine( 'VENDOR_VERSION', '1.0.0' );\n");
+        $zip->addFromString('vendor/src/Shared/composer.json', '{}');
+        $zip->addFromString('vendor/src/Shared/vendor/x.php', "<?php\n");
+        $zip->close();
+
+        try {
+            $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-devroot');
+            $report = implode("\n", $violations);
+            $this->assertStringContainsString('development entry "vendor/src/Shared/composer.json"', $report, 'The hostile embed-territory spelling under a dev-entry root is NOT exempted (red at HEAD: the top-level name was never judged).');
+            $this->assertStringContainsString('development entry "vendor/src/Shared/vendor/x.php"', $report, 'The vendor segment under the hostile territory flags too.');
+        } finally {
+            @unlink($zipPath);
+            @unlink($zipPath . '.sha256');
+        }
+    }
+
     /*
      * Partial extraction (t31-r12-1): an entry whose name exceeds the
      * filesystem's NAME_MAX makes extractTo() fail MID-TREE.

@@ -141,7 +141,16 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * whole tree that carries one), so its segments judge by the
          * vocabulary below, per the t31-r12-3 signal doctrine.
          */
-        $isEmbeddedShared = wp_connectors_is_embed_destination($name, $parts[0]);
+        /*
+         * The exemption requires the top-level name to NOT be a
+         * development entry itself (t31-ocr10-8): the name is
+         * archive-controlled, and a hostile zip whose single top-level
+         * dir IS a dev entry ('vendor/src/Shared/…' — driven) exempted
+         * everything under it from dev-entry classification, the
+         * vocabulary judged through its ONE owner. The embed territory
+         * only exists under a REAL plugin slug.
+         */
+        $isEmbeddedShared = ! wp_connectors_is_development_entry($parts[0]) && wp_connectors_is_embed_destination($name, $parts[0]);
         // Segment check (whole path components; a basename is one),
         // judged by the ONE comparison owner — case-insensitively
         // (t31-r6-3), the same fold the builder's collector excludes
