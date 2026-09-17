@@ -371,14 +371,25 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('symlinked source tree', $caught->getMessage(), 'The verdict names the LINK class for the \'/..\' spelling too.');
             $this->assertStringContainsString('root-link', $caught->getMessage());
 
+            /*
+             * The pair rides the file's try/finally discipline
+             * (t31-ocr15-8, the t31-r3-11 scratch-hygiene shape): the
+             * cleanups were inline AFTER the assertion, so an
+             * assertFileExists() failure between creation and cleanup
+             * leaked BOTH temp trees into /tmp. Every exit path from
+             * creation on removes them now.
+             */
             $dotdotHolder = sys_get_temp_dir() . '/wpct-copytree-dotdot-' . uniqid('', true);
             $dotdotOut = sys_get_temp_dir() . '/wpct-copytree-dotdot-out-' . uniqid('', true);
-            mkdir($dotdotHolder . '/tree', 0755, true);
-            file_put_contents($dotdotHolder . '/tree/real.php', 'real bytes');
-            WpHarness::copyTree($dotdotHolder . '/tree/..', $dotdotOut);
-            $this->assertFileExists($dotdotOut . '/tree/real.php', 'A \'/..\'-spelled REAL source keeps copying the tree it names — the probe is the only judgment that changed.');
-            WpHarness::rrmdir($dotdotHolder);
-            WpHarness::rrmdir($dotdotOut);
+            try {
+                mkdir($dotdotHolder . '/tree', 0755, true);
+                file_put_contents($dotdotHolder . '/tree/real.php', 'real bytes');
+                WpHarness::copyTree($dotdotHolder . '/tree/..', $dotdotOut);
+                $this->assertFileExists($dotdotOut . '/tree/real.php', 'A \'/..\'-spelled REAL source keeps copying the tree it names — the probe is the only judgment that changed.');
+            } finally {
+                WpHarness::rrmdir($dotdotHolder);
+                WpHarness::rrmdir($dotdotOut);
+            }
 
             /*
              * No nothing-landed assertion here (verifier round t31-ocr4-8):
