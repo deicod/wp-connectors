@@ -141,6 +141,55 @@ final class ToolchainSmokeTest extends TestCase
     }
 
     /**
+     * OCR-round-14 pin (t31-ocr14-4): the below-root offset tolerates a
+     * trailing-separator root spelling. The production roots carry no
+     * trailing separator today, so the pin drives a scratch copy of the
+     * tool whose connectors root IS spelled with one. The former bare
+     * strlen($root) + 1 started one byte late (the iterator keeps the
+     * root's own spelling verbatim, so the double slash never happens)
+     * and ate the FIRST byte of the first below-root segment — green by
+     * accident while that first segment was a plugin dir ('demo' read
+     * as 'emo'), red the moment the first segment is the excluded tree
+     * itself: 'vendor/broken.php' read as 'endor/broken.php', dodged
+     * the exclusion, and FAILED the lint it must skip. The sibling
+     * scanner's rtrim spelling (bin/lib/secret-scanner.php) keeps
+     * every relative path whole under any spelling.
+     */
+    public function testTheBelowRootOffsetToleratesATrailingSeparatorRootSpelling(): void
+    {
+        $scratch = sys_get_temp_dir() . '/wpct-lint-trailroot-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/bin/lib', 0755, true);
+        $tool = (string) file_get_contents(__DIR__ . '/../bin/lint-php.php');
+        $patched = str_replace("__DIR__ . '/../connectors'", "__DIR__ . '/../connectors/'", $tool);
+        $this->assertNotSame($tool, $patched, 'The patch must reach the roots line (the connectors spelling exists exactly once).');
+        file_put_contents($scratch . '/bin/lint-php.php', $patched);
+        copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php');
+
+        try {
+            // The excluded tree is the FIRST segment below the root —
+            // the position whose first byte the bare offset ate.
+            mkdir($scratch . '/connectors/vendor', 0755, true);
+            mkdir($scratch . '/connectors/demo', 0755, true);
+            file_put_contents($scratch . '/connectors/demo/good.php', "<?php\n// lintable connector source\n");
+            file_put_contents($scratch . '/connectors/vendor/broken.php', "<?php this must stay excluded");
+
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
+            $report = implode("\n", $output);
+
+            $this->assertSame(0, $exit, "The trailing-separator root must not shift the exclusion judgment: {$report}");
+            $this->assertStringNotContainsString('broken.php', $report, 'The excluded tree stays excluded under the trailing-separator spelling (red as the bare offset: the shifted first segment read the vendor file into the lint).');
+            $this->assertStringContainsString('3 file(s) checked, 0 failure(s)', $report, 'The good source under the shifted root stays counted (good.php plus the two copied tool files).');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Review-round pin (t31-r12-9, narrowed in OCR round 8 t31-ocr8-7):
      * the lint gate's exclusion is the gate's OWN NAMED SUBSET of the
      * development-entry vocabulary — generated and third-party trees

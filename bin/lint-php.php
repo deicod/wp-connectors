@@ -85,7 +85,20 @@ if (wp_connectors_cli_entry(__FILE__)) {
              * vocabulary docblock prescribes for subset consumers,
              * never a byte-exact twin.
              */
-            $relative = (string) substr($file->getPathname(), strlen($root) + 1);
+            /*
+             * The below-root offset rides the sibling's rtrim spelling
+             * (bin/lib/secret-scanner.php, OCR round 14, t31-ocr14-4):
+             * a root handed in with a trailing separator made
+             * strlen($root) + 1 one PAST the pathname prefix (the
+             * iterator normalizes the double slash away), so every
+             * relative path lost its first byte — 'vendor/x.php' read
+             * as 'endor/x.php' and the exclusion judge saw shifted
+             * segments (green before only by accident: no excluded
+             * name is one byte away from a real one). rtrim also keeps
+             * the degenerate '/' root correct (offset 1 over the
+             * absolute pathname).
+             */
+            $relative = (string) substr($file->getPathname(), strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1);
             foreach (explode(DIRECTORY_SEPARATOR, $relative) as $segment) {
                 if (wp_connectors_segment_is_named($segment, $lint_excludes)) {
                     continue 2;
