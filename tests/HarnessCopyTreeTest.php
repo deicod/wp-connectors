@@ -391,4 +391,54 @@ final class HarnessCopyTreeTest extends TestCase
             WpHarness::rrmdir($plain);
         }
     }
+
+    /**
+     * OCR round 11 (t31-ocr11-5): the ancestor walk mangled a
+     * not-yet-existing RELATIVE target — dirname('dst') === '.' is a
+     * ONE-BYTE ancestor whose strlen ate the first byte of the
+     * remainder ('dst' -> 'st', 'sub/dst' -> 'ub/dst'), so
+     * target_real rode realpath('.') . 'st', a tree the caller never
+     * named, and the containment verdicts judged (and refused —
+     * driven red at HEAD) against a path that is not the target. The
+     * walk judges an ABSOLUTE spelling now (cwd-prepended); the copy
+     * keeps the caller's spelling and lands exactly where it always
+     * landed.
+     */
+    public function testARelativeTargetIsJudgedAndLandsThroughItsTrueTree(): void
+    {
+        $base = sys_get_temp_dir() . '/wpct-copytree-relative-' . uniqid('', true);
+        $w = $base . '/w';
+        $from = $base . '/src';
+        mkdir($w, 0755, true);
+        mkdir($from . '/sub', 0755, true);
+        file_put_contents($from . '/sub/file.php', "SRC BYTES\n");
+
+        $previous_cwd = (string) getcwd();
+        try {
+            // (a) THE WRONG-REFUSAL REPRO (red at HEAD): from a cwd of
+            // …/w, the mangled target_real read …/w . 'st' = …/wst — a
+            // source tree AT exactly that spelling made the MIRROR
+            // guard refuse a legal copy naming a containment that
+            // does not exist.
+            mkdir($base . '/wst/src', 0755, true);
+            file_put_contents($base . '/wst/src/wst.php', "WST BYTES\n");
+            chdir($w);
+            WpHarness::copyTree($base . '/wst/src', 'dst');
+            $this->assertFileExists($w . '/dst/wst.php', 'A relative target is judged through its TRUE tree — the first-byte-eaten spelling never refuses a legal copy.');
+
+            // (b) The landing contract, one segment and deep: the copy
+            // keeps the caller's spelling and lands byte-exact — the
+            // 'st'/'ub' spellings the walk once computed never land.
+            chdir($base);
+            WpHarness::copyTree($from, 'dst');
+            $this->assertSame('SRC BYTES', rtrim((string) file_get_contents($base . '/dst/sub/file.php')), 'A relative one-segment target lands at ./dst byte-exact.');
+            WpHarness::copyTree($from, 'deep/dst');
+            $this->assertFileExists($base . '/deep/dst/sub/file.php', 'A relative deep target lands at ./deep/dst byte-exact.');
+            $this->assertFileDoesNotExist($base . '/st', 'The first-byte-eaten spelling never lands.');
+            $this->assertFileDoesNotExist($base . '/ub/dst', 'The deep-eaten spelling never lands.');
+        } finally {
+            chdir($previous_cwd);
+            WpHarness::rrmdir($base);
+        }
+    }
 }

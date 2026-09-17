@@ -629,7 +629,7 @@ final class WpHarness
      * @param string $from Absolute source directory.
      * @param string $to   Absolute target directory.
      * @return void
-     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing or not a directory, or the target is the source itself, inside it, or contains it.
+     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing or not a directory, the target is the source itself, inside it, or contains it, or a relative target's working directory cannot be resolved (t31-ocr11-5).
      */
     public static function copyTree($from, $to)
     {
@@ -689,7 +689,29 @@ final class WpHarness
          * dangling-link ancestor) keeps the lexical ceiling: absolute
          * normalized scratch paths.
          */
-        $ancestor = rtrim($to, '/');
+        /*
+         * The containment walk judges an ABSOLUTE spelling (OCR round
+         * 11, t31-ocr11-5): a RELATIVE target bottoms out at
+         * dirname('dst') === '.' — a ONE-BYTE ancestor whose strlen
+         * ate the first byte of the remainder ('dst' -> 'st',
+         * 'sub/dst' -> 'ub/dst'), so target_real rode
+         * realpath('.') . 'st', a tree the caller never named, and
+         * the containment verdicts below judged (and refused — driven:
+         * a legal copy whose mangled spelling collapsed onto the
+         * source's parent tree) against a path that is not the
+         * target. The walk spells its target from the cwd first; the
+         * COPY itself keeps the caller's spelling — the landing is
+         * unchanged, only the judgment reads the true tree.
+         */
+        $to_walk = (string) $to;
+        if ('' === $to_walk || '/' !== $to_walk[0]) {
+            $cwd = getcwd();
+            if (false === $cwd) {
+                throw new RuntimeException('WpHarness::copyTree() refuses a relative target while the working directory cannot be resolved — the containment walk has no base to judge against: ' . $to);
+            }
+            $to_walk = rtrim($cwd, '/') . '/' . ltrim($to_walk, '/');
+        }
+        $ancestor = rtrim($to_walk, '/');
         while ('' !== $ancestor && '/' !== $ancestor && ! is_dir($ancestor) && ! is_link($ancestor) && ! is_file($ancestor)) {
             $ancestor = dirname($ancestor);
         }
@@ -710,7 +732,7 @@ final class WpHarness
         }
         $ancestor_real = realpath($ancestor);
         if (false !== $ancestor_real) {
-            $remainder = substr(rtrim($to, '/'), strlen($ancestor));
+            $remainder = substr(rtrim($to_walk, '/'), strlen($ancestor));
             $collapsed = array();
             foreach (explode('/', $ancestor_real . $remainder) as $segment) {
                 if ('' === $segment || '.' === $segment) {
@@ -724,7 +746,7 @@ final class WpHarness
             }
             $target_real = '/' . implode('/', $collapsed);
         } else {
-            $target_real = rtrim($to, '/');
+            $target_real = rtrim($to_walk, '/');
         }
         if ($target_real === $source_real || 0 === strpos($target_real, $source_real . '/')) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target that is the source itself or inside it — a self-copy is a silent no-op success riding the engine\'s same-file mercy, and a nested target writes the copy into the very tree it reads: from ' . $from . ' into ' . $to);
