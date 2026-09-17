@@ -6,6 +6,124 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 13)
+
+Thirteenth OCR-tool round (62/62, complete): 11 findings, driver triage
+accepted all. Fixed as t31-ocr13-1..9 — one commit per finding (three
+class folds: the strcasecmp sweep's two verdict-label sites rode
+ocr13-1's commit, the localedef twin rode ocr13-4, the ×28
+ZipArchive::open sites rode ocr13-5), nine commits, the full offline
+check green after every commit — plus the round's two-lens verifier
+pass, clean on both lenses for fix behavior (correctness: zero
+findings; refutation: zero refuted — an exhaustive byte-pair
+counterexample search under the live Turkish locale found no
+old-vs-new fold divergence on this engine — with two reportable
+items ledgered: the ocr13-5 commit message's census figures were
+stale round-base numbers, corrected in the ledger to 31 hits / 3
+conformant / 28 converted; and the ocr13-6 catch width is a named
+residual — non-assertion Throwables inside an extra closure still
+battery-abort, unreachable with the current closures by design).
+The trajectory
+27→10→11 is residual level: the ASCII-fold class surfaced one more
+site-cluster (the build's collision fences), and the ocr12
+census-artifact doctrine now rides that class's sweep — one commit
+converts every strcasecmp-feeding-verdict in `bin/`, the census lists
+them, the tree reads zero outside the ASCII owner. Suite 1638 → 1639
+tests, assertions 45475 → 45516 (all deltas exact and re-measured at
+every commit; the r11 +1 trace did not reproduce — the round base
+measured exactly 45475), 2 skipped unchanged.
+
+- **The strcasecmp locale-fold class is closed in `bin/`, with its
+  census committed (t31-ocr13-1, bug:medium ×2 + bug:low, ONE
+  commit)** — both collision fences (the LICENSE injection deference
+  and the embed-destination refusal in `bin/build.php`) and the
+  development-entry vocabulary fold owner
+  (`wp_connectors_segment_is_named()`, which both release gates, the
+  lint, and the repo-walk prune ride) fed their verdicts through
+  locale-consulting `strcasecmp()` instead of the ONE ASCII owner
+  (`wp_connectors_ascii_lower()`, the r11-6/ocr10-4 doctrine). On a
+  locale-consulting engine a Turkish `tolower('I') = 0xFD` reads the
+  plugin's `license` as foreign and injects the repo LICENSE beside
+  it (the r6-1 both-entries overwrite one fold away), and reads a
+  case-variant plugin-owned embed destination as foreign, shipping
+  both entries (the r5-16 defect). The sweep's census (grep pattern +
+  all five code sites with dispositions) lives in the commit message:
+  the finding's three named sites plus the two anonymous-verdict
+  label folds in the classifier — post-fix `bin/` carries zero
+  `strcasecmp` outside the doctrine's own docblocks. The regression
+  is the r11-6 posture executed honestly: C-locale controls for both
+  territories, then the manufactured live tr_TR.ISO-8859-9 pressure
+  half requiring both verdicts unchanged — with the round's own probe
+  recorded in the commit (on this 8.5.10 engine `strcasecmp()` folds
+  through the engine's internal ASCII table and the locale-driven red
+  is NOT producible; the divergence is real at the C level and the
+  fix is doctrine for the 8.2 platform floor — re-open with an engine
+  whose string folds consult the locale).
+- **The `shared-tree-symlink-dir` battery row carries
+  `needs_symlink` (t31-ocr13-2, test:medium)** — its bare `symlink()`
+  call fatals the whole battery on symlink-incapable hosts
+  (`Error: Call to undefined function symlink()` — driven at HEAD
+  under `-d disable_functions=symlink`) instead of the row skipping
+  itself the way its `needs_symlink` siblings do. The row now rides
+  the runState skip path: driven green under the same flag at 26
+  assertions, the link rows skipping visibly, no row's setup fataling
+  the battery.
+- **`same_directory_spelling()` collapses root-separator spellings to
+  the root they name (t31-ocr13-3, bug:low)** — `/.` and `//`
+  collapsed to `''` (nothing), `is_dir('')` is false, and
+  `rrmdir('/.')` silently returned — asymmetric with the loud
+  refusals its siblings carry. They collapse to `/` now and ride the
+  existing ocr10-1 root refusal, which names the CALLER's spelling
+  (the copyTree precedent — both loud refusals read the pre-collapse
+  spelling). Driven red at HEAD: the silent no-op caught by
+  `refusalOf`; green with the fix.
+- **The localedef `exec()` is capability-probed before it runs
+  (t31-ocr13-4, test:low, both pre-existing sites)** — a host with
+  `exec`/`escapeshellarg` in `disable_functions` fataled the
+  locale-pressure legs with an undefined-function Error instead of
+  the ocr6-12 visible skip. `function_exists()` on both functions the
+  call rides, placed before the mkdir so a skipped leg leaves nothing
+  behind; driven: fatal at HEAD, both legs skip visibly with the fix.
+- **The unchecked inline `ZipArchive::open()` class is closed in
+  BuildArtifactsTest, census committed (t31-ocr13-5, test:low, 28
+  sites in ONE commit)** — read-mode reopens, create-mode fixture
+  writes, hostile-zip creates, and the truthy-passing
+  `assertTrue($zip->open())` entry reads all contradicted the
+  strict-open doctrine the same suite pins (open() returns a TRUTHY
+  ER_* int on failure — the old shapes passed it or walked an empty
+  archive, every entry assertion vacuously green). Every site now
+  carries `true === ($opened = $zip->open(...))` naming the raw
+  return; the census in the commit lists all 30 hits (28 converted,
+  the 2 already-conformant).
+- **`classifyClean()` speaks one failure protocol: FAIL rows
+  (t31-ocr13-6, test:low)** — the inspector-acceptance `assertSame()`
+  and the row `extra` closures' assertions aborted the whole battery
+  on failure, masking the states behind them. The inspector
+  disagreement returns a FAIL row carrying the violation lines, and
+  the extra closure runs inside a catch of PHPUnit's
+  `AssertionFailedError` that converts its message to a FAIL row.
+  Driven once with a planted failing extra: the failure surfaced as
+  the aggregate's own row verdict (`[control-unmutated-rebuild]
+  expected CLEAN: …`), the battery completing — then restored.
+- **Dead `$refused = null` initializations dropped (t31-ocr13-7,
+  test:low, ×2)** — both sat immediately before
+  `$refusal->getMessage()` after `refusalOf()` (which fails the test
+  on no refusal), an unreachable state; the live try/catch `= null`
+  sites are untouched.
+- **The still-fails lint controls run ABOVE the capability skip
+  (t31-ocr13-8, test:low)** — the `canSymlink()` skip fired before
+  the no-symlink-needed controls (broken-too.php, the ocr8-7 nested
+  tests-named leg), so on symlink-incapable hosts they never ran.
+  Hoisted, with the control files removed after their verdict so the
+  dir-link leg lints the pristine tree; driven under
+  `-d disable_functions=symlink`: 3 assertions then skip at HEAD, 6
+  assertions (controls charged) then visible skip with the fix.
+- **`copyTree()`'s `@param` words the relative-target truth
+  (t31-ocr13-9, documentation:low)** — the docblock claimed an
+  "Absolute target directory" while the contract has supported
+  relative targets since t31-ocr11-5; the `@throws` line already
+  carried it. Docblock-only, no behavior change.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 12)
 
 Twelfth OCR-tool round (62/62, complete): 10 findings, driver triage

@@ -1978,6 +1978,119 @@ OCR-tool round
   +1 trace did not
   reproduce), 2
   skipped unchanged.
+OCR-tool round
+  t31-ocr13 (nine
+  commits — the
+  thirteenth pass,
+  62/62 complete,
+  11/11 findings
+  accepted; the
+  trajectory 27→10→11,
+  residual level):
+  the ASCII-fold
+  class surfaced one
+  more site-cluster
+  (the build's
+  collision fences
+  and the vocabulary
+  fold owner) and the
+  ocr12 census
+  doctrine rode the
+  sweep — ONE commit
+  converted every
+  strcasecmp-feeding-
+  verdict in bin/
+  (five code sites:
+  the finding's three
+  plus the two
+  anonymous-verdict
+  label folds), the
+  census in the
+  commit message, the
+  tree reading zero
+  outside the ASCII
+  owner; the
+  locale-driven red
+  honestly recorded
+  as NOT producible
+  on this 8.5.10
+  engine (strcasecmp
+  folds through the
+  engine's ASCII
+  table — the r11-6
+  posture: spelling
+  pins everywhere,
+  pressure wherever
+  the locale exists);
+  the battery's
+  symlink row rides
+  needs_symlink
+  (fatal → skip,
+  driven under
+  disable_functions);
+  same_directory_
+  spelling() collapses
+  '/.'/'//' to the
+  root they name (the
+  silent rrmdir no-op
+  now rides the loud
+  ocr10-1 root
+  refusal naming the
+  CALLER's spelling);
+  the localedef exec
+  capability-probed
+  (undefined-function
+  fatal → visible
+  skip, both
+  pre-existing
+  sites); the strict-
+  open class closed
+  over 28 ZipArchive
+  sites in
+  BuildArtifactsTest
+  (census committed);
+  classifyClean()
+  speaks FAIL rows
+  only (planted-extra
+  drive: row verdict,
+  battery completes);
+  two dead $refused
+  initializations
+  dropped; the
+  still-fails lint
+  controls hoisted
+  above the
+  canSymlink skip;
+  copyTree's @param
+  words the relative-
+  target truth. The
+  round's two-lens
+  verifier pass CLEAN
+  on both lenses for
+  fix behavior (zero
+  findings, zero
+  refuted; two
+  reportable items
+  ledgered — the
+  ocr13-5 census
+  figures corrected
+  to 31/3/28 at the
+  conversion parent,
+  and the ocr13-6
+  catch width as the
+  named residual).
+  Suite
+  1638 → 1639 tests,
+  45475 → 45516
+  assertions (every
+  per-commit delta
+  exact, re-measured
+  at every commit;
+  the r11 +1 trace
+  did not reproduce —
+  the base measured
+  exactly 45475), 2
+  skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
