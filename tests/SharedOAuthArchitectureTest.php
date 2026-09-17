@@ -713,9 +713,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // (t31-r10-11), and none of them spells the family.
         $clean = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-clean-');
         try {
-            file_put_contents(
-                $clean,
-                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock;\nuse Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap, Url as U};\nuse function Deicod\\WpConnectors\\Shared\\Clock\\now;\nuse DateTimeImmutable;\nuse InvalidArgumentException;\ninterface FormsFixture\n{\n    public function now(): \\DateTimeImmutable;\n    public function self(): namespace\\FormsFixture;\n}\ntrait FirstHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\ntrait SecondHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\nfinal class AdaptFormsUser\n{\n    use FirstHelper, SecondHelper {\n        FirstHelper::shared_step insteadof SecondHelper;\n        shared_step as run_step;\n    }\n}\n"
+            // The write is gated (t31-ocr12-7): a failed write left the
+            // tempnam EMPTY, the gate swept empty content, and the clean
+            // direction passed VACUOUSLY — the control proved nothing.
+            $this->assertNotFalse(
+                file_put_contents(
+                    $clean,
+                    "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock;\nuse Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap, Url as U};\nuse function Deicod\\WpConnectors\\Shared\\Clock\\now;\nuse DateTimeImmutable;\nuse InvalidArgumentException;\ninterface FormsFixture\n{\n    public function now(): \\DateTimeImmutable;\n    public function self(): namespace\\FormsFixture;\n}\ntrait FirstHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\ntrait SecondHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\nfinal class AdaptFormsUser\n{\n    use FirstHelper, SecondHelper {\n        FirstHelper::shared_step insteadof SecondHelper;\n        shared_step as run_step;\n    }\n}\n"
+                ),
+                "The clean-direction fixture must land at {$clean} — a failed write runs the gate over EMPTY content and the control passes vacuously."
             );
             $gate->invoke($this, $clean);
         } finally {
@@ -1185,10 +1191,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
 
         // The clean direction: padding-only content of the same scale
-        // passes (the refusal is the abort, not the size).
+        // passes (the refusal is the abort, not the size). The write is
+        // gated (t31-ocr12-7): empty content would pass the gate the
+        // same way — VACUOUSLY, the control proving nothing.
         $clean = tempnam(sys_get_temp_dir(), 'wpct-pcre-clean-');
         try {
-            file_put_contents($clean, '<?php' . str_pad('// prose about static behaviour and nothing else ', 10000, 'x'));
+            $this->assertNotFalse(
+                file_put_contents($clean, '<?php' . str_pad('// prose about static behaviour and nothing else ', 10000, 'x')),
+                "The clean-direction fixture must land at {$clean} — a failed write runs the gate over EMPTY content and the control passes vacuously."
+            );
             $gate->invoke($this, $clean);
         } finally {
             unlink($clean);
