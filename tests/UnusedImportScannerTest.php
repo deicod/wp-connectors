@@ -520,7 +520,12 @@ FIXTURE
 
             $this->assertSame(1, $plantedExit, 'A dead import in shared/src must fail the conventions gate.');
             $this->assertStringContainsString("unused import 'RuntimeException'", $message, 'The failure must be the unused-import vocabulary.');
-            $this->assertStringContainsString('Clock/DeadImport.php', $message, 'The failure must name the shared source file.');
+            // The expected fragment spells its separator the way the
+            // producer does (t31-ocr21-5): check-conventions names the
+            // file through substr(getPathname(), strlen($root) + 1) —
+            // the iterator's DIRECTORY_SEPARATOR joins, never a
+            // hardcoded '/'.
+            $this->assertStringContainsString('Clock' . DIRECTORY_SEPARATOR . 'DeadImport.php', $message, 'The failure must name the shared source file.');
             /*
              * t31-ocr5-2: the summary attributes every count to its own
              * tree. The pooled line read "1 plugin dir(s) checked, 1

@@ -181,12 +181,16 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             $this->assertStringNotContainsString('VENDOR', $report, 'A case-variant vendor segment prunes exactly where the folded gates judge it a development entry.');
             $this->assertStringNotContainsString('Tools', $report, 'A case-variant tools segment prunes exactly where the folded gates judge it a development entry.');
             // A vocabulary member the subset does not name: still this
-            // scan's charge, in any casing.
-            $this->assertStringContainsString('Tests/leak.conf', $report, 'Tests is not one of the pruned names — the repo scan covers it in every casing.');
+            // scan's charge, in any casing. The expected fragments spell
+            // their separator the way the producer does (t31-ocr21-5):
+            // the scanner carries the raw iterator pathname, whose
+            // joins are DIRECTORY_SEPARATOR — a hardcoded '/' would
+            // fail the same verdict on Windows.
+            $this->assertStringContainsString('Tests' . DIRECTORY_SEPARATOR . 'leak.conf', $report, 'Tests is not one of the pruned names — the repo scan covers it in every casing.');
             $this->assertStringContainsString('zai-key', $report);
             // The dotless cache spelling is not the subset's '.phpunit.cache'
             // either — scanned, not skipped.
-            $this->assertStringContainsString('phpunit.cache/cached.xml', $report, 'The prune subset names the dotted .phpunit.cache only; the dotless spelling stays scanned.');
+            $this->assertStringContainsString('phpunit.cache' . DIRECTORY_SEPARATOR . 'cached.xml', $report, 'The prune subset names the dotted .phpunit.cache only; the dotless spelling stays scanned.');
             // Findings still never echo the secret itself.
             $this->assertStringNotContainsString($zaiKey, $report);
 
@@ -213,7 +217,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             file_put_contents($ancestor . '/root/leak.conf', "api_key = {$zaiKey}\n");
             try {
                 $ancestorReport = implode("\n", wp_connectors_scan_paths(array( $ancestor . '/root' )));
-                $this->assertStringContainsString('root/leak.conf', $ancestorReport, 'A dev-named ANCESTOR (case-variant, the folded spelling) of the scan root never prunes the scan itself.');
+                $this->assertStringContainsString('root' . DIRECTORY_SEPARATOR . 'leak.conf', $ancestorReport, 'A dev-named ANCESTOR (case-variant, the folded spelling) of the scan root never prunes the scan itself.');
                 $this->assertStringContainsString('zai-key', $ancestorReport);
             } finally {
                 WpHarness::rrmdir($holder);
@@ -252,10 +256,10 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             $artifactReport = implode("\n", wp_connectors_scan_paths(array( $tempDir ), false));
 
             $this->assertStringNotContainsString('VENDOR', $repoReport, 'The repo scan keeps pruning the dev-shaped segment.');
-            $this->assertStringContainsString('plain/leak.conf', $repoReport, 'The repo scan keeps its coverage verdict outside the segment.');
+            $this->assertStringContainsString('plain' . DIRECTORY_SEPARATOR . 'leak.conf', $repoReport, 'The repo scan keeps its coverage verdict outside the segment.');
 
-            $this->assertStringContainsString('VENDOR/leak.conf', $artifactReport, 'The artifact scan reads straight through the dev-shaped segment — its verdict unchanged.');
-            $this->assertStringContainsString('plain/leak.conf', $artifactReport, 'The artifact scan keeps the plain verdict too.');
+            $this->assertStringContainsString('VENDOR' . DIRECTORY_SEPARATOR . 'leak.conf', $artifactReport, 'The artifact scan reads straight through the dev-shaped segment — its verdict unchanged.');
+            $this->assertStringContainsString('plain' . DIRECTORY_SEPARATOR . 'leak.conf', $artifactReport, 'The artifact scan keeps the plain verdict too.');
             $this->assertStringNotContainsString($zaiKey, $artifactReport, 'Findings still never echo the secret itself.');
         } finally {
             WpHarness::rrmdir($tempDir);
@@ -310,7 +314,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
 
             $report = implode("\n", $output);
             $this->assertSame(0, $exit, "A fresh process requiring ONLY the scanner library must scan, never fatal mid-walk: {$report}");
-            $this->assertStringContainsString('plain/leak.conf', $report, 'The fresh-process scan finds the live-looking key outside the pruned segments.');
+            $this->assertStringContainsString('plain' . DIRECTORY_SEPARATOR . 'leak.conf', $report, 'The fresh-process scan finds the live-looking key outside the pruned segments.');
             $this->assertStringContainsString('zai-key', $report);
             $this->assertStringNotContainsString('VENDOR', $report, 'The case-variant dev segment prunes exactly as the in-process battery pins.');
             $this->assertStringNotContainsString($zaiKey, $report, 'Findings still never echo the secret itself.');
