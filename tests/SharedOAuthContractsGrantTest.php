@@ -782,6 +782,27 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         // raw too), and evaluating the dump never reconstructs — by
         // whichever refusal fires on this engine (the nested set's own
         // __set_state() evaluates first).
+        /*
+         * The exclusion's ENGINE premise, pinned where the leg rests
+         * on it (OCR round 16, t31-ocr16-2, the round's own
+         * derivation): the round claimed var_export() THROWS on
+         * enums "since 8.1, at any depth" — refuted on this runner
+         * (8.5.10) and per the engine's own record: the 8.1-era
+         * defect was the MISSING leading backslash (an evaled dump
+         * resolved namespaced enums to the wrong class), corrected
+         * in 8.2.0 — this project's floor. Since then var_export()
+         * spells an enum case as evaluatable \Enum::Case code and
+         * never throws, so the export leg below runs on every
+         * supported engine and means what it asserts. The premise
+         * is PINNED, not assumed: an engine that ever stops
+         * exporting enums fails HERE, as itself — never as an
+         * opaque Error thrown mid-leg below.
+         */
+        $this->assertSame(
+            '\\' . GrantState::Connected::class . '::Connected',
+            var_export(GrantState::Connected, true),
+            'The var_export exclusion rides the >=8.2 enum-export spelling (fully-qualified \\Enum::Case, evaluatable) — an engine that stops exporting enums fails this premise leg first, never the export leg as an opaque Error.'
+        );
         $export = var_export($grant, true);
         $this->assertStringContainsString($set->access_token(), $export, 'The documented exclusion is exact: var_export() dumps the raw tree through no hook — which is precisely why its reconstruction channel refuses.');
         // The refusal-verdict owner (t31-ocr8-12): the old
