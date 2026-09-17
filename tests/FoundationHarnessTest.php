@@ -633,4 +633,37 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         }
         $this->assertFileDoesNotExist($missing, 'The read-mode open never creates the archive — the pinned intent RDONLY states, held on every engine in range.');
     }
+
+    /**
+     * OCR-round-21 pin (t31-ocr21-1): round 19's RDONLY "explicit
+     * intent" broke the floor it stood on — ZipArchive::RDONLY is an
+     * undefined class constant on PHP 8.2 (registered in the 8.3
+     * cycle, never backported; php.net carries the 8.3.0 version
+     * chip), so the bare constant was an undefined-constant \Error
+     * through the shared reader on every engine the composer floor
+     * (>=8.2) admits. The reader rides the guarded spelling now —
+     * the flag where the engine defines it, 0 below 8.3, both
+     * stylistic per the r19 refutation (omitted flags never
+     * create-on-open on any support-range engine) and both loud
+     * through the strict open gate.
+     *
+     * The undefined arm cannot be DRIVEN on an engine that defines
+     * the constant (PHP offers no spelling that hides a compiled
+     * extension's class constant from a probe, in-process or in a
+     * child), so the pin is the SHAPE: the reader's source carries
+     * the guarded expression verbatim, and the defined arm is what
+     * the two legs above drive on this engine (every open they take
+     * passes through the guard). The 8.2-engine drive is the
+     * ledger's re-open evidence (re-open rule: run the suite on an
+     * 8.2 engine; the reader must open real archives, never \Error).
+     */
+    public function testTheZipReaderRidesTheGuardedRdonlySpelling()
+    {
+        $source = (string) file_get_contents(__DIR__ . '/harness/WpConnectorsTestCase.php');
+        $this->assertStringContainsString(
+            "defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0",
+            $source,
+            'The zip reader must spell the open flag through the guard: RDONLY where the engine defines it, 0 below PHP 8.3 — the bare constant fatals every 8.2 engine in the composer floor\'s range (t31-ocr21-1).'
+        );
+    }
 }

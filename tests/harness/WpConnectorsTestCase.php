@@ -757,17 +757,22 @@ abstract class WpConnectorsTestCase extends TestCase
      * green); a failure fails loudly naming the ER_* code (the common
      * ones mapped, the raw int for the rest).
      *
-     * The open carries ZipArchive::RDONLY explicitly (t31-ocr19-1 —
-     * the finding's floor premise was REFUTED in-round, the flag
-     * kept as pinned intent): the claim was that the omitted-flags
-     * default CREATES an empty archive on the composer floor (8.2)
-     * when the file is absent; driven on a real 8.2.33/libzip
-     * engine, the omitted spelling returns ER_NOENT and creates
-     * NOTHING (the php-src stubs and UPGRADING record know no 8.3
-     * default change, and the strict gate above was already loud on
-     * every engine in the support range). The flag stays as the
-     * read site's own statement of intent — a read never creates —
-     * and the missing-archive pin holds the loud contract.
+     * The open carries ZipArchive::RDONLY through the GUARDED
+     * spelling (t31-ocr21-1 over t31-ocr19-1): round 19 kept the
+     * flag as pinned intent after refuting the CREATE-on-open
+     * premise (driven on a real 8.2.33/libzip engine: the omitted
+     * spelling returns ER_NOENT and creates NOTHING — the php-src
+     * stubs and UPGRADING record know no 8.3 default change, and
+     * the strict gate above was already loud on every engine in
+     * the support range) — but the bare constant broke the floor
+     * it stood on: ZipArchive::RDONLY is registered only in the
+     * 8.3 cycle and never backported, an undefined-constant \Error
+     * through this shared reader on every 8.2 engine the composer
+     * floor admits. The guard rides the flag when the engine
+     * defines it and 0 below 8.3 — BOTH spellings stylistic intent
+     * per the r19 refutation (omitted flags never create-on-open
+     * on any support-range engine), both loud through the strict
+     * gate, and the missing-archive pin holds the loud contract.
      *
      * @param string $zipPath Absolute zip path.
      * @return list<string> Entry names.
@@ -775,7 +780,7 @@ abstract class WpConnectorsTestCase extends TestCase
     protected function zipEntryNames(string $zipPath): array
     {
         $zip = new ZipArchive();
-        $opened = $zip->open($zipPath, ZipArchive::RDONLY);
+        $opened = $zip->open($zipPath, defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0);
         $er_names = array(
             ZipArchive::ER_EXISTS => 'ER_EXISTS',
             ZipArchive::ER_INCONS => 'ER_INCONS',
