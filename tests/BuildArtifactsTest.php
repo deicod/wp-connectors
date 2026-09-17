@@ -3956,20 +3956,26 @@ FIXTURE;
         file_put_contents($scratch . '/plugin/stage-demo/src/autoload.php', "<?php\nspl_autoload_register( static function ( string \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\StageDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n");
 
         $pid_file = $scratch . '/live-pid.txt';
-        $live_pipes = array();
-        $live = proc_open(
-            'exec ' . escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('file_put_contents(' . var_export($pid_file, true) . ', (string) getmypid()); sleep(60);'),
-            array( 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
-            $live_pipes
-        );
-        // The spawn is GATED (t31-ocr11-8, the t31-ocr10-13 doctrine):
-        // an ungated false reached part 3's proc_terminate() as a
-        // TypeError — the finally's is_resource() guard made the
-        // unwind safe, but the leg's own verdict wore the engine's
-        // vocabulary.
-        $this->assertIsResource($live, 'The live sibling run must spawn — the sweep legs judge a live process, never a false.');
-
         try {
+            $live_pipes = array();
+            $live = proc_open(
+                'exec ' . escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('file_put_contents(' . var_export($pid_file, true) . ', (string) getmypid()); sleep(60);'),
+                array( 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
+                $live_pipes
+            );
+            /*
+             * The spawn is GATED (t31-ocr11-8, the t31-ocr10-13
+             * doctrine) and the gate rides INSIDE the try that owns
+             * the scratch tree (t31-ocr21-3, the t31-ocr16-14
+             * staging discipline): an ungated false reached part 3's
+             * proc_terminate() as a TypeError, and the gate's own
+             * throw sat ABOVE the try — an environmental spawn
+             * refusal (fork exhaustion, proc_open false) leaked the
+             * whole scratch tree; inside, the finally reclaims it on
+             * the verdict's way out.
+             */
+            $this->assertIsResource($live, 'The live sibling run must spawn — the sweep legs judge a live process, never a false.');
+
             $deadline = microtime(true) + 10.0;
             while (! is_file($pid_file) && microtime(true) < $deadline) {
                 usleep(10000);
