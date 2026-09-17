@@ -210,7 +210,33 @@ final class ToolchainSmokeTest extends TestCase
              * itself counted), and the broken source INSIDE the linked
              * tree is judged by nobody either way — the leg is skipped,
              * never descended.
-             *
+             */
+            /*
+             * The still-fails controls, HOISTED above the capability
+             * skip (t31-ocr13-8): they need no symlink — a broken file
+             * on no excluded path keeps failing the lint, and — the
+             * ocr8-7 leg — a parse-broken file under a NESTED
+             * tests-named tree fails it too (red at HEAD: the pre-ocr8
+             * vocabulary ride skipped the whole tree, exit 0, no
+             * failure). The skip used to fire FIRST, so on a
+             * symlink-incapable host these controls never ran — the
+             * no-symlink-needed legs must not ride the capability
+             * gate. The control files are removed after their verdict
+             * so the dir-link leg below lints the pristine tree.
+             */
+            file_put_contents($scratch . '/connectors/demo/broken-too.php', "<?php nor is this");
+            file_put_contents($scratch . '/connectors/demo/tests/broken-nested.php', "<?php neither is this nested one");
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
+            $combined = implode("\n", $output);
+            $this->assertSame(1, $exit, 'A parse-broken real source still fails the lint.');
+            $this->assertStringContainsString('broken-too.php', $combined);
+            $this->assertStringContainsString('broken-nested.php', $combined, 'A parse-broken source under a NESTED tests-named tree must FAIL the lint — tests are the gate\'s charge, never a release exclusion.');
+            unlink($scratch . '/connectors/demo/broken-too.php');
+            unlink($scratch . '/connectors/demo/tests/broken-nested.php');
+
+            /*
              * The capability rides the ONE owner, WpHarness::canSymlink()
              * (t31-ocr12-1): this file's former inline '@symlink probe —
              * pid-only-suffixed, the t31-ocr10-18 shape — was the last
@@ -220,7 +246,7 @@ final class ToolchainSmokeTest extends TestCase
              * function_exists first and skips VISIBLY, never fatals.
              */
             if (! WpHarness::canSymlink()) {
-                $this->markTestSkipped('This host cannot create symlinks — the dir-link skip leg cannot run on it (t31-ocr12-1).');
+                $this->markTestSkipped('This host cannot create symlinks — the dir-link skip leg cannot run on it (t31-ocr12-1); the still-fails controls above already ran (t31-ocr13-8).');
             }
             mkdir($scratch . '/linked-tree', 0755, true);
             file_put_contents($scratch . '/linked-tree/broken-inside.php', "<?php nor is this reachable only through the link");
@@ -232,23 +258,6 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertSame(0, $exit, "A '*.php'-named dir symlink is skipped, never linted as a vacuous directory: {$linked}");
             $this->assertStringContainsString('5 file(s) checked, 0 failure(s)', $linked, 'The skipped dir-link does not change the checked count (pre-fix it was counted as a 6th file).');
             $this->assertStringNotContainsString('dirlink.php', $linked);
-
-            /*
-             * The still-fails controls: a broken file on no excluded
-             * path keeps failing the lint, and — the ocr8-7 leg — a
-             * parse-broken file under a NESTED tests-named tree fails
-             * it too (red at HEAD: the pre-ocr8 vocabulary ride skipped
-             * the whole tree, exit 0, no failure).
-             */
-            file_put_contents($scratch . '/connectors/demo/broken-too.php', "<?php nor is this");
-            file_put_contents($scratch . '/connectors/demo/tests/broken-nested.php', "<?php neither is this nested one");
-            $output = array();
-            $exit = 0;
-            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
-            $combined = implode("\n", $output);
-            $this->assertSame(1, $exit, 'A parse-broken real source still fails the lint.');
-            $this->assertStringContainsString('broken-too.php', $combined);
-            $this->assertStringContainsString('broken-nested.php', $combined, 'A parse-broken source under a NESTED tests-named tree must FAIL the lint — tests are the gate\'s charge, never a release exclusion.');
         } finally {
             WpHarness::rrmdir($scratch);
         }
