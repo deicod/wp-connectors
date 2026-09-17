@@ -9,9 +9,13 @@
  *
  * Redaction contract (the reason __toString() exists in safe form):
  * casting a request to string NEVER reveals secrets. The URL loses its
- * query, fragment, and userinfo; sensitive header values are masked to
- * an ellipsis plus the last four characters; the body is omitted
- * entirely. A request carrying an Authorization header, a
+ * query, fragment, and userinfo; sensitive header values are masked
+ * through the one policy (SecretMask::mask(): an ellipsis plus the
+ * last four characters for values LONGER than the OTP threshold —
+ * twelve characters — and the bare ellipsis at or below it, the
+ * t31-ocr6-1 close, so an OTP-class value never shows a tail); the
+ * body is omitted entirely. A request carrying an Authorization
+ * header, a
  * token-bearing URL, or a token-bearing body therefore cannot leak it
  * through any string interpolation, log call, or exception message.
  * The dump and serialization channels ride the same contract:
