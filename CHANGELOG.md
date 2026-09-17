@@ -6,6 +6,94 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 14)
+
+Fourteenth OCR-tool round (62/62, complete): 7 findings, driver triage
+accepted all — one security:medium headliner, one bug:medium (REFUTED at
+HEAD, see below), one bug:low, two maintainability:low, two
+documentation:low. Fixed as t31-ocr14-1..7 — one commit per finding,
+seven commits, the full offline check green after every commit — plus
+the round's two-lens verifier pass, clean on both lenses for fix
+behavior (correctness: zero fix findings, every red re-reproduced on
+scratch copies; refutation: zero surviving counterexamples across
+live-probed URI spellings, root spellings, manifest line shapes, and
+all-digit header names), with two latent pre-existing residuals
+ledgered (the manifest merge's prefix-skip edge under a contrived
+double-space-prefix name collision; a readonly-blind type pattern in
+one Zai test's candidate collector). The trajectory 27→10→11→7: the
+round's substantive security close is the masked_view URI leak, and
+the round carries the loop's first REFUTED driver finding. Suite
+1639 → 1643 tests, 45516 → 45543 assertions (every per-commit delta
+measured), 2 skipped unchanged.
+
+- **The device session's masked view renders the verification URI
+  redacted (t31-ocr14-1, security:medium)** — `masked_view()` rendered
+  the RAW provider-supplied `verification_uri` verbatim into every
+  masked channel (dump, serialize, every container). `Url::parse_validated()`
+  accepts userinfo and query strings by design, so a credential-carrying
+  URI (throttled providers embed one-time tokens there; RFC 8628's
+  `verification_uri_complete` rides the same class) rendered its
+  credentials in cleartext into the exact surfaces the VO's masking
+  exists to protect. The view now renders the scheme://authority/path
+  rebuild from `parse_validated()` — `HttpRequest::redacted_url()`'s
+  own shape — dropping userinfo, query, and fragment; the raw property
+  stays intact for the authorization redirect. The session was the
+  class's one site (every other VO swept); the ledger carries the
+  one-owner note for the 3.2 providers (extract `Url::redacted()` when
+  a third renderer appears, not before).
+- **The token-set merge contract was deliverable all along
+  (t31-ocr14-2, bug:medium — premise refuted)** — the claim that no
+  receiver/argument pattern delivers the documented keep-on-null, with
+  one merge leg red, did not survive contact with the tree: the null
+  branch keeps the stored token, both rejection legs reject, and the
+  three existing pins were green at HEAD (the strongest defense —
+  json_decode's missing-key/null conflation — maps both spellings to
+  keep-stored, which is the contract; a refresh response never revokes
+  by omission, RFC 7009 owns revocation). The commit records the
+  derivation and closes the two legs the pin was missing: null-on-null
+  stays null, and a whitespace-only replacement rejects per the
+  @throws spelling (only '' was pinned).
+- **The manifest regeneration prune splits at the writer's separator,
+  from the right (t31-ocr14-3, bug:low)** — `strstr($line, '  ', true)`
+  cut at the FIRST double space, so an entry name containing one
+  ('double  space.zip') split as its own prefix and the prune dropped
+  a LIVE entry as stale. The writer joins `name . '  ' . sha256-hex`,
+  so the LAST double space is the separator it wrote; strrpos reads
+  it, whatever the name carries (names ending in spaces recover
+  byte-exact). Foreign spellings the writer never produces flip
+  keep→drop under the r12-7 malformed-line rule (ledgered).
+- **The lint walk's below-root offset rides the sibling's rtrim
+  spelling (t31-ocr14-4, maintainability:low)** — a root handed in
+  with a trailing separator made the bare `strlen($root) + 1` start
+  one byte late, eating the first byte of every relative path's first
+  below-root segment ('vendor/x.php' read as 'endor/x.php', dodging
+  the exclusion); green before only by accident (that first segment is
+  a plugin dir in every production root). The pin drives a scratch
+  copy with the trailing-separator spelling and the excluded tree as
+  the first segment; the degenerate '/' root becomes correct too.
+- **The type-declaration vocabulary has ONE owner
+  (t31-ocr14-5, maintainability:low)** — the extension-owner test
+  still carried the pre-r4-10 single-modifier spelling (trait- and
+  readonly-blind) as an inline regex beside the gate's current one;
+  the pattern is now `TYPE_DECLARATION_PATTERN`, the gate and the
+  vocabulary pin ride the const, and the stale site CALLS the gate —
+  with trait and readonly-final fixtures driven through that same
+  site (both invisible to the stale copy).
+- **The clock port's now() contract states absolute time
+  (t31-ocr14-6, documentation:low)** — readings represent true
+  absolute time (the UTC instant itself); an adapter over a host API
+  returning local wall time MUST convert before returning, with the
+  named trap that WordPress's localized 'mysql' wall-clock spelling
+  is server-local time, not absolute. Worded inside the architecture
+  fences (which scan docblocks — the first spelling tripped both; the
+  commit records it).
+- **HeaderMap's folded-index property annotation matches the corrected
+  contract (t31-ocr14-7, documentation:low)** — `@var
+  array<int|string, array{0: string, 1: string}>` with the all-digit
+  own-spelling rule stated: a digit string has no case to fold and
+  lands under its PHP-canonical integer key, the shape `headers()`'s
+  ocr10-11 @return already carries.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 13)
 
 Thirteenth OCR-tool round (62/62, complete): 11 findings, driver triage

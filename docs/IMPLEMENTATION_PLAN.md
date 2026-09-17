@@ -2091,6 +2091,120 @@ OCR-tool round
   the base measured
   exactly 45475), 2
   skipped unchanged.
+OCR-tool round
+  t31-ocr14 (seven
+  commits — the
+  fourteenth pass,
+  62/62 complete,
+  7/7 findings
+  accepted; the
+  trajectory 27→10→
+  11→7): the round's
+  substantive
+  SECURITY close is
+  the masked_view URI
+  leak — the device
+  session rendered
+  the RAW provider
+  verification_uri
+  into every masked
+  channel while
+  parse_validated()
+  accepts userinfo
+  and query by
+  design, so a
+  credential-carrying
+  URI leaked in
+  cleartext; the view
+  now renders the
+  scheme://authority/
+  path rebuild
+  (redacted_url()'s
+  own seam), the
+  raw property stays
+  for the redirect,
+  and the ledger
+  carries the 3.2
+  one-owner note
+  (extract
+  Url::redacted() at
+  the THIRD rider).
+  The round also
+  carries the loop's
+  first REFUTED
+  driver finding:
+  the merge-contract
+  claim (bug:medium)
+  did not survive
+  contact with the
+  tree — every leg
+  probed deliverable,
+  the pins green at
+  HEAD — committed as
+  the derivation plus
+  the two missing
+  legs (null-on-null,
+  whitespace-only
+  rejection). The
+  manifest prune
+  splits at the
+  WRITER's separator
+  from the right (a
+  double-space entry
+  name survives); the
+  lint below-root
+  offset rides the
+  sibling's rtrim
+  spelling (the
+  trailing-separator
+  root ate the first
+  byte of every first
+  segment — the pin
+  drives the excluded
+  tree AS the first
+  segment); the type-
+  declaration
+  vocabulary is ONE
+  const owner with
+  the extension-owner
+  site CALLING the
+  gate; the clock
+  port's now()
+  contract states
+  absolute time
+  (worded inside the
+  architecture
+  fences — the first
+  spelling tripped
+  both, docblocks are
+  scanned prose);
+  HeaderMap's
+  property annotation
+  matches the
+  ocr10-11 int|string
+  contract. The
+  round's two-lens
+  verifier pass CLEAN
+  on both lenses for
+  fix behavior (zero
+  fix findings, zero
+  surviving
+  counterexamples;
+  two latent
+  pre-existing
+  residuals ledgered
+  — the manifest
+  prefix-skip edge,
+  a readonly-blind
+  pattern in one Zai
+  test). Suite
+  1639 → 1643 tests,
+  45516 → 45543
+  assertions (every
+  per-commit delta
+  measured from
+  output), 2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
