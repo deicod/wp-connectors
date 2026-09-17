@@ -538,6 +538,99 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-19 pin (t31-ocr19-2): the probe anchors at the TEMP
+     * ROOT, never at '/'. The ocr17-2 full-chain walk judged every
+     * component of the passed chain, and on a host whose temp spelling
+     * itself resolves through a system-layout link (macOS: /var →
+     * private/var inside TMPDIR, /tmp → private/tmp on the fallback)
+     * the FIRST link found was the host's own spelling — the probe
+     * named it for every temp-rooted path, rrmdir silently SKIPPED
+     * cleanup of every legal scratch tree, and copyTree refused every
+     * legal source (the round-17 ledger's portability note, driven
+     * red at HEAD here). The sim rides a CHILD process: TMPDIR
+     * redirection makes sys_get_temp_dir() return a SYMLINKED
+     * spelling (the macOS layout one level deeper), but the engine
+     * caches the temp dir per process — the parent's cache is already
+     * warm, so the redirect only answers inside a fresh engine, with
+     * the putenv BEFORE the first read. Below the anchor nothing
+     * changed: a PLANTED link inside the scratch tree still names the
+     * link class (the ocr17-2 doctrine keeps its full reach beneath
+     * the root the harness owns).
+     */
+    public function testASymlinkedTempRootIsHostSpellingWhilePlantedLinksBelowItStillRefuse(): void
+    {
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks.');
+        }
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this child-process consumer): the sim's whole
+         * premise is a FRESH engine reading TMPDIR before anything
+         * caches it, and on a disable_functions host the spawn was an
+         * undefined-function \Error instead of the visible skip.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the redirected-TMPDIR sim cannot run (the anchor verdicts ride a child process).');
+        }
+
+        $base = sys_get_temp_dir() . '/wpct-anchor-' . uniqid('', true);
+        mkdir($base . '/real/scratch/sub', 0755, true);
+        file_put_contents($base . '/real/scratch/sub/x.txt', 'bytes');
+        mkdir($base . '/real/copy-src', 0755, true);
+        file_put_contents($base . '/real/copy-src/f.php', 'copy bytes');
+        mkdir($base . '/real/victim', 0755, true);
+        file_put_contents($base . '/real/victim/keep.txt', 'survivor');
+        symlink($base . '/real', $base . '/anchor-link');
+        symlink($base . '/real/victim', $base . '/real/planted-link');
+
+        try {
+            /*
+             * The child: putenv FIRST (before any temp-dir read can
+             * warm the cache), then the harness, then both consumers
+             * through the redirected root — the removal and the copy
+             * of LEGAL trees (pre-fix: both name the anchor link), the
+             * removal of a planted link (skips, both ways), and the
+             * copy of one (refuses, both ways — the caught message
+             * rides STDOUT for the parent's fragment pins).
+             */
+            $script = 'putenv("TMPDIR=" . ' . var_export($base . '/anchor-link', true) . ');'
+                . ' require ' . var_export(realpath(__DIR__ . '/harness/WpHarness.php'), true) . ';'
+                . ' $t = sys_get_temp_dir();'
+                . ' WpHarness::rrmdir($t . "/scratch");'
+                . ' WpHarness::copyTree($t . "/copy-src", ' . var_export($base . '/copy-dst', true) . ');'
+                . ' WpHarness::rrmdir($t . "/planted-link");'
+                . ' try { WpHarness::copyTree($t . "/planted-link", ' . var_export($base . '/copy-dst-2', true) . '); fwrite(STDERR, "planted copy returned normally"); exit(3); }'
+                . ' catch (RuntimeException $e) { echo $e->getMessage(), "\n"; }';
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+            $child = implode("\n", $output);
+
+            // (a) CLEANUP works through the symlinked temp root: the
+            // walk removed the legal scratch tree (pre-fix: the probe
+            // named the anchor link and rrmdir silently skipped —
+            // driven red at HEAD, the exit carries the copy twin's
+            // refusal).
+            $this->assertSame(0, $exit, "The child must run clean through the symlinked temp root (the macOS shape) — it said: {$child}");
+            $this->assertDirectoryDoesNotExist($base . '/real/scratch', 'Cleanup through a symlinked temp root still removes the scratch tree — the anchor link is the host\'s own spelling, never the planted-link class.');
+
+            // (b) The COPY twin: a legal source under the symlinked
+            // temp root copied (pre-fix: false refusal naming the
+            // anchor link, driven red at HEAD).
+            $this->assertFileExists($base . '/copy-dst/f.php', 'A legal source under the symlinked temp root still copies — never a false refusal.');
+
+            // (c) Below the anchor the doctrine keeps its full reach:
+            // the PLANTED link skipped removal and refused the copy —
+            // the victim survives, the link stands, the verdict names
+            // the link class.
+            $this->assertFileExists($base . '/real/victim/keep.txt', 'A planted link below the anchor never drags its target into the removal — the victim survives.');
+            $this->assertTrue(is_link($base . '/real/planted-link'), 'The planted link stands exactly where it is.');
+            $this->assertStringContainsString('symlinked source tree', $child, 'The planted copy refusal still names the LINK class below the anchor.');
+            $this->assertStringContainsString('planted-link', $child);
+        } finally {
+            WpHarness::rrmdir($base);
+        }
+    }
+
+    /**
      * OCR round 11 (t31-ocr11-5): the ancestor walk mangled a
      * not-yet-existing RELATIVE target — dirname('dst') === '.' is a
      * ONE-BYTE ancestor whose strlen ate the first byte of the

@@ -477,6 +477,26 @@ final class WpHarness
      * keeps its cwd-relative resolution — the component walk simply
      * spells its prefixes from '.'.
      *
+     * The walk ANCHORS at the temp root, never at '/' (OCR round 19,
+     * t31-ocr19-2): the full-chain judgment made the FIRST link in
+     * the chain the verdict, and on a host whose temp spelling itself
+     * crosses a system-layout link (macOS: TMPDIR lives under /var →
+     * private/var, the /tmp fallback → private/tmp) that first link
+     * was the host's own spelling — the probe named it for every
+     * temp-rooted path, rrmdir silently SKIPPED cleanup of every
+     * legal scratch tree, and copyTree refused every legal source,
+     * the whole link vocabulary firing on the layout (driven here
+     * through a redirected-TMPDIR child process; sys_get_temp_dir()
+     * is cached per process, so the sim rides a fresh engine). The
+     * anchor is the temp root — the passed chain's existing ancestor
+     * the harness itself owns, the same existing-component stop the
+     * copyTree ancestor walk rides: the components of the temp
+     * spelling are the host's layout, never the planted-link class,
+     * and everything strictly BENEATH the anchor keeps the ocr17-2
+     * full-chain reach. A chain not spelled beneath the temp root (a
+     * relative spelling, a foreign absolute) keeps the full-chain
+     * walk — no ceiling silently re-opened.
+     *
      * @param string $path The path as the caller spelled it.
      * @return string The spelling an is_link() probe can trust.
      */
@@ -486,12 +506,19 @@ final class WpHarness
         while ('/..' === substr($path, -3)) {
             $path = self::same_directory_spelling(rtrim(substr($path, 0, -3), '/'));
         }
+        $temp = rtrim(sys_get_temp_dir(), '/');
+        $anchored = '' !== $temp && isset($path[0]) && '/' === $path[0] && 0 === strpos($path, $temp . '/');
         $carry = '/' === ($path[0] ?? '') ? '' : '.';
         foreach (explode('/', $path) as $segment) {
             if ('' === $segment) {
                 continue;
             }
             $carry .= '/' . $segment;
+            if ($anchored && strlen($carry) <= strlen($temp)) {
+                // A component of the temp spelling itself — the host's
+                // layout (macOS /var), never the planted-link class.
+                continue;
+            }
             if (is_link($carry)) {
                 return $carry;
             }
