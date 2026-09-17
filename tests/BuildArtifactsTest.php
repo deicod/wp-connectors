@@ -398,6 +398,17 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertFileExists($extractDir . '/' . self::FIXTURE . '/LICENSE');
 
         // All shipped PHP parses after extraction elsewhere.
+        /*
+         * The exec-capability guard (t31-ocr20-5, the ocr18-2/ocr16-12
+         * doctrine over this consumer): the parse sweep below lints
+         * every shipped source through a spawned engine, and on a
+         * disable_functions host the first loop iteration was an
+         * undefined-function \Error mid-test — the extraction and
+         * entry-set assertions above already passed.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the post-extraction php -l sweep cannot run; the extraction, entry-set, and LICENSE assertions above already passed.');
+        }
         $count = 0;
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($extractDir, FilesystemIterator::SKIP_DOTS)
@@ -2633,6 +2644,16 @@ FIXTURE;
 
             // The embedded copy is declarable PHP, not just a string the
             // zip accepted: the underscored namespace lints clean.
+            /*
+             * The exec-capability guard (t31-ocr20-5, the ocr18-2
+             * doctrine): the lint and referenceability legs below spawn
+             * engines (php -l twice, php -r once); the derivation, gate,
+             * build, and embedded-content assertions above already
+             * passed.
+             */
+            if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+                $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the embedded-copy lint and bare-code referenceability legs cannot run; the derivation, gate, build, and embedded-content assertions above already passed.');
+            }
             $lintTarget = $scratch . '/embedded-copy.php';
             file_put_contents($lintTarget, $embedded);
             $output = array();
@@ -4503,6 +4524,16 @@ FIXTURE;
                     $zip->close();
                     $probe = self::distDir() . '/.dot-slug/probe-main.php';
                     file_put_contents($probe, $shippedMain);
+                    /*
+                     * The exec-capability guard (t31-ocr20-5, the ocr18-2
+                     * doctrine), inside the state-preserving callback whose
+                     * finally restores on the skip's throw: the parse probe
+                     * below spawns an engine; the build and entry-read
+                     * assertions above already passed.
+                     */
+                    if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+                        $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the shipped-main parse probe cannot run; the derivation, gate, and build assertions above already passed.');
+                    }
                     try {
                         $output = array();
                         $exit = 0;
@@ -4984,6 +5015,14 @@ FIXTURE;
         // Scratch hygiene (t31-r3-11): the lint/load scratch matches no
         // tearDown glob, so its lifecycle rides try/finally — an assertion
         // failure between write and unlink must not leak it into dist/.
+        /*
+         * The exec-capability guard (t31-ocr20-5, the ocr18-2 doctrine):
+         * the lint/load leg below spawns an engine and requires its output
+         * file; every detector and rewrite assertion above already passed.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the rewritten-source lint/load leg cannot run; every detector and rewrite assertion above already passed.');
+        }
         $temp = self::distDir() . '/.rewrite-test-' . getmypid() . '.php';
         try {
             file_put_contents($temp, $rewritten);
@@ -5619,6 +5658,17 @@ FIXTURE;
 
         // "Working": the rewritten file parses — the pre-fix output was
         // a parse error on this very line.
+        /*
+         * The exec-capability guard (t31-ocr20-5, the ocr18-2 doctrine):
+         * the parse-probe legs of this test (this probe and the
+         * interrupted-spelling probe below) spawn engines; the skip
+         * aborts at the first, so the legs below it do not run either —
+         * named here, never silently half-run. The detector and rewrite
+         * assertions above already passed.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the parse-probe legs cannot run (and the legs below them with them); the detector and rewrite assertions above already passed.');
+        }
         $probe = self::distDir() . '/.rel-use-probe.php';
         file_put_contents($probe, $rewritten);
         try {

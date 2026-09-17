@@ -56,16 +56,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
     public function testThePublicationInvariantHoldsOverEveryAdversarialBuildState(): void
     {
         /*
-         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
-         * doctrine over this consumer): every state's soundness walk
-         * php -l's each shipped entry through a spawned engine, and
-         * on a disable_functions host the first loop iteration was an
-         * undefined-function \Error mid-battery. The probe sits at
-         * the TEST, once — never one skip per state iteration.
+         * The battery-level exec guard is GONE, narrowed to the rows
+         * that need it (OCR round 20, t31-ocr20-5 — the over-broad
+         * skip the ocr18-2 guard left behind): only the CLEAN rows
+         * ride child processes (classifyClean's php -l soundness walk
+         * and the inspector's own syntax loop over the extracted
+         * tree), while the LOUD rows refuse IN-PROCESS — the build
+         * path spawns nothing (grep-derived: no exec/proc_open under
+         * bin/build.php or the plugin-tools gates it rides). The old
+         * whole-battery skip silenced every LOUD refusal verdict on a
+         * disable_functions host; now those rows run and only the
+         * CLEAN rows answer the row-level capability skip in
+         * runState() below, and the CLEAN non-vacuity assertion is
+         * conditional on the capability (the LOUD half stays
+         * unconditional — it always runs).
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
-            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the battery\'s soundness walk cannot run (every state\'s php -l loop rides a child process); the publication invariant half did not run.');
-        }
 
         $failures = array();
         $run = array( 'CLEAN' => 0, 'LOUD' => 0 );
@@ -84,9 +89,14 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             }
         }
 
-        // Non-vacuity: every expected class actually executed.
-        $this->assertGreaterThan(0, $run['CLEAN'], 'The battery must exercise at least one CLEAN state.');
+        // Non-vacuity: every expected class that CAN run did. The LOUD
+        // half is unconditional (nothing it rides needs exec); the
+        // CLEAN half is charged only where its child-process soundness
+        // walk can spawn (t31-ocr20-5).
         $this->assertGreaterThan(0, $run['LOUD'], 'The battery must exercise at least one LOUD state.');
+        if (function_exists('exec') && function_exists('escapeshellarg')) {
+            $this->assertGreaterThan(0, $run['CLEAN'], 'The battery must exercise at least one CLEAN state.');
+        }
 
         $this->assertSame(
             array(),
@@ -457,6 +467,20 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         // itself with a named why, never the battery.
         if (! empty($state['needs_symlink']) && ! self::canSymlink()) {
             return array('class' => 'SKIP', 'why' => 'this host cannot create symlinks — the link-bearing state cannot be applied (t31-ocr10-14).');
+        }
+        /*
+         * Row-level exec-capability skip (t31-ocr20-5, the same
+         * pattern): only the CLEAN rows ride child processes —
+         * classifyClean's php -l soundness walk over the extracted
+         * entries and the release-gate inspection's own syntax loop —
+         * while the LOUD rows refuse in-process (the build path
+         * spawns nothing). On a disable_functions host the CLEAN row
+         * would FATAL at the first spawned lint; it skips ITSELF with
+         * a named why, and the LOUD rows keep their charge (the
+         * battery-level skip this replaces silenced them too).
+         */
+        if ('CLEAN' === $state['expect'] && (! function_exists('exec') || ! function_exists('escapeshellarg'))) {
+            return array('class' => 'SKIP', 'why' => 'exec/escapeshellarg is disabled on this host — the CLEAN row\'s soundness walk and release-gate inspection ride child-process php -l and cannot run (t31-ocr20-5; the LOUD rows need no child process and keep running).');
         }
 
         $scratch = $this->makeScratchRepo($state_id);
@@ -1010,9 +1034,13 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * OCR round 3 (t31-ocr3-8): scan-secrets.php rides the helper
          * too — the GPC leg proves its guard still fires (the scan runs
          * and says so, never a silent exit-0 no-op), closing the
-         * t31-r12-11 sweep at all five entry scripts.
+         * t31-r12-11 sweep at all five entry scripts. The scan TARGET
+         * is anchored like every sibling spawn (t31-ocr20-5): this was
+         * the one CWD-relative path handed to a spawned script — the
+         * scan silently walked NOTHING when the runner started outside
+         * the repo root, its 'finding(s)' line vacuously green.
          */
-        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg(realpath(__DIR__ . '/../bin/scan-secrets.php')) . ' tests/fixtures 2>&1', $gpcScanOutput, $gpcScanExit);
+        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg(realpath(__DIR__ . '/../bin/scan-secrets.php')) . ' ' . escapeshellarg(realpath(__DIR__ . '/fixtures')) . ' 2>&1', $gpcScanOutput, $gpcScanExit);
         $this->assertSame(0, $gpcScanExit, 'Under variables_order=GPC the scanner\'s CLI guard still fires — never a silent exit-0 no-op.');
         $this->assertStringContainsString('finding(s)', implode("\n", $gpcScanOutput), 'The scan still runs its walk under GPC.');
 
