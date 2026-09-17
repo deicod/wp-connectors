@@ -3446,7 +3446,7 @@ function wp_connectors_autoloader_violations($pluginDir)
  */
 function wp_connectors_is_php_source($path)
 {
-    return '.php' === strtolower(substr((string) $path, -4));
+    return '.php' === wp_connectors_ascii_lower(substr((string) $path, -4));
 }
 
 /**
