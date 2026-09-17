@@ -481,18 +481,27 @@ FIXTURE
         }
 
         $repo = sys_get_temp_dir() . '/wp-connectors-conventions-shared-' . uniqid('', true);
-        mkdir($repo . '/bin/lib', 0755, true);
-        mkdir($repo . '/shared/src/Clock', 0755, true);
-        mkdir($repo . '/connectors', 0755, true);
-        copy(dirname(__DIR__) . '/bin/check-conventions.php', $repo . '/bin/check-conventions.php');
-        copy(dirname(__DIR__) . '/bin/lib/plugin-tools.php', $repo . '/bin/lib/plugin-tools.php');
-        // The gate's repo-level checks need a CHANGELOG at the root.
-        file_put_contents($repo . '/CHANGELOG.md', "# scratch\n");
-        // A valid plugin so ONLY the unused-import verdict can fail the run.
-        // The scratch-tree helpers are the harness's ONE pair (t31-ocr1-9).
-        WpHarness::copyTree(__DIR__ . '/fixtures/plugins/example-connector', $repo . '/connectors/example-connector');
 
+        /*
+         * Staging lives INSIDE the try (t31-ocr18-3, the t31-ocr16-14
+         * scratch-staging class): the whole scratch repo was staged
+         * before the try/finally owned it, so a failed copy/copyTree
+         * leaked the partial tree on disk — creation-to-cleanup under
+         * the one finally (rrmdir no-ops the never-created spelling,
+         * so a first-line failure unwinds clean).
+         */
         try {
+            mkdir($repo . '/bin/lib', 0755, true);
+            mkdir($repo . '/shared/src/Clock', 0755, true);
+            mkdir($repo . '/connectors', 0755, true);
+            copy(dirname(__DIR__) . '/bin/check-conventions.php', $repo . '/bin/check-conventions.php');
+            copy(dirname(__DIR__) . '/bin/lib/plugin-tools.php', $repo . '/bin/lib/plugin-tools.php');
+            // The gate's repo-level checks need a CHANGELOG at the root.
+            file_put_contents($repo . '/CHANGELOG.md', "# scratch\n");
+            // A valid plugin so ONLY the unused-import verdict can fail the run.
+            // The scratch-tree helpers are the harness's ONE pair (t31-ocr1-9).
+            WpHarness::copyTree(__DIR__ . '/fixtures/plugins/example-connector', $repo . '/connectors/example-connector');
+
             // Control: the clean shared tree is invisible to the gate.
             file_put_contents(
                 $repo . '/shared/src/Clock/ClockInterface.php',

@@ -3658,6 +3658,7 @@ FIXTURE;
             // Fire every build simultaneously; each is a full CLI run
             // against the same dist/ and the same manifest.
             $handles = array();
+            $unspawned = array();
             foreach (array_keys($connectors) as $slug) {
                 $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=' . escapeshellarg($slug);
                 /*
@@ -3667,6 +3668,14 @@ FIXTURE;
                  * and fclose() warnings confused the leg, and $pipes
                  * carried the PRIOR iteration's descriptors, so a
                  * failed spawn double-closed the previous child's pipe.
+                 *
+                 * The spawn verdict is COLLECTED here and asserted
+                 * after the reap (t31-ocr18-3, the t31-ocr4-7 doctrine
+                 * over the SPAWN loop itself): an assertIsResource()
+                 * mid-loop aborted the foreach with the earlier
+                 * children still live — un-reaped builds kept writing
+                 * into the scratch repo the outer finally then rrmdirs
+                 * underneath them.
                  */
                 $pipes = array();
                 $handle = proc_open(
@@ -3674,7 +3683,10 @@ FIXTURE;
                     array( 0 => array( 'pipe', 'r' ), 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
                     $pipes
                 );
-                $this->assertIsResource($handle, "The concurrent build of {$slug} must spawn (proc_open refused the command: {$command}) — an unspawnable leg is environmental, never a silent pass.");
+                if (! is_resource($handle)) {
+                    $unspawned[ $slug ] = $command;
+                    continue;
+                }
                 fclose($pipes[0]);
                 $handles[ $slug ] = $handle;
             }
@@ -3688,6 +3700,14 @@ FIXTURE;
             foreach ($handles as $slug => $handle) {
                 $exits[ $slug ] = proc_close($handle);
             }
+            // Spawn verdicts assert after the reap too (t31-ocr18-3):
+            // every child has finished, so the environmental refusal
+            // names its slugs without racing anyone's cleanup.
+            $this->assertSame(
+                array(),
+                $unspawned,
+                'Every concurrent build must spawn — an unspawnable leg is environmental, never a silent pass (proc_open refused: ' . implode('; ', $unspawned) . ').'
+            );
             foreach ($exits as $slug => $exit) {
                 $this->assertSame(0, $exit, "The concurrent build of {$slug} must succeed.");
             }
@@ -3727,6 +3747,7 @@ FIXTURE;
 
         try {
             $handles = array();
+            $unspawned = array();
             for ($i = 0; $i < 2; ++$i) {
                 /*
                  * The spawn is GATED and the pipes RESET per iteration
@@ -3736,6 +3757,13 @@ FIXTURE;
                  * loop's proc_close() as a TypeError under PHP 8, an
                  * engine vocabulary in place of the environmental
                  * verdict the gate names.
+                 *
+                 * The spawn verdict is COLLECTED here and asserted
+                 * after the reap (t31-ocr18-3, the t31-ocr4-7 doctrine
+                 * over the SPAWN loop itself): the mid-loop
+                 * assertIsResource() aborted the for with the first
+                 * child still live, writing into the repo the finally
+                 * rrmdirs underneath it.
                  */
                 $pipes = array();
                 $handle = proc_open(
@@ -3743,17 +3771,26 @@ FIXTURE;
                     array( 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
                     $pipes
                 );
-                $this->assertIsResource($handle, "The same-plugin concurrent build #{$i} must spawn — an unspawnable leg is environmental, never a proc_close() TypeError on a false.");
+                if (! is_resource($handle)) {
+                    $unspawned[] = $i;
+                    continue;
+                }
                 $handles[] = $handle;
             }
 
             // Same shape as the manifest-race leg above (t31-ocr4-7):
             // collect both exits, assert afterward — never leak a child
-            // by aborting the reaping loop.
+            // by aborting the reaping loop. The spawn verdicts assert
+            // here too (t31-ocr18-3): both children have finished.
             $exits = array();
             foreach ($handles as $handle) {
                 $exits[] = proc_close($handle);
             }
+            $this->assertSame(
+                array(),
+                $unspawned,
+                'Both same-plugin concurrent builds must spawn — an unspawnable leg is environmental, never a proc_close() TypeError on a false (proc_open refused spawn #' . implode(', #', $unspawned) . ').'
+            );
             foreach ($exits as $exit) {
                 $this->assertSame(0, $exit, 'A concurrent same-plugin build must survive its sibling: the stage trees are pid-disjoint.');
             }
