@@ -757,14 +757,17 @@ abstract class WpConnectorsTestCase extends TestCase
      * green); a failure fails loudly naming the ER_* code (the common
      * ones mapped, the raw int for the rest).
      *
-     * The open carries ZipArchive::RDONLY explicitly (t31-ocr19-1):
-     * the omitted-flags spelling is the LEGACY default, and on the
-     * composer floor (8.2 — engines before 8.3) that default CREATES
-     * an empty archive when the file is absent, so the helper would
-     * hand back [] over a MISSING zip — the vacuous list the strict
-     * gate above exists to make impossible — instead of failing. A
-     * read-mode open never creates; on the 8.2 floor every read-mode
-     * open() must carry the flag.
+     * The open carries ZipArchive::RDONLY explicitly (t31-ocr19-1 —
+     * the finding's floor premise was REFUTED in-round, the flag
+     * kept as pinned intent): the claim was that the omitted-flags
+     * default CREATES an empty archive on the composer floor (8.2)
+     * when the file is absent; driven on a real 8.2.33/libzip
+     * engine, the omitted spelling returns ER_NOENT and creates
+     * NOTHING (the php-src stubs and UPGRADING record know no 8.3
+     * default change, and the strict gate above was already loud on
+     * every engine in the support range). The flag stays as the
+     * read site's own statement of intent — a read never creates —
+     * and the missing-archive pin holds the loud contract.
      *
      * @param string $zipPath Absolute zip path.
      * @return list<string> Entry names.

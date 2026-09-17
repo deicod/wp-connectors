@@ -6,6 +6,77 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 19)
+
+Nineteenth OCR-tool round (main 57/62 + bin/ fill-in 7/7, union
+complete): 4 findings, driver triage accepted all — trajectory
+27→10→11→7→11→33→9→9→4, the decline holds, and bin/ read zero in the
+fill-in. Fixed as t31-ocr19-1..4 — one commit per finding, four fix
+commits plus this docs record, the full offline check green after
+every one. The two-lens verifier pass ran as a two-agent workflow,
+both lenses driven: the independent-correctness lens confirmed all
+four with zero findings (pre-fix vs post-fix consumer drives in
+redirected-TMPDIR child engines, a reflection battery over the
+private probe's edge shapes, and a 17-shape hostile spelling battery
+on the real runner — byte-identical verdicts pre vs post everywhere
+the temp spelling is real); the refutation lens REFUTED ONE PREMISE —
+ocr19-1's floor claim, independently re-driven for this record on a
+real 8.2.33/libzip engine: the omitted-flags open() on a missing file
+returns ER_NOENT and creates nothing, the php-src stubs and UPGRADING
+record no 8.3 default change, and the strict gate was already loud on
+every engine in the support range. The flag stays as pinned read-only
+intent; the doctrine is corrected in this record (the round-18
+refutation precedent). Suite 1651 → 1652 → 1653 → 1654 tests, 45493 →
+45497 → 45504 → 45505 → 45508 assertions (every per-commit delta
+measured from output: +4 the missing-archive pin, +7 the anchor leg,
++1 the round-trip pin, +3 the chaining pin), 2 skipped unchanged.
+
+- **The link probe anchors at the temp root, never at '/'
+  (t31-ocr19-2, the round's bug:medium headliner)** — the ocr17-2
+  full-chain walk judged every component of the passed chain from
+  '/' down, so on a host whose temp spelling itself crosses a
+  system-layout link (macOS: TMPDIR under /var → private/var, the
+  /tmp fallback → private/tmp) the FIRST link found was the host's
+  own spelling: rrmdir silently SKIPPED cleanup of every legal
+  scratch tree and copyTree refused every legal source — the whole
+  link vocabulary firing on the host layout, the round-17 ledger's
+  portability residual, now closed. The walk anchors at the temp
+  root (the same existing-component stop the copyTree ancestor walk
+  rides): components of the temp spelling itself are skipped as the
+  host's layout, everything strictly beneath keeps the full-chain
+  reach, and a chain not spelled beneath the temp root keeps the
+  walk unchanged. Driven red at HEAD through a redirected-TMPDIR
+  child (the macOS shape is only reachable in a fresh engine —
+  sys_get_temp_dir() is cached per process): pre-fix the child left
+  the scratch tree and fataled on the legal copy; post-fix cleanup
+  works, the legal copy lands, and the planted links below the
+  anchor keep the doctrine (skip/refuse, victim survives).
+- **The zip reader opens RDONLY — premise refuted, intent pinned
+  (t31-ocr19-1)** — the accepted premise said the omitted-flags
+  open() CREATES an empty archive on the 8.2 floor when the file is
+  absent (helper returning [] over a missing zip); driven on a real
+  8.2.33/libzip engine it returns ER_NOENT and creates nothing, no
+  8.3 default change exists in the engine record, and the strict
+  gate was already loud everywhere. The explicit RDONLY stays as the
+  read site's own statement of intent, the missing-archive pin holds
+  the loud contract (ER_NOENT named, path named, nothing created),
+  and the 13 same-shape omitted-flags census sites are re-framed as
+  style variance, not latent exposure.
+- **The device session's happy path pins the poll credential
+  (t31-ocr19-3)** — user_code/verification_uri/interval/expires_at
+  were pinned while device_code() — the primary poll credential, the
+  one property the device flow exists to carry — never was (the
+  fake's random per-call spelling was passed inline); the generated
+  code is captured and round-tripped like its siblings now,
+  mutation-evident.
+- **The family-mismatch verdict chains the original exception
+  (t31-ocr19-4)** — refusalOf()'s out-of-family branch constructed
+  its AssertionFailedError without the previous argument, discarding
+  the real message and stack trace exactly where an unexpected
+  exception IS the signal; the original rides the chain now (same
+  instance pinned on getPrevious()), the verdict still naming the
+  pinned family and the caught class.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 18)
 
 Eighteenth OCR-tool round (62/62, complete): 9 findings, driver triage

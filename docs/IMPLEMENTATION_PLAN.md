@@ -2862,6 +2862,246 @@ OCR-tool round
   restructure),
   2 skipped
   unchanged.
+OCR-tool round
+  t31-ocr19
+  (FIVE commits —
+  the nineteenth
+  pass, main
+  57/62 + bin/
+  fill-in 7/7
+  (union
+  complete),
+  4/4 findings
+  accepted;
+  trajectory
+  27→10→11→7→
+  11→33→9→9→4 —
+  the decline
+  holds, bin/
+  read zero in
+  the fill-in):
+  the round's
+  substantive
+  close is the
+  LINK PROBE
+  ANCHOR
+  (t31-ocr19-2,
+  bug:medium,
+  the round-17
+  portability
+  residual
+  closed) — the
+  ocr17-2
+  full-chain
+  walk judged
+  every
+  component
+  from '/', so
+  on a host
+  whose temp
+  spelling
+  crosses a
+  system-layout
+  link (macOS
+  /var, /tmp)
+  the probe
+  named the
+  HOST'S link
+  for every
+  temp-rooted
+  path —
+  rrmdir
+  silently
+  skipped all
+  cleanup,
+  copyTree
+  false-refused
+  every
+  source; the
+  walk anchors
+  at the temp
+  root now
+  (components
+  of the temp
+  spelling are
+  host layout,
+  everything
+  strictly
+  beneath
+  keeps the
+  full-chain
+  reach),
+  driven red
+  then green
+  in a
+  redirected-
+  TMPDIR child
+  engine (the
+  macOS sim —
+  sys_get_
+  temp_dir()
+  is cached
+  per process,
+  so the shape
+  needs a
+  fresh
+  engine;
+  planted
+  links below
+  the anchor
+  keep the
+  doctrine).
+  The round's
+  REFUTATION
+  of record
+  (t31-ocr19-1,
+  the round-18
+  precedent):
+  the accepted
+  premise —
+  omitted-flags
+  ZipArchive::
+  open()
+  CREATES an
+  empty
+  archive on
+  the 8.2
+  floor — was
+  refuted at
+  three levels
+  (a real
+  8.2.33/libzip
+  engine
+  returns
+  ER_NOENT and
+  creates
+  nothing,
+  re-driven
+  independently
+  after the
+  pass; the
+  php-src
+  stubs and
+  UPGRADING
+  know no 8.3
+  default
+  change; the
+  strict gate
+  was already
+  loud
+  everywhere)
+  — the
+  explicit
+  RDONLY flag
+  stays as
+  pinned
+  read-only
+  intent, the
+  missing-
+  archive pin
+  holds the
+  loud
+  contract,
+  the 13-site
+  census is
+  re-framed as
+  style
+  variance,
+  and the two
+  docblocks
+  the first
+  commit wrote
+  in the false
+  premise are
+  corrected in
+  the docs
+  commit. Two
+  small pins:
+  the device
+  session's
+  happy path
+  round-trips
+  the poll
+  credential
+  (ocr19-3),
+  and the
+  refusal
+  owner's
+  family-
+  mismatch
+  verdict
+  chains the
+  original
+  exception —
+  same
+  instance on
+  getPrevious
+  (), the
+  chain not
+  the render
+  (PHPUnit 9's
+  __toString
+  strips the
+  previous
+  chain;
+  ocr19-4).
+  Two-lens
+  verifier
+  pass (both
+  lenses
+  driven):
+  correctness
+  4/4, zero
+  findings
+  (edge-shape
+  reflection
+  battery,
+  17-shape
+  hostile
+  spelling
+  battery
+  byte-
+  identical
+  pre vs
+  post off
+  the
+  symlinked-
+  temp class);
+  refutation
+  lens's one
+  surviving
+  finding IS
+  the ocr19-1
+  refutation
+  above;
+  ocr19-2/3/4
+  confirmed
+  (incl. the
+  '..'-pop-out
+  attack and
+  the
+  above-root
+  escape —
+  both still
+  name their
+  links).
+  Suite 1651 →
+  1652 → 1653
+  → 1654
+  tests,
+  45493 →
+  45497 →
+  45504 →
+  45505 →
+  45508
+  assertions
+  (every
+  per-commit
+  delta
+  measured
+  from output),
+  2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
