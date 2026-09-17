@@ -2833,9 +2833,18 @@ FIXTURE;
                 return 0 === strcasecmp($entry, 'example-connector/LICENSE');
             }));
         };
-        $entryBytes = static function (string $zipPath, string $entry): string {
+        $entryBytes = function (string $zipPath, string $entry): string {
             $zip = new ZipArchive();
-            $zip->open($zipPath);
+            // The re-open is STRICTLY gated (t31-ocr11-19, the
+            // t31-ocr10-16 doctrine on this site): a failed open over a
+            // truthy ER_* int read empty bytes as the fixture's —
+            // assertTrue(true === …), the raw return named in the
+            // failure, the strict expression never the truthy int.
+            $opened = $zip->open($zipPath);
+            $this->assertTrue(
+                true === $opened,
+                sprintf('The zip must open for the byte snapshot: %s (ZipArchive::open() returned %s).', $zipPath, var_export($opened, true))
+            );
             $bytes = (string) $zip->getFromName($entry);
             $zip->close();
 
