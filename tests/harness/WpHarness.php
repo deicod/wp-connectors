@@ -658,6 +658,21 @@ final class WpHarness
         }
         $source_real = realpath($from);
         /*
+         * A false realpath is the LOUD refusal, not a silent concat
+         * (t31-ocr10-9): open_basedir or a TOCTOU vanishing between the
+         * is_dir() gate and this resolution made $source_real === false
+         * string-concat to '' — the nested-prefix comparison then read
+         * '/' and refused EVERY absolute target with the WRONG
+         * diagnosis (the containment message, never the resolution
+         * failure that actually happened). The shape is unreachable on
+         * this runner (no open_basedir, no concurrent removal); the
+         * guard is construction-evident — false never reaches a
+         * comparison again.
+         */
+        if (false === $source_real) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a source whose realpath resolution failed — the tree is unreadable through this process (open_basedir, or it vanished mid-call): ' . $from);
+        }
+        /*
          * A not-yet-created target is the copy's own normal shape, but
          * its LEXICAL spelling cannot see through the alias class the
          * ocr7-8 ledger named out-of-scope — a '..'-woven target, or
