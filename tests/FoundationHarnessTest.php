@@ -628,10 +628,20 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
             );
             $this->assertStringContainsString('ER_NOENT', $caught->getMessage(), 'The failure names the ER_* code of an absent archive.');
             $this->assertStringContainsString($missing, $caught->getMessage(), 'The failure names the archive path.');
+
+            /*
+             * Judged BEFORE the finally's unlink (OCR round 22,
+             * t31-ocr22-7): post-try the pin was unfalsifiable — the
+             * unlink had already removed whatever a creating helper
+             * left behind, so a zipEntryNames() that created the
+             * archive passed the never-created pin invisible. The
+             * verdict rides the state the open actually left, with
+             * the cleanup still guaranteed on every exit path.
+             */
+            $this->assertFileDoesNotExist($missing, 'The read-mode open never creates the archive — the pinned intent RDONLY states, held on every engine in range.');
         } finally {
             @unlink($missing);
         }
-        $this->assertFileDoesNotExist($missing, 'The read-mode open never creates the archive — the pinned intent RDONLY states, held on every engine in range.');
     }
 
     /**
