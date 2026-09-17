@@ -1500,6 +1500,213 @@ OCR-tool round
   1629 tests, 45129 →
   45362 assertions, 2
   skipped unchanged.
+  OCR-tool round
+  t31-ocr10 (nineteen
+  commits — the TENTH
+  pass and the FIRST
+  fully complete one,
+  61/61 no fill-in,
+  19/19 findings
+  accepted, 14 fix
+  commits + 4
+  verifier-pass fixes
+  + the docs):
+  the FIRST fully-
+  complete round, and
+  the trajectory rule
+  ledgered — 9→13→9→
+  13→8→15→10→19 is
+  NOT monotone because
+  each round audits
+  the PRIOR round's
+  fixes and carries
+  older doctrines to
+  seams they hadn't
+  reached; the loop
+  converges when a
+  round finds nothing
+  NEW, and round 10
+  did not (its own fix
+  pass DROVE the next
+  round's lead: the
+  detector's PCRE /i
+  text lens consults
+  the active locale —
+  under a manufactured
+  tr_TR the /i stem
+  finding over a case-
+  variant family
+  spelling drops,
+  every fold-seam
+  finding survives —
+  ledgered with the
+  repro). The round's
+  own two high fixes:
+  rrmdir() mirrors
+  copyTree's ROOT
+  clause (realpath ===
+  '/' refuses, driven
+  at both spellings —
+  rrmdir('/') walked
+  into unlink() over
+  the filesystem root)
+  and the inspector's
+  extraction dir goes
+  UNIQUE-OWNED
+  (random-suffix mkdir
+  — the planted-link
+  WRITE half driven:
+  extraction landed
+  inside the victim
+  tree through the
+  pre-planted name;
+  uniqueness pinned
+  black-box through
+  the NAME_MAX refusal
+  naming the full
+  extraction path).
+  Also: the ocr1-1
+  probe FORCES its
+  subject (the refused
+  spelling is now the
+  grammar's refusal,
+  negative
+  microseconds, and
+  the precondition is
+  pinned assertFalse
+  before the act); the
+  family-verdict folds
+  swept to the ASCII
+  owner (r11-6) on
+  every producer and
+  consumer site; the
+  shared zip reader
+  gates open() on
+  strict equality (the
+  truthy ER_NOZIP=19
+  drove the vacuous
+  []); refusalOf()'s
+  family parameter is
+  REQUIRED (census
+  zero, three omitting
+  sites named); lint
+  skips non-regular
+  files (a *.php dir
+  symlink passed php
+  -l vacuously over a
+  directory); a
+  dev-entry top-level
+  dir is never an
+  embed territory
+  (hostile
+  'vendor/src/Shared'
+  exempted wholesale,
+  driven); copyTree
+  refuses realpath-
+  false and FILE-in-
+  chain targets; three
+  @return annotations
+  widened to the
+  pinned int|string
+  shape; the t31-r12-
+  20 structural pin is
+  whitespace-normalized
+  (its own class
+  demonstrated LIVE —
+  the ocr10-2 rename
+  reddened it
+  mid-round); proc_open
+  gated + pipes reset
+  per spawn; the
+  symlink platform
+  guards ride ONE
+  capability-probe
+  owner (canSymlink()
+  on WpConnectorsTestC
+  ase, the skip_on_
+  root pattern).
+  VERIFIER PASS (two
+  lenses): correctness
+  8/8 HOLDS (the 14-
+  commit count chain
+  re-derived by
+  running the suite at
+  EVERY commit; the
+  refusalOf census re-
+  driven at 99 calls /
+  0 two-argument;
+  exactly the two
+  known miscounts, no
+  others); refutation
+  4 confirmed + 1
+  trace — ALL fixed
+  in-round as ocr10-
+  15/16/17/18, ZERO
+  refuted: r9's
+  ledgered re-open
+  condition FIRED
+  (the inspector's
+  rrmdir twin — the
+  workDir is a PUBLIC
+  parameter, and
+  'link/.' emptied
+  the victim past
+  the r9 plain guard,
+  driven; both
+  sibling clauses
+  now ride the twin,
+  the root as a
+  silent return),
+  the truthy open()
+  gate swept WRITE-
+  side too (4 sites,
+  the lens's 2 + the
+  grep's 2), the
+  ocr10-2 retry loop
+  captures its own
+  failure (16 raw
+  mkdir warnings
+  leaked, driven —
+  the r12-19 doctrine
+  one screen below),
+  and the round's own
+  canSymlink() probe
+  gets a random-
+  suffix name (its
+  first cut planted
+  a predictable pid
+  name — the ocr10-2
+  model on fresh
+  code, traced). The
+  lens also confirmed
+  the /i lead END-TO-
+  END (a comment-only
+  stem SHIPPED in a
+  real zip with the
+  inspector ACCEPTED
+  under an in-process
+  tr locale; driven
+  mitigator: PHP does
+  NOT adopt env
+  LC_CTYPE at startup
+  — in-process
+  setlocale required)
+  — the next round's
+  first finding, the
+  repro in the
+  ledger.
+  Suite 1629 → 1634
+  tests, 45362 →
+  45417 assertions, 2
+  skipped unchanged.
+  Two prose miscounts
+  corrected in the
+  round record
+  (ocr10-1 said 45369,
+  true 45370; ocr10-2
+  said 45380, true
+  45379 — the
+  correctness lens).
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

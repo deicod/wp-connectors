@@ -6,7 +6,194 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
-### Fixed (shared — M3 Task 3.1, OCR round 9)
+### Fixed (shared — M3 Task 3.1, OCR round 10)
+
+Tenth OCR-tool round — the FIRST fully complete pass (61/61, no
+fill-in): 19 findings, driver triage accepted all. Two high (the
+rrmdir root clause un-mirrored from its copyTree twin; the inspector's
+planted-link WRITE half), one test:high (a probe that never forced its
+subject's false return), two locale folds, one truthy-error-code gate.
+Fixed as t31-ocr10-1..14 — one commit per finding (the same-class
+groups — the ×2 fold sweep, the ×3 annotations, the ×3 platform
+guards — ride one commit each), the full offline check green after
+every commit. The finding-count trajectory across rounds
+(9→13→9→13→8→15→10→19) is not monotone, and that is expected: each
+round audits the PRIOR round's fixes and applies older doctrines to
+seams they hadn't reached — the loop converges when a round finds
+nothing NEW, which round 10 has not yet done (its own verifier pass
+drove one: the PCRE /i text lens is locale-consulting — see below).
+The round's two-lens verifier pass: correctness 8/8 HOLDS (the full
+14-commit count chain re-derived at every commit; the refusalOf
+census re-driven at 99 calls / 0 two-argument; exactly the two known
+prose miscounts, no others); refutation 4 confirmed findings + one
+trace — ALL fixed in-round as t31-ocr10-15/16/17/18, zero refuted.
+Suite 1629 → 1634 tests, 45362 → 45417 assertions, 2 skipped
+unchanged. Two prose miscounts corrected in the round record
+(ocr10-1's message said 45369 — true 45370; ocr10-2's said 45380 —
+true 45379).
+
+- **rrmdir() refuses the ROOT collapse (t31-ocr10-1, bug:high)** —
+  the deletion twin of ocr9-9's copyTree mirror clause: the walk
+  spelling keeps a trailing '/..' (it names a different directory),
+  so `rrmdir(sys_get_temp_dir().'/..')`, `rrmdir('/')`, any scratch
+  spelling collapsing to '/' passed every guard and CHILD_FIRST
+  deleted the root's children (driven both spellings: the literal
+  root walked into unlink()/rmdir() over '/'; a `scratch/sub/..`
+  spelling deleted the PARENT's entries). `realpath($dir) === '/'`
+  now refuses with the policy exception naming the spelling; the
+  link-spelling legs keep their earlier verdict (probe order: link
+  doctrine first, root clause second, walk third).
+- **The inspector's extraction dir is UNIQUE-OWNED (t31-ocr10-2,
+  security:high)** — the WRITE half of the planted-link threat
+  ocr9-10 closed for deletion only: the workDir spellings are fixed
+  and predictable (the CLI's `/wp-connectors-inspect-<pid>`, pids
+  enumerable; the tests' dist/.inspect-* literals), so a symlink
+  pre-planted at the name had is_dir() follow it, mkdir() fail, and
+  extractTo() WRITE through the link into the attacker's chosen tree
+  (driven: the extracted plugin dir landed inside the victim tree).
+  The extraction dir is now the base plus a 16-hex random suffix
+  created by mkdir() itself (the race-free creation — a random name
+  cannot be pre-planted); every inner use rides the unique dir, and
+  the rrmdir link guard stays as depth. The uniqueness is pinned
+  black-box: the NAME_MAX extraction refusal's captured engine
+  diagnostic names the full extraction path, so two runs expose two
+  different suffixes under one base.
+- **The ocr1-1 reconstruction probe FORCES its subject (t31-ocr10-3,
+  test:high)**: the refused spelling was the seven-digit microsecond
+  tail — trailing input, whose false return is the engine's
+  trailing-data POLICY (reclassifiable across versions), not the
+  grammar's refusal. The spelling is now one the 'U u' grammar itself
+  rejects (negative microseconds: sprintf('%06d', -1) spells
+  '-00001', driven "Unexpected data found"), and the arm's
+  PRECONDITION is pinned before the act — assertFalse() on
+  createFromFormat over the exact spelling, so the refusal arm never
+  again asserts a path whose execution went unproven.
+- **The family-verdict folds ride the ASCII owner (t31-ocr10-4,
+  bug:medium ×2, one class)**: every fold feeding a family verdict —
+  the detector's roots and value-lens is_family, the 'lower' twins
+  both lenses emit, the declaration ledger, the staging gate's root
+  check, build.php's consumer folds — moved from locale-sensitive
+  strtolower() to wp_connectors_ascii_lower() (the r11-6 mechanism);
+  under a Turkish LC_CTYPE 'I' folds to the dotless ı at the C-library
+  level (probed on this host), so a fold riding the engine's
+  strtolower is a question about the engine and the process locale —
+  a 'DEICOD\…' spelling could launder past the vendor predicate on
+  the 8.2 floor. The Turkish leg rides the suite's manufactured
+  locale idiom and requires the fold seam's verdict byte-identical
+  under the live locale. DRIVEN DISCOVERY, next round's lead: the
+  TEXT lens's PCRE /i STEM finding drops under the live tr locale
+  (the /i fold consults the active locale — the already-ledgered
+  engine behavior class); every fold-seam finding survives.
+- **zipEntryNames() gates on `=== true` (t31-ocr10-5, bug:medium)**:
+  ZipArchive::open() returns a TRUTHY ER_* int on failure (driven:
+  ER_NOZIP=19), so assertTrue() passed a failed open and the shared
+  zip reader handed back [] over numFiles=0 — every entry assertion
+  vacuously green. The strict-expression gate fails loudly naming
+  the ER_* code; the happy path keeps its counting assertion (a
+  fail()-only first cut silently dropped one assertion at each of 42
+  call sites — the suite's own count caught it).
+- **refusalOf()'s family parameter is REQUIRED (t31-ocr10-6,
+  maintainability:low)**: the \Throwable default pinned nothing (the
+  ocr9-3 tautology), and an omitting call site silently re-opened
+  that regression invisibly. Compile-enforced explicitness now — the
+  census found exactly three omitting sites, each named with what
+  its original context enforced (the two eval-reconstruction sites
+  and the reflection readonly site, all legitimately \Throwable).
+- **lint-php skips non-regular files (t31-ocr10-7, bug:low)**: a
+  '*.php'-named symlink-to-directory is yielded as a LEAF by the
+  LEAVES_ONLY walk, passes the extension owner, and reaches
+  `php -l <dir>` — which passes VACUOUSLY (driven: exit 0 over a
+  directory) while the linked tree's real sources escape the gate.
+  is_link() || ! isFile() skips, the sibling collectors' parity;
+  SKIP rather than the builders' refuse, because the tests tree is
+  the gate's charge and the gate polices syntax, not the build
+  doctrine.
+- **A dev-entry top-level dir is never an embed territory
+  (t31-ocr10-8, bug:low)**: the t31-r5-5 exemption keyed on the
+  ARCHIVE-CONTROLLED top-level name — a hostile zip rooted at
+  'vendor' exempted 'vendor/src/Shared/…' wholesale from dev-entry
+  classification (driven: composer.json and vendor/ under the hostile
+  territory un-flagged). The exemption now requires the top-level
+  name to NOT be a development entry, judged through the ONE
+  vocabulary owner.
+- **copyTree(): realpath-false and FILE-in-chain refuse loudly
+  (t31-ocr10-9 + t31-ocr10-10, bug:low ×2)**: a false realpath()
+  string-concated to '' and refused every absolute target with the
+  WRONG diagnosis (the containment message for a resolution failure)
+  — now the policy exception naming the source and the resolution
+  failure; and the ancestor walk stepped PAST a regular file in the
+  target chain (its walk-on conditions were exactly "not a dir, not a
+  link"), judged containment above the file, passed, and died in
+  mkdir() as raw warnings (driven) — the walk stops at any existing
+  component now, and a file-resolving one refuses with the policy
+  vocabulary.
+- **Three @return shapes match their own pinned execution
+  (t31-ocr10-11, documentation:low ×3, one class)**:
+  HeaderMap::headers(), HeaderMap::masked_headers(), and
+  HasMaskedHeaders::masked_headers() said array<string,string> while
+  the suite pins all-digit names surfacing under PHP-canonical
+  INTEGER keys (assertSame(array(123 => 'x'), …)) — the
+  machine-readable shape is array<int|string, string> at all three.
+- **The try/finally structural pin is whitespace-normalized
+  (t31-ocr10-12, maintainability:low)**: the t31-r12-20 pin asserted
+  a byte-exact indentation-sensitive substring — the class
+  demonstrated itself live when ocr10-2's one-variable rename
+  reddened it mid-round. The pin now collapses whitespace and asserts
+  the STRUCTURE (extractTo in a try whose finally restores the
+  handler); mutation-checked that the happy-path-only pairing still
+  does not match.
+- **proc_open() is gated and $pipes reset per spawn
+  (t31-ocr10-13, test:low)**: a failed spawn left a null handle whose
+  close warned, and the stale $pipes double-closed the PRIOR child's
+  stdin — six children shared one descriptor array at exactly the leg
+  whose job is exit-code fidelity.
+- **Symlink platform guards ride the capability probe
+  (t31-ocr10-14, test:low ×3, one class)**: the excluded-path
+  battery called symlink() bare, the seam-property row applied its
+  link bare, and HarnessCopyTreeTest's leg gated on
+  function_exists('symlink') — TRUE on Windows without the privilege
+  to use it (the t31-ocr6-14 lesson). One owner — canSymlink() on
+  WpConnectorsTestCase beside runningAsRootRunner (create+unlink
+  probe, @-suppressed, the FALSE RETURN is the signal) — serves the
+  test-level skips and the row-level skip (the skip_on_root pattern);
+  the same-class function_exists guard in the removal-seam pin rides
+  it too.
+
+Verifier-pass fixes (the round's refutation lens, all confirmed by
+driven or traced evidence, fixed in-round):
+
+- **r9's ledgered re-open condition FIRED on the inspector's removal
+  twin (t31-ocr10-15, bug:medium)**: the workDir is a PUBLIC
+  parameter of wp_connectors_inspect_artifact(), so caller-controlled
+  spellings reach wp_connectors_inspect_rrmdir() — and driven,
+  'link/.' EMPTIED the victim tree past the r9 plain is_link() guard
+  (the stat-transparent tail family), 'link/..' crashed the walk
+  inside the target's parent mid-deletion, and '/' walked the
+  filesystem root's children. The twin now carries BOTH clauses its
+  siblings carry — the tail-stripped link probe and the root clause
+  (silent returns: this owner's vocabulary; a production finally
+  never throws).
+- **The ocr10-5 truthy-gate class survived on the WRITE side
+  (t31-ocr10-16, test:low ×4)**: four ZipArchive::open(CREATE)
+  gates rode bare assertTrue() (the lens named two; the same-class
+  grep found the other two — the sweep). The strict-expression gate
+  with the RAW return in the message (lastErrorCode() is not compiled
+  on this engine — driven).
+- **The ocr10-2 retry loop leaked its own failure premise
+  (t31-ocr10-17, bug:low)**: on an unwritable parent, sixteen RAW
+  'mkdir(): Permission denied' warnings printed before the polite
+  refusal — the r12-19 capture doctrine one screen below, missed by
+  the loop sharing its screen. The capture rides the loop (r12-20
+  finally), the refusal names the reason; pinned by the no-leak
+  idiom with a root-runner skip.
+- **The round's own probe planted a predictable name
+  (t31-ocr10-18, test:low)**: the new canSymlink() probe wrote
+  '/wpct-capability-<pid>' — pre-plantable, the exact ocr10-2 threat
+  model on the round's fresh code (a planted entry flips the probe
+  false and silently suppresses link legs; trace-confirmed, skipped
+  legs only). Random suffix on both owners.
+
+
 
 Ninth OCR-tool round (main 56/61 + the fill-in over tests/Zai); driver
 triage accepted all 10 findings — two real bug:medium in WpHarness, one
