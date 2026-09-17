@@ -392,9 +392,24 @@ final class HarnessCopyTreeTest extends TestCase
         $plain = sys_get_temp_dir() . '/wpct-copytree-link-' . uniqid('', true);
         mkdir($plain . '/src', 0755, true);
         file_put_contents($plain . '/src/real.php', 'real bytes');
-        $to = $plain . '/dst';
 
         try {
+            /*
+             * Per-leg targets (OCR round 22, t31-ocr22-1): the in-tree
+             * link refusals fire at the first link the ITERATOR
+             * reaches (the t31-ocr4-8 note below), so entries yielded
+             * before the link legitimately land — over the battery's
+             * formerly SHARED $to one leg's landed residue sat waiting
+             * for the next leg's nothing-landed pin (the mid-path
+             * leg's assertFileDoesNotExist($to/real.php) judged the
+             * file-shape leg's leftovers, a red through no defect on
+             * every host whose readdir order yields the real file
+             * first). Each leg owns a FRESH target: the premise the
+             * nothing-landed pins stand on — nothing pre-existing at
+             * the target — holds by construction.
+             */
+            $freshTo = fn(): string => $plain . '/dst-' . uniqid('', true);
+
             /*
              * The verdict rides the ONE refusal owner (t31-ocr15-7,
              * replacing the t31-ocr5-3 inline shape this closure
@@ -402,7 +417,8 @@ final class HarnessCopyTreeTest extends TestCase
              * (RuntimeException) rides the third parameter, and the
              * no-throw case fails outside any catch.
              */
-            $refuses = function (string $from, string $linkName, string $expectation) use ($to): void {
+            $refuses = function (string $from, string $linkName, string $expectation) use ($freshTo): void {
+                $to = $freshTo();
                 $caught = WpHarness::refusalOf(
                     fn() => WpHarness::copyTree($from, $to),
                     $expectation,
@@ -436,7 +452,7 @@ final class HarnessCopyTreeTest extends TestCase
              * verdict names the LINK class, never the disguise.
              */
             $caught = WpHarness::refusalOf(
-                fn() => WpHarness::copyTree($plain . '/root-link/', $to),
+                fn() => WpHarness::copyTree($plain . '/root-link/', $freshTo()),
                 'A TRAILING-SLASH symlinked SOURCE ROOT must refuse the copy — a slash is not a disguise.',
                 RuntimeException::class
             );
@@ -453,7 +469,7 @@ final class HarnessCopyTreeTest extends TestCase
              * probe is the only thing that changed).
              */
             $caught = WpHarness::refusalOf(
-                fn() => WpHarness::copyTree($plain . '/root-link/.', $to),
+                fn() => WpHarness::copyTree($plain . '/root-link/.', $freshTo()),
                 'A \'/.\'-spelled symlinked SOURCE ROOT must refuse the copy — a dot is not a disguise either.',
                 RuntimeException::class
             );
@@ -474,7 +490,7 @@ final class HarnessCopyTreeTest extends TestCase
              * link judgment changed.
              */
             $caught = WpHarness::refusalOf(
-                fn() => WpHarness::copyTree($plain . '/root-link/..', $to),
+                fn() => WpHarness::copyTree($plain . '/root-link/..', $freshTo()),
                 'A \'/..\'-spelled symlinked SOURCE ROOT must refuse the copy — the parent it names is the TARGET\'S parent, a larger blast radius than the target.',
                 RuntimeException::class
             );
@@ -493,6 +509,7 @@ final class HarnessCopyTreeTest extends TestCase
              * link class, never the tree behind it.
              */
             symlink($plain, $plain . '/parent-link');
+            $to = $freshTo();
             $caught = WpHarness::refusalOf(
                 fn() => WpHarness::copyTree($plain . '/parent-link/src', $to),
                 'A source spelled through a SYMLINKED ANCESTOR must refuse the copy — the walk never routes through a link, wherever in the chain it sits.',
