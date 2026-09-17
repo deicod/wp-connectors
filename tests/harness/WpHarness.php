@@ -717,8 +717,26 @@ final class WpHarness
         if ('/' === $dir_real) {
             throw new RuntimeException('WpHarness::rrmdir() refuses a spelling that collapses to the filesystem ROOT — the universal tree is never a scratch dir: ' . $caller_spelling);
         }
+        /*
+         * The WALK rides the COLLAPSED spelling (OCR round 22's
+         * verifier pass, rd-1 + sc-1 over t31-ocr22-6): the
+         * iterator's child pathnames spell from the root it is built
+         * on, and over a '/..'-bearing caller spelling every pathname
+         * carried the tail ('parent/sub/../f') — CHILD_FIRST order
+         * consumes the tail's own component (sub), and every item
+         * after it resolved through the dead component: ENOENT, the
+         * siblings stranded, the final rmdir 'not empty' (driven both
+         * shapes at the round's HEAD: the single tail at the yield
+         * order that meets sub first, and the DOUBLE tail
+         * 'sub/../..' whose mid-walk sub removal killed every later
+         * '/..'-routed pathname). Built on $dir_real no pathname
+         * carries a consumable '..' at any yield order — the same
+         * normalization the final rmdir below received, over the same
+         * tree the probes judged (realpath resolved it while it
+         * stood).
+         */
         $items = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+            new RecursiveDirectoryIterator($dir_real, FilesystemIterator::SKIP_DOTS),
             RecursiveIteratorIterator::CHILD_FIRST
         );
         foreach ($items as $item) {

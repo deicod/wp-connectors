@@ -4386,6 +4386,47 @@ FIXTURE;
             file_put_contents($scratch . '/dotdot-src/top.txt', 'bytes');
             WpHarness::rrmdir($scratch . '/dotdot-src/sub/..');
             $this->assertDirectoryDoesNotExist($scratch . '/dotdot-src', 'A \'/..\'-spelled real tree is removed WHOLE — the final rmdir names the walked directory itself, never the dead resolution through the tail the walk consumed.');
+
+            /*
+             * The verifier close (OCR round 22's refutation lens,
+             * rd-1) — the ITEM-LEVEL dead resolution, the yield-order
+             * shape: the walk once spelled every child pathname from
+             * the caller's '/..'-bearing root, and when the tail's
+             * own component is met FIRST the walk consumed it before
+             * its later siblings — every item after it resolved
+             * through the dead component and died ENOENT (driven at
+             * the round's HEAD: five sibling files plus the parent
+             * stranded). This runner's tmpfs answers readdir in
+             * REVERSE-CREATION order (driven), so creating the
+             * tail-dir LAST makes the walk meet it first — the exact
+             * order that killed the siblings' spellings at HEAD. The
+             * walk rides the collapsed root now: no pathname carries
+             * a consumable '..', at any yield order.
+             */
+            mkdir($scratch . '/dotdot-order', 0755, true);
+            for ($i = 0; $i < 5; ++$i) {
+                file_put_contents($scratch . '/dotdot-order/f' . $i . '.txt', 'bytes');
+            }
+            mkdir($scratch . '/dotdot-order/sub', 0755, true);
+            file_put_contents($scratch . '/dotdot-order/sub/x.txt', 'bytes');
+            WpHarness::rrmdir($scratch . '/dotdot-order/sub/..');
+            $this->assertDirectoryDoesNotExist($scratch . '/dotdot-order', 'A \'/..\'-spelled tree is removed WHOLE at every yield order — no item pathname resolves through a component the walk already consumed.');
+
+            /*
+             * The DOUBLE tail (the correctness lens's sc-1 over
+             * t31-ocr22-6): 'sub/../..' — the walk's mid-flight
+             * removal of sub killed every later '/..'-routed pathname
+             * AND the final rmdir went 'not empty' (driven stranded
+             * under both the round's and the pre-round harness — the
+             * ocr22-6 commit's "complete removal over the '/..'
+             * family" overreached its single-tail fix). The collapsed
+             * walk owns the whole family now.
+             */
+            mkdir($scratch . '/dotdot-double/sub', 0755, true);
+            file_put_contents($scratch . '/dotdot-double/sub/x.txt', 'bytes');
+            file_put_contents($scratch . '/dotdot-double/top.txt', 'bytes');
+            WpHarness::rrmdir($scratch . '/dotdot-double/sub/../..');
+            $this->assertDirectoryDoesNotExist($scratch . '/dotdot-double', 'The DOUBLE tail is removed whole too — the collapsed walk owns the entire \'/..\' spelling family, single and double alike.');
         } finally {
             if (is_link($scratch . '/stage-link')) {
                 unlink($scratch . '/stage-link');
