@@ -55,6 +55,19 @@ if (wp_connectors_cli_entry(__FILE__)) {
                 continue;
             }
             /*
+             * Only REGULAR files lint (t31-ocr10-7): the walk runs
+             * LEAVES_ONLY, so a symlink-to-directory is yielded as a
+             * leaf — a '*.php'-named dir link passes the extension
+             * owner and reaches `php -l <dir>`, which passes VACUOUSLY
+             * (driven: exit 0, "No syntax errors detected" over a
+             * directory) while the linked tree's real sources escape
+             * the gate unseen. Non-regular files skip, the sibling
+             * collectors' parity (is_link || ! is_file).
+             */
+            if ($file->isLink() || ! $file->isFile()) {
+                continue;
+            }
+            /*
              * The exclusion rides the gate's OWN NAMED SUBSET of the
              * development-entry vocabulary (review round t31-r12-9 put
              * the walk on the vocabulary's owner fold; OCR round 8,
