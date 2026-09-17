@@ -1207,6 +1207,70 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup'), 'A duplicate-free zip of the same shape inspects green.');
     }
 
+    /*
+     * The near-source PHP fence at the EXTRACTION fence (OCR round 20,
+     * t31-ocr20-1, the security lens's HIGH — the r16 edge-junk class,
+     * alive at a NEW seam): wp_connectors_is_php_source() judges only
+     * the last four bytes, so an entry whose basename hides the
+     * extension behind trailing edge junk ('shell.php ', 'shell.php.',
+     * 'shell.php\x01') is a PHP source to every path-normalizing
+     * extraction target (Windows strips trailing dots, spaces, and
+     * controls per component — the exact fold the duplicate-entry
+     * fence at t31-ocr11-3 already rides) while EVERY gate judged it
+     * as not one: the entry extracted, the syntax loop skipped it (the
+     * raw lens at :450), and the artifact ACCEPTED carrying a file
+     * that lands as a live .php source on the folding host (driven red
+     * at HEAD: zero violations). The collector has refused the same
+     * spelling in shared/src since t31-r5-14; the extraction fence —
+     * where the names are ARCHIVE-CONTROLLED — refused nothing. Every
+     * segment whose raw spelling is not a PHP source but whose
+     * trailing-folded spelling is one refuses the artifact loudly,
+     * before extraction runs (the r16 lesson: a fold the host applies
+     * is a fold the fence must judge). The control-byte leg carries
+     * the UTF-8 flag bit — the spelling under which the raw byte
+     * survives the reader's own name decode (driven: un-flagged, this
+     * engine's libzip remaps \x01 through CP437 to the U+263A bytes).
+     */
+    public function testNearSourcePhpSpellingsRefuseExtraction(): void
+    {
+        $slug = 'nearsources-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'NEARSOURCES_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\NearsourcesDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+
+        foreach (array(
+            'trailing space' => array('shell.php ', '1.0.0', 0),
+            'trailing dot' => array('shell.php.', '1.0.1', 0),
+            'trailing control byte' => array("shell.php\x01", '1.0.2', 0x0800),
+        ) as $label => list($entryName, $version, $flags)) {
+            $zipPath = self::distDir() . "/connectors-{$slug}-{$version}.zip";
+            file_put_contents($zipPath, self::storedZipBytes(array(
+                array("{$slug}/{$slug}.php", $main),
+                array("{$slug}/src/autoload.php", $autoload),
+                array("{$slug}/src/{$entryName}", "<?php\n// near-source spelling\n"),
+            ), $flags));
+            $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-nearsource');
+            $flat = implode("\n", $violations);
+            $this->assertStringContainsString('NEAR-SOURCE', $flat, "A near-source PHP spelling refuses extraction ({$label}; red at HEAD: the entry extracted and every gate judged it as not a PHP source).");
+            // The refusal names the entry through the printable seam — the
+            // control byte renders as its printable twin, never raw.
+            $this->assertStringContainsString(wp_connectors_printable("{$slug}/src/{$entryName}"), $flat, "The refusal names the offending entry ({$label}).");
+        }
+
+        // Controls: the PLAIN spelling of the same entry is an ordinary PHP
+        // source — it extracts, lints, and inspects green (the fence judges
+        // the fold, never the source); a near-source NON-PHP tail
+        // ('notes.md ') folds to no PHP source and refuses nothing here.
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.3.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/src/shell.php", "<?php\n// an ordinary source\n"),
+            array("{$slug}/src/notes.md ", "prose\n"),
+        )));
+        $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-nearsource'), 'A plain .php entry and a non-PHP near-source tail inspects green — the fence owns exactly the fold-to-PHP class.');
+    }
+
     /**
      * Builds a zip's raw bytes with STORED entries in the exact order
      * given — including BYTE-EXACT DUPLICATE names, which the
@@ -1214,10 +1278,18 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      * but hostile archives carry and the ZipArchive READER counts
      * faithfully. The t31-r12-15 fence driver.
      *
+     * The general-purpose flag word is caller-set (t31-ocr20-1): an
+     * entry name byte the reader must hand back BYTE-EXACT — a raw
+     * control byte in a near-source tail — needs the UTF-8 flag bit
+     * (0x0800); without it this engine's libzip decodes the name as
+     * CP437 and remaps the byte (\x01 arrives as the U+263A bytes,
+     * driven), a conversion the hostile zip cannot opt out of.
+     *
      * @param list<array{0: string, 1: string}> $entries Ordered [name, bytes] pairs.
+     * @param int                                $flags  General-purpose flag word for every entry.
      * @return string The zip bytes.
      */
-    private static function storedZipBytes(array $entries): string
+    private static function storedZipBytes(array $entries, int $flags = 0): string
     {
         $local = '';
         $central = '';
@@ -1228,9 +1300,9 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             $crc = crc32($data);
             $len = strlen($data);
             $nlen = strlen($name);
-            $local .= "PK\x03\x04" . pack('v', 20) . pack('v', 0) . pack('v', 0) . pack('v', 0) . pack('v', 0)
+            $local .= "PK\x03\x04" . pack('v', 20) . pack('v', $flags) . pack('v', 0) . pack('v', 0) . pack('v', 0)
                 . pack('V', $crc) . pack('V', $len) . pack('V', $len) . pack('v', $nlen) . pack('v', 0) . $name . $data;
-            $central .= "PK\x01\x02" . pack('v', 20) . pack('v', 20) . pack('v', 0) . pack('v', 0) . pack('v', 0) . pack('v', 0)
+            $central .= "PK\x01\x02" . pack('v', 20) . pack('v', 20) . pack('v', $flags) . pack('v', 0) . pack('v', 0) . pack('v', 0)
                 . pack('V', $crc) . pack('V', $len) . pack('V', $len) . pack('v', $nlen) . pack('v', 0) . pack('v', 0)
                 . pack('v', 0) . pack('v', 0) . pack('V', 0) . pack('V', $offset) . $name;
             $offset += 30 + $nlen + $len;

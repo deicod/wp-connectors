@@ -58,6 +58,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     $topDirs = array();
     $sawDirectoryEntry = false;
     $traversalEntries = array();
+    $nearSourceEntries = array();
     $seenEntryNames = array();
     $seenFoldedNames = array();
     for ($i = 0; $i < $zip->numFiles; ++$i) {
@@ -166,6 +167,43 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
             $traversalEntries[] = $name;
         }
         /*
+         * The near-source PHP fence (OCR round 20, t31-ocr20-1, the
+         * security lens — the r16 edge-junk class at the EXTRACTION
+         * fence, closed at the traversal fence in that same round):
+         * wp_connectors_is_php_source() judges the last four bytes,
+         * so an entry whose segment hides the extension behind
+         * TRAILING edge junk ('shell.php ', 'shell.php.',
+         * 'shell.php\x01') is a PHP source to every
+         * path-normalizing extraction target (Windows strips
+         * trailing dots, spaces, and controls per component — the
+         * exact fold the duplicate-entry fence above already rides)
+         * while every gate judged it as not one: the entry EXTRACTED
+         * into the tree, the syntax loop's extension lens skipped it,
+         * and the artifact ACCEPTED at 0 violations carrying a file
+         * that lands as a live .php source on the folding host
+         * (driven red at HEAD). The shared-source collector has
+         * refused the same spelling since t31-r5-14 (the near-source
+         * fence over development trees); the EXTRACTION fence — where
+         * the names are ARCHIVE-CONTROLLED, the hostile surface —
+         * refused nothing. The composition is the collector's own:
+         * the RAW lens first (a plain .php segment is an ordinary
+         * source, judged by the syntax loop below), and only a
+         * segment that is NOT a source raw but IS one through the
+         * ONE edge-junk fold (trailing side only, per segment — the
+         * leading side stays, the fold doctrine's own line) refuses
+         * — never extraction, the whole artifact refuses BEFORE
+         * extractTo() runs (the traversal refusal's shape: a fold
+         * the host applies is a fold the fence must judge).
+         */
+        foreach ($parts as $part) {
+            $foldedPart = rtrim((string) $part, wp_connectors_path_edge_junk());
+            if ('' !== $foldedPart && ! wp_connectors_is_php_source($part) && wp_connectors_is_php_source($foldedPart)) {
+                $nearSourceEntries[] = $name;
+
+                break;
+            }
+        }
+        /*
          * The forbidden-entry vocabulary is a PLUGIN-OWNED-path concept
          * (review round t31-r5-5): the generated <slug>/src/Shared/
          * subtree is embedded from shared/src, which has NO exclusion
@@ -269,6 +307,20 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     if ($traversalEntries !== array()) {
         foreach ($traversalEntries as $name) {
             $violations[] = sprintf('inspect: zip entry "%s" escapes the extraction directory.', wp_connectors_printable($name));
+        }
+
+        return $violations;
+    }
+    // The near-source refusal owns the same pre-extraction shape: such an
+    // artifact is refused whole, never extracted-and-judged (the entry
+    // name rides the printable seam — a control byte in the spelling is
+    // hostile input, see the dev-entry site).
+    if ($nearSourceEntries !== array()) {
+        foreach ($nearSourceEntries as $name) {
+            $violations[] = sprintf(
+                'inspect: zip entry "%s" is a NEAR-SOURCE PHP spelling (trailing whitespace, control byte, or dot hides the extension) — every normalizing extraction target (Windows strips trailing dots and spaces per component) lands it as a live .php source while every gate judged it as not one; write the plain .php name.',
+                wp_connectors_printable($name)
+            );
         }
 
         return $violations;
