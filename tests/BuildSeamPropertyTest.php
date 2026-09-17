@@ -426,8 +426,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * Runs one state and classifies the observation against the invariant.
      *
      * @param string                                                $state_id Row label (diagnostics).
-     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable} $state The row.
-     * @return array{class: string, why: string} 'PASS' or 'FAIL' with the reason.
+     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool} $state The row (skip_on_root and needs_symlink — the t31-ocr4-1/t31-ocr10-14 row-level skip flags the head of this method consults).
+     * @return array{class: string, why: string} 'PASS', 'FAIL', or 'SKIP' with the reason (SKIP: the row-level root-runner and symlink-capability legs).
      */
     private function runState(string $state_id, array $state): array
     {
@@ -540,8 +540,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * @param array<string, string>                    $scratch      The scratch repo map.
      * @param list<string>                             $seedNames    The seeded build's entry names.
      * @param string                                   $seedManifest The seeded manifest bytes.
-     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable} $state The row.
-     * @return array{class: string, why: string}
+     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool} $state The row (the full row shape runState() receives; the skip flags are consulted before this half runs).
+     * @return array{class: string, why: string} 'PASS' or 'FAIL' with the reason.
      */
     private function classifyClean(array $scratch, array $seedNames, string $seedManifest, array $state): array
     {
