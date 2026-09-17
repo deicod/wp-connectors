@@ -578,11 +578,13 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
 
         $refusal = $this->refusalOf(
             fn() => $property->setValue($set, 'overwritten'),
-            'Writing an initialized readonly property must fail on every supported runtime.'
+            'Writing an initialized readonly property must fail on every supported runtime.',
+            \Throwable::class
         );
-        // Error on newer runtimes, ReflectionException on older ones —
-        // either refusal proves the immutability; the value pin below
-        // carries the behavioral half.
+        // \Throwable is the site's own family, named explicitly
+        // (t31-ocr10-6): Error on newer runtimes, ReflectionException
+        // on older ones — either refusal proves the immutability; the
+        // value pin below carries the behavioral half.
 
         $this->assertSame($access, $set->access_token());
     }

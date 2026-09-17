@@ -1279,7 +1279,8 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         // landed the fail() IN the catch and passed vacuously.
         $this->refusalOf(
             fn() => eval('return ' . $export . ';'),
-            'Evaluating a var_export of a request VO must never reconstruct one.'
+            'Evaluating a var_export of a request VO must never reconstruct one.',
+            \Throwable::class
         );
         $this->addToAssertionCount(1);
 

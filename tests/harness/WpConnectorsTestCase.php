@@ -715,15 +715,21 @@ abstract class WpConnectorsTestCase extends TestCase
      * whole pin green at HEAD). The third parameter restores the pin:
      * each converted site passes the family its ORIGINAL catch declared
      * (the sweep commit carries the census, per file, from the r8
-     * diffs); \Throwable::class — the default — enforces nothing and is
-     * legitimate ONLY where the original catch was itself \Throwable.
+     * diffs); \Throwable::class enforces nothing and is legitimate ONLY
+     * where the original catch was itself \Throwable.
+     *
+     * The parameter is REQUIRED (t31-ocr10-6, over the ocr9-3 default):
+     * a default of \Throwable::class pinned nothing — any site omitting
+     * the argument silently re-opened the ocr9-3 regression, and the
+     * omission was invisible at the call site. Required is
+     * compile-enforced explicitness; the omission now fatals.
      *
      * @param callable $attempt     The guarded call, expected to throw.
      * @param string   $expectation The failure message for the no-throw case.
-     * @param string   $family      The exception family the site pins — the class its original catch declared; \Throwable::class (the default) pins nothing.
+     * @param string   $family      The exception family the site pins — the class its original catch declared; \Throwable::class pins nothing and is legitimate only where the original catch was itself \Throwable.
      * @return \Throwable The collected refusal.
      */
-    protected function refusalOf(callable $attempt, string $expectation, string $family = \Throwable::class): \Throwable
+    protected function refusalOf(callable $attempt, string $expectation, string $family): \Throwable
     {
         try {
             $attempt();
