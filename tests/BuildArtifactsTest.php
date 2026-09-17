@@ -4540,6 +4540,22 @@ FIXTURE;
         $this->assertSame('relative', $found[0]['kind'], 'A relative use spelling must not wear the use kind.');
 
         /*
+         * A RELATIVE GROUP-USE MEMBER resolves against the DECLARED
+         * namespace, never the group prefix (OCR round 11, t31-ocr11-1):
+         * PHP's relative operator ignores the prefix entirely, so
+         * composing the member spelled `Psr\Log\namespace\…` — a name no
+         * family predicate matches — while the member actually resolves
+         * to `Deicod\WpConnectors\…` (the family) laundered the spelling
+         * past every gate at zero references (driven red at HEAD). The
+         * member reports UN-composed and the resolution the plain use
+         * spelling gets is the one the group member gets.
+         */
+        $relative_group_member = "<?php\nnamespace Deicod;\nuse Psr\\Log\\{namespace\\WpConnectors\\Shared\\Clock};\ninterface GroupRelativeMemberFixture\n{\n}\n";
+        $found = wp_connectors_shared_family_references($relative_group_member);
+        $this->assertCount(1, $found, 'A relative group-use member resolves through the declared namespace — the family spelling never launders through a group-prefix composition.');
+        $this->assertSame(array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( $found[0]['name'], $found[0]['kind'] ), 'The member resolves exactly like its plain-use twin: declared namespace + relative tail.');
+
+        /*
          * Verifier round t31-r8-10: a fully-qualified (parse-error)
          * namespace spelling is NOT a declaration — the walk first
          * classified `namespace \Junk;` as one, letting the invalid

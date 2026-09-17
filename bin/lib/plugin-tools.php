@@ -1000,7 +1000,24 @@ function wp_connectors_name_references_from_tokens(array $tokens)
          * totality principle t31-r10-1 stated for adaptation blocks,
          * owed on the import side too.
          */
+        /*
+         * A RELATIVE run (leading `namespace\` — the fused
+         * T_NAME_RELATIVE token, the only spelling that assembles to
+         * one; the keyword alone is never a T_STRING) resolves against
+         * the file's DECLARED namespace, never a group prefix (OCR
+         * round 11, t31-ocr11-1): PHP's relative operator ignores the
+         * group's prefix entirely, so composing `use
+         * Psr\Log\{namespace\WpConnectors\…}` spelled
+         * `Psr\Log\namespace\WpConnectors\…` — a name no family
+         * predicate matches and no resolution owns — while the member
+         * actually resolves under the declaration (`Deicod\…`, the
+         * family). The member reports UN-composed, its `namespace\`
+         * spelling intact, and the detector resolves it through the
+         * declaration ledger exactly like every other relative (the
+         * use position keeps no carve-out — t31-r11-1).
+         */
         $is_absolute_run = '\\' === ($run['name'][0] ?? '');
+        $is_relative_run = 0 === strpos((string) $run['name'], 'namespace\\');
         $is_qualified_run = false !== strpos((string) $run['name'], '\\');
         $alias_position = false;
         if ($skip_alias) {
@@ -1051,7 +1068,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             }
             if (! $adaptation_block) {
                 $kind = 'use';
-                if (null !== $group_prefix && ! $is_absolute_run && ! $alias_position) {
+                if (null !== $group_prefix && ! $is_absolute_run && ! $is_relative_run && ! $alias_position) {
                     $display = $group_prefix_display . '\\' . $display;
                 }
             }
