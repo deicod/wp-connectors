@@ -2680,7 +2680,6 @@ FIXTURE;
         file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
 
         try {
-            $refused = null;
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
                 'An escaping include in a shared source must refuse the BUILD, not only the inspection.', \RuntimeException::class
@@ -4438,7 +4437,6 @@ FIXTURE;
 
         // A source with no open tag at the head REFUSES at the banner
         // seam, loudly, naming the file.
-        $refused = null;
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace("no tag here\n" . $declaration . "\nclass A {}\n", 'OpenAiOauth', 'shared/src/Clock/A.php'),
             'A source with no PHP open tag must refuse — its generated copy would ship without the load-bearing provenance marker.', \RuntimeException::class
