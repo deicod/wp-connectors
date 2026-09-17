@@ -757,13 +757,22 @@ abstract class WpConnectorsTestCase extends TestCase
      * green); a failure fails loudly naming the ER_* code (the common
      * ones mapped, the raw int for the rest).
      *
+     * The open carries ZipArchive::RDONLY explicitly (t31-ocr19-1):
+     * the omitted-flags spelling is the LEGACY default, and on the
+     * composer floor (8.2 — engines before 8.3) that default CREATES
+     * an empty archive when the file is absent, so the helper would
+     * hand back [] over a MISSING zip — the vacuous list the strict
+     * gate above exists to make impossible — instead of failing. A
+     * read-mode open never creates; on the 8.2 floor every read-mode
+     * open() must carry the flag.
+     *
      * @param string $zipPath Absolute zip path.
      * @return list<string> Entry names.
      */
     protected function zipEntryNames(string $zipPath): array
     {
         $zip = new ZipArchive();
-        $opened = $zip->open($zipPath);
+        $opened = $zip->open($zipPath, ZipArchive::RDONLY);
         $er_names = array(
             ZipArchive::ER_EXISTS => 'ER_EXISTS',
             ZipArchive::ER_INCONS => 'ER_INCONS',

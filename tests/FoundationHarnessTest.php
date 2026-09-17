@@ -602,4 +602,36 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
             @unlink($corrupt);
         }
     }
+
+    /**
+     * OCR-round-19 pin (t31-ocr19-1): the shared zip reader opens with
+     * ZipArchive::RDONLY explicitly — the omitted-flags spelling is the
+     * LEGACY default, and on the composer floor (8.2, engines before
+     * 8.3) that default CREATES an empty archive when the file is
+     * absent, so the helper handed back [] over a MISSING zip — the
+     * vacuous list every consumer's count assertion judges — instead of
+     * failing. (This runner is past the change — omitted flags return
+     * ER_NOENT without creating — so the leg pins the CONTRACT the
+     * floor needs: a missing zip fails the gate loudly naming the path,
+     * and the read never creates the file.)
+     */
+    public function testTheZipEntryNamesOpenGateFailsLoudlyOnAMissingArchive()
+    {
+        // Random-suffixed scratch name (t31-ocr12-8): a predictable
+        // spelling is pre-plantable on a shared host, and the planted
+        // file would turn "missing" into "corrupt" under this leg.
+        $missing = sys_get_temp_dir() . '/wpct-missing-' . getmypid() . '-' . bin2hex(random_bytes(4)) . '.zip';
+        try {
+            $caught = $this->refusalOf(
+                fn() => $this->zipEntryNames($missing),
+                'A missing zip must fail the open gate loudly — pre-fix on the 8.2 floor the omitted-flags open() created an empty archive and the helper returned [].',
+                PHPUnit\Framework\AssertionFailedError::class
+            );
+            $this->assertStringContainsString('ER_NOENT', $caught->getMessage(), 'The failure names the ER_* code of an absent archive.');
+            $this->assertStringContainsString($missing, $caught->getMessage(), 'The failure names the archive path.');
+        } finally {
+            @unlink($missing);
+        }
+        $this->assertFileDoesNotExist($missing, 'The read-mode open never creates the archive — RDONLY, not the legacy create-on-open default.');
+    }
 }
