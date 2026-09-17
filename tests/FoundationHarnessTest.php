@@ -635,27 +635,34 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
-     * OCR-round-21 pin (t31-ocr21-1): round 19's RDONLY "explicit
-     * intent" broke the floor it stood on — ZipArchive::RDONLY is an
-     * undefined class constant on PHP 8.2 (registered in the 8.3
-     * cycle, never backported; php.net carries the 8.3.0 version
-     * chip), so the bare constant was an undefined-constant \Error
-     * through the shared reader on every engine the composer floor
-     * (>=8.2) admits. The reader rides the guarded spelling now —
-     * the flag where the engine defines it, 0 below 8.3, both
-     * stylistic per the r19 refutation (omitted flags never
-     * create-on-open on any support-range engine) and both loud
-     * through the strict open gate.
+     * OCR-round-21 pin (t31-ocr21-1; the round's floor premise
+     * REFUTED by the verifier pass — corrected in-round): the
+     * finding claimed an 8.3-cycle-only registration; the vendor
+     * record reads the opposite (php.net: available as of PHP 7.4.3
+     * / PECL zip 1.17.1 when the zip extension is built against
+     * libzip >= 1.0.0; the php-src PHP-8.2 stub registers it
+     * identically; the repo's own r19 drive ran the bare-constant
+     * reader on a real 8.2.33 engine to ER_NOENT, never \Error —
+     * no PHP-8.2 engine fatals). What survives is the BUILD corner
+     * the vendor record does name: a zip extension built against
+     * libzip < 1.0.0 compiles no RDONLY, and the bare constant
+     * fatals exactly those engines — the guarded spelling rides the
+     * flag where defined, 0 on that corner, both stylistic per the
+     * r19 refutation (omitted flags never create-on-open on any
+     * support-range engine) and both loud through the strict open
+     * gate.
      *
      * The undefined arm cannot be DRIVEN on an engine that defines
-     * the constant (PHP offers no spelling that hides a compiled
-     * extension's class constant from a probe, in-process or in a
-     * child), so the pin is the SHAPE: the reader's source carries
-     * the guarded expression verbatim, and the defined arm is what
-     * the two legs above drive on this engine (every open they take
-     * passes through the guard). The 8.2-engine drive is the
-     * ledger's re-open evidence (re-open rule: run the suite on an
-     * 8.2 engine; the reader must open real archives, never \Error).
+     * the constant (the verifier's four escape attempts all die —
+     * namespaced shadowing leaves the global spelling defined,
+     * class_alias fatals, disable_classes cannot touch extension
+     * classes, and no runkit/uopz rides this build), so the pin is
+     * the SHAPE: the reader's source carries the guarded expression
+     * verbatim, and the defined arm is what the two legs above
+     * drive on this engine (every open they take passes through
+     * the guard). Re-open rule: an engine whose zip extension is
+     * built against libzip < 1.0.0 (never "a PHP 8.2 engine") —
+     * the reader must open real archives there, never \Error.
      */
     public function testTheZipReaderRidesTheGuardedRdonlySpelling()
     {
@@ -663,7 +670,7 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertStringContainsString(
             "defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0",
             $source,
-            'The zip reader must spell the open flag through the guard: RDONLY where the engine defines it, 0 below PHP 8.3 — the bare constant fatals every 8.2 engine in the composer floor\'s range (t31-ocr21-1).'
+            'The zip reader must spell the open flag through the guard: RDONLY where the engine defines it, 0 on the libzip < 1.0.0 build corner — the bare constant fatals exactly those engines, no PHP version boundary (t31-ocr21-1).'
         );
     }
 }

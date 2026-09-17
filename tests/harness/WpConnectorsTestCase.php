@@ -777,21 +777,26 @@ abstract class WpConnectorsTestCase extends TestCase
      * ones mapped, the raw int for the rest).
      *
      * The open carries ZipArchive::RDONLY through the GUARDED
-     * spelling (t31-ocr21-1 over t31-ocr19-1): round 19 kept the
-     * flag as pinned intent after refuting the CREATE-on-open
-     * premise (driven on a real 8.2.33/libzip engine: the omitted
-     * spelling returns ER_NOENT and creates NOTHING — the php-src
-     * stubs and UPGRADING record know no 8.3 default change, and
-     * the strict gate above was already loud on every engine in
-     * the support range) — but the bare constant broke the floor
-     * it stood on: ZipArchive::RDONLY is registered only in the
-     * 8.3 cycle and never backported, an undefined-constant \Error
-     * through this shared reader on every 8.2 engine the composer
-     * floor admits. The guard rides the flag when the engine
-     * defines it and 0 below 8.3 — BOTH spellings stylistic intent
-     * per the r19 refutation (omitted flags never create-on-open
-     * on any support-range engine), both loud through the strict
-     * gate, and the missing-archive pin holds the loud contract.
+     * spelling (t31-ocr21-1 over t31-ocr19-1; the round's floor
+     * premise REFUTED by the verifier pass, both lenses
+     * independently — the r19 irony inverted): the finding claimed
+     * an 8.3-cycle-only registration ("never backported, php.net
+     * carries the 8.3.0 chip"), but the vendor record reads the
+     * opposite — RDONLY is available as of PHP 7.4.3 / PECL zip
+     * 1.17.1 when the zip extension is built against libzip
+     * >= 1.0.0, the php-src PHP-8.2 stub registers it identically
+     * (under ZIP_RDONLY), and the repo's own r19 record already
+     * read "available since 7.4.3, inside the floor" and DROVE the
+     * bare-constant reader on a real 8.2.33 engine to ER_NOENT,
+     * never \Error — no 8.2 engine in the floor fatals. What the
+     * guard actually owns is the build corner the vendor record
+     * does name: a zip extension built against libzip < 1.0.0
+     * (the extension's own build floor is 0.11) compiles no
+     * RDONLY — the flag rides where the engine defines it, 0 on
+     * that corner, BOTH stylistic intent per the r19 refutation
+     * (omitted flags never create-on-open on any support-range
+     * engine), both loud through the strict gate, and the
+     * missing-archive pin holds the loud contract.
      *
      * @param string $zipPath Absolute zip path.
      * @return list<string> Entry names.
