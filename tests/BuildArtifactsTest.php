@@ -3622,6 +3622,22 @@ FIXTURE;
      */
     public function testConcurrentBuildsOfDifferentPluginsKeepEveryManifestEntry(): void
     {
+        /*
+         * The exec-capability guard (OCR round 17, t31-ocr17-4, the
+         * t31-ocr16-12 doctrine over this child-process consumer): the
+         * spawn escapes its arguments through escapeshellarg(), and on
+         * a disable_functions host the first escaped argument was a
+         * fatal undefined-function \Error (driven at HEAD under
+         * -d disable_functions=escapeshellarg: 'Error: Call to
+         * undefined function escapeshellarg()' at the spawn, the test
+         * ERRORING before a single verdict) instead of the visible
+         * skip the doctrine mandates — the same two-function probe
+         * the suite's other shell consumers already carry
+         * (SharedOAuthContractsHttpTest, the localedef legs).
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the concurrent child builds cannot be spawned; the manifest-merge race half did not run.');
+        }
         $connectors = array(
             'race-a-demo' => true,
             'race-b-demo' => true,
