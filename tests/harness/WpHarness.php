@@ -831,81 +831,118 @@ final class WpHarness
             }
             $to_walk = rtrim($cwd, '/') . '/' . ltrim($to_walk, '/');
         }
-        $ancestor = rtrim($to_walk, '/');
-        while ('' !== $ancestor && '/' !== $ancestor && ! is_dir($ancestor) && ! is_link($ancestor) && ! is_file($ancestor)) {
-            $ancestor = dirname($ancestor);
-        }
         /*
-         * The walk's '/' SENTINEL is a refusal shape, not an answer
-         * (OCR round 16, t31-ocr16-5): the loop stops at '/' without
-         * ever consulting the is_dir/is_link/is_file gates every
-         * other stop rides, and an ancestor of '/' means NO component
-         * of the named chain exists — the landing would create its
-         * FIRST component directly beneath the filesystem root (the
-         * ocr11-22 root-landing blast radius exactly one component
-         * deeper: driven at HEAD, copyTree() into
-         * '/<all-nonexistent>/dest' passed every guard and died in
-         * raw mkdir()/copy() warnings — real first-level writes as
-         * uid 0 — then RETURNED NORMALLY having moved nothing). The
-         * sentinel gets its siblings' vocabulary: refuse loudly,
-         * naming the chain and the sentinel.
+         * The resolution LOOP (OCR round 17, t31-ocr17-9 — the
+         * round's own verifier-refutation close, driven in-round):
+         * the collapse inside re-attaches the not-yet-existing
+         * remainder to the resolved anchor LEXICALLY, a license that
+         * rests on the t31-ocr8-3 premise "the remainder holds no
+         * symlinks" — and that premise holds only BELOW the anchor.
+         * A '..' in the remainder can pop the collapse ABOVE the
+         * anchor it was resolved against, and the post-pop descent
+         * then crosses symlink components nothing resolves: driven at
+         * the round's own HEAD, copyTree($src,
+         * '<anchor>/b/../../link/dst') with link -> $src collapsed to
+         * '<parent>/link/dst' lexically, passed containment against
+         * the unresolved spelling, stopped the landing walk AT the
+         * link (is_link is a stop condition, never a resolution),
+         * and RETURNED NORMALLY with the copy landed INSIDE the
+         * source — the plain spelling of the same landing refuses —
+         * while the FILE-link variant died in raw mkdir()/copy()
+         * warnings. The collapsed resolution now walks the SAME
+         * judgment the spelling walked — sentinel, file crossing,
+         * dangling link, anchor realpath, collapse — and the loop
+         * repeats until the judgment spelling IS its own resolution
+         * (a resolution of '/' is stable too: the root is the
+         * mirror clause's own universal-container verdict, not the
+         * sentinel's nonexistent-chain one). Termination is
+         * construction-evident: the first collapse is dot-free, so
+         * the second pass's remainder is a nonexistent tail whose
+         * anchor resolves every link it stops at, and the third pass
+         * re-derives the same string.
          */
-        if ('/' === $ancestor) {
-            throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain has no existing component — the ancestor walk bottomed out at the filesystem ROOT sentinel, and the landing would create the first component directly beneath it: from ' . $from . ' into ' . $to);
-        }
-        /*
-         * A regular FILE in the target chain (t31-ocr10-10): the walk
-         * above used to step PAST one (not a dir, not a link — exactly
-         * its walk-on conditions), so containment was judged against
-         * an ancestor ABOVE the file, passed, and the copy died later
-         * in mkdir() as a raw converted E_WARNING instead of the
-         * policy RuntimeException the @throws contract promises — no
-         * byte moved, but the verdict wore the engine's vocabulary.
-         * The walk stops at ANY existing component now; one that
-         * resolves to a file (a link to one included) is a malformed
-         * target chain — no directory can be created through it.
-         */
-        if (is_file($ancestor)) {
-            throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain crosses a regular FILE — no directory can be created through it: from ' . $from . ' into ' . $to . ' (the crossing component: ' . $ancestor . ')');
-        }
-        /*
-         * The DANGLING-link twin (OCR round 16, t31-ocr16-6, the
-         * ocr10-10 vocabulary-leak class reopened one shape deeper):
-         * the walk stops at a link (is_link is a stop condition), but
-         * is_file() FOLLOWS it — a link to a file refuses above, a
-         * link to a directory resolves through realpath below, and a
-         * DANGLING link answers false to both, so it fell to
-         * realpath()'s false and the LEXICAL containment fallback:
-         * the verdict judged a spelling, then the landing's recursive
-         * mkdir died THROUGH the dangling link in raw engine
-         * warnings (driven: 'mkdir(): No such file or directory',
-         * copy() failing behind it, copyTree() RETURNING NORMALLY
-         * having moved nothing — the silent third in the engine's
-         * vocabulary, never the policy's). A link resolving to
-         * nothing is a malformed chain exactly like the file: no
-         * directory can be created through it, and the refusal names
-         * it with the same vocabulary.
-         */
-        if (is_link($ancestor) && ! is_dir($ancestor) && ! is_file($ancestor)) {
-            throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain crosses a DANGLING symlink — the link resolves to nothing, so no directory can be created through it and the landing would die in the engine\'s vocabulary: from ' . $from . ' into ' . $to . ' (the crossing component: ' . $ancestor . ')');
-        }
-        $ancestor_real = realpath($ancestor);
-        if (false !== $ancestor_real) {
-            $remainder = substr(rtrim($to_walk, '/'), strlen($ancestor));
-            $collapsed = array();
-            foreach (explode('/', $ancestor_real . $remainder) as $segment) {
-                if ('' === $segment || '.' === $segment) {
-                    continue;
-                }
-                if ('..' === $segment) {
-                    array_pop($collapsed);
-                    continue;
-                }
-                $collapsed[] = $segment;
+        while (true) {
+            $ancestor = rtrim($to_walk, '/');
+            while ('' !== $ancestor && '/' !== $ancestor && ! is_dir($ancestor) && ! is_link($ancestor) && ! is_file($ancestor)) {
+                $ancestor = dirname($ancestor);
             }
-            $target_real = '/' . implode('/', $collapsed);
-        } else {
-            $target_real = rtrim($to_walk, '/');
+            /*
+             * The walk's '/' SENTINEL is a refusal shape, not an answer
+             * (OCR round 16, t31-ocr16-5): the loop stops at '/' without
+             * ever consulting the is_dir/is_link/is_file gates every
+             * other stop rides, and an ancestor of '/' means NO component
+             * of the named chain exists — the landing would create its
+             * FIRST component directly beneath the filesystem root (the
+             * ocr11-22 root-landing blast radius exactly one component
+             * deeper: driven at HEAD, copyTree() into
+             * '/<all-nonexistent>/dest' passed every guard and died in
+             * raw mkdir()/copy() warnings — real first-level writes as
+             * uid 0 — then RETURNED NORMALLY having moved nothing). The
+             * sentinel gets its siblings' vocabulary: refuse loudly,
+             * naming the chain and the sentinel.
+             */
+            if ('/' === $ancestor) {
+                throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain has no existing component — the ancestor walk bottomed out at the filesystem ROOT sentinel, and the landing would create the first component directly beneath it: from ' . $from . ' into ' . $to);
+            }
+            /*
+             * A regular FILE in the target chain (t31-ocr10-10): the walk
+             * above used to step PAST one (not a dir, not a link — exactly
+             * its walk-on conditions), so containment was judged against
+             * an ancestor ABOVE the file, passed, and the copy died later
+             * in mkdir() as a raw converted E_WARNING instead of the
+             * policy RuntimeException the @throws contract promises — no
+             * byte moved, but the verdict wore the engine's vocabulary.
+             * The walk stops at ANY existing component now; one that
+             * resolves to a file (a link to one included) is a malformed
+             * target chain — no directory can be created through it.
+             */
+            if (is_file($ancestor)) {
+                throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain crosses a regular FILE — no directory can be created through it: from ' . $from . ' into ' . $to . ' (the crossing component: ' . $ancestor . ')');
+            }
+            /*
+             * The DANGLING-link twin (OCR round 16, t31-ocr16-6, the
+             * ocr10-10 vocabulary-leak class reopened one shape deeper):
+             * the walk stops at a link (is_link is a stop condition), but
+             * is_file() FOLLOWS it — a link to a file refuses above, a
+             * link to a directory resolves through realpath below, and a
+             * DANGLING link answers false to both, so it fell to
+             * realpath()'s false and the LEXICAL containment fallback:
+             * the verdict judged a spelling, then the landing's recursive
+             * mkdir died THROUGH the dangling link in raw engine
+             * warnings (driven: 'mkdir(): No such file or directory',
+             * copy() failing behind it, copyTree() RETURNING NORMALLY
+             * having moved nothing — the silent third in the engine's
+             * vocabulary, never the policy's). A link resolving to
+             * nothing is a malformed chain exactly like the file: no
+             * directory can be created through it, and the refusal names
+             * it with the same vocabulary.
+             */
+            if (is_link($ancestor) && ! is_dir($ancestor) && ! is_file($ancestor)) {
+                throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain crosses a DANGLING symlink — the link resolves to nothing, so no directory can be created through it and the landing would die in the engine\'s vocabulary: from ' . $from . ' into ' . $to . ' (the crossing component: ' . $ancestor . ')');
+            }
+            $ancestor_real = realpath($ancestor);
+            if (false !== $ancestor_real) {
+                $remainder = substr(rtrim($to_walk, '/'), strlen($ancestor));
+                $collapsed = array();
+                foreach (explode('/', $ancestor_real . $remainder) as $segment) {
+                    if ('' === $segment || '.' === $segment) {
+                        continue;
+                    }
+                    if ('..' === $segment) {
+                        array_pop($collapsed);
+                        continue;
+                    }
+                    $collapsed[] = $segment;
+                }
+                $resolved = '/' . implode('/', $collapsed);
+            } else {
+                $resolved = rtrim($to_walk, '/');
+            }
+            if ($resolved === $to_walk || '/' === $resolved) {
+                $target_real = $resolved;
+                break;
+            }
+            $to_walk = $resolved;
         }
         if ($target_real === $source_real || 0 === strpos($target_real, $source_real . '/')) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target that is the source itself or inside it — a self-copy is a silent no-op success riding the engine\'s same-file mercy, and a nested target writes the copy into the very tree it reads: from ' . $from . ' into ' . $to);
@@ -947,7 +984,12 @@ final class WpHarness
          * the chain RESOLVES: nothing on the collapsed chain existing
          * means the landing would create its first component directly
          * beneath the root, so the resolution gets the sentinel's own
-         * walk and vocabulary.
+         * walk and vocabulary. (The t31-ocr17-9 loop above owns every
+         * RESOLVABLE chain now — a stable $target_real always walks
+         * to an existing anchor — so this walk's live reach is the
+         * loop's UNRESOLVABLE arm, the realpath-false fallback that
+         * keeps a lexical spelling; it judges that arm's landing by
+         * the same rule, and stays as the resolved chain's belt.)
          */
         $landing = $target_real;
         while ('' !== $landing && '/' !== $landing && ! is_dir($landing) && ! is_link($landing) && ! is_file($landing)) {

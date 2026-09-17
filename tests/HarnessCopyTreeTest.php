@@ -335,6 +335,28 @@ final class HarnessCopyTreeTest extends TestCase
                 symlink($from . '/no-such-target', $from . '/dangling-link');
                 $refuses($from . '/src', $from . '/dangling-link/inside', 'A target whose chain crosses a DANGLING symlink must refuse — the link resolves to nothing, no directory can be created through it, and the landing would die in the engine\'s vocabulary, never the policy\'s.');
 
+                /*
+                 * The POP-ABOVE-ANCHOR shapes (OCR round 17's verifier
+                 * refutation, t31-ocr17-9, closed in-round): a '..' in
+                 * the remainder pops the lexical collapse ABOVE the
+                 * anchor the walk resolved, and the post-pop descent
+                 * crosses a link nothing resolved — driven at the
+                 * round's own HEAD, the dir-link spelling RETURNED
+                 * NORMALLY with the copy landed INSIDE the source
+                 * (the plain spelling of the same landing refuses),
+                 * and the FILE-link variant died in raw mkdir()/copy()
+                 * warnings. The collapsed resolution walks the same
+                 * judgment now: the dir-link shape refuses through
+                 * containment's own vocabulary, the file-link shape
+                 * through the crossing gate.
+                 */
+                mkdir($from . '/pop-anchor', 0755, true);
+                symlink($from . '/src', $from . '/pop-link');
+                symlink($file_source, $from . '/pop-file-link');
+                $refuses($from . '/src', $from . '/pop-anchor/b/../../pop-link/dst', 'A \'..\' that pops the collapse above its anchor is judged where the chain RESOLVES — a descent crossing a link into the source is the nested target, whatever the spelling.');
+                $this->assertFileDoesNotExist($from . '/src/dst', 'Nothing lands inside the source through a pop-above-anchor descent (driven at the round\'s HEAD as a normal return with the copy inside the very tree it read).');
+                $refuses($from . '/src', $from . '/pop-anchor/c/../../pop-file-link/dst', 'A pop-above-anchor descent crossing a link to a FILE refuses through the crossing gate — never raw mkdir() warnings.');
+
                 // The control: the same ancestor walk keeps judging a
                 // NORMAL disjoint target by its own (existing or
                 // created-fresh) location — the copy still lands.
