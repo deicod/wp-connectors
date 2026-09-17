@@ -692,7 +692,7 @@ final class WpHarness
      * ceiling remains only for a chain nothing of which exists).
      *
      * @param string $from Absolute source directory.
-     * @param string $to   Absolute target directory.
+     * @param string $to   Target directory — absolute, or relative (judged from the process cwd per t31-ocr11-5, its containment resolved through the TRUE tree the spelling names; the landing keeps the caller's spelling).
      * @return void
      * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing, not a directory, or collapsed to the filesystem root (t31-ocr12-3), the target is the source itself, inside it, or contains it, or a relative target's working directory cannot be resolved (t31-ocr11-5).
      */
