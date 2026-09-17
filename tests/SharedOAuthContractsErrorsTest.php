@@ -257,8 +257,9 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
              * The DECLARING CLASS decides now: a non-static public
              * method is either the engine's own (declared outside the
              * family, un-overridden standard behavior) or one of the
-             * family's allowed additions (__construct,
-             * retry_after_seconds). Anything else the family declares
+             * type's allowed additions (t31-ocr22-5: __construct for
+             * every type, retry_after_seconds for the RATE-LIMIT type
+             * alone). Anything else the family declares
              * — a concrete override, a base method beyond the allow
              * set — is the payload channel and fails.
              */
