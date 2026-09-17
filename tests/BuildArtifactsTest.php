@@ -3633,10 +3633,16 @@ FIXTURE;
          * ERRORING before a single verdict) instead of the visible
          * skip the doctrine mandates — the same two-function probe
          * the suite's other shell consumers already carry
-         * (SharedOAuthContractsHttpTest, the localedef legs).
+         * (SharedOAuthContractsHttpTest, the localedef legs). The
+         * round's verifier pass drove the probe's own gap (closed
+         * in-round, t31-ocr17-10): this consumer SPAWNS through
+         * proc_open(), which the established pair never consulted —
+         * under -d disable_functions=proc_open the guard passed and
+         * the very first spawn fataled — so the probe names the
+         * spawn function this leg actually rides too.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
-            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the concurrent child builds cannot be spawned; the manifest-merge race half did not run.');
+        if (! function_exists('exec') || ! function_exists('escapeshellarg') || ! function_exists('proc_open')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg/proc_open in disable_functions — the concurrent child builds cannot be spawned; the manifest-merge race half did not run.');
         }
         $connectors = array(
             'race-a-demo' => true,
