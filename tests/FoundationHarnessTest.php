@@ -568,4 +568,33 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
             // Expected.
         }
     }
+
+    /**
+     * OCR-round-10 pin (t31-ocr10-5): the shared zip reader's open gate
+     * is `=== true`, never assertTrue() — ZipArchive::open() returns a
+     * TRUTHY ER_* int on failure (driven: a corrupt archive returns
+     * ER_NOZIP=19), so the boolean gate passed it and the helper handed
+     * back [] over numFiles=0, every entry assertion vacuously green.
+     * A corrupt zip fails the gate loudly, naming the ER_* code.
+     */
+    public function testTheZipEntryNamesOpenGateFailsLoudlyOnACorruptArchive()
+    {
+        $corrupt = sys_get_temp_dir() . '/wpct-corrupt-' . getmypid() . '.zip';
+        file_put_contents($corrupt, 'this is not a zip archive');
+        try {
+            $caught = null;
+            try {
+                $this->zipEntryNames($corrupt);
+            } catch (PHPUnit\Framework\AssertionFailedError $e) {
+                $caught = $e;
+            }
+            if (null === $caught) {
+                $this->fail('A corrupt zip must fail the open gate loudly — pre-fix the truthy ER_NOZIP passed assertTrue() and the helper returned [].');
+            }
+            $this->assertStringContainsString('ER_NOZIP', $caught->getMessage(), 'The failure names the ER_* code.');
+            $this->assertStringContainsString($corrupt, $caught->getMessage(), 'The failure names the archive path.');
+        } finally {
+            @unlink($corrupt);
+        }
+    }
 }

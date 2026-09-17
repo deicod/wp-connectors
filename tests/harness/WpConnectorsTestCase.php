@@ -751,13 +751,41 @@ abstract class WpConnectorsTestCase extends TestCase
      * landing on one twin silently left the other suite reading zips
      * through the old shape. One owner here; both consumers ride it.
      *
+     * The open gate is `=== true` (t31-ocr10-5): ZipArchive::open()
+     * returns a TRUTHY ER_* int on failure (ER_NOZIP=19 driven on a
+     * corrupt zip — pre-fix assertTrue() passed it and the helper
+     * handed back [] over numFiles=0, every entry assertion vacuously
+     * green); a failure fails loudly naming the ER_* code (the common
+     * ones mapped, the raw int for the rest).
+     *
      * @param string $zipPath Absolute zip path.
      * @return list<string> Entry names.
      */
     protected function zipEntryNames(string $zipPath): array
     {
         $zip = new ZipArchive();
-        $this->assertTrue($zip->open($zipPath), "The built zip must open: {$zipPath}");
+        $opened = $zip->open($zipPath);
+        $er_names = array(
+            ZipArchive::ER_EXISTS => 'ER_EXISTS',
+            ZipArchive::ER_INCONS => 'ER_INCONS',
+            ZipArchive::ER_INVAL => 'ER_INVAL',
+            ZipArchive::ER_MEMORY => 'ER_MEMORY',
+            ZipArchive::ER_NOENT => 'ER_NOENT',
+            ZipArchive::ER_NOZIP => 'ER_NOZIP',
+            ZipArchive::ER_OPEN => 'ER_OPEN',
+            ZipArchive::ER_READ => 'ER_READ',
+            ZipArchive::ER_SEEK => 'ER_SEEK',
+        );
+        // The gate compares STRICTLY (the expression, not the raw
+        // return): assertTrue($opened) would pass the truthy ER_* int.
+        $this->assertTrue(
+            true === $opened,
+            sprintf(
+                'The zip must open: %s (ZipArchive::open() returned %s — a corrupt or absent archive, never a zip with zero entries).',
+                $zipPath,
+                isset($er_names[$opened]) ? $er_names[$opened] : var_export($opened, true)
+            )
+        );
         $names = array();
         for ($i = 0; $i < $zip->numFiles; ++$i) {
             $names[] = $zip->getNameIndex($i);
