@@ -5716,6 +5716,20 @@ FIXTURE;
         $this->assertSame("\xFF\x00\x41", $wrapped, 'The wrap is the engine\'s own: octal \777\400\101 mask to the low byte, semantics unchanged.');
         $this->assertSame('AB', $in_range, 'In-range octal is untouched by the mask.');
         $this->assertSame(array(), $deprecations, 'An octal escape past \377 must not raise the chr() deprecation mid-gate (chr() over 255 deprecates on the 8.5 runtime).');
+
+        /*
+         * OCR round 16 (t31-ocr16-7): the legal NUL escape. \u{0} is
+         * a codepoint the engine resolves (eval-verified: it equals
+         * the NUL byte), and the unescaper's exclusive `> 0` range
+         * guard dropped it into the unrecognized-escape branch — the
+         * literal '\u{0}' bytes kept in the value (driven at HEAD),
+         * a value no runtime would compute for the literal. The
+         * empty-braces spelling stays literal: the engine itself
+         * refuses \u{} at compile time, never resolving it.
+         */
+        $this->assertSame("\0", wp_connectors_unescape_php_string_literal('"', '\\u{0}'), '\u{0} resolves to the NUL byte exactly as the engine computes it.');
+        $this->assertSame("\\u{}", wp_connectors_unescape_php_string_literal('"', '\\u{}'), 'The EMPTY braces spelling stays literal — the engine never resolves it (a compile error), so neither does the unescaper.');
+        $this->assertSame("\\u{110000}", wp_connectors_unescape_php_string_literal('"', '\\u{110000}'), 'An over-range codepoint stays literal — the unrecognized branch keeps the engine\'s own refusal spelling.');
     }
 
     /**

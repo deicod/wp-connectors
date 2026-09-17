@@ -1294,8 +1294,22 @@ function wp_connectors_unescape_php_string_literal($quote, $inner)
         if ('u' === $next && $i + 1 < $length && '{' === $inner[ $i + 1 ]) {
             $close = strpos($inner, '}', $i + 2);
             if (false !== $close) {
-                $codepoint = (int) hexdec(substr($inner, $i + 2, $close - $i - 2));
-                if ($codepoint > 0 && $codepoint <= 0x10ffff) {
+                $digits = substr($inner, $i + 2, $close - $i - 2);
+                $codepoint = (int) hexdec($digits);
+                /*
+                 * The legal NUL escape rides the range (OCR round 16,
+                 * t31-ocr16-7): \u{0} is a codepoint the engine
+                 * resolves (to the NUL byte — eval-verified), and the
+                 * exclusive `> 0` guard dropped it into the
+                 * unrecognized-escape branch, keeping the literal
+                 * '\u{0}' bytes in the value. The range check is the
+                 * whole judgment — anything with at least one hex
+                 * digit, up to 0x10ffff, resolves; the EMPTY braces
+                 * spelling (\u{}, a compile error the engine never
+                 * resolves) and the over-range spellings stay in the
+                 * unrecognized branch, their literal bytes kept.
+                 */
+                if ('' !== $digits && $codepoint >= 0 && $codepoint <= 0x10ffff) {
                     // UTF-8 encoded in place (mbstring is not a dependency
                     // of this tooling; the encoder is four ranges).
                     if ($codepoint < 0x80) {
