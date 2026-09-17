@@ -3991,6 +3991,30 @@ FIXTURE;
             $this->assertDirectoryExists($scratch, 'The parent OF THE TARGET — the directory the \'..\' names — survives too: the walk never ran.');
 
             /*
+             * The MID-PATH link (OCR round 17, t31-ocr17-2): the probe
+             * once stripped only the TRAILING tails, so a link with
+             * components after it routed the is_link() probe THROUGH
+             * it — stat followed the link to the real 'sub' inside the
+             * victim and the walk then deleted the victim's entries
+             * through the link spelling, dying mid-flight in the SPL
+             * iterator's vocabulary (driven red at HEAD, both halves).
+             * The probe resolves the FULL component chain now: a link
+             * wherever it sits is the link at the root, same skip, and
+             * the victim stands untouched.
+             */
+            mkdir($victim . '/sub', 0755, true);
+            file_put_contents($victim . '/sub/keep3.txt', 'survivor');
+            $midLink = $scratch . '/mid-path-link';
+            symlink($victim, $midLink);
+
+            WpHarness::rrmdir($midLink . '/sub/..');
+
+            $this->assertFileExists($victim . '/inner/keep.txt', 'A MID-PATH link never routes the removal through it — the victim tree survives.');
+            $this->assertFileExists($victim . '/keep2.txt', 'A MID-PATH link never routes the removal through it.');
+            $this->assertFileExists($victim . '/sub/keep3.txt', 'The components named AFTER the link survive too — the walk never ran.');
+            $this->assertTrue(is_link($midLink), 'The mid-path link stands exactly where it is.');
+
+            /*
              * The THIRD twin (t31-ocr9-10, the round-9 refutation
              * lens over the r8/r9 link doctrine): the build side and
              * the harness side carried the root-link guard; the

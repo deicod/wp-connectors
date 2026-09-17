@@ -426,6 +426,28 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('root-link', $caught->getMessage());
 
             /*
+             * The MID-PATH twin (OCR round 17, t31-ocr17-2): the probe
+             * once stripped only the TRAILING tails, so a source
+             * spelled THROUGH a linked ancestor passed is_link() (stat
+             * followed the link to the real directory) and the copy
+             * FOLLOWED the link — silently duplicating the target
+             * tree's bytes, the exact shape the root guard exists to
+             * stop, one component deeper. The probe resolves the FULL
+             * component chain now: a link wherever it sits names the
+             * link class, never the tree behind it.
+             */
+            symlink($plain, $plain . '/parent-link');
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($plain . '/parent-link/src', $to),
+                'A source spelled through a SYMLINKED ANCESTOR must refuse the copy — the walk never routes through a link, wherever in the chain it sits.',
+                RuntimeException::class
+            );
+            $this->assertStringContainsString('symlinked source tree', $caught->getMessage(), 'The verdict names the LINK class for the mid-path spelling too.');
+            $this->assertStringContainsString('parent-link', $caught->getMessage());
+            $this->assertFileDoesNotExist($to . '/real.php', 'Nothing lands through a linked ancestor — the refusal precedes the byte work.');
+            unlink($plain . '/parent-link');
+
+            /*
              * The pair rides the file's try/finally discipline
              * (t31-ocr15-8, the t31-r3-11 scratch-hygiene shape): the
              * cleanups were inline AFTER the assertion, so an

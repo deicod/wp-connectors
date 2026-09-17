@@ -461,6 +461,22 @@ final class WpHarness
      * keep their own: rrmdir() rides same_directory_spelling(), and
      * copyTree() below keeps the caller's spelling for the walk.
      *
+     * A link ANYWHERE in the chain, not only at the final tail (OCR
+     * round 17, t31-ocr17-2): the strip above owns the TRAILING
+     * family, so a link with components AFTER it routed the probe
+     * THROUGH it — rrmdir('planted-link/sub/..') probed
+     * 'planted-link/sub', whose stat follows the link to the real
+     * 'sub' inside the target, and is_link() answered for a
+     * directory the chain merely passes through (driven at HEAD: the
+     * walk then deleted the victim tree's entries THROUGH the link
+     * spelling and died mid-flight in the SPL iterator's vocabulary).
+     * The probe resolves the FULL component chain now: the first
+     * ancestor component that is itself a link IS the spelling an
+     * is_link() probe can trust, wherever in the chain it sits. A
+     * relative spelling (both consumers' contracts say absolute)
+     * keeps its cwd-relative resolution — the component walk simply
+     * spells its prefixes from '.'.
+     *
      * @param string $path The path as the caller spelled it.
      * @return string The spelling an is_link() probe can trust.
      */
@@ -469,6 +485,16 @@ final class WpHarness
         $path = self::same_directory_spelling($path);
         while ('/..' === substr($path, -3)) {
             $path = self::same_directory_spelling(rtrim(substr($path, 0, -3), '/'));
+        }
+        $carry = '/' === ($path[0] ?? '') ? '' : '.';
+        foreach (explode('/', $path) as $segment) {
+            if ('' === $segment) {
+                continue;
+            }
+            $carry .= '/' . $segment;
+            if (is_link($carry)) {
+                return $carry;
+            }
         }
 
         return $path;
