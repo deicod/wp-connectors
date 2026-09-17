@@ -207,17 +207,35 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
      * the FAMILY's API, not each type's own). The standard baseline is
      * derived from the engine's own \Exception reflection, so the allow
      * set never drifts with PHP versions.
+     *
+     * OCR-round-22 pin (t31-ocr22-5): the allow sets once granted
+     * 'retry_after_seconds' to EVERY concrete type, contradicting the
+     * docblock contract above — the addition is the RATE-LIMIT type's
+     * alone, so a wrong grant (a storage or transport type growing the
+     * spelling) passed every audit invisible. The sets spell the
+     * docblock's actual contract now: the standard baseline for every
+     * type, the parsed-seconds additions only where the type carries
+     * them.
      */
     public function testExceptionTypesDeclareNoPayloadOrCredentialCarryingApi(): void
     {
-        $allowed = array('retry_after_seconds');
-        foreach ((new \ReflectionClass(\Exception::class))->getMethods(\ReflectionMethod::IS_PUBLIC) as $standard) {
-            if (! $standard->isStatic()) {
-                $allowed[] = $standard->getName();
+        $standard = array();
+        foreach ((new \ReflectionClass(\Exception::class))->getMethods(\ReflectionMethod::IS_PUBLIC) as $standard_method) {
+            if (! $standard_method->isStatic()) {
+                $standard[] = $standard_method->getName();
             }
         }
 
         foreach ($this->concreteTypes() as $type) {
+            // The per-type allow set (t31-ocr22-5): the additions ride
+            // ONLY the type whose docblock contract carries them.
+            $allowed = $standard;
+            $family_additions = array('__construct');
+            if (OAuthRateLimitException::class === $type) {
+                $allowed[] = 'retry_after_seconds';
+                $family_additions[] = 'retry_after_seconds';
+            }
+
             $api = array();
             foreach ((new \ReflectionClass($type))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
                 if (! $method->isStatic() && '__construct' !== $method->getName()) {
@@ -244,7 +262,6 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
              * — a concrete override, a base method beyond the allow
              * set — is the payload channel and fails.
              */
-            $family_additions = array('__construct', 'retry_after_seconds');
             foreach ((new \ReflectionClass($type))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
                 if ($method->isStatic()) {
                     continue;
@@ -292,7 +309,12 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
              * declared property of any visibility is a payload
              * candidate and fails here, consciously.
              */
-            $family_properties = array('retry_after_seconds');
+            /*
+             * The per-type property allow set (t31-ocr22-5): the one
+             * parsed int rides ONLY the rate-limit type — every other
+             * type's family-declared property set is empty.
+             */
+            $family_properties = OAuthRateLimitException::class === $type ? array('retry_after_seconds') : array();
             $declared = array();
             foreach ((new \ReflectionClass($type))->getProperties() as $property) {
                 if (0 === strpos($property->getDeclaringClass()->getName(), 'Deicod\\WpConnectors\\')) {
