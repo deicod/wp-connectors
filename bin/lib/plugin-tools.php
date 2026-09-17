@@ -295,7 +295,12 @@ function wp_connectors_family_namespace_pattern($namespace)
  */
 function wp_connectors_family_sibling_pattern(array $excluded_tails)
 {
-    $own_lower = strtolower(wp_connectors_shared_source_namespace());
+    // The fold rides the ASCII owner (t31-ocr11-12): it feeds the
+    // family predicate, and every family-feeding fold must survive a
+    // locale (the r11-6/ocr10-4 doctrine) — strtolower is
+    // locale-consulting on exactly the 'İ'-class bytes that doctrine
+    // exists for.
+    $own_lower = wp_connectors_ascii_lower(wp_connectors_shared_source_namespace());
     $vendor = substr($own_lower, 0, (int) strrpos($own_lower, '\\'));
     $stem = implode('\\s*\\\\\\s*', array_map(
         static function ( $segment ) {
@@ -319,7 +324,7 @@ function wp_connectors_family_sibling_pattern(array $excluded_tails)
     foreach ( $excluded_tails as $tail ) {
         $excluded[] = implode($separator, array_map(
             static function ( $segment ) {
-                return preg_quote( strtolower( (string) $segment ), '/' );
+                return preg_quote( wp_connectors_ascii_lower( (string) $segment ), '/' );
             },
             explode( '\\', (string) $tail )
         )) . '(?![A-Za-z0-9_])';
