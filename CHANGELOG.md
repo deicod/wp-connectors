@@ -6,6 +6,93 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 17)
+
+Seventeenth OCR-tool round (62/62, complete): 9 findings, driver triage
+accepted all — the trajectory 27→10→11→7→11→33→9 confirms the round-16
+spike was the audit shape (that round censused the named test-hygiene
+classes to zero; this round returns to the residual level). Fixed as
+t31-ocr17-1..8 — one commit per finding — plus the verifier-pass closes
+t31-ocr17-9/-10, eleven commits with the full offline check green after
+every one. The two-lens verifier pass ran as a two-agent workflow: the
+refutation lens drove ONE surviving counterexample straight through the
+round's own fresh landing policy (closed in-round, the round-16
+precedent) plus the exec guard's unprobed spawn function; the
+consistency lens re-drove every red at the pre-round sources (including
+gold-standard red runs of the new test files against a reconstructed
+pre-round harness) and recounted every census the commits claim. Suite
+1650 → 1651 tests, 45446 → 45493 assertions (every per-commit delta
+measured from output; the guard/suffix/docs commits moved zero by
+construction), 2 skipped unchanged.
+
+- **The landing policy judges the target's PHYSICAL resolution
+  (t31-ocr17-1 + the verifier's t31-ocr17-9 close, the round's
+  substantive close)** — the ocr16-5 '/' sentinel judged the SPELLING'S
+  chain only, so a `'..'`-woven target whose ancestor walk anchors at an
+  existing component while the collapse resolves elsewhere escaped it
+  entirely: driven at HEAD, `copyTree($src, '/../<first-level>')`
+  anchored at the existing `/..`, collapsed to a first-level nonexistent
+  target, passed every containment clause, and died in raw
+  `mkdir()`/`copy()` warnings at the root's first level (real first-level
+  writes as uid 0) having returned normally. The round's first close
+  walked the collapsed resolution by the sentinel's own rule — and the
+  verifier's refutation lens then drove a counterexample through THAT:
+  the collapse was still lexical, and a `'..'` popping above the
+  resolved anchor lets the post-pop descent cross symlinks nothing
+  resolves (driven: the copy landed INSIDE the source while the plain
+  spelling of the same landing refuses; the file-link variant died in
+  raw engine warnings). The target resolution is a resolve-until-stable
+  LOOP now — every judgment (root sentinel, file/dangling crossings,
+  both containment directions, the landing walk) rides the resolution
+  the filesystem actually answers, with the termination argument
+  construction-evident in the code.
+- **The link probe resolves the FULL component chain (t31-ocr17-2)** —
+  the trailing-tail strip family let a symlink at a MID-PATH component
+  route the `is_link()` probe through it; driven at HEAD,
+  `rrmdir('planted-link/sub/..')` deleted the victim tree's entries
+  through the link spelling before dying mid-flight. The probe walks the
+  components now: the first ancestor that is itself a link is the
+  spelling `is_link()` can trust, wherever it sits — one owner for both
+  the rrmdir skip and the copyTree source refusal.
+- **Destructive legs pin their refusal precondition (t31-ocr17-3, a
+  doctrine)** — the `rrmdir('/')`-family and copyTree degenerate-target
+  legs rested their safety entirely on the production refusal under
+  test; each leg family now asserts the precondition its refusal claims
+  (the spelling resolves to the root / names no directory / the chain's
+  first component does not exist) BEFORE the destructive call. Writing
+  the pin drove its own discovery, ledgered: `realpath('')` answers the
+  CWD on this engine — exactly why the ocr11-22 guard judges that
+  spelling lexically.
+- **The concurrent-builds leg skips visibly on capability-less hosts
+  (t31-ocr17-4, extended by the verifier's t31-ocr17-10)** — the
+  manifest-merge race leg spawns through `proc_open()`/`escapeshellarg()`
+  and fataled under `disable_functions` before a single verdict; the
+  capability probe gates it first, and the verifier drove that the probe
+  must name the spawn function this leg actually rides (`proc_open`),
+  not just the established exec/escapeshellarg pair.
+- **Every pid-only scratch name gained a random suffix
+  (t31-ocr17-5)** — the scanner batteries' five `/wp-connectors-scan-*`
+  spellings were pid-enumerable, pre-plantable, and collidable across
+  concurrent suites; all five ride the `canSymlink` probe's own idiom
+  (`getmypid() . '-' . bin2hex(random_bytes(4))`).
+- **The version pins derive from the header the build itself reads
+  (t31-ocr17-6)** — fourteen live `'0.1.0'` sites (artifact names, a
+  staging path, sidecar blockers, header patch pairs) were hardcoded
+  against the fixture's and the real zai plugin's headers, so a version
+  bump broke the suite in non-obvious ways (a patch silently matching
+  nothing, its leg vacuous green). `headerVersion()` reads the plugin
+  header at runtime; driven by bumping the fixture to 9.9.9 and running
+  the whole file green.
+- **The overflow leg rides its named predicate (t31-ocr17-7)** —
+  `offset_would_overflow()` joins `offset_would_underflow()`
+  (t31-ocr2-6) as the single owner of the representability guard's
+  upper condition, boundary-pinned on both sides of the flip.
+- **The serializability bounds' 64-bit domain is stated
+  (t31-ocr17-8)** — composer's `>=8.2` pins the engine, never the int
+  width; on a 32-bit build both bound constants silently become floats.
+  Docblock-only (no 32-bit path exists; ledgered with a re-derivation
+  rule).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 16)
 
 Sixteenth OCR-tool round (62/62, complete): 33 findings, raw count but

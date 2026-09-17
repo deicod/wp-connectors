@@ -2473,6 +2473,154 @@ OCR-tool round
   construction), 2
   skipped
   unchanged.
+OCR-tool round
+  t31-ocr17
+  (ELEVEN
+  commits — the
+  seventeenth
+  pass, 62/62
+  complete, 9/9
+  findings
+  accepted;
+  trajectory
+  27→10→11→7→
+  11→33→9, the
+  round-16
+  spike's census
+  held): the
+  substantive
+  close is the
+  LANDING-policy
+  hole in two
+  layers — the
+  ocr16-5
+  sentinel
+  judged the
+  SPELLING'S
+  chain, so a
+  '..'-woven
+  target
+  anchoring at
+  an existing
+  component
+  collapsed
+  elsewhere and
+  died in raw
+  first-level
+  warnings
+  having
+  returned
+  normally
+  (driven; the
+  collapsed
+  resolution
+  walked by
+  the
+  sentinel's
+  own rule);
+  the round's
+  two-lens
+  verifier
+  pass (a
+  two-agent
+  workflow)
+  then DROVE a
+  counterexample
+  through that
+  first close
+  — the
+  collapse was
+  still LEXICAL
+  and a '..'
+  popping above
+  the resolved
+  anchor
+  crosses
+  symlinks
+  nothing
+  resolves,
+  the copy
+  landing
+  INSIDE the
+  source while
+  the plain
+  spelling
+  refuses —
+  closed
+  in-round by
+  the
+  resolve-until
+  -stable loop:
+  every
+  judgment
+  (sentinel,
+  crossings,
+  containment,
+  landing)
+  rides the
+  PHYSICAL
+  resolution,
+  termination
+  construction
+  -evident.
+  Doctrine:
+  destructive
+  legs pin
+  their REFUSAL
+  PRECONDITION
+  (ceiling
+  ledgered —
+  the pin sees
+  spelling
+  drift, never
+  guard
+  regression;
+  realpath('')
+  answers the
+  CWD, the
+  driven
+  discovery
+  behind the
+  ocr11-22
+  lexical
+  judgment).
+  The verifier
+  also drove
+  the exec
+  guard's
+  unprobed
+  spawn
+  function
+  (proc_open;
+  closed
+  in-round).
+  Residuals
+  ledgered: the
+  production
+  rrmdir twins'
+  pre-fix
+  probes, 17
+  ungated exec
+  consumers,
+  the
+  wpct-locale
+  pid trio, the
+  symlinked
+  -temp-host
+  portability
+  note. Suite
+  1650 → 1651
+  tests,
+  45446 →
+  45493
+  assertions
+  (every
+  per-commit
+  delta
+  measured
+  from output),
+  2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
