@@ -431,11 +431,21 @@ final class SelfContainmentCompoundWritesTest extends TestCase
             $this->assertStringContainsString($outside, $caught->getMessage(), 'The refusal names the scan root.');
             $this->assertStringContainsString($this->root, $caught->getMessage(), 'The refusal names the plugin directory.');
 
-            WpHarness::refusalOf(
+            /*
+             * The relative arm pins BOTH named paths (OCR round 22,
+             * t31-ocr22-3): unlike its siblings it judged only the
+             * exception family, so a guard refusing without the
+             * docblock's "names both paths" verdict passed invisible
+             * here — the outside arm's both-paths contract holds for
+             * every boundary shape.
+             */
+            $caught = WpHarness::refusalOf(
                 fn() => wp_connectors_self_containment_violations($this->root, 'relative/scan'),
                 'A relative scan root must refuse at the boundary — it once walked the working directory.',
                 \InvalidArgumentException::class
             );
+            $this->assertStringContainsString('relative/scan', $caught->getMessage(), 'The refusal names the scan root — the relative arm carries the same both-paths contract as the outside arm.');
+            $this->assertStringContainsString($this->root, $caught->getMessage(), 'The refusal names the plugin directory.');
 
             /*
              * (t31-ocr11-26, the verifier lens): a FILE inside the
