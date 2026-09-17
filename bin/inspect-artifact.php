@@ -429,15 +429,48 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
  * never rmdir'd through (isDir() follows links — the ! isLink() guard
  * keeps the linked dir on the unlink branch).
  *
+ * The link probe reads the TAIL-STRIPPED spelling and the ROOT has
+ * its own clause (t31-ocr10-15, the round-10 verifier's refutation
+ * lens — r9-10's own ledgered re-open condition FIRED): the workDir
+ * is a PUBLIC parameter of wp_connectors_inspect_artifact(), so a
+ * caller-controlled spelling reaches this owner, and driven pre-fix
+ * a trailing '/', '/.', or '/..' family tail forced stat THROUGH a
+ * planted link ('link/.' EMPTIED the victim tree past the plain
+ * guard) while a root-collapsing spelling walked the filesystem
+ * root's children. Only the PROBE strips the tails (a stripped '/..'
+ * names a different directory, the ocr9-1 doctrine — the walk keeps
+ * the caller's spelling). This owner's verdict vocabulary is the
+ * silent return (a production finally must not throw), so the root
+ * refuses silently too — the extraction lands in the unique dir
+ * regardless.
+ *
  * @param string $dir Absolute directory path.
  * @return void
  */
 function wp_connectors_inspect_rrmdir($dir)
 {
-    if (is_link($dir)) {
+    $probe = $dir;
+    if ('/' !== $probe) {
+        $probe = rtrim($probe, '/');
+        while (true) {
+            if ('/.' === substr($probe, -2)) {
+                $probe = rtrim(substr($probe, 0, -2), '/');
+                continue;
+            }
+            if ('/..' === substr($probe, -3)) {
+                $probe = rtrim(substr($probe, 0, -3), '/');
+                continue;
+            }
+            break;
+        }
+    }
+    if (is_link($probe)) {
         return;
     }
     if (! is_dir($dir)) {
+        return;
+    }
+    if ('/' === realpath($dir)) {
         return;
     }
     $items = new RecursiveIteratorIterator(

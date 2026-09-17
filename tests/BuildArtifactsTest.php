@@ -3514,6 +3514,31 @@ FIXTURE;
             $this->assertTrue(is_link($inspectRootLink), 'A link at the inspector removal root stands exactly where it is.');
 
             /*
+             * The inspector twin's TAIL spellings and ROOT clause
+             * (t31-ocr10-15, the round-10 verifier's refutation lens —
+             * r9-10's own ledgered re-open condition FIRED: the workDir
+             * is a PUBLIC parameter of wp_connectors_inspect_artifact(),
+             * so a caller-controlled spelling reaches this owner, and
+             * driven pre-fix 'link/.' EMPTIED the victim tree past the
+             * plain guard while '/' walked the filesystem root's
+             * children). The link probe strips the stat-transparent
+             * tails; the root collapses to a silent return — this
+             * owner's vocabulary (a production finally never throws).
+             */
+            foreach (array('/', '/.', '/..') as $tail) {
+                wp_connectors_inspect_rrmdir($inspectRootLink . $tail);
+                $this->assertFileExists($victim . '/inner/keep.txt', "A '{$tail}' tail is not a disguise — the inspector twin never deletes through the link.");
+                $this->assertTrue(is_link($inspectRootLink), "The '{$tail}' tail does not smuggle the link past the plain guard.");
+            }
+            $tmpSentinel = sys_get_temp_dir() . '/wpct-rrmdir-root-sentinel-' . getmypid();
+            file_put_contents($tmpSentinel, 'sentinel');
+            wp_connectors_inspect_rrmdir('/');
+            wp_connectors_inspect_rrmdir(sys_get_temp_dir() . '/..');
+            $this->assertFileExists($tmpSentinel, 'A root-collapsing spelling never walks — the universal tree is not a scratch dir.');
+            unlink($tmpSentinel);
+            $this->assertDirectoryExists($scratch, 'The pin\'s own scratch tree survives the inspector root-collapse legs.');
+
+            /*
              * The ROOT collapse (t31-ocr10-1, the deletion twin of
              * copyTree's ocr9-9 mirror clause): the walk spelling keeps
              * a '/..' tail, so a scratch spelling collapsing to '/'
