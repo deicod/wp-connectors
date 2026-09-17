@@ -4088,11 +4088,22 @@ function wp_connectors_cli_entry($script)
  * branch, never a bare file-scope $argv (which a static analyzer
  * cannot prove defined once the guard moved into the helper).
  *
- * @return list<string> The argv (program name first).
+ * The list<string> contract holds OUTSIDE a CLI process too (OCR
+ * round 11, t31-ocr11-15): a web/fpm SAPI leaves the auto-global
+ * undefined, and the bare return raised an "Undefined $argv" warning
+ * and returned null — the isset guard answers the empty list instead,
+ * so the helper's type is true everywhere (the warning class the
+ * entry guard's own history closed, r12-17).
+ *
+ * @return list<string> The argv (program name first; empty outside a CLI process).
  */
 function wp_connectors_cli_args()
 {
-    global $argv;
-
-    return $argv;
+    // The read goes through the symbol table, not the `global`
+    // binding (t31-ocr11-15): the auto-global is undefined outside a
+    // CLI process, and a `global $argv` statement binds a NULL the
+    // analyzer must model as the always-populated CLI vector — the
+    // offset read states the truth (the vector is there or it is not)
+    // for both the engine and the analyzer.
+    return isset($GLOBALS['argv']) && is_array($GLOBALS['argv']) ? $GLOBALS['argv'] : array();
 }

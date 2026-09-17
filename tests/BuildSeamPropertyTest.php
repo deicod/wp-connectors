@@ -886,6 +886,26 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertSame(0, $gpcScanExit, 'Under variables_order=GPC the scanner\'s CLI guard still fires — never a silent exit-0 no-op.');
         $this->assertStringContainsString('finding(s)', implode("\n", $gpcScanOutput), 'The scan still runs its walk under GPC.');
 
+        /*
+         * OCR round 11 (t31-ocr11-15): the args helper's list<string>
+         * contract holds OUTSIDE a CLI process too — a web/fpm SAPI
+         * leaves the auto-global undefined, and the bare return raised
+         * an "Undefined $argv" warning and handed back null. Pinned
+         * in-process by unbinding the auto-global (the honest spelling
+         * of "no argv" a test can produce under the CLI runner), with
+         * the runner's own vector restored afterward.
+         */
+        $hadArgv = array_key_exists('argv', $GLOBALS);
+        $savedArgv = $hadArgv ? $GLOBALS['argv'] : null;
+        unset($GLOBALS['argv']);
+        try {
+            $this->assertSame(array(), wp_connectors_cli_args(), 'With no argv bound, the helper answers the empty list — the list<string> contract holds outside a CLI process, never an "Undefined $argv" warning and a null.');
+        } finally {
+            if ($hadArgv) {
+                $GLOBALS['argv'] = $savedArgv;
+            }
+        }
+
         // The helper is the single spelling (t31-r12-11; all five since
         // t31-ocr3-8): every entry script consumes
         // wp_connectors_cli_entry() and none carries a hand-rolled copy
