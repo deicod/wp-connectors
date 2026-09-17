@@ -88,14 +88,49 @@ final class SecretMask {
 	 * specification, and it rendered verbatim through every safe debug
 	 * form while the request side masked its own credential headers
 	 * (reproduced: 'Location: https://client/cb?code=…' in full in the
-	 * string cast, the dump, and print_r). One owner: this catalog is
-	 * the single spelling of what a sensitive header name is.
+	 * string cast, the dump, and print_r). One owner: this catalog and
+	 * the suffix class below are together the single spelling of what
+	 * a sensitive header name is.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
 	const SENSITIVE_HEADER_NAMES = array( 'authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'location' );
+
+	/**
+	 * Credential-bearing name suffixes (lowercase): any folded header
+	 * name that IS one of these, or whose final hyphen-token is one,
+	 * counts as secret-bearing — the CLASS rule over the catalog.
+	 *
+	 * OCR round 15 (t31-ocr15-1, security): the closed catalog above
+	 * could never grow as fast as vendors mint key-bearing header
+	 * names. 'x-api-key' was covered while 'api-key' — the documented
+	 * authentication header of a whole class of cloud AI vendors and
+	 * an archetypal Task-3.7 transport binding — rendered its full
+	 * secret verbatim
+	 * through every safe debug form: the r12-4 leak class reopened
+	 * under another vendor-documented spelling, and per-spelling
+	 * catalog additions were a queue a leak had to reproduce first.
+	 * The rule closes the class instead: each suffix below is a
+	 * vendor-documented credential token ('api-key' covers the
+	 * bare cloud-AI spelling and every '…-api-key' derivative;
+	 * 'subscription-key' covers the APIM gateway's
+	 * 'Ocp-Apim-Subscription-Key'; 'auth-token'
+	 * and 'auth' the token-bearing spellings), and the boundary is
+	 * the HYPHEN — a name merely ending in the suffix bytes
+	 * ('x-api-keychain') is not the class, because vendor spellings
+	 * are hyphenated tokens. No extension seam exists yet by
+	 * adjudication: Task 3.7's transport binding decides whether a
+	 * provider contributes spellings of its own, and the ledger holds
+	 * that decision — a seam added before a second config source
+	 * would be speculative reach.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var list<string>
+	 */
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'api-key', 'subscription-key', 'auth-token', 'auth' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
@@ -131,13 +166,30 @@ final class SecretMask {
 	/**
 	 * Whether a header name is secret-bearing (case-insensitive).
 	 *
+	 * The catalog match first (the named spellings), then the class
+	 * rule (t31-ocr15-1): a folded name that IS a credential suffix,
+	 * or whose final hyphen-token is one, is secret-bearing the same
+	 * way — see SENSITIVE_HEADER_NAME_SUFFIXES for the class and its
+	 * boundary.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param string $name Header name.
 	 * @return bool True when the header's value must always be masked.
 	 */
 	public static function is_sensitive_header_name( string $name ): bool {
-		return \in_array( AsciiFold::lower( $name ), self::SENSITIVE_HEADER_NAMES, true );
+		$folded = AsciiFold::lower( $name );
+		if ( \in_array( $folded, self::SENSITIVE_HEADER_NAMES, true ) ) {
+			return true;
+		}
+
+		foreach ( self::SENSITIVE_HEADER_NAME_SUFFIXES as $suffix ) {
+			if ( $folded === $suffix || \str_ends_with( $folded, '-' . $suffix ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

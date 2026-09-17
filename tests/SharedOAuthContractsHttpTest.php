@@ -1405,6 +1405,63 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * OCR-round-15 pin (t31-ocr15-1, security): the sensitive-name
+     * catalog closed at six spellings could never grow as fast as
+     * vendors mint key-bearing header names — 'api-key' (Azure OpenAI
+     * / Azure AI, an archetypal Task-3.7 provider class) rendered its
+     * FULL secret verbatim through every safe debug form while
+     * 'x-api-key' sat covered in the same catalog: the r12-4 leak
+     * class reopened under another vendor-documented spelling. The
+     * policy judges the CLASS now, never the single spelling: any
+     * folded name that IS one of the vendor-documented credential
+     * suffixes, or whose final hyphen-token is one ('subscription-key'
+     * closes Azure APIM's 'Ocp-Apim-Subscription-Key'), is sensitive —
+     * so a future vendor spelling ('x-auth-token', an 'apim-…-api-key'
+     * derivative) masks the day it appears, never after a leak
+     * reproduces it. No extension seam exists yet: Task 3.7's
+     * transport binding decides whether providers contribute
+     * spellings of their own (ledgered decision, not added
+     * speculatively here).
+     */
+    public function testTheCredentialSuffixClassMasksEveryKeyBearingNameSpelling(): void
+    {
+        $token = FakeSecrets::accessToken();
+        $apim = FakeSecrets::accessToken();
+
+        foreach (array('api-key', 'API-KEY', 'Api-Key', 'Ocp-Apim-Subscription-Key', 'subscription-key', 'x-auth-token', 'Auth-Token') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the suffix class — a key-bearing name is sensitive by what it names, never by its catalog spelling.");
+        }
+
+        // The catalog spellings stay covered (the rule ADDS, never replaces).
+        foreach (array('authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'location') as $catalogued) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($catalogued), "The catalogued '{$catalogued}' spelling stays sensitive.");
+        }
+
+        // The render seam every safe debug form rides: the vendor spellings
+        // mask, the non-sensitive names stay verbatim — the over-mask drift
+        // the class rule must never take. Both channels of the seam (the
+        // dump and the serialize form) ride the ONE masked-view owner.
+        $map = new HeaderMap(array(
+            'api-key' => $token,
+            'Ocp-Apim-Subscription-Key' => $apim,
+            'accept' => 'application/json',
+            'x-request-id' => 'req-17',
+        ));
+        foreach (array('dump' => print_r($map, true), 'serialize' => serialize($map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($token, $rendered, "The bare 'api-key' spelling renders masked in the {$channel} channel — pre-fix it was the one vendor-documented key-bearing name outside the closed catalog, the r12-4 leak class reopened.");
+            $this->assertStringNotContainsString($apim, $rendered, "The APIM gateway's 'Ocp-Apim-Subscription-Key' rides the same suffix class in the {$channel} channel.");
+            $this->assertStringContainsString('application/json', $rendered, "The non-sensitive 'accept' value still renders verbatim in the {$channel} channel.");
+            $this->assertStringContainsString('req-17', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
+        }
+        $this->assertStringContainsString((string) SecretMask::mask($token), print_r($map, true), 'The masked spelling is what renders.');
+
+        // The boundary is the HYPHEN: a name merely ending in the suffix
+        // bytes ('monkeykey'-shaped accidents) is not the class — the rule
+        // is token-shaped because vendor spellings are hyphenated.
+        $this->assertFalse(SecretMask::is_sensitive_header_name('x-api-keychain'), 'A name whose final token merely CONTAINS the suffix bytes is not credential-bearing — the boundary is the hyphen, the shape vendors spell.');
+    }
+
     /* ---------------------------------------------------------------
      * Response shape and validation.
      * ---------------------------------------------------------------
