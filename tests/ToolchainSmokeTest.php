@@ -186,8 +186,22 @@ final class ToolchainSmokeTest extends TestCase
         try {
             mkdir($scratch . '/bin/lib', 0755, true);
             $tool = (string) file_get_contents(__DIR__ . '/../bin/lint-php.php');
+            /*
+             * The exactly-once claim is PINNED, not implied (OCR
+             * round 16, t31-ocr16-15c): the old assertNotSame
+             * message said "the connectors spelling exists exactly
+             * once" while str_replace proved only PRESENCE — a
+             * second occurrence would patch BOTH and the message
+             * would still be true to the check, false to the claim.
+             * The count is the claim now: exactly one roots line.
+             */
+            $this->assertSame(
+                1,
+                substr_count($tool, "__DIR__ . '/../connectors'"),
+                'The patch target must exist exactly once — the roots line is one line; a second occurrence would patch both and this pin owns the count.'
+            );
             $patched = str_replace("__DIR__ . '/../connectors'", "__DIR__ . '/../connectors/'", $tool);
-            $this->assertNotSame($tool, $patched, 'The patch must reach the roots line (the connectors spelling exists exactly once).');
+            $this->assertNotSame($tool, $patched, 'The patch must reach the roots line.');
             file_put_contents($scratch . '/bin/lint-php.php', $patched);
             copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php');
             // The excluded tree is the FIRST segment below the root —
