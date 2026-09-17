@@ -728,7 +728,20 @@ final class WpHarness
                 unlink($item->getPathname());
             }
         }
-        rmdir($dir);
+        /*
+         * The final rmdir receives the COLLAPSED spelling (OCR round
+         * 22, t31-ocr22-6): the walk spelling keeps a '/..' tail
+         * (same_directory_spelling() strips only the same-directory
+         * tails), and by the walk's end the component that tail names
+         * no longer exists — rmdir('scratch/sub/..') resolved through
+         * a 'sub' the walk itself removed, failed ENOENT, and the
+         * walked tree LEAKED its top directory per call (driven at
+         * HEAD: children emptied, the parent stranded under the
+         * warning). $dir_real is the guard family's own normalization
+         * (resolved before the walk, while the tree still stood) — it
+         * names the walked directory itself.
+         */
+        rmdir($dir_real);
     }
 
     /**

@@ -4366,6 +4366,26 @@ FIXTURE;
             }
             $this->assertDirectoryExists($scratch, 'The pin\'s own scratch tree survives the root-collapse legs — the walk never ran.');
             $this->assertFileExists($victim . '/keep2.txt', 'The victim tree survives the root-collapse legs untouched.');
+
+            /*
+             * The DOTDOT-SPELLED real tree (OCR round 22, t31-ocr22-6;
+             * the leg needs no link capability — it rides the rrmdir
+             * pin battery's home): the walk spelling keeps a '/..'
+             * tail, so rrmdir over a REAL tree spelled
+             * 'parent/child/..' emptied the parent's children through
+             * the collapse and then handed the final rmdir the walk
+             * spelling — a resolution through a 'child' the walk
+             * itself had removed, ENOENT under a warning, and the
+             * PARENT stranded (driven red at HEAD: the tree emptied,
+             * its top directory leaked per call). The final rmdir
+             * receives the collapsed spelling now; the removal
+             * completes whole over the spelling family.
+             */
+            mkdir($scratch . '/dotdot-src/sub', 0755, true);
+            file_put_contents($scratch . '/dotdot-src/sub/x.txt', 'bytes');
+            file_put_contents($scratch . '/dotdot-src/top.txt', 'bytes');
+            WpHarness::rrmdir($scratch . '/dotdot-src/sub/..');
+            $this->assertDirectoryDoesNotExist($scratch . '/dotdot-src', 'A \'/..\'-spelled real tree is removed WHOLE — the final rmdir names the walked directory itself, never the dead resolution through the tail the walk consumed.');
         } finally {
             if (is_link($scratch . '/stage-link')) {
                 unlink($scratch . '/stage-link');
