@@ -3160,12 +3160,24 @@ FIXTURE;
             // against the same dist/ and the same manifest.
             $handles = array();
             foreach (array_keys($connectors) as $slug) {
-                $handles[ $slug ] = proc_open(
-                    escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=' . escapeshellarg($slug),
+                $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=' . escapeshellarg($slug);
+                /*
+                 * The spawn is GATED and the pipes RESET per iteration
+                 * (t31-ocr10-13): proc_open() returns resource|false —
+                 * an ungated false left a null handle whose proc_close()
+                 * and fclose() warnings confused the leg, and $pipes
+                 * carried the PRIOR iteration's descriptors, so a
+                 * failed spawn double-closed the previous child's pipe.
+                 */
+                $pipes = array();
+                $handle = proc_open(
+                    $command,
                     array( 0 => array( 'pipe', 'r' ), 1 => array( 'file', '/dev/null', 'w' ), 2 => array( 'file', '/dev/null', 'w' ) ),
                     $pipes
                 );
+                $this->assertIsResource($handle, "The concurrent build of {$slug} must spawn (proc_open refused the command: {$command}) — an unspawnable leg is environmental, never a silent pass.");
                 fclose($pipes[0]);
+                $handles[ $slug ] = $handle;
             }
 
             // Close/collect EVERY exit before asserting (t31-ocr4-7): an
