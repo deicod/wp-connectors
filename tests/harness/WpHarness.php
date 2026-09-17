@@ -559,7 +559,7 @@ final class WpHarness
      *
      * @param string $dir Absolute directory path.
      * @return void
-     * @throws RuntimeException When the spelling collapses to the filesystem root (t31-ocr10-1) — the universal tree is never a scratch dir.
+     * @throws RuntimeException When the spelling collapses to the filesystem root (t31-ocr10-1) — the universal tree is never a scratch dir — or its realpath resolution fails (t31-ocr11-20).
      */
     public static function rrmdir($dir)
     {
@@ -598,7 +598,24 @@ final class WpHarness
          * exactly as copyTree judges it — the universal tree, never a
          * scratch dir — and refused loudly naming the spelling.
          */
-        if ('/' === realpath($dir)) {
+        /*
+         * A FALSE realpath is the LOUD refusal, not the root check's
+         * silent fall-through (OCR round 11, t31-ocr11-20): a TOCTOU
+         * vanishing or an open_basedir wall between the is_dir() probe
+         * above and this resolution made realpath() answer false,
+         * `false === '/'` read as "not the root", and the walk fell
+         * through to the SPL iterator — whose UnexpectedValueException
+         * is another library's vocabulary wearing the harness verdict
+         * (the copyTree t31-ocr10-9 twin's exact shape, one owner
+         * over). Unreachable on this runner (no open_basedir, no
+         * concurrent removal) — construction-evident: false never
+         * reaches an iterator again.
+         */
+        $dir_real = realpath($dir);
+        if (false === $dir_real) {
+            throw new RuntimeException('WpHarness::rrmdir() refuses a spelling whose realpath resolution failed — the tree is unreadable through this process (open_basedir, or it vanished mid-call): ' . $dir);
+        }
+        if ('/' === $dir_real) {
             throw new RuntimeException('WpHarness::rrmdir() refuses a spelling that collapses to the filesystem ROOT — the universal tree is never a scratch dir: ' . $dir);
         }
         $items = new RecursiveIteratorIterator(
