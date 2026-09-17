@@ -3582,10 +3582,27 @@ FIXTURE;
                 $this->assertFileExists($victim . '/inner/keep.txt', "A '{$tail}' tail is not a disguise — the inspector twin never deletes through the link.");
                 $this->assertTrue(is_link($inspectRootLink), "The '{$tail}' tail does not smuggle the link past the plain guard.");
             }
+            /*
+             * The root spellings are ROOT-ANCHORED, never a temp-parent
+             * '..' (OCR round 11, t31-ocr11-2): POSIX resolves '.' and
+             * '..' AT the root to the root itself on every host, so
+             * '/', '/.', and '/..' collapse harmlessly everywhere —
+             * while sys_get_temp_dir().'/..' collapses to '/' only
+             * where the temp dir sits directly beneath it. On hosts
+             * whose temp tree is deep (macOS TMPDIR=/var/folders/…/T/)
+             * that spelling resolved to the temp dir's REAL parent,
+             * passed the production root guard — which matches its
+             * contract — and the TEST ITSELF walked and deleted the
+             * host's tree: the test carried the portability doctrine
+             * the production guard already kept. The sentinel below
+             * (in the real temp tree) and the scratch assertions after
+             * pin that nothing outside the controlled trees is touched.
+             */
             $tmpSentinel = sys_get_temp_dir() . '/wpct-rrmdir-root-sentinel-' . getmypid();
             file_put_contents($tmpSentinel, 'sentinel');
-            wp_connectors_inspect_rrmdir('/');
-            wp_connectors_inspect_rrmdir(sys_get_temp_dir() . '/..');
+            foreach (array('/', '/.', '/..') as $rootSpelling) {
+                wp_connectors_inspect_rrmdir($rootSpelling);
+            }
             $this->assertFileExists($tmpSentinel, 'A root-collapsing spelling never walks — the universal tree is not a scratch dir.');
             unlink($tmpSentinel);
             $this->assertDirectoryExists($scratch, 'The pin\'s own scratch tree survives the inspector root-collapse legs.');
@@ -3598,13 +3615,13 @@ FIXTURE;
              * children (driven red pre-fix: rrmdir('/') walked into
              * unlink()/rmdir() over the filesystem root, and a
              * scratch/sub/.. spelling deleted the PARENT's entries
-             * through the collapse). Both spellings the finding names
-             * refuse LOUDLY now, naming the spelling; the walk never
+             * through the collapse). Every root-collapsing spelling
+             * refuses LOUDLY now, naming the spelling; the walk never
              * runs.
              */
             foreach (array(
                 'the literal root' => '/',
-                'the collapse spelling' => sys_get_temp_dir() . '/..',
+                'the root dotdot spelling' => '/..',
             ) as $rootLabel => $rootSpelling) {
                 $refusal = $this->refusalOf(
                     fn() => WpHarness::rrmdir($rootSpelling),

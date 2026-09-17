@@ -187,9 +187,16 @@ final class HarnessCopyTreeTest extends TestCase
              * ancestor of EVERY source, passed BOTH containment guards
              * and the copy attempted '/<relative>' writes (driven
              * pre-fix). The root is the universal container; it
-             * refuses like any other containing target.
+             * refuses like any other containing target. The spelling is
+             * ROOT-ANCHORED, never a temp-parent '..' (OCR round 11,
+             * t31-ocr11-2): POSIX resolves '.' and '..' AT the root to
+             * the root itself on every host, while
+             * sys_get_temp_dir().'/..' collapses to '/' only where the
+             * temp dir sits directly beneath it — on hosts whose temp
+             * tree is deep (macOS TMPDIR), the spelling resolved to a
+             * REAL parent and the leg turned hostile to its own host.
              */
-            $refuses($from . '/src', sys_get_temp_dir() . '/..', 'A target collapsed to the filesystem ROOT contains every source — it must refuse like any other container.');
+            $refuses($from . '/src', '/..', 'A target collapsed to the filesystem ROOT contains every source — it must refuse like any other container.');
 
             /*
              * The alias spellings of (b) (t31-ocr8-3, over the ocr7-8
