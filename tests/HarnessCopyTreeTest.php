@@ -633,9 +633,20 @@ final class HarnessCopyTreeTest extends TestCase
          * premise is a FRESH engine reading TMPDIR before anything
          * caches it, and on a disable_functions host the spawn was an
          * undefined-function \Error instead of the visible skip.
+         *
+         * The guard declares the TRIPLE (OCR round 22, t31-ocr22-4):
+         * the child script's premise-critical FIRST statement is a
+         * putenv() — the TMPDIR redirect must land before any temp-dir
+         * read warms the engine's cache — so on a host with putenv in
+         * disable_functions the child fatals before its first read and
+         * the sim's premise dies as an exit-code verdict, never the
+         * visible skip. The variadic names the extra the way the
+         * t31-ocr21-4 owner's own doctrine spells it: the spawn pair
+         * is the floor, a consumer that spawns through more declares
+         * its own.
          */
-        if (! WpHarness::canSpawnChildren()) {
-            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the redirected-TMPDIR sim cannot run (the anchor verdicts ride a child process).');
+        if (! WpHarness::canSpawnChildren('putenv')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg/putenv in disable_functions — the redirected-TMPDIR sim cannot run (the anchor verdicts ride a child process whose first statement is a putenv).');
         }
 
         $base = sys_get_temp_dir() . '/wpct-anchor-' . uniqid('', true);
