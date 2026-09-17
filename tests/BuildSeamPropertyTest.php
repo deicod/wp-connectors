@@ -84,6 +84,47 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         );
     }
 
+    /*
+     * OCR-round-16 pin (t31-ocr16-3): a corrupt shipped artifact
+     * answers the soundness reopen's FAIL ROW, never an assertion
+     * abort and never a ValueError. At HEAD the reopen branch sat
+     * BELOW the completeness walk, whose first step (the shared
+     * zipEntryNames owner) aborts the battery as a raw assertion on
+     * any artifact that does not open — so the strict gate
+     * t31-ocr11-6 built to answer this exact class with a named row
+     * was unreachable-in-practice, and its failure arm carried
+     * close() on the never-opened handle (a ValueError on PHP >= 8,
+     * probed on this engine) that would have masked the row had the
+     * branch ever run. The reopen gate owns the first zip judgment
+     * now and closes only a handle that opened.
+     */
+    public function testACorruptArtifactAnswersTheReopenFailRowNotAnAbort()
+    {
+        $scratch = $this->makeScratchRepo('corrupt-reopen');
+        try {
+            WpConnectorsBuild::buildPlugin($scratch['plugin'], $scratch['dist']);
+            // Corrupt the shipped artifact: the reopen must answer its
+            // own verdict (red at HEAD: the zipEntryNames assertion
+            // aborted the row before the branch was ever consulted).
+            $this->assertNotFalse(
+                file_put_contents($scratch['zip'], 'not a zip archive'),
+                "The corrupt fixture must land at {$scratch['zip']} — an unwritten corruption drives nothing."
+            );
+            $verdict = $this->classifyClean(
+                $scratch,
+                array('never reached — the reopen answers first'),
+                'never reached either',
+                array( 'expect' => 'CLEAN', 'apply' => static function (): void {
+                } )
+            );
+            $this->assertSame('FAIL', $verdict['class'], 'A corrupt artifact is a FAIL row, never an assertion abort or an engine ValueError.');
+            $this->assertStringContainsString('could not reopen the artifact', $verdict['why'], 'The row names its owner: the independent-extraction reopen gate.');
+            $this->assertStringContainsString('19', $verdict['why'], 'The row names the ER_* return (19 = ER_NOZIP on a corrupt archive).');
+        } finally {
+            WpHarness::rrmdir($scratch['root']);
+        }
+    }
+
     /**
      * The adversarial state table (exhaustive for the round's charter).
      *
@@ -509,25 +550,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             return array('class' => 'FAIL', 'why' => 'the successful run left no zip');
         }
 
-        // Completeness: same entry set as the seeded good build, every
-        // entry non-empty (a 0-byte entry is the unreadable-source ship).
-        $names = $this->zipEntryNames($zipPath);
-        if ($names !== $seedNames) {
-            return array('class' => 'FAIL', 'why' => 'the rebuilt entry set diverged from the seeded build');
-        }
-        $zip = new ZipArchive();
-        if (true !== $zip->open($zipPath)) {
-            return array('class' => 'FAIL', 'why' => 'the shipped zip does not open');
-        }
-        for ($i = 0; $i < $zip->numFiles; ++$i) {
-            $stat = $zip->statIndex($i);
-            if (is_array($stat) && $stat['size'] <= 0) {
-                $zip->close();
-                return array('class' => 'FAIL', 'why' => "entry {$stat['name']} shipped empty");
-            }
-        }
-        $zip->close();
-
+        /*
+         * Soundness FIRST (OCR round 16, t31-ocr16-3): the reopen
+         * gate owns the corrupt-artifact class as its FAIL row. The
+         * block used to run BELOW the completeness walk, whose first
+         * step (the shared zipEntryNames owner, t31-ocr8-10) ABORTS
+         * the whole battery as a raw assertion on a corrupt artifact
+         * — so the reopen branch this strict gate exists to answer
+         * with (t31-ocr11-6: a failed open is a FAIL row naming the
+         * return) was unreachable-in-practice, and its failure arm
+         * carried close() on the never-opened handle (on PHP >= 8 a
+         * ValueError: 'Invalid or uninitialized Zip object' — probed
+         * on this engine) that would have MASKED the row had it ever
+         * run. The reopen gate answers first now and closes only a
+         * handle that opened; every verdict below it is unchanged.
+         */
         // Soundness: every PHP entry parses after independent
         // extraction (the extension judgment rides the one owner).
         $extract = $scratch['root'] . '/.extract';
@@ -545,8 +582,6 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
              */
             $opened = $zip->open($zipPath);
             if (true !== $opened) {
-                $zip->close();
-
                 return array('class' => 'FAIL', 'why' => 'the independent extraction could not reopen the artifact — open() returned ' . var_export($opened, true));
             }
             $extracted = $zip->extractTo($extract);
@@ -569,32 +604,51 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     return array('class' => 'FAIL', 'why' => 'a shipped PHP entry does not parse: ' . implode(' ', $output));
                 }
             }
-
-            // The embedded tree is EXACTLY the shared PHP-source set —
-            // enumerated independently of the build's collector.
-            $embedded = array();
-            foreach ($names as $entry) {
-                if (0 === strpos($entry, 'example-connector/src/Shared/')) {
-                    $embedded[] = substr($entry, strlen('example-connector/src/Shared/'));
-                }
-            }
-            sort($embedded);
-            $sources = array();
-            $sourceIterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($scratch['shared'], FilesystemIterator::SKIP_DOTS)
-            );
-            foreach ($sourceIterator as $sourceFile) {
-                /** @var SplFileInfo $sourceFile */
-                if (wp_connectors_is_php_source($sourceFile->getPathname())) {
-                    $sources[] = str_replace($scratch['shared'] . '/', '', $sourceFile->getPathname());
-                }
-            }
-            sort($sources);
-            if ($embedded !== $sources) {
-                return array('class' => 'FAIL', 'why' => 'the embedded tree is not exactly the shared PHP-source set (embedded: ' . implode(',', $embedded) . '; sources: ' . implode(',', $sources) . ')');
-            }
         } finally {
             WpHarness::rrmdir($extract);
+        }
+
+        // Completeness: same entry set as the seeded good build, every
+        // entry non-empty (a 0-byte entry is the unreadable-source ship).
+        $names = $this->zipEntryNames($zipPath);
+        if ($names !== $seedNames) {
+            return array('class' => 'FAIL', 'why' => 'the rebuilt entry set diverged from the seeded build');
+        }
+        $zip = new ZipArchive();
+        if (true !== $zip->open($zipPath)) {
+            return array('class' => 'FAIL', 'why' => 'the shipped zip does not open');
+        }
+        for ($i = 0; $i < $zip->numFiles; ++$i) {
+            $stat = $zip->statIndex($i);
+            if (is_array($stat) && $stat['size'] <= 0) {
+                $zip->close();
+                return array('class' => 'FAIL', 'why' => "entry {$stat['name']} shipped empty");
+            }
+        }
+        $zip->close();
+
+        // The embedded tree is EXACTLY the shared PHP-source set —
+        // enumerated independently of the build's collector.
+        $embedded = array();
+        foreach ($names as $entry) {
+            if (0 === strpos($entry, 'example-connector/src/Shared/')) {
+                $embedded[] = substr($entry, strlen('example-connector/src/Shared/'));
+            }
+        }
+        sort($embedded);
+        $sources = array();
+        $sourceIterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($scratch['shared'], FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($sourceIterator as $sourceFile) {
+            /** @var SplFileInfo $sourceFile */
+            if (wp_connectors_is_php_source($sourceFile->getPathname())) {
+                $sources[] = str_replace($scratch['shared'] . '/', '', $sourceFile->getPathname());
+            }
+        }
+        sort($sources);
+        if ($embedded !== $sources) {
+            return array('class' => 'FAIL', 'why' => 'the embedded tree is not exactly the shared PHP-source set (embedded: ' . implode(',', $embedded) . '; sources: ' . implode(',', $sources) . ')');
         }
 
         /*
