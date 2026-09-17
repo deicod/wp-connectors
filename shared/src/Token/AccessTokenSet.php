@@ -127,6 +127,17 @@ final class AccessTokenSet {
 	 * (modify() clamps astronomically large offsets to no change at all,
 	 * yielding expiry == obtained-at with every gate green).
 	 *
+	 * The 64-BIT int domain is these bounds' domain (t31-ocr17-8): both
+	 * this ceiling and the obtained-at floor below sit far outside the
+	 * 32-bit int range, and composer.json's ">=8.2" (platform 8.2.0)
+	 * pins the ENGINE, never the int width — on a 32-bit build both
+	 * constants would silently become FLOAT constants and every
+	 * comparison over them would judge a different domain than the one
+	 * they were derived for. No 32-bit path exists in this project
+	 * (every supported build is 64-bit; ledgered with the round), so
+	 * this is the stated assumption, not a runtime guard — a future
+	 * 32-bit target re-derives these bounds first.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var int
@@ -142,7 +153,9 @@ final class AccessTokenSet {
 	 * ('-1199-02-15T...'), a spelling from_array() rejects — the set
 	 * would save but never reload, the permanently-unloadable-grant
 	 * shape t31-r1-2 closed for DST. Year 0000 itself renders '0000',
-	 * a legal canonical spelling, so it stays inside.
+	 * a legal canonical spelling, so it stays inside. The 64-bit int
+	 * domain assumption is the ceiling's to state (t31-ocr17-8); this
+	 * floor shares it.
 	 *
 	 * @since 0.1.0
 	 *
