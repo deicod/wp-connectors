@@ -1260,7 +1260,14 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
         $probe = tempnam(sys_get_temp_dir(), 'wpct-cr-lines-');
         try {
-            file_put_contents($probe, "<?php\r# line one\r# line two\rstatic \$planted = 1;\r# line four\r");
+            // The write is gated (t31-ocr16-13, the ocr12-7 discipline):
+            // a failed write left the tempnam EMPTY, the pattern matched
+            // nothing, and the leg failed as 'must trip the probe at all'
+            // instead of naming the write.
+            $this->assertNotFalse(
+                file_put_contents($probe, "<?php\r# line one\r# line two\rstatic \$planted = 1;\r# line four\r"),
+                "The CR-lines probe fixture must land at {$probe} — an empty probe never trips the pattern and the leg fails as 'must trip', never over the write."
+            );
             $failed = false;
             try {
                 $gate->invoke($this, $probe, '/static\s+\$\w+/', 'CR-only probe');
@@ -1295,7 +1302,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
         $probe = tempnam(sys_get_temp_dir(), 'wpct-badutf8-diag-');
         try {
-            file_put_contents($probe, "<?php\n# bad \xB1 byte here\nadd_action('init', 'f');\n# line four");
+            // Gated (t31-ocr16-13): an unwritten probe never matches the
+            // pattern, and the abort-refusal leg fails as 'must fail the
+            // gate at all' instead of naming the write.
+            $this->assertNotFalse(
+                file_put_contents($probe, "<?php\n# bad \xB1 byte here\nadd_action('init', 'f');\n# line four"),
+                "The invalid-UTF-8 probe fixture must land at {$probe} — an empty probe never reaches the /u derivation the leg exists to abort."
+            );
             $failed = false;
             try {
                 $gate->invoke($this, $probe, '/add_action/', 'invalid-UTF-8 probe');
@@ -1334,8 +1347,17 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         mkdir($scratch, 0755, true);
 
         try {
-            file_put_contents($scratch . '/ClockMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {\n    public function stamp(): int {\n        return time();\n    }\n}\n");
-            file_put_contents($scratch . '/Notes.md', "# developer notes\n");
+            // Both writes gated (t31-ocr16-13): an empty .PHP file never
+            // trips the casing refusal, and an absent note changes the
+            // collect assertion's expected set.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/ClockMath.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {\n    public function stamp(): int {\n        return time();\n    }\n}\n"),
+                "The .PHP-spelled fixture must land at {$scratch}/ClockMath.PHP — an empty file refuses the casing vocabulary as no-clock-found, a different verdict than the leg pins."
+            );
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Notes.md', "# developer notes\n"),
+                "The non-PHP note must land at {$scratch}/Notes.md — its absence would change the collect expectation below."
+            );
 
             // The vocabulary refuses the non-canonical casing loudly,
             // naming the file — never silently skipped (r3-9's defect),
@@ -1362,7 +1384,12 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
             // Clean direction through the same gate, and the canonical
             // spelling collects normally beside the note (t31-r2-18).
-            file_put_contents($scratch . '/CleanMath.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class CleanMath {\n    public function stamp(): int {\n        return 0;\n    }\n}\n");
+            // Gated (t31-ocr16-13): an empty clean-direction file makes the
+            // gate's clean pass vacuous and the collect assertion wrong.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/CleanMath.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class CleanMath {\n    public function stamp(): int {\n        return 0;\n    }\n}\n"),
+                "The clean-direction fixture must land at {$scratch}/CleanMath.php — an empty file makes the clean gate pass vacuously."
+            );
             $gate->invoke($this, $scratch . '/CleanMath.php');
             unlink($scratch . '/ClockMath.PHP');
             $this->assertSame(
@@ -1397,7 +1424,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         mkdir($scratch . '/tools', 0755, true);
 
         try {
-            file_put_contents($scratch . '/tools/Helper.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Tools;\ninterface Helper\n{\n}\n");
+            // Gated (t31-ocr16-13): an empty helper never declares the
+            // mismatched namespace, and the repro refuses as
+            // 'declares no namespace' instead of the casing verdict.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/tools/Helper.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Tools;\ninterface Helper\n{\n}\n"),
+                "The casing-mismatch repro fixture must land at {$scratch}/tools/Helper.php — an empty file refuses as a different verdict than the casing one this leg pins."
+            );
 
             // THE REPRO: the directory casing diverges from the declared
             // namespace's — refuses loudly, naming the file and BOTH
@@ -1415,8 +1448,17 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             // same tree collects — at any depth, and at the root.
             WpHarness::rrmdir($scratch . '/tools');
             mkdir($scratch . '/Tools', 0755, true);
-            file_put_contents($scratch . '/Tools/Helper.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Tools;\ninterface Helper\n{\n}\n");
-            file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\n");
+            // Both writes gated (t31-ocr16-13): a missing member of the
+            // clean-direction set makes the collect assertion fail as a
+            // phantom divergence, never over the write.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Tools/Helper.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Tools;\ninterface Helper\n{\n}\n"),
+                "The case-consistent helper must land at {$scratch}/Tools/Helper.php — the collect expectation below names it."
+            );
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\n"),
+                "The root fixture must land at {$scratch}/Root.php — the collect expectation below names it."
+            );
             $this->assertSame(
                 array('Root.php', 'Tools/Helper.php'),
                 wp_connectors_php_source_files($scratch),
@@ -1427,7 +1469,12 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             // ships the same unloadable disagreement and refuses.
             WpHarness::rrmdir($scratch . '/Tools');
             mkdir($scratch . '/Http', 0755, true);
-            file_put_contents($scratch . '/Http/Request.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Http\\Message;\ninterface Request\n{\n}\n");
+            // Gated (t31-ocr16-13): an empty file refuses as
+            // 'declares no namespace', not the depth verdict pinned here.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Http/Request.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Http\\Message;\ninterface Request\n{\n}\n"),
+                "The depth-axis fixture must land at {$scratch}/Http/Request.php — an empty file refuses as a different verdict than the depth one this leg pins."
+            );
             $refusal = $this->refusalOf(
                 fn() => wp_connectors_php_source_files($scratch),
                 'A declared-namespace depth disagreeing with the staged path depth must refuse the vocabulary.', \RuntimeException::class
@@ -1439,7 +1486,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
             // A missing declaration refuses: the embed stages under
             // src/Shared/, a tree only the slug-derived prefix addresses.
-            file_put_contents($scratch . '/Global.php', "<?php\ninterface GlobalThing\n{\n}\n");
+            // Gated (t31-ocr16-13): an unwritten Global.php makes the
+            // walk collect the remaining CLEAN tree and the leg's
+            // refusalOf fails as the no-throw case.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Global.php', "<?php\ninterface GlobalThing\n{\n}\n"),
+                "The no-declaration fixture must land at {$scratch}/Global.php — without it the tree collects clean and the refusal leg fails as a phantom no-throw."
+            );
             $refusal = $this->refusalOf(
                 fn() => wp_connectors_php_source_files($scratch),
                 'A shared source declaring no namespace must refuse the vocabulary — it stages onto a tree no autoload path addresses.', \RuntimeException::class
@@ -1451,7 +1504,12 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             // A declaration OUTSIDE the tree root refuses the same way:
             // the rewrite never touches it, so the staged path maps no
             // autoloadable class.
-            file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod;\ninterface Root\n{\n}\n");
+            // Gated (t31-ocr16-13): a stale Root.php from the prior leg
+            // (or an empty rewrite) answers the wrong verdict.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod;\ninterface Root\n{\n}\n"),
+                "The outside-root fixture must land at {$scratch}/Root.php — without it the refusal below answers a stale tree's verdict."
+            );
             $refusal = $this->refusalOf(
                 fn() => wp_connectors_php_source_files($scratch),
                 'A shared source declaring outside the tree root must refuse the vocabulary.', \RuntimeException::class
@@ -1471,7 +1529,12 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
              * a second declaration block refuses outright, both
              * spellings named.
              */
-            file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\nnamespace Deicod\\WpConnectors\\Shared\\Http;\ninterface DeepRoot\n{\n}\n");
+            // Gated (t31-ocr16-13): an empty file never carries the
+            // second block the refusal must name.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\nnamespace Deicod\\WpConnectors\\Shared\\Http;\ninterface DeepRoot\n{\n}\n"),
+                "The multi-block fixture must land at {$scratch}/Root.php — an empty file never carries the second block the refusal must name."
+            );
             $refusal = $this->refusalOf(
                 fn() => wp_connectors_php_source_files($scratch),
                 'A multi-block shared source must refuse the vocabulary — a second block stages nowhere the autoloader addresses.', \RuntimeException::class
@@ -1483,7 +1546,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
             // The single-block control stays green through the same
             // walk (restating the root row the earlier legs pinned).
-            file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\n");
+            // Gated (t31-ocr16-13): the control's expectation names this
+            // file; an unwritten one fails the collect assertion as a
+            // phantom empty set.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\n"),
+                "The single-block control fixture must land at {$scratch}/Root.php — the collect expectation names it."
+            );
             $this->assertSame(array('Root.php'), wp_connectors_php_source_files($scratch));
         } finally {
             WpHarness::rrmdir($scratch);
@@ -1577,7 +1646,12 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         unlink($scratch);
         mkdir($scratch, 0755, true);
         try {
-            file_put_contents($scratch . '/ClockMath.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath\n{\n}\n");
+            // Gated (t31-ocr16-13): an empty file makes the collect
+            // assertion fail as an empty set, never over the write.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/ClockMath.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath\n{\n}\n"),
+                "The stem-agreement fixture must land at {$scratch}/ClockMath.php — the collect expectation below names it."
+            );
             $collected = wp_connectors_php_source_files($scratch);
             $this->assertSame(array('ClockMath.php'), $collected, 'The vocabulary collects the canonical spelling.');
 
@@ -1600,7 +1674,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 'ClockMathTrait.php' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait ClockMathTrait\n{\n}\n",
                 'ClockMathRo.php' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nreadonly final class ClockMathRo\n{\n}\n",
             ) as $name => $body) {
-                file_put_contents($scratch . '/' . $name, $body);
+                // Gated (t31-ocr16-13): an empty file makes the
+                // one-type gate fail as no-type-found, a different
+                // verdict than the spelling the leg drives.
+                $this->assertNotFalse(
+                    file_put_contents($scratch . '/' . $name, $body),
+                    "The {$name} fixture must land at {$scratch}/{$name} — an empty file fails the one-type gate as no-type-found, never as the spelling this leg drives."
+                );
                 $this->assertOneTypeMatchingFileName($scratch . '/' . $name, $name);
             }
         } finally {
@@ -1652,8 +1732,18 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
 
         try {
-            file_put_contents($scratch . '/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
-            file_put_contents($scratch . '/Linked/LinkedSource.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Linked;\ninterface LinkedSource {}\n");
+            // Both writes gated (t31-ocr16-13, the LinkedSource twin the
+            // round named beside its sibling): an empty tree makes the
+            // clean-direction collect assertion fail as a phantom
+            // divergence, never over the write.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n"),
+                "The Clock source must land at {$scratch}/Clock/ClockInterface.php — the clean-direction collect expectation names it."
+            );
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Linked/LinkedSource.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Linked;\ninterface LinkedSource {}\n"),
+                "The Linked source must land at {$scratch}/Linked/LinkedSource.php — the clean-direction collect expectation names it."
+            );
 
             // Clean direction first: no links, plain collection.
             $this->assertSame(
@@ -1801,7 +1891,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // ref_array twin in a swept-shaped file fails with file:line.
         $scratch = tempnam(sys_get_temp_dir(), 'wpct-ref-array-');
         try {
-            file_put_contents($scratch, "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class RefArrayFixture\n{\n    public function fan_out(): void\n    {\n        apply_filters_ref_array( 'shared_hook', array( 1 ) );\n    }\n}\n");
+            // Gated (t31-ocr16-13): an empty tempnam matches no pattern,
+            // and the leg fails as the fail('must fail the gate') case
+            // instead of naming the write.
+            $this->assertNotFalse(
+                file_put_contents($scratch, "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class RefArrayFixture\n{\n    public function fan_out(): void\n    {\n        apply_filters_ref_array( 'shared_hook', array( 1 ) );\n    }\n}\n"),
+                "The ref_array twin fixture must land at {$scratch} — an empty file never trips the gate and the leg fails as 'must fail', never over the write."
+            );
             try {
                 $this->assertPatternAbsentWholeFile(
                     $scratch,
@@ -1931,16 +2027,28 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         unlink($scratch);
         mkdir($scratch, 0755, true);
         try {
-            file_put_contents($scratch . '/Token.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nreadonly class Token\n{\n}\n");
+            // All three writes gated (t31-ocr16-13): an empty file makes
+            // the one-type gate fail as no-type-found — a different
+            // verdict than each spelling the legs drive.
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Token.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nreadonly class Token\n{\n}\n"),
+                "The readonly fixture must land at {$scratch}/Token.php — an empty file fails the gate as no-type-found, never as the spelling this leg drives."
+            );
             $gate->invoke($this, $scratch . '/Token.php', 'Token.php');
 
             // The '.PHP' spelling rides the same gate (t31-r4-9's stem).
-            file_put_contents($scratch . '/ClockTrait.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait ClockTrait\n{\n}\n");
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/ClockTrait.PHP', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait ClockTrait\n{\n}\n"),
+                "The .PHP-spelled trait fixture must land at {$scratch}/ClockTrait.PHP — an empty file fails the gate as no-type-found, never as the spelling this leg drives."
+            );
             $gate->invoke($this, $scratch . '/ClockTrait.PHP', 'ClockTrait.PHP');
 
             // A class PLUS a trait in one file fails one-type-per-file —
             // the trait was invisible to the old vocabulary.
-            file_put_contents($scratch . '/Mate.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass Mate\n{\n}\ntrait MateHelpers\n{\n}\n");
+            $this->assertNotFalse(
+                file_put_contents($scratch . '/Mate.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass Mate\n{\n}\ntrait MateHelpers\n{\n}\n"),
+                "The class+trait fixture must land at {$scratch}/Mate.php — without both types the leg's 'exactly one type' refusal never fires."
+            );
             try {
                 $gate->invoke($this, $scratch . '/Mate.php', 'Mate.php');
                 $this->fail('A class+trait file must fail one-type-per-file now that the vocabulary sees traits.');
