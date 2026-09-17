@@ -685,6 +685,16 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             // read time (the deterministic external spelling on this
             // runtime) makes close() return false — driven through the
             // production seam, which must refuse naming the archive.
+            //
+            // Root-runner skip (t31-ocr4-1), hoisted ABOVE the archive's
+            // creation (t31-ocr12-4): uid 0 reads the staged source
+            // through mode 0000, close() succeeds, and the refusal below
+            // never fires. The guard once fired MID-LEG — after open() +
+            // addFile() — and markTestSkipped()'s throw left the archive
+            // handle OPEN while the owning finally's rrmdir deleted its
+            // destination underneath it: a teardown race. The skip now
+            // precedes the open; no handle exists at skip time.
+            $this->skipChmod0000LegOnRootRunner('the forced-close chmod-0000 leg of the staging-path pin');
             $closeTemp = $scratch['dist'] . '/.close-probe.zip';
             file_put_contents($staged, "<?php\n// staged\n");
             $zip = new ZipArchive();
@@ -697,12 +707,6 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 )
             );
             $this->assertTrue($zip->addFile($staged, 'staged-source.php'));
-            // Root-runner skip (t31-ocr4-1), consumed BEFORE the chmod:
-            // uid 0 reads the staged source through mode 0000, close()
-            // succeeds, and the refusal below never fires. The guard
-            // fires before the mode change, so the archive's implicit
-            // close on teardown still sees a readable source.
-            $this->skipChmod0000LegOnRootRunner('the forced-close chmod-0000 leg of the staging-path pin');
             chmod($staged, 0000);
             $finalize = new ReflectionMethod(WpConnectorsBuild::class, 'closeArchiveOrThrow');
             $refused = null;
