@@ -89,14 +89,23 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * variant, the class the codebase's own development-entry
          * comparison has carried since t31-r6-5). Trailing side only,
          * per component — the LEADING side stays (a leading dot is
-         * content, '.git' the vocabulary's own spelling).
+         * content, '.git' the vocabulary's own spelling). The fold
+         * also COLLAPSES '.' and empty segments (t31-ocr11-24, the
+         * round's verifier lens): at extraction 'p/./logo.png',
+         * 'p//logo.png', and 'p/logo.png' name the SAME file on every
+         * host (driven on this one: extractTo() returns true with one
+         * file landed, the first copy's bytes judged by nobody), so
+         * the key drops them — '..' stays outside the fold, the
+         * traversal refusal below owns it.
          */
-        $folded_name = wp_connectors_ascii_lower(implode('/', array_map(
+        $folded_name = wp_connectors_ascii_lower(implode('/', array_filter(array_map(
             static function ( $segment ) {
                 return rtrim((string) $segment, wp_connectors_path_edge_junk());
             },
             explode('/', $name)
-        )));
+        ), static function ( $segment ) {
+            return '' !== $segment && '.' !== $segment;
+        })));
         if (isset($seenEntryNames[$name])) {
             $violations[] = sprintf(
                 'inspect: zip carries the entry name "%s" more than once — extraction keeps only one copy, so the other bytes are judged by nobody.',

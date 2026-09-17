@@ -1085,6 +1085,27 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('logo.png.', $flat, 'The dot twin is named in the refusal.');
         $this->assertStringContainsString('logo.png ', $flat, 'The space twin is named in the refusal.');
 
+        // (b-collapse) The SEGMENT-COLLAPSE twins (t31-ocr11-24, the
+        // round's verifier lens): '.' and empty segments name the SAME
+        // file at extraction on EVERY host — driven red at HEAD on
+        // this one, extractTo() returned true with one file landed
+        // and the fence silent, the first copy's bytes judged by
+        // nobody. The fold drops the segments; '..' stays outside
+        // (the traversal refusal owns it).
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.5.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/assets/logo.png", 'first'),
+            array("{$slug}/assets/./logo.png", 'dot-segment twin'),
+            array("{$slug}/assets//logo.png", 'empty-segment twin'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('case-fold duplicate', $flat, 'A dot-segment twin folds onto the plain name — the fence collapses what extraction collapses.');
+        $this->assertStringContainsString('assets/./logo.png', $flat, 'The dot-segment twin is named in the refusal.');
+        $this->assertStringContainsString('assets//logo.png', $flat, 'The empty-segment twin is named in the refusal.');
+
         // (c) The forged-name arm of the SAME fence: a duplicate whose
         // name carries a newline (and the verdict-lookalike text the
         // security lens used) renders with the newline neutralized —
