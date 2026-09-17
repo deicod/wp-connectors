@@ -960,12 +960,35 @@ final class WpConnectorsBuild
                     $saw_depth_zero_comma = false;
                     $saw_comment = false;
                     $terminated_by_close_tag = false;
-                } elseif ('{' === $token) {
-                    // The brace-kind stack (t31-ocr7-7): what OPENED the
-                    // block decides whether a use statement inside it is
-                    // an import (top level, or a braced namespace block)
-                    // or a trait clause list (any other block).
-                    $context[] = self::braceOpensNamespaceBlock($tokens, $i) ? 'namespace' : 'other';
+                } elseif ('{' === $token || T_CURLY_OPEN === $id || T_DOLLAR_OPEN_CURLY_BRACES === $id) {
+                    /*
+                     * The brace-kind stack (t31-ocr7-7): what OPENED
+                     * the block decides whether a use statement
+                     * inside it is an import (top level, or a braced
+                     * namespace block) or a trait clause list (any
+                     * other block). The interpolation openers push
+                     * their OWN frame (OCR round 16, t31-ocr16-10):
+                     * a double-quoted `{$a}` lexes T_CURLY_OPEN plus
+                     * a PLAIN '}' (`${a}` rides
+                     * T_DOLLAR_OPEN_CURLY_BRACES the same way), and
+                     * the plain closer once popped a frame that was
+                     * never pushed — the stack ran one short per
+                     * interpolation, an enclosing class frame fell
+                     * off early, and a trait clause list AFTER an
+                     * interpolation-bearing method was judged as an
+                     * IMPORT (driven: the classifier handed the trait
+                     * list the dead 'write one use per line' errand
+                     * the t31-ocr7-7 doctrine reserves for import
+                     * lists; the identical shape minus the
+                     * interpolation got the anonymous trait
+                     * verdict). An interpolation is never a
+                     * namespace block: its frame is 'other', pushed
+                     * and popped by its own braces like every other
+                     * block.
+                     */
+                    $context[] = '{' === $token
+                        ? (self::braceOpensNamespaceBlock($tokens, $i) ? 'namespace' : 'other')
+                        : 'other';
                 } elseif ('}' === $token && $context !== array()) {
                     array_pop($context);
                 }

@@ -5702,6 +5702,50 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-16 pin (t31-ocr16-10): the unowned-spelling
+     * classifier's brace-kind stack stays balanced through string
+     * interpolation. A double-quoted `{$a}` lexes T_CURLY_OPEN plus
+     * a PLAIN '}' (`${a}` rides T_DOLLAR_OPEN_CURLY_BRACES the same
+     * way), and the plain closer once popped a frame that was never
+     * pushed — the stack ran one short per interpolation, an
+     * enclosing class frame fell off early, and a trait clause list
+     * AFTER an interpolation-bearing method was judged as an IMPORT
+     * (driven at HEAD: the classifier handed the trait list the dead
+     * 'write one use per line' errand the t31-ocr7-7 doctrine
+     * reserves for import lists, while the identical shape minus the
+     * interpolation got the anonymous trait verdict — the file's own
+     * twin judged by two different doctrines). The interpolation
+     * openers push their own 'other' frame now: the stack
+     * round-trips balanced, and both twins wear the anonymous
+     * verdict their doctrine owns.
+     */
+    public function testTheClassifierBraceStackStaysBalancedThroughInterpolation(): void
+    {
+        $head = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait FamilyTrait\n{\n}\nfinal class InterpCarrier\n{\n    public function m(%s)\n    {\n        %s\n    }\n    use Deicod\\WpConnectors\\Shared\\FamilyTrait, OtherTrait;\n}\n";
+        $with_interpolation = sprintf($head, '$x', '$v = "{$x}";' . "\n        " . 'return $v;');
+        $with_dollar_interpolation = sprintf($head, '$x', 'return "${x}";');
+        $without_interpolation = sprintf($head, '', 'return 1;');
+
+        foreach (array('curly interpolation' => $with_interpolation, 'dollar interpolation' => $with_dollar_interpolation) as $label => $source) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/InterpCarrier.php'),
+                "The trait-list fixture must refuse the rewrite — its family member rides a comma list no pattern owns ({$label}).", \RuntimeException::class
+            );
+            $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The refusal is the postcondition's own ({$label}).");
+            $this->assertStringNotContainsString('write one use per line', $refusal->getMessage(), "A TRAIT clause list after an interpolation-bearing method wears its doctrine's anonymous verdict — the stack saw the class frame (red at HEAD: the interpolation's plain '}' ate it and the classifier named the import-list errand, a dead errand for a trait list) ({$label}).");
+        }
+
+        // The control: the identical shape minus the interpolation —
+        // the anonymous verdict is the twins' shared doctrine, held
+        // on both sides of the fix.
+        $refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace($without_interpolation, 'OpenAiOauth', 'shared/src/InterpCarrier.php'),
+            'The interpolation-free control must refuse the rewrite too.', \RuntimeException::class
+        );
+        $this->assertStringNotContainsString('write one use per line', $refusal->getMessage(), 'The control keeps the anonymous trait verdict — the fix moved the interpolated twin TO it, never the control away.');
+    }
+
+    /**
      * Verifier-round pin (t31-r11-8): octal escapes past \377 unescape
      * DEPRECATION-FREE. The engine wraps such escapes to the low byte
      * ("\400" is chr(0), "\777" is chr(255) — verified against the
