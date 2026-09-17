@@ -104,7 +104,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     public function testRealZaiArtifactShipsBothProvidersAndStaysStandalone()
     {
         $this->withArtifactStatePreserved(
-            'connectors-zai-0.1.0.zip',
+            'connectors-zai-' . self::headerVersion(__DIR__ . '/../connectors/zai/zai.php') . '.zip',
             function (string $zipPath): void {
                 $built = WpConnectorsBuild::buildPlugin(__DIR__ . '/../connectors/zai', self::distDir());
                 $this->assertSame($zipPath, $built);
@@ -295,7 +295,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zipPath = $this->buildFixture();
 
         $this->assertSame(
-            'connectors-example-connector-0.1.0.zip',
+            self::fixtureZipName(),
             basename($zipPath),
             'Zip name must be connectors-<slug>-<version>.zip'
         );
@@ -2014,7 +2014,7 @@ FIXTURE;
         $this->copyFixturePlugin($tempPlugin);
         $mainPath = $tempPlugin . '/example-connector.php';
         $main = (string) file_get_contents($mainPath);
-        $main = str_replace('Version:           0.1.0', 'Version:           0.2.0', $main);
+        $main = str_replace('Version:           ' . self::fixtureVersion(), 'Version:           0.2.0', $main);
         file_put_contents($mainPath, $main);
 
         $refusal = $this->refusalOf(
@@ -2429,7 +2429,7 @@ FIXTURE;
             // t31-r5-S shape produces every byte at a temp path first
             // and refuses the landing before any rename).
             file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
-            $blockedZip = $scratch . '/dist/connectors-example-connector-0.1.0.zip';
+            $blockedZip = $scratch . '/dist/' . self::fixtureZipName();
             mkdir($blockedZip, 0755, true);
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
@@ -2471,7 +2471,7 @@ FIXTURE;
             // (e) t31-r5-S pin: the staging archive path is refuse-able
             // too (leftover junk at the temp path), and that production
             // failure likewise leaves the previous good set untouched.
-            $stagingArchive = $scratch . '/dist/.connectors-example-connector-0.1.0.zip.tmp-' . getmypid();
+            $stagingArchive = $scratch . '/dist/.' . self::fixtureZipName() . '.tmp-' . getmypid();
             unlink($scratch . '/shared/src/Broken.php');
             mkdir($stagingArchive, 0755, true);
             $refusal = $this->refusalOf(
@@ -4445,7 +4445,7 @@ FIXTURE;
             WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $rebuilt = (string) file_get_contents($manifestPath);
             $this->assertStringContainsString('connectors-other-demo-1.0.0.zip', $rebuilt, "The sibling plugin's entry survives the recovered merge.");
-            $this->assertStringContainsString('connectors-example-connector-0.1.0.zip', $rebuilt);
+            $this->assertStringContainsString(self::fixtureZipName(), $rebuilt);
         } finally {
             @chmod($manifestPath, 0644);
             WpHarness::rrmdir($scratch);
@@ -4479,7 +4479,7 @@ FIXTURE;
             // Both the header and the constant carry the spelling (the
             // version-constant gate requires them to match).
             $traversal = '0.1/../../../vsec-precious';
-            file_put_contents($mainPath, str_replace(array('Version:           0.1.0', "'0.1.0'"), array("Version:           {$traversal}", "'{$traversal}'"), $main));
+            file_put_contents($mainPath, str_replace(array('Version:           ' . self::fixtureVersion(), "'" . self::fixtureVersion() . "'"), array("Version:           {$traversal}", "'{$traversal}'"), $main));
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir()),
                 'A traversal-spelled Version header must refuse the build at the header gate.', \RuntimeException::class
@@ -4489,12 +4489,12 @@ FIXTURE;
 
             // Control: the ordinary version shape still builds, and the
             // token charset's legal specials (dot, plus) pass the gate.
-            file_put_contents($mainPath, str_replace(array("Version:           {$traversal}", "'{$traversal}'"), array('Version:           0.1.0', "'0.1.0'"), $main));
+            file_put_contents($mainPath, str_replace(array("Version:           {$traversal}", "'{$traversal}'"), array('Version:           ' . self::fixtureVersion(), "'" . self::fixtureVersion() . "'"), $main));
             $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
             $this->assertFileExists($zipPath);
 
             foreach (array('1.0.0-beta.1', '1.0+build.2') as $legal) {
-                file_put_contents($mainPath, str_replace(array('Version:           0.1.0', "'0.1.0'"), array("Version:           {$legal}", "'{$legal}'"), $main));
+                file_put_contents($mainPath, str_replace(array('Version:           ' . self::fixtureVersion(), "'" . self::fixtureVersion() . "'"), array("Version:           {$legal}", "'{$legal}'"), $main));
                 $legalZip = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
                 @unlink($legalZip);
                 @unlink($legalZip . '.sha256');
@@ -6467,16 +6467,16 @@ FIXTURE;
             // (a) The sidecar landing path blocked: the pre-flight
             // refuses before anything lands — no zip, no manifest, the
             // blocking directory untouched.
-            mkdir($scratch . '/dist/connectors-example-connector-0.1.0.zip.sha256');
+            mkdir($scratch . '/dist/' . self::fixtureZipName() . '.sha256');
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
                 'A blocked sidecar landing must refuse the build, never exit 0 with a half-described artifact set.', \RuntimeException::class
             );
             $this->assertStringContainsString('not a regular file', $refusal->getMessage());
-            $this->assertStringContainsString('connectors-example-connector-0.1.0.zip.sha256', $refusal->getMessage());
-            $this->assertFileDoesNotExist($scratch . '/dist/connectors-example-connector-0.1.0.zip', 'Nothing lands when the pre-flight refuses.');
+            $this->assertStringContainsString(self::fixtureZipName() . '.sha256', $refusal->getMessage());
+            $this->assertFileDoesNotExist($scratch . '/dist/' . self::fixtureZipName(), 'Nothing lands when the pre-flight refuses.');
             $this->assertFileDoesNotExist($scratch . '/dist/checksums.txt', 'No manifest may land beside a refused landing.');
-            rmdir($scratch . '/dist/connectors-example-connector-0.1.0.zip.sha256');
+            rmdir($scratch . '/dist/' . self::fixtureZipName() . '.sha256');
 
             // Control: the same inputs build cleanly once the blocker is
             // gone (nothing the failed run left behind collides).
@@ -6843,10 +6843,55 @@ FIXTURE;
             $this->assertStringContainsString('symlink', $refusal->getMessage());
             $this->assertStringContainsString('leaked-config.txt', $refusal->getMessage());
             $this->assertStringContainsString('outside-secret.txt', $refusal->getMessage(), 'The refusal names the link target — the leak half stays visible in the diagnostic.');
-            $this->assertSame(array(), glob(self::distDir() . '/connectors-example-connector-0.1.0.zip*') ?: array(), 'The refused build must leave no artifact behind.');
+            $this->assertSame(array(), glob(self::distDir() . '/' . self::fixtureZipName() . '*') ?: array(), 'The refused build must leave no artifact behind.');
         } finally {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
+    }
+
+    /**
+     * The plugin header's Version token, read at runtime from the main
+     * file the BUILD itself reads (OCR round 17, t31-ocr17-6): every
+     * version the pins compare is DERIVED from that source of truth,
+     * never a literal — a version bump then changes the header exactly
+     * once and every assertion follows it, where a hardcoded '0.1.0'
+     * broke the suite in non-obvious ways (an artifact-name pin
+     * failing far from the bump; a str_replace patch silently matching
+     * nothing, its leg vacuous green).
+     *
+     * @param string $mainFile Absolute path to a plugin main file.
+     * @return string The header's Version token.
+     */
+    private static function headerVersion( string $mainFile ): string
+    {
+        self::assertSame(
+            1,
+            preg_match( '/^\s*\*\s*Version:\s*(\S+)/m', (string) file_get_contents( $mainFile ), $matches ),
+            "The plugin main file must carry a header Version line for the pins to read: {$mainFile}"
+        );
+
+        return $matches[1];
+    }
+
+    /**
+     * The fixture plugin's version, from the fixture's own header.
+     *
+     * @return string The example-connector fixture's Version token.
+     */
+    private static function fixtureVersion(): string
+    {
+        return self::headerVersion( __DIR__ . '/fixtures/plugins/' . self::FIXTURE . '/' . self::FIXTURE . '.php' );
+    }
+
+    /**
+     * The artifact zip basename the build derives from the fixture —
+     * connectors-<slug>-<version>.zip, both halves from source.
+     *
+     * @return string The expected artifact basename.
+     */
+    private static function fixtureZipName(): string
+    {
+        return 'connectors-' . self::FIXTURE . '-' . self::fixtureVersion() . '.zip';
     }
 
     /**
