@@ -527,9 +527,26 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         mkdir($extract, 0755, true);
         try {
             $zip = new ZipArchive();
-            $zip->open($zipPath);
-            $zip->extractTo($extract);
+            /*
+             * Both returns OWNED (OCR round 11, t31-ocr11-6): an
+             * unchecked reopen/extraction walked an EMPTY dir, every
+             * file check skipped, and the soundness half passed
+             * vacuously — a green battery over a judgment that never
+             * ran (the strict-gate doctrine the suite's other open()
+             * sites carry, t31-ocr10-16). A failed open/extract is a
+             * FAIL row naming the return, never a silent pass.
+             */
+            $opened = $zip->open($zipPath);
+            if (true !== $opened) {
+                $zip->close();
+
+                return array('class' => 'FAIL', 'why' => 'the independent extraction could not reopen the artifact — open() returned ' . var_export($opened, true));
+            }
+            $extracted = $zip->extractTo($extract);
             $zip->close();
+            if (true !== $extracted) {
+                return array('class' => 'FAIL', 'why' => 'the independent extraction returned failure — the soundness walk must never judge an empty or partial tree');
+            }
             $iterator = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator($extract, FilesystemIterator::SKIP_DOTS)
             );
