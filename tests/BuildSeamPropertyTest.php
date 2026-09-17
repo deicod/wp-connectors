@@ -299,8 +299,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // the pre-flight, before the first rename.
                 'expect' => 'LOUD',
                 'apply' => static function (array $scratch): void {
-                    unlink($scratch['dist'] . '/connectors-example-connector-0.1.0.zip.sha256');
-                    mkdir($scratch['dist'] . '/connectors-example-connector-0.1.0.zip.sha256');
+                    unlink($scratch['zip'] . '.sha256');
+                    mkdir($scratch['zip'] . '.sha256');
                 },
                 'fragment' => 'not a regular file',
             ),
@@ -315,8 +315,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             'landing-zip-blocked' => array(
                 'expect' => 'LOUD',
                 'apply' => static function (array $scratch): void {
-                    unlink($scratch['dist'] . '/connectors-example-connector-0.1.0.zip');
-                    mkdir($scratch['dist'] . '/connectors-example-connector-0.1.0.zip');
+                    unlink($scratch['zip']);
+                    mkdir($scratch['zip']);
                 },
                 'fragment' => 'not a regular file',
             ),
@@ -367,7 +367,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // path is a production failure, not a landing one.
                 'expect' => 'LOUD',
                 'apply' => static function (array $scratch): void {
-                    mkdir($scratch['dist'] . '/.connectors-example-connector-0.1.0.zip.tmp-' . getmypid());
+                    mkdir($scratch['dist'] . '/.' . basename($scratch['zip']) . '.tmp-' . getmypid());
                 },
                 'fragment' => 'cannot create the staging archive',
             ),
@@ -774,13 +774,28 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          */
         WpHarness::copyTree(realpath(__DIR__ . '/fixtures/plugins/example-connector'), $plugin);
         file_put_contents($plugin . '/build.json', "{\"embed_shared\": true}\n");
+        /*
+         * The artifact name derives from the FIXTURE at runtime (OCR
+         * round 11, t31-ocr11-7): build.php names it
+         * connectors-{slug}-{Version header}.zip, and the battery once
+         * pinned the literal 'connectors-example-connector-0.1.0.zip'
+         * — a fixture version bump reddened five-plus rows as phantom
+         * build defects. The derivation rides the file's own needle
+         * regex (the version-header-traversal row's, t31-ocr6-8): a
+         * needle miss fails loudly AT THE DERIVATION, never runs a
+         * no-op expectation as a phantom verdict.
+         */
+        $main = (string) file_get_contents($plugin . '/example-connector.php');
+        if (1 !== preg_match('/Version:([ \t]++)(\S++)/', $main, $header)) {
+            throw new RuntimeException('battery scratch: the fixture main file carries no Version header — the artifact-name derivation needle drifted (t31-ocr11-7).');
+        }
 
         return array(
             'root' => $root,
             'plugin' => $plugin,
             'dist' => $root . '/dist',
             'shared' => $root . '/shared/src',
-            'zip' => $root . '/dist/connectors-example-connector-0.1.0.zip',
+            'zip' => $root . '/dist/connectors-example-connector-' . $header[2] . '.zip',
         );
     }
 
