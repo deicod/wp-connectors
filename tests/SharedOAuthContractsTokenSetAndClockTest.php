@@ -403,6 +403,16 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $this->assertNotSame($set, $merged);
         $this->assertSame($stored, $merged->refresh_token());
         $this->assertSame($set->access_token(), $merged->access_token());
+
+        /*
+         * The null-on-null leg (t31-ocr14-2): a set with NO refresh
+         * token merged with an omitting response still has none — the
+         * keep-on-null contract must not invent a token where none was
+         * stored, and must not refuse either (null is a legal state on
+         * both sides of the merge).
+         */
+        $none = new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, $this->obtainedAt());
+        $this->assertNull($none->with_replacement_refresh_token(null)->refresh_token(), 'A stored null stays null through an omitting response.');
     }
 
     public function testNonEmptyReplacementReplacesRefreshToken(): void
@@ -425,6 +435,26 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
 
         $this->expectException(\InvalidArgumentException::class);
         $set->with_replacement_refresh_token('');
+    }
+
+    /**
+     * The @throws spelling's other half (t31-ocr14-2): the contract
+     * promises rejection of a non-null empty OR whitespace-only
+     * replacement — only the empty spelling was pinned. A
+     * whitespace-only string accepted silently would REPLACE the
+     * stored token with garbage while claiming to have refused it.
+     */
+    public function testWhitespaceOnlyReplacementIsRejected(): void
+    {
+        $stored = FakeSecrets::refreshToken();
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), $stored, 3600, $this->obtainedAt());
+
+        $refusal = $this->refusalOf(
+            fn() => $set->with_replacement_refresh_token('   '),
+            'A whitespace-only replacement must reject, never ride silently.', \InvalidArgumentException::class
+        );
+        $this->assertStringContainsString('non-whitespace', $refusal->getMessage());
+        $this->assertSame($stored, $set->refresh_token(), 'The rejected merge leaves the stored set untouched.');
     }
 
     /* ---------------------------------------------------------------
