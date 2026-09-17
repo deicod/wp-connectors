@@ -378,7 +378,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         }
         mkdir($extractDir, 0755, true);
         $zip = new ZipArchive();
-        $zip->open($zipPath);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath)),
+            sprintf(
+                'The zip under test must open: %s (ZipArchive::open() returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->extractTo($extractDir);
         $zip->close();
 
@@ -442,7 +449,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zipPath = $this->buildBadZip('devfiles-demo', '');
         $extra = self::distDir() . '/connectors-devfiles-demo-1.0.0.zip';
         $zip = new ZipArchive();
-        $zip->open($zipPath);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath)),
+            sprintf(
+                'The zip under test must open: %s (ZipArchive::open() returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString('devfiles-demo/vendor/autoload.php', "<?php\n");
         $zip->addFromString('devfiles-demo/composer.json', '{}');
         $zip->close();
@@ -469,7 +483,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $head = "Plugin Name:       vendor\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       vendor\nAuthor:            x\n";
         $zipPath = self::distDir() . '/connectors-vendor-1.0.0.zip';
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString('vendor/vendor.php', "<?php\n/**\n * {$head} */\ndefine( 'VENDOR_VERSION', '1.0.0' );\n");
         $zip->addFromString('vendor/src/Shared/composer.json', '{}');
         $zip->addFromString('vendor/src/Shared/vendor/x.php', "<?php\n");
@@ -499,7 +520,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $main = "<?php\n/**\n * {$head} */\ndefine( 'PARTEXTRACT_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\PartextractDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString("{$slug}/{$slug}.php", $main);
         $zip->addFromString("{$slug}/src/autoload.php", $autoload);
         // The >NAME_MAX entry: extraction of the tree fails at this entry.
@@ -565,7 +593,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $slug = 'mkdirexhaust-demo';
         $zipPath = $scratch . "/connectors-{$slug}-1.0.0.zip";
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString("{$slug}/{$slug}.php", "<?php\n");
         $zip->close();
 
@@ -622,7 +657,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             $slug = 'partextract-demo';
             $longNameZip = $scratch . "/connectors-{$slug}-1.0.0.zip";
             $zip = new ZipArchive();
-            $zip->open($longNameZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $this->assertTrue(
+                true === ($opened = $zip->open($longNameZip, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+                sprintf(
+                    '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                    $longNameZip,
+                    var_export($opened, true)
+                )
+            );
             $zip->addFromString("{$slug}/{$slug}.php", "<?php\n");
             $zip->addFromString("{$slug}/assets/" . str_repeat('a', 300) . '.php', "<?php\n");
             $zip->close();
@@ -667,7 +709,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\Linkdemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
             $greenZip = $scratch . '/connectors-linkdemo-1.0.0.zip';
             $zip = new ZipArchive();
-            $zip->open($greenZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $this->assertTrue(
+                true === ($opened = $zip->open($greenZip, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+                sprintf(
+                    '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                    $greenZip,
+                    var_export($opened, true)
+                )
+            );
             $zip->addFromString('linkdemo/linkdemo.php', $main);
             $zip->addFromString('linkdemo/src/autoload.php', $autoload);
             $zip->close();
@@ -981,7 +1030,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
         $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString("{$slug}/{$slug}.php", $main);
         $zip->addFromString("{$slug}/src/autoload.php", $autoload);
         $zip->addFromString("{$slug}/src/Shared/keys.txt", "aws = {$key}\n");
@@ -1001,7 +1057,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // files finds nothing.
         $clean = self::distDir() . "/connectors-{$slug}-1.0.0-clean.zip";
         $zip = new ZipArchive();
-        $zip->open($clean, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($clean, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $clean,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString("{$slug}/{$slug}.php", $main);
         $zip->addFromString("{$slug}/src/autoload.php", $autoload);
         $zip->addFromString("{$slug}/src/Shared/vendor/README.txt", "vendored dependency notes\n");
@@ -1201,7 +1264,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // the pre-round byte-exact verdict, restored.
         $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString("{$slug}/{$slug}.php", $main);
         $zip->addFromString("{$slug}/src/autoload.php", $autoload);
         $zip->addFromString("{$slug}/SRC/SHARED/composer.json", "{}\n");
@@ -1217,7 +1287,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // exemption never exempts content (t31-r12-3): a live key
         // under the canonical prefix rejects through the unpruned scan.
         $key = 'AKIA' . strtoupper(bin2hex(random_bytes(8)));
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString("{$slug}/{$slug}.php", $main);
         $zip->addFromString("{$slug}/src/autoload.php", $autoload);
         $zip->addFromString("{$slug}/src/Shared/vendor/notes.txt", "vendored dependency notes\n");
@@ -1227,7 +1304,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase'),
             'The canonical embed territory stays exempt from classification — the t31-r5-5 doctrine unchanged.'
         );
-        $zip->open($zipPath);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath)),
+            sprintf(
+                'The zip under test must open: %s (ZipArchive::open() returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString("{$slug}/src/Shared/vendor/keys.txt", "aws = {$key}\n");
         $zip->close();
         $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase');
@@ -1245,7 +1329,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // it must be a normal violation with the work dir cleaned up.
         $zipPath = self::distDir() . '/connectors-rootfile-demo-1.0.0.zip';
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $main = "<?php\n/**\n * Plugin Name:       rootfile-demo\n * Version:           1.0.0\n * Requires at least: 6.9\n * Requires PHP:      8.2\n * License:           GPL-2.0-or-later\n * Text Domain:       rootfile-demo\n * Author:            x\n */\ndefine( 'ROOTFILE_DEMO_VERSION', '1.0.0' );\n";
         $zip->addFromString('plugin.php', $main);
         $zip->close();
@@ -1300,7 +1391,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // And the inspector rejects the archive shape it would produce.
         $zipPath = self::distDir() . '/connectors-twomain-demo-1.0.0.zip';
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         foreach (array('twomain-demo.php', 'second-entry.php', 'src/autoload.php') as $relative) {
             $zip->addFile($tempPlugin . '/' . $relative, 'twomain-demo/' . $relative);
         }
@@ -1325,7 +1423,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $zipPath = self::distDir() . '/connectors-traversal-demo-1.0.0.zip';
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString('../payload.php', "<?php\n/**\n * Plugin Name:       traversal-demo\n * Version:           1.0.0\n */\n");
         $zip->close();
 
@@ -1344,7 +1449,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $zipPath = self::distDir() . '/connectors-midpath-demo-1.0.0.zip';
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString('midpath-demo/midpath-demo.php', "<?php\n/**\n * Plugin Name:       midpath-demo\n * Version:           1.0.0\n */\n");
         $zip->addFromString('midpath-demo/src/../../escape.php', "<?php\necho 'outside';\n");
         $zip->close();
@@ -1367,7 +1479,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // would extract outside the work dir.
         $zipPath = self::distDir() . '/connectors-backslash-demo-1.0.0.zip';
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFromString('backslash-demo/backslash-demo.php', "<?php\n/**\n * Plugin Name:       backslash-demo\n * Version:           1.0.0\n */\n");
         $zip->addFromString("backslash-demo/src\\..\\..\\escape.php", "<?php\necho 'outside';\n");
         $zip->close();
@@ -1426,7 +1545,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // The inspector enforces the same shared rule on built artifacts.
         $zipPath = self::distDir() . '/connectors-anchored-demo-1.0.0.zip';
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         foreach (array('anchored-demo.php', 'src/autoload.php', 'src/support.php', 'src/Settings/bootstrap.php', 'src/escape.php') as $relative) {
             $zip->addFile($tempPlugin . '/' . $relative, 'anchored-demo/' . $relative);
         }
@@ -1920,7 +2046,14 @@ FIXTURE;
             // namespace and the shared/src-prefixed provenance.
             $suffix = WpConnectorsBuild::namespaceSuffixFromSlug('example-connector');
             $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
+            $this->assertTrue(
+                true === ($opened = $zip->open($zipPath)),
+                sprintf(
+                    'The zip must open for the entry read: %s (ZipArchive::open() returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                    $zipPath,
+                    var_export($opened, true)
+                )
+            );
             $embedded = (string) $zip->getFromName('example-connector/src/Shared/Http/HeaderMap.php');
             $zip->close();
             $this->assertStringContainsString('namespace Deicod\\WpConnectors\\' . $suffix . '\\Shared\\Http;', $embedded);
@@ -2362,7 +2495,14 @@ FIXTURE;
 
             $zipPath = WpConnectorsBuild::buildPlugin($plugin, $scratch . '/dist');
             $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
+            $this->assertTrue(
+                true === ($opened = $zip->open($zipPath)),
+                sprintf(
+                    'The zip must open for the entry read: %s (ZipArchive::open() returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                    $zipPath,
+                    var_export($opened, true)
+                )
+            );
             $embedded = (string) $zip->getFromName('3cx-oauth/src/Shared/Clock/ClockInterface.php');
             $shippedMain = (string) $zip->getFromName('3cx-oauth/3cx-oauth.php');
             $zip->close();
@@ -2475,7 +2615,14 @@ FIXTURE;
             // safety judges every entry, embedded or not).
             $hostileZip = $scratch . '/dist/connectors-hostile-shared-1.0.0.zip';
             $hostile = new ZipArchive();
-            $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $this->assertTrue(
+                true === ($opened = $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+                sprintf(
+                    '%s cannot be opened for hostile-zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                    $hostileZip,
+                    var_export($opened, true)
+                )
+            );
             $hostile->addFromString('hostile-shared/hostile-shared.php', "<?php\n/**\n * Plugin Name:       hostile-shared\n * Version:           1.0.0\n */\n");
             $hostile->addFromString('hostile-shared/src/Shared/../../escape.php', "<?php\necho 'outside';\n");
             $hostile->close();
@@ -2654,7 +2801,14 @@ FIXTURE;
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $names = $this->zipEntryNames($zipPath);
             $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
+            $this->assertTrue(
+                true === ($opened = $zip->open($zipPath)),
+                sprintf(
+                    'The zip must open for the entry read: %s (ZipArchive::open() returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                    $zipPath,
+                    var_export($opened, true)
+                )
+            );
             $embedded = (string) $zip->getFromName('example-connector/src/Shared/ClockMath.php');
             $zip->close();
             $this->assertContains('example-connector/src/Shared/ClockMath.php', $names, 'The canonically-spelled source ships at its exact path.');
@@ -3277,7 +3431,14 @@ FIXTURE;
             // its own teeth; the shared list only aligned them).
             $hostileZip = self::distDir() . '/connectors-deventry-demo-1.0.0.zip';
             $hostile = new ZipArchive();
-            $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $this->assertTrue(
+                true === ($opened = $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+                sprintf(
+                    '%s cannot be opened for hostile-zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                    $hostileZip,
+                    var_export($opened, true)
+                )
+            );
             $head = "Plugin Name:       deventry-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       deventry-demo\nAuthor:            x\n";
             $hostile->addFromString('deventry-demo/deventry-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'DEVENTRY_DEMO_VERSION', '1.0.0' );\n");
             foreach (array('deventry-demo/phpunit.cache/cached.xml', 'deventry-demo/.phpunit.cache/cached.xml', 'deventry-demo/webpack.config.js') as $entry) {
@@ -3368,7 +3529,14 @@ FIXTURE;
             // same case-variant spellings rejects, naming them.
             $hostileZip = self::distDir() . '/connectors-deventrycase-demo-1.0.0.zip';
             $hostile = new ZipArchive();
-            $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $this->assertTrue(
+                true === ($opened = $hostile->open($hostileZip, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+                sprintf(
+                    '%s cannot be opened for hostile-zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                    $hostileZip,
+                    var_export($opened, true)
+                )
+            );
             $head = "Plugin Name:       deventrycase-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       deventrycase-demo\nAuthor:            x\n";
             $hostile->addFromString('deventrycase-demo/deventrycase-demo.php', "<?php\n/**\n * {$head} */\ndefine( 'DEVENTRYCASE_DEMO_VERSION', '1.0.0' );\n");
             foreach (array( 'deventrycase-demo/Tests/Bootstrap.php', 'deventrycase-demo/Build.json', 'deventrycase-demo/VENDOR/lib.php', 'deventrycase-demo/vendor /acme/DevDependency.php' ) as $entry) {
@@ -4086,7 +4254,14 @@ FIXTURE;
                     $built = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
                     $this->assertSame($zipPath, $built);
                     $zip = new ZipArchive();
-                    $this->assertTrue($zip->open($zipPath));
+                    $this->assertTrue(
+                        true === ($opened = $zip->open($zipPath)),
+                        sprintf(
+                            'The zip must open for the entry read: %s (ZipArchive::open() returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                            $zipPath,
+                            var_export($opened, true)
+                        )
+                    );
                     $shippedMain = (string) $zip->getFromName('my.plugin/my.plugin.php');
                     $zip->close();
                     $probe = self::distDir() . '/.dot-slug/probe-main.php';
@@ -6079,7 +6254,14 @@ FIXTURE;
     {
         $zipPath = self::distDir() . '/connectors-phplint-demo-1.0.0.zip';
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $head = "Plugin Name:       phplint-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       phplint-demo\nAuthor:            x\n";
         $main = "<?php\n/**\n * {$head} */\ndefine( 'PHPLINT_DEMO_VERSION', '1.0.0' );\n";
         $zip->addFromString('phplint-demo/phplint-demo.php', $main);
@@ -6159,7 +6341,14 @@ FIXTURE;
             file_put_contents($scratch . '/shared/src/GroupUse.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock\\ClockInterface};\nclass GroupUseHostile\n{\n}\n");
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $zip = new ZipArchive();
-            $this->assertTrue($zip->open($zipPath));
+            $this->assertTrue(
+                true === ($opened = $zip->open($zipPath)),
+                sprintf(
+                    'The zip must open for the entry read: %s (ZipArchive::open() returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                    $zipPath,
+                    var_export($opened, true)
+                )
+            );
             $embedded = (string) $zip->getFromName('example-connector/src/Shared/GroupUse.php');
             $zip->close();
             $this->assertStringContainsString('use Deicod\\WpConnectors\\{' . $suffix . '\\Shared\\Clock\\ClockInterface};', $embedded, 'A group-use member must ship REWRITTEN, never pointing at the source namespace.');
@@ -6402,7 +6591,14 @@ FIXTURE;
 
         $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
         $zip = new ZipArchive();
-        $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
         $zip->addFile($tmp . '/' . $slug . '/' . $slug . '.php', "{$slug}/{$slug}.php");
         $zip->addFile($tmp . '/' . $slug . '/src/autoload.php', "{$slug}/src/autoload.php");
         $zip->close();
