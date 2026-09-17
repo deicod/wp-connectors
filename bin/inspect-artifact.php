@@ -185,19 +185,21 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * refused the same spelling since t31-r5-14 (the near-source
          * fence over development trees); the EXTRACTION fence — where
          * the names are ARCHIVE-CONTROLLED, the hostile surface —
-         * refused nothing. The composition is the collector's own:
-         * the RAW lens first (a plain .php segment is an ordinary
-         * source, judged by the syntax loop below), and only a
-         * segment that is NOT a source raw but IS one through the
-         * ONE edge-junk fold (trailing side only, per segment — the
-         * leading side stays, the fold doctrine's own line) refuses
-         * — never extraction, the whole artifact refuses BEFORE
-         * extractTo() runs (the traversal refusal's shape: a fold
-         * the host applies is a fold the fence must judge).
+         * refused nothing. The judgment rides the ONE near-source
+         * owner (wp_connectors_segment_is_near_source_php(), the
+         * collector's own composition extracted to one predicate by
+         * the round's verifier pass): the RAW lens first (a plain
+         * .php segment is an ordinary source, judged by the syntax
+         * loop below), and only a segment that is NOT a source raw
+         * but IS one through the ONE edge-junk fold (trailing side
+         * only, per segment — the leading side stays, the fold
+         * doctrine's own line) refuses — never extraction, the whole
+         * artifact refuses BEFORE extractTo() runs (the traversal
+         * refusal's shape: a fold the host applies is a fold the
+         * fence must judge).
          */
         foreach ($parts as $part) {
-            $foldedPart = rtrim((string) $part, wp_connectors_path_edge_junk());
-            if ('' !== $foldedPart && ! wp_connectors_is_php_source($part) && wp_connectors_is_php_source($foldedPart)) {
+            if (wp_connectors_segment_is_near_source_php($part)) {
                 $nearSourceEntries[] = $name;
 
                 break;

@@ -3631,6 +3631,36 @@ function wp_connectors_segment_is_named($segment, array $names)
 }
 
 /**
+ * Whether a path segment's TRAILING edge junk hides a '.php' extension
+ * — the ONE near-source composition (OCR round 20: t31-ocr20-1's
+ * extraction fence, extracted to one owner by the round's verifier
+ * pass over the refutation lens's doctrine finding).
+ *
+ * The judgment owns exactly the DISAGREEMENT class: the raw spelling is
+ * not a PHP source while the trailing-edge-junk-folded spelling is one
+ * ('shell.php ', 'shell.php.', 'shell.php\x01' — bytes every
+ * path-normalizing extraction target lands as a live .php source). A
+ * segment that IS a source raw returns FALSE — it is an ordinary
+ * source, every gate's charge; the fold rides the ONE edge-junk
+ * owner's class on the trailing side only, the leading side stays (the
+ * fold doctrine's own line: a leading dot is content). Both refusal
+ * channels ride this predicate — the shared-source collector's
+ * near-source fence (t31-r5-14/r6-4, over the basename) and the
+ * artifact inspector's extraction fence (t31-ocr20-1, over every
+ * segment) — the channel differs (throw vs violation line), the
+ * judgment does not; the byte class can never drift between them.
+ *
+ * @param string $segment One path segment (a basename is one).
+ * @return bool True when the trailing fold turns the segment into a '.php' source.
+ */
+function wp_connectors_segment_is_near_source_php($segment)
+{
+    $folded = rtrim((string) $segment, wp_connectors_path_edge_junk());
+
+    return '' !== $folded && ! wp_connectors_is_php_source($segment) && wp_connectors_is_php_source($folded);
+}
+
+/**
  * Whether a path segment names a development entry, CASE-INSENSITIVELY
  * (review round t31-r6-3).
  *
@@ -3830,8 +3860,7 @@ function wp_connectors_php_source_files($dir)
              * is the same near-source spelling and refuses the same
              * way.
              */
-            $trimmedTail = rtrim(basename($relative), wp_connectors_path_edge_junk());
-            if ('' !== $trimmedTail && wp_connectors_is_php_source($trimmedTail)) {
+            if (wp_connectors_segment_is_near_source_php(basename($relative))) {
                 throw new RuntimeException(sprintf(
                     'shared source %s is a NEAR-SOURCE spelling (trailing whitespace, control byte, or dot hides the extension) — it reads as a PHP source but is invisible to every gate and absent from every ship; rename it to the canonical .php',
                     $dir . '/' . $relative
