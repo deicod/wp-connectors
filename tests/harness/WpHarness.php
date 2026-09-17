@@ -690,8 +690,23 @@ final class WpHarness
          * normalized scratch paths.
          */
         $ancestor = rtrim($to, '/');
-        while ('' !== $ancestor && '/' !== $ancestor && ! is_dir($ancestor) && ! is_link($ancestor)) {
+        while ('' !== $ancestor && '/' !== $ancestor && ! is_dir($ancestor) && ! is_link($ancestor) && ! is_file($ancestor)) {
             $ancestor = dirname($ancestor);
+        }
+        /*
+         * A regular FILE in the target chain (t31-ocr10-10): the walk
+         * above used to step PAST one (not a dir, not a link — exactly
+         * its walk-on conditions), so containment was judged against
+         * an ancestor ABOVE the file, passed, and the copy died later
+         * in mkdir() as a raw converted E_WARNING instead of the
+         * policy RuntimeException the @throws contract promises — no
+         * byte moved, but the verdict wore the engine's vocabulary.
+         * The walk stops at ANY existing component now; one that
+         * resolves to a file (a link to one included) is a malformed
+         * target chain — no directory can be created through it.
+         */
+        if (is_file($ancestor)) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain crosses a regular FILE — no directory can be created through it: from ' . $from . ' into ' . $to . ' (the crossing component: ' . $ancestor . ')');
         }
         $ancestor_real = realpath($ancestor);
         if (false !== $ancestor_real) {

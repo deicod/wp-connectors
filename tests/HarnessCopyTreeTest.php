@@ -182,6 +182,16 @@ final class HarnessCopyTreeTest extends TestCase
              * physical landing spot.
              */
             $refuses($from . '/src', $from . '/decoy/../src/inside', 'A \'..\'-woven target that lands inside the source must refuse — the spelling is not the location.');
+            /*
+             * (c) The FILE-in-chain target (t31-ocr10-10): the ancestor
+             * walk once stepped PAST a regular file in the chain (not a
+             * dir, not a link — exactly its walk-on conditions), judged
+             * containment against an ancestor ABOVE it, passed, and the
+             * copy died later in mkdir() as a raw E_WARNING instead of
+             * the policy exception the @throws contract promises. The
+             * walk stops at any existing component now.
+             */
+            $refuses($from . '/src', $from . '/plain.txt/inside', 'A target whose chain crosses a regular FILE must refuse with the policy exception naming the crossing — never a raw mkdir() warning from the byte work.');
             if (function_exists('symlink')) {
                 symlink($from . '/src', $from . '/ancestor-link');
                 $refuses($from . '/src', $from . '/ancestor-link/inside', 'A target reached through a SYMLINKED ancestor of the source must refuse — the link is not a door.');
