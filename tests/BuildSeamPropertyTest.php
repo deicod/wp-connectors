@@ -94,7 +94,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         // CLEAN half is charged only where its child-process soundness
         // walk can spawn (t31-ocr20-5).
         $this->assertGreaterThan(0, $run['LOUD'], 'The battery must exercise at least one LOUD state.');
-        if (function_exists('exec') && function_exists('escapeshellarg')) {
+        if (self::canSpawnChildren()) {
             $this->assertGreaterThan(0, $run['CLEAN'], 'The battery must exercise at least one CLEAN state.');
         }
 
@@ -487,7 +487,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * a named why, and the LOUD rows keep their charge (the
          * battery-level skip this replaces silenced them too).
          */
-        if ('CLEAN' === $state['expect'] && (! function_exists('exec') || ! function_exists('escapeshellarg'))) {
+        if ('CLEAN' === $state['expect'] && ! self::canSpawnChildren()) {
             return array('class' => 'SKIP', 'why' => 'exec/escapeshellarg is disabled on this host — the CLEAN row\'s soundness walk and release-gate inspection ride child-process php -l and cannot run (t31-ocr20-5; the LOUD rows need no child process and keep running).');
         }
 
@@ -985,7 +985,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * disable_functions host the first spawn was an
          * undefined-function \Error before a single verdict.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the require-side legs cannot run (all five entry-script probes spawn child processes).');
         }
 

@@ -203,6 +203,25 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
+     * Whether this host can spawn child processes through the shell
+     * vocabulary — the thin wrapper over the ONE capability owner
+     * (t31-ocr21-4, the canSymlink t31-ocr11-9 shape): the pair
+     * (exec, escapeshellarg) plus any spawn function a consumer
+     * rides beyond it names its own variadic extra, and the
+     * plain-TestCase suites (ToolchainSmokeTest,
+     * UnusedImportScannerTest, HarnessCopyTreeTest) reach the same
+     * owner directly through WpHarness::canSpawnChildren(). Skip
+     * messages stay at the call sites, naming their own subjects.
+     *
+     * @param string ...$functions Extra spawn-function names the consumer rides beyond the pair (e.g. 'proc_open').
+     * @return bool True when exec, escapeshellarg, and every named extra exist.
+     */
+    protected static function canSpawnChildren(string ...$functions): bool
+    {
+        return WpHarness::canSpawnChildren(...$functions);
+    }
+
+    /**
      * The shared skip for one chmod-0000 leg (t31-ocr4-1) — consume at
      * the leg. On a mid-test leg the skip aborts the rest of the test,
      * so place it at the FIRST chmod-0000 leg of the test.

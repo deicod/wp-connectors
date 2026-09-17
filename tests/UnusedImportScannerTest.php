@@ -430,7 +430,7 @@ FIXTURE
          * disable_functions host the first spawn was an
          * undefined-function \Error instead of the visible skip.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! WpHarness::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the STDERR-channel message leg cannot run (the clean-name verdict rides a child process).');
         }
 
@@ -476,7 +476,7 @@ FIXTURE
          * on a disable_functions host the first spawn was an
          * undefined-function \Error instead of the visible skip.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! WpHarness::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the scratch-repo gate legs cannot run (both verdicts ride child processes).');
         }
 

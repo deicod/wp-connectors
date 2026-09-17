@@ -286,7 +286,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          * disable_functions host the spawn was an undefined-function
          * \Error instead of the visible skip.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the fresh-process leg cannot run (the scanner loads through a spawned engine).');
         }
 

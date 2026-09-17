@@ -569,7 +569,7 @@ final class HarnessCopyTreeTest extends TestCase
          * caches it, and on a disable_functions host the spawn was an
          * undefined-function \Error instead of the visible skip.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! WpHarness::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the redirected-TMPDIR sim cannot run (the anchor verdicts ride a child process).');
         }
 

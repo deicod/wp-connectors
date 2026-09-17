@@ -417,7 +417,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
              * undefined-function \Error mid-test — the extraction and
              * entry-set assertions above already passed.
              */
-            if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            if (! self::canSpawnChildren()) {
                 $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the post-extraction php -l sweep cannot run; the extraction, entry-set, and LICENSE assertions above already passed.');
             }
             $count = 0;
@@ -2004,7 +2004,7 @@ FIXTURE;
          * spawned build.php, and on a disable_functions host the first
          * escaped argument was an undefined-function \Error mid-test.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the all-plugin rejection leg cannot run (the verdict rides a spawned CLI).');
         }
         $repo = $this->makeBuildCliRepo(array( 'good-demo' => true, 'broken-demo' => false ));
@@ -2032,7 +2032,7 @@ FIXTURE;
          * a disable_functions host the first escaped argument was an
          * undefined-function \Error mid-test.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the all-plugin packaging leg cannot run (the verdict rides a spawned CLI).');
         }
         $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));
@@ -2061,7 +2061,7 @@ FIXTURE;
          * a disable_functions host the first escaped argument was an
          * undefined-function \Error mid-test.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the explicit-slug rejection leg cannot run (the verdict rides a spawned CLI).');
         }
         $repo = $this->makeBuildCliRepo(array( 'broken-demo' => false ));
@@ -2691,7 +2691,7 @@ FIXTURE;
              * build, and embedded-content assertions above already
              * passed.
              */
-            if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            if (! self::canSpawnChildren()) {
                 $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the embedded-copy lint and bare-code referenceability legs cannot run; the derivation, gate, build, and embedded-content assertions above already passed.');
             }
             $lintTarget = $scratch . '/embedded-copy.php';
@@ -3317,7 +3317,7 @@ FIXTURE;
              * skips the pressure half, naming what did not run — the
              * C-locale controls above already passed.)
              */
-            if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            if (! self::canSpawnChildren()) {
                 $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the localedef pressure locale cannot be manufactured; the locale-pressure half did not run (the C-locale controls above already passed).');
             }
             $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
@@ -3774,7 +3774,7 @@ FIXTURE;
          * the very first spawn fataled — so the probe names the
          * spawn function this leg actually rides too.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg') || ! function_exists('proc_open')) {
+        if (! self::canSpawnChildren('proc_open')) {
             $this->markTestSkipped('This host has exec/escapeshellarg/proc_open in disable_functions — the concurrent child builds cannot be spawned; the manifest-merge race half did not run.');
         }
         $connectors = array(
@@ -3879,7 +3879,7 @@ FIXTURE;
          * 60s live sibling): on a disable_functions host the first
          * escaped argument was an undefined-function \Error mid-test.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg') || ! function_exists('proc_open')) {
+        if (! self::canSpawnChildren('proc_open')) {
             $this->markTestSkipped('This host has exec/escapeshellarg/proc_open in disable_functions — the same-plugin concurrent pair and the stage-sweep legs cannot run (both spawn through proc_open).');
         }
         // Part 1, end-to-end through the CLI entry: two synchronized
@@ -4587,7 +4587,7 @@ FIXTURE;
                      * below spawns an engine; the build and entry-read
                      * assertions above already passed.
                      */
-                    if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+                    if (! self::canSpawnChildren()) {
                         $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the shipped-main parse probe cannot run; the derivation, gate, and build assertions above already passed.');
                     }
                     try {
@@ -5076,7 +5076,7 @@ FIXTURE;
          * the lint/load leg below spawns an engine and requires its output
          * file; every detector and rewrite assertion above already passed.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the rewritten-source lint/load leg cannot run; every detector and rewrite assertion above already passed.');
         }
         $temp = self::distDir() . '/.rewrite-test-' . getmypid() . '.php';
@@ -5228,7 +5228,7 @@ FIXTURE;
          * undefined-function Error — @ cannot suppress it — instead of
          * the visible skip. The spelling pins above already passed.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the localedef pressure locale cannot be manufactured; the locale-pressure half did not run (the fold-table and C-locale verdict pins above already passed).');
         }
         $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
@@ -5722,7 +5722,7 @@ FIXTURE;
          * named here, never silently half-run. The detector and rewrite
          * assertions above already passed.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the parse-probe legs cannot run (and the legs below them with them); the detector and rewrite assertions above already passed.');
         }
         $probe = self::distDir() . '/.rel-use-probe.php';
@@ -6587,7 +6587,7 @@ FIXTURE;
          * first escaped argument was an undefined-function \Error
          * mid-test.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the slug-rebuild leg cannot run (both the full run and the partial rebuild ride a spawned CLI).');
         }
         $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));
@@ -6641,7 +6641,7 @@ FIXTURE;
          * disable_functions host the first escaped argument was an
          * undefined-function \Error mid-test.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the failing-rebuild leg cannot run (both the good run and the failing rebuild ride a spawned CLI).');
         }
         $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));

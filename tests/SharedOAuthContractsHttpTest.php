@@ -414,7 +414,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
          * FATALS the leg with an undefined-function Error (@ cannot
          * suppress a missing function) instead of this visible skip.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the localedef pressure locale cannot be manufactured; the LC_CTYPE pressure half did not run (the spelling pins above this point already passed).');
         }
         $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();

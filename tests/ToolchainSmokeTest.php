@@ -167,7 +167,7 @@ final class ToolchainSmokeTest extends TestCase
          * skips VISIBLY instead, naming the capability and what did
          * not run.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! WpHarness::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process lint legs cannot run (t31-ocr16-12).');
         }
 
@@ -261,7 +261,7 @@ final class ToolchainSmokeTest extends TestCase
          * symlink skip, and the promise holds; on exec-less hosts
          * the test names the capability and stops — never a fatal.
          */
-        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+        if (! WpHarness::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process lint legs cannot run, the still-fails controls included (they verdict through a spawned engine); the canSymlink promise below is never reached here (t31-ocr16-12).');
         }
 

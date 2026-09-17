@@ -598,6 +598,41 @@ final class WpHarness
     }
 
     /**
+     * Whether this host can spawn child processes through the shell
+     * vocabulary — the ONE capability owner every exec/escapeshellarg
+     * guard in the battery consults (t31-ocr21-4: the pair was
+     * duplicated near-verbatim at every spawn consumer — five named
+     * sites and more riding inline — the twin shape the one-owner
+     * doctrine exists to close; a future arm added to one hand-rolled
+     * copy would silently fork the guards' verdicts). The PAIR
+     * (exec, escapeshellarg) is the floor; a consumer that spawns
+     * through more than exec() names its extra (proc_open, the
+     * t31-ocr17-10 leg) as its own variadic argument.
+     *
+     * Unlike canSymlink() the signal IS function_exists: symlink()
+     * exists on Windows without the privilege to use it (a probe is
+     * the only honest answer there), but exec()/escapeshellarg() are
+     * plain functions whose absence under disable_functions is the
+     * whole capability story — nothing to probe beyond the listing.
+     * The skip MESSAGE stays at each call site, naming its own
+     * subject and what already passed; this owner answers only the
+     * boolean.
+     *
+     * @param string ...$functions Extra spawn-function names the consumer rides beyond the pair (e.g. 'proc_open').
+     * @return bool True when exec, escapeshellarg, and every named extra exist.
+     */
+    public static function canSpawnChildren(string ...$functions): bool
+    {
+        foreach ($functions as $function) {
+            if (! function_exists($function)) {
+                return false;
+            }
+        }
+
+        return function_exists('exec') && function_exists('escapeshellarg');
+    }
+
+    /**
      * Recursively removes a directory (test helper — the ONE scratch-tree
      * removal owner, t31-ocr1-9: the former per-test twins diverged in
      * error policy; the harness policy is the loud one, and every test
