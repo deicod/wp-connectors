@@ -1472,6 +1472,48 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         unlink($zipPath);
     }
 
+    /*
+     * OCR-round-16 pin (t31-ocr16-1, the security lens): the '..'
+     * traversal refusal owns every spelling that RESOLVES to '..'.
+     * The byte-exact in_array judged only the plain segment, while
+     * the duplicate fence's own edge-junk fold (the trailing
+     * dot/space strip per segment) collapses '.. ' and '...' onto
+     * '..' at extraction on every path-normalizing host (Windows
+     * strips the trailing edge junk) — driven at HEAD: such a zip
+     * carried ZERO traversal violations and the entries extracted
+     * past the work dir's grammar. The refusal rides the same fold
+     * now: one vocabulary, both gates.
+     */
+    public function testInspectorRejectsEdgeJunkSpellingsOfTheTraversalSegment()
+    {
+        $zipPath = self::distDir() . '/connectors-edgejunk-demo-1.0.0.zip';
+        $zip = new ZipArchive();
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
+        $zip->addFromString('edgejunk-demo/edgejunk-demo.php', "<?php\n/**\n * Plugin Name:       edgejunk-demo\n * Version:           1.0.0\n */\n");
+        // Both spellings fold to '..' through the trailing edge-junk
+        // strip: a trailing space, and a trailing dot.
+        $zip->addFromString('edgejunk-demo/src/.. /escape.php', "<?php\necho 'space-tailed';\n");
+        $zip->addFromString('edgejunk-demo/doc/.../escape2.php', "<?php\necho 'dot-tailed';\n");
+        $zip->close();
+
+        $workDir = self::distDir() . '/.inspect-edgejunk';
+        $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
+
+        $this->assertNotSame(array(), $violations, "A '..'-resolving segment ('.. ', '...') is a traversal the fold class already knows collapses — it must be rejected as one.");
+        $this->assertStringContainsString('escapes the extraction directory', implode("\n", $violations));
+        $this->assertDirectoryDoesNotExist($workDir, 'The temp extraction tree must be cleaned up on every path.');
+        $this->assertFileDoesNotExist(dirname($workDir) . '/escape.php', 'Extraction must never write outside the work dir.');
+
+        unlink($zipPath);
+    }
+
     public function testInspectorRejectsBackslashSeparatedPathEntries()
     {
         // A backslash is a harmless literal on Linux but a path separator

@@ -135,7 +135,34 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         // separators are rejected too — harmless literal characters on Linux,
         // but path separators under PHP on Windows. (Applies to EVERY entry,
         // embedded or not — this is host safety, not a tree doctrine.)
-        if (in_array('..', $parts, true) || strpos($name, '\\') !== false) {
+        /*
+         * The refusal owns every spelling that RESOLVES to '..' (OCR
+         * round 16, t31-ocr16-1, the security lens): the byte-exact
+         * in_array judged only the plain spelling, while the very
+         * edge-junk fold the duplicate fence rides strips trailing
+         * junk per segment — so '.. ' and '...' (driven: accepted at
+         * 0 traversal violations) are the PARENT token to every
+         * path-normalizing host (Windows strips trailing spaces,
+         * then collapses a dots-only run of two or more dots onto
+         * '..' at extraction) and the extraction writes outside the
+         * work dir through a spelling the fence's own vocabulary
+         * already knows collapses. The fold is derived from the ONE
+         * edge-junk owner (its class minus the dot — the dot is the
+         * run's own byte, stripped and COUNTED, never part of the
+         * junk): trailing junk only, the LEADING side stays (a
+         * leading byte is content, the fold doctrine's own line).
+         */
+        $hasTraversalSegment = false;
+        $nonDotJunk = str_replace('.', '', wp_connectors_path_edge_junk());
+        foreach ($parts as $part) {
+            $tail = rtrim((string) $part, $nonDotJunk);
+            if ('' === rtrim($tail, '.') && strlen($tail) >= 2) {
+                $hasTraversalSegment = true;
+
+                break;
+            }
+        }
+        if ($hasTraversalSegment || strpos($name, '\\') !== false) {
             $traversalEntries[] = $name;
         }
         /*
