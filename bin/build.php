@@ -936,7 +936,7 @@ final class WpConnectorsBuild
          * case-variant refuse doctrine, so the seam REFUSES-NAMED:
          * the class names which spelling deviates.
          */
-        if (null !== $use_keyword_text && 'use' !== $use_keyword_text && 0 === strcasecmp($use_keyword_text, 'use')) {
+        if (null !== $use_keyword_text && 'use' !== $use_keyword_text && 'use' === wp_connectors_ascii_lower($use_keyword_text)) {
             $labels[] = 'a case-variant use keyword (the engine accepts USE/use alike; the rewrite\'s patterns match the lowercase spelling) — write the keyword lowercase';
         }
         $family = wp_connectors_shared_source_namespace();
@@ -950,7 +950,7 @@ final class WpConnectorsBuild
         }
         if (null !== $canonical) {
             $prefix = (string) substr($reference_name, 0, strlen($canonical));
-            if ($prefix !== $canonical && 0 === strcasecmp($prefix, $canonical)) {
+            if ($prefix !== $canonical && wp_connectors_ascii_lower($prefix) === wp_connectors_ascii_lower($canonical)) {
                 $labels[] = 'a case-variant spelling of the family name (the engine resolves names case-insensitively; the rewrite\'s patterns match the declared spelling byte-exactly) — write the family spelling in its declared case';
             }
         }
@@ -1477,8 +1477,13 @@ final class WpConnectorsBuild
              * and on a case-insensitive extraction target the plugin's
              * copy extracted second (sort order) and silently
              * overwrote the repo license (reproduced). One doctrine,
-             * two territories, one comparison (strcasecmp over the
-             * collected entries): generated destinations REFUSE a
+             * two territories, one comparison — the ONE ASCII fold
+             * (wp_connectors_ascii_lower) over the collected entries,
+             * never strcasecmp(): that fold consults the engine's
+             * locale mapping (the r11-6/ocr10-4 doctrine — on a
+             * locale-consulting engine a Turkish tolower('I') = 0xFD
+             * reads 'LICENSE' as not-the-plugin's-license and injects
+             * the repo copy beside it): generated destinations REFUSE a
              * plugin-owned collision, while this injected convenience
              * DEFERS to the plugin's own file — its license wins in
              * any casing and the repo copy is never injected beside
@@ -1494,8 +1499,9 @@ final class WpConnectorsBuild
              */
             if (is_file($licenseFile)) {
                 $pluginOwnsLicense = false;
+                $folded_license_destination = wp_connectors_ascii_lower($slug . '/LICENSE');
                 foreach ($entries as $existing_entry) {
-                    if (0 === strcasecmp($existing_entry, $slug . '/LICENSE')) {
+                    if (wp_connectors_ascii_lower($existing_entry) === $folded_license_destination) {
                         $pluginOwnsLicense = true;
 
                         break;
@@ -1538,11 +1544,18 @@ final class WpConnectorsBuild
                      * (t31-r12-10): the embed-destination prefix helper
                      * is the single spelling of the embed territory,
                      * consumed by this loop and judged by the inspector
-                     * through the same owner's fold.
+                     * through the same owner's fold. The collision fold
+                     * is the ONE ASCII owner's too (t31-ocr13-1):
+                     * strcasecmp() consults the engine's locale mapping
+                     * (the r11-6/ocr10-4 doctrine), and this comparison
+                     * feeds the build's verdict — a locale-consulting
+                     * fold is a fold whose verdict is a question about
+                     * the process, never a constant of the artifact.
                      */
                     $destination = wp_connectors_embed_destination_prefix($slug) . $relative;
+                    $folded_destination = wp_connectors_ascii_lower($destination);
                     foreach ($entries as $existing_entry) {
-                        if (0 === strcasecmp($existing_entry, $destination)) {
+                        if (wp_connectors_ascii_lower($existing_entry) === $folded_destination) {
                             throw new RuntimeException("build: {$slug} owns {$existing_entry} — a case-insensitive collision with the generated embed copy {$destination}; src/Shared/ is build-generated (build.json embed_shared), so remove or rename the plugin's own file");
                         }
                     }

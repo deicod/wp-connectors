@@ -3548,7 +3548,11 @@ function wp_connectors_development_entry_names()
  * judgment below delegates to it, and subset consumers judge by the
  * same fold — same trailing-junk strip (the ONE edge-junk owner's
  * class; the LEADING side stays, the vocabulary's own dot-led names),
- * same case-insensitive compare, never a byte-exact twin at a consumer.
+ * same case-insensitive compare — through the ONE ASCII fold owner
+ * (wp_connectors_ascii_lower(), t31-ocr13-1): strcasecmp() consults
+ * the engine's locale mapping (the r11-6/ocr10-4 doctrine), and this
+ * judgment feeds the release gates' verdicts — never a byte-exact
+ * twin at a consumer, never a locale-consulting fold at the owner.
  *
  * @param string $segment One path segment (a basename is one).
  * @param list<string> $names Canonical spellings to judge against.
@@ -3556,9 +3560,9 @@ function wp_connectors_development_entry_names()
  */
 function wp_connectors_segment_is_named($segment, array $names)
 {
-    $segment = rtrim((string) $segment, wp_connectors_path_edge_junk());
+    $segment = wp_connectors_ascii_lower(rtrim((string) $segment, wp_connectors_path_edge_junk()));
     foreach ($names as $name) {
-        if (0 === strcasecmp($segment, (string) $name)) {
+        if ($segment === wp_connectors_ascii_lower((string) $name)) {
             return true;
         }
     }

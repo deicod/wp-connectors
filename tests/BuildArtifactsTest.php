@@ -2911,6 +2911,127 @@ FIXTURE;
     }
 
     /**
+     * OCR round 13 (t31-ocr13-1): both collision fences — the LICENSE
+     * injection's DEFERENCE and the embed destination's REFUSAL — fold
+     * case through the ONE ASCII owner (wp_connectors_ascii_lower()),
+     * never a locale-consulting strcasecmp() (the r11-6/ocr10-4
+     * doctrine: a fold that feeds a verdict must be a constant of the
+     * artifact, not a question about the process locale).
+     *
+     * The r11-6 posture, per the ledger's own record: on this 8.5.10
+     * engine PHP's string folds measured ASCII-clean under a live
+     * manufactured tr_TR locale (probed this round too: strcasecmp()
+     * over the collision spellings returned 0 and left the 8-bit bytes
+     * unfolded), while the C-level divergence is real (glibc
+     * tolower('I') = 0xFD under the same locale) — so the pressure
+     * half below pins the verdicts UNDER the live locale rather than
+     * re-driving a red this engine cannot produce; re-open with an
+     * engine whose string folds consult the locale. The C-locale
+     * spelling pins are the battery's case-variant rows and the
+     * license pin above.
+     */
+    public function testTheCollisionFencesFoldCaseThroughTheOneAsciiOwnerUnderTurkishLocale(): void
+    {
+        $scratch = self::distDir() . '/.collision-fold-pressure';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/LICENSE', "REPO LICENSE BYTES\n");
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        file_put_contents(
+            $scratch . '/shared/src/Clock/ClockInterface.php',
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n"
+        );
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+
+        try {
+            // C-locale control: the DEFERENCE half — the plugin's
+            // 'license' wins, the repo copy is never injected beside it.
+            file_put_contents($scratch . '/plugin/example-connector/license', "PLUGIN OWN LICENSE BYTES\n");
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $names = $this->zipEntryNames($zipPath);
+            $this->assertContains('example-connector/license', $names);
+            $this->assertNotContains('example-connector/LICENSE', $names, 'The repo LICENSE defers to the plugin\'s own license (the C-locale control).');
+
+            // C-locale control: the REFUSAL half — the case-variant
+            // plugin-owned embed destination refuses the build.
+            file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+            mkdir($scratch . '/plugin/example-connector/src/Shared/Clock', 0755, true);
+            file_put_contents(
+                $scratch . '/plugin/example-connector/src/Shared/Clock/clockinterface.php',
+                "<?php\n// the plugin author's case-variant own copy\n"
+            );
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
+                'A case-variant plugin-owned embed destination must refuse the build (the C-locale control).', \RuntimeException::class
+            );
+            $this->assertStringContainsString('case-insensitive collision', $refusal->getMessage());
+
+            /*
+             * The pressure half: manufacture the 8-bit Turkish locale,
+             * install it LIVE, and require both fence verdicts
+             * unchanged — the same spells, the same deference and the
+             * same refusal, under a locale whose libc folds I to the
+             * dotless ı. A strcasecmp-riding fence is green here only
+             * by this engine's mercy; the ASCII owner's fold has no
+             * locale to consult. (The exec guard is the ocr6-12
+             * visible-skip doctrine: a host that cannot run localedef
+             * skips the pressure half, naming what did not run — the
+             * C-locale controls above already passed.)
+             */
+            if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+                $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the localedef pressure locale cannot be manufactured; the locale-pressure half did not run (the C-locale controls above already passed).');
+            }
+            $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
+            @mkdir($locpath, 0755, true);
+            exec('localedef -i tr_TR -f ISO-8859-9 ' . escapeshellarg($locpath . '/tr_TR.ISO-8859-9') . ' 2>/dev/null', $localedefOutput, $localedefExit);
+            if (0 !== $localedefExit) {
+                WpHarness::rrmdir($locpath);
+                $this->markTestSkipped('The tr_TR.ISO-8859-9 pressure locale could not be manufactured on this host (localedef exit ' . $localedefExit . ') — the locale-pressure half did not run; the C-locale controls above already passed.');
+            }
+            $previous = setlocale(LC_CTYPE, '0');
+            $previousLocpath = getenv('LOCPATH');
+            try {
+                putenv('LOCPATH=' . $locpath);
+                $this->assertNotFalse(setlocale(LC_CTYPE, 'tr_TR.ISO-8859-9'), 'The manufactured locale must install.');
+                $this->assertTrue(ctype_lower("\xE3"), 'ctype consults the manufactured 8-bit LC_CTYPE — the pressure is live.');
+
+                // REFUSAL under pressure (the scratch still carries the
+                // control's plant): the case-variant collision still
+                // refuses, naming the plugin's own file.
+                $refusal = $this->refusalOf(
+                    fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
+                    'The case-variant embed collision still refuses under the live Turkish locale.', \RuntimeException::class
+                );
+                $this->assertStringContainsString('case-insensitive collision', $refusal->getMessage(), 'The refusal keeps its class under the live Turkish locale — the fold is the ASCII owner\'s, not the locale\'s.');
+
+                // DEFERENCE under pressure: with the collision plant
+                // gone (the embed is not requested), still exactly the
+                // plugin's one license entry, never the repo copy
+                // beside it.
+                unlink($scratch . '/plugin/example-connector/build.json');
+                unlink($scratch . '/plugin/example-connector/src/Shared/Clock/clockinterface.php');
+                $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $names = $this->zipEntryNames($zipPath);
+                $this->assertContains('example-connector/license', $names, 'The plugin\'s own license still ships under the live Turkish locale.');
+                $this->assertNotContains('example-connector/LICENSE', $names, 'The repo LICENSE is never injected beside the plugin\'s license under the live Turkish locale — a locale-consulting fold would read LICENSE as foreign and inject it.');
+            } finally {
+                // LOCPATH restored BEFORE the locale, the restore
+                // CHECKED (the r11-6 idiom): a leaked pressure locale
+                // breaks every later /i match in this process.
+                putenv(false === $previousLocpath ? 'LOCPATH' : 'LOCPATH=' . $previousLocpath);
+                if (false === setlocale(LC_CTYPE, $previous)) {
+                    setlocale(LC_CTYPE, 'C');
+                }
+                WpHarness::rrmdir($locpath);
+            }
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r5-2, the sanctioned reopen of the t31-r3
      * verifier note): both collection points read LOUDLY now. A failed
      * read laundered through (string)/(unchecked copy) shipped 0-byte
