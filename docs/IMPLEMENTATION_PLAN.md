@@ -3435,6 +3435,253 @@ OCR-tool round
   fixes),
   2 skipped
   unchanged.
+OCR-tool
+  round
+  t31-ocr21
+  (EIGHT
+  commits —
+  the
+  twenty-first
+  pass, 62/62,
+  8/8 findings
+  accepted;
+  trajectory
+  27→10→11→7→
+  11→33→9→9→4→
+  12; the
+  round's
+  lesson: an
+  engine-matrix
+  premise is a
+  VENDOR-RECORD
+  claim —
+  the phantom
+  "php.net
+  8.3.0 chip"
+  on RDONLY
+  survived
+  driver
+  triage AND
+  the fix
+  commit
+  because
+  nobody
+  fetched the
+  record until
+  the
+  verifier;
+  drive
+  version-history
+  premises at
+  the
+  stub/constants
+  page BEFORE
+  the fix
+  lands): the
+  headliner's
+  premise
+  REFUTED by
+  both lenses
+  independently
+  (RDONLY is
+  7.4.3/PECL
+  zip 1.17.1
+  when zip is
+  built
+  against
+  libzip >=
+  1.0.0 —
+  the PHP-8.2
+  stub
+  registers it
+  identically,
+  and the
+  repo's own
+  r19 drive
+  ran the bare
+  constant on
+  8.2.33 to
+  ER_NOENT,
+  never
+  \Error); the
+  guarded
+  spelling
+  stands as
+  the libzip <
+  1.0.0 build
+  corner's
+  guard
+  (verdict-identical
+  elsewhere,
+  driven), the
+  three pinned
+  texts
+  corrected
+  in-round,
+  the shape
+  pin's
+  no-escape
+  claim driven
+  (four
+  escapes
+  dead). The
+  test-fence
+  exec census
+  closes
+  (ocr21-2):
+  the
+  r20-named
+  seven-site
+  remainder
+  gated across
+  six tests
+  (driven:
+  visible
+  skips under
+  both flags);
+  census
+  corrected
+  (rd-2): 20
+  own spawn
+  sites, not
+  22 (a
+  command-build
+  line
+  double-counted),
+  all behind
+  probes at
+  the TEST
+  fence —
+  but "in the
+  suite" dies
+  at the
+  PRODUCER
+  fence:
+  inspect-artifact's
+  syntax loop
+  exec()s
+  in-process,
+  21 suite
+  errors under
+  the flag —
+  the r20
+  fence lesson
+  applied to
+  the round's
+  own census;
+  the
+  producer-side
+  gate is the
+  next round's
+  head.
+  ocr21-3 +
+  sc-1: the
+  spawn
+  verdict
+  moved inside
+  the try,
+  then the
+  verifier
+  closed the
+  warn-then-false
+  arm
+  (failOnWarning
+  throws at
+  the call,
+  pre-assignment;
+  the finally
+  read an
+  unassigned
+  $live and
+  its error
+  unwound past
+  the rrmdir)
+  — $live
+  null-initializes
+  now, driven
+  both shapes.
+  ocr21-4: the
+  capability
+  guard's ONE
+  owner (the
+  WpHarness
+  canSpawnChildren
+  owner + the
+  wrapper, the
+  canSymlink
+  hoist shape;
+  the variadic
+  extra for
+  the proc
+  trio; the
+  messages at
+  the sites)
+  — 24
+  conversions,
+  the commit's
+  arithmetic
+  corrected
+  (rd-3); the
+  only raw
+  spelling
+  left is the
+  owner body.
+  ocr21-5: the
+  separator
+  pins
+  (fragments
+  built with
+  DIRECTORY_SEPARATOR
+  the way the
+  producers'
+  iterator
+  pathnames
+  spell them;
+  creation
+  paths and
+  zip-entry
+  fragments
+  stay
+  literal).
+  Two-lens
+  verifier
+  pass: sc-1
+  FIXED
+  (driven both
+  shapes),
+  rd-1 FIXED
+  (both
+  lenses'
+  refutation),
+  rd-2/rd-3
+  RECORD;
+  everything
+  else stood
+  (the guard
+  placements,
+  the census
+  zero at the
+  test file,
+  the owner
+  sweep, the
+  separators,
+  every green
+  figure
+  re-run).
+  Suite 1655
+  → 1656
+  tests (one
+  new: the
+  shape pin),
+  45534 →
+  45535
+  assertions
+  (+1 the pin,
+  +0 the rest
+  by
+  construction),
+  2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

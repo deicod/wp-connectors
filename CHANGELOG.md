@@ -6,6 +6,87 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 21)
+
+Twenty-first OCR-tool round (62/62, complete): 8 findings, driver
+triage accepted all — trajectory 27→10→11→7→11→33→9→9→4→12→8.
+Fixed as t31-ocr21-1..5 — one commit per finding (classes as
+noted), five fix commits plus the two-lens verifier pass's two
+follow-up fixes and this docs record, the full offline check green
+after every one. The round's lesson, now in the ledger: an
+engine-matrix premise is a vendor-record claim — the round's own
+bug:high premise (a phantom "php.net 8.3.0 chip" on
+ZipArchive::RDONLY) survived driver triage AND the fix commit
+because nobody fetched the record until the verifier; drive
+version-history premises at the stub/constants page before the fix
+lands. The verifier pass ran as a two-agent workflow, both lenses
+driven and converging independently on the refutation: the
+correctness lens's one code finding (a staging fix whose
+warn-then-false arm still leaked — null-initialized now) and the
+shared premise refutation are fixed; the refutation lens also
+corrected two RECORD errors (the exec census count and the
+owner-conversion arithmetic). Suite 1655 → 1656 tests, 45534 →
+45535 assertions (+1 the shape pin; +0 the rest by construction),
+2 skipped unchanged.
+
+- **The zip reader's RDONLY rides the guarded spelling — the
+  round's floor premise REFUTED (t31-ocr21-1)** — the finding
+  claimed an 8.3-cycle-only registration fataling every 8.2 engine
+  in the composer floor's range; refuted by both verifier lenses
+  at three levels (php.net: available as of PHP 7.4.3 / PECL zip
+  1.17.1 when the zip extension is built against libzip >= 1.0.0,
+  no 8.3.0 chip; the php-src PHP-8.2 stub registers it
+  identically; the repo's own r19 drive ran the bare constant on a
+  real 8.2.33 engine to ER_NOENT, never an \Error). What survives
+  is the build corner the vendor record does name: a zip extension
+  built against libzip < 1.0.0 compiles no RDONLY — the open rides
+  defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0 as that
+  corner's guard, verdict-identical everywhere else (driven), with
+  a shape pin beside the two open-gate legs (the undefined arm is
+  not drivable on an engine that defines the constant — four
+  escape shapes driven dead; the re-open rule names the libzip
+  build corner, never "a PHP 8.2 engine").
+- **The r20-named CLI-build exec/proc_open remainder gated; the
+  test-fence census reads zero (t31-ocr21-2)** — six BuildArtifacts
+  tests skipped visibly where they fataled mid-test on
+  disable_functions hosts (the three all-plugin/explicit-slug CLI
+  legs, the stage-tree pin's proc_open pair and 60s live sibling
+  on the ocr17-10 trio, the slug-rebuild and failing-rebuild
+  twins), every guard before staging; driven: six visible skips
+  under the flag. The suite's own spawn statements (20, not the
+  commit's 22 — a command-build line double-counted) are all
+  behind probes; the residual is the PRODUCER fence:
+  inspect-artifact's syntax loop exec()s in-process, 21 suite
+  errors under the flag — the r20 fence lesson applied to the
+  round's own census, ledgered as the next round's head.
+- **The live sibling's spawn verdict rides inside the try, on a
+  null-initialized handle (t31-ocr21-3 + verifier sc-1)** — the
+  environmental spawn refusal leaked the scratch tree above the
+  try, and the warn-then-false spelling (failOnWarning throws at
+  the call, before the assignment) leaked it through an
+  unassigned-variable error thrown from the finally itself;
+  $live null-initializes before proc_open now — every exit path
+  reaches the rrmdir, driven both shapes (pre: wrong verdict +
+  leaked tree; post: the real verdict + clean).
+- **The exec capability guard rides ONE owner
+  (t31-ocr21-4)** — WpHarness::canSpawnChildren() beside its
+  canSymlink probe twin, with the WpConnectorsTestCase thin
+  wrapper: the exec/escapeshellarg pair as the floor, a consumer
+  spawning through more naming its own variadic extra
+  (canSpawnChildren('proc_open')), skip messages staying at the
+  call sites. Twenty-four hand-rolled conversions across seven
+  suites (the commit's own "seventeen/twelve" undercount corrected
+  in the ledger); the only raw function_exists('exec') spelling in
+  the tree is the owner's own body.
+- **Path-fragment pins spell their separator the way the producers
+  do (t31-ocr21-5)** — the scanner-report and conventions-gate
+  fragments ('Tests/leak.conf', 'Clock/DeadImport.php', etc.) were
+  hardcoded '/' against raw iterator pathnames joined with
+  DIRECTORY_SEPARATOR — red through no defect on Windows; built
+  with DIRECTORY_SEPARATOR now (creation paths stay literal — PHP
+  accepts '/' on Windows, and zip-entry fragments correctly stay
+  literal).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 20)
 
 Twentieth OCR-tool round (62/62, complete): 12 findings, driver
