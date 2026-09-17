@@ -4200,6 +4200,23 @@ FIXTURE;
             $tmpSentinel = sys_get_temp_dir() . '/wpct-rrmdir-root-sentinel-' . getmypid();
             file_put_contents($tmpSentinel, 'sentinel');
             foreach (array('/', '/.', '/..') as $rootSpelling) {
+                /*
+                 * The safety net BEFORE each destructive leg (OCR round
+                 * 20, t31-ocr20-4 — the ocr17-3 doctrine the harness
+                 * twin's root-collapse legs below already carry): this
+                 * owner's root clause is a SILENT return (the
+                 * t31-ocr10-15 vocabulary — a production finally never
+                 * throws), so these legs' safety rests ENTIRELY on the
+                 * production collapse and a regressed guard would walk
+                 * the root's children as this very test runs. The pin
+                 * holds the refusal PRECONDITION itself: the spelling
+                 * must resolve to the filesystem ROOT the guard names,
+                 * so a spelling that resolved elsewhere (a platform
+                 * normalization drift, a guard judging a different
+                 * collapse) fails loudly BEFORE the removal is ever
+                 * attempted.
+                 */
+                $this->assertSame('/', realpath($rootSpelling), "The leg's own precondition ({$rootSpelling}): the spelling resolves to the filesystem ROOT the silent root collapse guards — a spelling resolving elsewhere would point this leg's removal at the wrong tree.");
                 wp_connectors_inspect_rrmdir($rootSpelling);
             }
             $this->assertFileExists($tmpSentinel, 'A root-collapsing spelling never walks — the universal tree is not a scratch dir.');
