@@ -69,11 +69,15 @@ final class Url {
 			throw new InvalidArgumentException( 'The URL must be valid UTF-8 — a raw control byte rides parse_url verbatim into the safe debug forms and makes their json_encode fail outright (the log line is dropped, not degraded).' );
 		}
 
-		// Abort-as-reject (glm36-8): a PCRE failure refuses the URL,
-		// never passes it.
-		if ( 0 !== preg_match( HeaderMap::VALUE_CONTROL_BYTE_PATTERN, $url ) ) {
-			throw new InvalidArgumentException( 'The URL must not contain control characters or line breaks — including their UTF-8 spellings (U+2028/U+2029, C1 controls), which forge log lines in the safe debug forms.' );
-		}
+		/*
+		 * The screen rides HeaderMap's own callable (t31-ocr18-4): the
+		 * predicate and its rejection sentence had grown here as a
+		 * verbatim twin of assert_no_control_bytes() — the drift seam
+		 * the one-owner doctrine exists to close. The URL surface
+		 * passes its field label; the abort-as-reject rule (glm36-8)
+		 * lives in the owner.
+		 */
+		HeaderMap::assert_no_control_bytes( $url, 'The URL' );
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- the WordPress helper does not exist in this provider-neutral source (WordPress is reached only through ports); parse_url's shape is adequate for constructor validation.
 		$parts = parse_url( $url );
