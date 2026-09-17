@@ -433,7 +433,17 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      */
     public function testSharedSourceAndReadmeNameNoProviders(): void
     {
-        $paths = array_merge($this->sharedSourceFiles(), array(realpath(__DIR__ . '/../shared/README.md')));
+        /*
+         * The README leg is existence-checked at the array-build site
+         * (t31-ocr15-5): an absent file made realpath() answer false,
+         * the (string) cast swept it as '' (the r2-9 read-failure
+         * class's lexical twin), and the failure landed LATE and
+         * MISLEADING inside fileContents() instead of naming the path
+         * whose absence caused it.
+         */
+        $readme = realpath(__DIR__ . '/../shared/README.md');
+        $this->assertNotFalse($readme, 'shared/README.md must exist — the provider-neutrality sweep judges it by the same code path as the sources, and an absent README is a refusal naming the path, never a misleading late failure inside the reader.');
+        $paths = array_merge($this->sharedSourceFiles(), array($readme));
         $this->assertGreaterThanOrEqual(21, count($paths));
 
         foreach ($paths as $path) {
