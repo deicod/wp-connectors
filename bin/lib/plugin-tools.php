@@ -1128,7 +1128,23 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             $display = 'namespace\\' . ltrim($display, '\\');
             $relative_member_pending = false;
         }
-        $is_qualified_run = false !== strpos((string) $run['name'], '\\');
+        /*
+         * QUALIFIEDNESS includes the RELATIVE arm (OCR round 20,
+         * t31-ocr20-2): the alias skip below judged qualifiedness on
+         * the RAW run name alone, so an interrupted `namespace\`
+         * relative in the ALIAS slot whose tail arrived as a bare
+         * single-segment T_STRING — the separator its OWN token with
+         * trivia AFTER it (`use Foo as namespace \ WpConnectors;`,
+         * the comment and newline twins; the GLUED spelling lexes the
+         * whole tail as T_NAME_FULLY_QUALIFIED and never hit the
+         * hole) — was silently EATEN as the alias while its
+         * re-attached spelling (the arm above) resolves against the
+         * declaration into the family: zero references, the exact
+         * r10-9 laundering verdict drift (an alias IS a bare
+         * identifier — a relative spelling never is one, in any
+         * casing or interruption, and reports like its glued twin).
+         */
+        $is_qualified_run = false !== strpos((string) $run['name'], '\\') || $is_relative_run;
         $alias_position = false;
         if ($skip_alias) {
             $skip_alias = false;

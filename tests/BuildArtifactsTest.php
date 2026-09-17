@@ -5243,6 +5243,41 @@ FIXTURE;
             $this->assertCount(1, $found, "Every spelling of a family-resolving relative use member reports — case, interruption, and separator-drop are one operator ({$label}; red at HEAD: zero references).");
             $this->assertSame(array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( $found[0]['name'], $found[0]['kind'] ), "The spelling resolves exactly like its fused lowercase twin ({$label}).");
         }
+
+        /*
+         * The interrupted relative in the ALIAS slot, single-segment
+         * tail (OCR round 20, t31-ocr20-2): the alias skip judged
+         * qualifiedness on the RAW run name, so a tail that arrives as
+         * a bare single-segment T_STRING — the separator its OWN token
+         * with trivia AFTER it (`namespace \ WpConnectors`, the
+         * comment twin, the newline twin; the GLUED spelling lexes the
+         * whole tail as T_NAME_FULLY_QUALIFIED and already reported)
+         * — was silently EATEN as the alias while its re-attached
+         * spelling resolves against the declaration into the family:
+         * ZERO references, verdict drift (the rewriter's own
+         * alias-slot fence refused the same bytes — the sweep waved
+         * them through). Qualifiedness includes the relative arm now;
+         * the skip eats only BARE runs.
+         */
+        $alias_slot_spellings = array(
+            'space after the separator' => 'use Foo as namespace \\ WpConnectors;',
+            'comment after the separator' => 'use Foo as namespace \\/* c */WpConnectors;',
+            'newline after the separator' => "use Foo as namespace \\\nWpConnectors;",
+        );
+        foreach ($alias_slot_spellings as $label => $statement) {
+            $found = wp_connectors_shared_family_references("<?php\nnamespace Deicod;\n{$statement}\ninterface AliasSlotFixture\n{\n}\n");
+            $this->assertCount(1, $found, "An interrupted relative in the alias slot reports — its single-segment tail is not the bare alias the skip may eat ({$label}; red at HEAD: zero references, silently eaten).");
+            $this->assertSame(array( 'Deicod\\WpConnectors', 'relative' ), array( $found[0]['name'], $found[0]['kind'] ), "The alias-slot relative resolves exactly like its leading-position twin ({$label}).");
+        }
+        // Control: the skip still eats what an alias IS — a BARE run.
+        // The aliased import itself is the one reference; the alias
+        // name never reports (and the glued FQ twin above the fix
+        // already carried the qualified tail to the same report).
+        $bare_alias = "<?php\nnamespace Deicod;\nuse Deicod\\WpConnectors\\Shared\\Clock as C;\ninterface BareAliasControlFixture\n{\n}\n";
+        $found = wp_connectors_shared_family_references($bare_alias);
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\Shared\\Clock', 'use' ) ), array_map(static function (array $reference): array {
+            return array( $reference['name'], $reference['kind'] );
+        }, $found), 'The legal bare alias stays eaten — the import is the one reference.');
         // The base-integrity half (the r8-10 class, driven red at HEAD
         // through the ledger corruption): an interrupted relative use
         // must not re-base the relatives that FOLLOW it.
