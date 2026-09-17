@@ -6,6 +6,88 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 22)
+
+Twenty-second OCR-tool round (62/62, complete): 7 findings, driver
+triage accepted all — trajectory 27→10→11→7→11→33→9→9→4→12→8→7.
+The round's shape: test-fence order-dependence and silent-residue
+classes, zero shared/src findings (the production core's silence
+continues). Fixed as t31-ocr22-1..7 — one commit per finding —
+plus the two-lens verifier pass's three follow-up closes and this
+docs record, the full offline check green after every commit. The
+verifier pass (two driven agents, both converging): all seven
+fixes stood; its findings — the rrmdir walk's item-level
+dead-resolution (found independently by both lenses as the
+yield-order and double-tail shapes, closed by building the walk on
+the collapsed root), the three locale-pressure spawn guards missing
+their parent-side putenv, and one stale allow-set comment — are
+fixed; the round's narration fabrications (an "established idiom"
+that was the repo's first platform gate, a leak mechanism whose
+parentheticals the drive refuted, a five-that-was-seven leg count)
+are corrected in the ledger. Suite 1656 → 1657 tests, 45535 →
+45541 assertions, 2 skipped unchanged.
+
+- **The symlink battery's legs own FRESH copy targets (t31-ocr22-1,
+  bug:high)** — seven refusal legs and one nothing-landed pin rode
+  one shared target, and the in-tree link refusals fire mid-walk,
+  so entries yielded before the link legitimately land: the
+  file-shape leg's residue sat waiting for the mid-path leg's
+  assertFileDoesNotExist, a red through no defect on every host
+  whose yield order meets the real file first. Each leg draws a
+  fresh uniqid target (the premise construction-pinned);
+  order-proof by construction.
+- **The root-anchored refusals ride a PLATFORM probe — the repo's
+  first (t31-ocr22-2, bug:medium)** — five leg-groups premise their
+  spellings on POSIX root resolution (the t31-ocr11-2 doctrine) and
+  nothing gated them on a non-POSIX host. They moved byte-identical
+  (both lenses' multiset comparisons: nothing lost, nothing
+  altered, the moved set exactly the root-anchored class) into
+  testRootAnchoredSpellingsRefuseBeforeIteratingOnPosixHosts behind
+  a DIRECTORY_SEPARATOR gate with a visible skip naming the
+  premise; the platform-neutral shapes keep running on every host.
+- **The relative scan-root arm pins BOTH named paths
+  (t31-ocr22-3)** — it judged only the exception family, so a
+  guard refusing without the docblock's both-paths verdict passed
+  invisible on the one shape that once walked the working
+  directory.
+- **The redirected-TMPDIR sim's spawn guard declares the TRIPLE
+  (t31-ocr22-4)** — the child script's premise-critical first
+  statement is a putenv(), and a putenv-disabled host fataled the
+  child before its first read (driven). The guard rides
+  canSpawnChildren('putenv') — the variadic extra the owner's own
+  doctrine names.
+- **The payload-API allow sets spell the per-type contract
+  (t31-ocr22-5)** — all three audits granted
+  retry_after_seconds to every concrete type, contradicting the
+  method's own docblock and masking a wrong grant (a storage type
+  growing the spelling passed green — mutation-driven). The
+  additions ride the rate-limit type alone.
+- **rrmdir()'s dead resolutions die at the OWNER — final rmdir AND
+  walk (t31-ocr22-6 + the verifier's rd-1/sc-1 close)** — the
+  final rmdir once targeted a resolution through a component the
+  walk itself removed (a real 'parent/sub/..' tree leaked its top
+  directory per call, driven at HEAD); the first fix handed it the
+  pre-walk collapsed spelling, and the verifier then found the
+  same class alive in the walk's item pathnames from both sides
+  (the yield-order shape: siblings stranded when the walk meets
+  the tail's component first; the double tail: stranded under
+  every harness). The walk builds on the collapsed root now — no
+  pathname carries a consumable '..' at any yield order; the
+  spelling matrix re-driven byte-identical for every plain class.
+- **The never-created zip pin is falsifiable (t31-ocr22-7)** — it
+  judged the state AFTER the finally's unlink had erased the
+  evidence, so a creating helper passed invisible (driven: green
+  under the old order). The pin rides the state the open actually
+  left behind, cleanup still guaranteed on every exit path.
+- **The verifier's closes (rd-1 + sc-1, rd-2, rd-3)** — the
+  collapsed walk (two regression legs driven red at the round's
+  HEAD, green at the close), the three locale-pressure guards
+  declaring their parent-side putenv (driven: three visible skips,
+  zero errors under the flag; the non-spawn putenv consumer at
+  BuildArtifactsTest:4564 carried to the ledger as a
+  decision-plus-fence residual), and the r8-5 comment's per-type
+  correction.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 21)
 
 Twenty-first OCR-tool round (62/62, complete): 8 findings, driver

@@ -3682,6 +3682,314 @@ OCR-tool
   construction),
   2 skipped
   unchanged.
+OCR-tool
+  round
+  t31-ocr22
+  (ELEVEN
+  commits —
+  the
+  twenty-second
+  pass, 62/62,
+  7/7 findings
+  accepted;
+  trajectory
+  27→10→11→7→11→33→9→9→4→12→8→7;
+  the round's
+  shape:
+  test-fence
+  order-dependence
+  and
+  silent-residue
+  classes,
+  zero
+  shared/src
+  findings —
+  the
+  production
+  core's
+  silence
+  continues;
+  the round's
+  lesson: this
+  round's
+  fabrications
+  were of
+  NARRATION,
+  not premise
+  — an
+  "established
+  idiom"
+  citing what
+  is the
+  repo's FIRST
+  platform
+  gate, a leak
+  mechanism
+  whose own
+  parentheticals
+  the drive
+  refuted, a
+  five-that-was-seven
+  leg count —
+  drive the
+  CITATIONS
+  and the
+  ARITHMETIC,
+  not just the
+  premise):
+  the
+  headliner —
+  the symlink
+  battery's
+  SEVEN
+  refusal legs
+  and one
+  nothing-landed
+  pin rode one
+  SHARED
+  target while
+  the in-tree
+  link
+  refusals
+  fire
+  mid-walk
+  (entries
+  yielded
+  before the
+  link
+  legitimately
+  land), so
+  the
+  file-shape
+  leg's
+  residue
+  failed the
+  mid-path
+  leg's pin on
+  yield-order
+  hosts
+  (driven both
+  ways; a
+  fresh uniqid
+  target per
+  leg now,
+  order-proof
+  by
+  construction);
+  the platform
+  gate — five
+  root-anchored
+  leg-groups
+  (the a-root
+  pair, the
+  degenerate
+  targets with
+  their safety
+  net, the
+  root
+  sentinel,
+  the landing
+  sentinel,
+  the mirror
+  root) moved
+  byte-identical
+  into their
+  own
+  DIRECTORY_SEPARATOR-gated
+  battery
+  (both
+  lenses'
+  multiset
+  comparisons:
+  nothing
+  lost,
+  nothing
+  altered, the
+  set exactly
+  the
+  root-anchored
+  class); the
+  harness leak
+  — rrmdir's
+  final rmdir
+  targeted a
+  resolution
+  through a
+  component
+  the walk
+  itself
+  removed (a
+  real
+  parent/sub/..
+  tree leaked
+  its top
+  directory
+  per call,
+  driven at
+  HEAD; the
+  finding's
+  parentheticals
+  REFUTED: the
+  walk empties
+  ALL
+  children,
+  and the
+  warning is
+  unsuppressed
+  under
+  failOnWarning
+  — the shape
+  was never
+  silent
+  in-suite,
+  merely never
+  reached),
+  fixed to the
+  pre-walk
+  collapsed
+  spelling,
+  then closed
+  WHOLE at the
+  verifier
+  from BOTH
+  sides
+  independently
+  — the walk's
+  item
+  pathnames
+  carried the
+  same
+  dead-resolution
+  class (the
+  yield-order
+  shape
+  stranding
+  the
+  siblings,
+  the double
+  tail
+  stranding
+  under every
+  harness; the
+  walk builds
+  on the
+  collapsed
+  root now, no
+  pathname
+  carries a
+  consumable
+  .. at any
+  yield order,
+  the spelling
+  matrix
+  re-driven
+  byte-identical
+  for every
+  plain
+  class); the
+  guard triple
+  — the TMPDIR
+  sim's child
+  fatals at
+  its
+  premise-critical
+  first
+  putenv() on
+  putenv-disabled
+  hosts
+  (driven),
+  the variadic
+  declares it,
+  and the
+  verifier
+  drove the
+  three
+  locale-pressure
+  siblings
+  with the
+  same
+  parent-side
+  putenv
+  (three
+  visible
+  skips under
+  the flag,
+  zero errors;
+  the
+  NON-SPAWN
+  putenv
+  consumer at
+  BuildArtifactsTest:4564
+  carried as a
+  decision-plus-fence
+  residual,
+  the next
+  round's
+  head); the
+  three small
+  pins — the
+  relative
+  scan-root
+  arm pins
+  both named
+  paths, the
+  payload-API
+  allow sets
+  grant
+  retry_after_seconds
+  to the
+  rate-limit
+  type ALONE
+  (mutation-driven:
+  a wrong
+  grant passed
+  green under
+  the old
+  family-wide
+  sets), and
+  the
+  never-created
+  zip pin
+  judges the
+  state BEFORE
+  the
+  finally's
+  unlink (a
+  creating
+  helper
+  passed the
+  old
+  post-unlink
+  pin green,
+  driven).
+  Suite 1656 →
+  1657 tests
+  (+1 the
+  POSIX
+  battery),
+  45535 →
+  45541
+  assertions
+  (+1 the
+  survival
+  pin, +2 the
+  message
+  pins, +1 the
+  dotdot leg,
+  +2 the
+  verifier's
+  order and
+  double-tail
+  legs; +0 the
+  fresh-target
+  factory, the
+  gate, the
+  guards, the
+  sets, and
+  the
+  relocation),
+  2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
