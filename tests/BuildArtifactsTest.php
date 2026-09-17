@@ -1998,6 +1998,15 @@ FIXTURE;
 
     public function testAllPluginBuildRejectsAMalformedConnectorDirectory()
     {
+        /*
+         * The exec-capability guard (t31-ocr21-2, the ocr18-2/ocr16-12
+         * doctrine over this CLI consumer): the whole verdict rides a
+         * spawned build.php, and on a disable_functions host the first
+         * escaped argument was an undefined-function \Error mid-test.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the all-plugin rejection leg cannot run (the verdict rides a spawned CLI).');
+        }
         $repo = $this->makeBuildCliRepo(array( 'good-demo' => true, 'broken-demo' => false ));
 
         $output = array();
@@ -2017,6 +2026,15 @@ FIXTURE;
 
     public function testAllPluginBuildPackagesEveryValidConnectorDirectory()
     {
+        /*
+         * The exec-capability guard (t31-ocr21-2, the ocr18-2/ocr16-12
+         * doctrine): the whole verdict rides a spawned build.php, and on
+         * a disable_functions host the first escaped argument was an
+         * undefined-function \Error mid-test.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the all-plugin packaging leg cannot run (the verdict rides a spawned CLI).');
+        }
         $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));
 
         $output = array();
@@ -2037,6 +2055,15 @@ FIXTURE;
 
     public function testExplicitSlugBuildStillRejectsAMalformedConnector()
     {
+        /*
+         * The exec-capability guard (t31-ocr21-2, the ocr18-2/ocr16-12
+         * doctrine): the whole verdict rides a spawned build.php, and on
+         * a disable_functions host the first escaped argument was an
+         * undefined-function \Error mid-test.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the explicit-slug rejection leg cannot run (the verdict rides a spawned CLI).');
+        }
         $repo = $this->makeBuildCliRepo(array( 'broken-demo' => false ));
 
         $output = array();
@@ -3845,6 +3872,16 @@ FIXTURE;
      */
     public function testConcurrentSamePluginBuildsKeepTheirStageTreesAndDeadOnesAreSwept(): void
     {
+        /*
+         * The exec-capability guard (t31-ocr21-2, the ocr17-10
+         * three-function pair — this consumer SPAWNS through
+         * proc_open(), both part 1's synchronized pair and part 2's
+         * 60s live sibling): on a disable_functions host the first
+         * escaped argument was an undefined-function \Error mid-test.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg') || ! function_exists('proc_open')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg/proc_open in disable_functions — the same-plugin concurrent pair and the stage-sweep legs cannot run (both spawn through proc_open).');
+        }
         // Part 1, end-to-end through the CLI entry: two synchronized
         // builds of the SAME plugin both exit 0 and no stage tree of
         // any pid survives the pair (pre-fix, the shared name made the
@@ -6537,6 +6574,16 @@ FIXTURE;
      */
     public function testASlugRebuildKeepsEveryOtherPluginsManifestEntry(): void
     {
+        /*
+         * The exec-capability guard (t31-ocr21-2, the ocr18-2/ocr16-12
+         * doctrine): both runs (the full build and the --slug rebuild)
+         * ride a spawned build.php, and on a disable_functions host the
+         * first escaped argument was an undefined-function \Error
+         * mid-test.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the slug-rebuild leg cannot run (both the full run and the partial rebuild ride a spawned CLI).');
+        }
         $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));
 
         try {
@@ -6581,6 +6628,16 @@ FIXTURE;
      */
     public function testAFailingRebuildLeavesTheManifestAndSidecarsIntact(): void
     {
+        /*
+         * The exec-capability guard (t31-ocr21-2, the ocr18-2/ocr16-12
+         * doctrine): both runs (the successful full build and the
+         * failing rebuild) ride a spawned build.php, and on a
+         * disable_functions host the first escaped argument was an
+         * undefined-function \Error mid-test.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the failing-rebuild leg cannot run (both the good run and the failing rebuild ride a spawned CLI).');
+        }
         $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));
 
         try {
