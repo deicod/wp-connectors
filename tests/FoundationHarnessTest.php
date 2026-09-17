@@ -587,15 +587,15 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $corrupt = sys_get_temp_dir() . '/wpct-corrupt-' . getmypid() . '-' . bin2hex(random_bytes(4)) . '.zip';
         file_put_contents($corrupt, 'this is not a zip archive');
         try {
-            $caught = null;
-            try {
-                $this->zipEntryNames($corrupt);
-            } catch (PHPUnit\Framework\AssertionFailedError $e) {
-                $caught = $e;
-            }
-            if (null === $caught) {
-                $this->fail('A corrupt zip must fail the open gate loudly — pre-fix the truthy ER_NOZIP passed assertTrue() and the helper returned [].');
-            }
+            // The refusal-verdict owner (t31-ocr15-7): the hand-rolled
+            // $caught=null/try/catch/fail-if-null shape was this helper's
+            // own inline twin — the family its original catch declared
+            // rides the third parameter.
+            $caught = $this->refusalOf(
+                fn() => $this->zipEntryNames($corrupt),
+                'A corrupt zip must fail the open gate loudly — pre-fix the truthy ER_NOZIP passed assertTrue() and the helper returned [].',
+                PHPUnit\Framework\AssertionFailedError::class
+            );
             $this->assertStringContainsString('ER_NOZIP', $caught->getMessage(), 'The failure names the ER_* code.');
             $this->assertStringContainsString($corrupt, $caught->getMessage(), 'The failure names the archive path.');
         } finally {

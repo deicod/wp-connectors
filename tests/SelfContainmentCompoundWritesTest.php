@@ -416,28 +416,26 @@ final class SelfContainmentCompoundWritesTest extends TestCase
         file_put_contents($outside . '/sub/spy.php', "<?php\n\$f = dirname(__DIR__, 2) . '/../escape.php';\nrequire \$f;\n");
 
         try {
-            $caught = null;
-            try {
-                wp_connectors_self_containment_violations($this->root, $outside);
-            } catch (\InvalidArgumentException $e) {
-                $caught = $e;
-            }
-            if (null === $caught) {
-                $this->fail('An outside scan root must refuse at the boundary — it once walked foreign territory under the plugin anchor silently.');
-            }
+            // The verdicts ride the ONE refusal owner (t31-ocr15-7,
+            // WpHarness::refusalOf()): this suite extends the bare
+            // TestCase, so the hand-rolled $caught=null/try/catch/
+            // fail-if-null shapes were verbatim twins of the owner's
+            // body — the family each original catch declared
+            // (\InvalidArgumentException) rides the third parameter.
+            $caught = WpHarness::refusalOf(
+                fn() => wp_connectors_self_containment_violations($this->root, $outside),
+                'An outside scan root must refuse at the boundary — it once walked foreign territory under the plugin anchor silently.',
+                \InvalidArgumentException::class
+            );
             $this->assertStringContainsString('scan root', $caught->getMessage(), 'The refusal names the invariant.');
             $this->assertStringContainsString($outside, $caught->getMessage(), 'The refusal names the scan root.');
             $this->assertStringContainsString($this->root, $caught->getMessage(), 'The refusal names the plugin directory.');
 
-            $caught = null;
-            try {
-                wp_connectors_self_containment_violations($this->root, 'relative/scan');
-            } catch (\InvalidArgumentException $e) {
-                $caught = $e;
-            }
-            if (null === $caught) {
-                $this->fail('A relative scan root must refuse at the boundary — it once walked the working directory.');
-            }
+            WpHarness::refusalOf(
+                fn() => wp_connectors_self_containment_violations($this->root, 'relative/scan'),
+                'A relative scan root must refuse at the boundary — it once walked the working directory.',
+                \InvalidArgumentException::class
+            );
 
             /*
              * (t31-ocr11-26, the verifier lens): a FILE inside the
@@ -448,15 +446,11 @@ final class SelfContainmentCompoundWritesTest extends TestCase
              */
             $fileRoot = $this->root . '/plain.txt';
             file_put_contents($fileRoot, 'a file, not a walk root');
-            $caught = null;
-            try {
-                wp_connectors_self_containment_violations($this->root, $fileRoot);
-            } catch (\InvalidArgumentException $e) {
-                $caught = $e;
-            }
-            if (null === $caught) {
-                $this->fail('A FILE scan root must refuse at the boundary — it once died in the iterator constructor\'s engine vocabulary.');
-            }
+            $caught = WpHarness::refusalOf(
+                fn() => wp_connectors_self_containment_violations($this->root, $fileRoot),
+                'A FILE scan root must refuse at the boundary — it once died in the iterator constructor\'s engine vocabulary.',
+                \InvalidArgumentException::class
+            );
             $this->assertStringContainsString($fileRoot, $caught->getMessage(), 'The non-directory refusal names the scan root.');
             unlink($fileRoot);
         } finally {

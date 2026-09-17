@@ -916,6 +916,67 @@ final class WpHarness
     }
 
     /**
+     * Runs one guarded call that must refuse, and returns the collected
+     * exception for the caller's fragment assertions — the ONE
+     * refusal-verdict owner.
+     *
+     * The swept shape — $this->fail() INSIDE the try, fragments asserted
+     * in the catch — was broken per spelling (t31-ocr8-1): PHPUnit's
+     * AssertionFailedError EXTENDS RuntimeException, so a no-throw
+     * regression (the guarded call returning normally) landed the
+     * fail() message IN the catch, and the fragment assertions ran
+     * against the FAIL MESSAGE itself — a vacuous pass wherever the
+     * message carried the fragment, a confusing re-fail over the
+     * failure message everywhere else. The owner collects the
+     * exception inside, fails OUTSIDE any catch, and the caller
+     * asserts its fragments on the returned verdict.
+     *
+     * The FAMILY pin (t31-ocr9-3): the r8 sweeps converted catches that
+     * declared an exception family (RuntimeException, \Exception) to a
+     * \Throwable owner — silently DROPPING the family the original
+     * catch enforced, so a stray TypeError/Error carrying the
+     * fragments passed green (driven: a planted TypeError-with-fragment
+     * kept the whole pin green at HEAD). The third parameter restores
+     * the pin: each converted site passes the family its ORIGINAL
+     * catch declared; \Throwable::class enforces nothing and is
+     * legitimate ONLY where the original catch was itself \Throwable.
+     * The parameter is REQUIRED (t31-ocr10-6): a default of
+     * \Throwable::class pinned nothing, and the omission was invisible
+     * at the call site.
+     *
+     * Hoisted here from the WpConnectorsTestCase wrapper (t31-ocr15-7,
+     * the canSymlink t31-ocr11-9 shape): the plain-TestCase suites
+     * (HarnessCopyTreeTest, SelfContainmentCompoundWritesTest) do not
+     * extend the wrapper — one extension away is still away, and their
+     * hand-rolled $caught=null/try/catch/fail-if-null shapes were the
+     * verbatim twins the rounds kept having to fix twice. The wrapper
+     * keeps a thin delegate so its subclasses' $this->refusalOf() call
+     * sites are untouched; this static is the one implementation.
+     *
+     * @param callable $attempt     The guarded call, expected to throw.
+     * @param string   $expectation The failure message for the no-throw case.
+     * @param string   $family      The exception family the site pins — the class its original catch declared; \Throwable::class pins nothing and is legitimate only where the original catch was itself \Throwable.
+     * @return \Throwable The collected refusal.
+     * @throws \PHPUnit\Framework\AssertionFailedError When the attempt does not throw ($expectation), or throws outside the pinned family.
+     */
+    public static function refusalOf(callable $attempt, string $expectation, string $family): \Throwable
+    {
+        try {
+            $attempt();
+        } catch (\Throwable $e) {
+            if (! $e instanceof $family) {
+                throw new \PHPUnit\Framework\AssertionFailedError(
+                    'The refusal class is outside the family this site pins (expected ' . $family . ', got ' . get_class($e) . ') — the original catch declared ' . $family . ', and a stray Error carrying the fragments would otherwise pass silently (t31-ocr9-3).'
+                );
+            }
+
+            return $e;
+        }
+
+        throw new \PHPUnit\Framework\AssertionFailedError($expectation);
+    }
+
+    /**
      * Unique registration key for a callback (dedupes identical add_action calls).
      *
      * @param callable $callback Callback.

@@ -74,15 +74,14 @@ final class HarnessCopyTreeTest extends TestCase
         file_put_contents($from . '/src/file.php', 'bytes');
 
         try {
-            $caught = null;
-            try {
-                WpHarness::copyTree($from . '/', $to);
-            } catch (RuntimeException $e) {
-                $caught = $e;
-            }
-            if (null === $caught) {
-                $this->fail('A trailing-slash source must refuse the copy loudly, never nest every file under the target.');
-            }
+            // The verdict rides the ONE refusal owner (t31-ocr15-7) —
+            // the family this site's original catch declared rides the
+            // third parameter.
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($from . '/', $to),
+                'A trailing-slash source must refuse the copy loudly, never nest every file under the target.',
+                RuntimeException::class
+            );
             $this->assertStringContainsString($from . '/src/file.php', $caught->getMessage(), 'The refusal names the path it could not relativize.');
             $this->assertStringContainsString($from . '//', $caught->getMessage(), 'The refusal names the prefix it expected.');
             $this->assertFileDoesNotExist($to, 'Nothing landed under the target.');
@@ -119,20 +118,18 @@ final class HarnessCopyTreeTest extends TestCase
         file_put_contents($file_source, 'a file, not a tree');
 
         try {
-            // The verdict is asserted OUTSIDE the catch (t31-ocr5-3):
-            // fail() throws AssertionFailedError, which EXTENDS
-            // RuntimeException, and the old fail()-inside-try was
-            // swallowed by the very catch meant for copyTree().
+            // The verdict rides the ONE refusal owner (WpHarness::refusalOf(),
+            // t31-ocr15-7): the old fail()-inside-try shape was swallowed by
+            // the very catch meant for copyTree() — fail() throws
+            // AssertionFailedError, which EXTENDS RuntimeException
+            // (t31-ocr5-3) — and the family that original catch declared
+            // rides the owner's third parameter (t31-ocr9-3).
             $refuses = function (string $f, string $t, string $naming) use ($from): void {
-                $caught = null;
-                try {
-                    WpHarness::copyTree($f, $t);
-                } catch (RuntimeException $e) {
-                    $caught = $e;
-                }
-                if (null === $caught) {
-                    $this->fail($naming);
-                }
+                $caught = WpHarness::refusalOf(
+                    fn() => WpHarness::copyTree($f, $t),
+                    $naming,
+                    RuntimeException::class
+                );
                 $this->assertStringContainsString('WpHarness::copyTree() refuses', $caught->getMessage(), 'The policy exception, never the SPL iterator\'s vocabulary.');
                 $this->assertStringContainsString($f, $caught->getMessage(), $naming);
             };
@@ -289,24 +286,18 @@ final class HarnessCopyTreeTest extends TestCase
 
         try {
             /*
-             * The verdict is asserted OUTSIDE the catch (t31-ocr5-3):
-             * fail() throws AssertionFailedError, which EXTENDS
-             * RuntimeException — the old fail()-inside-try was swallowed
-             * by the very catch meant for copyTree(), so a no-throw
-             * regression still failed the test but as a confusing
-             * re-fail over the failure message, never the intended
-             * expectation.
+             * The verdict rides the ONE refusal owner (t31-ocr15-7,
+             * replacing the t31-ocr5-3 inline shape this closure
+             * hand-rolled): the family the original catch declared
+             * (RuntimeException) rides the third parameter, and the
+             * no-throw case fails outside any catch.
              */
             $refuses = function (string $from, string $linkName, string $expectation) use ($to): void {
-                $caught = null;
-                try {
-                    WpHarness::copyTree($from, $to);
-                } catch (RuntimeException $e) {
-                    $caught = $e;
-                }
-                if (null === $caught) {
-                    $this->fail($expectation);
-                }
+                $caught = WpHarness::refusalOf(
+                    fn() => WpHarness::copyTree($from, $to),
+                    $expectation,
+                    RuntimeException::class
+                );
                 $this->assertStringContainsString($linkName, $caught->getMessage());
             };
 
@@ -334,15 +325,11 @@ final class HarnessCopyTreeTest extends TestCase
              * The probe reads the slash-stripped spelling now: the
              * verdict names the LINK class, never the disguise.
              */
-            $caught = null;
-            try {
-                WpHarness::copyTree($plain . '/root-link/', $to);
-            } catch (RuntimeException $e) {
-                $caught = $e;
-            }
-            if (null === $caught) {
-                $this->fail('A TRAILING-SLASH symlinked SOURCE ROOT must refuse the copy — a slash is not a disguise.');
-            }
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($plain . '/root-link/', $to),
+                'A TRAILING-SLASH symlinked SOURCE ROOT must refuse the copy — a slash is not a disguise.',
+                RuntimeException::class
+            );
             $this->assertStringContainsString('symlinked source tree', $caught->getMessage(), 'The verdict names the LINK class (the slash-stripped probe), never the incidental relativize refusal that fired pre-fix.');
             $this->assertStringContainsString('root-link', $caught->getMessage());
 
@@ -355,15 +342,11 @@ final class HarnessCopyTreeTest extends TestCase
              * source still copies (the iterator normalizes it — the
              * probe is the only thing that changed).
              */
-            $caught = null;
-            try {
-                WpHarness::copyTree($plain . '/root-link/.', $to);
-            } catch (RuntimeException $e) {
-                $caught = $e;
-            }
-            if (null === $caught) {
-                $this->fail('A \'/.\'-spelled symlinked SOURCE ROOT must refuse the copy — a dot is not a disguise either.');
-            }
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($plain . '/root-link/.', $to),
+                'A \'/.\'-spelled symlinked SOURCE ROOT must refuse the copy — a dot is not a disguise either.',
+                RuntimeException::class
+            );
             $this->assertStringContainsString('symlinked source tree', $caught->getMessage(), 'The verdict names the LINK class for the \'/.\' spelling too.');
             $this->assertStringContainsString('root-link', $caught->getMessage());
 
@@ -380,15 +363,11 @@ final class HarnessCopyTreeTest extends TestCase
              * tree it names (the iterator resolves it) — only the
              * link judgment changed.
              */
-            $caught = null;
-            try {
-                WpHarness::copyTree($plain . '/root-link/..', $to);
-            } catch (RuntimeException $e) {
-                $caught = $e;
-            }
-            if (null === $caught) {
-                $this->fail('A \'/..\'-spelled symlinked SOURCE ROOT must refuse the copy — the parent it names is the TARGET\'S parent, a larger blast radius than the target.');
-            }
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($plain . '/root-link/..', $to),
+                'A \'/..\'-spelled symlinked SOURCE ROOT must refuse the copy — the parent it names is the TARGET\'S parent, a larger blast radius than the target.',
+                RuntimeException::class
+            );
             $this->assertStringContainsString('symlinked source tree', $caught->getMessage(), 'The verdict names the LINK class for the \'/..\' spelling too.');
             $this->assertStringContainsString('root-link', $caught->getMessage());
 

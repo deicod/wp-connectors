@@ -711,36 +711,19 @@ abstract class WpConnectorsTestCase extends TestCase
      * Runs one guarded call that must refuse, and returns the collected
      * exception for the caller's fragment assertions.
      *
-     * The swept shape — $this->fail() INSIDE the try, fragments asserted
-     * in the catch — was broken per spelling: PHPUnit's
-     * AssertionFailedError EXTENDS RuntimeException, so a no-throw
-     * regression (the guarded call returning normally) landed the
-     * fail() message IN the catch, and the fragment assertions ran
-     * against the FAIL MESSAGE itself — a vacuous pass wherever the
-     * message carried the fragment (green despite the regression), a
-     * confusing re-fail over the failure message everywhere else. The
-     * t31-ocr5-3/ocr6-3 fix established the shape inline for
-     * HarnessCopyTreeTest; this owner completes the sweep for every
-     * other site: the exception is collected inside, the no-throw case
-     * fails OUTSIDE any catch, and the caller asserts its fragments on
-     * the returned verdict.
-     *
-     * The FAMILY pin (t31-ocr9-3): the r8 sweeps converted catches that
-     * declared an exception family (RuntimeException, \Exception) to
-     * this \Throwable owner — silently DROPPING the family the original
-     * catch enforced, so a stray TypeError/Error carrying the fragments
-     * passed green (driven: a planted TypeError-with-fragment kept the
-     * whole pin green at HEAD). The third parameter restores the pin:
-     * each converted site passes the family its ORIGINAL catch declared
-     * (the sweep commit carries the census, per file, from the r8
-     * diffs); \Throwable::class enforces nothing and is legitimate ONLY
-     * where the original catch was itself \Throwable.
-     *
-     * The parameter is REQUIRED (t31-ocr10-6, over the ocr9-3 default):
-     * a default of \Throwable::class pinned nothing — any site omitting
-     * the argument silently re-opened the ocr9-3 regression, and the
-     * omission was invisible at the call site. Required is
-     * compile-enforced explicitness; the omission now fatals.
+     * A thin delegate (t31-ocr15-7): the ONE implementation is
+     * WpHarness::refusalOf(), hoisted there over this wrapper's private
+     * copy so the plain-TestCase suites (HarnessCopyTreeTest,
+     * SelfContainmentCompoundWritesTest) ride the same owner instead of
+     * hand-rolling the $caught=null/try/catch/fail-if-null twins — the
+     * canSymlink t31-ocr11-9 hoist shape. The contract, the FAMILY pin
+     * (t31-ocr9-3 — each site passes the family its ORIGINAL catch
+     * declared; \Throwable::class pins nothing and is legitimate only
+     * where the original catch was itself \Throwable), and the REQUIRED
+     * family parameter (t31-ocr10-6 — a \Throwable::class default
+     * pinned nothing, and the omission was invisible at the call site)
+     * are all stated at the owner; every $this->refusalOf() call site
+     * in the wrapper's subclasses is untouched.
      *
      * @param callable $attempt     The guarded call, expected to throw.
      * @param string   $expectation The failure message for the no-throw case.
@@ -749,15 +732,7 @@ abstract class WpConnectorsTestCase extends TestCase
      */
     protected function refusalOf(callable $attempt, string $expectation, string $family): \Throwable
     {
-        try {
-            $attempt();
-        } catch (\Throwable $e) {
-            $this->assertInstanceOf($family, $e, 'The refusal class is outside the family this site pins (expected ' . $family . ', got ' . get_class($e) . ') — the original catch declared ' . $family . ', and a stray Error carrying the fragments would otherwise pass silently (t31-ocr9-3).');
-
-            return $e;
-        }
-
-        $this->fail($expectation);
+        return WpHarness::refusalOf($attempt, $expectation, $family);
     }
 
     /*
