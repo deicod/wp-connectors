@@ -520,6 +520,42 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->assertSame(3, $storage->saveCount('fixture-provider'));
     }
 
+    /**
+     * OCR-round-15 pin (t31-ocr15-2): the expectation DOMAIN. An
+     * expected_generation below EXPECT_NO_GRANT (-1) can name no
+     * persisted state — a load() answer is null (the sentinel) or a
+     * grant whose generation is >= 0 — so a typo'd expectation (-2)
+     * matched nothing and the save answered a SILENT false: a "fence
+     * verdict" for a fence that cannot exist, exactly the caller-bug
+     * class the identity (t31-ocr1-7) and monotonicity (t31-ocr2-3)
+     * rules reject typed — a caller that retries on it loops forever
+     * over its own typo. Both sites of the expectation-domain pair
+     * (the contract docblock and the reference fake) state the domain
+     * and reject below it, nothing committed; false stays reserved
+     * for genuine fence verdicts.
+     */
+    public function testAnExpectationBelowTheNoGrantSentinelIsRejectedAsACallerBug(): void
+    {
+        $storage = new InMemoryTokenStorage();
+        $grant = $this->connectedGrant();
+
+        $refusal = $this->refusalOf(
+            fn() => $storage->save('fixture-provider', $grant, -2),
+            'An expected_generation below EXPECT_NO_GRANT names no observable state — it is a caller typo, never a fence verdict to answer with false.',
+            \InvalidArgumentException::class
+        );
+        $this->assertStringContainsString('expected generation', $refusal->getMessage());
+        $this->assertStringContainsString('EXPECT_NO_GRANT', $refusal->getMessage(), 'The rejection names the floor it judged against: the sentinel itself.');
+        $this->assertNull($storage->load('fixture-provider'), 'Nothing committed.');
+        $this->assertSame(0, $storage->saveCount('fixture-provider'));
+
+        // The legitimate domain legs stay green: the sentinel (-1) and
+        // every non-negative expectation.
+        $this->assertTrue($storage->save('fixture-provider', $grant, TokenStorageInterface::EXPECT_NO_GRANT));
+        $this->assertTrue($storage->save('fixture-provider', $grant->with_generation(4), 3));
+        $this->assertSame(2, $storage->saveCount('fixture-provider'));
+    }
+
     public function testStorageIsKeyedPerProvider(): void
     {
         $storage = new InMemoryTokenStorage();

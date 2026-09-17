@@ -29,6 +29,15 @@
  *   moved forward from it), so implementations REJECT a
  *   lower-generation grant loudly (the typed caller-bug rejection,
  *   nothing committed) instead of accepting the regression.
+ * - The expectation domain (OCR round 15, t31-ocr15-2):
+ *   $expected_generation is EXPECT_NO_GRANT (-1) or a non-negative
+ *   generation — the two spellings of everything load() can answer.
+ *   A value below the sentinel names no observable state, so it is a
+ *   caller typo, never a fence: implementations REJECT it with the
+ *   typed caller-bug rejection (nothing committed) instead of
+ *   answering a silent false a caller could mistake for a fence
+ *   verdict and retry forever — false stays reserved for genuine
+ *   fence verdicts.
  * - Provider identity is ONE label, both spellings (OCR round 1,
  *   t31-ocr1-7): save()'s $provider_id parameter is the STORAGE KEY
  *   and MUST equal the grant's own provider_id() — the envelope binds
@@ -153,13 +162,25 @@ interface TokenStorageInterface {
 	 * lower-generation grant is a caller bug: implementations REJECT it
 	 * loudly and commit NOTHING.
 	 *
+	 * The expectation domain (OCR round 15, t31-ocr15-2):
+	 * $expected_generation is EXPECT_NO_GRANT (-1) or a non-negative
+	 * generation — the domain of everything load() can answer (null,
+	 * or a grant whose generations are non-negative by the VO's own
+	 * construction). A value below the sentinel names no observable
+	 * state: it is a caller typo (a -2 for the sentinel's -1), not a
+	 * fence, and implementations REJECT it with the typed caller-bug
+	 * rejection (nothing committed) — never a silent false a caller
+	 * could mistake for a fence verdict. False is reserved for
+	 * GENUINE fence verdicts: the persisted generation has moved past
+	 * an expectation that was really observable.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param string      $provider_id         Provider label (must equal the grant's own; screened for control bytes and rejected — typed, nothing committed — BEFORE any other judgment).
 	 * @param StoredGrant $grant               The grant to persist (its generation must be at least $expected_generation).
-	 * @param int         $expected_generation The persisted generation this commit is fenced on (EXPECT_NO_GRANT when none).
+	 * @param int         $expected_generation The persisted generation this commit is fenced on (EXPECT_NO_GRANT when none; a value below the sentinel violates the expectation domain this contract states).
 	 * @return bool True when the grant was committed; false when the precondition failed (nothing committed).
-	 * @throws InvalidArgumentException When $provider_id does not equal the grant's provider_id(), or when the grant's generation is below $expected_generation (nothing committed either way).
+	 * @throws InvalidArgumentException When $provider_id does not equal the grant's provider_id(), when the grant's generation is below $expected_generation, or when $expected_generation is below EXPECT_NO_GRANT (nothing committed either way).
 	 * @throws OAuthStorageException When the grant cannot be persisted.
 	 */
 	public function save( string $provider_id, StoredGrant $grant, int $expected_generation ): bool;

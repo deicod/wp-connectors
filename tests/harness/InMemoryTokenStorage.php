@@ -57,6 +57,26 @@ final class InMemoryTokenStorage implements TokenStorageInterface
         self::screen_key($provider_id);
 
         /*
+         * The expectation domain (t31-ocr15-2): the sentinel (-1) is
+         * the FLOOR of the observable world — a load() answer is null
+         * (the sentinel) or a grant whose generation is >= 0 — so an
+         * expectation below it names no state any writer could have
+         * observed. Pre-fix it fell through to the CAS comparison and
+         * answered a silent FALSE: a "fence verdict" for a fence that
+         * cannot exist, exactly the caller-bug class the identity
+         * (t31-ocr1-7) and monotonicity (t31-ocr2-3) rules reject
+         * typed. Rejected loudly, nothing committed; false stays
+         * reserved for genuine fence verdicts.
+         */
+        if ($expected_generation < TokenStorageInterface::EXPECT_NO_GRANT) {
+            throw new InvalidArgumentException(sprintf(
+                'The expected generation (%d) is below the EXPECT_NO_GRANT sentinel (%d) — no observable persisted state sits there, so the expectation is a caller typo, never a fence verdict to answer with false.',
+                $expected_generation,
+                TokenStorageInterface::EXPECT_NO_GRANT
+            ));
+        }
+
+        /*
          * The provider-identity rule (t31-ocr1-7): the parameter is
          * the storage key and MUST equal the grant's own label — the
          * reference fake used to key blindly by parameter, so
