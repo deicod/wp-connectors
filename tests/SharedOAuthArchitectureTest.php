@@ -1130,6 +1130,25 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             '$timestamp',
             'DateTimeImmutable',
             'elapsed seconds, UTC-projected,',
+            /*
+             * The superglobal leg's CASE SENSITIVITY, pinned both
+             * directions at last (OCR round 20, t31-ocr20-6): the
+             * round's finding claimed a trailing /i made
+             * $globals/$_server/$_env flag — the premise is REFUTED at
+             * HEAD, driven (preg_match returns 0 for all three; git
+             * -S: the pattern was BORN with the scoped (?i:...) group
+             * and no global flag in t31-r2-7 and never carried one),
+             * but the docblock's contract — "the superglobals stay
+             * case-sensitive ($globals is an ordinary variable)" — was
+             * pinned by NO row: a future edit appending /i or
+             * un-scoping the inline group would flip these spellings
+             * green-silently. The rows make the contract
+             * mutation-evident; the case-insensitive CALL stems are
+             * already pinned above (Time(), GETDATE(), PUTENV()).
+             */
+            '$globals',
+            '$_server',
+            '$_env',
         );
         foreach ($mustNotFlag as $spelling) {
             $this->assertSame(0, preg_match($pattern, $spelling), 'The pattern must not flag: ' . $spelling);
