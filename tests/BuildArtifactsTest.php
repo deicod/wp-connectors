@@ -3095,8 +3095,11 @@ FIXTURE;
         file_put_contents($tempPlugin . '/phpunit.cache/cached.xml', '<c/>');
         mkdir($tempPlugin . '/.phpunit.cache', 0755, true);
         file_put_contents($tempPlugin . '/.phpunit.cache/cached.xml', '<c/>');
-        file_put_contents($tempPlugin . '/webpack.config.js', 'module.exports = {};\n');
-        file_put_contents($tempPlugin . '/vite.config.js', 'export default {};\n');
+        // Real newlines (t31-ocr11-18): the single-quoted '\n' landed a
+        // literal backslash-n in the fixtures — a copy-paste trap
+        // beside the sibling writes that spell real ones.
+        file_put_contents($tempPlugin . '/webpack.config.js', "module.exports = {};\n");
+        file_put_contents($tempPlugin . '/vite.config.js', "export default {};\n");
 
         try {
             $zipPath = WpConnectorsBuild::buildPlugin($tempPlugin, self::distDir());
