@@ -597,16 +597,20 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             WpHarness::rrmdir($extract);
         }
 
-        // Soundness includes the RELEASE gate's verdict: the artifact the
-        // doctrine ships is the artifact the inspector accepts (added with
-        // t31-r5-10 — the round's own vocabulary-drift finding was exactly
-        // a build-clean/inspect-rejected contradiction).
+        /*
+         * Soundness includes the RELEASE gate's verdict: the artifact the
+         * doctrine ships is the artifact the inspector accepts (added with
+         * t31-r5-10 — the round's own vocabulary-drift finding was exactly
+         * a build-clean/inspect-rejected contradiction). A disagreement
+         * is a FAIL ROW (t31-ocr13-6), never a battery abort — the
+         * inspector's own rendering already rode the printable seam, so
+         * the lines interpolate into the aggregator's report as-is.
+         */
         $inspect = $scratch['root'] . '/.battery-inspect';
-        $this->assertSame(
-            array(),
-            wp_connectors_inspect_artifact($zipPath, $inspect),
-            'A CLEAN artifact must pass the inspector — build and inspect give ONE verdict.'
-        );
+        $violations = wp_connectors_inspect_artifact($zipPath, $inspect);
+        if ($violations !== array()) {
+            return array('class' => 'FAIL', 'why' => 'the CLEAN artifact failed the inspector — build and inspect give ONE verdict: ' . implode('; ', $violations));
+        }
 
         // Consistency: the sidecar and manifest describe THIS zip.
         $checksum = hash_file('sha256', $zipPath);
@@ -623,7 +627,18 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         }
 
         if (isset($state['extra'])) {
-            ($state['extra'])($scratch, $zipPath);
+            /*
+             * The extra closure's assertions are ROW verdicts
+             * (t31-ocr13-6), never battery aborts: a thrown assertion
+             * failure converts to a FAIL row riding the aggregator —
+             * each row's setup is its reproducer, and one row's failed
+             * control must not mask the states behind it.
+             */
+            try {
+                ($state['extra'])($scratch, $zipPath);
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                return array('class' => 'FAIL', 'why' => 'the CLEAN state\'s extra control failed: ' . $e->getMessage());
+            }
         }
 
         return array('class' => 'PASS', 'why' => '');
