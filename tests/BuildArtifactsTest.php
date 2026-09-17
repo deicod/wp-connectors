@@ -4505,6 +4505,63 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-23 pin (t31-ocr23-2): the inspector's own removal owner
+     * already SPELLS its verdict vocabulary in its docblock — "the
+     * silent return (a production finally must not throw)" — and its
+     * root clauses honor it (the link probes, the root collapse), but
+     * the WALK below them still iterated a bare
+     * RecursiveDirectoryIterator: a subdirectory the iterator cannot
+     * OPEN mid-recursion (glm31-4's class) aborted the teardown of the
+     * extraction work dir with an UNCAUGHT UnexpectedValueException —
+     * the engine's vocabulary on the one seam whose contract names the
+     * silent return. The walk honors the docblock now: the iteration
+     * refusal degrades to the silent return (the removal up to the
+     * refusal stands, the unopened subtree stays, wp_connectors_inspect_artifact()'s
+     * verdict surface is untouched). The opendir probe is the capability
+     * signal (glm17-16; uid 0 reads through mode 0000, t31-ocr4-1).
+     */
+    public function testTheInspectorRemovalTwinAnswersSilentlyOverAHostileTree(): void
+    {
+        $scratch = self::distDir() . '/.inspect-hostile-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/work', 0755, true);
+        file_put_contents($scratch . '/work/plain.txt', 'extracted bytes');
+        mkdir($scratch . '/work/locked/inner', 0755, true);
+        file_put_contents($scratch . '/work/locked/inner/x.txt', 'bytes');
+        chmod($scratch . '/work/locked', 0000);
+        $probe = @opendir($scratch . '/work/locked');
+        if (false !== $probe) {
+            closedir($probe);
+            chmod($scratch . '/work/locked', 0755);
+            WpHarness::rrmdir($scratch);
+            $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the walk-hostile tree is unconstructible here.');
+        }
+
+        try {
+            /*
+             * Red at HEAD: the call THROWS the iterator's
+             * UnexpectedValueException (the docblock's violated
+             * contract). The pin holds the silent verdict — and what it
+             * keeps: the final rmdir never runs (the work root stands),
+             * and the unopened subtree stays inside it. No pin on HOW
+             * MUCH was removed before the refusal: the yield order is
+             * the filesystem's (this runner's tmpfs meets the locked
+             * dir FIRST — the ocr22 order-dependence doctrine), so the
+             * partial removal is a host fact, never the contract.
+             */
+            wp_connectors_inspect_rrmdir($scratch . '/work');
+
+            $this->assertDirectoryExists($scratch . '/work', 'The final rmdir never runs past a refused walk — the silent degrade stops the removal, never rolls it back.');
+            $this->assertDirectoryExists($scratch . '/work/locked', 'The unopened subtree stays exactly where it stood — the silent return leaves it for the OS temp sweep.');
+        } finally {
+            chmod($scratch . '/work/locked', 0755);
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r11-2): an INVISIBLE /proc entry is not a
      * death verdict. Under hidepid=2 another user's live build is
      * invisible in /proc while it runs, and the old liveness shortcut —

@@ -607,12 +607,27 @@ function wp_connectors_inspect_rrmdir($dir)
         new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
         RecursiveIteratorIterator::CHILD_FIRST
     );
-    foreach ($items as $item) {
-        if ($item->isDir() && ! $item->isLink()) {
-            rmdir($item->getPathname());
-        } else {
-            unlink($item->getPathname());
+    try {
+        foreach ($items as $item) {
+            if ($item->isDir() && ! $item->isLink()) {
+                rmdir($item->getPathname());
+            } else {
+                unlink($item->getPathname());
+            }
         }
+    } catch (UnexpectedValueException $walk_refusal) {
+        /*
+         * A subdirectory the iterator cannot OPEN mid-recursion aborts
+         * the walk (glm31-4's class, fenced at the shared scan; the
+         * removal twins got the same guard this round — build's at its
+         * finally, this one at the docblock's own silent contract): an
+         * uncaught throw here is the engine's vocabulary on the one
+         * seam whose contract names the silent return. The removal up
+         * to the refusal stands, the unopened subtree stays, and
+         * wp_connectors_inspect_artifact()'s verdict surface is
+         * untouched (OCR round 23, t31-ocr23-2, driven).
+         */
+        return;
     }
     rmdir($dir);
 }
