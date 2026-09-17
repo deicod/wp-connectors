@@ -178,6 +178,22 @@ final class HarnessCopyTreeTest extends TestCase
             $refuses($from . '/src', '', 'An EMPTY target must refuse — the landing would be the filesystem root.');
             $refuses($from . '/src', '/', 'A root-only target must refuse — the landing would be the filesystem root.');
             $refuses($from . '/src', '//', 'A root-separators-only target must refuse — the landing would be the filesystem root.');
+            /*
+             * (b-root-sentinel) The ancestor walk's '/' SENTINEL (OCR
+             * round 16, t31-ocr16-5): the degenerate guards above own
+             * the spellings that NAME the root; this leg owns the
+             * chain that WALKS to it — a target whose every component
+             * is nonexistent bottoms the walk out at '/' (the loop
+             * stops at the sentinel without consulting the
+             * dir/link/file gates every other stop rides), and at
+             * HEAD the copy sailed past every guard into raw
+             * mkdir()/copy() warnings at the ROOT's first level
+             * (driven: '/<all-nonexistent>/dest' — permission-denied
+             * unprivileged, REAL first-level writes as uid 0) and
+             * RETURNED NORMALLY having moved nothing. The sentinel
+             * refuses like its siblings now, naming the chain.
+             */
+            $refuses($from . '/src', '/wpct-ocr16-root-sentinel-' . uniqid('', true) . '/dest', 'A target whose chain has NO existing component must refuse — the walk bottomed out at the filesystem ROOT sentinel, and the landing would create the first component directly beneath it.');
 
             // (b) The nested target: the destination sits inside the
             // source the lazy iterator is walking — the copy lands in

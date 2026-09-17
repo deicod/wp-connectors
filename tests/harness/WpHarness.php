@@ -810,6 +810,24 @@ final class WpHarness
             $ancestor = dirname($ancestor);
         }
         /*
+         * The walk's '/' SENTINEL is a refusal shape, not an answer
+         * (OCR round 16, t31-ocr16-5): the loop stops at '/' without
+         * ever consulting the is_dir/is_link/is_file gates every
+         * other stop rides, and an ancestor of '/' means NO component
+         * of the named chain exists — the landing would create its
+         * FIRST component directly beneath the filesystem root (the
+         * ocr11-22 root-landing blast radius exactly one component
+         * deeper: driven at HEAD, copyTree() into
+         * '/<all-nonexistent>/dest' passed every guard and died in
+         * raw mkdir()/copy() warnings — real first-level writes as
+         * uid 0 — then RETURNED NORMALLY having moved nothing). The
+         * sentinel gets its siblings' vocabulary: refuse loudly,
+         * naming the chain and the sentinel.
+         */
+        if ('/' === $ancestor) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain has no existing component — the ancestor walk bottomed out at the filesystem ROOT sentinel, and the landing would create the first component directly beneath it: from ' . $from . ' into ' . $to);
+        }
+        /*
          * A regular FILE in the target chain (t31-ocr10-10): the walk
          * above used to step PAST one (not a dir, not a link — exactly
          * its walk-on conditions), so containment was judged against
