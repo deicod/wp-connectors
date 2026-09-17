@@ -228,7 +228,32 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     if (is_dir($workDir)) {
         wp_connectors_inspect_rrmdir($workDir);
     }
-    mkdir($workDir, 0755, true);
+    /*
+     * The extraction dir is UNIQUE-OWNED (t31-ocr10-2, the WRITE half
+     * of the planted-link threat t31-ocr9-10 closed for deletion): the
+     * workDir spellings are fixed and predictable — the CLI's
+     * sys_get_temp_dir() . '/wp-connectors-inspect-' . getmypid() (pids
+     * enumerable), the tests' dist/.inspect-* literals — so a symlink
+     * PRE-PLANTED at the name made is_dir() follow it, mkdir() fail
+     * ("File exists", the warning leaking raw), and extractTo() WRITE
+     * through the link into the attacker's chosen tree (driven pre-fix:
+     * the extracted plugin dir landed inside the victim tree). A random
+     * unique suffix cannot be pre-planted; the rrmdir link guard below
+     * stays as depth. mkdir() is the race-free creation (a pre-existing
+     * name of any kind fails it, retried on a fresh suffix).
+     */
+    $extractDir = '';
+    for ($attempt = 0; $attempt < 16 && '' === $extractDir; ++$attempt) {
+        $candidate = $workDir . '-' . bin2hex(random_bytes(8));
+        if (mkdir($candidate, 0755, true)) {
+            $extractDir = $candidate;
+        }
+    }
+    if ('' === $extractDir) {
+        $violations[] = sprintf('inspect: cannot create a unique extraction directory under %s — the artifact is judged whole or not at all.', wp_connectors_printable($workDir));
+
+        return $violations;
+    }
     try {
         /*
          * Both extraction returns are OWNED (review round t31-r12-1): the
@@ -276,7 +301,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * rides a finally; the throw itself keeps propagating.
          */
         try {
-            $extracted = $zip->extractTo($workDir);
+            $extracted = $zip->extractTo($extractDir);
         } finally {
             restore_error_handler();
         }
@@ -291,7 +316,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
             return $violations;
         }
 
-        $pluginDir = $workDir . '/' . $slug;
+        $pluginDir = $extractDir . '/' . $slug;
         if (! is_dir($pluginDir)) {
             $violations[] = sprintf('inspect: the single top-level entry "%s" is not a plugin directory.', wp_connectors_printable($slug));
 
@@ -348,7 +373,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
                 // newline is a legal filename character here, and the
                 // engine's own diagnostic echoes the same path) — both
                 // ride the seam (see the dev-entry site).
-                $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($workDir . '/', '', $file->getPathname())), wp_connectors_printable(implode(' ', $output)));
+                $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $file->getPathname())), wp_connectors_printable(implode(' ', $output)));
             }
         }
 
@@ -371,12 +396,12 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         foreach (wp_connectors_scan_paths(array( $pluginDir ), false) as $secretFinding) {
             // The finding's path carries the landed entry bytes (see the
             // dev-entry site for the seam doctrine).
-            $violations[] = 'inspect: ' . wp_connectors_printable(str_replace($workDir . '/', '', $secretFinding));
+            $violations[] = 'inspect: ' . wp_connectors_printable(str_replace($extractDir . '/', '', $secretFinding));
         }
 
         return $violations;
     } finally {
-        wp_connectors_inspect_rrmdir($workDir);
+        wp_connectors_inspect_rrmdir($extractDir);
     }
 }
 

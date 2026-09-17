@@ -506,6 +506,94 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-10 pin (t31-ocr10-2, security): the extraction dir is
+     * UNIQUE-OWNED — the WRITE half of the planted-link threat
+     * t31-ocr9-10 closed for deletion. The workDir spellings are fixed
+     * and predictable (the CLI's '/wp-connectors-inspect-<pid>', the
+     * tests' dist/.inspect-* literals), so a symlink pre-planted at
+     * the name made is_dir() follow it, mkdir() fail, and extractTo()
+     * WRITE through the link into the attacker's chosen tree (driven
+     * pre-fix: the extracted plugin dir landed inside the victim
+     * tree). A random unique suffix cannot be pre-planted.
+     */
+    public function testTheExtractionDirectoryIsUniqueOwnedNeverAPlantedName(): void
+    {
+        $scratch = self::distDir() . '/.inspect-unique-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch, 0755, true);
+        try {
+            /*
+             * (a) Uniqueness, observed through the captured engine
+             * diagnostic: the NAME_MAX zip's extraction refusal (the
+             * t31-r12-1 shape) names the FULL extraction path, so two
+             * runs under the same base expose their dir names —
+             * different unique suffixes, both under the base. (Red at
+             * HEAD: pre-fix both runs extracted into the base itself,
+             * one shared name.)
+             */
+            $slug = 'partextract-demo';
+            $longNameZip = $scratch . "/connectors-{$slug}-1.0.0.zip";
+            $zip = new ZipArchive();
+            $zip->open($longNameZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $zip->addFromString("{$slug}/{$slug}.php", "<?php\n");
+            $zip->addFromString("{$slug}/assets/" . str_repeat('a', 300) . '.php', "<?php\n");
+            $zip->close();
+            $extractionDirs = array();
+            for ($run = 0; $run < 2; ++$run) {
+                $violations = wp_connectors_inspect_artifact($longNameZip, $scratch . '/.inspect-uniq');
+                $this->assertCount(1, $violations, 'The NAME_MAX refusal is the one verdict: ' . implode("\n", $violations));
+                $this->assertMatchesRegularExpression(
+                    '#' . preg_quote($scratch . '/.inspect-uniq', '#') . '-[0-9a-f]{16}/#',
+                    $violations[0],
+                    'The extraction refusal names the run\'s extraction dir — a unique suffix under the requested base.'
+                );
+                preg_match('#(' . preg_quote($scratch . '/.inspect-uniq', '#') . '-[0-9a-f]{16})/#', $violations[0], $hit);
+                $extractionDirs[] = $hit[1];
+            }
+            $this->assertNotSame($extractionDirs[0], $extractionDirs[1], 'Two runs extract into two DIFFERENT unique dirs — the name is never reused, so it cannot be pre-planted.');
+            $this->assertSame(array(), array_filter(glob($scratch . '/.inspect-uniq-*') ?: array(), 'is_dir'), 'Every unique extraction dir is cleaned up by the try/finally.');
+
+            /*
+             * (b) The pre-planted link at the OLD predictable name: the
+             * name is never followed, extraction lands in the unique
+             * dir (the zip inspects green), and the victim tree stands.
+             * (Red at HEAD: driven pre-fix, the extracted plugin dir
+             * landed INSIDE the victim tree through the link.)
+             */
+            $probe = $scratch . '/capability-probe';
+            if (! @symlink($scratch, $probe)) {
+                $this->markTestSkipped('This host cannot create symlinks — the planted-link leg did not run (the uniqueness legs above already passed).');
+            }
+            unlink($probe);
+            $victim = $scratch . '/victim';
+            mkdir($victim, 0755, true);
+            file_put_contents($victim . '/survivor.txt', 'survivor');
+            $workDir = $scratch . '/wp-connectors-inspect-' . getmypid();
+            symlink($victim, $workDir);
+            $head = "Plugin Name:       linkdemo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       linkdemo\nAuthor:            x\n";
+            $main = "<?php\n/**\n * {$head} */\ndefine( 'LINKDEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+            $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\Linkdemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+            $greenZip = $scratch . '/connectors-linkdemo-1.0.0.zip';
+            $zip = new ZipArchive();
+            $zip->open($greenZip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $zip->addFromString('linkdemo/linkdemo.php', $main);
+            $zip->addFromString('linkdemo/src/autoload.php', $autoload);
+            $zip->close();
+
+            $this->assertSame(array(), wp_connectors_inspect_artifact($greenZip, $workDir), 'Extraction lands in the unique dir — the planted link never sabotages the inspection.');
+            $this->assertSame(array('survivor.txt'), array_values(array_diff(scandir($victim), array('.', '..'))), 'The victim tree behind the planted link is untouched — nothing was written through it.');
+            $this->assertTrue(is_link($workDir), 'The planted link stands exactly where it is.');
+        } finally {
+            if (is_link($scratch . '/wp-connectors-inspect-' . getmypid())) {
+                unlink($scratch . '/wp-connectors-inspect-' . getmypid());
+            }
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r12-19, the security lens): the
      * extraction refusal interpolates the CAPTURED ENGINE WARNING,
      * which itself interpolates archive-controlled text. The r12 round
@@ -762,7 +850,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     public function testTheCaptureHandlerRestoreRidesAFinally(): void
     {
         $source = (string) file_get_contents(__DIR__ . '/../bin/inspect-artifact.php');
-        $call = 'try {' . "\n" . '            $extracted = $zip->extractTo($workDir);' . "\n" . '        } finally {' . "\n" . '            restore_error_handler();' . "\n" . '        }';
+        $call = 'try {' . "\n" . '            $extracted = $zip->extractTo($extractDir);' . "\n" . '        } finally {' . "\n" . '            restore_error_handler();' . "\n" . '        }';
 
         $this->assertStringContainsString(
             $call,
