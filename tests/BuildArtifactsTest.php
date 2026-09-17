@@ -639,7 +639,8 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      * tree). A random unique suffix cannot be pre-planted.
      */
     public function testTheExtractionDirectoryIsUniqueOwnedNeverAPlantedName(): void
-    {        $scratch = self::distDir() . '/.inspect-unique-' . getmypid();
+    {
+        $scratch = self::distDir() . '/.inspect-unique-' . getmypid();
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -998,16 +999,24 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
          * pinned: extractTo() wrapped in a try whose finally restores
          * the handler, token order preserved, formatting-free.
          */
-        $collapse = static function (string $bytes): string {
-            return (string) preg_replace('/\s+/', ' ', $bytes);
-        };
-        $normalized = $collapse($source);
-        $structure = $collapse('try { $extracted = $zip->extractTo($extractDir); } finally { restore_error_handler(); }');
-
-        $this->assertStringContainsString(
-            $structure,
-            $normalized,
-            'The capture handler\'s restore must ride the finally that wraps the extractTo() call — a happy-path-only restore leaks the swallow-all handler on any throw. (The pin matches the try/finally STRUCTURE, whitespace-normalized: reformatting the source must not redden it.)'
+        /*
+         * The pin matches STRUCTURE, not variable tokens (OCR round
+         * 16, t31-ocr16-15d, the ocr10-12 doctrine the comment above
+         * already claimed): the whitespace-collapsed exact string
+         * still spelled '$extracted', '$zip', '$extractDir' byte-
+         * exactly, so a rename of any of the three reddened the pin
+         * live — the t31-ocr10-2 finding's own class, one variable
+         * at a time. The shape is a pattern now: assignment of an
+         * extractTo() call on any variable pair, wrapped in a try
+         * whose finally restores the handler.
+         */
+        $this->assertSame(
+            1,
+            preg_match(
+                '/try\s*\{\s*\$\w+\s*=\s*\$\w+->extractTo\(\s*\$\w+\s*\)\s*;\s*\}\s*finally\s*\{\s*restore_error_handler\(\)\s*;\s*\}/',
+                $source
+            ),
+            'The capture handler\'s restore must ride the finally that wraps the extractTo() call — a happy-path-only restore leaks the swallow-all handler on any throw. (The pin matches the try/finally STRUCTURE: variable names are any names, reformatting is any formatting — only the shape is pinned.)'
         );
     }
 
@@ -5571,7 +5580,16 @@ FIXTURE;
         $interrupted_spellings = array(
             'space after the keyword' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace \\Clock\\SystemClock;\ninterface InterruptedKeywordFixture\n{\n}\n",
             'block comment between' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace/* c */\\Http\\Url;\ninterface InterruptedKeywordFixture\n{\n}\n",
-            'line comment between' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\n// c\n\\\\Clock;\ninterface InterruptedKeywordFixture\n{\n}\n",
+            // ONE leading separator, aligned with its siblings (OCR
+            // round 16, t31-ocr16-15f): this row's payload spelled
+            // '\\\\Clock' — TWO backslashes in the fixture source —
+            // while every sibling carries one ('\\Clock\\SystemClock'
+            // et al.); the walk resolved the doubled spelling through
+            // the lexer's separator-plus-FQ-piece split, so the row
+            // passed by a spelling the round never chose. The
+            // intended fixture is the comment-interrupted plain
+            // relative operator, same as its siblings.
+            'line comment between' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\n// c\n\\Clock;\ninterface InterruptedKeywordFixture\n{\n}\n",
             'doc comment between' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace /** d */ \\Clock;\ninterface InterruptedKeywordFixture\n{\n}\n",
         );
         foreach ($interrupted_spellings as $label => $source) {
