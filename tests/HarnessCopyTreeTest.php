@@ -194,6 +194,27 @@ final class HarnessCopyTreeTest extends TestCase
              * refuses like its siblings now, naming the chain.
              */
             $refuses($from . '/src', '/wpct-ocr16-root-sentinel-' . uniqid('', true) . '/dest', 'A target whose chain has NO existing component must refuse — the walk bottomed out at the filesystem ROOT sentinel, and the landing would create the first component directly beneath it.');
+            /*
+             * (b-landing-sentinel) The landing policy judges the
+             * RESOLUTION (OCR round 17, t31-ocr17-1, the round's
+             * substantive close): the sentinel leg above owns the
+             * SPELLING'S chain — a '..'-woven target can anchor the
+             * ancestor walk at an EXISTING component while the
+             * collapse resolves elsewhere, and driven red at HEAD this
+             * spelling anchored at the existing '/..', collapsed to a
+             * FIRST-LEVEL nonexistent target, passed every containment
+             * clause, and sailed into raw mkdir()/copy() warnings at
+             * the root's first level (permission-denied
+             * unprivileged — real first-level writes as uid 0) before
+             * RETURNING NORMALLY. The collapsed chain walks the
+             * sentinel's own rule now. The spelling is ROOT-ANCHORED
+             * (the t31-ocr11-2 doctrine): '/..' resolves to the root
+             * on every POSIX host, so the leg needs no temp-parent
+             * assumptions.
+             */
+            $firstLevel = '/wpct-ocr17-landing-' . uniqid('', true);
+            $refuses($from . '/src', '/../' . $firstLevel, 'A \'..\'-woven target whose RESOLUTION has no existing component must refuse — the anchor the walk found is not the landing the collapse names.');
+            $this->assertFileDoesNotExist($firstLevel, 'No byte lands at the root\'s first level — the refusal precedes the byte work (driven at HEAD as real first-level writes).');
 
             // (b) The nested target: the destination sits inside the
             // source the lazy iterator is walking — the copy lands in

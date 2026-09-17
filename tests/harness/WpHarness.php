@@ -904,6 +904,32 @@ final class WpHarness
         if ($target_real === '/' || 0 === strpos($source_real, $target_real . '/')) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target that CONTAINS the source — the mirror of the nested-target refusal: a nested same-name segment would resolve the copy inside the very tree it reads, and a target collapsed to the filesystem ROOT contains every source: from ' . $from . ' into ' . $to);
         }
+        /*
+         * The landing policy judges the COLLAPSED resolution too (OCR
+         * round 17, t31-ocr17-1): the sentinel above owns the
+         * SPELLING'S chain, and a '..'-woven target can anchor the
+         * ancestor walk at an EXISTING component while the collapse
+         * resolves elsewhere — driven at HEAD, copyTree($src,
+         * '/../dst') anchored at the existing '/..' (is_dir resolves
+         * it to the root), collapsed $target_real to the first-level
+         * '/dst', passed every containment clause, and died in raw
+         * mkdir()/copy() warnings at the ROOT'S first level
+         * (permission-denied unprivileged — real first-level writes
+         * as uid 0) having RETURNED NORMALLY — the ocr16-5 sentinel's
+         * exact blast radius, escaped by a spelling whose chain walked
+         * to an anchor. The same first-level rule, judged wherever
+         * the chain RESOLVES: nothing on the collapsed chain existing
+         * means the landing would create its first component directly
+         * beneath the root, so the resolution gets the sentinel's own
+         * walk and vocabulary.
+         */
+        $landing = $target_real;
+        while ('' !== $landing && '/' !== $landing && ! is_dir($landing) && ! is_link($landing) && ! is_file($landing)) {
+            $landing = dirname($landing);
+        }
+        if ('/' === $landing) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a target whose RESOLVED chain has no existing component — the collapsed landing would create the first component directly beneath the filesystem root, the root sentinel\'s rule judged on the resolution rather than the spelling: from ' . $from . ' into ' . $to . ' (the collapsed resolution: ' . $target_real . ')');
+        }
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS)
         );
