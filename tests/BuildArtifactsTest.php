@@ -884,12 +884,25 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     public function testTheCaptureHandlerRestoreRidesAFinally(): void
     {
         $source = (string) file_get_contents(__DIR__ . '/../bin/inspect-artifact.php');
-        $call = 'try {' . "\n" . '            $extracted = $zip->extractTo($extractDir);' . "\n" . '        } finally {' . "\n" . '            restore_error_handler();' . "\n" . '        }';
+        /*
+         * Whitespace-normalized (t31-ocr10-12): the pin asserted a
+         * byte-exact, indentation-sensitive substring — the t31-ocr10-2
+         * rename of one variable inside the try block reddened it live
+         * (the finding's own class demonstrated), and any
+         * formatting-only edit would too. The STRUCTURE is what is
+         * pinned: extractTo() wrapped in a try whose finally restores
+         * the handler, token order preserved, formatting-free.
+         */
+        $collapse = static function (string $bytes): string {
+            return (string) preg_replace('/\s+/', ' ', $bytes);
+        };
+        $normalized = $collapse($source);
+        $structure = $collapse('try { $extracted = $zip->extractTo($extractDir); } finally { restore_error_handler(); }');
 
         $this->assertStringContainsString(
-            $call,
-            $source,
-            'The capture handler\'s restore must ride the finally that wraps the extractTo() call — a happy-path-only restore leaks the swallow-all handler on any throw.'
+            $structure,
+            $normalized,
+            'The capture handler\'s restore must ride the finally that wraps the extractTo() call — a happy-path-only restore leaks the swallow-all handler on any throw. (The pin matches the try/finally STRUCTURE, whitespace-normalized: reformatting the source must not redden it.)'
         );
     }
 
