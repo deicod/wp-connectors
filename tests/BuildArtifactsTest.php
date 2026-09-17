@@ -6996,12 +6996,24 @@ final class WpctShortWriteStream
     }
 
     /**
-     * @param string $path The stat target.
+     * Stat is unavailable on the scheme (a write-only virtual stream).
+     *
+     * The protocol's failure spelling, not an off-protocol empty
+     * array (OCR round 16, t31-ocr16-15g): url_stat() answers a full
+     * 13-element stat array or FALSE — an empty array is neither,
+     * and if anything ever stats the scheme (an is_file()/filesize()
+     * probe reaching the wrapper) the engine would treat the empty
+     * shape as a REAL stat with garbage fields. Nothing stats it
+     * today (the pin only writes); the unreachable arm answers the
+     * protocol anyway: FALSE, stat unavailable — a probe then reads
+     * "does not exist", the honest answer for this scheme.
+     *
+     * @param string $path  The stat target.
      * @param int    $flags Stat flags.
-     * @return array<int|string, int|string> An empty stat.
+     * @return array<int|string, int|string>|false Always false (stat unavailable).
      */
-    public function url_stat(string $path, int $flags): array
+    public function url_stat(string $path, int $flags)
     {
-        return array();
+        return false;
     }
 }
