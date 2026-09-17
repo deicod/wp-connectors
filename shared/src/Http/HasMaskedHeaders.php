@@ -144,13 +144,7 @@ trait HasMaskedHeaders {
 	 * @return array<string, mixed> The masked debug fields, never containing secrets.
 	 */
 	public function __debugInfo(): array {
-		return array_merge(
-			$this->safe_debug_head_fields(),
-			array(
-				'headers' => $this->header_map()->masked_headers(),
-				'body'    => '[body omitted]',
-			)
-		);
+		return $this->masked_debug_payload();
 	}
 
 	/**
@@ -174,6 +168,24 @@ trait HasMaskedHeaders {
 	 * @return array<string, mixed> The masked payload fields, never containing secrets.
 	 */
 	public function __serialize(): array {
+		return $this->masked_debug_payload();
+	}
+
+	/**
+	 * The one masked payload both debug channels render (t31-ocr18-5).
+	 *
+	 * __debugInfo() and __serialize() carried byte-identical bodies —
+	 * two copies of the dump/serialize vocabulary one edit apart from
+	 * drifting (the finding's seam, the same doctrine the facade
+	 * itself was cut from in t31-r12-13). Both hooks ride this owner;
+	 * WHAT is sensitive stays SecretMask's and HeaderMap's decision —
+	 * this method only assembles the shared shape.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return array<string, mixed> The masked payload fields, never containing secrets.
+	 */
+	private function masked_debug_payload(): array {
 		return array_merge(
 			$this->safe_debug_head_fields(),
 			array(
