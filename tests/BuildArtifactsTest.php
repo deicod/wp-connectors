@@ -2941,6 +2941,12 @@ FIXTURE;
      */
     public function testASymlinkInAnExcludedPathBuildsWhileAShippedSymlinkStillRefuses(): void
     {
+        // The capability probe (t31-ocr10-14): the battery's bare
+        // symlink() calls fataled the leg on exactly the hosts that
+        // never exercised it.
+        if (! self::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the excluded-path/shipped-link ordering legs cannot run on it.');
+        }
         $tempPlugin = self::distDir() . '/.symlink-order-test/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
@@ -3383,8 +3389,11 @@ FIXTURE;
      */
     public function testTheRemovalSeamNeverDeletesThroughALink(): void
     {
-        if (! function_exists('symlink')) {
-            $this->markTestSkipped('This host cannot create symlinks.');
+        // The capability probe (t31-ocr10-14): function_exists is NOT
+        // the signal — symlink() exists on Windows without the
+        // privilege to use it; the FALSE RETURN is.
+        if (! self::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the removal-seam link legs cannot run on it.');
         }
         $scratch = self::distDir() . '/.rrmdir-link-' . getmypid();
         if (is_dir($scratch)) {

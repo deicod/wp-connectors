@@ -185,6 +185,29 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
+     * Whether this host can create symlinks — the CAPABILITY probe,
+     * never function_exists (t31-ocr10-14 over the t31-ocr6-14
+     * lesson): symlink() exists on Windows without the privilege to
+     * use it, and a failing call raises E_WARNING which the suite's
+     * warning conversion errors at the call line — the FALSE RETURN
+     * is the signal, @-suppressed. The root-runner guard's functional
+     * twin: link-bearing legs and rows skip on the probe's answer,
+     * never fatal the battery.
+     *
+     * @return bool True when a probe link can be created and removed.
+     */
+    protected static function canSymlink(): bool
+    {
+        $probe = sys_get_temp_dir() . '/wpct-capability-' . getmypid();
+        $ok = @symlink('/usr/bin/true', $probe);
+        if ($ok) {
+            @unlink($probe);
+        }
+
+        return $ok;
+    }
+
+    /**
      * The shared skip for one chmod-0000 leg (t31-ocr4-1) — consume at
      * the leg. On a mid-test leg the skip aborts the rest of the test,
      * so place it at the FIRST chmod-0000 leg of the test.

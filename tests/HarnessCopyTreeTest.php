@@ -13,6 +13,24 @@ use PHPUnit\Framework\TestCase;
 final class HarnessCopyTreeTest extends TestCase
 {
     /**
+     * Whether this host can create symlinks — the CAPABILITY probe,
+     * never function_exists (t31-ocr10-14 over the t31-ocr6-14
+     * lesson): symlink() exists on Windows without the privilege to
+     * use it, and a failing call raises E_WARNING which the suite's
+     * warning conversion errors at the call line — the FALSE RETURN is
+     * the signal, @-suppressed.
+     */
+    private static function canSymlink(): bool
+    {
+        $probe = sys_get_temp_dir() . '/wpct-copytree-capability-' . getmypid();
+        $ok = @symlink('/usr/bin/true', $probe);
+        if ($ok) {
+            @unlink($probe);
+        }
+
+        return $ok;
+    }
+    /**
      * OCR-round-4 pin (t31-ocr4-2): the relative path was computed by
      * str_replace($from . '/', '', …), which strips EVERY occurrence —
      * a source tree containing the source dir's own name as a NESTED
@@ -192,7 +210,11 @@ final class HarnessCopyTreeTest extends TestCase
              * walk stops at any existing component now.
              */
             $refuses($from . '/src', $from . '/plain.txt/inside', 'A target whose chain crosses a regular FILE must refuse with the policy exception naming the crossing — never a raw mkdir() warning from the byte work.');
-            if (function_exists('symlink')) {
+            // The linked-ancestor legs ride the CAPABILITY probe
+            // (t31-ocr10-14): function_exists('symlink') is true on
+            // hosts that cannot use it, and the bare call fatals the
+            // battery mid-test — the probe gates the legs instead.
+            if (self::canSymlink()) {
                 symlink($from . '/src', $from . '/ancestor-link');
                 $refuses($from . '/src', $from . '/ancestor-link/inside', 'A target reached through a SYMLINKED ancestor of the source must refuse — the link is not a door.');
 
@@ -224,15 +246,9 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testBothSymlinkShapesRefuseTheCopyLoudly(): void
     {
-        $probe = sys_get_temp_dir() . '/wpct-copytree-probe-' . uniqid('', true);
-        // @-suppressed (t31-ocr6-14): a failing symlink() raises
-        // E_WARNING and the suite's warning conversion errors the test
-        // at the call line, never reaching this skip — the false
-        // return is the probe's signal, the diagnostic is not.
-        if (! @symlink('/usr/bin/true', $probe)) {
+        if (! self::canSymlink()) {
             $this->markTestSkipped('This host cannot create symlinks.');
         }
-        unlink($probe);
 
         $plain = sys_get_temp_dir() . '/wpct-copytree-link-' . uniqid('', true);
         mkdir($plain . '/src', 0755, true);

@@ -94,7 +94,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * reads through mode 0000, t31-ocr4-1 — the row skips itself on a
      * root runner instead of failing as a false silent third).
      *
-     * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool}>
+     * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool}>
      */
     private function states(): array
     {
@@ -108,7 +108,12 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // t31-r5-7: a vendor/node_modules symlink (a composer
                 // path repo, an npm .bin shim) ships nothing — the
                 // refusal belongs to paths that would ship, not these.
+                // The row NEEDS the symlink capability (t31-ocr10-14):
+                // a bare call fatals the state on exactly the hosts
+                // that never exercised it; the row skips itself
+                // instead, the skip_on_root pattern.
                 'expect' => 'CLEAN',
+                'needs_symlink' => true,
                 'apply' => static function (array $scratch): void {
                     mkdir($scratch['plugin'] . '/vendor/bin', 0755, true);
                     symlink('/usr/bin/true', $scratch['plugin'] . '/vendor/bin/tool');
@@ -383,6 +388,15 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         // 0000 — the row skips itself, never the battery.
         if (! empty($state['skip_on_root']) && self::runningAsRootRunner()) {
             return array('class' => 'SKIP', 'why' => 'chmod-0000 does not block reads for uid 0 — the permission-bit refusal cannot fire in a root container (t31-ocr4-1).');
+        }
+        // Row-level symlink-capability skip (t31-ocr10-14, the
+        // skip_on_root pattern): a link-bearing row cannot be applied
+        // on a host without the capability — and the bare symlink()
+        // call would FATAL the state there (function_exists is not the
+        // capability signal, the t31-ocr6-14 lesson). The row skips
+        // itself with a named why, never the battery.
+        if (! empty($state['needs_symlink']) && ! self::canSymlink()) {
+            return array('class' => 'SKIP', 'why' => 'this host cannot create symlinks — the link-bearing state cannot be applied (t31-ocr10-14).');
         }
 
         $scratch = $this->makeScratchRepo($state_id);
