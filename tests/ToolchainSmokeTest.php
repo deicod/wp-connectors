@@ -171,18 +171,25 @@ final class ToolchainSmokeTest extends TestCase
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process lint legs cannot run (t31-ocr16-12).');
         }
 
-        $scratch = sys_get_temp_dir() . '/wpct-lint-trailroot-' . getmypid();
-        if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
-        }
-        mkdir($scratch . '/bin/lib', 0755, true);
-        $tool = (string) file_get_contents(__DIR__ . '/../bin/lint-php.php');
-        $patched = str_replace("__DIR__ . '/../connectors'", "__DIR__ . '/../connectors/'", $tool);
-        $this->assertNotSame($tool, $patched, 'The patch must reach the roots line (the connectors spelling exists exactly once).');
-        file_put_contents($scratch . '/bin/lint-php.php', $patched);
-        copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php');
+        /*
+         * RANDOM-suffixed and staged INSIDE the try (OCR round 16,
+         * t31-ocr16-14): the pid-only name was the pre-plantable
+         * spelling the ocr10-2 doctrine rejects (pids enumerable on
+         * every host), and the staging rode BEFORE the try/finally
+         * pair — a failed guard, copy, or the patch assertion itself
+         * leaked the whole scratch tree into /tmp. The name carries a
+         * unique suffix now, and creation-to-assertion lives under
+         * the finally that owns the tree.
+         */
+        $scratch = sys_get_temp_dir() . '/wpct-lint-trailroot-' . uniqid('', true);
 
         try {
+            mkdir($scratch . '/bin/lib', 0755, true);
+            $tool = (string) file_get_contents(__DIR__ . '/../bin/lint-php.php');
+            $patched = str_replace("__DIR__ . '/../connectors'", "__DIR__ . '/../connectors/'", $tool);
+            $this->assertNotSame($tool, $patched, 'The patch must reach the roots line (the connectors spelling exists exactly once).');
+            file_put_contents($scratch . '/bin/lint-php.php', $patched);
+            copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php');
             // The excluded tree is the FIRST segment below the root —
             // the position whose first byte the bare offset ate.
             mkdir($scratch . '/connectors/vendor', 0755, true);
@@ -244,15 +251,19 @@ final class ToolchainSmokeTest extends TestCase
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process lint legs cannot run, the still-fails controls included (they verdict through a spawned engine); the canSymlink promise below is never reached here (t31-ocr16-12).');
         }
 
-        $scratch = sys_get_temp_dir() . '/wpct-lint-' . getmypid();
-        if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
-        }
-        mkdir($scratch . '/bin/lib', 0755, true);
-        copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php');
-        copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php');
+        /*
+         * RANDOM-suffixed and staged INSIDE the try (t31-ocr16-14, the
+         * trailroot sibling's own shape): the pid-only name was
+         * pre-plantable, and the staging copies rode before the
+         * try/finally pair — a failed copy leaked the tree. Creation
+         * through every assertion lives under the finally now.
+         */
+        $scratch = sys_get_temp_dir() . '/wpct-lint-' . uniqid('', true);
 
         try {
+            mkdir($scratch . '/bin/lib', 0755, true);
+            copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php');
+            copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php');
             // Real sources: one under tests/ (the root lints), one under
             // connectors/, one under a NESTED tests-named tree (the
             // ocr8-7 coverage — the vocabulary ride skipped it); then
