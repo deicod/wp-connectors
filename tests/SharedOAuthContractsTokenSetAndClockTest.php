@@ -498,10 +498,20 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $with = static function (array $overrides) use ($valid): array {
             return array_merge($valid, $overrides);
         };
+        /*
+         * The row payload is BUILT inside the closure (OCR round 16,
+         * t31-ocr16-11): the former unset() operated on the BOUND
+         * copy, and a by-value `use` binding is captured ONCE — a
+         * second call saw the already-shrunk array (the first row's
+         * missing key leaked into every later row's payload, red as
+         * soon as two $without rows exist). Each call now derives
+         * from the untouched $valid.
+         */
         $without = static function (string $key) use ($valid): array {
-            unset($valid[$key]);
+            $payload = $valid;
+            unset($payload[$key]);
 
-            return $valid;
+            return $payload;
         };
 
         return array(
@@ -511,6 +521,13 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
             // forward-tolerance pin below (the superseded exact-key
             // entry pinned the old contract).
             'missing key' => array($without('expires_in'), 'missing: expires_in'),
+            // t31-ocr16-11: a SECOND $without row — the two-consecutive-
+            // calls shape the mutated binding once corrupted. The
+            // fragment is the exact single-missing spelling (trailing
+            // period): at HEAD the shrunk payload missed BOTH keys and
+            // the verdict read 'missing: expires_in, obtained_at.' —
+            // the fragment below matches only the one-key verdict.
+            'second missing key' => array($without('obtained_at'), 'missing: obtained_at.'),
             'non-string access token' => array($with(array('access_token' => 42)), 'access token must be a string'),
             'numeric-string expires_in' => array($with(array('expires_in' => '3600')), 'expires_in must be an int'),
             'float expires_in' => array($with(array('expires_in' => 3600.5)), 'expires_in must be an int'),
