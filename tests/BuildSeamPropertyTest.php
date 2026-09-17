@@ -744,7 +744,17 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      */
     private function makeScratchRepo(string $state_id): array
     {
-        $root = __DIR__ . '/../dist/.battery-' . preg_replace('/[^a-z0-9-]/', '-', strtolower($state_id));
+        /*
+         * Temp-rooted and RANDOM-suffixed (OCR round 11, t31-ocr11-16):
+         * the fixed name under the repo's dist/ made two CONCURRENT
+         * suite runs collide on one scratch tree — run B's rrmdir of
+         * the "stale" root deleted run A's in-flight battery. Every
+         * other scratch maker in the suite rides temp+suffix
+         * (canSymlink()'s probe is the doctrine's own model); the
+         * state id keeps the row identifiable in /tmp, the suffix
+         * makes the tree one run's own.
+         */
+        $root = sys_get_temp_dir() . '/wpct-battery-' . preg_replace('/[^a-z0-9-]/', '-', strtolower($state_id)) . '-' . bin2hex(random_bytes(4));
         if (is_dir($root)) {
             WpHarness::rrmdir($root);
         }
