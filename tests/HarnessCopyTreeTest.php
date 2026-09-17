@@ -143,6 +143,26 @@ final class HarnessCopyTreeTest extends TestCase
             // (a) A MISSING source: same verdict path.
             $refuses($from . '/no-such-tree', $from . '/dst-missing', 'A MISSING source must refuse with the policy exception.');
 
+            /*
+             * (a-root) The SOURCE-side root collapse (t31-ocr12-3, the
+             * THIRD symmetry: rrmdir() refuses '/', the target side
+             * refuses a root-collapsed landing — the source side now
+             * too): a spelling that resolves to '/' passed every guard
+             * pre-fix and walked THE WHOLE ROOT TREE (driven red at
+             * HEAD on a scratch target). ROOT-ANCHORED spellings only
+             * (the t31-ocr11-2 doctrine this file already carries):
+             * POSIX resolves '.' and '..' AT the root to the root
+             * itself on every host, while a temp-parent '..'
+             * collapses to '/' only where the temp dir sits directly
+             * beneath it — deep-temp hosts resolve it to a REAL
+             * parent and the leg would walk it. Both spellings
+             * refuse before the iterator is even constructed — no
+             * byte of the root tree is read, nothing lands.
+             */
+            $refuses('/', $from . '/dst-root-src', 'A source collapsed to the filesystem ROOT must refuse — the universal container is not a copyable tree.');
+            $refuses('/..', $from . '/dst-root-src', 'A \'/..\'-spelled source resolves to the filesystem ROOT on every POSIX host — the same refusal.');
+            $this->assertFileDoesNotExist($from . '/dst-root-src', 'The root-source refusal moved no byte — the target was never created, never populated.');
+
             // (b) The self-copy: the target IS the source — a silent
             // no-op success pre-round (the engine's same-file mercy,
             // probed, never a contract).

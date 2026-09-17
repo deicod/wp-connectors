@@ -683,7 +683,7 @@ final class WpHarness
      * @param string $from Absolute source directory.
      * @param string $to   Absolute target directory.
      * @return void
-     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing or not a directory, the target is the source itself, inside it, or contains it, or a relative target's working directory cannot be resolved (t31-ocr11-5).
+     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing, not a directory, or collapsed to the filesystem root (t31-ocr12-3), the target is the source itself, inside it, or contains it, or a relative target's working directory cannot be resolved (t31-ocr11-5).
      */
     public static function copyTree($from, $to)
     {
@@ -725,6 +725,21 @@ final class WpHarness
          */
         if (false === $source_real) {
             throw new RuntimeException('WpHarness::copyTree() refuses a source whose realpath resolution failed — the tree is unreadable through this process (open_basedir, or it vanished mid-call): ' . $from);
+        }
+        /*
+         * The SOURCE-side root collapse (t31-ocr12-3, the THIRD
+         * symmetry): rrmdir() refuses '/', the TARGET side refuses a
+         * root-collapsed landing (t31-ocr9-9's universal-container
+         * clause) — but a SOURCE spelling that resolves to '/' passed
+         * every guard and walked THE WHOLE ROOT TREE (driven: '/' and
+         * a temp-parent '/..' where temp sits directly beneath the
+         * root). realpath() collapses the whole spelling class ('/',
+         * '/.', '/..', the '/..' tails) to the one container every
+         * tree lives inside; the universal container is not a
+         * copyable tree, and the refusal names the caller's spelling.
+         */
+        if ('/' === $source_real) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a source collapsed to the filesystem ROOT — the universal container is not a copyable tree: ' . $from);
         }
         /*
          * A not-yet-created target is the copy's own normal shape, but
