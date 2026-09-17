@@ -3848,6 +3848,18 @@ FIXTURE;
             foreach (array(
                 'the literal root' => '/',
                 'the root dotdot spelling' => '/..',
+                /*
+                 * The separators-only spellings (t31-ocr13-3):
+                 * same_directory_spelling() collapsed '/.' and '//' to
+                 * '' — names nothing, is_dir('') false, rrmdir()
+                 * SILENTLY returned (red at HEAD: driven as a silent
+                 * no-op, the refusal below never fired) — asymmetric
+                 * with the loud refusals its siblings carry. They
+                 * collapse to the root they name now and ride this
+                 * same refusal.
+                 */
+                'the root dot spelling' => '/.',
+                'the double-slash spelling' => '//',
             ) as $rootLabel => $rootSpelling) {
                 $refusal = $this->refusalOf(
                     fn() => WpHarness::rrmdir($rootSpelling),

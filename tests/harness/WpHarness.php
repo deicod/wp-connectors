@@ -483,6 +483,14 @@ final class WpHarness
      * a '/..' tail does NOT (it names the parent), so it survives here
      * and only the link probe above strips it (t31-ocr9-1).
      *
+     * A spelling made of ROOT SEPARATORS ALONE ('//', '/.', '/./.')
+     * collapses to '/' (the root it names), never '' (t31-ocr13-3):
+     * the empty string names nothing, is_dir('') is false, and
+     * rrmdir() fell through its probes to a SILENT no-op — asymmetric
+     * with the loud refusals its siblings ('/' early-kept, '/..' kept
+     * for the realpath root refusal) carry. Collapsing to '/' rides
+     * the existing loud root refusal instead.
+     *
      * @param string $path The path as the caller spelled it.
      * @return string The same directory, spelled without the tails a probe cannot trust.
      */
@@ -496,7 +504,7 @@ final class WpHarness
             $path = rtrim(substr($path, 0, -2), '/');
         }
 
-        return $path;
+        return '' === $path ? '/' : $path;
     }
 
     /**
@@ -576,8 +584,11 @@ final class WpHarness
          * tails; the walk rides same_directory_spelling() — the
          * same-directory tails only, because a stripped '/..' would
          * name a DIFFERENT directory than the caller's path. The root
-         * '/' itself survives both.
+         * '/' itself survives both, and a separators-only spelling
+         * ('/.', '//') collapses to that root, never '' (t31-ocr13-3)
+         * — the silent no-op is not this owner's vocabulary.
          */
+        $caller_spelling = $dir;
         $dir = self::same_directory_spelling($dir);
         if (is_link(self::link_probe_spelling($dir))) {
             return;
@@ -613,10 +624,10 @@ final class WpHarness
          */
         $dir_real = realpath($dir);
         if (false === $dir_real) {
-            throw new RuntimeException('WpHarness::rrmdir() refuses a spelling whose realpath resolution failed — the tree is unreadable through this process (open_basedir, or it vanished mid-call): ' . $dir);
+            throw new RuntimeException('WpHarness::rrmdir() refuses a spelling whose realpath resolution failed — the tree is unreadable through this process (open_basedir, or it vanished mid-call): ' . $caller_spelling);
         }
         if ('/' === $dir_real) {
-            throw new RuntimeException('WpHarness::rrmdir() refuses a spelling that collapses to the filesystem ROOT — the universal tree is never a scratch dir: ' . $dir);
+            throw new RuntimeException('WpHarness::rrmdir() refuses a spelling that collapses to the filesystem ROOT — the universal tree is never a scratch dir: ' . $caller_spelling);
         }
         $items = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
