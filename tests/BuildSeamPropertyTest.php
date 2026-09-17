@@ -283,7 +283,14 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 'fragment' => 'NEAR-SOURCE',
             ),
             'shared-tree-symlink-dir' => array(
+                // The row NEEDS the symlink capability (t31-ocr13-2):
+                // its apply carries a bare symlink() call — on exactly
+                // the hosts that cannot create links that call FATALS
+                // the battery (function_exists is not the capability
+                // signal, the t31-ocr6-14 lesson) instead of skipping
+                // the way its needs_symlink siblings do.
                 'expect' => 'LOUD',
+                'needs_symlink' => true,
                 'apply' => static function (array $scratch): void {
                     mkdir($scratch['shared'] . '/Linked', 0755, true);
                     file_put_contents(
