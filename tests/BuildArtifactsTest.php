@@ -5668,6 +5668,21 @@ FIXTURE;
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock SystemClock;\ninterface TailRiderFixture\n{\n}\n",
                 'parse-error bytes ride the relative use import',
             ),
+            /*
+             * OCR round 16 (t31-ocr16-9): the SEPARATOR-LESS spelling.
+             * `use namespace Clock;` is a parse error the engine
+             * never accepts (php -l-verified), and the optional-
+             * separator follower scan once accepted the name directly
+             * behind the keyword — the rewrite silently legalized the
+             * parse error into `use \…\Clock;` at exit 0 (driven at
+             * HEAD). The separator is required now; the refusal
+             * keeps the shared 'not a spelling PHP accepts'
+             * vocabulary the bare-keyword row pins.
+             */
+            'separator-less keyword-name spelling' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace Clock;\ninterface SeplessFixture\n{\n}\n",
+                'never legalizes',
+            ),
             'rider bytes after the alias' => array(
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock as C extra;\ninterface TailRiderFixture\n{\n}\n",
                 'after the alias only the terminator may follow',

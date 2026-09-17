@@ -636,16 +636,42 @@ final class WpConnectorsBuild
             $trigger_index = $i;
             $run_index = $i;
             if (! $fused) {
-                // The keyword's own extent starts the splice; the tail
-                // begins at the first name token past any separator.
+                /*
+                 * The separator is REQUIRED (OCR round 16,
+                 * t31-ocr16-9): the optional-separator shape accepted
+                 * a name directly behind the keyword, so the
+                 * SEPARATOR-LESS spelling — `use namespace Clock;`,
+                 * a parse error the engine never accepts (php
+                 * -l-verified) — was silently rewritten into a legal
+                 * fully-qualified import: a parse error legalized at
+                 * exit 0, the exact class this step exists to refuse.
+                 * The relative operator's interrupted spelling is
+                 * keyword, separator, name — trivia between them
+                 * tolerated (the r11-10 shapes), the separator itself
+                 * never optional.
+                 */
                 $follower = wp_connectors_next_code_token_index($tokens, $i + 1);
                 $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
+                /*
+                 * The separator arrives in BOTH lexer spellings: the
+                 * standalone T_NS_SEPARATOR (a comment rides between
+                 * the keyword and the operator) and the one BAKED
+                 * into a T_NAME_FULLY_QUALIFIED piece by the lexer
+                 * itself after a whitespace/newline interruption (the
+                 * name-run owner's own documented case — the leading
+                 * backslash becomes part of the piece). Either is the
+                 * operator; a NAME directly behind the keyword is
+                 * neither, and refuses.
+                 */
+                if (T_NS_SEPARATOR !== $follower_id && T_NAME_FULLY_QUALIFIED !== $follower_id) {
+                    throw new RuntimeException("build: the bare 'namespace' keyword inside a use statement in {$sourceVersion} is not a spelling PHP accepts — the relative operator only ever parses as one fused token, and a separator-less keyword-name spelling is a parse error the engine never accepts (the rewrite refuses it, never legalizes it); write the family spelling");
+                }
                 if (T_NS_SEPARATOR === $follower_id) {
                     $follower = wp_connectors_next_code_token_index($tokens, $follower + 1);
                     $follower_id = null !== $follower && is_array($tokens[ $follower ]) ? $tokens[ $follower ][0] : null;
-                }
-                if (! wp_connectors_is_name_token_id($follower_id)) {
-                    throw new RuntimeException("build: the bare 'namespace' keyword inside a use statement in {$sourceVersion} is not a spelling PHP accepts — the relative operator only ever parses as one fused token; write the family spelling");
+                    if (! wp_connectors_is_name_token_id($follower_id)) {
+                        throw new RuntimeException("build: the bare 'namespace' keyword inside a use statement in {$sourceVersion} is not a spelling PHP accepts — the relative operator only ever parses as one fused token; write the family spelling");
+                    }
                 }
                 $run_index = $follower;
             }
