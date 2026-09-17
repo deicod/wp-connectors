@@ -126,9 +126,13 @@ final class HeaderMap {
 	const NAME_TOKEN_PATTERN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/';
 
 	/**
-	 * The folded-name index (lowercase name => [name as given, value]),
+	 * The folded-name index (lowercased name => [name as given, value]),
 	 * in construction order — the ONE structure (review round
-	 * t31-r3-14).
+	 * t31-r3-14). An all-digit name maps by its OWN spelling — a digit
+	 * string has no case to fold, so its fold is the name itself —
+	 * landing under the engine's canonical integer key (t31-ocr14-7:
+	 * the ocr10-11 contract the public returns carry, stated at the
+	 * property it describes).
 	 *
 	 * The constructor computes each lowercase name for the
 	 * case-insensitive duplicate fence anyway (review round t31-r2-10):
@@ -144,7 +148,7 @@ final class HeaderMap {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @var array<string, array{0: string, 1: string}>
+	 * @var array<int|string, array{0: string, 1: string}> Lowercased name => [name as given, value]; an all-digit name maps by its own spelling (no case-fold exists for digits) under its PHP-canonical integer key.
 	 */
 	private readonly array $headers_by_lowercase;
 
