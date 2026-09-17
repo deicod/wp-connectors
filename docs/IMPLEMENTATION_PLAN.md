@@ -3102,6 +3102,339 @@ OCR-tool round
   from output),
   2 skipped
   unchanged.
+OCR-tool round
+  t31-ocr20
+  (ELEVEN
+  commits —
+  the twentieth
+  pass, 62/62,
+  12/12
+  findings
+  accepted;
+  trajectory
+  27→10→11→7→
+  11→33→9→9→4→
+  12 — the
+  count
+  RE-SPIKES on
+  NEW ground:
+  the r16
+  edge-junk
+  class at a
+  NEW seam,
+  the
+  value-lens
+  backslash
+  twins a new
+  class; the
+  round's
+  lesson: a
+  class closed
+  at one fence
+  is not
+  closed at
+  the next —
+  the census
+  doctrine
+  must name
+  the FENCE,
+  not just
+  the shape):
+  the headliner
+  is the
+  NEAR-SOURCE
+  EXTRACTION
+  FENCE
+  (t31-ocr20-1,
+  security:
+  high) —
+  is_php_
+  source()
+  judges the
+  last four
+  bytes, so
+  'shell.php ',
+  'shell.php.',
+  'shell.php\
+  x01' entries
+  were PHP
+  sources to
+  every
+  path-
+  normalizing
+  host while
+  every gate
+  judged them
+  as not one:
+  extracted,
+  unlinted,
+  ACCEPTED at
+  0 violations
+  (driven red
+  at HEAD) —
+  the fence
+  refuses the
+  artifact
+  whole BEFORE
+  extractTo(),
+  per-segment,
+  raw lens
+  first, fold
+  lens second,
+  riding the
+  ONE
+  near-source
+  predicate
+  the
+  verifier
+  pass
+  extracted
+  (both
+  channels —
+  the
+  collector's
+  throw and
+  the
+  inspector's
+  refusal);
+  two engine
+  facts
+  pinned on
+  the way:
+  an un-flagged
+  \x01 name
+  byte never
+  survives
+  this
+  engine's
+  libzip
+  reader
+  (CP437 remap
+  to U+263A —
+  driven; the
+  byte-exact
+  spelling
+  carries the
+  UTF-8 flag
+  bit, driven)
+  and the
+  census's
+  tenth site
+  found by
+  the verifier
+  (the
+  glob('*.php')
+  main-file
+  discovery —
+  UNFENCED,
+  repo-side
+  class,
+  ledgered).
+  The round's
+  REFUTATION
+  OF RECORD:
+  the
+  superglobal
+  /i premise
+  (t31-ocr20-6)
+  — the
+  pattern
+  carries NO
+  flag; its
+  case-
+  insensitivity
+  is scoped
+  to the call
+  stems
+  through the
+  inline
+  (?i:...)
+  group since
+  birth
+  (t31-r2-7),
+  driven at
+  engine,
+  bytes, and
+  history —
+  but the
+  docblock's
+  contract
+  was pinned
+  by NO row;
+  the three
+  lowercase
+  twins join
+  the battery
+  (construction).
+  The two
+  detector
+  classes:
+  the alias
+  skip's
+  qualifiedness
+  composes
+  the
+  relative
+  arm
+  (t31-ocr20-2
+  — an
+  interrupted
+  alias-slot
+  relative
+  with a
+  single-
+  segment tail
+  was silently
+  eaten while
+  resolving
+  into the
+  family; the
+  driver's
+  glued
+  example
+  already
+  reported,
+  one spelling
+  off the
+  hole, driven
+  both ways),
+  and the
+  value lens
+  folds the
+  leading
+  backslash
+  (t31-ocr20-3
+  — a literal
+  whose VALUE
+  is the
+  fully-
+  qualified
+  family name,
+  the
+  escape-
+  produced
+  backslash
+  the text
+  lens cannot
+  see, both
+  lenses blind
+  at zero
+  references,
+  driven). The
+  test-class
+  commits:
+  the
+  root-collapse
+  preconditions
+  (ocr20-4),
+  the exec
+  gates +
+  battery-skip
+  narrowing +
+  spawn anchor
+  (ocr20-5,
+  seven
+  CLI-build
+  sites the
+  census
+  remainder)
+  with two
+  record
+  corrections
+  from the
+  verifier
+  (the 482
+  figure was
+  the
+  seven-test
+  filter
+  total, the
+  battery
+  alone 23;
+  the
+  remainder
+  line
+  numbers
+  were
+  pre-commit
+  spellings).
+  Two-lens
+  verifier
+  pass (a
+  two-agent
+  workflow,
+  both lenses
+  driven):
+  correctness
+  lens's one
+  finding
+  FIXED (the
+  one guard
+  whose skip
+  stranded
+  the
+  extraction
+  tree —
+  finally-
+  owned now,
+  driven);
+  refutation
+  lens's
+  three —
+  the census
+  correction
+  (ledgered),
+  the
+  one-predicate
+  extraction
+  (FIXED,
+  byte-
+  identical
+  through
+  both
+  channels),
+  the figures
+  correction
+  (ledgered);
+  its
+  re-derivations
+  confirmed
+  every other
+  claim (each
+  new pin
+  driven red
+  under a
+  revert).
+  Suite 1654 →
+  1655 tests
+  (one new:
+  the
+  near-source
+  extraction
+  battery),
+  45508 →
+  45534
+  assertions
+  (+7 the
+  fence, +7
+  the
+  alias-slot
+  battery, +6
+  the
+  value-lens
+  legs, +3
+  the
+  preconditions,
+  +0 the
+  guards by
+  construction,
+  +3 the
+  case rows,
+  +0 the
+  verifier
+  fixes),
+  2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from

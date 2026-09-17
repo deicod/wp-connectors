@@ -6,6 +6,101 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 20)
+
+Twentieth OCR-tool round (62/62, complete): 12 findings, driver
+triage accepted all — trajectory 27→10→11→7→11→33→9→9→4→12, the
+count RE-SPIKING on new ground: the extraction fence's edge-junk
+gap is the r16 class at a NEW seam, and the value-lens backslash
+twins are a new class. Fixed as t31-ocr20-1..9 — one commit per
+finding (classes as noted), nine fix commits plus the two-lens
+verifier pass's two follow-up fixes and this docs record, the full
+offline check green after every one. The round's lesson, now in the
+ledger: a class closed at one fence is not closed at the next — the
+census doctrine must name the FENCE, not just the shape. The
+verifier pass ran as a two-agent workflow, both lenses driven: the
+security/correctness lens's one finding (an exec guard whose skip
+stranded the extraction tree — cleanup is finally-owned now) and the
+refutation lens's doctrine finding (the near-source judgment
+extracted to ONE predicate both fences ride) are fixed; the
+refutation lens also corrected two RECORD errors — the ocr20-1
+census missed the glob('*.php') main-file-discovery shape (the
+tenth extension-judging site, named in the ledger), and the ocr20-5
+commit's driven figures were mis-attributed (the "482 assertions"
+was the seven-test filter total; the battery alone answers 23 under
+the flag). Suite 1654 → 1655 tests, 45508 → 45534 assertions
+(per-commit deltas measured from output: +7 the extraction fence,
++7 the alias-slot battery, +6 the value-lens legs, +3 the
+root-collapse preconditions, +0 the exec guards by construction, +3
+the case-sensitivity rows), 2 skipped unchanged.
+
+- **Near-source PHP spellings refuse extraction
+  (t31-ocr20-1, the round's security:high headliner)** — the r16
+  edge-junk class, alive at the EXTRACTION fence after being closed
+  at the traversal fence: wp_connectors_is_php_source() judges only
+  the last four bytes, so 'shell.php ', 'shell.php.',
+  'shell.php\x01' entries were PHP sources to every
+  path-normalizing host while every gate judged them as not one —
+  extracted, unlinted, ACCEPTED at 0 violations (driven). The fence
+  lives in the entry loop beside the traversal refusal, refuses the
+  artifact whole BEFORE extractTo() runs, and rides the ONE
+  near-source predicate the verifier pass extracted (both channels
+  — the collector's throw and the inspector's refusal — one
+  composition). The control-byte leg carries the UTF-8 flag bit:
+  un-flagged, this engine's libzip remaps \x01 through CP437 to the
+  U+263A bytes — driven, and named in storedZipBytes's docblock.
+- **The alias skip's qualifiedness includes the relative arm
+  (t31-ocr20-2)** — an interrupted `namespace\` relative in the
+  ALIAS slot whose single-segment tail arrived as a bare T_STRING
+  (the separator its own token, trivia after it) was silently EATEN
+  as the alias while its re-attached spelling resolved into the
+  family: zero references, the sweep waving through what the
+  rewriter's own alias-slot fence refused. The skip eats only BARE
+  runs now; the three interrupted spellings report like their glued
+  twin (red at HEAD: zero references, driven).
+- **The value lens folds the leading backslash
+  (t31-ocr20-3)** — a literal whose computed VALUE is the
+  fully-qualified family name matched no predicate when the
+  backslash arrived through an escape the text lens cannot see
+  (octal \134, hex \x5C): the class string laundered past both
+  gates at zero references. Both value-lens sites (quoted and
+  heredoc) fold through the same ltrim every other family fold
+  carries; the two escaped spellings refuse the rewrite now.
+- **The inspector-twin root-collapse legs carry preconditions
+  (t31-ocr20-4)** — each '/' , '/.', '/..' destructive leg now
+  asserts its spelling resolves to the filesystem ROOT the silent
+  collapse guards, the ocr17-3 doctrine the harness twin already
+  carried, BEFORE the removal runs.
+- **The named exec-gate heads converted; the battery skip narrowed
+  to the rows that need it; the one un-anchored spawn anchored
+  (t31-ocr20-5)** — five BuildArtifactsTest tests gated at the leg
+  their spawn opens (driven: visible skips with prior assertions
+  counted where HEAD fataled mid-test); the publication-invariant
+  battery's whole-test skip replaced by a CLEAN-row capability skip
+  (the LOUD rows refuse in-process — the build path spawns nothing
+  — and now keep their charge on disable_functions hosts, driven);
+  the scan-secrets GPC leg's CWD-relative target anchored via
+  realpath (from a foreign CWD the scanner's missing-root branch
+  silently scanned nothing — driven). Census remainder, seven
+  CLI-build sites, ledgered as the next round's head.
+- **The superglobal case-sensitivity contract pinned — the round's
+  /i premise REFUTED (t31-ocr20-6)** — the finding claimed a
+  trailing /i on DIRECT_ENVIRONMENT_PATTERN; driven at three levels
+  (engine: $globals/$_server/$_env all answer 0; bytes: the
+  case-insensitivity is scoped to the call stems through the inline
+  (?i:...) group, no global flag; history: the pattern was born
+  that way in t31-r2-7), the premise dies — but the docblock's
+  contract was pinned by NO row, so the three lowercase twins join
+  the battery's clean list (construction; a future /i or un-scoped
+  group now reddens).
+- **Three small closes (t31-ocr20-7/8/9)** — the PKCE verifier
+  class spells its dash last (the incidental `-.` range made
+  explicit-literal, byte-equivalent, driven); the request redaction
+  contract states the mask owner's actual threshold rule (last-four
+  above the twelve-character OTP line, bare mask at or below); the
+  corrupt-artifact row pins ER_NOZIP by its constant, never the
+  hand-copied '19'.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 19)
 
 Nineteenth OCR-tool round (main 57/62 + bin/ fill-in 7/7, union
