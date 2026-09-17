@@ -500,6 +500,43 @@ final class WpHarness
     }
 
     /**
+     * Whether this host can create symlinks — the ONE capability
+     * probe every link-bearing leg rides (OCR rounds 10-11:
+     * t31-ocr10-14 established the probe over function_exists,
+     * t31-ocr10-18 the random-suffixed name, t31-ocr11-9 hoisted it
+     * here — the shared owner the WpConnectorsTestCase wrapper and the
+     * direct harness tests both reach, the private twin deleted).
+     *
+     * function_exists is not the capability signal (symlink() exists
+     * on Windows without the privilege to use it), and the bare
+     * call's E_WARNING errors the suite (failOnWarning) — the FALSE
+     * RETURN is the signal, @-suppressed. disable_functions(symlink)
+     * removes the function itself, and @ cannot suppress a
+     * missing-function \Error: the probe guards function_exists first
+     * — capability false, a visible skip, never a FATAL of the very
+     * battery the probe exists to protect. The probe name carries a
+     * random suffix: a predictable, pid-enumerable name is
+     * pre-plantable on a shared host, and a planted entry makes
+     * symlink() fail — the probe reads false and every link-bearing
+     * leg silently skips, coverage suppressed by the plant.
+     *
+     * @return bool True when a probe link can be created and removed.
+     */
+    public static function canSymlink(): bool
+    {
+        if (! function_exists('symlink')) {
+            return false;
+        }
+        $probe = sys_get_temp_dir() . '/wpct-capability-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        $ok = @symlink('/usr/bin/true', $probe);
+        if ($ok) {
+            @unlink($probe);
+        }
+
+        return $ok;
+    }
+
+    /**
      * Recursively removes a directory (test helper — the ONE scratch-tree
      * removal owner, t31-ocr1-9: the former per-test twins diverged in
      * error policy; the harness policy is the loud one, and every test

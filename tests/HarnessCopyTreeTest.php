@@ -12,26 +12,15 @@ use PHPUnit\Framework\TestCase;
 
 final class HarnessCopyTreeTest extends TestCase
 {
-    /**
-     * Whether this host can create symlinks — the CAPABILITY probe,
-     * never function_exists (t31-ocr10-14 over the t31-ocr6-14
-     * lesson): symlink() exists on Windows without the privilege to
-     * use it, and a failing call raises E_WARNING which the suite's
-     * warning conversion errors at the call line — the FALSE RETURN is
-     * the signal, @-suppressed.
+    /*
+     * The symlink-capability probe rides the ONE shared owner
+     * (t31-ocr11-9): WpHarness::canSymlink(), hoisted from the
+     * WpConnectorsTestCase wrapper this test does not extend — the
+     * private twin here was a verbatim copy of the body the rounds
+     * kept having to fix twice (the random suffix worn on it
+     * t31-ocr10-18, the function_exists guard arriving only with the
+     * hoist).
      */
-    private static function canSymlink(): bool
-    {
-        // Random-suffixed (t31-ocr10-18): a predictable probe name is
-        // pre-plantable — the shared owner's doctrine, worn on the twin.
-        $probe = sys_get_temp_dir() . '/wpct-copytree-capability-' . getmypid() . '-' . bin2hex(random_bytes(4));
-        $ok = @symlink('/usr/bin/true', $probe);
-        if ($ok) {
-            @unlink($probe);
-        }
-
-        return $ok;
-    }
     /**
      * OCR-round-4 pin (t31-ocr4-2): the relative path was computed by
      * str_replace($from . '/', '', …), which strips EVERY occurrence —
@@ -223,7 +212,7 @@ final class HarnessCopyTreeTest extends TestCase
             // (t31-ocr10-14): function_exists('symlink') is true on
             // hosts that cannot use it, and the bare call fatals the
             // battery mid-test — the probe gates the legs instead.
-            if (self::canSymlink()) {
+            if (WpHarness::canSymlink()) {
                 symlink($from . '/src', $from . '/ancestor-link');
                 $refuses($from . '/src', $from . '/ancestor-link/inside', 'A target reached through a SYMLINKED ancestor of the source must refuse — the link is not a door.');
 
@@ -255,7 +244,7 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testBothSymlinkShapesRefuseTheCopyLoudly(): void
     {
-        if (! self::canSymlink()) {
+        if (! WpHarness::canSymlink()) {
             $this->markTestSkipped('This host cannot create symlinks.');
         }
 

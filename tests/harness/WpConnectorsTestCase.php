@@ -185,33 +185,21 @@ abstract class WpConnectorsTestCase extends TestCase
     }
 
     /**
-     * Whether this host can create symlinks — the CAPABILITY probe,
-     * never function_exists (t31-ocr10-14 over the t31-ocr6-14
-     * lesson): symlink() exists on Windows without the privilege to
-     * use it, and a failing call raises E_WARNING which the suite's
-     * warning conversion errors at the call line — the FALSE RETURN
-     * is the signal, @-suppressed. The root-runner guard's functional
-     * twin: link-bearing legs and rows skip on the probe's answer,
-     * never fatal the battery.
-     *
-     * The probe name is RANDOM-suffixed (t31-ocr10-18, the
-     * verifier's trace over the round's own new probe): a predictable
-     * pid-based name is pre-plantable on a shared host (the ocr10-2
-     * threat model), and a planted entry flips the probe false —
-     * silently suppressing every link-bearing leg. Impact is skipped
-     * legs only; the suffix makes the flip unplantable.
+     * Whether this host can create symlinks — the thin wrapper over
+     * the ONE capability probe (t31-ocr11-9 hoisted the body to
+     * WpHarness::canSymlink(), the shared owner the direct harness
+     * tests reach too; the private twin there deleted): capability,
+     * never function_exists (t31-ocr10-14); random-suffixed probe
+     * name, unplantable (t31-ocr10-18); function_exists-guarded
+     * inside the owner, so disable_functions(symlink) answers false
+     * instead of fataling — link-bearing legs and rows skip on the
+     * probe's answer, never fatal the battery.
      *
      * @return bool True when a probe link can be created and removed.
      */
     protected static function canSymlink(): bool
     {
-        $probe = sys_get_temp_dir() . '/wpct-capability-' . getmypid() . '-' . bin2hex(random_bytes(4));
-        $ok = @symlink('/usr/bin/true', $probe);
-        if ($ok) {
-            @unlink($probe);
-        }
-
-        return $ok;
+        return WpHarness::canSymlink();
     }
 
     /**
