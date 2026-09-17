@@ -597,7 +597,7 @@ function wp_connectors_namespace_declaration_ledger(array $tokens, $source)
         $declarations[] = array(
             'offset' => $token_offset,
             'display' => $run['name'],
-            'lower' => strtolower($run['name']),
+            'lower' => wp_connectors_ascii_lower($run['name']),
             'expires' => $expires,
         );
     }
@@ -1036,7 +1036,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                 }
                 if (null !== $brace && '{' === $tokens[ $brace ]) {
                     if ($separator_before_brace) {
-                        $group_prefix = strtolower($display);
+                        $group_prefix = wp_connectors_ascii_lower($display);
                         $group_prefix_display = $display;
                         $group_prefix_offset = $token_offset;
                         $group_prefix_line = $token_line;
@@ -1068,7 +1068,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
 
         $references[] = array(
             'name' => $display,
-            'lower' => strtolower($display),
+            'lower' => wp_connectors_ascii_lower($display),
             'kind' => $kind,
             'offset' => $token_offset,
             'line' => $token_line,
@@ -1271,7 +1271,22 @@ function wp_connectors_unescape_php_string_literal($quote, $inner)
  */
 function wp_connectors_shared_family_references($source, $target_namespace = null)
 {
-    $own_lower = strtolower(wp_connectors_shared_source_namespace());
+    /*
+     * The comparison folds are the LOCALE-INDEPENDENT ASCII owner
+     * (t31-ocr10-4, the r11-6 doctrine brought to this seam): the
+     * spellings judged are case-variant HOSTILE bytes, and
+     * strtolower() maps each byte through the C library's tolower()
+     * — a question about the engine and the process locale (glibc's
+     * tr_* maps 'I' to the dotless ı at the libc level, probed on
+     * this host), so a verdict riding it can flip by locale. Every
+     * fold that feeds a family verdict — these roots, the 'lower'
+     * twins both lenses emit, the value-lens folds, the ledger and
+     * group-prefix twins in the walk, the staging gate's root check,
+     * and build.php's consumer-side comparisons — rides
+     * wp_connectors_ascii_lower(): one table, one verdict in every
+     * locale.
+     */
+    $own_lower = wp_connectors_ascii_lower(wp_connectors_shared_source_namespace());
     // The vendor prefix is everything of the own namespace before its
     // final segment — derived, never spelled twice.
     $vendor_lower = substr($own_lower, 0, (int) strrpos($own_lower, '\\'));
@@ -1280,7 +1295,7 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
     };
     $target_lower = null;
     if (null !== $target_namespace && (string) $target_namespace !== '') {
-        $target_lower = strtolower(ltrim((string) $target_namespace, '\\'));
+        $target_lower = wp_connectors_ascii_lower(ltrim((string) $target_namespace, '\\'));
     }
 
     /*
@@ -1439,7 +1454,7 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
     $push_text_finding = function (string $kind, int $offset, string $spelling) use (&$references, $line_of): void {
         $references[] = array(
             'name' => $spelling,
-            'lower' => 'pcre-abort' === $kind ? '' : strtolower(ltrim($spelling, '\\')),
+            'lower' => 'pcre-abort' === $kind ? '' : wp_connectors_ascii_lower(ltrim($spelling, '\\')),
             'kind' => $kind,
             'offset' => $offset,
             'line' => $line_of($offset),
@@ -1511,7 +1526,7 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
             $literal = ('b' === $text[0] || 'B' === $text[0]) ? substr($text, 1) : $text;
             $quote = $literal[0];
             $value = wp_connectors_unescape_php_string_literal($quote, substr($literal, 1, -1));
-            if ($is_family(strtolower($value))) {
+            if ($is_family(wp_connectors_ascii_lower($value))) {
                 $push_text_finding('string', $token_offset, $value);
             }
 
@@ -1542,7 +1557,7 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
                     $body .= $chunk[0];
                 }
                 $value = "'" === $heredoc_quote ? $body : wp_connectors_unescape_php_string_literal('"', $body);
-                if ($is_family(strtolower($value))) {
+                if ($is_family(wp_connectors_ascii_lower($value))) {
                     $push_text_finding('string', $heredoc_offset, $value);
                 }
             }
@@ -3691,10 +3706,10 @@ function wp_connectors_php_source_files($dir)
             ));
         }
         $declared_namespace = $declarations[0];
-        $root_lower_segments = explode('\\', strtolower(wp_connectors_shared_source_namespace()));
+        $root_lower_segments = explode('\\', wp_connectors_ascii_lower(wp_connectors_shared_source_namespace()));
         $declared_segments = explode('\\', ltrim($declared_namespace, '\\'));
         if (count($declared_segments) < count($root_lower_segments)
-            || array_map('strtolower', array_slice($declared_segments, 0, count($root_lower_segments))) !== $root_lower_segments) {
+            || array_map('wp_connectors_ascii_lower', array_slice($declared_segments, 0, count($root_lower_segments))) !== $root_lower_segments) {
             throw new RuntimeException(sprintf(
                 'shared source %s declares %s — not the shared tree root %s the embed rewrites and stages under src/Shared/, so its staged path maps no autoloadable class; declare the tree root (or deeper) in it',
                 $dir . '/' . $relative,

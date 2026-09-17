@@ -4243,6 +4243,92 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-10 pin (t31-ocr10-4): the family-verdict folds ride the
+     * LOCALE-INDEPENDENT ASCII owner (wp_connectors_ascii_lower(), the
+     * r11-6 mechanism), never strtolower() — whose byte mapping is a
+     * question about the engine and the process locale (glibc's tr_*
+     * maps 'I' to the dotless ı at the libc level; a fold riding it
+     * could let a case-variant 'DEICOD\…' spelling LAUNDER past the
+     * vendor predicate under a Turkish locale, both gates green). The
+     * pin drives the detector over case-variant hostile spellings in
+     * the C locale and under a MANUFACTURED live tr_TR locale (the
+     * suite's established locale-pressure idiom: localedef into a
+     * private LOCPATH, visible skip where the host cannot manufacture
+     * it, '0'-spelling snapshot, LOCPATH-first checked restore), and
+     * requires the BYTE-IDENTICAL verdict — every 'lower' twin pure
+     * ASCII under pressure.
+     */
+    public function testTheFamilyVerdictFoldSurvivesATurkishLocale(): void
+    {
+        // The fold-table half first (no locale needed): hostile
+        // case-variant bytes fold to the pure-ASCII comparison spelling.
+        $hostile = 'DEICOD\\WPCONNECTORS\\SHARED\\CLOCK';
+        $this->assertSame('deicod\\wpconnectors\\shared\\clock', wp_connectors_ascii_lower($hostile), 'The ASCII owner folds hostile case-variant bytes to the comparison spelling.');
+
+        // The verdict input: a case-variant family spelling in a STRING
+        // literal (the value lens folds the bytes — the sibling pattern
+        // reports it twice, stem and full) and in a code position (the
+        // name walk's lower twin), both outside the rewrite's trees —
+        // all must report.
+        $source = "<?php\nnamespace Other;\n\$x = 'DEICOD\\\\WPCONNECTORS\\\\SHARED\\\\CLOCK';\n\$y = DEICOD\\WPCONNECTORS\\Zai::class;\n";
+        $c_locale_verdict = wp_connectors_shared_family_references($source);
+        $this->assertCount(3, $c_locale_verdict, 'Every case-variant spelling reports under the C locale: ' . implode(', ', array_column($c_locale_verdict, 'name')));
+        foreach ($c_locale_verdict as $reference) {
+            $this->assertStringStartsWith('deicod\\wpconnectors', (string) $reference['lower'], 'Every lower twin folds through the ASCII table — the vendor prefix stays pure ASCII.');
+        }
+
+        /*
+         * The locale-pressure half: manufacture tr_TR, install it live,
+         * and require the fold seam's verdict byte-identical. The seam
+         * this round owns is the PHP fold (the 'lower' twins and the
+         * value-lens is_family comparison); the TEXT lens's PCRE /i
+         * matching is a DIFFERENT, already-ledgered engine behavior
+         * (the /i fold consults the active locale — SharedOAuthContracts
+         * HttpTest's restore note; driven live by this very pin: under
+         * tr_TR the /i stem finding 'DEICOD\WPCONNECTORS\SHARED' drops
+         * while every fold-seam finding survives byte-identical), and it
+         * is the next round's lead, not this finding's mechanism.
+         */
+        $foldSeamVerdict = static function (array $verdict): array {
+            return array_values(array_filter($verdict, static function (array $reference): bool {
+                return 'code' === $reference['kind'] || '\\clock' === substr((string) $reference['lower'], -6);
+            }));
+        };
+        $c_fold_seam = $foldSeamVerdict($c_locale_verdict);
+        $this->assertCount(2, $c_fold_seam, 'The fold seam\'s findings are the code-position name run and the value-lens full spelling.');
+
+        $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
+        @mkdir($locpath, 0755, true);
+        exec('localedef -i tr_TR -f ISO-8859-9 ' . escapeshellarg($locpath . '/tr_TR.ISO-8859-9') . ' 2>/dev/null', $localedefOutput, $localedefExit);
+        if (0 !== $localedefExit) {
+            WpHarness::rrmdir($locpath);
+            $this->markTestSkipped('The tr_TR.ISO-8859-9 pressure locale could not be manufactured on this host (localedef exit ' . $localedefExit . ') — the locale-pressure half did not run; the fold-table and C-locale verdict pins above already passed.');
+        }
+        $previous = setlocale(LC_CTYPE, '0');
+        $previousLocpath = getenv('LOCPATH');
+        try {
+            putenv('LOCPATH=' . $locpath);
+            $this->assertNotFalse(setlocale(LC_CTYPE, 'tr_TR.ISO-8859-9'), 'The manufactured locale must install.');
+            // The pressure is LIVE (ctype consults it) — not a setlocale
+            // that silently fell back.
+            $this->assertTrue(ctype_lower("\xE3"), 'ctype consults the manufactured 8-bit LC_CTYPE — the pressure is live.');
+
+            $tr_fold_seam = $foldSeamVerdict(wp_connectors_shared_family_references($source));
+            $this->assertSame($c_fold_seam, $tr_fold_seam, 'The fold seam\'s verdict is byte-identical under the live Turkish locale — a locale-consulting fold would launder the case-variant spellings (0 references) or fold a dotless-I into the lower twins.');
+        } finally {
+            // LOCPATH restored BEFORE the locale, the restore CHECKED
+            // (glibc resolves it through LOCPATH) — the r11-6 idiom: a
+            // leaked pressure locale breaks every later /i match in
+            // this process.
+            putenv(false === $previousLocpath ? 'LOCPATH' : 'LOCPATH=' . $previousLocpath);
+            if (false === setlocale(LC_CTYPE, $previous)) {
+                setlocale(LC_CTYPE, 'C');
+            }
+            WpHarness::rrmdir($locpath);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r8-2): the relative operator resolves against
      * the file's declared namespace BEFORE the family predicates judge
      * it. T_NAME_RELATIVE carries its literal `namespace\` prefix

@@ -329,9 +329,12 @@ final class WpConnectorsBuild
          * ships escapes it.
          */
         // The rewritten target, derived (t31-r9-9) — never a fifth
-        // hand-spelling of the family.
+        // hand-spelling of the family. The fold is the ASCII owner
+        // (t31-ocr10-4): it compares against the detector's 'lower'
+        // twins, and both sides must fold through ONE table for the
+        // verdict to survive a locale (the r11-6 doctrine).
         $target = $vendor . '\\' . $pluginSuffix . '\\' . $family_leaf;
-        $target_lower = strtolower($target);
+        $target_lower = wp_connectors_ascii_lower($target);
         foreach (wp_connectors_shared_family_references($final, $target) as $reference) {
             if ('pcre-abort' === $reference['kind']) {
                 throw new RuntimeException("build: the namespace-reference scan aborted (PCRE) while rewriting {$sourceVersion} — an abort refuses the rewrite, never passes it");
@@ -443,8 +446,8 @@ final class WpConnectorsBuild
         $family_segments = explode('\\', wp_connectors_shared_source_namespace());
         $vendor = implode('\\', array_slice($family_segments, 0, -1));
         $family_leaf = (string) end($family_segments);
-        $root_lower = strtolower(implode('\\', $family_segments));
-        $vendor_lower = strtolower($vendor);
+        $root_lower = wp_connectors_ascii_lower(implode('\\', $family_segments));
+        $vendor_lower = wp_connectors_ascii_lower($vendor);
 
         $tokens = token_get_all($source);
         $count = count($tokens);
@@ -727,7 +730,7 @@ final class WpConnectorsBuild
                 throw new RuntimeException("build: the relative use import {$spelling_display} in {$sourceVersion} cannot resolve — no namespace declaration is in effect there, and a relative spelling resolves against the file's own declaration");
             }
             $resolved_display = $declared_display . '\\' . $tail_display;
-            $resolved_lower = strtolower($resolved_display);
+            $resolved_lower = wp_connectors_ascii_lower($resolved_display);
             if ($resolved_lower !== $vendor_lower && 0 !== strpos($resolved_lower, $vendor_lower . '\\')) {
                 throw new RuntimeException("build: the relative use import {$spelling_display} in {$sourceVersion} resolves to {$resolved_display}, outside the shared-namespace family — in the rewritten output it would silently re-resolve against the REWRITTEN declaration, so it refuses rather than riding with changed meaning");
             }
@@ -937,10 +940,10 @@ final class WpConnectorsBuild
         $family = wp_connectors_shared_source_namespace();
         $vendor = implode('\\', array_slice(explode('\\', $family), 0, -1));
         $canonical = null;
-        $name_lower = strtolower($reference_name);
-        if (0 === strpos($name_lower, strtolower($family))) {
+        $name_lower = wp_connectors_ascii_lower($reference_name);
+        if (0 === strpos($name_lower, wp_connectors_ascii_lower($family))) {
             $canonical = $family;
-        } elseif (0 === strpos($name_lower, strtolower($vendor))) {
+        } elseif (0 === strpos($name_lower, wp_connectors_ascii_lower($vendor))) {
             $canonical = $vendor;
         }
         if (null !== $canonical) {
