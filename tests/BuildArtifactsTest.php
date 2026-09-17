@@ -646,13 +646,17 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
              * name is never followed, extraction lands in the unique
              * dir (the zip inspects green), and the victim tree stands.
              * (Red at HEAD: driven pre-fix, the extracted plugin dir
-             * landed INSIDE the victim tree through the link.)
+             * landed INSIDE the victim tree through the link.) The
+             * leg's gate rides the ONE capability owner
+             * (t31-ocr11-23, the round's verifier sweep): this inline
+             * @symlink probe twin was the last ungated one in the
+             * file, and under disable_functions(symlink) @ cannot
+             * suppress the missing-function Error — the probe FATALED
+             * the test the skip exists to protect.
              */
-            $probe = $scratch . '/capability-probe';
-            if (! @symlink($scratch, $probe)) {
+            if (! self::canSymlink()) {
                 $this->markTestSkipped('This host cannot create symlinks — the planted-link leg did not run (the uniqueness legs above already passed).');
             }
-            unlink($probe);
             $victim = $scratch . '/victim';
             mkdir($victim, 0755, true);
             file_put_contents($victim . '/survivor.txt', 'survivor');
