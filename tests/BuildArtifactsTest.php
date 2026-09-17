@@ -1056,6 +1056,31 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
         $this->assertStringContainsString('case-fold duplicate', implode("\n", $violations), 'Case-fold duplicate entry names refuse — extraction on a folding target silently overwrites.');
 
+        // (b-edge) The trailing EDGE-JUNK twins of the same fold (OCR
+        // round 11, t31-ocr11-3): Windows strips trailing dots, spaces,
+        // and controls per path component at extraction, so
+        // 'logo.png.' and 'logo.png ' beside 'logo.png' collide exactly
+        // like the case variants above — one silently overwrites the
+        // other on a normalizing host while both pass byte-exact AND
+        // case-fold comparison (driven red at HEAD: the twins passed
+        // the fence untouched). The fence's normalization composes the
+        // codebase's own owners: the ASCII case fold AND the
+        // edge-junk class, per segment, the same fold the
+        // development-entry vocabulary rides (t31-r6-5).
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.4.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/assets/logo.png", 'first'),
+            array("{$slug}/assets/logo.png.", 'dot twin'),
+            array("{$slug}/assets/logo.png ", 'space twin'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('case-fold duplicate', $flat, 'A trailing-DOT twin is a fold duplicate — the fence strips the edge-junk class the extraction target itself strips.');
+        $this->assertStringContainsString('logo.png.', $flat, 'The dot twin is named in the refusal.');
+        $this->assertStringContainsString('logo.png ', $flat, 'The space twin is named in the refusal.');
+
         // (c) The forged-name arm of the SAME fence: a duplicate whose
         // name carries a newline (and the verdict-lookalike text the
         // security lens used) renders with the newline neutralized —

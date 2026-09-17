@@ -79,8 +79,24 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * r6 deferred collision class's INSPECTOR half, consumed here;
          * the builder-side fence over the collected entry set (and its
          * directory prefixes) stays the r6 line's own round.
+         *
+         * The fold composes BOTH owners (OCR round 11, t31-ocr11-3):
+         * case through wp_connectors_ascii_lower() AND the TRAILING
+         * edge-junk byte class through wp_connectors_path_edge_junk()
+         * — stripped per path SEGMENT, the way Windows path
+         * normalization itself folds ('logo.png.' and 'logo.png '
+         * beside 'logo.png' collide at extraction exactly like a case
+         * variant, the class the codebase's own development-entry
+         * comparison has carried since t31-r6-5). Trailing side only,
+         * per component — the LEADING side stays (a leading dot is
+         * content, '.git' the vocabulary's own spelling).
          */
-        $folded_name = wp_connectors_ascii_lower($name);
+        $folded_name = wp_connectors_ascii_lower(implode('/', array_map(
+            static function ( $segment ) {
+                return rtrim((string) $segment, wp_connectors_path_edge_junk());
+            },
+            explode('/', $name)
+        )));
         if (isset($seenEntryNames[$name])) {
             $violations[] = sprintf(
                 'inspect: zip carries the entry name "%s" more than once — extraction keeps only one copy, so the other bytes are judged by nobody.',
@@ -91,7 +107,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         }
         if (isset($seenFoldedNames[$folded_name])) {
             $violations[] = sprintf(
-                'inspect: zip carries case-fold duplicate entry names ("%s") — on a case-insensitive extraction target one silently overwrites the other.',
+                'inspect: zip carries case-fold duplicate entry names ("%s") — on a normalizing extraction target (case-insensitive, or Windows trailing dot/space stripping per component) one silently overwrites the other.',
                 wp_connectors_printable($name)
             );
         } else {
