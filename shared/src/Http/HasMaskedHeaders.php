@@ -93,7 +93,7 @@ trait HasMaskedHeaders {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @return array<string, string>
+	 * @return array<int|string, string> All-digit names surface under their PHP-canonical integer key — matching the HeaderMap owner's own shape (t31-ocr10-11).
 	 */
 	public function headers(): array {
 		return $this->header_map()->headers();

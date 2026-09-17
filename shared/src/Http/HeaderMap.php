@@ -260,7 +260,7 @@ final class HeaderMap {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @return array<string, string>
+	 * @return array<int|string, string> All-digit names surface under their PHP-canonical integer key — the prose above names the behavior; the machine-readable shape now matches it (t31-ocr10-11).
 	 */
 	public function headers(): array {
 		return array_column( $this->headers_by_lowercase, 1, 0 );
@@ -331,7 +331,7 @@ final class HeaderMap {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @return array<string, string> Name (as constructed) => safe value, never containing secrets, always valid UTF-8.
+	 * @return array<int|string, string> Name (as constructed) => safe value, never containing secrets, always valid UTF-8. All-digit names surface under their PHP-canonical integer key (t31-ocr10-11).
 	 */
 	public function masked_headers(): array {
 		$masked = array();
