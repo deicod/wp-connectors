@@ -6,6 +6,98 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 12)
+
+Twelfth OCR-tool round (62/62, complete): 10 findings, driver triage
+accepted all. Fixed as t31-ocr12-1..9 — one commit per finding (two
+class folds: the ocr12-2 probe rode ocr12-1's sweep commit, the ×2
+`file_put_contents` class rode ocr12-7), eight commits, the full
+offline check green after every commit — plus the round's two-lens
+verifier pass, clean on both lenses (zero findings, zero refuted).
+The trajectory 27→10 is the round-10 rule working: the older
+doctrines finished eating their seams, and this round's findings are
+mostly residuals of prior rounds' own fix classes. The recurring-class
+lesson the round record carries: a SWEEP commits its CENSUS (grep
+pattern + full site list) in the commit message, never just the
+converted count — the canSymlink sweep needed three passes before the
+tree read zero because no artifact existed to re-derive against.
+Suite 1637 → 1638 tests, assertions 45466 → 45475 (measured; the r11
++1 trace did not reproduce this round), 2 skipped unchanged.
+
+- **The canSymlink ONE-owner sweep is COMPLETE, with its census
+  committed (t31-ocr12-1 + t31-ocr12-2, test:high)** — the last two
+  inline `@symlink()` capability probes outside
+  `WpHarness::canSymlink()` (the lint dir-link leg in
+  ToolchainSmokeTest, which extends PHPUnit's TestCase directly but
+  reaches the harness; the collector-refusal guard in
+  SharedOAuthArchitectureTest, which rides the inherited owner) fatal
+  under `disable_functions=symlink`: @ cannot suppress a
+  missing-function `\Error`, so each probe ERRORED the very test it
+  existed to guard (driven red at HEAD). Both ride the owner now,
+  skipping VISIBLY (the lint leg was previously a SILENT skip on
+  capability-missing hosts — and pid-predictably named, the
+  ocr10-18 shape). The sweep commit carries the grep pattern and the
+  full site list; the tree reads zero raw probe spellings outside the
+  owner.
+- **copyTree() refuses a source collapsed to the filesystem root
+  (t31-ocr12-3, bug:medium)** — the THIRD symmetry: `rrmdir()`
+  refuses `/`, the target side refuses a root-collapsed landing
+  (ocr9-9), but a source spelling resolving to `/` (`'/'`, `'/..'`, a
+  temp-parent `'..'` where temp sits at the root's edge) passed every
+  guard and walked THE WHOLE ROOT TREE — driven red at HEAD on a
+  scratch target: 135 root-tree entries (`/usr/include/…`) landed
+  before a symlinked entry stopped the walk. The source resolution
+  carries the same universal-container clause (`realpath($from) ===
+  '/'` → the policy RuntimeException naming the caller's spelling),
+  placed before the iterator is constructed. The pinned legs are
+  root-anchored (the r11-2 portability doctrine: a temp-parent `'..'`
+  is destructive exactly where the temp tree is deep).
+- **The root-runner skip fires BEFORE the archive exists
+  (t31-ocr12-4, bug:medium)** — the forced-close chmod-0000 leg's
+  skip fired after `open()+addFile()`: `markTestSkipped()` throws,
+  and the owning finally's `rrmdir()` deleted the destination while
+  the ZipArchive handle was still open on it. The guard is hoisted
+  above the archive's creation — no handle exists at skip time; all
+  four `skipChmod0000LegOnRootRunner` sites inspected, only the one
+  had the mid-open shape.
+- **The serializability ceiling guard is overflow-free
+  (t31-ocr12-5 + t31-ocr12-6, maintainability:low + test:low)** — the
+  comparison was respelled from `expires_in > ceiling - obtained_at`
+  (an obtained-at deep enough — below `253402300799 - PHP_INT_MAX`,
+  ~year -292277022365 — promoted the difference to float, correctness
+  surviving only by guard ORDER) to `obtained_at > ceiling -
+  expires_in`: the subtraction now runs on the operand the
+  constructor has already bounded (a validated positive int), so it
+  bottoms at `ceiling - PHP_INT_MAX`, above `PHP_INT_MIN`, never
+  float — the reading is never an arithmetic operand. Verified
+  equivalent on every already-pinned edge; both sides of the deep
+  corner are pinned by the new boundary legs (one second inside the
+  int domain, one past — the refusal exact, never a
+  float-promotion artifact).
+- **Clean-direction controls gate their fixture writes
+  (t31-ocr12-7, test:low)** — two clean-direction controls in
+  SharedOAuthArchitectureTest wrote fixtures UNCHECKED: a failed
+  `file_put_contents` left the tempnam EMPTY, the gate swept empty
+  content, and the clean direction passed VACUOUSLY. Both writes
+  gated with `assertNotFalse` naming the path; the sweep inspected
+  the file's other unchecked writes (all in legs whose own
+  assertions fail loudly on empty content — only the clean direction
+  goes green on a failed write).
+- **The corrupt-zip fixture name is unpredictable
+  (t31-ocr12-8, security:low)** — the fixture rode a pid-only
+  suffixed scratch path, the naming shape t31-ocr10-18 rejects
+  (enumerable, pre-plantable under shared `/tmp`); random suffix
+  added, the canSymlink probe's own shape.
+- **RefreshPolicy's initial backoff is documented as a seed, not a
+  floor (t31-ocr12-9, documentation:low)** — the docblock claimed the
+  value is "also the policy's floor", but nothing enforces one and
+  the SPEC intent contradicts it (Retry-After and fallback backoff
+  share ONE cap; a negative parsed delta means "retry immediately",
+  ocr12's check of the plan confirmed no caller exists yet — the
+  sequencing is Task 3.3's). The docblock states what IS: the clamp
+  range is the cap's alone, the initial bounds only the sequence
+  that grows from it.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 11)
 
 Eleventh OCR-tool round (61/61, complete): 27 findings, driver triage

@@ -1870,6 +1870,114 @@ OCR-tool round
   measured (+1-offset
   trace applies), 2
   skipped unchanged.
+OCR-tool round
+  t31-ocr12 (eight
+  commits — the
+  twelfth pass,
+  62/62 complete,
+  10/10 findings
+  accepted; the
+  trajectory 27→10
+  is the loop
+  converging on the
+  older doctrines'
+  own seams — this
+  round's findings
+  are mostly
+  residuals of prior
+  rounds' fix
+  classes): the
+  canSymlink sweep
+  completed, its
+  LAST two inline
+  @symlink probes
+  fatal under
+  disable_functions
+  ridden by the ONE
+  owner — and the
+  round's recurring-
+  class lesson
+  LEDGERED: a sweep
+  commits its CENSUS
+  (grep pattern +
+  full site list) in
+  the commit message,
+  never just the
+  converted count
+  (the sweep needed
+  three passes before
+  the tree read
+  zero); copyTree's
+  root-refusal
+  symmetry closed as
+  a TRIPLE (the
+  SOURCE side now
+  refuses a source
+  whose realpath is
+  the universal
+  container — driven
+  red at HEAD: 135
+  root-tree entries
+  landed in a
+  scratch target
+  before a symlink
+  stopped the walk);
+  the root-runner
+  skip hoisted ABOVE
+  the ZipArchive
+  creation (never a
+  throw over an open
+  handle while the
+  finally deletes
+  its destination);
+  the serializability
+  ceiling guard
+  respelled overflow-
+  free (the
+  subtraction runs
+  on the constructor-
+  bounded expires_in,
+  the READING never
+  an arithmetic
+  operand; the deep
+  corner pinned both
+  sides); the two
+  clean-direction
+  fixture writes
+  gated (empty
+  content passed the
+  gates VACUOUSLY);
+  the corrupt-zip
+  fixture name made
+  unpredictable
+  (random suffix over
+  the pid, the
+  ocr10-18 shape);
+  RefreshPolicy's
+  backoff_initial
+  documented as the
+  sequence's SEED
+  (never a floor —
+  the SPEC-checked
+  adjudication: one
+  shared cap,
+  "retry immediately"
+  honored as given,
+  no caller exists,
+  docblock-only).
+  The round's
+  two-lens verifier
+  pass CLEAN on both
+  lenses (zero
+  findings, zero
+  refuted). Suite
+  1637 → 1638 tests,
+  45466 → 45475
+  assertions
+  (measured; the r11
+  +1 trace did not
+  reproduce), 2
+  skipped unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
