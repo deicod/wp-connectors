@@ -123,6 +123,32 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, new \DateTimeImmutable('@-62167219201'));
     }
 
+    /**
+     * OCR-round-12 pin (t31-ocr12-6, sibling of the guard respelling
+     * t31-ocr12-5): the serializability edges were pinned for
+     * expires_in (t31-r1-4) and for the year-0000 floor (t31-r1-20),
+     * but no obtained-at reading DEEP enough to stress the ceiling
+     * guard's arithmetic — the corner where 'ceiling - reading' left
+     * the int domain (one second below 253402300799 - PHP_INT_MAX,
+     * ~year -292277022365; DateTimeImmutable represents it and
+     * getTimestamp() returns it exactly, driven) was unpinned. Both
+     * sides of that corner refuse with the EXACT serializable-range
+     * rejection — the verdict is never a float-promotion artifact.
+     */
+    public function testObtainedAtReadingsAtTheIntDomainCornerRefuseExactly(): void
+    {
+        $corner = 253402300799 - \PHP_INT_MAX; // deepest reading whose ceiling diff stays int
+
+        foreach (array($corner, $corner - 1) as $deep) {
+            try {
+                new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, new \DateTimeImmutable('@' . $deep));
+                $this->fail(sprintf('An obtained-at of %d must be rejected with the serializable-range refusal, exact at the very edge of the int domain.', $deep));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('serializable range', $e->getMessage());
+            }
+        }
+    }
+
     public function testEmptyStringRefreshTokenIsRejectedDistinctFromNull(): void
     {
         // '' is NOT the "no replacement token" spelling — null is.
