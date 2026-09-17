@@ -85,6 +85,17 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     );
 
     /**
+     * The type-declaration vocabulary pattern — the ONE spelling
+     * (t31-ocr14-5): (abstract|final|readonly) in any order and count,
+     * then class/interface/trait/enum, then the type name. The r4-10
+     * round widened the vocabulary in assertOneTypeMatchingFileName()
+     * and left this file's OTHER two copies behind once already; the
+     * copies now ride the constant so a future widening (a new
+     * modifier, a new type kind) lands in ONE place.
+     */
+    private const TYPE_DECLARATION_PATTERN = '/^(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum)\s+([A-Za-z0-9_]+)/m';
+
+    /**
      * The provider-neutrality pattern, DERIVED from the provider set
      * (t31-r10-6): every provider ID plus its vendor aliases, word-
      * fenced and case-insensitive (PHP names are), preg_quoted so a
@@ -1547,9 +1558,26 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
             $path = $scratch . '/' . $collected[0];
             $this->assertSame('ClockMath', wp_connectors_basename_without_php_extension($path), 'The stem strips the extension.');
-            $typeMatches = array();
-            $this->assertSame(1, preg_match_all('/^(?:abstract\s+|final\s+)?(?:class|interface|enum)\s+([A-Za-z0-9_]+)/m', $this->fileContents($path), $typeMatches));
-            $this->assertSame(wp_connectors_basename_without_php_extension($path), $typeMatches[1][0], 'The PSR-4 type-name comparison rides the same stem.');
+            /*
+             * The PSR-4 type-name comparison rides the GATE itself
+             * (t31-ocr14-5): this site carried the file's last stale
+             * copy of the type-declaration vocabulary — the pre-r4-10
+             * single-modifier spelling that misses trait and readonly —
+             * so a fixture the gate counts could pass here uncounted.
+             * The call IS the single-owner doctrine: the count and the
+             * name-vs-stem verdict are the gate's own. The trait and
+             * readonly spellings (both invisible to the stale copy) are
+             * driven through the same site below.
+             */
+            $this->assertOneTypeMatchingFileName($path, 'ClockMath.php');
+
+            foreach (array(
+                'ClockMathTrait.php' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait ClockMathTrait\n{\n}\n",
+                'ClockMathRo.php' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nreadonly final class ClockMathRo\n{\n}\n",
+            ) as $name => $body) {
+                file_put_contents($scratch . '/' . $name, $body);
+                $this->assertOneTypeMatchingFileName($scratch . '/' . $name, $name);
+            }
         } finally {
             WpHarness::rrmdir($scratch);
         }
@@ -1831,7 +1859,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     {
         $contents = $this->fileContents($path);
         $typeMatches = array();
-        $result = preg_match_all('/^(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum)\s+([A-Za-z0-9_]+)/m', $contents, $typeMatches);
+        $result = preg_match_all(self::TYPE_DECLARATION_PATTERN, $contents, $typeMatches);
         $this->assertNotFalse($result, $relative . ': the type scan aborted (PCRE) — an abort is a REFUSAL, never a clean count.');
         $this->assertCount(1, $typeMatches[0], $relative . ' must declare exactly one type (one type per file).');
         $this->assertSame(wp_connectors_basename_without_php_extension($path), $typeMatches[1][0], $relative . ': the type name must match the file name.');
@@ -1848,7 +1876,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      */
     public function testTheTypeVocabularyCoversEveryTypeSpelling(): void
     {
-        $pattern = '/^(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum)\s+([A-Za-z0-9_]+)/m';
+        $pattern = self::TYPE_DECLARATION_PATTERN;
 
         $spellings = array(
             'class' => 'class ClockMath',
