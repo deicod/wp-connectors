@@ -24,14 +24,23 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
     public function testValidDeviceSessionCarriesItsFacts(): void
     {
         $expires = new \DateTimeImmutable('2026-09-13T10:15:00+00:00');
+        $device_code = FakeSecrets::deviceCode();
         $session = new DeviceAuthorizationSession(
-            FakeSecrets::deviceCode(),
+            $device_code,
             'ABCD-1234',
             'https://auth.example.test/device',
             5,
             $expires
         );
 
+        /*
+         * OCR-round-19 pin (t31-ocr19-3): the primary poll credential
+         * round-trips like its siblings — the fake's deviceCode() is
+         * random per call, so the pin needs the capture; without it
+         * every property of the session was asserted except the one
+         * the device flow exists to carry.
+         */
+        $this->assertSame($device_code, $session->device_code());
         $this->assertSame('ABCD-1234', $session->user_code());
         $this->assertSame('https://auth.example.test/device', $session->verification_uri());
         $this->assertSame(5, $session->interval_seconds());
