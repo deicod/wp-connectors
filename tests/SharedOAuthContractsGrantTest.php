@@ -735,11 +735,39 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString($set->access_token(), $container, 'A container holding the grant must never carry the raw access token.');
         $this->assertStringNotContainsString($set->refresh_token(), $container, 'A container holding the grant must never carry the raw refresh token.');
 
-        // The masked snapshot is not a round-trip payload: rebuilding refuses.
+        /*
+         * The masked snapshot is not a round-trip payload: rebuilding
+         * refuses. WHICH guard fires is pinned exactly now (t31-ocr15-4):
+         * the engine rebuilds the nested member values BEFORE the
+         * enclosing hook runs, so a Connected grant — whose payload
+         * carries the token SET as a nested object — never reaches
+         * StoredGrant::__unserialize() at all; the SET's own refusal
+         * fires first (probed on this engine), which is itself the
+         * container-shape protection: the guard closest to the secret
+         * refuses before the grant hook is even consulted. This leg
+         * proves that order; the leg below drives the grant's OWN hook
+         * through the shape that reaches it.
+         */
         $refusal = $this->refusalOf(
             fn() => unserialize($payload),
-            'A masked stored grant must never reconstruct from its own safe form.', \RuntimeException::class
+            'A Connected grant carrying its token set must never reconstruct from its own safe form.', \RuntimeException::class
         );
+        $this->assertStringContainsString('masked token set', $refusal->getMessage(), 'The NESTED guard fires first for the set-bearing shape — the engine rebuilds member values before the enclosing hook, so the set\'s refusal is the one this payload meets.');
+        $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
+
+        // The StoredGrant hook's own refusal, driven through the shape
+        // that REACHES it (t31-ocr15-4): a set-less grant's payload has
+        // no nested refusing member (provider label, generation, state
+        // enum, null), so unserialize() hands the payload to
+        // StoredGrant::__unserialize() itself — the hook order claim's
+        // other leg, and the grant's own refusal pinned on its own
+        // channel instead of riding the set's.
+        $setless = serialize(StoredGrant::in_state('fixture-provider', 3, GrantState::ReconnectRequired));
+        $refusal = $this->refusalOf(
+            fn() => unserialize($setless),
+            'A set-less stored grant must never reconstruct from its own safe form either.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('masked stored grant', $refusal->getMessage(), 'The grant\'s OWN hook refused — this shape reaches it, so the refusal is not borrowed from the nested set.');
         $this->assertStringContainsString('not a round-trip payload', $refusal->getMessage());
 
         // The eval channel refuses typed directly.
