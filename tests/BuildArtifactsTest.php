@@ -4697,6 +4697,16 @@ FIXTURE;
         $c_fold_seam = $foldSeamVerdict($c_locale_verdict);
         $this->assertCount(2, $c_fold_seam, 'The fold seam\'s findings are the code-position name run and the value-lens full spelling.');
 
+        /*
+         * The capability probe before the open resource (t31-ocr13-4,
+         * the ocr6-12 visible-skip doctrine): a host with exec or
+         * escapeshellarg in disable_functions FATALS this leg with an
+         * undefined-function Error — @ cannot suppress it — instead of
+         * the visible skip. The spelling pins above already passed.
+         */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the localedef pressure locale cannot be manufactured; the locale-pressure half did not run (the fold-table and C-locale verdict pins above already passed).');
+        }
         $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
         @mkdir($locpath, 0755, true);
         exec('localedef -i tr_TR -f ISO-8859-9 ' . escapeshellarg($locpath . '/tr_TR.ISO-8859-9') . ' 2>/dev/null', $localedefOutput, $localedefExit);

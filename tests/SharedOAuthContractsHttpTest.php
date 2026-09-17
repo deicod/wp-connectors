@@ -408,8 +408,15 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
          * passing green under a name claiming pressure was applied.
          * The spelling pins above still ran; the skip names what did
          * not. The established idiom: markTestSkipped at the
-         * manufacture failure, never a silent half.
+         * manufacture failure, never a silent half — and the
+         * capability probe BEFORE the open resource (t31-ocr13-4): a
+         * host with exec or escapeshellarg in disable_functions
+         * FATALS the leg with an undefined-function Error (@ cannot
+         * suppress a missing function) instead of this visible skip.
          */
+        if (! function_exists('exec') || ! function_exists('escapeshellarg')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the localedef pressure locale cannot be manufactured; the LC_CTYPE pressure half did not run (the spelling pins above this point already passed).');
+        }
         $locpath = sys_get_temp_dir() . '/wpct-locale-' . getmypid();
         @mkdir($locpath, 0755, true);
         exec('localedef -i tr_TR -f ISO-8859-9 ' . escapeshellarg($locpath . '/tr_TR.ISO-8859-9') . ' 2>/dev/null', $localedefOutput, $localedefExit);
