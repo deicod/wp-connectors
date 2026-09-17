@@ -209,23 +209,29 @@ final class ToolchainSmokeTest extends TestCase
              * parity): the checked count stays 5 (pre-fix: 6, the link
              * itself counted), and the broken source INSIDE the linked
              * tree is judged by nobody either way — the leg is skipped,
-             * never descended. The capability rides the probe, not
-             * function_exists (the t31-ocr6-14 lesson).
+             * never descended.
+             *
+             * The capability rides the ONE owner, WpHarness::canSymlink()
+             * (t31-ocr12-1): this file's former inline '@symlink probe —
+             * pid-only-suffixed, the t31-ocr10-18 shape — was the last
+             * twin outside it, and under disable_functions(symlink) @
+             * cannot suppress the missing-function \Error: the probe
+             * FATALED the very leg it existed to guard. The owner guards
+             * function_exists first and skips VISIBLY, never fatals.
              */
-            $probe = sys_get_temp_dir() . '/wpct-lint-capability-' . getmypid();
-            if (@symlink('/usr/bin/true', $probe)) {
-                unlink($probe);
-                mkdir($scratch . '/linked-tree', 0755, true);
-                file_put_contents($scratch . '/linked-tree/broken-inside.php', "<?php nor is this reachable only through the link");
-                symlink($scratch . '/linked-tree', $scratch . '/connectors/demo/dirlink.php');
-                $output = array();
-                $exit = 0;
-                exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
-                $linked = implode("\n", $output);
-                $this->assertSame(0, $exit, "A '*.php'-named dir symlink is skipped, never linted as a vacuous directory: {$linked}");
-                $this->assertStringContainsString('5 file(s) checked, 0 failure(s)', $linked, 'The skipped dir-link does not change the checked count (pre-fix it was counted as a 6th file).');
-                $this->assertStringNotContainsString('dirlink.php', $linked);
+            if (! WpHarness::canSymlink()) {
+                $this->markTestSkipped('This host cannot create symlinks — the dir-link skip leg cannot run on it (t31-ocr12-1).');
             }
+            mkdir($scratch . '/linked-tree', 0755, true);
+            file_put_contents($scratch . '/linked-tree/broken-inside.php', "<?php nor is this reachable only through the link");
+            symlink($scratch . '/linked-tree', $scratch . '/connectors/demo/dirlink.php');
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
+            $linked = implode("\n", $output);
+            $this->assertSame(0, $exit, "A '*.php'-named dir symlink is skipped, never linted as a vacuous directory: {$linked}");
+            $this->assertStringContainsString('5 file(s) checked, 0 failure(s)', $linked, 'The skipped dir-link does not change the checked count (pre-fix it was counted as a 6th file).');
+            $this->assertStringNotContainsString('dirlink.php', $linked);
 
             /*
              * The still-fails controls: a broken file on no excluded
