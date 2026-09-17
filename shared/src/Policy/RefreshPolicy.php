@@ -49,7 +49,14 @@ final class RefreshPolicy {
 	private readonly int $refresh_skew_seconds;
 
 	/**
-	 * First exponential-backoff cooldown (also the policy's floor).
+	 * First exponential-backoff cooldown — the fallback sequence's seed,
+	 * never a clamp floor.
+	 *
+	 * The cooldown clamp range is the cap's alone ([0, cap],
+	 * capped_retry_after_seconds()): a provider's sub-initial Retry-After
+	 * is honored as given, because "retry immediately" is that reading's
+	 * meaning (t31-ocr2-7) — the initial backoff bounds only the
+	 * fallback sequence that grows from it (Task 3.3's sequencing).
 	 *
 	 * @since 0.1.0
 	 *
