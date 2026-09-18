@@ -6,6 +6,109 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 23)
+
+Twenty-third OCR-tool round (62/62, complete): 9 findings, driver
+triage accepted all — trajectory 27→10→11→7→11→33→9→9→4→12→8→7→9.
+The round's shape: the SCANNER SIDE finally under the lens — teardown
+masking, silent-return contracts, failure-channel discipline,
+fence-pair consistency — with the harness and test fences carrying
+the other three (a platform premise, a probe territory, a residual
+head); zero shared/src findings, the production core's silence
+continuing. Fixed as t31-ocr23-1..9 — one commit per finding —
+plus the two-lens verifier pass's two follow-up closes and this
+docs record, the full offline check green after every commit. The
+verifier pass (two driven agents): all nine fixes stood — every
+premise re-driven red at the round base, every mutation revert
+reddening its committed test, every cited precedent verified — and
+its two closes (the iterator CONSTRUCTION shape of the new silent
+guards, found by both lenses; the \u{} MAGNITUDE shape of the new
+hex guard) are fixed; its records (the probe's territory narrowing,
+a Zai-suite putenv census as the next round's head, a one-off
+order/runner flake) are ledgered. Suite 1657 → 1663 tests, 45541 →
+45569 assertions, 2 skipped unchanged.
+
+- **The finally teardown never masks the primary failure
+  (t31-ocr23-1 + the verifier's rd-1, bug:medium)** — buildPlugin()'s
+  rrmdir walked an unguarded RecursiveDirectoryIterator, and an
+  exception in a finally REPLACES the primary in flight: the build
+  answered the teardown's SPL vocabulary instead of its own refusal.
+  The whole iteration seam — the walk AND the lazily-built
+  constructor, one shape the first cut missed — rides the silent
+  contract now: the iteration refusal is swallowed (the glob()
+  fence's own shape), the partial removal stands, the primary
+  verdict surfaces.
+- **The inspector's removal walk honors its own docblock
+  (t31-ocr23-2 + rd-1, bug:medium)** — "the silent return (a
+  production finally must not throw)" was spelled in the docblock
+  and honored by every root clause while the walk still iterated
+  bare: a walk-hostile tree answered the engine's uncaught
+  UnexpectedValueException. The construction and the walk ride the
+  silent contract now, root shape included.
+- **The scan-root boundary refusal carries the failure channel's
+  own class (t31-ocr23-3, bug:medium)** — it threw
+  InvalidArgumentException, a LogicException outside build's
+  `catch (RuntimeException)`, breaking the channel the glm31-4
+  sibling comment deliberately preserves: a firing boundary was an
+  uncaught fatal exiting 255 where every sibling refusal reaches
+  the build's named exit-1 verdict. The refusal throws
+  RuntimeException now, message byte-identical; the battery's three
+  legs pin the class through the family parameter.
+- **The \u{} escape validates hex — and magnitude — before
+  hexdec() (t31-ocr23-4 + rd-2, bug:low)** — hexdec() ignores every
+  non-hex byte ('\u{zz}' modeled as the NUL byte, '\u{ 41 }' as
+  'A') and deprecates on the input, while the engine refuses every
+  such spelling at compile time; and a digit run past the int range
+  answered a float the (int) cast collapsed to 0 ('\u{FFFF…}'
+  resolving as NUL under a mid-gate cast warning). The digits are
+  judged hex-ALONE before any conversion, the range keeps the
+  float: every engine-refused spelling stays literal byte-for-byte,
+  the model warning-free.
+- **The redirected-TMPDIR sim carries the platform gate its POSIX
+  premise owed (t31-ocr23-5, test:low)** — the child's whole
+  premise is a fresh engine honoring TMPDIR (POSIX temp
+  resolution), and nothing gated it; the gate rides the ONE owner
+  this round's census threshold hoisted (WpHarness::isPosixHost(),
+  three consumers, each keeping its own premise-naming skip).
+- **The link probe anchors at the harness's own territory
+  (t31-ocr23-6, bug:low)** — the r19 anchor exempted only the temp
+  spelling's components, so every other absolute chain walked from
+  '/' and a host-layout link ABOVE a source root outside the temp
+  tree fired the planted-link verdict on a legal tree. A component
+  is probed iff its chain-so-far sits strictly beneath one of the
+  two anchors — the temp spelling and the repository root; the
+  planted class keeps its full reach where it lives (the committed
+  dist-side legs proved the plant surface is not temp-only, the
+  first temp-only cut deleting the committed mid-path leg's victim
+  before the suite caught it), and the entry-level guards keep
+  their vocabulary below the root.
+- **The fused relative operator inside a closure use(...) list
+  refuses like its interrupted twin (t31-ocr23-7, bug:medium)** —
+  a name in a lexical binding list is a parse error in every
+  reading, but the two lexer spellings took opposite verdicts: the
+  interrupted twin refused at the bare-keyword fence while the
+  fused token fell through the use-statement gate and shipped
+  parse-error bytes at exit 0. The walk tracks the closure-use
+  region (depth-counted) and refuses the fused spelling inside it.
+- **The plugin-tree collector skips near-source names — ONE
+  judgment both fences ride (t31-ocr23-8, bug:low)** — collectFiles
+  packaged 'notes.php.' while the inspector refused the same entry
+  through the ONE near-source predicate: build shipped what inspect
+  rejected, the r20 ledger's own named residual. The collector
+  excludes the class through the same owner (the r5-10
+  builder-excludes/inspector-rejects shape); the owner's docblock
+  names all three channels.
+- **The non-spawn putenv consumer converted — the r22 residual
+  head (t31-ocr23-9, test:medium)** — the fold battery's env-pin
+  leg putenv()s LC_CTYPE with no spawn, the spawn-pair floor a
+  misfit and gate-whole-method a coverage narrowing. The leg split
+  to its own test behind function_exists('putenv') (driven: one
+  visible skip under the flag, the fold legs still green); the
+  fold test keeps its setlocale-only premise.
+- **The verifier's closes (rd-1, rd-2)** — the construction shape
+  and the magnitude shape, each driven red at the round's HEAD and
+  green at the close (the details ride the two bullets above).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 22)
 
 Twenty-second OCR-tool round (62/62, complete): 7 findings, driver

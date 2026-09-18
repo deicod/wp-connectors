@@ -3990,6 +3990,273 @@ OCR-tool
   relocation),
   2 skipped
   unchanged.
+OCR-tool
+  round
+  t31-ocr23
+  (ELEVEN
+  commits —
+  the
+  twenty-third
+  pass, 62/62,
+  9/9 findings
+  accepted;
+  trajectory
+  27→10→11→7→11→33→9→9→4→12→8→7→9;
+  the round's
+  shape: the
+  SCANNER
+  SIDE
+  finally
+  under the
+  lens —
+  teardown
+  masking,
+  silent-return
+  contracts,
+  failure-channel
+  discipline,
+  fence-pair
+  consistency
+  — zero
+  shared/src
+  findings;
+  the driver's
+  own "FOUR
+  bin/
+  findings"
+  corrected
+  at the docs
+  pass: SIX
+  of the
+  nine lived
+  under bin/
+  — the
+  r21 rd-3
+  arithmetic
+  class in
+  the
+  driver's
+  mouth):
+  build's
+  finally
+  teardown
+  never
+  masks the
+  primary
+  (the
+  unguarded
+  rrmdir
+  walk, its
+  SPL throw
+  REPLACING
+  the
+  in-flight
+  refusal —
+  silent
+  contract
+  now); the
+  inspector
+  twin's
+  walk
+  honors its
+  own
+  docblock's
+  silent
+  return;
+  the
+  scan-root
+  boundary
+  throws the
+  channel's
+  own
+  RuntimeException;
+  the \u{}
+  escape
+  validates
+  hex and
+  magnitude
+  before
+  hexdec;
+  the
+  redirected-TMPDIR
+  sim gates
+  its POSIX
+  premise
+  (and the
+  third
+  consumer
+  hoists
+  WpHarness::
+  isPosixHost(),
+  the ONE
+  platform-probe
+  owner);
+  the link
+  probe
+  anchors at
+  the
+  harness's
+  own
+  territory
+  — temp
+  spelling
+  plus
+  repository
+  root, the
+  planted
+  class
+  keeping
+  its full
+  reach
+  beneath
+  them (the
+  first
+  temp-only
+  cut
+  DELETED
+  the
+  committed
+  dist
+  mid-path
+  leg's
+  victim —
+  the suite
+  caught it
+  before
+  commit);
+  the fused
+  relative
+  operator
+  inside a
+  closure
+  use list
+  refuses
+  like its
+  interrupted
+  twin; the
+  plugin-tree
+  collector
+  skips
+  near-source
+  names
+  through
+  the ONE
+  predicate
+  both
+  fences
+  ride (the
+  r20
+  residual's
+  trace
+  landed);
+  the r22
+  residual
+  head
+  converted
+  — the
+  non-spawn
+  putenv
+  leg split
+  behind
+  function_
+  exists('putenv').
+  The
+  two-lens
+  verifier
+  pass: 9/9
+  CONFIRMED
+  (premises
+  driven red
+  at the
+  base,
+  mutation
+  reverts
+  reddening
+  every
+  committed
+  test,
+  precedents
+  verified),
+  two closes
+  — the
+  iterator
+  CONSTRUCTION
+  shape of
+  the new
+  silent
+  guards
+  (found by
+  both
+  lenses),
+  the \u{}
+  MAGNITUDE
+  shape —
+  and three
+  ledgered
+  records:
+  the
+  probe's
+  territory
+  narrowing
+  (foreign
+  linked
+  roots now
+  walk
+  through —
+  unreachable
+  in the
+  committed
+  suite),
+  a Zai-suite
+  putenv
+  census (26
+  errors
+  under the
+  flag) as
+  the next
+  round's
+  head, and
+  a one-off
+  order/runner
+  flake over
+  shared
+  dist-path
+  artifacts.
+  Suite 1657
+  → 1663
+  tests (+1
+  the
+  teardown,
+  +1 the
+  inspector
+  twin, +0
+  the
+  channel
+  swap, +0
+  the
+  unescape
+  battery,
+  +0 the
+  gate, +1
+  the
+  anchor
+  sim, +1
+  the
+  closure-use
+  arm, +1
+  the
+  collector
+  fence, +1
+  the split;
+  +2 the
+  verifier's
+  two
+  closes),
+  45541 →
+  45569
+  assertions,
+  2 skipped
+  unchanged.
 
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
