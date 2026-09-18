@@ -319,6 +319,17 @@ final class HarnessCopyTreeTest extends TestCase
             if (false !== $locked_probe) {
                 closedir($locked_probe);
                 chmod($locked, 0755);
+                /*
+                 * The skip is LOUD (OCR round 35, t31-ocr35-8): the
+                 * branch once restored 0755 and rode through green —
+                 * the ocr32-9 regression pin never having run, a
+                 * VACUOUS green wearing the leg's own pass (the exact
+                 * class the root-landing legs' skips name). The file's
+                 * own uid-0 idiom: the runner that opens chmod-0000
+                 * directories cannot construct the unlistable shape,
+                 * and the skip says so.
+                 */
+                $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 / DAC override — t31-ocr4-1); the unlistable-source shape is unconstructible here, so the ocr32-9 refusal pin cannot run on this runner.');
             } else {
                 $refuses($locked, $from . '/dst-locked', 'An EXISTING but unlistable source must refuse with the policy exception, never the SPL iterator\'s surprise.');
             }
