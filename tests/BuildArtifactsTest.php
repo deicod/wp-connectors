@@ -4701,6 +4701,35 @@ FIXTURE;
             $this->assertFileExists($victim . '/keep2.txt', "A '/..' tail over a REAL directory never walks the PARENT tree — the victim survives whole.");
             $this->assertDirectoryExists($scratch, "The PARENT the '/..' names is never this owner's territory — the scratch tree survives the tail-spelled fire whole.");
             /*
+             * The WHOLE-PATH degenerates (OCR round 27, t31-ocr27-2):
+             * '..', './', and '.' carry no '/..' tail, so the strip loop
+             * left them unflagged — and driven pre-fix from a child CWD
+             * rrmdir('..') walked and EMPTIED the parent of the process
+             * CWD (the CWD's own tree included). A degenerate whole-path
+             * names no caller-named root at all; every spelling refuses,
+             * and the CWD's parent tree survives each fire whole. The
+             * fires run from a CONTROLLED child CWD (the degenerate is
+             * CWD-relative — the only spelling class this owner cannot
+             * be handed an absolute form of), the CWD restored in the
+             * finally.
+             */
+            $degenerate = $scratch . '/degenerate-parent';
+            mkdir($degenerate . '/child', 0755, true);
+            file_put_contents($degenerate . '/survivor.txt', 'survivor');
+            $cwd = (string) getcwd();
+            try {
+                chdir($degenerate . '/child');
+                wp_connectors_inspect_rrmdir('.');
+                $this->assertFileExists($degenerate . '/survivor.txt', "The whole-path degenerate '.' never walks the CALLER CWD's parent — the spelling names no caller-named root.");
+                wp_connectors_inspect_rrmdir('./');
+                $this->assertFileExists($degenerate . '/survivor.txt', "The whole-path degenerate './' never walks the CALLER CWD's parent either.");
+                wp_connectors_inspect_rrmdir('..');
+                $this->assertFileExists($degenerate . '/survivor.txt', "The whole-path degenerate '..' never walks the parent of the CALLER'S CWD — driven red at HEAD: this fire emptied the parent tree through the spelling.");
+                $this->assertDirectoryExists($degenerate . '/child', 'The CWD tree itself survives the degenerate fires — the walk never ran.');
+            } finally {
+                chdir($cwd);
+            }
+            /*
              * The root spellings are ROOT-ANCHORED, never a temp-parent
              * '..' (OCR round 11, t31-ocr11-2): POSIX resolves '.' and
              * '..' AT the root to the root itself on every host, so

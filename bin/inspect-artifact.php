@@ -673,8 +673,22 @@ function wp_connectors_inspect_rrmdir($dir)
      * tail that names OUTSIDE it is never walked. The verdict
      * vocabulary is the silent return (the root clause's own — a
      * production finally must not throw).
+     *
+     * The WHOLE-PATH degenerates refuse the same way (OCR round
+     * 27, t31-ocr27-2): '..', './', and '.' carry no '/..' tail,
+     * so the strip loop left them with $parent_walking unset —
+     * and '..' then passed is_link()/is_dir()/realpath!=='/' on
+     * any host whose CWD is not directly beneath the root, and
+     * the walk EMPTIED the parent of the CALLER'S CWD (driven
+     * pre-fix from a child CWD: the parent tree's every entry
+     * removed through the spelling). A degenerate whole-path
+     * names no caller-named root at all ('.' names the CWD
+     * itself, '..' its parent — territory this owner was never
+     * handed); every one refuses, never walks. '' rides the same
+     * fence: it is the '/..'/'/.' strips' own residue, a spelling
+     * that names nothing.
      */
-    if ($parent_walking) {
+    if ($parent_walking || '' === $probe || '.' === $probe || '..' === $probe) {
         return;
     }
     if (is_link($probe)) {
