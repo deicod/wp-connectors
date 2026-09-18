@@ -865,22 +865,85 @@ final class WpConnectorsBuild
              * end, code token by code token, the allowed grammar is
              * an optional `as` + one identifier, terminated by the
              * statement-boundary set (the ONE boundary owner) or a
-             * ',' — a comma list's remainder is the NEXT import's
-             * own judgment, each member carrying its own trigger
-             * through this walk. Anything else — a second name, a
-             * brace without its separator, an operator, EOF without
+             * ',' — and the comma CONTINUES the judgment into the
+             * next member (OCR round 26, t31-ocr26-2): the carve
+             * once set 'terminated' AT the comma, so a FOLLOWING
+             * member carrying no relative trigger of its own was
+             * never judged by this walk (the main loop's trigger
+             * condition skips non-relative members) — driven at
+             * HEAD, `use namespace\Clock, Other\Thing SystemClock;`
+             * spliced the first member and shipped the second's
+             * rider bytes verbatim at exit 0, the parse-error line
+             * riding BESIDE rewritten output, judged by nobody. The
+             * judgment owns EVERY member of the list now: past the
+             * comma a member is the kind keywords (`function`/
+             * `const`) plus a name run (the same tokens the run
+             * assembler consumes), an optional alias, and its own
+             * comma-or-terminator — a member that is itself
+             * relative keeps its own trigger through the main loop
+             * (the mid-name and trait fences judge it there).
+             * Anything else — a second name, a brace without its
+             * separator, an operator, an empty member, EOF without
              * a terminator — refuses loudly, never legalizes.
              */
             $tail_index = wp_connectors_next_code_token_index($tokens, $run['end'] + 1);
             $tail_expect = 'rider-or-terminator';
+            $member_named = true;
+            $member_await_separator = true;
             while (null !== $tail_index) {
                 $tail_token = $tokens[ $tail_index ];
                 $tail_id = is_array($tail_token) ? $tail_token[0] : null;
+                if ('member-start' === $tail_expect) {
+                    /*
+                     * The member grammar is SEPARATOR-AWARE: a name
+                     * piece continues the run only through a '\'
+                     * (the run assembler's own vocabulary), so a
+                     * SECOND name with no separator between — the
+                     * rider bytes — never reads as a longer name.
+                     */
+                    if (T_NS_SEPARATOR === $tail_id) {
+                        $member_await_separator = false;
+                        $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
+
+                        continue;
+                    }
+                    if (wp_connectors_is_name_token_id($tail_id) && (! $member_await_separator || ! $member_named)) {
+                        $member_named = true;
+                        $member_await_separator = true;
+                        $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
+
+                        continue;
+                    }
+                    if (! $member_named && (T_FUNCTION === $tail_id || T_CONST === $tail_id)) {
+                        // The kind keywords lead a member (`use A, function B;`).
+                        $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
+
+                        continue;
+                    }
+                    if ($member_named) {
+                        // The member is named; its tail judges in the
+                        // rider state below (this token unconsumed).
+                        $tail_expect = 'rider-or-terminator';
+                    } else {
+                        $rider_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
+
+                        throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — the comma is followed by no import member (here: '{$rider_display}'), and the rewrite owns the statement through its terminator, never a list with an empty member; write one import member per comma");
+                    }
+                }
                 if ('rider-or-terminator' === $tail_expect) {
-                    if (wp_connectors_is_use_statement_boundary($tail_token, $tail_id) || ',' === $tail_token) {
+                    if (wp_connectors_is_use_statement_boundary($tail_token, $tail_id)) {
                         $tail_expect = 'terminated';
 
                         break;
+                    }
+                    if (',' === $tail_token) {
+                        $tail_expect = 'member-start';
+                        $member_named = false;
+                        $member_await_separator = false;
+
+                        $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
+
+                        continue;
                     }
                     if (T_AS === $tail_id) {
                         $tail_expect = 'alias-identifier';
@@ -915,7 +978,11 @@ final class WpConnectorsBuild
                         throw new RuntimeException("build: the alias of a relative use import ({$spelling_display}) must be one plain identifier in {$sourceVersion} — the grammar accepts nothing else in the slot (a keyword spelling, case-insensitively, included), and the rewrite refuses the spelling rather than shipping it (here: '{$rider_display}')");
                     }
                     $tail_expect = 'terminator-only';
-                } elseif (! wp_connectors_is_use_statement_boundary($tail_token, $tail_id) && ',' !== $tail_token) {
+                } elseif ('terminator-only' === $tail_expect && ',' === $tail_token) {
+                    $tail_expect = 'member-start';
+                    $member_named = false;
+                    $member_await_separator = false;
+                } elseif (! wp_connectors_is_use_statement_boundary($tail_token, $tail_id)) {
                     $rider_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
 
                     throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — after the alias only the terminator may follow, and rider bytes (here: '{$rider_display}') ship beside the rewritten name as legal-looking output the engine then rejects; write the import without the rider bytes");

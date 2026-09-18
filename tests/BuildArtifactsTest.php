@@ -6362,6 +6362,39 @@ FIXTURE;
         $rewritten = WpConnectorsBuild::rewriteSharedNamespace($listed, 'OpenAiOauth', 'shared/src/ListFixture.php');
         $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock, Other\\Thing;', $rewritten, 'A comma-listed relative member rewrites in place — the separator is a rider the grammar allows, never a refusal.');
 
+        /*
+         * OCR round 26 (t31-ocr26-2): the comma once TERMINATED the
+         * rider judgment one member early, so a following member
+         * carrying no relative trigger of its own was judged by
+         * nobody — the main loop's trigger condition skips
+         * non-relative members. Driven red at HEAD: this very list
+         * spliced its first member and shipped the second's rider
+         * bytes verbatim at exit 0 (`use namespace\Clock, Other\Thing
+         * SystemClock;` — php -l rejects the shipped line). The
+         * judgment walks EVERY member of the list now; the legal
+         * list shapes above keep their verdicts.
+         */
+        foreach (array(
+            'plain member with rider bytes' => 'use namespace\\Clock, Other\\Thing SystemClock;',
+            'alias on the first member, rider on the second' => 'use namespace\\Clock as C, Other Thing;',
+            'kinded member with rider bytes' => 'use namespace\\Clock, function Other\\fn SystemClock;',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\ninterface ListRiderFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/ListRiderFixture.php'),
+                "A comma-list member carrying rider bytes must refuse the rewrite ({$label}).", \RuntimeException::class
+            );
+            $this->assertStringContainsString('rider bytes', $refusal->getMessage(), "The judgment owns every member of the list, past the comma ({$label}).");
+        }
+        $refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock,;\ninterface EmptyMemberFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/EmptyMemberFixture.php'),
+            'An empty member after the comma must refuse.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('no import member', $refusal->getMessage());
+        // The legal aliases in later members keep riding (the member
+        // grammar owns `as` past the comma exactly as member 1 does).
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock, function Other\\fn as F, Other as O;\ninterface ListAliasFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/ListAliasFixture.php');
+        $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock, function Other\\fn as F, Other as O;', $rewritten, 'Every LEGAL member shape past the comma keeps its verdict — kind keywords, aliases, piece-spelled names.');
+
         // A separator-INTERRUPTED relative (the walk reassembles; the
         // splice replaces the whole run) resolves like its contiguous
         // twin.
