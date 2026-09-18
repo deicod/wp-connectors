@@ -603,11 +603,11 @@ function wp_connectors_inspect_rrmdir($dir)
     if ('/' === realpath($dir)) {
         return;
     }
-    $items = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
-    );
     try {
+        $items = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
         foreach ($items as $item) {
             if ($item->isDir() && ! $item->isLink()) {
                 rmdir($item->getPathname());
@@ -625,7 +625,11 @@ function wp_connectors_inspect_rrmdir($dir)
          * seam whose contract names the silent return. The removal up
          * to the refusal stands, the unopened subtree stays, and
          * wp_connectors_inspect_artifact()'s verdict surface is
-         * untouched (OCR round 23, t31-ocr23-2, driven).
+         * untouched (OCR round 23, t31-ocr23-2, driven). The
+         * CONSTRUCTION rides the same guard (the round's verifier
+         * pass, rd-1): a removal ROOT this process cannot open throws
+         * from the iterator's own constructor, one shape over the
+         * walk's refusal (driven at HEAD).
          */
         return;
     }

@@ -2439,6 +2439,7 @@ FIXTURE;
         // the finally must carry, never replace.
         mkdir($scratch . '/dist/checksums.txt');
 
+        $lockedRoot = $scratch . '/locked-root';
         try {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
@@ -2447,8 +2448,26 @@ FIXTURE;
             $this->assertStringContainsString('is not a regular file', $refusal->getMessage(), 'The PRIMARY refusal surfaces — the teardown no longer answers in the SPL iterator\'s vocabulary over it.');
             $this->assertStringContainsString('checksums.txt', $refusal->getMessage(), 'The primary names the landing target the preflight judged.');
             $this->assertSame(array(), glob($scratch . '/dist/connectors-example-connector-*') ?: array(), 'The preflight refusal precedes every landing — nothing published.');
+
+            /*
+             * The verifier close (rd-1, the CONSTRUCTION shape): the
+             * first cut wrapped only the walk, and the iterator is
+             * built LAZILY on the removal root itself — a ROOT this
+             * process cannot open threw from the constructor, one
+             * shape over the walk's refusal, the same SPL vocabulary
+             * through the same channel (driven at the round's HEAD
+             * through this reflection seam). The silent contract owns
+             * the whole iteration seam now.
+             */
+            mkdir($lockedRoot . '/inner', 0755, true);
+            file_put_contents($lockedRoot . '/inner/x.txt', 'bytes');
+            chmod($lockedRoot, 0000);
+            $remove = new ReflectionMethod(WpConnectorsBuild::class, 'rrmdir');
+            $remove->invoke(null, $lockedRoot);
+            $this->assertDirectoryExists($lockedRoot, 'A locked removal ROOT answers the silent contract too — the guard owns the construction, never the walk alone.');
         } finally {
             chmod($stage . '/locked', 0755);
+            @chmod($lockedRoot, 0755);
             WpHarness::rrmdir($scratch);
         }
     }
@@ -4602,8 +4621,23 @@ FIXTURE;
 
             $this->assertDirectoryExists($scratch . '/work', 'The final rmdir never runs past a refused walk — the silent degrade stops the removal, never rolls it back.');
             $this->assertDirectoryExists($scratch . '/work/locked', 'The unopened subtree stays exactly where it stood — the silent return leaves it for the OS temp sweep.');
+
+            /*
+             * The verifier close (rd-1, the CONSTRUCTION shape): the
+             * first cut wrapped only the walk, and the iterator's own
+             * CONSTRUCTOR over a locked removal ROOT threw through the
+             * guard (driven at the round's HEAD) — the silent contract
+             * owns the whole iteration seam, root shape included.
+             */
+            $lockedRoot = $scratch . '/locked-root';
+            mkdir($lockedRoot . '/inner', 0755, true);
+            file_put_contents($lockedRoot . '/inner/x.txt', 'bytes');
+            chmod($lockedRoot, 0000);
+            wp_connectors_inspect_rrmdir($lockedRoot);
+            $this->assertDirectoryExists($lockedRoot, 'A locked removal ROOT answers the silent verdict too — the guard owns the construction, never the walk alone.');
         } finally {
             chmod($scratch . '/work/locked', 0755);
+            @chmod($scratch . '/locked-root', 0755);
             WpHarness::rrmdir($scratch);
         }
     }

@@ -2277,11 +2277,11 @@ final class WpConnectorsBuild
         if (! is_dir($dir)) {
             return;
         }
-        $items = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
-        );
         try {
+            $items = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
             foreach ($items as $item) {
                 /** @var SplFileInfo $item */
                 /*
@@ -2312,7 +2312,13 @@ final class WpConnectorsBuild
              * engine refusal becomes "nothing more to remove", never a
              * verdict): the partial removal stands, the unopened
              * subtree stays for the sweep's next run, and the primary
-             * verdict surfaces untouched.
+             * verdict surfaces untouched. The CONSTRUCTION rides the
+             * same guard (the round's verifier pass, rd-1): the
+             * iterator is built LAZILY on the removal root itself, and
+             * a root this process cannot open throws from the
+             * constructor — one shape over the walk's refusal, the
+             * same class through the same channel (driven at HEAD
+             * through the reflection seam).
              */
             return;
         }
