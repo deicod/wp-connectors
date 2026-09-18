@@ -659,15 +659,36 @@ function wp_connectors_inspect_rrmdir($dir)
 {
     $probe = $dir;
     $parent_walking = false;
+    /*
+     * BOTH separator spellings strip (OCR round 29, t31-ocr29-3 —
+     * the DIRECTORY_SEPARATOR class the round's platform family
+     * named): the loop below fenced only '/'-spelled tails, so a
+     * backslash tail ('dir\..', the NATIVE spelling on a host whose
+     * separator is '\') survived the probe and the walk rode the
+     * caller's raw spelling into the territory the tail names — the
+     * ocr10-15/ocr26-3/4 "every tail spelling" doctrine one
+     * separator short of its own claim. The fence judges the
+     * spelling CLASS, never the host it runs on: on a POSIX host a
+     * backslash tail is an inert byte in an odd filename, and
+     * refusing it costs RESIDUE for that pathological spelling (the
+     * silent return's own vocabulary — residue over victim, the
+     * ocr24-3 trade); on a host where '\' IS the separator the same
+     * fence holds the parent tree. The POSIX drive rides the
+     * tail-spelling battery; the Windows-native parent-walk is
+     * construction-evident (DIRECTORY_SEPARATOR, a platform constant
+     * no test sim flips — the ocr28-3 doctrine).
+     */
     if ('/' !== $probe) {
-        $probe = rtrim($probe, '/');
+        $probe = rtrim($probe, '/\\');
         while (true) {
-            if ('/.' === substr($probe, -2)) {
-                $probe = rtrim(substr($probe, 0, -2), '/');
+            $tail = substr($probe, -2);
+            if ('/.' === $tail || '\\.' === $tail) {
+                $probe = rtrim(substr($probe, 0, -2), '/\\');
                 continue;
             }
-            if ('/..' === substr($probe, -3)) {
-                $probe = rtrim(substr($probe, 0, -3), '/');
+            $tail = substr($probe, -3);
+            if ('/..' === $tail || '\\..' === $tail) {
+                $probe = rtrim(substr($probe, 0, -3), '/\\');
                 $parent_walking = true;
                 continue;
             }

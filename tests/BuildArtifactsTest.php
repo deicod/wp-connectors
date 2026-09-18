@@ -4779,6 +4779,29 @@ FIXTURE;
             $this->assertFileExists($victim . '/keep2.txt', "A '/..' tail over a REAL directory never walks the PARENT tree — the victim survives whole.");
             $this->assertDirectoryExists($scratch, "The PARENT the '/..' names is never this owner's territory — the scratch tree survives the tail-spelled fire whole.");
             /*
+             * The BACKSLASH tail, both spellings fenced (OCR round 29,
+             * t31-ocr29-3): the strip loop fenced only '/'-spelled
+             * tails, so the '\'-spelled twin — the NATIVE separator
+             * spelling on a host where '\' joins paths, the spelling
+             * that names the PARENT there — survived the probe. The
+             * drive creates a REAL directory whose own NAME ends in
+             * the backslash-tail bytes (an inert odd filename on this
+             * POSIX host, so the fire is real at HEAD — driven red:
+             * the walk EMPTIED the backslash-named tree) and the
+             * fence must refuse it anyway: the fence judges the
+             * spelling CLASS, never the host it runs on, and residue
+             * for the pathological backslash-named entry beats the
+             * parent walk the same bytes ride elsewhere. The
+             * Windows-native parent-walk itself is construction-
+             * evident (DIRECTORY_SEPARATOR, a constant no sim flips).
+             */
+            $backslashNamed = $scratch . '/kept-tail\\..';
+            mkdir($backslashNamed, 0755, true);
+            file_put_contents($backslashNamed . '/survivor.txt', 'survivor');
+            wp_connectors_inspect_rrmdir($backslashNamed);
+            $this->assertFileExists($backslashNamed . '/survivor.txt', "A '\\..' tail answers the refusal on the POSIX host too — the fence judges the spelling class, and the backslash-named tree it would have emptied (driven red at HEAD) survives whole.");
+            $this->assertDirectoryExists($scratch, 'The PARENT the backslash tail names on a separator-host is never walked here either — the scratch tree survives the backslash-tailed fire whole.');
+            /*
              * The WHOLE-PATH degenerates (OCR round 27, t31-ocr27-2):
              * '..', './', and '.' carry no '/..' tail, so the strip loop
              * left them unflagged — and driven pre-fix from a child CWD
