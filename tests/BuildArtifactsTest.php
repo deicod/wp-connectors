@@ -7482,6 +7482,36 @@ FIXTURE;
         }
         $this->assertSame("\\u{FFFFFFFFFFFFFFFF}\\u{1000000}", $huge, 'Over-magnitude hex runs stay literal — the engine refuses them at compile time (red at HEAD: the 2^63-over run collapsed through the (int) cast and modeled as the NUL byte), and the range check reads the digit run\'s magnitude, never a collapsed int.');
         $this->assertSame(array(), $cast_warnings, 'An over-magnitude \u{} spelling must raise nothing mid-gate — no deprecation from hexdec, no cast warning from the collapsed float (the r11-8 doctrine).');
+
+        /*
+         * The SURROGATE adjudication (OCR round 28, t31-ocr28-4 — the
+         * finding's engine premise driven and REFUTED): the round
+         * claimed the engine refuses 0xD800–0xDFFF at compile time
+         * "with the very error" the non-hex comment cites, but the
+         * DRIVEN engine (8.5.10) compiles every surrogate spelling
+         * clean and computes its raw three-byte UTF-8 spelling
+         * ('\u{D800}' → ED A0 80 — bin2hex-driven) — the RFC-era
+         * refusal was lifted upstream, and only the over-range and
+         * non-hex spellings still refuse. The model mirrors the
+         * ENGINE, never the RFC (the ocr23-4 charter, both
+         * directions): keeping the class literal would invent a
+         * refusal the running engine does not give. The pin drives the
+         * engine ITSELF as the oracle (the ocr16-7 eval idiom) over
+         * the range's every boundary — a future engine generation that
+         * refuses the class again fails THIS pin loudly, naming the
+         * drift instead of leaving a silently-wrong model; on an
+         * engine that refuses, the eval itself is the compile-time
+         * refusal, and that failure is the honest signal, never a
+         * red to suppress.
+         */
+        foreach (array('D7FF', 'D800', 'DBFF', 'DFFF', 'E000') as $codepoint) {
+            $engine_value = eval('return "\u{' . $codepoint . '}";');
+            $this->assertSame(
+                $engine_value,
+                wp_connectors_unescape_php_string_literal('"', '\\u{' . $codepoint . '}'),
+                "The unescaper answers the engine's own bytes for \\u{{$codepoint}} — surrogate spellings included (the driven engine resolves them; the RFC-era refusal is not this engine's behavior, and the model mirrors the engine, both directions of the ocr23-4 charter)."
+            );
+        }
     }
 
     /**

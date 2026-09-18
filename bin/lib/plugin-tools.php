@@ -1443,6 +1443,28 @@ function wp_connectors_unescape_php_string_literal($quote, $inner)
                      * one an int.
                      */
                     $codepoint = hexdec($digits);
+                    /*
+                     * SURROGATES (0xD800–0xDFFF) pass the range
+                     * deliberately (OCR round 28, t31-ocr28-4 — the
+                     * finding's premise driven and REFUTED): the round
+                     * claimed the engine refuses the surrogate class at
+                     * compile time "with the very error this comment
+                     * cites", but the DRIVEN engine (8.5.10, php -l and
+                     * runtime, byte-hexed) compiles '\u{D800}' clean and
+                     * computes its raw three-byte spelling (ED A0 80)
+                     * — the RFC-era refusal the Unicode-escape RFC
+                     * spelled was lifted upstream, and only the
+                     * over-range and non-hex spellings still refuse.
+                     * The model mirrors the ENGINE, never the RFC (the
+                     * ocr23-4 charter, both directions): keeping the
+                     * surrogate class literal would invent a refusal
+                     * the running engine does not give — the ocr23-4
+                     * defect class inverted. The pin drives the engine
+                     * ITSELF as the oracle (the ocr16-7 eval idiom), so
+                     * the day an engine generation refuses the class
+                     * again the pin names the drift, not a silent
+                     * model.
+                     */
                     if ($codepoint <= 0x10ffff) {
                         // UTF-8 encoded in place (mbstring is not a dependency
                         // of this tooling; the encoder is four ranges).
