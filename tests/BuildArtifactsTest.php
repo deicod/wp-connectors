@@ -5527,18 +5527,25 @@ FIXTURE;
                     );
                     $shippedMain = (string) $zip->getFromName('my.plugin/my.plugin.php');
                     $zip->close();
-                    $probe = self::scratchPath('dot-slug-probe-main.php');
-                    file_put_contents($probe, $shippedMain);
                     /*
                      * The exec-capability guard (t31-ocr20-5, the ocr18-2
                      * doctrine), inside the state-preserving callback whose
                      * finally restores on the skip's throw: the parse probe
                      * below spawns an engine; the build and entry-read
-                     * assertions above already passed.
+                     * assertions above already passed. The guard fires
+                     * BEFORE the probe write (OCR round 27, t31-ocr27-8):
+                     * the skip once threw past a probe already sitting in
+                     * real dist/ — the try/finally unlink started below
+                     * the guard, so markTestSkipped()'s throw leaked the
+                     * scratch file on every spawn-less host. The write
+                     * rides inside the try now; the skip path leaves
+                     * nothing.
                      */
                     if (! self::canSpawnChildren()) {
                         $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the shipped-main parse probe cannot run; the derivation, gate, and build assertions above already passed.');
                     }
+                    $probe = self::scratchPath('dot-slug-probe-main.php');
+                    file_put_contents($probe, $shippedMain);
                     try {
                         $output = array();
                         $exit = 0;
