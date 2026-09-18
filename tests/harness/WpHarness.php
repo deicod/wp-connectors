@@ -862,7 +862,7 @@ final class WpHarness
      *
      * @param string $dir Absolute directory path.
      * @return void
-     * @throws RuntimeException When the spelling collapses to the filesystem root (t31-ocr10-1) — the universal tree is never a scratch dir — its realpath resolution fails (t31-ocr11-20), or a removal's IO return fails (t31-ocr32-7: the walk owns its returns — a stranded shape refuses loudly, never the engine's raw warning).
+     * @throws RuntimeException When the spelling collapses to the filesystem root (t31-ocr10-1) — the universal tree is never a scratch dir — its realpath resolution fails (t31-ocr11-20), a removal's IO return fails (t31-ocr32-7: the walk owns its returns — a stranded shape refuses loudly, never the engine's raw warning), or a subdirectory mid-tree cannot be listed (t31-ocr33-6: the recursion boundary is fenced — the SPL iterator's vocabulary never answers a harness refusal).
      */
     public static function rrmdir($dir)
     {
@@ -949,31 +949,54 @@ final class WpHarness
          * tree the probes judged (realpath resolved it while it
          * stood).
          */
-        $items = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dir_real, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
-        );
-        foreach ($items as $item) {
-            /*
-             * The walk owns its IO returns (OCR round 32, t31-ocr32-7
-             * — the ocr30-4 pattern, the copy twin's own doctrine):
-             * the per-entry unlink()/rmdir() calls once ran
-             * unchecked, so a stranded 0555/0444 shape or a removal
-             * race answered with a RAW E_WARNING — under PHPUnit
-             * (failOnWarning) an exception wearing PHPUnit's
-             * vocabulary, outside it raw bytes — never the harness's
-             * own refusal. The @ suppresses only the diagnostic; the
-             * FAILED RETURN answers the loud policy refusal naming
-             * the path, and the tree is reclaimed or refused loudly
-             * (the partial removal stands for the caller's finally).
-             */
-            if ($item->isDir() && ! $item->isLink()) {
-                if (! @rmdir($item->getPathname())) {
-                    throw new RuntimeException('WpHarness::rrmdir() refuses a tree whose directory cannot be removed — the walk owns its IO returns, never the engine\'s raw warning vocabulary (the ocr30-4 doctrine): ' . $item->getPathname());
+        /*
+         * The walk fences its RECURSION BOUNDARY (OCR round 33,
+         * t31-ocr33-6 — the r30-3 class the lint gate closed, the
+         * harness twin): hasChildren() passes on stat alone, so an
+         * unreadable SUBDIRECTORY mid-tree (a chmod-000 child) was
+         * reached by the descent — RecursiveIteratorIterator's
+         * getChildren() opens it — and the walk died in the SPL
+         * iterator's own UnexpectedValueException, from the
+         * constructor or mid-recursion: another library's vocabulary
+         * answering a harness refusal. The construction rides the try
+         * (the ocr23 rd-1 doctrine); the abort converts to the
+         * harness's own refusal, the SPL message riding
+         * parenthetically (it is what names the path — the lint
+         * sibling's shape), and the partial removal stands for the
+         * caller's finally (the loud policy's own residue
+         * vocabulary). The per-entry refusals below are
+         * RuntimeExceptions — they pass the fence untouched.
+         */
+        try {
+            $items = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($dir_real, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
+            foreach ($items as $item) {
+                /*
+                 * The walk owns its IO returns (OCR round 32,
+                 * t31-ocr32-7 — the ocr30-4 pattern, the copy twin's
+                 * own doctrine): the per-entry unlink()/rmdir() calls
+                 * once ran unchecked, so a stranded 0555/0444 shape
+                 * or a removal race answered with a RAW E_WARNING —
+                 * under PHPUnit (failOnWarning) an exception wearing
+                 * PHPUnit's vocabulary, outside it raw bytes — never
+                 * the harness's own refusal. The @ suppresses only
+                 * the diagnostic; the FAILED RETURN answers the loud
+                 * policy refusal naming the path, and the tree is
+                 * reclaimed or refused loudly (the partial removal
+                 * stands for the caller's finally).
+                 */
+                if ($item->isDir() && ! $item->isLink()) {
+                    if (! @rmdir($item->getPathname())) {
+                        throw new RuntimeException('WpHarness::rrmdir() refuses a tree whose directory cannot be removed — the walk owns its IO returns, never the engine\'s raw warning vocabulary (the ocr30-4 doctrine): ' . $item->getPathname());
+                    }
+                } elseif (! @unlink($item->getPathname())) {
+                    throw new RuntimeException('WpHarness::rrmdir() refuses a tree whose file cannot be removed — the walk owns its IO returns, never the engine\'s raw warning vocabulary (the ocr30-4 doctrine): ' . $item->getPathname());
                 }
-            } elseif (! @unlink($item->getPathname())) {
-                throw new RuntimeException('WpHarness::rrmdir() refuses a tree whose file cannot be removed — the walk owns its IO returns, never the engine\'s raw warning vocabulary (the ocr30-4 doctrine): ' . $item->getPathname());
             }
+        } catch (UnexpectedValueException $walk_refusal) {
+            throw new RuntimeException('WpHarness::rrmdir() refuses a tree whose subdirectory cannot be listed — the walk fences the recursion boundary, never the SPL iterator\'s vocabulary (the t31-ocr30-3 fence, the harness twin): ' . $walk_refusal->getMessage());
         }
         /*
          * The final rmdir receives the COLLAPSED spelling (OCR round

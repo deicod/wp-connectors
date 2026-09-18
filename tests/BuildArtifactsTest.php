@@ -5302,6 +5302,57 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-33 pin (t31-ocr33-6): the removal walk fences its
+     * RECURSION BOUNDARY. hasChildren() passes on stat alone, so an
+     * unreadable SUBDIRECTORY mid-tree (a chmod-000 child) was
+     * reached by the descent — RecursiveIteratorIterator's
+     * getChildren() opens it — and the walk died in the SPL
+     * iterator's own UnexpectedValueException: another library's
+     * vocabulary answering a harness refusal (red at HEAD: the
+     * family pin itself reddened, the SPL exception standing where
+     * the policy's does) — the r30-3 class the lint gate closed,
+     * the harness twin. The fence converts the abort to the
+     * harness's refusal (the SPL message riding parenthetically —
+     * it is what names the path); the partial removal stands for
+     * the caller's finally, and readable trees still reclaim whole
+     * (the finally's own release is the control).
+     */
+    public function testTheRemovalWalkFencesTheRecursionBoundary(): void
+    {
+        $scratch = self::scratchPath('harness-unlistable');
+        mkdir($scratch . '/tree/open', 0755, true);
+        file_put_contents($scratch . '/tree/open/x.txt', 'bytes');
+        mkdir($scratch . '/tree/locked/inner', 0755, true);
+        file_put_contents($scratch . '/tree/locked/inner/y.txt', 'bytes');
+        chmod($scratch . '/tree/locked', 0000);
+        // The unlistable-shape probe (the t31-ocr4-1 root doctrine):
+        // a host whose process opens chmod-0000 directories cannot
+        // construct the shape — skip visibly, never a vacuous green.
+        $probe = @opendir($scratch . '/tree/locked');
+        if (false !== $probe) {
+            closedir($probe);
+            chmod($scratch . '/tree/locked', 0755);
+            WpHarness::rrmdir($scratch);
+            $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
+        }
+
+        try {
+            $refusal = $this->refusalOf(
+                fn() => WpHarness::rrmdir($scratch),
+                'An unlistable SUBDIRECTORY mid-tree must answer the harness\'s own refusal, never the SPL iterator\'s vocabulary.', \RuntimeException::class
+            );
+            $this->assertStringContainsString('WpHarness::rrmdir()', $refusal->getMessage(), 'The refusal speaks the harness policy\'s own vocabulary.');
+            $this->assertStringContainsString('cannot be listed', $refusal->getMessage(), 'The refusal names the class the fence owns.');
+            $this->assertStringContainsString('locked', $refusal->getMessage(), 'The refusal names the path — the SPL message parenthetical carries it.');
+            $this->assertStringContainsString('Failed to open directory', $refusal->getMessage(), 'The parenthetical carries the engine\'s own diagnostic for the path — named, never laundered silent.');
+        } finally {
+            chmod($scratch . '/tree/locked', 0755);
+            WpHarness::rrmdir($scratch);
+        }
+        $this->assertDirectoryDoesNotExist($scratch, 'A readable tree still reclaims whole — the fence changed nothing about the green walk.');
+    }
+
+    /**
      * OCR-round-26 pin (t31-ocr26-4): a TAIL-SPELLED real-dir removal
      * root is fully reclaimed. The walk and the final @rmdir read the
      * caller's RAW spelling while the fences judged the stripped
