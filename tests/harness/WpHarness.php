@@ -537,8 +537,23 @@ final class WpHarness
         $temp = rtrim(sys_get_temp_dir(), '/');
         // The second anchor: the repository root, spelled as these
         // helpers themselves are (every in-repo consumer derives its
-        // non-temp paths from the same spelling).
+        // non-temp paths from the same spelling). The DEGENERATE
+        // spelling is normalized (OCR round 26, t31-ocr26-7): a
+        // repository root AT the filesystem root made the prefix
+        // needle '$repo . \'/\'' spell '//', which no $carry
+        // (single-slash joins) ever starts with — $beneath_repo
+        // stayed false for every component and the repo territory
+        // was silently absent (the temp anchor's own degenerate
+        // guard — '' !== $temp — already models the shape; this
+        // one lacked its twin). At '/' the prefix is '/' itself:
+        // every absolute carry sits beneath the root repo, exactly
+        // the territory doctrine's claim for it. Construction-
+        // evident — driving it needs a checkout at '/<dir>/…'
+        // (a root-writable host; the driven sim stays the
+        // unprivileged-host ceiling, the ocr25-4 residual's own
+        // class).
         $repo = dirname(__DIR__, 2);
+        $repo_prefix = '/' === $repo ? '/' : $repo . '/';
         $carry = '/' === ($path[0] ?? '') ? '' : '.';
         foreach (explode('/', $path) as $segment) {
             if ('' === $segment) {
@@ -546,7 +561,7 @@ final class WpHarness
             }
             $carry .= '/' . $segment;
             $beneath_temp = '' !== $temp && 0 === strpos($carry, $temp . '/');
-            $beneath_repo = 0 === strpos($carry, $repo . '/');
+            $beneath_repo = 0 === strpos($carry, $repo_prefix);
             if (! $beneath_temp && ! $beneath_repo) {
                 // Outside both anchors — a component of either anchor
                 // spelling's own chain (r19's temp rule, the r23 repo
