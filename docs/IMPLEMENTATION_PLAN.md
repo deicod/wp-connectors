@@ -4867,6 +4867,338 @@ OCR-tool
   capability
   skip).
 
+  OCR-tool
+  round
+  t31-ocr26
+  (THIRTEEN
+  commits —
+  the
+  twenty-sixth
+  pass,
+  62/62, 15
+  findings,
+  all
+  accepted;
+  trajectory
+  27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15;
+  the
+  round's
+  shape: the
+  trait-use
+  position —
+  the
+  relative-use
+  rewriter
+  refused
+  the
+  operator
+  everywhere
+  except
+  where it
+  ARMED,
+  fence
+  doctrine
+  again, the
+  finder
+  fences the
+  closure
+  spelling
+  and the
+  trait
+  spelling
+  rode
+  through):
+  the trait
+  fence
+  derives
+  from the
+  brace-kind
+  stack the
+  classifier
+  already
+  rides — a
+  use
+  statement
+  with an
+  'other'
+  frame
+  below it
+  refuses
+  with the
+  position
+  named, the
+  class-body
+  spelling
+  being
+  LEGAL PHP
+  the splice
+  silently
+  retargeted
+  (driven: a
+  different
+  trait
+  shipped at
+  exit 0);
+  the comma
+  carve
+  stops one
+  member
+  early no
+  more — the
+  rider
+  judgment
+  walks
+  every list
+  member
+  through a
+  separator-aware
+  grammar (a
+  second
+  name with
+  no
+  separator
+  reads as
+  the rider
+  it is;
+  kind
+  keywords,
+  per-member
+  aliases,
+  the empty
+  member;
+  'as A as
+  B' still
+  refuses);
+  the
+  removal
+  seam's
+  real-directory
+  '/..' tail
+  never
+  walks the
+  parent
+  (the strip
+  loop
+  tracks the
+  tail it
+  consumed;
+  the
+  territory
+  doctrine
+  extended
+  from the
+  link
+  channel to
+  every tail
+  spelling)
+  and the
+  reclaim
+  rides the
+  stripped
+  spelling
+  (the
+  'dir/.'
+  root no
+  longer
+  leaks to
+  rmdir
+  EINVAL);
+  the
+  byte-exact
+  duplicate
+  answers
+  one
+  verdict
+  line (the
+  first
+  fence
+  wins);
+  both
+  getLastErrors()
+  shapes are
+  clean (the
+  8.3+
+  empty-array
+  premise
+  guarded
+  beside the
+  pre-8.3
+  false —
+  the keys
+  read only
+  when
+  populated;
+  this
+  engine
+  still
+  hands
+  false, the
+  pin
+  shape-driven);
+  the
+  degenerate
+  repo
+  anchor
+  rides the
+  '/' prefix
+  (construction-evident,
+  the driven
+  sim a
+  root-writable-host
+  ceiling);
+  the
+  manifest
+  staging
+  temp rides
+  the
+  crashed-run
+  charter
+  ('.checksums-<pid>-'
+  swept
+  beside the
+  stage and
+  zip
+  temps);
+  fifteen
+  extract-and-lint
+  inspector
+  arms gain
+  the
+  exec-capability
+  gate (the
+  census
+  found the
+  class
+  bigger
+  than the
+  four named
+  sites —
+  violations
+  accumulate,
+  extraction
+  and the
+  internal
+  php -l
+  spawn run
+  anyway;
+  the
+  early-return
+  and
+  extraction-refusal
+  arms own
+  no spawn,
+  gated by
+  census
+  verdict;
+  driven
+  under the
+  flag:
+  visible
+  skips);
+  the libzip
+  read
+  warning is
+  optional
+  never the
+  premise
+  (the
+  refusal
+  owns the
+  contract,
+  the
+  capture
+  stays the
+  silencer);
+  makeScratchRepo
+  owns its
+  creation-phase
+  cleanup
+  (rrmdir
+  and
+  rethrow,
+  the
+  ocr25-7
+  validation
+  close's
+  twin); the
+  conventions-gate
+  pin
+  asserts
+  staging at
+  each site
+  before the
+  child
+  spawns
+  (staging
+  failures
+  fail as
+  staging).
+  Residuals:
+  the
+  sandboxed-
+  '/'
+  construction
+  stays the
+  head; the
+  artifact-name/tearDown
+  concurrency
+  class; the
+  crashed-run
+  scratch
+  residue
+  narrowed
+  (the
+  manifest
+  temp
+  swept);
+  the
+  ZAI-SUITE
+  putenv
+  census
+  still open
+  (three
+  rounds
+  running);
+  the
+  scan_paths
+  walk
+  unfenced;
+  the
+  pid-suffixed
+  scratch
+  class; the
+  ocr26-7
+  driven
+  sim; the
+  r21/r22
+  list
+  otherwise
+  unchanged;
+  the
+  order/runner
+  flake not
+  reappearing
+  across
+  twelve
+  full-check
+  runs.
+  Suite 1669
+  → 1672
+  tests (+1
+  the trait
+  battery,
+  +1 the
+  tail-reclaim
+  leg, +1
+  the
+  clean-parse
+  pin),
+  45651 →
+  45686
+  assertions,
+  3 skipped
+  unchanged.
+
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
   WordPress auth salts. The key derivation (or the envelope itself) MUST bind the ciphertext to

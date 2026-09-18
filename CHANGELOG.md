@@ -6,6 +6,149 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 26)
+
+Twenty-sixth OCR-tool round (62/62 complete): 15 findings, driver triage
+accepted all — trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15. The round's shape: the
+TRAIT-USE POSITION — the relative-use rewriter refused the operator
+everywhere except where it ARMED (fence doctrine again: the finder
+fences the closure spelling, the trait spelling rode through, and the
+class-body spelling is LEGAL PHP the splice silently retargeted); the
+comma carve that stopped the rider judgment one member early; the
+parent-walking '/..' tail over REAL directories at the inspector's
+removal seam; the engine-shape-blind getLastErrors() guard; and the
+spawn-gate census the inspector's accumulating-verdict flow forced
+wide. Fixed as t31-ocr26-1..12 — one commit per finding, the four
+same-class spawn-gate sites sharing one commit — plus this docs
+record, the full offline check green after every commit. Suite
+1669 → 1672 tests, 45651 → 45686 assertions, 3 skipped unchanged.
+
+- **The relative operator in a TRAIT use position refuses, never
+  retargets (t31-ocr26-1, bug:high)** — the use-rewrite walk's fence
+  (wp_connectors_use_opens_import()) draws its line from the FOLLOWER
+  shape, and a name follower opens an import statement at the top
+  level and a trait clause list inside a class body — the same bytes
+  in both. The class-body spelling is legal PHP (php -l clean;
+  resolves and loads under the declaration in effect), so $use_open
+  armed the splice for `class C { use namespace\X; }` and the
+  rewriter silently RETARGETED the trait reference through the family
+  map (driven red at HEAD: a DIFFERENT trait shipped at exit 0; the
+  comma lists rode the same splice). The trait fence derives from the
+  brace-kind stack the classifier already rides (the t31-ocr7-7
+  vocabulary): a use statement with an 'other' frame below it stands
+  in a trait position, and its relative operator refuses with the
+  position named — the rewrite owns import statements only.
+- **The rider judgment owns every member of the comma list
+  (t31-ocr26-2, bug:medium)** — the statement-tail rider walk (the
+  t31-ocr16-4 gate) set 'terminated' AT the comma, so a following
+  member carrying no relative trigger of its own was judged by nobody
+  (the main loop's trigger condition skips non-relative members):
+  driven red at HEAD, `use namespace\Clock, Other\Thing SystemClock;`
+  spliced the first member and shipped the second's parse-error rider
+  bytes beside it at exit 0. The judgment CONTINUES past the comma
+  now — a separator-aware member grammar (a name piece continues the
+  run only through a '\', so a second name with no separator reads as
+  the rider it is), the kind keywords, optional aliases, and an
+  empty-member refusal; the legal list shapes keep their verdicts and
+  `as A as B` still refuses.
+- **A '/..' tail over a REAL directory never walks the parent
+  (t31-ocr26-3, bug:medium)** — the inspector removal twin's
+  tail-stripped probe fenced only the LINK channel and realpath only
+  collapse-to-the-fs-root, while the WALK rode the caller's RAW
+  spelling: a caller-controlled 'dist/.inspect-x/..' over an existing
+  real (non-link) directory resolved to the PARENT tree and the walk
+  emptied it (driven red at HEAD, every fence passing). The strip
+  loop tracks whether it consumed a '/..' tail and a parent-walking
+  spelling refuses before any walk — the same territory doctrine the
+  link probe owns, extended to every tail spelling.
+- **The root reclaim rides the stripped spelling (t31-ocr26-4,
+  bug:low)** — the removal twin rmdir'd the caller's RAW spelling
+  while the fences judged the stripped probe, so a 'dir/.' root
+  emptied its children through the iterator and then leaked to
+  @rmdir('dir/.')'s EINVAL — the exact leak the ocr24-3 root-reclaim
+  claim its own docblock states. After the parent-walking refusal
+  every surviving tail names the root itself; the is_dir probe, the
+  realpath fence, the iterator, and the final @rmdir all ride the
+  stripped spelling — tail-spelled roots go whole.
+- **One duplicate entry, one verdict line (t31-ocr26-5,
+  maintainability:low)** — a byte-exact duplicate folded identically
+  onto its own first copy, so the second copy tripped BOTH duplicate
+  fences for the same name (one offense, two verdict lines; a triple
+  answered four). The emission is deduped per name: the byte-exact
+  fence wins, the folded fence judges only the copies it did not
+  name; a case-fold twin keeps its own line.
+- **Both getLastErrors() shapes are clean (t31-ocr26-6, bug:medium)**
+  — parse_serialized_instant() read its warning/error counts behind a
+  false !== guard alone, but since the 8.3 engine rewrite
+  DateTimeImmutable::getLastErrors() returns an EMPTY ARRAY on clean
+  parses: on those builds the guard passed and both key reads were
+  undefined-key accesses — a warning pair per instant on every clean
+  from_array parse (this runner's engine still hands false, probed;
+  the empty-array shape is the cross-engine premise). The guard is
+  ! empty() now — false AND array() are both clean, and the keys are
+  read only when the engine populated them. Shape-driven pin: a clean
+  round trip under a capturing handler asserts zero diagnostics on
+  either engine shape.
+- **The degenerate repo anchor rides the '/' prefix (t31-ocr26-7,
+  bug:low)** — the harness link probe's repo-territory needle spelled
+  '$repo . \'/\'' raw, and a repository root AT the filesystem root
+  makes it '//' — which no single-slash carry ever starts with, so
+  the repo territory was silently absent (the temp anchor's own
+  degenerate guard already modeled the shape; the repo twin lacked
+  it). At '/' the needle is '/' itself; every absolute carry sits
+  beneath the root repo. Construction-evident — driving it needs a
+  checkout at '/<dir>/…' (a root-writable host; the driven sim stays
+  the unprivileged-host ceiling, the ocr25-4 residual's own class).
+- **The manifest staging temp rides the crashed-run charter
+  (t31-ocr26-8, maintainability:low)** — the staging temp was
+  tempnam-pid-less while the sweep reclaims exactly this crash class
+  for every other scratch the build lands; its own doc note carved
+  the pid-less spelling out as unattributable, so a SIGKILL between
+  staging and the landing rename left it forever. The name derives
+  from the sweep's own doctrine now — '.checksums-<pid>-' before the
+  random tail — and the sweep owns it on the same charter and
+  liveness gate (dead run swept by the next build, live run never
+  raced; a legacy pid-less spelling stays alone).
+- **Every extract-and-lint inspector arm skips visibly on spawn-less
+  hosts (t31-ocr26-9, test:medium ×4 → the census's full class, ONE
+  commit)** — four ungated sites fatalled as undefined-function
+  \Error under disable_functions=exec instead of skipping visibly,
+  and the finding's own census demand found the class bigger than
+  the four: violations ACCUMULATE in the inspector (nothing
+  short-circuits on them), so extraction and the internal php -l
+  spawn run even under arms whose asserted verdict is an entry-loop
+  refusal, and the clean/green arms need the full sweep. Fifteen
+  tests gained the exec-capability gate (the file's own ocr20-5
+  doctrine, each skip naming its premise and what already passed);
+  the early-return arms (near-source, traversal, root-file,
+  multi-top-dir, invalid-slug), the extraction-refusal arms, and the
+  walk-refusal arm own no spawn and stay ungated by census verdict.
+  Driven: php -d disable_functions=exec over newly-gated tests
+  answers visible skips, 0 errors.
+- **The libzip read warning is optional, never the premise
+  (t31-ocr26-10, test:low)** — the forced-close leg asserted its
+  captured engine warning non-empty, making an ENGINE-OPTIONAL
+  diagnostic a hard requirement (red on every quiet-zip host while
+  the refusal it exists to pin had already fired). The expectation is
+  dropped — the refusal assertions own the contract — and the capture
+  handler stays as the silencer for chatty builds.
+- **The battery's scratch maker owns its own cleanup (t31-ocr26-11,
+  test:low)** — makeScratchRepo() guaranteed nothing-created only for
+  the validation phase (the ocr25-7 needle close); a throw from any
+  later CREATION step leaked the half-built wpct-battery-* tree in
+  system temp despite every caller's try/finally, because every
+  caller invokes the maker BEFORE its own try. The creation phase
+  rides a try/catch that rrmdirs the root and rethrows.
+- **Staging failures fail as staging (t31-ocr26-12, test:low)** — the
+  conventions-gate shared-tree pin staged its scratch repo through
+  unchecked mkdir()/copy()/file_put_contents() calls, so a staging
+  failure surfaced only through the CHILD run — the clean-control leg
+  failed as 'must pass the gate: PHP Warning: require_once … Failed
+  to open stream', a staging problem wearing the gate's own defect.
+  Every staging site feeding the child run is asserted now, each
+  message naming the staging premise, before any child is spawned.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 25)
 
 Twenty-fifth OCR-tool round (main 57/62: 3 findings; fill-in over
