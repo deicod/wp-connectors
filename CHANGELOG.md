@@ -6,6 +6,120 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 29)
+
+Twenty-ninth OCR-tool round (the union complete: main 61/62 with 11
+findings; fill-in over 3 files with 2 — BuildArtifactsTest unchanged
+since r27 and fully audited in r28's 62/62 run): 13 findings, driver
+triage accepted all — trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13. The round's shape:
+the print_r/__debugInfo ENGINE TRUTH driven to an inverted verdict —
+the finding's premise (print_r walks the raw property table) was the
+fabrication, refuted on the runner engine AND the 8.2 support floor;
+the platform-separator family's THIRD generation (tails, containment
+comparisons, patch spellings, the super-root precondition); and the
+fill-in operational note — BuildArtifactsTest now exceeds the default
+per-group token ceiling, so future fill-ins need `--max-tokens 64000`.
+Fixed as t31-ocr29-1..10 — one commit per finding, the three
+same-class pairs sharing one commit each — plus this docs record, the
+full offline check green after every commit. Suite 1676 tests
+unchanged, 45764 → 45776 assertions, 3 skipped unchanged.
+
+- **The print_r engine premise driven and refuted on BOTH engines in
+  range (t31-ocr29-1, security:medium — premise refuted in-round)** —
+  the finding claimed print_r() "does NOT consult __debugInfo() (only
+  var_dump does)" and renders both tokens in full cleartext; driven at
+  fix time, print_r() answers the hook's masked view on the runner
+  engine (8.5.10) and on the support floor (8.2, a php:8.2-cli
+  container over the very class) — the two functions walk objects
+  through the engine's ONE get_debug_info handler, and the claimed
+  channel split constructs on no engine in the support range. The
+  demanded "red at HEAD" was undrivable (the r11-5 pin has driven
+  print_r masked since round 11); the close is the driven
+  adjudication — the docblock carries the engine truth, the pin
+  drives BOTH channels explicitly, and the one TRUE exclusion is
+  pinned by its adjudicated shape: var_export() dumps the raw
+  property tree through no hook (the t31-ocr2-1 display-material
+  adjudication, its eval channel refusing).
+- **The exact family ROOT is a member, never a "SIBLING"
+  (t31-ocr29-2, bug:medium)** — the relative-use family check tested
+  only the prefix-with-separator form, so `use namespace\WpConnectors
+  \Shared;` under `namespace Deicod;` passed the vendor check, missed
+  the family one, and refused with the SIBLING message — a member
+  answered with the one verdict it cannot earn. The root rewrites to
+  the REWRITTEN root now, the empty below-root tail never riding the
+  prefix form's separator (which would ship a trailing-backslash
+  parse error); the aliased twin keeps its alias, and everything
+  outside the root keeps its refusal. Driven red at HEAD.
+- **The inspector's tail-strip probe fences BOTH separator spellings
+  (t31-ocr29-3, security:low)** — the loop fenced only '/'-spelled
+  tails, so a backslash tail ('dir\..', the native spelling where '\'
+  joins paths) survived the probe and the walk rode the raw spelling
+  into the territory the tail names — the owner's own "every tail
+  spelling" doctrine one separator short. The strip loop, the
+  trailing-separator rtrims, and the fences judge both vocabularies:
+  the fence judges the spelling CLASS, never the host it runs on
+  (residue for a pathological POSIX filename beats the parent walk
+  the same bytes ride elsewhere). Driven red at HEAD on this POSIX
+  host through a real backslash-named tree; the Windows-native walk
+  is construction-evident (DIRECTORY_SEPARATOR).
+- **copyTree's containment verdicts compare in ONE separator
+  vocabulary (t31-ocr29-4, bug:medium)** — the verdicts join their
+  needles with '/' while realpath() answers in the host's own
+  vocabulary, so on a separator host containment judged vocabulary
+  noise (always-refuse or always-pass, the collapse folding the
+  anchor into one giant segment). A private normalizer beside the
+  platform owner (isPosixHost(), the ocr28-3 doctrine's comparison
+  arm) is consulted at the two realpath consumers the verdicts read;
+  the POSIX host rides the identity, byte-identical —
+  construction-evident, no new leg.
+- **'auth-token' leaves the suffix class: subsumed by 'token' every
+  name it matched (t31-ocr29-5, maintainability:low)** — the round-15
+  entry was behaviorally dead weight (every '…-auth-token' ends in
+  '-token' and rode the round-24 entry identically); the docblock
+  states the subsumption where the rule lives, and the battery's
+  auth-token spellings ('x-auth-token', 'Auth-Token', present since
+  round 15) ride 'token' green by construction — drop 'token' and
+  they redden.
+- **The degenerate-root precondition derives the host's two-slash
+  shape (t31-ocr29-6, bug:high test-fence)** — the safety net pinned
+  `realpath('//') === '/'`, but POSIX leaves exactly two leading
+  slashes implementation-defined (libcs may preserve the super-root
+  spelling) while the production guard is LEXICAL and fires on every
+  host regardless; the precondition now asserts what the leg needs —
+  the spelling resolves to the filesystem ROOT itself, in either
+  spelling, never a real work tree. Green on super-root and collapse
+  hosts by construction; a driven /tmp probe documents this host's
+  shape ('/' — collapse).
+- **The ungated POSIX-premise pair gates visibly
+  (t31-ocr29-7, bug:medium ×2, ONE commit)** — the
+  trailing-separator-root leg's patch spells '/' while the production
+  offset strips DIRECTORY_SEPARATOR (on a separator host the offset
+  re-eats the first byte the leg pins), and the exclusion-fold battery
+  judges DIRECTORY_SEPARATOR-exploded relatives over '/'-composed
+  trees (never splits there). Both consult the ONE platform owner and
+  skip naming their own premise — the file's first platform gates.
+- **The staging-assertion pair: the read twin and the vacuous-pass
+  twin (t31-ocr29-8, test:low ×2, ONE commit)** — the trailing-root
+  leg's tool read was the one staging READ unasserted (a bare
+  (string) cast flowed '' downstream, the patch verdict wearing the
+  read failure), and the conventions battery's planted dead-import
+  write was the one staging WRITE unasserted (a silent false re-runs
+  the clean tree, the gate exits 0, and the planted verdict passes
+  vacuously). Both assert at the site, staging failing as staging.
+- **The PHPUnit-less child leg's harness-path block re-indented
+  (t31-ocr29-9, style:low)** — one indent level too deep (the
+  copy/paste scar of its anchor-sim siblings) plus a whitespace-only
+  line; back to the method level, no behavior byte moved.
+- **The FoundationHarness pair (t31-ocr29-10, maintainability:low +
+  test:low, ONE commit)** — the guarded-RDONLY source pin matched the
+  harness source verbatim, so any mechanical reformat reddened it
+  with no behavioral defect; the haystack is whitespace-normalized
+  now (the pin owns the spelling's TOKENS, never their layout), and
+  the corrupt-archive leg's ignored file_put_contents() return
+  asserted (a failed write answered ER_NOENT, the staging failure
+  wearing the ER_NOZIP verdict's vocabulary).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 28)
 
 Twenty-eighth OCR-tool round (62/62 complete): 9 findings, driver triage
