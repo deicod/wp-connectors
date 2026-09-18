@@ -5411,6 +5411,39 @@ FIXTURE;
         }
 
         /*
+         * OCR round 24 (t31-ocr24-4): the case-variant label's canonical
+         * judgment is SEGMENT-BOUNDARY-AWARE — matching the ONE family
+         * vocabulary's own fold (plugin-tools' $is_family: exact, or
+         * prefix + '\\'). The bare prefix match mislabeled a
+         * below-vendor SIBLING whose first segment merely starts with
+         * the family leaf: 'use Deicod\WpConnectors\SHAREDly\Clock;'
+         * wore 'a case-variant spelling of the family name … write the
+         * family spelling' — a DEAD ERRAND, because complying leaves
+         * the sibling, which refuses in every casing (the survivors
+         * battery's own 'SharedStorage-prefixed sibling' leg). The
+         * sibling keeps its own refusal now — the anonymous
+         * postcondition seam, the total authority — and the TRUE
+         * family spellings keep their label (the
+         * 'case-variant family name' leg above rides unchanged).
+         */
+        $sibling_spellings = array(
+            'family-leaf case-variant sibling (red at HEAD: mislabeled)' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\SHAREDly\\Clock;\nclass SiblingCaseStore\n{\n}\n",
+            ),
+            'exact-case sibling, control' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Sharedly\\Clock;\nclass SiblingExactStore\n{\n}\n",
+            ),
+        );
+        foreach ($sibling_spellings as $label => $row) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace($row[0], 'OpenAiOauth', 'shared/src/SiblingSpelling.php'),
+                "A below-vendor sibling import ({$label}) must refuse the rewrite — the sibling is not a spelling the rewriter owns.", \RuntimeException::class
+            );
+            $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The postcondition seam stays the authority ({$label}).");
+            $this->assertStringNotContainsString('a case-variant spelling of the family name', $refusal->getMessage(), "The sibling refuses under its OWN class ({$label}) — never the family-spelling errand: complying leaves the sibling, which refuses in every casing.");
+        }
+
+        /*
          * Verifier-pass fix (t31-ocr7-7, over the r7-2 comma carve —
          * the correctness lens drove both misses): TRAIT clause lists
          * carry NO import class. The r7-2 carve knew only the braced

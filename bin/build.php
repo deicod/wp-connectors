@@ -1114,9 +1114,26 @@ final class WpConnectorsBuild
         $vendor = implode('\\', array_slice(explode('\\', $family), 0, -1));
         $canonical = null;
         $name_lower = wp_connectors_ascii_lower($reference_name);
-        if (0 === strpos($name_lower, wp_connectors_ascii_lower($family))) {
+        /*
+         * The canonical judgment is BOUNDARY-AWARE on both branches
+         * (OCR round 24, t31-ocr24-4): a bare prefix match mislabeled
+         * a below-vendor SIBLING whose first segment merely starts
+         * with the family leaf ('…\SHAREDly\Clock', 'SharedStorage')
+         * as "a case-variant spelling of the family name … write the
+         * family spelling" — a dead errand: complying leaves the
+         * sibling, which refuses in every casing, so the label sent
+         * the author back to an identical refusal. The fold matches
+         * plugin-tools' $is_family — the ONE family vocabulary's own:
+         * exact, or prefix + a segment boundary. The vendor branch
+         * keeps the sibling out of the FAMILY class; when the vendor
+         * lead-in itself is the case-variant part, the label still
+         * names exactly that (the part that IS wrong to re-case).
+         */
+        $family_lower = wp_connectors_ascii_lower($family);
+        $vendor_lower = wp_connectors_ascii_lower($vendor);
+        if ($name_lower === $family_lower || 0 === strpos($name_lower, $family_lower . '\\')) {
             $canonical = $family;
-        } elseif (0 === strpos($name_lower, wp_connectors_ascii_lower($vendor))) {
+        } elseif ($name_lower === $vendor_lower || 0 === strpos($name_lower, $vendor_lower . '\\')) {
             $canonical = $vendor;
         }
         if (null !== $canonical) {
