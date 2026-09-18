@@ -1263,9 +1263,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertSame(1, substr_count($flat, 'more than once'), 'A byte-exact duplicate answers exactly ONE verdict line — never one per fence.');
         $this->assertStringNotContainsString('case-fold duplicate', $flat, 'The byte-exact twin does not also wear the case-fold verdict — one offense, one line.');
 
-        // (a-triple) A THIRD copy of the same bytes: one more line,
-        // not two more (at HEAD the pair of fences answered four
-        // lines over the three copies).
+        /*
+         * (a-triple) A THIRD copy of the same bytes: exactly ONE line
+         * (OCR round 27, t31-ocr27-4): the r26-5 close still answered
+         * N−1 lines for N copies — a pair one, a triple two — while
+         * its own comment claimed "deduped per name". One offense,
+         * one line: the third and every later copy of the same bytes
+         * answers nothing the second copy did not.
+         */
         $zipPath = self::distDir() . "/connectors-{$slug}-1.0.6.zip";
         file_put_contents($zipPath, self::storedZipBytes(array(
             array("{$slug}/{$slug}.php", $main),
@@ -1276,7 +1281,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         )));
         $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
         $flat = implode("\n", $violations);
-        $this->assertSame(2, substr_count($flat, 'more than once'), 'Each ADDITIONAL byte-exact copy answers exactly one verdict line — the triple that once answered four lines answers two.');
+        $this->assertSame(1, substr_count($flat, 'more than once'), 'A triple copy answers exactly ONE byte-duplicate line — the name\'s verdict is deduped per NAME, never one line per extra copy.');
         $this->assertStringNotContainsString('case-fold duplicate', $flat);
 
         // (b) Case-fold duplicate: on a case-insensitive extraction

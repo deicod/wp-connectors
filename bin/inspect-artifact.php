@@ -61,6 +61,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     $nearSourceEntries = array();
     $seenEntryNames = array();
     $seenFoldedNames = array();
+    $reportedDuplicateEntries = array();
     for ($i = 0; $i < $zip->numFiles; ++$i) {
         $name = (string) $zip->getNameIndex($i);
         $parts = explode('/', $name);
@@ -109,10 +110,24 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         })));
         $is_byte_duplicate = isset($seenEntryNames[$name]);
         if ($is_byte_duplicate) {
-            $violations[] = sprintf(
-                'inspect: zip carries the entry name "%s" more than once — extraction keeps only one copy, so the other bytes are judged by nobody.',
-                wp_connectors_printable($name)
-            );
+            /*
+             * The EMISSION is deduped per name too (OCR round 27,
+             * t31-ocr27-4): the r26-5 comment claimed "deduped per
+             * name" while the branch answered N−1 identical lines
+             * for a name carried N times — the fix had closed the
+             * two-fences class, not the N−1 emission class, and the
+             * comment overclaimed (the round's own comment-vs-
+             * behavior drift lens). One offense, one line: the third
+             * and every later copy of the same bytes answers nothing
+             * the second copy did not.
+             */
+            if (! isset($reportedDuplicateEntries[$name])) {
+                $reportedDuplicateEntries[$name] = true;
+                $violations[] = sprintf(
+                    'inspect: zip carries the entry name "%s" more than once — extraction keeps only one copy, so the other bytes are judged by nobody.',
+                    wp_connectors_printable($name)
+                );
+            }
         } else {
             $seenEntryNames[$name] = true;
         }
