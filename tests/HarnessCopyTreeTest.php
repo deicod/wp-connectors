@@ -270,6 +270,26 @@ final class HarnessCopyTreeTest extends TestCase
         if (! WpHarness::isPosixHost()) {
             $this->markTestSkipped('The root-anchor spellings ride POSIX root resolution (the t31-ocr11-2 doctrine) — this host\'s platform separator is not the POSIX one, and the legs would judge a different root than the one they pin.');
         }
+        /*
+         * PROBE-BEFORE-FIRE (OCR round 25, t31-ocr25-4 — the copyTree
+         * twin of the removal battery's doctrine): the degenerate,
+         * sentinel-chain, first-level, and mirror legs below fire
+         * copyTree(src, <a landing at or beneath the filesystem
+         * root>), and while the REFUSAL is the verdict, a REGRESSED
+         * guard would walk into real mkdir()/copy() writes at the
+         * root's first level (the legs' own driven history: real
+         * first-level writes as uid 0). The battery runs only where
+         * those writes are IMPOSSIBLE — a process that cannot WRITE
+         * the root directory cannot create the first-level components
+         * the landing names, whatever the guard does. is_writable('/')
+         * is the capability probe (the t31-ocr10-14 doctrine: the
+         * ANSWER is the signal); the root runner skips visibly (the
+         * t31-ocr4-1 DAC-override premise), the chmod-0000 skip's
+         * shape one finding over.
+         */
+        if (is_writable('/')) {
+            $this->markTestSkipped('The root-landing legs need a process that CANNOT write the filesystem root — this runner writes it (uid 0 / DAC override, the t31-ocr4-1 premise), and a regressed guard would land real writes at the root\'s first level mid-test (t31-ocr25-4 probe-before-fire).');
+        }
 
         $from = sys_get_temp_dir() . '/wpct-copytree-root-' . uniqid('', true);
         mkdir($from . '/src', 0755, true);

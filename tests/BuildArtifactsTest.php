@@ -4423,6 +4423,27 @@ FIXTURE;
              * (in the real temp tree) and the scratch assertions after
              * pin that nothing outside the controlled trees is touched.
              */
+            /*
+             * PROBE-BEFORE-FIRE (OCR round 25, t31-ocr25-4 — the
+             * ocr4-1 doctrine extended to the destructive root fires):
+             * the '/'-anchored legs below — this silent-owner loop AND
+             * the loud-owner loop under it — answer their safety to
+             * the production guard alone, and a REGRESSED guard would
+             * walk the filesystem root's children as this very test
+             * runs, the sentinel assertions after the fire reading a
+             * destroyed tree. The fires run only where the destruction
+             * is IMPOSSIBLE: a process that cannot WRITE the root
+             * directory can neither unlink its children nor create
+             * entries beside them, whatever the guard does —
+             * is_writable('/') is the capability probe (the t31-ocr10-14
+             * doctrine: the ANSWER is the signal), and the runner that
+             * writes the root (uid 0 through the DAC override, or a
+             * 0777-root host) skips visibly instead, the chmod-0000
+             * skip's premise one shape over.
+             */
+            if (is_writable('/')) {
+                $this->markTestSkipped('The destructive root-spelling fires (the silent inspector loop and the loud rrmdir loop alike) need a process that CANNOT write the filesystem root — this runner writes it (uid 0 / DAC override, the t31-ocr4-1 premise), and a regressed guard would destroy the host mid-test (t31-ocr25-4 probe-before-fire).');
+            }
             $tmpSentinel = sys_get_temp_dir() . '/wpct-rrmdir-root-sentinel-' . getmypid();
             file_put_contents($tmpSentinel, 'sentinel');
             foreach (array('/', '/.', '/..') as $rootSpelling) {
@@ -4443,6 +4464,7 @@ FIXTURE;
                  * attempted.
                  */
                 $this->assertSame('/', realpath($rootSpelling), "The leg's own precondition ({$rootSpelling}): the spelling resolves to the filesystem ROOT the silent root collapse guards — a spelling resolving elsewhere would point this leg's removal at the wrong tree.");
+                $this->assertFileExists($tmpSentinel, "The canary stands BEFORE the fire ({$rootSpelling}) — the sentinel-intact assertion below is a live detector, never a post-hoc read over a tree the fire already ate (t31-ocr25-4).");
                 wp_connectors_inspect_rrmdir($rootSpelling);
             }
             $this->assertFileExists($tmpSentinel, 'A root-collapsing spelling never walks — the universal tree is not a scratch dir.');
@@ -4501,6 +4523,37 @@ FIXTURE;
             }
             $this->assertDirectoryExists($scratch, 'The pin\'s own scratch tree survives the root-collapse legs — the walk never ran.');
             $this->assertFileExists($victim . '/keep2.txt', 'The victim tree survives the root-collapse legs untouched.');
+
+            /*
+             * The guard-regression sim (t31-ocr25-4, cheap and
+             * scratch-rooted): the same sentinel-intact shape the legs
+             * above assert, driven against a walker with NO guard —
+             * the canary DIES, proving the assertions are a live
+             * detector for exactly the regression they pin (a
+             * regressed production guard eats the sentinel the same
+             * way, reddening the legs above — never asserting over an
+             * already-destroyed tree).
+             */
+            $simRoot = $scratch . '/regress-sim-root';
+            mkdir($simRoot . '/child', 0755, true);
+            $simCanary = $simRoot . '/canary.txt';
+            file_put_contents($simCanary, 'sentinel');
+            $unguardedWalk = function (string $dir) use (&$unguardedWalk): void {
+                foreach (scandir($dir) ?: array() as $entry) {
+                    if ('.' === $entry || '..' === $entry) {
+                        continue;
+                    }
+                    $path = $dir . '/' . $entry;
+                    if (is_dir($path) && ! is_link($path)) {
+                        $unguardedWalk($path);
+                    }
+                    @unlink($path);
+                }
+                @rmdir($dir);
+            };
+            $unguardedWalk($simRoot);
+            $this->assertFileDoesNotExist($simCanary, 'Sim: the UNGUARDED walker eats the canary — the sentinel-intact assertions above are a live detector, never a vacuous truth.');
+            $this->assertDirectoryDoesNotExist($simRoot, 'Sim: the unguarded walker completes the removal the guard exists to refuse.');
 
             /*
              * The DOTDOT-SPELLED real tree (OCR round 22, t31-ocr22-6;
