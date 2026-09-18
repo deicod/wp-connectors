@@ -1250,7 +1250,7 @@ final class WpHarness
      * @param string   $expectation The failure message for the no-throw case.
      * @param string   $family      The exception family the site pins — the class its original catch declared; \Throwable::class pins nothing and is legitimate only where the original catch was itself \Throwable.
      * @return \Throwable The collected refusal.
-     * @throws \PHPUnit\Framework\AssertionFailedError When the attempt does not throw ($expectation), or throws outside the pinned family.
+     * @throws \Exception When the attempt does not throw ($expectation), or throws outside the pinned family — AssertionFailedError where PHPUnit is loaded (t31-ocr25-9's verdict owner), the base \Exception in a bare child engine.
      */
     public static function refusalOf(callable $attempt, string $expectation, string $family): \Throwable
     {
@@ -1258,9 +1258,8 @@ final class WpHarness
             $attempt();
         } catch (\Throwable $e) {
             if (! $e instanceof $family) {
-                throw new \PHPUnit\Framework\AssertionFailedError(
+                throw self::verdict(
                     'The refusal class is outside the family this site pins (expected ' . $family . ', got ' . get_class($e) . ') — the original catch declared ' . $family . ', and a stray Error carrying the fragments would otherwise pass silently (t31-ocr9-3).',
-                    0,
                     $e
                 );
             }
@@ -1268,7 +1267,36 @@ final class WpHarness
             return $e;
         }
 
-        throw new \PHPUnit\Framework\AssertionFailedError($expectation);
+        throw self::verdict($expectation);
+    }
+
+    /**
+     * One assertion verdict, resolving without PHPUnit (OCR round 25,
+     * t31-ocr25-9): refusalOf() hard-referenced
+     * \PHPUnit\Framework\AssertionFailedError at throw time while this
+     * file is consumed by PHPUnit-less child engines — the
+     * redirected-TMPDIR sims require WpHarness.php into a bare
+     * `php -r` — lazily safe only for as long as no child leg ever
+     * called a throwing path; the first one would fatal on a
+     * class-not-found instead of answering the verdict. Where PHPUnit
+     * is loaded the verdict stays exactly the assertion failure its
+     * channel expects; a bare engine gets the base \Exception carrying
+     * the same message — deliberately NOT RuntimeException, the family
+     * the guarded calls themselves throw, which a child's own catch
+     * would conflate with a genuine refusal. The previous exception
+     * rides the chain either way (the t31-ocr19-4 contract).
+     *
+     * @param string      $message  The verdict's message.
+     * @param \Throwable|null $previous The original exception, when the verdict is a family mismatch.
+     * @return \Exception The verdict to throw.
+     */
+    private static function verdict(string $message, ?\Throwable $previous = null): \Exception
+    {
+        if (class_exists(\PHPUnit\Framework\AssertionFailedError::class)) {
+            return new \PHPUnit\Framework\AssertionFailedError($message, 0, $previous);
+        }
+
+        return new \Exception($message, 0, $previous);
     }
 
     /**

@@ -873,6 +873,36 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-25 pin (t31-ocr25-9): refusalOf()'s verdicts
+     * hard-referenced \PHPUnit\Framework\AssertionFailedError at throw
+     * time while this file's redirected-TMPDIR siblings require
+     * WpHarness.php into PHPUnit-less child engines — lazily safe only
+     * for as long as no child leg called a throwing path. The child
+     * below drives the no-throw verdict in a bare `php -r`: the
+     * message answers (never a class-not-found fatal), and the verdict
+     * class is the base Exception — outside the RuntimeException
+     * family the guarded calls themselves throw, so a child's own
+     * catch can never conflate a verdict with a refusal.
+     */
+    public function testTheRefusalVerdictResolvesInAPhpUnitLessChildEngine(): void
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the PHPUnit-less child engine sim cannot run.');
+        }
+
+        $script = 'require ' . var_export(realpath(__DIR__ . '/harness/WpHarness.php'), true) . ';'
+            . ' try { WpHarness::refusalOf(static function (): void {}, "the no-throw verdict message", RuntimeException::class); fwrite(STDERR, "verdict returned normally"); exit(3); }'
+            . ' catch (\Throwable $verdict) { echo get_class($verdict), "\n", $verdict->getMessage(), "\n"; }';
+        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+        $child = implode("\n", $output);
+
+        $this->assertSame(0, $exit, "The PHPUnit-less child must answer the verdict, never fatal — it said: {$child}");
+        $this->assertStringNotContainsString('not found', $child, 'No class-not-found fatal: the verdict resolves without PHPUnit loaded (red at HEAD: the bare engine fataled on the AssertionFailedError reference).');
+        $this->assertStringContainsString('the no-throw verdict message', $child, 'The bare-engine verdict carries the expectation message.');
+        $this->assertStringContainsString('Exception', $child, 'The bare-engine verdict is the base Exception — outside the RuntimeException family the guarded calls throw, never conflatable with a refusal.');
+    }
+
+    /**
      * OCR round 11 (t31-ocr11-5): the ancestor walk mangled a
      * not-yet-existing RELATIVE target — dirname('dst') === '.' is a
      * ONE-BYTE ancestor whose strlen ate the first byte of the
