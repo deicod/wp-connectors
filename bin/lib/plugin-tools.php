@@ -1747,7 +1747,21 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * own line).
      */
     $line_of = static function (int $offset) use ($source): int {
-        return preg_match_all('/\R/', substr($source, 0, $offset), $line_matches) + 1;
+        /*
+         * A PCRE abort is never a silent line 1 (OCR round 28,
+         * t31-ocr28-5 — the lens guard's own doctrine, glm36-8): the
+         * false return rode the arithmetic as false + 1 = 1, and a
+         * line-count abort at any depth reported the finding on the
+         * file's FIRST line — a misattribution the refusal
+         * diagnostics quote. Line 0 is the named unknowable for a
+         * 1-based field (no finding ever rides it on a well engine,
+         * the guard's own charter: it answers the abort the day the
+         * engine refuses, exactly the sibling shape the lens's
+         * pcre-abort row carries).
+         */
+        $lines = preg_match_all('/\R/', substr($source, 0, $offset), $line_matches);
+
+        return false === $lines ? 0 : $lines + 1;
     };
     $push_text_finding = function (string $kind, int $offset, string $spelling) use (&$references, $line_of): void {
         $references[] = array(
