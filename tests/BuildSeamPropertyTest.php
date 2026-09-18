@@ -869,6 +869,33 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
     private function makeScratchRepo(string $state_id): array
     {
         /*
+         * The derivation needle is validated BEFORE anything exists
+         * (OCR round 25, t31-ocr25-7): the needle-miss throw used to
+         * fire AFTER the mkdir/copyTree work — a fixture drift left a
+         * half-built scratch tree behind the refusal, and every caller
+         * invokes this maker BEFORE its own try/finally, so the tree
+         * leaked. The fixture main file is read at its source (the
+         * copy below copies it verbatim, so the bytes the needle is
+         * judged on are the bytes that land).
+         */
+        $fixture = (string) realpath(__DIR__ . '/fixtures/plugins/example-connector');
+        $main = (string) file_get_contents($fixture . '/example-connector.php');
+        /*
+         * The artifact name derives from the FIXTURE at runtime (OCR
+         * round 11, t31-ocr11-7): build.php names it
+         * connectors-{slug}-{Version header}.zip, and the battery once
+         * pinned the literal 'connectors-example-connector-0.1.0.zip'
+         * — a fixture version bump reddened five-plus rows as phantom
+         * build defects. The derivation rides the file's own needle
+         * regex (the version-header-traversal row's, t31-ocr6-8): a
+         * needle miss fails loudly AT THE DERIVATION, never runs a
+         * no-op expectation as a phantom verdict.
+         */
+        if (1 !== preg_match('/Version:([ \t]++)(\S++)/', $main, $header)) {
+            throw new RuntimeException('battery scratch: the fixture main file carries no Version header — the artifact-name derivation needle drifted (t31-ocr11-7); nothing was created.');
+        }
+
+        /*
          * Temp-rooted and RANDOM-suffixed (OCR round 11, t31-ocr11-16):
          * the fixed name under the repo's dist/ made two CONCURRENT
          * suite runs collide on one scratch tree — run B's rrmdir of
@@ -906,23 +933,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * each target's dirname recursively, order-free — t31-r6-7's
          * readdir-order concern was the inline loop's own).
          */
-        WpHarness::copyTree(realpath(__DIR__ . '/fixtures/plugins/example-connector'), $plugin);
+        WpHarness::copyTree($fixture, $plugin);
         file_put_contents($plugin . '/build.json', "{\"embed_shared\": true}\n");
-        /*
-         * The artifact name derives from the FIXTURE at runtime (OCR
-         * round 11, t31-ocr11-7): build.php names it
-         * connectors-{slug}-{Version header}.zip, and the battery once
-         * pinned the literal 'connectors-example-connector-0.1.0.zip'
-         * — a fixture version bump reddened five-plus rows as phantom
-         * build defects. The derivation rides the file's own needle
-         * regex (the version-header-traversal row's, t31-ocr6-8): a
-         * needle miss fails loudly AT THE DERIVATION, never runs a
-         * no-op expectation as a phantom verdict.
-         */
-        $main = (string) file_get_contents($plugin . '/example-connector.php');
-        if (1 !== preg_match('/Version:([ \t]++)(\S++)/', $main, $header)) {
-            throw new RuntimeException('battery scratch: the fixture main file carries no Version header — the artifact-name derivation needle drifted (t31-ocr11-7).');
-        }
 
         return array(
             'root' => $root,

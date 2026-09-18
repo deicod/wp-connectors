@@ -357,20 +357,31 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('cannot checksum the published', $refusal->getMessage());
         $this->assertStringContainsString(basename($zipPath), $refusal->getMessage(), 'The refusal names the artifact.');
 
+        /*
+         * The deleted-zip leg's mutation is HEALED before the skip gate
+         * (OCR round 25, t31-ocr25-7): the uid-0 skip used to fire one
+         * leg later, AFTER the unlink — a root runner's skip throw left
+         * dist/ holding the deleted zip's stale sidecar and manifest
+         * entry until tearDown or the next build. The rebuild lands the
+         * whole set again first, so the skip (and any failure) fires
+         * over a consistent dist/, the gate's own doctrine: skip BEFORE
+         * the mutation your leg premises, or after its healing.
+         */
+        $zipPath = $this->buildFixture();
+
         // The chmod-000 window (non-root spelling, restored in finally).
         // Root-runner skip (t31-ocr4-1): uid 0 reads through mode 0000,
         // so the window never opens there.
         $this->skipChmod0000LegOnRootRunner('the chmod-000 published-zip window of the success-line digest pin');
-        $rebuilt = $this->buildFixture();
-        chmod($rebuilt, 0000);
+        chmod($zipPath, 0000);
         try {
             $refusal = $this->refusalOf(
-                fn() => WpConnectorsBuild::publishedChecksum($rebuilt),
+                fn() => WpConnectorsBuild::publishedChecksum($zipPath),
                 'An unreadable published zip must refuse the success-line digest.', \RuntimeException::class
             );
             $this->assertStringContainsString('cannot checksum the published', $refusal->getMessage());
         } finally {
-            chmod($rebuilt, 0644);
+            chmod($zipPath, 0644);
         }
     }
 
