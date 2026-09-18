@@ -68,6 +68,24 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * One unique-per-run scratch/work path under the shared dist/ (OCR
+     * round 25, t31-ocr25-5 — the t31-ocr11-16 stage-dir doctrine over
+     * this file's own trees): the FIXED spellings the file carried
+     * ('.embed-test', '.teardown-masking', '.inspect-bad', …) made two
+     * CONCURRENT suite runs collide on one tree — run B's pre-clean or
+     * teardown eating run A's in-flight battery — exactly the
+     * concurrent-run collision class the unique-stage doctrine closed
+     * for the build. The random suffix makes the tree one run's own;
+     * the if(is_dir()) pre-cleans the fixed names carried rode along
+     * (dead on a unique name — the crashed-run residue they ate can no
+     * longer collide with a live run).
+     */
+    private static function scratchPath(string $label): string
+    {
+        return self::distDir() . '/.' . $label . '-' . bin2hex(random_bytes(4));
+    }
+
+    /**
      * Asserts the plugin's staging tree is gone — ANY pid spelling
      * (t31-r10-4 renamed the stage `.stage-<slug>-<pid>`; assertions
      * pinned to the old pid-less name would pass vacuously forever).
@@ -109,7 +127,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
                 $built = WpConnectorsBuild::buildPlugin(__DIR__ . '/../connectors/zai', self::distDir());
                 $this->assertSame($zipPath, $built);
 
-                $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-zai'));
+                $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-zai')));
 
                 $names = $this->zipEntryNames($zipPath);
 
@@ -360,10 +378,11 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $zipPath = $this->buildFixture();
 
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-test');
+        $work = self::scratchPath('inspect-test');
+        $violations = wp_connectors_inspect_artifact($zipPath, $work);
         $this->assertSame(array(), $violations);
         $this->assertDirectoryDoesNotExist(
-            self::distDir() . '/.inspect-test',
+            $work,
             'The inspector must remove its temp extraction tree via try/finally (accepting path).'
         );
     }
@@ -372,7 +391,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $zipPath = $this->buildFixture();
 
-        $extractDir = self::distDir() . '/.extract-test';
+        $extractDir = self::scratchPath('extract-test');
         if (is_dir($extractDir)) {
             WpHarness::rrmdir($extractDir);
         }
@@ -449,13 +468,14 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     public function testInspectorRejectsRepoRelativeInclude()
     {
         $zipPath = $this->buildBadZip('escape-demo', "require_once dirname(__DIR__) . '/other-plugin/plugin.php';");
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-bad');
+        $work = self::scratchPath('inspect-bad');
+        $violations = wp_connectors_inspect_artifact($zipPath, $work);
         $this->assertNotSame(array(), $violations);
         $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
         // This path extracts a real tree, so it pins the try/finally cleanup:
-        // a deleted finally block would leak .inspect-bad and fail here.
+        // a deleted finally block would leak the work tree and fail here.
         $this->assertDirectoryDoesNotExist(
-            self::distDir() . '/.inspect-bad',
+            $work,
             'The inspector must remove its temp extraction tree via try/finally (rejecting path).'
         );
     }
@@ -463,7 +483,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     public function testInspectorRejectsMissingHeader()
     {
         $zipPath = $this->buildBadZip('header-demo', '', true);
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-bad');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-bad'));
         $this->assertNotSame(array(), $violations);
         $this->assertStringContainsString('header is missing', implode("\n", $violations));
     }
@@ -485,7 +505,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->addFromString('devfiles-demo/composer.json', '{}');
         $zip->close();
 
-        $violations = wp_connectors_inspect_artifact($extra, self::distDir() . '/.inspect-bad');
+        $violations = wp_connectors_inspect_artifact($extra, self::scratchPath('inspect-bad'));
         $this->assertNotSame(array(), $violations);
         $this->assertStringContainsString('development entry', implode("\n", $violations));
     }
@@ -521,7 +541,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->close();
 
         try {
-            $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-devroot');
+            $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-devroot'));
             $report = implode("\n", $violations);
             $this->assertStringContainsString('development entry "vendor/src/Shared/composer.json"', $report, 'The hostile embed-territory spelling under a dev-entry root is NOT exempted (red at HEAD: the top-level name was never judged).');
             $this->assertStringContainsString('development entry "vendor/src/Shared/vendor/x.php"', $report, 'The vendor segment under the hostile territory flags too.');
@@ -571,9 +591,10 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
          */
         $level = error_reporting(E_ALL);
         $display = ini_set('display_errors', '1');
+        $work = self::scratchPath('inspect-partial');
         ob_start();
         try {
-            $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-partial');
+            $violations = wp_connectors_inspect_artifact($zipPath, $work);
             $leaked = (string) ob_get_contents();
         } finally {
             ob_end_clean();
@@ -588,7 +609,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             'The extraction refusal is the ONLY verdict — no header, syntax, or secret check runs over a partial tree: ' . implode("\n", $violations)
         );
         $this->assertStringContainsString('cannot extract', $violations[0]);
-        $this->assertDirectoryDoesNotExist(self::distDir() . '/.inspect-partial', 'The partial tree is cleaned up on the refusing path too.');
+        $this->assertDirectoryDoesNotExist($work, 'The partial tree is cleaned up on the refusing path too.');
     }
 
     /**
@@ -806,7 +827,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array($forgedEntry, "<?php\n"),
         )));
 
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forge');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-forge'));
         $this->assertCount(1, $violations, 'The extraction refusal is the only verdict: ' . implode("\n", $violations));
         $this->assertStringContainsString('cannot extract', $violations[0]);
         $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violations[0]), 'The refusal line carries no raw control byte — no forged line, no ANSI ride.');
@@ -850,7 +871,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/src/autoload.php", $autoload),
             array("{$slug}/vendor/{$forged}.php", "<?php\n"),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-forgeline'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('development entry', $flat, 'The real verdict stands: the vendor-segment entry rejects.');
         $this->assertStringContainsString("vendor/x inspect: FORGED-LINE-ACCEPTED (0 violations) .php", $flat, 'The neutralized body still names the offending entry.');
@@ -864,7 +885,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array('a/x.txt', 'x'),
             array("{$forged}dir/y.txt", 'y'),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-forgeline'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('exactly one top-level plugin directory', $flat);
         foreach ($violations as $violation) {
@@ -878,7 +899,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         file_put_contents($zipPath, self::storedZipBytes(array(
             array("{$forged}dir/y.txt", 'y'),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-forgeline'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('invalid top-level plugin directory name', $flat);
         foreach ($violations as $violation) {
@@ -894,7 +915,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/src/autoload.php", $autoload),
             array("{$slug}/sub/../evil{$forged}.txt", 'x'),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-forgeline'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('escapes the extraction directory', $flat);
         foreach ($violations as $violation) {
@@ -912,7 +933,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/assets/broken{$forged}.php", "<?php this is not php\n"),
             array("{$slug}/assets/keys{$forged}.txt", "aws = {$key}\n"),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-forgeline');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-forgeline'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('failed php -l', $flat, 'The parse-broken landed file still rejects.');
         $this->assertStringContainsString('aws-key', $flat, 'The live key under a newline-bearing landed name still rejects.');
@@ -954,7 +975,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/src/autoload.php", $autoload),
             array("{$slug}/sub{$forged}dir/evil.php", "<?php\nrequire 'not-anchored.php';\n"),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-mergeforge');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-mergeforge'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('includes a path not anchored to the plugin dir', $flat, 'The real verdict stands: the unanchored include rejects.');
         $this->assertStringContainsString('subx inspect: FORGED-LINE-ACCEPTED (0 violations) dir/evil.php', $flat, 'The neutralized body still names the offending landed path (space for the newline — the seam\'s render).');
@@ -970,7 +991,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/src/autoload.php", $autoload),
             array("{$slug}/second{$forged}main.php", $main),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-mergeforge');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-mergeforge'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('multiple main plugin files', $flat, 'The real verdict stands: the second main file rejects.');
         foreach ($violations as $violation) {
@@ -988,7 +1009,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/{$slug}.php", $main2),
             array("{$slug}/src/autoload.php", $autoload),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-mergeforge');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-mergeforge'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('must be 6.9', $flat, 'The real verdict stands: the wrong Requires-at-least rejects.');
         $this->assertStringContainsString('does not match header Version', $flat, 'The real verdict stands: the constant mismatch rejects.');
@@ -1078,7 +1099,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->addFromString("{$slug}/src/Shared/vendor/keys.txt", "aws = {$key}\n");
         $zip->close();
 
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-prune');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-prune'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('src/Shared/vendor/keys.txt', $flat, 'The live key under a vendor-shaped segment inside the SHIPPED tree must be found — the prune is a repo-walk concept, never an artifact one.');
         $this->assertStringContainsString('src/Shared/keys.txt', $flat, 'The identical key outside the vendor segment keeps rejecting as before.');
@@ -1104,7 +1125,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->close();
         $this->assertSame(
             array(),
-            wp_connectors_inspect_artifact($clean, self::distDir() . '/.inspect-prune-clean'),
+            wp_connectors_inspect_artifact($clean, self::scratchPath('inspect-prune-clean')),
             'A clean artifact carrying vendor-style paths under the embed subtree inspects green.'
         );
     }
@@ -1138,7 +1159,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/src/keys.txt", "aws = {$key}\n"),
             array("{$slug}/src/keys.txt", "nothing to see\n"),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('more than once', $flat, 'A byte-exact duplicate entry name refuses: the non-landed copy is judged by nobody.');
         $this->assertStringContainsString($slug . '/src/keys.txt', $flat);
@@ -1153,7 +1174,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/Assets/logo.png", 'first'),
             array("{$slug}/assets/logo.png", 'second'),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
         $this->assertStringContainsString('case-fold duplicate', implode("\n", $violations), 'Case-fold duplicate entry names refuse — extraction on a folding target silently overwrites.');
 
         // (b-edge) The trailing EDGE-JUNK twins of the same fold (OCR
@@ -1175,7 +1196,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/assets/logo.png.", 'dot twin'),
             array("{$slug}/assets/logo.png ", 'space twin'),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('case-fold duplicate', $flat, 'A trailing-DOT twin is a fold duplicate — the fence strips the edge-junk class the extraction target itself strips.');
         $this->assertStringContainsString('logo.png.', $flat, 'The dot twin is named in the refusal.');
@@ -1196,7 +1217,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/assets/./logo.png", 'dot-segment twin'),
             array("{$slug}/assets//logo.png", 'empty-segment twin'),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('case-fold duplicate', $flat, 'A dot-segment twin folds onto the plain name — the fence collapses what extraction collapses.');
         $this->assertStringContainsString('assets/./logo.png', $flat, 'The dot-segment twin is named in the refusal.');
@@ -1214,7 +1235,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array($forged, 'x'),
             array($forged, 'y'),
         )));
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('more than once', $flat);
         foreach ($violations as $violation) {
@@ -1228,7 +1249,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/{$slug}.php", $main),
             array("{$slug}/src/autoload.php", $autoload),
         )));
-        $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-dup'), 'A duplicate-free zip of the same shape inspects green.');
+        $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup')), 'A duplicate-free zip of the same shape inspects green.');
     }
 
     /*
@@ -1273,7 +1294,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
                 array("{$slug}/src/autoload.php", $autoload),
                 array("{$slug}/src/{$entryName}", "<?php\n// near-source spelling\n"),
             ), $flags));
-            $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-nearsource');
+            $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-nearsource'));
             $flat = implode("\n", $violations);
             $this->assertStringContainsString('NEAR-SOURCE', $flat, "A near-source PHP spelling refuses extraction ({$label}; red at HEAD: the entry extracted and every gate judged it as not a PHP source).");
             // The refusal names the entry through the printable seam — the
@@ -1292,7 +1313,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/src/shell.php", "<?php\n// an ordinary source\n"),
             array("{$slug}/src/notes.md ", "prose\n"),
         )));
-        $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-nearsource'), 'A plain .php entry and a non-PHP near-source tail inspects green — the fence owns exactly the fold-to-PHP class.');
+        $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-nearsource')), 'A plain .php entry and a non-PHP near-source tail inspects green — the fence owns exactly the fold-to-PHP class.');
     }
 
     /**
@@ -1313,7 +1334,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      */
     public function testThePluginTreeCollectorSkipsNearSourceNamesSoBothFencesAnswerOneVerdict(): void
     {
-        $scratch = self::distDir() . '/.nearsource-collect';
+        $scratch = self::scratchPath('nearsource-collect');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -1429,7 +1450,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->addFromString("{$slug}/SRC/SHARED/composer.json", "{}\n");
         $zip->addFromString("{$slug}/SRC/SHARED/phpunit.xml", "<phpunit/>\n");
         $zip->close();
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-embedcase'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('development entry', $flat, 'A case-variant embed prefix is foreign: the dev artifacts under it are visible to the vocabulary again.');
         $this->assertStringContainsString('composer.json', $flat);
@@ -1453,7 +1474,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->close();
         $this->assertSame(
             array(),
-            wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase'),
+            wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-embedcase')),
             'The canonical embed territory stays exempt from classification — the t31-r5-5 doctrine unchanged.'
         );
         $this->assertTrue(
@@ -1466,7 +1487,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         );
         $zip->addFromString("{$slug}/src/Shared/vendor/keys.txt", "aws = {$key}\n");
         $zip->close();
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-embedcase');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-embedcase'));
         $this->assertStringContainsString('aws-key', implode("\n", $violations), 'The exemption is classification-only: content checks still judge the canonical territory.');
     }
 
@@ -1493,7 +1514,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->addFromString('plugin.php', $main);
         $zip->close();
 
-        $workDir = self::distDir() . '/.inspect-rootfile';
+        $workDir = self::scratchPath('inspect-rootfile');
         $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
 
         $this->assertNotSame(array(), $violations, 'A root-file archive must be rejected.');
@@ -1509,7 +1530,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testMultipleMainPluginFilesAreRejectedByTheSharedRule()
     {
-        $tempPlugin = self::distDir() . '/.twomain-test/twomain-demo';
+        $tempPlugin = self::scratchPath('twomain-test') . '/twomain-demo';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -1556,7 +1577,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         }
         $zip->close();
 
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-twomain');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-twomain'));
         $this->assertNotSame(array(), $violations);
         $this->assertStringContainsString('multiple main plugin files', implode("\n", $violations));
 
@@ -1586,7 +1607,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->addFromString('../payload.php', "<?php\n/**\n * Plugin Name:       traversal-demo\n * Version:           1.0.0\n */\n");
         $zip->close();
 
-        $workDir = self::distDir() . '/.inspect-traversal';
+        $workDir = self::scratchPath('inspect-traversal');
         $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
 
         $this->assertNotSame(array(), $violations, 'A traversal root name must be rejected.');
@@ -1613,7 +1634,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->addFromString('midpath-demo/src/../../escape.php', "<?php\necho 'outside';\n");
         $zip->close();
 
-        $workDir = self::distDir() . '/.inspect-midpath';
+        $workDir = self::scratchPath('inspect-midpath');
         $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
 
         $this->assertNotSame(array(), $violations, "A '..' path segment in any entry must be rejected.");
@@ -1655,7 +1676,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->addFromString('edgejunk-demo/doc/.../escape2.php', "<?php\necho 'dot-tailed';\n");
         $zip->close();
 
-        $workDir = self::distDir() . '/.inspect-edgejunk';
+        $workDir = self::scratchPath('inspect-edgejunk');
         $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
 
         $this->assertNotSame(array(), $violations, "A '..'-resolving segment ('.. ', '...') is a traversal the fold class already knows collapses — it must be rejected as one.");
@@ -1685,7 +1706,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $zip->addFromString("backslash-demo/src\\..\\..\\escape.php", "<?php\necho 'outside';\n");
         $zip->close();
 
-        $workDir = self::distDir() . '/.inspect-backslash';
+        $workDir = self::scratchPath('inspect-backslash');
         $violations = wp_connectors_inspect_artifact($zipPath, $workDir);
 
         $this->assertNotSame(array(), $violations, 'Backslash-separated path entries must be rejected.');
@@ -1702,7 +1723,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testAnchoredIncludesThatEscapeThePluginDirAreRejected()
     {
-        $tempPlugin = self::distDir() . '/.anchored-test/anchored-demo';
+        $tempPlugin = self::scratchPath('anchored-test') . '/anchored-demo';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -1751,7 +1772,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             $zip->addFile($tempPlugin . '/' . $relative, 'anchored-demo/' . $relative);
         }
         $zip->close();
-        $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-anchored');
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-anchored'));
         $this->assertNotSame(array(), $violations);
         $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
 
@@ -1767,7 +1788,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testLiteralFreeIncludesAreResolvedStrictly()
     {
-        $tempPlugin = self::distDir() . '/.hidden-include-test/hidden-demo';
+        $tempPlugin = self::scratchPath('hidden-include-test') . '/hidden-demo';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -1825,7 +1846,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testMixedLiteralAndVariableIncludesAreAnalyzedPerSegment()
     {
-        $tempPlugin = self::distDir() . '/.mixed-include-test/mixed-demo';
+        $tempPlugin = self::scratchPath('mixed-include-test') . '/mixed-demo';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -1887,7 +1908,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testMapAndForeachIncludeLaunderingIsRejected()
     {
-        $tempPlugin = self::distDir() . '/.map-launder-test/map-demo';
+        $tempPlugin = self::scratchPath('map-launder-test') . '/map-demo';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -1941,7 +1962,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testStringAndHeredocContentsAreNeverAnalyzedAsCode()
     {
-        $tempPlugin = self::distDir() . '/.string-contents-test/string-demo';
+        $tempPlugin = self::scratchPath('string-contents-test') . '/string-demo';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -2130,7 +2151,7 @@ FIXTURE;
 
     public function testDuplicateHeadersKeepTheFirstValueAndAreFlagged()
     {
-        $tempPlugin = self::distDir() . '/.dupheader-test/dupheader-demo';
+        $tempPlugin = self::scratchPath('dupheader-test') . '/dupheader-demo';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -2176,7 +2197,7 @@ FIXTURE;
     {
         // Copy the fixture, bump the header Version without touching the
         // EXAMPLE_CONNECTOR_VERSION constant: the build must refuse.
-        $tempPlugin = self::distDir() . '/.version-test/example-connector';
+        $tempPlugin = self::scratchPath('version-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -2217,7 +2238,7 @@ FIXTURE;
      */
     public function testEmbedSharedShipsOnlyTheSourceTreeUnderSrcShared()
     {
-        $tempPlugin = self::distDir() . '/.embed-test/example-connector';
+        $tempPlugin = self::scratchPath('embed-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -2297,7 +2318,7 @@ FIXTURE;
      */
     public function testEmbedSharedShipsOnlyPhpSourcesEvenFromInsideTheSourceDirectory()
     {
-        $scratch = self::distDir() . '/.embed-scratch';
+        $scratch = self::scratchPath('embed-scratch');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -2343,7 +2364,7 @@ FIXTURE;
      */
     public function testAMalformedBuildJsonRefusesTheBuildLoudly()
     {
-        $scratch = self::distDir() . '/.embed-malformed';
+        $scratch = self::scratchPath('embed-malformed');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -2409,7 +2430,7 @@ FIXTURE;
      */
     public function testTheFinallyTeardownNeverMasksThePrimaryFailureOverAHostileStageTree(): void
     {
-        $scratch = self::distDir() . '/.teardown-masking';
+        $scratch = self::scratchPath('teardown-masking');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -2487,7 +2508,7 @@ FIXTURE;
      */
     public function testABuildJsonOutsideTheClosedSchemaRefusesTheBuildLoudly(): void
     {
-        $scratch = self::distDir() . '/.embed-schema';
+        $scratch = self::scratchPath('embed-schema');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -2649,7 +2670,7 @@ FIXTURE;
      */
     public function testAFailingBuildLeavesNoStagingResidueBehind()
     {
-        $scratch = self::distDir() . '/.embed-residue';
+        $scratch = self::scratchPath('embed-residue');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -2763,7 +2784,7 @@ FIXTURE;
      */
     public function testADigitInitialSlugDerivesAndBuildsALegalNamespace()
     {
-        $scratch = self::distDir() . '/.digit-slug';
+        $scratch = self::scratchPath('digit-slug');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -2866,7 +2887,7 @@ FIXTURE;
      */
     public function testEverySharedPhpSourceShipsEvenFromExcludedNamedSubdirectories()
     {
-        $scratch = self::distDir() . '/.embed-excluded-names';
+        $scratch = self::scratchPath('embed-excluded-names');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -2971,7 +2992,7 @@ FIXTURE;
      */
     public function testAnEscapingIncludeInTheSharedSourceRefusesTheBuild(): void
     {
-        $scratch = self::distDir() . '/.embed-escaping-include';
+        $scratch = self::scratchPath('embed-escaping-include');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -3031,7 +3052,7 @@ FIXTURE;
      */
     public function testTheScopedComposedScanKeepsTheComposedTreeAnchor(): void
     {
-        $scratch = self::distDir() . '/.embed-anchored-include';
+        $scratch = self::scratchPath('embed-anchored-include');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -3085,7 +3106,7 @@ FIXTURE;
      */
     public function testAnUpperCaseSpelledSharedSourceRefusesTheEmbed()
     {
-        $scratch = self::distDir() . '/.embed-phpcase';
+        $scratch = self::scratchPath('embed-phpcase');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -3151,7 +3172,7 @@ FIXTURE;
      */
     public function testANearSourceSpellingOfAnyEdgeByteRefusesTheCollector(): void
     {
-        $scratch = self::distDir() . '/.nearsource-edges';
+        $scratch = self::scratchPath('nearsource-edges');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -3237,7 +3258,7 @@ FIXTURE;
      */
     public function testAPluginOwnedSharedPathCollisionRefusesTheBuild(): void
     {
-        $scratch = self::distDir() . '/.embed-collision';
+        $scratch = self::scratchPath('embed-collision');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -3311,7 +3332,7 @@ FIXTURE;
      */
     public function testAPluginOwnedCaseVariantLicenseWinsAndTheRepoCopyIsNeverInjectedBesideIt(): void
     {
-        $scratch = self::distDir() . '/.license-case';
+        $scratch = self::scratchPath('license-case');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -3399,7 +3420,7 @@ FIXTURE;
      */
     public function testTheCollisionFencesFoldCaseThroughTheOneAsciiOwnerUnderTurkishLocale(): void
     {
-        $scratch = self::distDir() . '/.collision-fold-pressure';
+        $scratch = self::scratchPath('collision-fold-pressure');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -3516,7 +3537,7 @@ FIXTURE;
      */
     public function testUnreadableAndEmptySourcesRefuseTheBuildLoudly(): void
     {
-        $scratch = self::distDir() . '/.read-seam';
+        $scratch = self::scratchPath('read-seam');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -3603,7 +3624,7 @@ FIXTURE;
      */
     public function testAnEmptySharedSourceTreeRefusesTheEmbed(): void
     {
-        $scratch = self::distDir() . '/.embed-empty-tree';
+        $scratch = self::scratchPath('embed-empty-tree');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -3660,7 +3681,7 @@ FIXTURE;
         if (! self::canSymlink()) {
             $this->markTestSkipped('This host cannot create symlinks — the excluded-path/shipped-link ordering legs cannot run on it.');
         }
-        $tempPlugin = self::distDir() . '/.symlink-order-test/example-connector';
+        $tempPlugin = self::scratchPath('symlink-order-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -3710,7 +3731,7 @@ FIXTURE;
      */
     public function testTheDevelopmentEntryVocabularyIsOneListForBothGates(): void
     {
-        $tempPlugin = self::distDir() . '/.deventry-test/example-connector';
+        $tempPlugin = self::scratchPath('deventry-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -3740,7 +3761,7 @@ FIXTURE;
             // ships (the pre-fix contradiction, re-driven by the verifier).
             $this->assertSame(
                 array(),
-                wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-deventry'),
+                wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-deventry')),
                 'Build and inspect must agree on the development-entry vocabulary.'
             );
 
@@ -3764,7 +3785,7 @@ FIXTURE;
             }
             $hostile->close();
             try {
-                $violations = wp_connectors_inspect_artifact($hostileZip, self::distDir() . '/.inspect-deventry-hostile');
+                $violations = wp_connectors_inspect_artifact($hostileZip, self::scratchPath('inspect-deventry-hostile'));
                 $this->assertNotSame(array(), $violations, 'A crafted zip carrying any development-entry spelling must reject.');
                 $report = implode("\n", $violations);
                 /*
@@ -3804,7 +3825,7 @@ FIXTURE;
      */
     public function testTheDevelopmentEntryVocabularyFoldsCaseForBothGates(): void
     {
-        $tempPlugin = self::distDir() . '/.deventry-case-test/example-connector';
+        $tempPlugin = self::scratchPath('deventry-case-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -3839,7 +3860,7 @@ FIXTURE;
             // ships is the artifact the inspector accepts.
             $this->assertSame(
                 array(),
-                wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-deventry-case'),
+                wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-deventry-case')),
                 'Build and inspect must agree on the case-folded vocabulary.'
             );
 
@@ -3862,7 +3883,7 @@ FIXTURE;
             }
             $hostile->close();
             try {
-                $violations = wp_connectors_inspect_artifact($hostileZip, self::distDir() . '/.inspect-deventry-case-hostile');
+                $violations = wp_connectors_inspect_artifact($hostileZip, self::scratchPath('inspect-deventry-case-hostile'));
                 $this->assertNotSame(array(), $violations, 'A crafted zip carrying a case-variant development entry must reject.');
                 $report = implode("\n", $violations);
                 $this->assertStringContainsString('Tests/Bootstrap.php', $report);
@@ -5018,7 +5039,7 @@ FIXTURE;
         $this->assertSame('MyPlugin', wp_connectors_namespace_suffix_from_slug('my.plugin'));
         $this->assertSame('MyPlugin', wp_connectors_namespace_suffix_from_slug('my-plugin'), "Dot and dash separate the same segments.");
 
-        $tempPlugin = self::distDir() . '/.dot-slug/my.plugin';
+        $tempPlugin = self::scratchPath('dot-slug') . '/my.plugin';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -5066,7 +5087,7 @@ FIXTURE;
                     );
                     $shippedMain = (string) $zip->getFromName('my.plugin/my.plugin.php');
                     $zip->close();
-                    $probe = self::distDir() . '/.dot-slug/probe-main.php';
+                    $probe = self::scratchPath('dot-slug-probe-main.php');
                     file_put_contents($probe, $shippedMain);
                     /*
                      * The exec-capability guard (t31-ocr20-5, the ocr18-2
@@ -5109,7 +5130,7 @@ FIXTURE;
      */
     public function testAnUnreadableManifestRefusesTheBuildAndKeepsEveryEntry(): void
     {
-        $scratch = self::distDir() . '/.manifest-read';
+        $scratch = self::scratchPath('manifest-read');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -5173,7 +5194,7 @@ FIXTURE;
      */
     public function testATraversalSpelledVersionHeaderRefusesTheBuild(): void
     {
-        $tempPlugin = self::distDir() . '/.version-token/example-connector';
+        $tempPlugin = self::scratchPath('version-token') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -6273,7 +6294,7 @@ FIXTURE;
         if (! self::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the parse-probe legs cannot run (and the legs below them with them); the detector and rewrite assertions above already passed.');
         }
-        $probe = self::distDir() . '/.rel-use-probe.php';
+        $probe = self::scratchPath('rel-use-probe.php');
         file_put_contents($probe, $rewritten);
         try {
             $output = array();
@@ -6497,7 +6518,7 @@ FIXTURE;
         }
         // The shipped bytes parse — the pre-fix output was a parse
         // error on this very line.
-        $probe = self::distDir() . '/.interrupted-rel-probe.php';
+        $probe = self::scratchPath('interrupted-rel-probe.php');
         file_put_contents($probe, WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace \\Clock\\SystemClock as Clock;\ninterface InterruptedKeywordFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/InterruptedKeywordFixture.php'));
         try {
             $output = array();
@@ -7197,7 +7218,7 @@ FIXTURE;
         if (! self::canSymlink()) {
             $this->markTestSkipped('This host cannot create symlinks — the linked shared-source refusal cannot be driven on it.');
         }
-        $scratch = self::distDir() . '/.embed-symlink';
+        $scratch = self::scratchPath('embed-symlink');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -7353,7 +7374,7 @@ FIXTURE;
      */
     public function testTheSelfContainmentWalkerJudgesUpperCaseSpelledPhpSources(): void
     {
-        $tempPlugin = self::distDir() . '/.phpcase-containment/upper-demo';
+        $tempPlugin = self::scratchPath('phpcase-containment') . '/upper-demo';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -7421,7 +7442,7 @@ FIXTURE;
      */
     public function testAFailingPublicationLandsNothingAndKeepsThePreviousGoodSet(): void
     {
-        $scratch = self::distDir() . '/.publish-check';
+        $scratch = self::scratchPath('publish-check');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -7600,7 +7621,7 @@ FIXTURE;
         $zip->close();
 
         try {
-            $violations = wp_connectors_inspect_artifact($zipPath, self::distDir() . '/.inspect-phplint');
+            $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-phplint'));
             $this->assertNotSame(array(), $violations, 'A parse-broken .PHP entry must fail inspection, never ride the extension case past the syntax loop.');
             $this->assertStringContainsString('failed php -l', implode("\n", $violations));
             $this->assertStringContainsString('Broken.PHP', implode("\n", $violations));
@@ -7641,7 +7662,7 @@ FIXTURE;
      */
     public function testASharedSourceWithAnUnrewritableSpellingRefusesTheBuild(): void
     {
-        $scratch = self::distDir() . '/.rewrite-refuse';
+        $scratch = self::scratchPath('rewrite-refuse');
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
         }
@@ -7845,7 +7866,7 @@ FIXTURE;
         // the conventions autoloader check (it previously would have been
         // rejected for not matching the lowercased derivation), while a
         // wrongly cased OpenaiOautH prefix must still fail.
-        $tempPlugin = self::distDir() . '/.ns-test/openai-oauth';
+        $tempPlugin = self::scratchPath('ns-test') . '/openai-oauth';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -7879,7 +7900,7 @@ FIXTURE;
         if (! self::canSymlink()) {
             $this->markTestSkipped('This host cannot create symlinks — the in-tree leak-link refusal cannot be driven on it.');
         }
-        $tempPlugin = self::distDir() . '/.symlink-test/example-connector';
+        $tempPlugin = self::scratchPath('symlink-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
             WpHarness::rrmdir(dirname($tempPlugin));
         }
@@ -7995,7 +8016,7 @@ FIXTURE;
         $main = "<?php\n/**\n * {$head} */\ndefine( '" . strtoupper(str_replace('-', '_', $slug)) . "_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n{$extraPhp}\n";
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
 
-        $tmp = self::distDir() . '/.badzip-' . $slug;
+        $tmp = self::scratchPath('badzip-' . $slug);
         if (is_dir($tmp)) {
             WpHarness::rrmdir($tmp);
         }
