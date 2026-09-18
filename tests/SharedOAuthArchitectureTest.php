@@ -607,7 +607,10 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // its own — but the use-statement walk reads the `use` inside
         // HttpRequest/HttpResponse as one, so it is pinned here
         // deliberately: an own-tree shape, zero new dependencies.
-        $legal_platform = array('DateTimeImmutable', 'DateTimeZone', 'InvalidArgumentException', 'RuntimeException', 'Throwable', 'HasMaskedHeaders');
+        // 'LogicException' joins with t31-ocr27-5: label()'s named
+        // desync failure (a table drift is a programmer error, the
+        // LogicException family — never a runtime/environment one).
+        $legal_platform = array('DateTimeImmutable', 'DateTimeZone', 'InvalidArgumentException', 'LogicException', 'RuntimeException', 'Throwable', 'HasMaskedHeaders');
         $own_lower = strtolower(wp_connectors_shared_source_namespace());
 
         $platform = array();

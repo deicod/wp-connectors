@@ -23,6 +23,8 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Shared\Availability;
 
+use LogicException;
+
 /**
  * Availability state of an OAuth provider.
  *
@@ -81,12 +83,31 @@ enum AvailabilityState: string {
 	/**
 	 * Neutral, untranslated label for the state.
 	 *
+	 * The lookup is explicit (OCR round 27, t31-ocr27-5): a case added
+	 * without its LABELS row once answered the engine's own
+	 * "Undefined array key" warning and TypeError — loud, but naming
+	 * neither the enum nor the missing case nor the sync duty. An
+	 * unknown value is a named failure now: the value, the table, and
+	 * the add-them-together duty, one message.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return string
+	 * @throws LogicException The backing value has no LABELS row (a case and its row must be added together).
 	 */
 	public function label(): string {
 		// phpcs:ignore PHPCompatibility.Variables.ForbiddenThisUseContexts.OutsideObjectContext -- PHPCompatibility 9.3.5 predates enums (PHP 8.1) and misreads enum methods as plain functions; $this in an enum method is valid on the 8.2 floor.
-		return self::LABELS[ $this->value ];
+		$value = $this->value;
+
+		if ( ! isset( self::LABELS[ $value ] ) ) {
+			throw new LogicException(
+				sprintf(
+					'AvailabilityState has no label for the backing value "%s" — every case needs its row in AvailabilityState::LABELS; add the case and the row together.',
+					$value // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- a fixed enum backing-value vocabulary in a developer-facing rejection; escaping belongs to the display layer.
+				)
+			);
+		}
+
+		return self::LABELS[ $value ];
 	}
 }
