@@ -155,6 +155,34 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         }
     }
 
+    /*
+     * OCR-round-30 pin (t31-ocr30-6, the t31-ocr13-6 extra-channel
+     * doctrine's apply twin): the apply closure's throws are ROW
+     * verdicts, never battery aborts. The bare invocation once let one
+     * row's throw — a needle-drift refusal the row itself raises, an
+     * engine error over a staging path that vanished — abort the whole
+     * row table as a test ERROR, masking the states behind it (every
+     * other row-verdict channel in this battery converts: the extra
+     * closure's assertion failures, the seeded control build's
+     * refusal, the reopen/extract/statIndex gates). A throw converts
+     * to a FAIL row naming the throw's class and message now, and the
+     * table keeps its charge row by row.
+     */
+    public function testAnApplyThrowAnswersAFailRowNotABatteryAbort()
+    {
+        $verdict = $this->runState('apply-throw', array(
+            'expect' => 'LOUD',
+            'apply' => static function (array $scratch): void {
+                throw new RuntimeException('apply-throw: the planted throw must ride the row channel');
+            },
+            'fragment' => 'never consulted — the apply throw answers first',
+        ));
+        $this->assertSame('FAIL', $verdict['class'], 'An apply throw is a FAIL row, never a battery abort (red at HEAD: the throw escaped runState as a test ERROR, masking the states behind it).');
+        $this->assertStringContainsString('apply closure threw', $verdict['why'], 'The row names the channel the throw rode.');
+        $this->assertStringContainsString('RuntimeException', $verdict['why'], 'The row names the throw\'s class.');
+        $this->assertStringContainsString('planted throw must ride the row channel', $verdict['why'], 'The row carries the throw\'s own message.');
+    }
+
     /**
      * The adversarial state table (exhaustive for the round's charter).
      *
@@ -507,7 +535,23 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             // to block a landing — the snapshot sees the post-mutation set;
             // an unreadable member snapshots as its unreadability, so a
             // state like manifest-unreadable compares like-for-like).
-            ($state['apply'])($scratch);
+            /*
+             * The apply closure's throws are ROW verdicts too (OCR
+             * round 30, t31-ocr30-6, the t31-ocr13-6 extra-channel
+             * doctrine), never battery aborts: the bare invocation once
+             * let one row's throw — a needle-drift refusal the row
+             * itself raises, an engine error over a staging path that
+             * vanished — abort the whole row table as a test ERROR,
+             * masking the states behind it. A throw converts to a FAIL
+             * row naming the throw's class and message, and the table
+             * keeps its charge row by row (each row's setup is its
+             * reproducer).
+             */
+            try {
+                ($state['apply'])($scratch);
+            } catch (\Throwable $apply_failure) {
+                return array('class' => 'FAIL', 'why' => 'the state\'s apply closure threw (' . get_class($apply_failure) . '): ' . $apply_failure->getMessage());
+            }
             $snapZip = $this->readMemberOrMarker($scratch['zip']);
             $snapSidecar = $this->readMemberOrMarker($scratch['zip'] . '.sha256');
             $snapManifest = $this->readMemberOrMarker($scratch['dist'] . '/checksums.txt');
