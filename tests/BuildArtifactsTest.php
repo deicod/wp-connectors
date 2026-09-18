@@ -4190,6 +4190,26 @@ FIXTURE;
             $this->assertFileExists($pid_file, 'The spawned live run must publish its pid.');
             $live_pid = (int) file_get_contents($pid_file);
 
+            /*
+             * The staging-temp CENSUS (OCR round 26, t31-ocr26-8):
+             * every staging spelling the build lands carries the
+             * pid — `.stage-<slug>-<pid>` and `.<zip>.tmp-<pid>…`
+             * (the part-1/part-2 legs below), and the MANIFEST
+             * staging temp, pid-less since its t31-r5-S birth while
+             * the sweep's own doc note carved it out as
+             * unattributable. The name pins through the staging
+             * owner itself (a successful build consumes the temp by
+             * rename, so the name is only observable at the seam).
+             */
+            $stage_manifest = new ReflectionMethod(WpConnectorsBuild::class, 'stageManifest');
+            $staged_manifest = $stage_manifest->invoke(null, $scratch . '/dist', $scratch . '/dist/checksums.txt', 'connectors-stage-demo-1.0.0.zip', str_repeat('a', 64));
+            $this->assertMatchesRegularExpression(
+                '/^\.checksums-' . getmypid() . '-[A-Za-z0-9]{1,}$/',
+                basename((string) $staged_manifest),
+                'The manifest staging temp is PID-NAMED — the sweep\'s crashed-run charter owns every staging temp the build lands.'
+            );
+            unlink($staged_manifest);
+
             // The live sibling's in-flight tree, a dead-pid orphan of the
             // same plugin (999999999 exceeds every Linux pid_max), a
             // pid-less foreign spelling, another plugin's dead-pid
@@ -4206,6 +4226,10 @@ FIXTURE;
             file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.acce0w.part', 'libzip window');
             file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-' . $live_pid, 'live run temp');
             file_put_contents($scratch . '/dist/.checksums-orphan', 'pid-less manifest staging temp');
+            // The manifest temps on the same charter (t31-ocr26-8):
+            // dead pid swept, live pid kept, pid-less legacy alone.
+            file_put_contents($scratch . '/dist/.checksums-999999996-orphan', 'dead run manifest staging temp');
+            file_put_contents($scratch . '/dist/.checksums-' . $live_pid . '-inflight', 'live run manifest staging temp');
 
             // Run "B": builds green BESIDE the live sibling.
             WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist');
@@ -4220,6 +4244,8 @@ FIXTURE;
             $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.acce0w.part', 'A dead-pid libzip .part temp is reclaimed.');
             $this->assertFileExists($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-' . $live_pid, 'A LIVE run\'s temp is never touched by a sibling build.');
             $this->assertFileExists($scratch . '/dist/.checksums-orphan', 'A pid-less manifest staging temp is unattributable — left alone, never raced.');
+            $this->assertFileDoesNotExist($scratch . '/dist/.checksums-999999996-orphan', 'A dead-pid manifest staging temp is reclaimed — the crashed-run charter covers it since it carries the pid.');
+            $this->assertFileExists($scratch . '/dist/.checksums-' . $live_pid . '-inflight', 'A LIVE run\'s manifest staging temp is never touched by a sibling build.');
 
             // Part 3: once the sibling's process is dead (terminated and
             // reaped), its leftover tree is reclaimed by the next build.
@@ -4236,6 +4262,7 @@ FIXTURE;
             WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist');
 
             $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-stage-demo-' . $live_pid, 'A stage tree whose owning process died is reclaimed by the next build of the plugin.');
+            $this->assertFileDoesNotExist($scratch . '/dist/.checksums-' . $live_pid . '-inflight', 'A manifest staging temp whose owning process died is reclaimed by the next build — the crashed-run charter, one temp class further.');
 
             /*
              * Part 4, the symlink legs (verifier round t31-r10-10): a

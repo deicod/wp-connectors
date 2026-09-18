@@ -2097,6 +2097,18 @@ final class WpConnectorsBuild
      * no-pre-run-wipe contract, unchanged). tempnam() creates 0600; the
      * manifest is a published artifact and lands 0644 like the sidecar.
      *
+     * The staging name carries the PID (OCR round 26, t31-ocr26-8):
+     * every other staging temp the build lands rides the crashed-run
+     * charter (`.stage-<slug>-<pid>`, `.<zip>.tmp-<pid>…` — sweepStale
+     * -StageDirs reclaims a dead run's leftovers), while the pid-less
+     * tempnam spelling this method used was the carve its own sweep
+     * doc note named unattributable: a SIGKILL between staging and
+     * the landing rename left `.checksums-XXXXXX` forever, reclaiming
+     * one could race a LIVE run's staging. `.checksums-<pid>-<rand>`
+     * rides the same charter — the sweep's pattern and liveness gate
+     * own it now (a legacy pid-less spelling stays alone, still
+     * unattributable).
+     *
      * @param string $distDir      Absolute dist directory (staging home).
      * @param string $manifestPath Absolute checksums.txt path.
      * @param string $zipName      Zip basename the new entry names.
@@ -2110,8 +2122,12 @@ final class WpConnectorsBuild
         $manifest[] = $zipName . '  ' . $checksum;
         sort($manifest, SORT_STRING);
         // @: the diagnostic is suppressed, the failed return owned below
-        // (glm17-16) — a blocked path refuses through the check.
-        $temp = @tempnam($distDir, '.checksums-');
+        // (glm17-16) — a blocked path refuses through the check. The
+        // PID prefix (t31-ocr26-8, the sweep's own naming doctrine):
+        // tempnam() appends its random tail AFTER the prefix, so the
+        // name answers to a process — dead runs swept, live runs never
+        // raced.
+        $temp = @tempnam($distDir, '.checksums-' . getmypid() . '-');
         if (false === $temp) {
             throw new RuntimeException("build: cannot stage the checksum manifest for {$zipName} in {$distDir}");
         }
@@ -2525,12 +2541,18 @@ final class WpConnectorsBuild
      *   its sidecar twin `.sha256`, and libzip's in-window `.<rand>.part`
      *   spelling a SIGKILL leaves behind) whose process is dead is
      *   unlinked — the same crashed-run charter, the same liveness gate;
+     * - every `.checksums-<pid>-…` FILE (the manifest staging temp,
+     *   pid-named since OCR round 26, t31-ocr26-8) whose process is
+     *   dead is unlinked on the same charter — a SIGKILL between the
+     *   staging and the landing rename once left it forever, the one
+     *   crashed-run scratch the sweep's own doc note carved out as
+     *   unattributable;
      * - a SYMLINK never is touched (verifier round t31-r10-10: is_dir()
      *   follows links, and rrmdir through a matching-named link deleted
      *   the TARGET tree's contents — a link is never this code's
      *   product, and the sweep leaves it exactly where it stands);
      * - foreign-shaped names (the pid-less pre-r10 stage spelling, the
-     *   pid-less `.checksums-*` manifest staging temps — unattributable,
+     *   pid-less legacy `.checksums-*` manifest temps — unattributable,
      *   so reclaiming one could race a LIVE run's staging) are left
      *   alone: nothing running this code loses by them.
      *
@@ -2552,6 +2574,11 @@ final class WpConnectorsBuild
         }
         $stage_pattern = '/^\.stage-' . preg_quote($slug, '/') . '-(\d+)$/';
         $temp_pattern = '/^\.connectors-' . preg_quote($slug, '/') . '-.*\.zip\.tmp-(\d+)(?:\..*)?$/';
+        // The manifest staging temp (t31-ocr26-8): pid-prefixed, tempnam
+        // tail behind it — a LEGACY pid-less spelling never matches
+        // (the random tail is alnum, no dash, and need not start with
+        // digits-then-dash), staying unattributable exactly as before.
+        $manifest_temp_pattern = '/^\.checksums-(\d+)-/';
         try {
             while (false !== ($entry = readdir($dir))) {
                 $path = $distDir . '/' . $entry;
@@ -2565,6 +2592,16 @@ final class WpConnectorsBuild
                     $pid = (int) $pid_match[1];
                     if ($pid !== (int) getmypid() && ! self::processIsAlive($pid)) {
                         self::rrmdir($path);
+                    }
+
+                    continue;
+                }
+                if (preg_match($manifest_temp_pattern, $entry, $pid_match) && is_file($path)) {
+                    $pid = (int) $pid_match[1];
+                    if ($pid !== (int) getmypid() && ! self::processIsAlive($pid)) {
+                        // A FILE, never a link (the guard above): unlink
+                        // removes the entry itself.
+                        @unlink($path);
                     }
 
                     continue;
