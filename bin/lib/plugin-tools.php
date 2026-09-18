@@ -882,6 +882,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
     $declaration_pending = false;
     $adaptation_block = false;
     $relative_member_pending = false;
+    $absolute_member_pending = false;
 
     for ($i = 0; $i < $count; ++$i) {
         $token = $tokens[ $i ];
@@ -903,6 +904,7 @@ function wp_connectors_name_references_from_tokens(array $tokens)
             $skip_alias = false;
             $adaptation_block = false;
             $relative_member_pending = false;
+            $absolute_member_pending = false;
 
             continue;
         }
@@ -1049,15 +1051,40 @@ function wp_connectors_name_references_from_tokens(array $tokens)
                 // kind keywords of an import are trivia to this walk.
                 $declaration_pending = false;
                 /*
+                 * The INTERRUPTED-ABSOLUTE arm (OCR round 28,
+                 * t31-ocr28-2): a leading separator standing APART from
+                 * its name (`\ Deicod\WpConnectors\…`, trivia between)
+                 * lexes as a standalone T_NS_SEPARATOR the non-name
+                 * branch consumed and the name run arrived WITHOUT its
+                 * leading backslash — `$is_absolute_run` read false, the
+                 * group prefix COMPOSED the member (the r10-9 laundering
+                 * verdict: `Prefix\Deicod\…`, a name no family predicate
+                 * matches, driven red at HEAD at zero references while
+                 * the glued twin reported). A standalone separator the
+                 * run assembly did not swallow ARMS the absolute
+                 * expectation — a run only ever starts at a name token,
+                 * so a separator followed (modulo trivia) by a name is
+                 * LEADING by construction, and any other separator (a
+                 * dangling `use \ ;`, the `use Prefix \ {` brace join)
+                 * dies at the guard below before a name can follow it.
+                 */
+                if (T_NS_SEPARATOR === $id) {
+                    $absolute_member_pending = true;
+                }
+                /*
                  * The interrupted-relative arm dies with its own
                  * grammar (t31-ocr11-21): only TRIVIA and the SEPARATOR
                  * may stand between the keyword and its name (the run
                  * assembly's own tolerance); anything else — a comma,
                  * a brace, a boundary, an `as` — is a dangling keyword
-                 * whose next name is an ordinary member again.
+                 * whose next name is an ordinary member again. The
+                 * absolute twin dies at the same guard, the same
+                 * grammar: only trivia may stand between the LEADING
+                 * separator and its name.
                  */
                 if (T_NS_SEPARATOR !== $id && T_WHITESPACE !== $id && T_COMMENT !== $id && T_DOC_COMMENT !== $id) {
                     $relative_member_pending = false;
+                    $absolute_member_pending = false;
                 }
 
                 continue;
@@ -1122,7 +1149,10 @@ function wp_connectors_name_references_from_tokens(array $tokens)
          * `namespace\` prefix is re-attached to the report so the
          * detector's resolution sees the operator it must resolve.
          */
-        $is_absolute_run = '\\' === ($run['name'][0] ?? '');
+        $is_absolute_run = '\\' === ($run['name'][0] ?? '') || $absolute_member_pending;
+        if ($absolute_member_pending) {
+            $absolute_member_pending = false;
+        }
         $is_relative_run = T_NAME_RELATIVE === $id || $relative_member_pending;
         if ($relative_member_pending) {
             $display = 'namespace\\' . ltrim($display, '\\');
@@ -1143,8 +1173,13 @@ function wp_connectors_name_references_from_tokens(array $tokens)
          * r10-9 laundering verdict drift (an alias IS a bare
          * identifier — a relative spelling never is one, in any
          * casing or interruption, and reports like its glued twin).
+         * The interrupted-ABSOLUTE arm rides the same clause (OCR
+         * round 28, t31-ocr28-2): its single-segment tail arrives
+         * bare (`as \ WpConnectors`), and only the pending arm
+         * carries the leading separator the glued twin bakes into
+         * its T_NAME_FULLY_QUALIFIED bytes.
          */
-        $is_qualified_run = false !== strpos((string) $run['name'], '\\') || $is_relative_run;
+        $is_qualified_run = false !== strpos((string) $run['name'], '\\') || $is_relative_run || $is_absolute_run;
         $alias_position = false;
         if ($skip_alias) {
             $skip_alias = false;

@@ -6570,6 +6570,82 @@ FIXTURE;
     }
 
     /**
+     * OCR round 28 (t31-ocr28-2): the INTERRUPTED ABSOLUTE — a leading
+     * separator standing apart from its name (`\ Deicod\…`, trivia
+     * between) lexes as a standalone T_NS_SEPARATOR the walk's non-name
+     * branch consumed, and the qualified name rode on as relative: the
+     * group prefix composed it (`Psr\Log\Deicod\…`, the r10-9
+     * laundering verdict) and the fully-qualified spelling escaped the
+     * detector — driven red at HEAD at ZERO references while the glued
+     * twin reported. A standalone separator the run assembly did not
+     * swallow arms the ABSOLUTE expectation now (the interrupted-
+     * relative sibling's own pending-arm pattern, t31-ocr11-21), and
+     * the following name is judged fully-qualified regardless of the
+     * intervening trivia — exactly like its glued T_NAME_FULLY_QUALIFIED
+     * twin at every verdict: no composition, the empty-body fence, the
+     * alias slot's qualified report.
+     */
+    public function testAnInterruptedAbsoluteNameIsJudgedFullyQualifiedLikeItsGluedTwin(): void
+    {
+        /*
+         * THE REPRO (red at HEAD: zero references — the member composed
+         * with the non-family prefix): every interruption spelling of a
+         * fully-qualified group member reports un-composed, exactly the
+         * verdict its glued twin (the r10-9 doctrine) already gets.
+         */
+        $spellings = array(
+            'space after the separator' => 'use Psr\\Log\\{ \\ Deicod\\WpConnectors\\Shared\\Clock};',
+            'comment after the separator' => 'use Psr\\Log\\{ \\/* x */Deicod\\WpConnectors\\Shared\\Clock};',
+            'newline after the separator' => "use Psr\\Log\\{ \\\nDeicod\\WpConnectors\\Shared\\Clock};",
+            'plain use, interrupted absolute' => 'use \\ Deicod\\WpConnectors\\Shared\\Clock;',
+        );
+        foreach ($spellings as $label => $statement) {
+            $found = wp_connectors_shared_family_references("<?php\nnamespace Deicod;\n{$statement}\ninterface InterruptedAbsoluteFixture\n{\n}\n");
+            $this->assertSame(array( array( 'Deicod\\WpConnectors\\Shared\\Clock', 'use' ) ), array_map(static function (array $reference): array {
+                return array( $reference['name'], $reference['kind'] );
+            }, $found), "The interrupted absolute reports un-composed, judged fully-qualified like its glued twin ({$label}; red at HEAD: zero references, the member composed with the prefix).");
+        }
+
+        /*
+         * The fence rides the arm too (the ocr11-4 twin parity): a body
+         * of only interrupted-absolute members composes nothing, so the
+         * family-spelled prefix reports itself — the glued absolute-only
+         * body's own verdict.
+         */
+        $absolute_only = "<?php\nnamespace Deicod;\nuse Deicod\\WpConnectors\\{ \\ Zai\\Api};\ninterface InterruptedAbsoluteOnlyFixture\n{\n}\n";
+        $found = wp_connectors_shared_family_references($absolute_only);
+        $this->assertContains(array( 'Deicod\\WpConnectors', 'use' ), array_map(static function (array $reference): array {
+            return array( $reference['name'], $reference['kind'] );
+        }, $found), 'A body of only interrupted-absolute members trips the empty-body fence — the prefix reports itself exactly as the glued absolute-only body does.');
+
+        /*
+         * The dangling separators stay silent (the arm's own grammar):
+         * a separator no name follows is judged by nothing — the guard
+         * kills the pending before a name run can consume it, and the
+         * `use Prefix \ {` brace join keeps composing its members (the
+         * separator before the brace is the PREFIX's own, never a
+         * member lead).
+         */
+        $this->assertSame(array(), wp_connectors_shared_family_references("<?php\nnamespace Deicod;\nuse \\ ;\n\$x = 1;\n"), 'A dangling separator no name follows arms nothing the walk reports.');
+        $found = wp_connectors_shared_family_references("<?php\nnamespace Deicod;\nuse Deicod\\WpConnectors \\ {Zai\\Api};\ninterface JoinFixture\n{\n}\n");
+        $this->assertSame(array( array( 'Deicod\\WpConnectors\\Zai\\Api', 'use' ) ), array_map(static function (array $reference): array {
+            return array( $reference['name'], $reference['kind'] );
+        }, $found), 'The interrupted prefix-brace join keeps composing its members — that separator is the prefix\'s own, never a member lead.');
+
+        // End to end through the build's postcondition: the laundered
+        // group member REFUSES the rewrite (red at HEAD: exit 0 — the
+        // member composed past every gate, and the rewriter's own
+        // patterns own no interrupted spelling).
+        $refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Psr\\Log\\{ \\ Deicod\\WpConnectors\\Shared\\Clock};\nclass InterruptedAbsoluteStore\n{\n}\n", 'OpenAiOauth', 'shared/src/InterruptedAbsolute.php'),
+            'An interrupted absolute group member must refuse the rewrite — the leading separator standing apart from its name is still a fully-qualified spelling, never prefix-composable material.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
+        $this->assertStringContainsString('InterruptedAbsolute.php', $refusal->getMessage());
+        $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Clock', $refusal->getMessage(), 'The refusal names the member — un-composed, exactly the glued twin\'s own refusal.');
+    }
+
+    /**
      * OCR round 5 (t31-ocr5-1): the INTERRUPTED relative operator in a
      * CODE position — `$x = namespace \WpConnectors\Shared\Clock;`, the
      * keyword separated from its '\' — is a parse error the engine never
