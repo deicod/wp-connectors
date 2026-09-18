@@ -610,7 +610,11 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
  * t31-ocr26-3): the raw spelling names the caller-named root's
  * PARENT — territory this owner never walks (the probe's own
  * doctrine, extended from the link channel to every tail
- * spelling); '/' and '/.' name the root itself and keep the walk.
+ * spelling); '/' and '/.' name the root itself and keep the walk —
+ * on the STRIPPED spelling (t31-ocr26-4): a 'dir/.' tail once
+ * emptied the children through the iterator and leaked the root
+ * itself to rmdir('dir/.')'s EINVAL, contradicting the ocr24-3
+ * root-reclaim claim this docblock states.
  *
  * @param string $dir Absolute directory path.
  * @return void
@@ -655,15 +659,28 @@ function wp_connectors_inspect_rrmdir($dir)
     if (is_link($probe)) {
         return;
     }
-    if (! is_dir($dir)) {
+    /*
+     * The walk and the reclaim both ride the STRIPPED spelling (OCR
+     * round 26, t31-ocr26-4): the is_dir probe, the realpath root
+     * fence, the iterator, and the final @rmdir once read the
+     * caller's RAW spelling, so a 'dir/.' tail removed the children
+     * through the iterator (which normalizes) and then @rmdir
+     * ('dir/.') failed EINVAL — the root leaked, contradicting the
+     * ocr24-3 root-reclaim claim this owner's own docblock states.
+     * After the parent-walking refusal every surviving tail
+     * spelling ('/', '/.') names the root itself; the stripped
+     * spelling names the same directory without the engine's
+     * rmdir() tail refusal.
+     */
+    if (! is_dir($probe)) {
         return;
     }
-    if ('/' === realpath($dir)) {
+    if ('/' === realpath($probe)) {
         return;
     }
     try {
         $items = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+            new RecursiveDirectoryIterator($probe, FilesystemIterator::SKIP_DOTS),
             RecursiveIteratorIterator::CHILD_FIRST
         );
         foreach ($items as $item) {
@@ -701,10 +718,13 @@ function wp_connectors_inspect_rrmdir($dir)
          * and it RECLAIMS the root whenever it is empty-able — rmdir
          * needs the PARENT's write bit, never the target's read bit,
          * so even a locked EMPTY root goes. The silent verdict is
-         * unchanged (the @ keeps the engine's noise out of it).
+         * unchanged (the @ keeps the engine's noise out of it) — and
+         * the reclaim names the STRIPPED spelling (t31-ocr26-4 above:
+         * the raw 'dir/.' tail answers EINVAL from rmdir(), leaking
+         * the root the walk had just emptied).
          */
     }
-    @rmdir($dir);
+    @rmdir($probe);
 }
 
 if (wp_connectors_cli_entry(__FILE__)) {

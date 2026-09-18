@@ -4780,6 +4780,38 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-26 pin (t31-ocr26-4): a TAIL-SPELLED real-dir removal
+     * root is fully reclaimed. The walk and the final @rmdir read the
+     * caller's RAW spelling while the fences judged the stripped
+     * probe, so 'dir/.' emptied the children through the iterator
+     * (which normalizes) and then @rmdir('dir/.') failed EINVAL — the
+     * root leaked, contradicting the ocr24-3 root-reclaim claim the
+     * owner's own docblock states. Both ride the stripped spelling
+     * now: the tail names the root, and the root goes whole.
+     */
+    public function testTailSpelledRealDirRootsAreFullyReclaimed(): void
+    {
+        $scratch = self::distDir() . '/.inspect-reclaim-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch, 0755, true);
+        try {
+            foreach (array('trailing slash' => '/', 'dot tail' => '/.') as $label => $tail) {
+                $root = $scratch . '/' . str_replace(' ', '-', $label) . '-root';
+                mkdir($root . '/inner', 0755, true);
+                file_put_contents($root . '/inner/x.txt', 'bytes');
+
+                wp_connectors_inspect_rrmdir($root . $tail);
+
+                $this->assertDirectoryDoesNotExist($root, "A '{$tail}'-tailed real-dir root is reclaimed WHOLE ({$label}) — red at HEAD: the children went, the root leaked behind rmdir('…{$tail}') EINVAL.");
+            }
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * OCR-round-24 pin (t31-ocr24-2): the post-extraction php -l walk
      * was the ONE walker left without the glm31-4
      * UnexpectedValueException fence — try had finally only and the
