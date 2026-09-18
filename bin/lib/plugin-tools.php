@@ -1288,11 +1288,21 @@ function wp_connectors_use_statement_names($source)
  * — most dangerously the double-backslash class-string spelling
  * ('Deicod\\WpConnectors\\Shared\\Clock', whose bytes never spell the
  * single-backslash name) — is judged by what PHP computes from it, not by
- * its bytes. Single-quoted literals resolve \' and \\ only; double-quoted
- * (and heredoc) literals resolve the full escape table (octal, hex,
- * \u{...}, and the standard one-character escapes; an unknown escape
- * keeps both bytes). Nowdoc bodies never resolve escapes — pass the
- * raw inner text with the single-quote semantics of "nothing to do".
+ * its bytes. Single-quoted literals resolve \' and \\ only (NOT nothing:
+ * a body carrying a double backslash or an escaped quote computes to
+ * fewer bytes than it spells); double-quoted (and heredoc) literals
+ * resolve the full escape table (octal, hex, \u{...}, and the standard
+ * one-character escapes; an unknown escape keeps both bytes). Nowdoc
+ * bodies resolve NO escapes at all — there is no quote spelling for
+ * that here, so the caller-side contract is to never route a nowdoc
+ * body through this function: use the raw body itself (the heredoc
+ * caller's own shape — unescape('"', $body) for a heredoc, $body
+ * verbatim for a nowdoc). Following the former "single-quote
+ * semantics of nothing to do" advice would resolve \\ → \ and \' → '
+ * over nowdoc bytes PHP keeps verbatim, corrupting exactly the bodies
+ * whose distinguishing feature is that nothing resolves (OCR round 27,
+ * t31-ocr27-6 — the guidance was wrong since round 7 while the only
+ * caller did it right).
  *
  * @param string $quote The literal's quote character ("'" or '"').
  * @param string $inner The literal's inner text (quotes stripped).
