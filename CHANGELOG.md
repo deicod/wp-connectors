@@ -6,6 +6,90 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 33)
+
+Thirty-third OCR-tool round (main 61/61, fully complete — the first
+complete round since the BuildArtifactsTest ceiling issue): 10
+findings, driver accepts all. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10. The
+round's shape: the hard-keyword census hole — soft keywords lex as
+T_STRING, hard keywords lex as their own token ids, a two-token-class
+distinction no fourteen-entry enumeration can own; and the drive-root
+family — the universal-container refusals were POSIX-spelling-only
+and `rrmdir('C:\')` walks the drive root. Fixed as t31-ocr33-1..8 —
+one commit per finding — plus this docs record, the full offline
+check green after every commit. Suite 1686 → 1689 tests, 45867 →
+46192 assertions, 3 skipped unchanged.
+
+- **The reserved-alias census derives the HARD keyword half from the
+  engine (t31-ocr33-1, bug:high)** — the round-32 owner enumerated
+  only the fourteen spellings that lex as plain T_STRING (self/
+  parent, the three literals, the type keywords), while every keyword
+  that lexes as its OWN token id (`array`, `fn`, `list`, `if`,
+  `foreach`, `function`, `class`, `new`, `match`, `readonly`, …)
+  matched the alias grammar's identifier-byte check and shipped
+  parse-error bytes in the zip at exit 0 (driven at HEAD: `use …
+  \Shared\Clock as array;` rewrote the family and re-emitted the
+  alias beside it). A php -l oracle over the whole keyword table
+  refused every own-token keyword in the slot and accepted none, so
+  the hard half is DERIVED AT RUNTIME — the candidate is tokenized
+  in the alias position and anything the lexer does not spell T_STRING
+  there is reserved — the one spelling of the class that cannot drift
+  from the engine; both re-emit seams consult the ONE owner, and a
+  gated oracle leg drives the whole class against `php -l` itself.
+- **The text lens's line counter spells the tokenizer's exact
+  terminator class (t31-ocr33-2, bug:low)** — PCRE `\R` also matches
+  \v, \f, and \x85 while `token_get_all()` counts only \n, \r\n, and
+  a lone \r, so a \v/\f byte in an earlier string literal inflated
+  every line the lens reported after it (red at HEAD: a line-3
+  docblock reported line 5). The counter spells the exact three.
+- **Three behaviorally-dead catalog entries drop from the
+  sensitive-header list (t31-ocr33-3, maintainability:low)** —
+  'authorization' is an exact member of the suffix class and
+  'proxy-authorization'/'x-api-key' end in '-authorization'/
+  '-api-key', so all three rode the class identically (the
+  t31-ocr29-5 subsumption doctrine over the catalog's own entries);
+  the catalog keeps only what the class cannot spell.
+- **The link probe folds BEFORE the tail strips (t31-ocr33-4,
+  bug:medium)** — on a '\' host the tails arrived backslash-spelled
+  ('\..', '\.', trailing '\') while the strips judge '/'-spelled
+  tails only, so they never matched and the anchor walk judged the
+  wrong chain; the ocr32-8 fold landed one operation too late to
+  serve the strips it sits beside. Construction-evident; POSIX rides
+  byte-unchanged.
+- **The universal-container refusals own the drive-root spelling
+  (t31-ocr33-5, bug:medium)** — the root-collapse guards compared '/'
+  against realpath()'s answer alone, dead on a '\' host twice over:
+  rrmdir()'s `$dir_real` was the RAW (never folded) answer, and even
+  folded a drive root answers 'C:/', never '/' — so `rrmdir('C:\')`
+  passed every probe and the walk deleted THE DRIVE ROOT's children
+  (the t31-ocr10-1 shape the guard exists to kill), the copy twin
+  reading the same container as a copyable source or an
+  every-source-containing target. ONE owner (resolvesToUniversalContainer,
+  the comparison folded through posix_comparison_vocabulary) serves
+  rrmdir's refusal, copyTree's source-side refusal, and the mirror
+  clause. Construction-evident; the '/' spellings still refuse.
+- **The removal walk fences its recursion boundary (t31-ocr33-6,
+  bug:low)** — hasChildren() passes on stat alone, so an unreadable
+  SUBDIRECTORY mid-tree still died in the SPL iterator's own
+  UnexpectedValueException (the r30-3 class the lint gate closed,
+  the harness twin; the ocr32-9 gate probes only the source ROOT).
+  The construction rides the try, the abort converts to the
+  harness's refusal with the SPL message riding parenthetically (it
+  names the path), and the per-entry ocr32-7 refusals pass the fence
+  untouched.
+- **The copy battery's scratch cleanup is guarded at every finally
+  (t31-ocr33-7, test:medium)** — PHP REPLACES (never chains) an
+  in-flight exception when finally throws, so an environmental
+  cleanup failure superseded the test's real verdict; one owner
+  (releaseScratch) surfaces the failure on STDERR and lets the
+  verdict ride, the planted-throw leg driving the guard itself
+  (rrmdir over '/' as the deterministic release failure).
+- **Staging hygiene battery-wide (t31-ocr33-8, test:low)** — every
+  stage write is asserted through one owner (the t31-ocr29-10
+  doctrine swept whole-file), so a full disk or unwritable temp
+  answers a staging error, never a misleading downstream verdict.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 32)
 
 Thirty-second OCR-tool round (main 61/62 with 10 findings per the
