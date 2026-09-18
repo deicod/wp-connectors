@@ -6745,6 +6745,59 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-26 pin (t31-ocr26-1): the relative operator in a
+     * TRAIT use position refuses, never rides the family splice. The
+     * class-body `use` is a trait import — its relative spelling is
+     * LEGAL PHP (php -l clean, and it resolves + loads under the
+     * declaration in effect — probed at round time), which made the
+     * legal-versus-refuse instinct exactly wrong here: the rewrite
+     * walk's fence (wp_connectors_use_opens_import()) draws its line
+     * from the FOLLOWER shape, and a name follower opens an import
+     * statement at the top level and a trait clause list inside a
+     * class body — the same bytes in both. $use_open once armed for
+     * the trait spelling, and the splice RETARGETED the trait
+     * reference silently through the family map (driven red at HEAD:
+     * `class C { use namespace\Clock\SystemClock; }` shipped
+     * `use \Deicod\WpConnectors\OpenAiOauth\Shared\Clock\SystemClock;`
+     * — a DIFFERENT trait, exit 0). The trait fence derives from the
+     * brace-kind stack (the t31-ocr7-7 vocabulary the classifier
+     * already rides): a use statement with an 'other' frame below it
+     * stands in a trait position and refuses.
+     */
+    public function testARelativeTraitUseRefusesNeverRetargetsTheTrait(): void
+    {
+        $cases = array(
+            'fused class-body trait use' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass TraitUseFusedFixture\n{\n    use namespace\\Clock\\SystemClock;\n}\n",
+            'trait use leading a comma list' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass TraitUseListFixture\n{\n    use namespace\\Clock\\SystemClock, OtherTrait;\n}\n",
+            'trait use trailing a comma list' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass TraitUseLateFixture\n{\n    use OtherTrait, namespace\\Clock\\SystemClock;\n}\n",
+            'interrupted trait spelling' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass TraitUseInterruptedFixture\n{\n    use namespace \\Clock\\SystemClock;\n}\n",
+        );
+        foreach ($cases as $label => $source) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/TraitUseFixture.php'),
+                "A class-body relative trait use must refuse the rewrite, never retarget the trait ({$label}).", \RuntimeException::class
+            );
+            $this->assertStringContainsString('TRAIT use position', $refusal->getMessage(), "The refusal names the trait position — the rewrite owns import statements only ({$label}).");
+            $this->assertStringContainsString('namespace\\Clock\\SystemClock', $refusal->getMessage(), "The refusal names the spelling ({$label}).");
+        }
+
+        // The fence narrows EXACTLY: the top-level import twin of the
+        // same bytes keeps its rewrite, and the closure twin keeps its
+        // own refusal — the trait carve touched neither verdict.
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace(
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock\\SystemClock;\ninterface ImportTwinFixture\n{\n}\n",
+            'OpenAiOauth',
+            'shared/src/ImportTwinFixture.php'
+        );
+        $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\SystemClock;', $rewritten, 'The top-level twin of the same bytes still rewrites — the trait fence carved the class-body position only.');
+        $closure = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n\$f = function () use (namespace\\Clock) { return 1; };\ninterface ClosureTwinFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/ClosureTwinFixture.php'),
+            'The closure twin keeps its own refusal.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('closure use(...) list', $closure->getMessage());
+    }
+
+    /**
      * OCR-round-16 pin (t31-ocr16-10): the unowned-spelling
      * classifier's brace-kind stack stays balanced through string
      * interpolation. A double-quoted `{$a}` lexes T_CURLY_OPEN plus

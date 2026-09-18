@@ -422,6 +422,10 @@ final class WpConnectorsBuild
      * (`use Other\{namespace\Foo};` — the grammar forbids the
      * fully-qualified member the rewrite would emit, verifier round
      * t31-r11-9, so the rewrite owns no map for such a member either),
+     * a relative in a TRAIT use position (OCR round 26, t31-ocr26-1 —
+     * `class C { use namespace\X; }` is LEGAL PHP naming a trait under
+     * the declaration in effect, and the splice once retargeted it
+     * silently through the family map, changing which trait loads),
      * and — since OCR round 3, t31-ocr3-4 — any relative standing
      * MID-NAME or in the alias slot (`use Foo\ namespace \Bar;`,
      * `use Foo as namespace\Bar;`): the splice once started at the
@@ -484,9 +488,11 @@ final class WpConnectorsBuild
          */
         $splices = array();
         $use_open = false;
+        $use_is_trait = false;
         $closure_use = false;
         $closure_use_depth = 0;
         $group_depth = 0;
+        $context = array();
         $offset = 0;
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[ $i ];
@@ -501,6 +507,28 @@ final class WpConnectorsBuild
                 // (wp_connectors_use_opens_import()).
                 $use_open = wp_connectors_use_opens_import($tokens, $i);
                 $group_depth = 0;
+                /*
+                 * The TRAIT twin of that fence (OCR round 26,
+                 * t31-ocr26-1): the follower shape cannot draw the
+                 * line — a NAME follower opens an import statement at
+                 * the top level and a trait clause list inside a class
+                 * body, the same bytes in both — so the fence derives
+                 * from the brace-kind stack the classifier walk
+                 * already rides (t31-ocr7-7): a use statement with an
+                 * 'other' frame below it stands in a TRAIT position.
+                 * The distinction is not cosmetic: the class-body
+                 * relative spelling is LEGAL PHP (php -l clean; it
+                 * resolves and LOADS under the declaration in
+                 * effect — probed), so $use_open once armed the
+                 * splice for it and the rewrite silently RETARGETED
+                 * the trait reference through the family map
+                 * (driven at HEAD: `class C { use namespace\Clock\
+                 * \SystemClock; }` shipped `use \…\OpenAiOauth\…\Clock
+                 * \SystemClock;`, a DIFFERENT trait), the exact
+                 * territory breach the position fences below exist to
+                 * close — the rewrite owns import statements only.
+                 */
+                $use_is_trait = $use_open && in_array('other', $context, true);
                 /*
                  * A closure's `use (` opens the region this walk must
                  * refuse names inside (OCR round 23, t31-ocr23-7):
@@ -632,6 +660,7 @@ final class WpConnectorsBuild
             }
             if ($use_open && wp_connectors_is_use_statement_boundary($token, $id)) {
                 $use_open = false;
+                $use_is_trait = false;
                 $group_depth = 0;
 
                 continue;
@@ -648,6 +677,20 @@ final class WpConnectorsBuild
                 }
 
                 continue;
+            }
+            if (! $use_open && ('{' === $token || T_CURLY_OPEN === $id || T_DOLLAR_OPEN_CURLY_BRACES === $id)) {
+                // The brace-kind stack (the t31-ocr7-7 vocabulary the
+                // classifier walk rides): interpolation braces push
+                // their own 'other' frame (t31-ocr16-10) so a plain
+                // '}' never pops a frame that was never pushed.
+                $context[] = '{' === $token
+                    ? (self::braceOpensNamespaceBlock($tokens, $i) ? 'namespace' : 'other')
+                    : 'other';
+
+                continue;
+            }
+            if (! $use_open && '}' === $token && $context !== array()) {
+                array_pop($context);
             }
             if (! ($use_open && (T_NAME_RELATIVE === $id || T_NAMESPACE === $id))) {
                 continue;
@@ -743,6 +786,19 @@ final class WpConnectorsBuild
             $offset = $run_end_offset;
             $tail_display = $fused ? (string) substr($run['name'], strlen('namespace\\')) : ltrim($run['name'], '\\');
             $spelling_display = $fused ? $run['name'] : 'namespace\\' . $tail_display;
+
+            /*
+             * The TRAIT-position refusal (OCR round 26, t31-ocr26-1 —
+             * the fence is armed at the `use` keyword above): the
+             * class-body spelling is legal PHP the rewrite does not
+             * own — it names a TRAIT under the declaration in effect,
+             * a reference the family map would silently RETARGET —
+             * so it refuses like every other position the rewriter
+             * does not own, never legalizes through a splice.
+             */
+            if ($use_is_trait) {
+                throw new RuntimeException("build: the relative operator in a TRAIT use position ({$spelling_display}) in {$sourceVersion} is not the rewrite's to rewrite — a class-body `use` imports traits, and its relative spelling is LEGAL PHP naming a trait under the declaration in effect, a reference the rewrite once retargeted silently through the family map (changing which trait loads); the rewrite owns import statements only — write the trait's fully-qualified name");
+            }
 
             /*
              * The group-use PREFIX shape (`use namespace\Foo\{…}`,
