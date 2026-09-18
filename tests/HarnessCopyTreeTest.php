@@ -267,7 +267,7 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testRootAnchoredSpellingsRefuseBeforeIteratingOnPosixHosts(): void
     {
-        if (DIRECTORY_SEPARATOR !== '/') {
+        if (! WpHarness::isPosixHost()) {
             $this->markTestSkipped('The root-anchor spellings ride POSIX root resolution (the t31-ocr11-2 doctrine) — this host\'s platform separator is not the POSIX one, and the legs would judge a different root than the one they pin.');
         }
 
@@ -633,9 +633,11 @@ final class HarnessCopyTreeTest extends TestCase
          * platform separator is not the POSIX one resolves the temp
          * dir through its own vocabulary (TMP/TEMP, not TMPDIR), the
          * putenv would redirect nothing, and the sim's verdicts would
-         * ride an engine that never read the variable.
+         * ride an engine that never read the variable. The constant
+         * rides the ONE owner this round's own census threshold
+         * hoisted (t31-ocr23-6: the third consumer).
          */
-        if (DIRECTORY_SEPARATOR !== '/') {
+        if (! WpHarness::isPosixHost()) {
             $this->markTestSkipped('The redirected-TMPDIR sim premises POSIX temp resolution (a fresh engine honoring the TMPDIR spelling) — this host\'s platform separator is not the POSIX one.');
         }
         if (! WpHarness::canSymlink()) {
@@ -714,6 +716,100 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertFileExists($base . '/real/victim/keep.txt', 'A planted link below the anchor never drags its target into the removal — the victim survives.');
             $this->assertTrue(is_link($base . '/real/planted-link'), 'The planted link stands exactly where it is.');
             $this->assertStringContainsString('symlinked source tree', $child, 'The planted copy refusal still names the LINK class below the anchor.');
+            $this->assertStringContainsString('planted-link', $child);
+        } finally {
+            WpHarness::rrmdir($base);
+        }
+    }
+
+    /**
+     * OCR-round-23 pin (t31-ocr23-6): the probe guards the harness's
+     * OWN TERRITORY — the chains beneath the temp spelling and the
+     * repository root — and every component outside both anchors is
+     * the host's layout. The r19 anchor exempted only the components
+     * of the temp spelling itself, so every other absolute chain kept
+     * the ocr17-2 full-chain walk from '/': a host-layout link ABOVE a
+     * source root outside the temp tree fired the planted-link
+     * verdict on a legal tree — copyTree refused the source, rrmdir
+     * skipped the cleanup (the r19 false-refusal class, one territory
+     * over). The sim rides the redirected-TMPDIR child like its r19
+     * sibling, one level deeper: the child's temp root is a REAL deep
+     * directory, and the source roots are spelled through a link the
+     * parent planted BESIDE it — scratch-rooted, above the source
+     * root, outside BOTH of the child's anchors (not beneath its temp
+     * spelling, not beneath the repository root). Pre-fix both
+     * consumers name the layout link (driven red at HEAD); post-fix
+     * the layout spelling is legal while the PLANTED control beneath
+     * the child's temp root keeps refusing — the ocr17-2 doctrine
+     * holds exactly where it lives.
+     */
+    public function testAHostLayoutLinkAboveAForeignSourceRootProbesLegalWhilePlantedLinksBelowTheTempRootKeepRefusing(): void
+    {
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The redirected-TMPDIR sim premises POSIX temp resolution (a fresh engine honoring the TMPDIR spelling) — this host\'s platform separator is not the POSIX one.');
+        }
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks.');
+        }
+        /*
+         * The exec-capability guard, the pair plus the premise-critical
+         * putenv (the t31-ocr22-4 triple the r19 sibling above rides):
+         * the child's FIRST statement redirects TMPDIR, and the
+         * redirect must land before any temp-dir read warms the
+         * engine's cache.
+         */
+        if (! WpHarness::canSpawnChildren('putenv')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg/putenv in disable_functions — the redirected-TMPDIR sim cannot run (the anchor verdicts ride a child process whose first statement is a putenv).');
+        }
+
+        $base = sys_get_temp_dir() . '/wpct-anchor6-' . uniqid('', true);
+        mkdir($base . '/real/src', 0755, true);
+        file_put_contents($base . '/real/src/f.php', 'layout bytes');
+        mkdir($base . '/real/gone', 0755, true);
+        file_put_contents($base . '/real/gone/x.txt', 'bytes');
+        mkdir($base . '/real/deep', 0755, true);
+        mkdir($base . '/real/victim', 0755, true);
+        file_put_contents($base . '/real/victim/keep.txt', 'survivor');
+        symlink($base . '/real', $base . '/layout-link');
+        symlink($base . '/real/victim', $base . '/real/deep/planted-link');
+
+        try {
+            /*
+             * The child: putenv FIRST (the fresh-engine premise), then
+             * both consumers through the LAYOUT spelling (the copy of
+             * a legal source above the child's temp root, the cleanup
+             * of a tree spelled through the same link — pre-fix: both
+             * name the layout link), then the planted controls BENEATH
+             * the child's temp root (the removal skips, the copy
+             * refuses, the refusal message on STDOUT for the parent's
+             * fragment pins).
+             */
+            $script = 'putenv("TMPDIR=" . ' . var_export($base . '/real/deep', true) . ');'
+                . ' require ' . var_export(realpath(__DIR__ . '/harness/WpHarness.php'), true) . ';'
+                . ' $t = sys_get_temp_dir();'
+                . ' WpHarness::copyTree(' . var_export($base . '/layout-link/src', true) . ', ' . var_export($base . '/copy-dst', true) . ');'
+                . ' WpHarness::rrmdir(' . var_export($base . '/layout-link/gone', true) . ');'
+                . ' WpHarness::rrmdir($t . "/planted-link");'
+                . ' try { WpHarness::copyTree($t . "/planted-link", ' . var_export($base . '/copy-dst-2', true) . '); fwrite(STDERR, "planted copy returned normally"); exit(3); }'
+                . ' catch (RuntimeException $e) { echo $e->getMessage(), "\n"; }';
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+            $child = implode("\n", $output);
+
+            // (a) The child runs clean through the layout spelling
+            // (pre-fix: the copy leg THROWS the link refusal naming
+            // the layout link — driven red at HEAD, the exit carries
+            // it).
+            $this->assertSame(0, $exit, "The child must run clean through the host-layout spelling — it said: {$child}");
+            $this->assertFileExists($base . '/copy-dst/f.php', 'A legal source spelled through a layout link above the temp root still copies — never a false refusal (red at HEAD: the probe named the layout link).');
+            $this->assertDirectoryDoesNotExist($base . '/real/gone', 'Cleanup spelled through the layout link still removes the tree (red at HEAD: the probe fired and rrmdir silently skipped).');
+
+            // (b) Below the child's temp root the doctrine keeps its
+            // full reach: the PLANTED link skipped removal and refused
+            // the copy — the victim survives, the link stands, the
+            // verdict names the link class.
+            $this->assertFileExists($base . '/real/victim/keep.txt', 'A planted link beneath the temp root never drags its target into the removal — the victim survives.');
+            $this->assertTrue(is_link($base . '/real/deep/planted-link'), 'The planted link stands exactly where it is.');
+            $this->assertStringContainsString('symlinked source tree', $child, 'The planted copy refusal still names the LINK class beneath the temp root.');
             $this->assertStringContainsString('planted-link', $child);
         } finally {
             WpHarness::rrmdir($base);

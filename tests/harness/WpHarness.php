@@ -493,9 +493,37 @@ final class WpHarness
      * copyTree ancestor walk rides: the components of the temp
      * spelling are the host's layout, never the planted-link class,
      * and everything strictly BENEATH the anchor keeps the ocr17-2
-     * full-chain reach. A chain not spelled beneath the temp root (a
-     * relative spelling, a foreign absolute) keeps the full-chain
-     * walk — no ceiling silently re-opened.
+     * full-chain reach.
+     *
+     * The anchor is the harness's OWN TERRITORY, generalized (OCR
+     * round 23, t31-ocr23-6 over the r19 rule): the r19 carve-out
+     * exempted only the components of the temp spelling, so every
+     * OTHER absolute chain kept the full walk from '/' — and a
+     * host-layout link ABOVE a source root outside the temp tree (the
+     * repository's own sources on a host whose upper layout resolves
+     * through links — NIS/automount homes, a symlinked checkout root)
+     * fired the planted-link verdict on a legal tree: copyTree
+     * refused the source, rrmdir skipped the cleanup, the r19
+     * false-refusal class one territory over. The probe judges the
+     * territory the harness OWNS now — the deepest anchor of the
+     * passed chain the harness itself vouches for: a component is
+     * probed IFF its chain-so-far sits strictly BENEATH one of the
+     * two anchors, the temp spelling (r19) and the REPOSITORY ROOT
+     * (this round — the tree these helpers live in, whose dist-side
+     * scratch batteries plant links and keep the doctrine's full
+     * reach). The components of either anchor's own spelling, and
+     * every chain outside both, are the host's layout — never the
+     * planted-link class (the ocr17-2 threat was always the
+     * harness's PREDICTABLE names inside its own territories); a
+     * caller spelling a foreign upper chain through a link is
+     * spelling the host's own layout the way the engine hands every
+     * process /var/… through /var, and the entry-level guards below
+     * the root keep their own vocabulary regardless (a linked child
+     * unlinks as itself, never followed). A RELATIVE spelling rides
+     * the same condition — its '.'-led chains never sit beneath an
+     * anchor, so the walk exempts them (the consumers' contracts say
+     * absolute; the relative arm stays the best-effort vocabulary,
+     * and no committed leg pins a relative link chain).
      *
      * @param string $path The path as the caller spelled it.
      * @return string The spelling an is_link() probe can trust.
@@ -507,16 +535,23 @@ final class WpHarness
             $path = self::same_directory_spelling(rtrim(substr($path, 0, -3), '/'));
         }
         $temp = rtrim(sys_get_temp_dir(), '/');
-        $anchored = '' !== $temp && isset($path[0]) && '/' === $path[0] && 0 === strpos($path, $temp . '/');
+        // The second anchor: the repository root, spelled as these
+        // helpers themselves are (every in-repo consumer derives its
+        // non-temp paths from the same spelling).
+        $repo = dirname(__DIR__, 2);
         $carry = '/' === ($path[0] ?? '') ? '' : '.';
         foreach (explode('/', $path) as $segment) {
             if ('' === $segment) {
                 continue;
             }
             $carry .= '/' . $segment;
-            if ($anchored && strlen($carry) <= strlen($temp)) {
-                // A component of the temp spelling itself — the host's
-                // layout (macOS /var), never the planted-link class.
+            $beneath_temp = '' !== $temp && 0 === strpos($carry, $temp . '/');
+            $beneath_repo = 0 === strpos($carry, $repo . '/');
+            if (! $beneath_temp && ! $beneath_repo) {
+                // Outside both anchors — a component of either anchor
+                // spelling's own chain (r19's temp rule, the r23 repo
+                // twin), or at/above/outside the territories entirely:
+                // the host's layout, never the planted-link class.
                 continue;
             }
             if (is_link($carry)) {
@@ -630,6 +665,30 @@ final class WpHarness
         }
 
         return function_exists('exec') && function_exists('escapeshellarg');
+    }
+
+    /**
+     * Whether this host's platform is the POSIX one — the ONE owner of
+     * the platform-separator premise (hoisted at its THIRD consumer,
+     * OCR round 23: t31-ocr22-2 established the repo's first platform
+     * probe inline at the POSIX-root battery, t31-ocr23-5 added the
+     * second at the redirected-TMPDIR sim and censused the decision —
+     * inline while the judgment is a bare constant compare — and
+     * t31-ocr23-6's sim made the third, the recorded hoist threshold).
+     *
+     * Unlike the capability probes this answers the PLATFORM, never a
+     * capability: the consumers premise POSIX-hosted vocabulary (root
+     * resolution per the t31-ocr11-2 doctrine; TMPDIR-driven temp
+     * resolution) — different premises over the same constant, which
+     * is why the owner answers only the boolean and every call site
+     * keeps naming ITS OWN premise in the skip message (the
+     * canSpawnChildren shape: site messages, one owner).
+     *
+     * @return bool True when DIRECTORY_SEPARATOR is the POSIX '/'.
+     */
+    public static function isPosixHost(): bool
+    {
+        return '/' === DIRECTORY_SEPARATOR;
     }
 
     /**
