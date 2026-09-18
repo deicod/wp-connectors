@@ -6,6 +6,91 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 32)
+
+Thirty-second OCR-tool round (main 61/62 with 10 findings per the
+round doc; BuildArtifactsTest OCR-unreachable — context compression
+kills it deterministically even solo at the 200k ceiling, so its test
+legs ride the later claude-glm code-review phase): driver triage
+accepted all — trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10. The round's
+shape: the ALIAS-GRAMMAR FAMILY — the round-31 member grammar
+validated members but not their ALIASES, and the engine-illegal alias
+class leaked through three different re-emit seams in one file; the
+fence lesson in its fifth generation: a grammar close at one seam
+never closes the class at the re-emit seams. Beside it, the
+removal-IO pair (the ocr30-4 two-way escape closed at both removal
+twins) and the collectors' per-name dedup. Fixed as t31-ocr32-1..9 —
+one commit per finding — plus this docs record, the full offline
+check green after every commit. Suite 1683 → 1686 tests, 45838 →
+45867 assertions, 3 skipped unchanged.
+
+- **The alias grammar rejects what the engine rejects, at every seam
+  that re-emits an alias (t31-ocr32-1/2/3, bug:medium ×3 — one census
+  comment, one reserved-vocabulary owner)** — the optional alias
+  capture of the use-statement pattern re-emitted any identifier
+  spelling verbatim, including the fourteen engine-illegal ones
+  (`as self`, `as true`, `as int`, … case-insensitively; php
+  -l-derived) the relative-path alias state already refuses; the
+  group-use member callback re-emitted its extracted identifier
+  unvalidated; and a member whose `as`-tail the identifier grammar
+  could not spell (`{Shared\Clock as Foo\Bar}`) fell through with the
+  whole member flowing into the leaf rewrite, the qualified tail
+  shipped verbatim — plus the rider composition (`use … as X {Y};`,
+  alias and brace-group tail together) the pattern once matched and
+  re-emitted whole. All four channels shipped compile-error bytes in
+  the zip at exit 0 with every gate green (driven at HEAD). One
+  owner (`aliasIdentifierIsEngineIllegal()`, the relative walk's
+  hand-rolled list folded into it) now serves every seam; the member
+  extraction matches any `as`-tail case-insensitively (`AS` is a
+  legal keyword spelling that keeps riding) and judges the tail's
+  shape; the rider composition refuses at the seam.
+- **The inspector removal walk owns its per-entry IO returns
+  (t31-ocr32-4, security:low)** — the per-entry rmdir()/unlink()
+  calls ran unchecked over the extracted hostile tree, every path
+  interpolated into an engine warning archive-controlled — the one
+  diagnostics channel left off the printable seam: a stranded
+  0555/0444 shape or removal race answered with a RAW E_WARNING
+  (under failOnWarning PHPUnit's vocabulary, outside it raw bytes).
+  The failed return answers the named refusal through the printable
+  seam; the callsites own the conversion (the pre-extraction reclaim
+  converts to a violation, the teardown finally degrades silently —
+  its t31-ocr23-2 contract, a rethrow there replacing the artifact
+  verdict in flight).
+- **First-verdict-wins per name at the traversal/near-source
+  collectors (t31-ocr32-5, bug:low)** — the byte-duplicate fence does
+  not `continue`, so every COPY of a hostile name pushed its own
+  identical violation line (driven at HEAD: three copies answered
+  three lines). The collectors are keyed per name; one offense, one
+  line (the t31-ocr27-4 doctrine at this collector).
+- **The unused-import scan's file-naming rides the rtrim parity at
+  all three FAIL sites (t31-ocr32-6, maintainability:low)** — the
+  exact spelling lint-php.php replaced in this same update
+  (t31-ocr14-4); one sweep, construction-evident (both scan roots are
+  trailing-separator-free today).
+- **The harness removal walk owns its IO returns
+  (t31-ocr32-7, bug:medium)** — the exact two-way escape ocr30-4
+  closed for the copy twin, one owner over: WpHarness::rrmdir()'s
+  per-entry calls and its final root rmdir answer the loud policy
+  refusal naming the path, never the engine's raw warning; the tree
+  is reclaimed or refused loudly.
+- **The link-probe anchor comparisons speak one vocabulary
+  (t31-ocr32-8, bug:medium)** — the carry chain is '/'-joined while
+  on a non-POSIX host both anchors answer backslash-spelled, so the
+  prefix compares could never match and the probe answered the HOST,
+  never the path. The path and anchors fold through the one
+  comparison owner (posix_comparison_vocabulary, the ocr29-4 arm)
+  off-POSIX; the POSIX host rides the identity, byte-unchanged; a
+  drive-letter absolute joins the '/'-rooted arm (the ocr28-3
+  predicate).
+- **The copyTree source gate probes readability, not just kind
+  (t31-ocr32-9, bug:low)** — an existing unlistable directory (mode
+  0000, or a missing search bit) passed is_dir() and died in the SPL
+  constructor's vocabulary; the gate probes opendir — the exact
+  capability the iterator's own construction needs — and answers the
+  policy refusal naming the path (driven red at HEAD: the engine's
+  words where the harness refusal belongs).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 31)
 
 Thirty-first OCR-tool round (main 61/62 with 9 findings; BuildArtifactsTest
