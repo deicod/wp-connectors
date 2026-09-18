@@ -228,7 +228,38 @@ final class Url {
 			}
 		}
 
-		if ( isset( $parts['port'] ) && ( $parts['port'] < 1 || $parts['port'] > 65535 ) ) {
+		/*
+		 * The ONE split (OCR round 25, t31-ocr25-1): userinfo ends at
+		 * the LAST '@' — the WHATWG/curl split the raw screen above
+		 * already derives ($host_port) — and the REBUILT authority now
+		 * rides that same derivation, never parse_url()'s host/port
+		 * answers. The two paths could split a multi-'@' authority
+		 * differently on an engine whose parse_url() ends userinfo at
+		 * the FIRST '@' (the finding's premise), and the rebuilt
+		 * authority would then name a host the transport never
+		 * contacts. Probed on this engine (PHP 8.5.10, zend_memrchr):
+		 * parse_url() is itself a last-'@' splitter and the two
+		 * derivations agreed over a 30,000-shape battery with zero
+		 * divergence — but per this file's own t31-ocr1-2 doctrine a
+		 * build-dependent parse_url() answer is never leaned on where
+		 * the code can re-establish the invariant itself: the rebuild
+		 * derives from the raw segment the screens already judged, so
+		 * raw and rebuilt agree BY CONSTRUCTION, whatever the engine.
+		 * An empty derivation (a userinfo-only authority — the
+		 * 'user@@host-less' collapse) refuses with the entry screen's
+		 * own sentence: a host of zero bytes is no host on every build.
+		 */
+		$raw_host = false !== $bracket_end
+			? (string) substr( $host_port, 0, (int) $bracket_end + 1 )
+			: ( false !== $colon ? (string) substr( $host_port, 0, $colon ) : $host_port );
+		if ( '' === $raw_host ) {
+			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
+		}
+		$raw_port_int = null;
+		if ( false !== $colon ) {
+			$raw_port_int = (int) $raw_port;
+		}
+		if ( null !== $raw_port_int && ( $raw_port_int < 1 || $raw_port_int > 65535 ) ) {
 			throw new InvalidArgumentException( 'The URL port is out of range.' );
 		}
 
@@ -236,9 +267,9 @@ final class Url {
 		// folds by the ASCII byte table in every locale, and the rebuilt
 		// authority below re-checks that nothing between the parse and
 		// this fold mangled the bytes.
-		$authority = AsciiFold::lower( (string) $parts['host'] );
-		if ( isset( $parts['port'] ) ) {
-			$authority .= ':' . (int) $parts['port'];
+		$authority = AsciiFold::lower( $raw_host );
+		if ( null !== $raw_port_int ) {
+			$authority .= ':' . $raw_port_int;
 		}
 
 		self::assert_authority_still_valid_utf8( $authority );

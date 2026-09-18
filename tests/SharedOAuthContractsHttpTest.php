@@ -193,6 +193,56 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-25 pin (t31-ocr25-1): a multi-'@' authority splits ONCE,
+     * authority-wide — the LAST '@' is the userinfo boundary (the
+     * WHATWG/curl split), and the raw screen and the rebuilt authority
+     * ride the same derivation. Pre-fix the rebuild rode parse_url()'s
+     * host/port answers while the screens judged the raw last-'@'
+     * segment, so an engine whose parse_url() ends userinfo at the
+     * FIRST '@' would have validated one host and named another — the
+     * redacted authority naming a host the transport never contacts.
+     * Probed on this engine (PHP 8.5.10, zend_memrchr): parse_url() is
+     * itself a last-'@' splitter, so the legs below pin the INVARIANT
+     * (same verdict raw and redacted, the last-'@' host named) rather
+     * than a constructible divergence — the agreement holds by
+     * construction now, never by engine accident (the t31-ocr1-2
+     * doctrine over build-dependent parse_url() answers).
+     */
+    public function testAMultiAtAuthorityNamesTheLastAtHostOnEveryPath(): void
+    {
+        $shapes = array(
+            'userinfo carrying a second @' => array('https://user:pw@evil@host.example/token', 'host.example', 'https://host.example/token'),
+            'a colon inside the last userinfo segment is not a port' => array('https://user@evil:pw@host.example/token', 'host.example', 'https://host.example/token'),
+            'the earlier @-bearing spelling loses to the last @' => array('https://user@h1.example:99@h2.example/token', 'h2.example', 'https://h2.example/token'),
+            'a port rides the last @ host only' => array('https://a@b@host.example:8443/token', 'host.example:8443', 'https://host.example:8443/token'),
+            'the host itself after one userinfo @' => array('https://host.example@evil.example/token', 'evil.example', 'https://evil.example/token'),
+            'an empty userinfo is still a userinfo boundary' => array('https://@host.example/token', 'host.example', 'https://host.example/token'),
+        );
+
+        foreach ($shapes as $label => $spec) {
+            list($url, $authority, $redacted) = $spec;
+            $this->assertSame($authority, Url::parse_validated($url)['authority'], "The rebuilt authority names the LAST-'@' host — the ONE split ({$label}).");
+            $request = new HttpRequest('GET', $url);
+            $this->assertSame($redacted, $request->redacted_url(), "The redacted form and the raw parse answer one verdict — the authority never names a host the transport does not contact ({$label}).");
+        }
+
+        // A malformed port still refuses through the SAME split: the
+        // ':99' of the losing userinfo spelling never reaches the digit
+        // screen, but the last-'@' host's own malformed tail does.
+        foreach (array(
+            'a malformed port on the last @ host' => 'https://user@h1.example@h2.example:443x/token',
+            'a malformed port behind a multi-@ userinfo' => 'https://u@v@w@host.example:8a/',
+        ) as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A malformed port behind a multi-@ userinfo (%s) must be rejected through the one split.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('port must be digits', $e->getMessage());
+            }
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r11-3, generalized by t31-r11-11): the
      * port screen's colon search starts AFTER the last ']', so anything
      * GLUED to the closing bracket never met the digit check:
