@@ -6,6 +6,82 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 24)
+
+Twenty-fourth OCR-tool round (62/62, complete): 4 findings, driver
+triage accepted all — trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4. The round's shape: shared/src
+speaks again after nine rounds of silence — the SecretMask class
+rule's own implication was the leak ('token', 'secret',
+'authorization' are credential suffixes in the rule's own sense, and
+every vendor spelling riding them rendered verbatim) — and the
+walker-fence census completes: every walker in the change set now
+fenced, the scanner-internal one ledgered as residual. Fixed as
+t31-ocr24-1..4 — one commit per finding — plus the two-lens verifier
+pass's one follow-up close and this docs record, the full offline
+check green after every commit. The verifier pass (two driven
+agents, three findings, all confirmed): the close below and two
+narration corrections ledgered. Suite 1663 → 1665 tests, 45569 →
+45603 assertions, 2 skipped unchanged.
+
+- **The suffix class owns the credential suffixes its own rule
+  statement implies (t31-ocr24-1, security:medium — the first
+  shared/src finding since round 14)** — 'X-Amz-Security-Token'
+  (AWS STS), 'X-Shopify-Access-Token', 'X-Client-Secret'/
+  'X-Shared-Secret', and 'X-Authorization' rendered their full
+  secrets verbatim through every safe debug channel while the
+  catalog's exact 'authorization' spelling sat covered: the
+  r12-4/ocr15-1 leak class under the class rule's own implied
+  vocabulary. 'token', 'secret', 'authorization' join the suffix
+  list; over-masking a non-credential '-token' header in debug
+  output errs safe, and the hyphen boundary is unaffected
+  ('x-api-keychain' stays outside).
+- **The post-extraction syntax walk rides the glm31-4 fence, and the
+  round's walker census completes one seam over the finding's own
+  count (t31-ocr24-2, bug:medium)** — a directory the process cannot
+  open inside the extracted tree escaped as an uncaught SPL
+  exception: inspector dead at exit 255, no verdict recorded. The
+  construction rides the try (the ocr23 rd-1 doctrine), the refusal
+  converts to a named violation mirroring the self-containment
+  walker's shape, and it RETURNS — the artifact is judged whole or
+  not at all (the r12-1 doctrine at the walk seam; the secret scan
+  never judges a partially readable tree). The census correction the
+  driver's own repro forced: the shared self-containment scan's
+  glm31-4 fence wrapped only its foreach, never the iterator
+  construction — an unopenable scan root threw through the shared
+  owner's own fence BEFORE the php -l walk ever ran (driven) — the
+  construction rides its try now. The secret-scanner's own walk
+  stays this round's ledgered residual; inside the inspector the
+  syntax walk's early return keeps it one seam behind for every
+  refusal shape. Engine premise probed: this host's extractTo does
+  not land unix modes from external attributes, so the regression
+  constructs the class through the landing environment (umask 0444
+  lands every extraction directory at 0333 — creation and writes
+  succeed, opendir refuses).
+- **The inspector's removal twin reclaims the ROOT on its refusal
+  path (t31-ocr24-3, bug:low)** — the catch returned before the
+  rmdir, leaking the unique random-suffixed extraction root beside
+  the unopened subtree, one temp tree per refusal with no sweeper
+  anywhere (build's twin has the stage sweep; nothing ever revisits
+  this owner's random names). A best-effort @rmdir falls through
+  now: a no-op when children remain (the unopenable-subtree residue
+  stays by doctrine), and it reclaims the root whenever it is
+  empty-able — rmdir needs the parent's write bit, never the
+  target's read bit. The ocr23-2 silent verdict is unchanged.
+- **The canonical judgment gains the segment boundary every other
+  family predicate carries (t31-ocr24-4 + the verifier's rd-1,
+  bug:low)** — the bare prefix match mislabeled below-vendor
+  siblings ('…\SHAREDly\Clock', the 'SharedStorage' shape) as "a
+  case-variant spelling of the family name … write the family
+  spelling": a dead errand, because complying leaves the sibling,
+  which refuses in every casing. The fold matches the ONE family
+  vocabulary's own ($is_family: exact, or prefix + '\\'), and the
+  verifier's close deleted the vendor branch entirely — every label
+  it could emit was the same dead errand one branch over (driven:
+  the complied spelling refused byte-identically, the hint gone),
+  so the label belongs to the family branch alone, where complying
+  genuinely rewrites.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 23)
 
 Twenty-third OCR-tool round (62/62, complete): 9 findings, driver

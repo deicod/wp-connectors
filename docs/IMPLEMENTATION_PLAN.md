@@ -4258,6 +4258,167 @@ OCR-tool
   2 skipped
   unchanged.
 
+  OCR-tool
+  round
+  t31-ocr24
+  (FIVE
+  commits —
+  the
+  twenty-fourth
+  pass,
+  62/62, 4/4
+  findings
+  accepted;
+  trajectory
+  27→10→11→7→11→33→9→9→4→12→8→7→9→4;
+  the round's
+  shape:
+  shared/src
+  speaks
+  again after
+  nine rounds
+  of silence
+  — the
+  SecretMask
+  class
+  rule's own
+  implication
+  was the
+  leak —
+  and the
+  walker-fence
+  census
+  completes,
+  the
+  scanner-internal
+  walk
+  ledgered as
+  residual):
+  the suffix
+  class owns
+  'token'/'secret'/'authorization'
+  (the vendor
+  spellings
+  riding them
+  rendered
+  verbatim
+  — the
+  first
+  shared/src
+  finding
+  since round
+  14); the
+  php -l walk
+  rides the
+  glm31-4
+  fence —
+  refusal to
+  a named
+  violation,
+  the
+  whole-or-not-at-all
+  early
+  return —
+  and the
+  shared
+  self-containment
+  scan's own
+  CONSTRUCTION
+  rides its
+  try (the
+  census one
+  seam over
+  the
+  finding's
+  count,
+  driven);
+  the removal
+  twin's
+  refusal
+  path
+  reclaims
+  the root
+  (the
+  best-effort
+  @rmdir, the
+  sweeper
+  asymmetry
+  against
+  build's
+  twin); the
+  canonical
+  fold gains
+  the segment
+  boundary
+  and the
+  verifier's
+  rd-1
+  deleted the
+  vendor
+  branch
+  (every
+  label it
+  could emit
+  the same
+  dead errand
+  one branch
+  over,
+  driven).
+  The
+  verifier
+  pass (two
+  lenses,
+  three
+  findings,
+  ALL
+  confirmed):
+  the rd-1
+  close, and
+  two
+  narration
+  corrections
+  ledgered
+  — the
+  ocr24-2
+  message's
+  'conventions
+  gate'
+  consumer
+  (the gate
+  never loads
+  the
+  scanner;
+  the true
+  others are
+  the
+  scan-secrets
+  CLI and the
+  suite) and
+  the ocr24-4
+  message's
+  vendor-branch
+  justification
+  (refuted by
+  the driven
+  round-trip).
+  Suite 1663
+  → 1665
+  tests (+1
+  the suffix
+  test, +1
+  the
+  walk-refusal
+  test),
+  45569 →
+  45603
+  assertions
+  (+20/+5/+1/+4
+  the four,
+  +4 the
+  close), 2
+  skipped
+  unchanged.
+
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
   WordPress auth salts. The key derivation (or the envelope itself) MUST bind the ciphertext to
