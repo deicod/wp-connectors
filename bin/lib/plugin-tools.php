@@ -3369,9 +3369,6 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
     } else {
         $scanRoot = $pluginDir;
     }
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($scanRoot, FilesystemIterator::SKIP_DOTS)
-    );
     /*
      * glm31-4 (round-31 finding 4): a subdirectory the iterator cannot
      * OPEN mid-recursion aborts the walk with an UnexpectedValueException
@@ -3386,8 +3383,22 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
      * channel glm17-10 gave the unreadable FILE — a named violation,
      * never an uncaught fatal exiting 255 — and the partial violations
      * collected before the abort are kept.
+     *
+     * The CONSTRUCTION rides the same try (OCR round 24, t31-ocr24-2's
+     * census completion — the ocr23 rd-1 doctrine applied to this owner
+     * one round later): the iterator is built LAZILY on the scan root,
+     * and a root this process cannot open throws from the constructor
+     * BEFORE the foreach, one seam over the walk the fence below was
+     * shaped for — the shared scan's own fence never fired for that
+     * shape (driven: the inspector died at exit 255 through exactly
+     * this construction while the php -l walk one screen down sat
+     * already fenced). The scan root's is_dir() validation above does
+     * not cover it — is_dir() stats, never opendirs.
      */
     try {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($scanRoot, FilesystemIterator::SKIP_DOTS)
+        );
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
             // The extension judgment rides the ONE case-insensitive owner

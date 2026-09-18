@@ -4643,6 +4643,93 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-24 pin (t31-ocr24-2): the post-extraction php -l walk
+     * was the ONE walker left without the glm31-4
+     * UnexpectedValueException fence — try had finally only and the
+     * CLI call site caught nothing, so a directory the process cannot
+     * OPEN inside the extracted tree escaped as an uncaught SPL
+     * exception: the inspector died at exit 255, recorded NO verdict,
+     * and the artifact escaped judgment. The walk (construction
+     * included — the ocr23 rd-1 seam) converts the refusal into a
+     * named violation and RETURNS whole-or-not-at-all, so the verdict
+     * channel survives end-to-end.
+     *
+     * ENGINE PREMISE, probed this round: this host's extractTo() does
+     * NOT land unix modes from the archive's external attributes
+     * (PHP 8.5.10/libzip — both API-authored and attribute-indexed
+     * entries land umask-derived modes; the long-standing php-src
+     * behavior), so the finding's zip-carried-mode producer is not
+     * constructible here. The leg constructs the CLASS through the
+     * landing environment instead: umask 0444 lands every directory
+     * the extraction creates at 0333 (owner -wx) — entry creation and
+     * file writes succeed, the opendir every walker needs does not.
+     * Re-open rule: an engine whose extractTo lands modes re-derives
+     * the threat from the archive itself; the fence shape is the
+     * same either way.
+     *
+     * The driven red escaped at the round's HEAD through the FIRST
+     * unfenced construction — the shared self-containment scan's own
+     * (its glm31-4 fence wrapped the foreach, never the iterator
+     * construction): this commit completes that census too, and the
+     * pin holds both named violations in one verdict list. The
+     * secret-scanner's own walk stays this round's LEDGERED residual
+     * (unfenced for its other consumers); inside the inspector the
+     * syntax walk's early return keeps it one seam behind for every
+     * refusal shape.
+     */
+    public function testThePostExtractionSyntaxWalkAnswersAVerdictOverAnUnopenableTree(): void
+    {
+        $scratch = self::distDir() . '/.inspect-walkrefusal-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch, 0755, true);
+        $zipPath = $scratch . '/walk-refusal.zip';
+        $zip = new ZipArchive();
+        $this->assertTrue(
+            true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
+            sprintf(
+                '%s cannot be opened for zip writing (ZipArchive::open returned %s — a truthy ER_* int must not pass this gate, t31-ocr13-5).',
+                $zipPath,
+                var_export($opened, true)
+            )
+        );
+        $zip->addFromString('ocr24-slug/main.php', "<?php\n/**\n * Plugin Name: Walk Refusal\n */\necho 1;\n");
+        $zip->close();
+
+        $old = umask(0444);
+        try {
+            /*
+             * Red at HEAD: the call THROWS the iterator's
+             * UnexpectedValueException (exit 255's in-process shape —
+             * no verdict recorded). The pin holds the verdict channel:
+             * the function RETURNS, and the refusal is a named
+             * violation beside the self-containment scan's own.
+             */
+            $violations = wp_connectors_inspect_artifact($zipPath, $scratch . '/work');
+
+            $rendered = implode("\n", $violations);
+            $this->assertStringContainsString('cannot walk ocr24-slug for the post-extraction syntax check', $rendered, 'The walk refusal answers in the verdict vocabulary, never a stack trace.');
+            $this->assertStringContainsString('judged whole or not at all', $rendered, 'The refusal owns the whole-or-not-at-all doctrine — the secret scan never judges a partially readable tree.');
+            $this->assertStringContainsString('unreadable subdirectory — the self-containment scan aborted', $rendered, 'The shared scan\'s own construction refusal answers named too — the round\'s census completion at the ocr23 rd-1 seam.');
+            $this->assertNotSame(array(), $violations, 'The unopenable tree REJECTS — an artifact that cannot be read whole never passes judgment.');
+        } finally {
+            umask($old);
+            /*
+             * The teardown twin degrades silently over the 0333 tree
+             * (the ocr23-2 contract), so the residue is this test's
+             * to reclaim: open the landed roots back up, then remove.
+             */
+            foreach (glob($scratch . '/work-*') ?: array() as $leak) {
+                chmod($leak, 0755);
+                @chmod($leak . '/ocr24-slug', 0755);
+                WpHarness::rrmdir($leak);
+            }
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r11-2): an INVISIBLE /proc entry is not a
      * death verdict. Under hidepid=2 another user's live build is
      * invisible in /proc while it runs, and the old liveness shortcut —

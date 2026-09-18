@@ -491,29 +491,61 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 
         // Every PHP file must pass a syntax check after independent extraction.
         $php = escapeshellarg(PHP_BINARY);
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($pluginDir, FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($iterator as $file) {
-            /** @var SplFileInfo $file */
-            // The extension judgment rides the ONE case-insensitive owner
-            // (verifier note on t31-r4-9): a '.PHP'-spelled entry ships in
-            // the zip and must pass the post-extraction syntax check like
-            // any other source — the exact-case check let a parse-broken
-            // .PHP file through inspection clean.
-            if (! wp_connectors_is_php_source($file->getPathname())) {
-                continue;
+        /*
+         * The walk rides the glm31-4 fence every sibling walker in this
+         * change set already carries (OCR round 24, t31-ocr24-2): a
+         * directory entry this process cannot OPEN — a
+         * permission-bearing entry a hostile zip lands, an environment
+         * whose landing tree refuses the opendir — aborts the bare walk
+         * with the iterator's own UnexpectedValueException, and the
+         * CLI call site catches nothing: the inspector died at exit
+         * 255 with NO verdict, and the artifact escaped judgment. The
+         * CONSTRUCTION rides the same try (the ocr23 rd-1 doctrine:
+         * the fence owns the iteration seam's own first statement).
+         * The refusal converts to the verdict vocabulary — mirroring
+         * the self-containment walker's shape — and RETURNS: the
+         * artifact is judged whole or not at all (the r12-1 doctrine
+         * at the walk seam — the secret scan below never judges a
+         * partially readable tree), and the early return is what
+         * keeps the verdict channel whole end-to-end, because the
+         * scan's own walk inside secret-scanner.php is this round's
+         * LEDGERED residual (unfenced there; fenced here, one seam
+         * ahead of it for every refusal shape). The partial php -l
+         * results collected before a mid-walk refusal are kept.
+         */
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($pluginDir, FilesystemIterator::SKIP_DOTS)
+            );
+            foreach ($iterator as $file) {
+                /** @var SplFileInfo $file */
+                // The extension judgment rides the ONE case-insensitive owner
+                // (verifier note on t31-r4-9): a '.PHP'-spelled entry ships in
+                // the zip and must pass the post-extraction syntax check like
+                // any other source — the exact-case check let a parse-broken
+                // .PHP file through inspection clean.
+                if (! wp_connectors_is_php_source($file->getPathname())) {
+                    continue;
+                }
+                $output = array();
+                $exit = 0;
+                exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($file->getPathname())), $output, $exit);
+                if ($exit !== 0) {
+                    // Both interpolations carry the LANDED entry bytes (a
+                    // newline is a legal filename character here, and the
+                    // engine's own diagnostic echoes the same path) — both
+                    // ride the seam (see the dev-entry site).
+                    $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $file->getPathname())), wp_connectors_printable(implode(' ', $output)));
+                }
             }
-            $output = array();
-            $exit = 0;
-            exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($file->getPathname())), $output, $exit);
-            if ($exit !== 0) {
-                // Both interpolations carry the LANDED entry bytes (a
-                // newline is a legal filename character here, and the
-                // engine's own diagnostic echoes the same path) — both
-                // ride the seam (see the dev-entry site).
-                $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $file->getPathname())), wp_connectors_printable(implode(' ', $output)));
-            }
+        } catch (UnexpectedValueException $walk_refusal) {
+            $violations[] = sprintf(
+                'inspect: cannot walk %s for the post-extraction syntax check — %s; the artifact is judged whole or not at all, never over a partially readable tree.',
+                $slug,
+                wp_connectors_printable((string) $walk_refusal->getMessage())
+            );
+
+            return $violations;
         }
 
         /*
