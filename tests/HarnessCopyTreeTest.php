@@ -996,15 +996,15 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         /*
-             * The harness path is asserted resolved BEFORE the embed
-             * (t31-ocr25 rd-1, the ocr25-8 class census): a realpath()
-             * false once embedded `require false;` into the child —
-             * the fatal then read as the harness's own defect, an
-             * environment problem wearing the pin's subject.
-             */
-            $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
-            $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the harness defect the child would fatal as.');
-            
+         * The harness path is asserted resolved BEFORE the embed
+         * (t31-ocr25 rd-1, the ocr25-8 class census): a realpath()
+         * false once embedded `require false;` into the child —
+         * the fatal then read as the harness's own defect, an
+         * environment problem wearing the pin's subject.
+         */
+        $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
+        $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the harness defect the child would fatal as.');
+
         $script = 'require ' . var_export($harnessPath, true) . ';'
             . ' try { WpHarness::refusalOf(static function (): void {}, "the no-throw verdict message", RuntimeException::class); fwrite(STDERR, "verdict returned normally"); exit(3); }'
             . ' catch (\Throwable $verdict) { echo get_class($verdict), "\n", $verdict->getMessage(), "\n"; }';
