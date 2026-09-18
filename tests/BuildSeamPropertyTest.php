@@ -193,7 +193,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * reads through mode 0000, t31-ocr4-1 — the row skips itself on a
      * root runner instead of failing as a false silent third).
      *
-     * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool}>
+     * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool}>
      */
     private function states(): array
     {
@@ -238,6 +238,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 },
                 'fragment' => 'cannot be read',
                 'skip_on_root' => true,
+                'needs_posix' => true,
             ),
             'shared-source-whitespace-only' => array(
                 // t31-r5-2's empty half: rewriteSharedNamespace('') returns
@@ -260,6 +261,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 },
                 'fragment' => 'cannot copy',
                 'skip_on_root' => true,
+                'needs_posix' => true,
             ),
             'shared-tree-empty' => array(
                 // t31-r5-4: is_dir() passed while the tree carried no PHP
@@ -347,6 +349,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     file_put_contents($scratch['shared'] . '/ClockMath.php ', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
                 },
                 'fragment' => 'NEAR-SOURCE',
+                'needs_posix' => true,
             ),
             'shared-source-near-source-spelling-newline-tail' => array(
                 // t31-r6-2: r5-14's tail charlist (" \t.") missed
@@ -359,6 +362,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     file_put_contents($scratch['shared'] . "/ClockMath.php\n", "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
                 },
                 'fragment' => 'NEAR-SOURCE',
+                'needs_posix' => true,
             ),
             'shared-source-near-source-spelling-control-tail' => array(
                 // t31-r6-4: r6-2's own literal still missed the C0
@@ -369,6 +373,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     file_put_contents($scratch['shared'] . "/ClockMath.php\x01", "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
                 },
                 'fragment' => 'NEAR-SOURCE',
+                'needs_posix' => true,
             ),
             'shared-source-near-source-spelling-leading-space' => array(
                 // t31-r6-4: the LEADING side was unfenced — ' ClockMath.php'
@@ -467,6 +472,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 },
                 'fragment' => 'cannot read the checksum manifest',
                 'skip_on_root' => true,
+                'needs_posix' => true,
             ),
             'zip-staging-path-blocked' => array(
                 // t31-r5-S: leftover junk at the (PID-unique) staging
@@ -484,7 +490,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * Runs one state and classifies the observation against the invariant.
      *
      * @param string                                                $state_id Row label (diagnostics).
-     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool} $state The row (skip_on_root and needs_symlink — the t31-ocr4-1/t31-ocr10-14 row-level skip flags the head of this method consults).
+     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool} $state The row (skip_on_root, needs_symlink, and needs_posix — the t31-ocr4-1/t31-ocr10-14/t31-ocr34-5 row-level skip flags the head of this method consults).
      * @return array{class: string, why: string} 'PASS', 'FAIL', or 'SKIP' with the reason (SKIP: the row-level root-runner and symlink-capability legs).
      */
     private function runState(string $state_id, array $state): array
@@ -494,6 +500,23 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         // 0000 — the row skips itself, never the battery.
         if (! empty($state['skip_on_root']) && self::runningAsRootRunner()) {
             return array('class' => 'SKIP', 'why' => 'chmod-0000 does not block reads for uid 0 — the permission-bit refusal cannot fire in a root container (t31-ocr4-1).');
+        }
+        /*
+         * Row-level platform skip (OCR round 34, t31-ocr34-5, the
+         * skip_on_root pattern): the chmod-0000 rows and the
+         * trailing-edge-junk rows premise the POSIX platform. On a
+         * Win32 host chmod(0000) sets the READ-ONLY attribute only —
+         * reads succeed, and the row fails as a phantom "run
+         * succeeded where it must refuse" — and the Win32 namespace
+         * strips trailing dots/spaces while rejecting control bytes,
+         * so the staged near-source lands a DIFFERENT valid file (or
+         * none) and the row reds phantom the same way. The row skips
+         * itself with a named why, never the battery (the
+         * WpHarness::isPosixHost() idiom — the ONE platform owner,
+         * the t31-ocr23-6 hoist).
+         */
+        if (! empty($state['needs_posix']) && ! WpHarness::isPosixHost()) {
+            return array('class' => 'SKIP', 'why' => 'this row premises the POSIX platform — its permission-bit or filename-byte shape is not constructible on a Win32 host (chmod 0000 reads through the read-only attribute; trailing edge junk strips or rejects), and the row would fail as a phantom build defect (t31-ocr34-5).');
         }
         // Row-level symlink-capability skip (t31-ocr10-14, the
         // skip_on_root pattern): a link-bearing row cannot be applied
@@ -889,6 +912,20 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             // destination underneath it: a teardown race. The skip now
             // precedes the open; no handle exists at skip time.
             $this->skipChmod0000LegOnRootRunner('the forced-close chmod-0000 leg of the staging-path pin');
+            /*
+             * The platform gate rides the same premise (OCR round 34,
+             * t31-ocr34-5, the needs_posix row flag's inline twin —
+             * the t31-ocr12-4 placement beside the root skip it
+             * joins): on a Win32 host chmod(0000) sets the read-only
+             * attribute only, libzip still READS the staged source,
+             * close() succeeds, and the assertNotNull below reds as a
+             * phantom finalization defect through no defect of the
+             * seam. Hoisted above the archive's creation, the root
+             * skip's own doctrine — no handle exists at skip time.
+             */
+            if (! WpHarness::isPosixHost()) {
+                $this->markTestSkipped('The forced-close leg premises POSIX permission bits — on a Win32 host chmod(0000) sets the read-only attribute only, libzip still reads the staged source, and the finalization refusal this leg pins never fires (t31-ocr34-5).');
+            }
             $closeTemp = $scratch['dist'] . '/.close-probe.zip';
             file_put_contents($staged, "<?php\n// staged\n");
             $zip = new ZipArchive();
