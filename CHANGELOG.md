@@ -6,6 +6,117 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 28)
+
+Twenty-eighth OCR-tool round (62/62 complete): 9 findings, driver triage
+accepted all — trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9. The round's shape: the
+TWIN PROBLEM AGAIN — the heredoc lens missed the EOF flush its
+name-walk sibling got one round earlier (census lesson: a fix applies
+to the CLASS, and the sibling lens of the same detector IS the class),
+plus the trivia-separated leading separator (the interrupted-absolute
+spelling — token-stream shapes, not byte shapes, are the frontier
+now), and one finding's ENGINE PREMISE driven and refuted in flight
+(the surrogate \u{} refusal the Unicode-escape RFC spelled no longer
+holds on the driven engine). Fixed as t31-ocr28-1..8 — one commit per
+finding, the two same-class copyTree test-fence sites sharing one
+commit — plus this docs record, the full offline check green after
+every commit. Suite 1673 → 1676 tests, 45732 → 45764 assertions,
+3 skipped unchanged.
+
+- **The heredoc text lens flushes at EOF, the last boundary
+  (t31-ocr28-1, bug:high)** — the flush lived inline under
+  T_END_HEREDOC alone, so a source truncated inside a heredoc (no
+  closing label ever tokenized) met no flush and every finding the
+  body carried dropped without its report — the SAME totality gap the
+  name walk's group-prefix EOF flush closed one round earlier,
+  missed in the sibling lens of the same detector. The flush rides
+  its ONE closure now (the lens half) while the loop keeps the state
+  half; the label boundary and EOF call the same judgments and can
+  never drift apart. Driven red at HEAD: zero references where the
+  terminated twin reports two, the build shipping the bytes at exit 0.
+- **An interrupted absolute name keeps its leading separator's
+  verdict (t31-ocr28-2, bug:high)** — a leading separator standing
+  APART from its name (`\ Deicod\…`, trivia between) lexes as a
+  standalone T_NS_SEPARATOR the walk consumed, and the qualified name
+  rode on as relative: the group prefix composed it into a name no
+  family predicate matches — the r10-9 laundering verdict, driven red
+  at HEAD at zero references while the glued twin reported, the build
+  shipping at exit 0. A standalone separator the run assembly did not
+  swallow ARMS the absolute expectation (the interrupted-relative
+  sibling's own pending-arm pattern): the following name is judged
+  fully-qualified regardless of the intervening trivia, at every
+  verdict — composition, the empty-body fence, the alias slot.
+- **The copyTree resolution machinery gates its POSIX premise at the
+  owner (t31-ocr28-3, bug:medium)** — the cwd-prepend arm treated any
+  target not starting with '/' as relative, so on a non-POSIX host a
+  Windows absolute target ('C:\Temp\dst', a UNC root) was
+  cwd-prepended and the collapse joined realpath() backslash output
+  into garbage. The arm consults the harness's ONE platform owner
+  (isPosixHost()) and a drive-letter/UNC root-shape check: those
+  spellings answer a named refusal, never a cwd-prepend over an
+  absolute spelling. The POSIX-side exactness is driven (the
+  drive-letter spelling lands as a legal relative target, no false
+  refusal); the non-POSIX refusal is construction-evident — no sim
+  flips a platform constant.
+- **The surrogate \u{} premise driven and refuted; the engine oracle
+  pins the class (t31-ocr28-4, bug:low)** — the finding claimed the
+  engine refuses surrogate codepoints at compile time; the DRIVEN
+  engine (8.5.10, php -l and runtime, byte-hexed) compiles
+  '\u{D800}' clean and computes ED A0 80 — the RFC-era refusal was
+  lifted upstream, and only over-range and non-hex spellings still
+  refuse. Making the class literal would have invented a refusal the
+  running engine does not give (the ocr23-4 defect class inverted).
+  The production behavior stands and the pin drives the ENGINE
+  ITSELF as the oracle over every range boundary — the day an engine
+  generation refuses the class again, the pin fails loudly naming
+  the drift.
+- **The text lens's line derivation answers a PCRE abort, never a
+  silent line 1 (t31-ocr28-5, bug:low)** — $line_of ignored
+  preg_match_all()'s false return, and the abort rode the arithmetic
+  as false + 1 = 1: a line-count abort at any depth answered line 1,
+  misattributing every text finding's quoted position. The false
+  return answers the abort guard now (line 0, the named unknowable
+  for a 1-based field), the sibling shape the lens's own pcre-abort
+  row carries; construction-evident — a \R count cannot be driven to
+  abort.
+- **The URL authority refuses the backslash: the derived adjudication
+  (t31-ocr28-6, security:low)** — DERIVED FIRST. On the PHP side the
+  byte is internally harmless (parse_url and the rebuilt authority
+  agree, the transport rides the same engine semantics), but the one
+  browser-facing channel this VO feeds — the device-flow verification
+  URI, passed through raw to the authorization redirect — is
+  re-parsed by WHATWG, where '\' terminates the authority:
+  'https://evil.example\@idp.example/' sends the browser to
+  evil.example while this parse and every redacted form name
+  idp.example. The screen rides the derived authority segment
+  (userinfo included, the forging spelling's hiding place); RFC
+  3986's authority grammar carries no backslash anywhere, so the
+  refusal rejects nothing legal, and the round-1 space/tab
+  adjudication stands beside it (those bytes forge nothing, pinned
+  still-legal).
+- **The manifest-unreadable row's finally restores the third chmod'd
+  path (t31-ocr28-7, test:low)** — the row's apply() leaves
+  dist/checksums.txt at mode 0000 and the finally restored only the
+  other two chmod'd paths, so on a host whose unlink cannot remove a
+  0000 file the wpct-battery-* tree leaked per run. The census drove
+  the owner choice: the restore lives at the row that broke it (the
+  ocr27-9 doctrine), not in rrmdir — the removal owner serves every
+  caller and a chmod-before-unlink fallback there would widen the
+  removal contract for a residue exactly one row plants.
+- **The ungated copyTree legs ride the platform probe; the
+  root-source leg pins its DISTINCTIVE vocabulary (t31-ocr28-8,
+  test:low ×2, one commit)** — four legs asserted through
+  POSIX-shaped machinery with no isPosixHost() gate (the nested
+  same-name leg, the trailing-slash leg, the precondition control
+  legs, the relative-target leg — the cwd-prepend arm's own premise);
+  each gates visibly now, its skip naming its own premise. And the
+  bare-'/' source-root leg rode a vacuous assertion — every copyTree
+  refusal message starts with 'WpHarness::copyTree() refuses', a
+  string that CONTAINS '/', so the contains-'/' check could never
+  fail; the leg pins the source-side root-collapse vocabulary
+  instead, a substring only that refusal carries.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 27)
 
 Twenty-seventh OCR-tool round (62/62 complete): 15 findings, driver triage
