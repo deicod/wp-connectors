@@ -653,6 +653,20 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testBothSymlinkShapesRefuseTheCopyLoudly(): void
     {
+        /*
+         * The platform gate (OCR round 30, t31-ocr30-7, the
+         * t31-ocr28-8 doctrine — this file's other filesystem
+         * batteries carry it; this one rode ungated): the legs pin the
+         * '/'-joined landing vocabulary ('$from . '/' through '$to .
+         * '/' . $relative'), and on a host whose platform separator is
+         * not the POSIX one the iterator's pathnames join through the
+         * native separator — they never meet the prefix, and the
+         * nothing-landed pins would judge a seam the legs never named.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The symlink-shape legs ride the POSIX separator join of the landing prefix — this host\'s platform separator is not the POSIX one, and the iterator pathnames would never meet the prefix the legs pin.');
+        }
+
         if (! WpHarness::canSymlink()) {
             $this->markTestSkipped('This host cannot create symlinks.');
         }
