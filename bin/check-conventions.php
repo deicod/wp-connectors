@@ -182,10 +182,21 @@ function wp_connectors_unused_import_violations(string $root): int
              * the unused-import guarantee vacuous for exactly the
              * files something is wrong with (glm17-10). Counted as a
              * violation so the exit code stays non-zero.
+             *
+             * The below-root offset rides the sibling's rtrim spelling
+             * at ALL THREE FAIL sites of this scan (OCR round 32,
+             * t31-ocr32-6 — the t31-ocr14-4 parity lint-php.php
+             * replaced its bare substr(getPathname(), strlen($root)+1)
+             * with in this same update; this scan's three sites are
+             * the sweep): a trailing-separator root once ate one byte
+             * too few, and every FAIL line named its file one
+             * character short — the offset derives from the root
+             * AFTER its separator is stripped, the one spelling both
+             * scanners' diagnostics share.
              */
             fwrite(STDERR, sprintf(
                 "conventions: FAIL %s: unreadable file — the unused-import scan cannot run.\n",
-                substr($file->getPathname(), strlen($root) + 1)
+                substr($file->getPathname(), strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1)
             ));
             ++$violations;
             continue;
@@ -312,7 +323,7 @@ function wp_connectors_unused_import_violations(string $root): int
 
             fwrite(STDERR, sprintf(
                 "conventions: FAIL %s: unused import '%s' — the short name appears nowhere else in the file.\n",
-                substr($file->getPathname(), strlen($root) + 1),
+                substr($file->getPathname(), strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1),
                 $qualified
             ));
             ++$violations;
@@ -359,7 +370,7 @@ function wp_connectors_unused_import_violations(string $root): int
 
                 fwrite(STDERR, sprintf(
                     "conventions: FAIL %s: unused import '%s' (group-use member) — the short name appears nowhere else in the file.\n",
-                    substr($file->getPathname(), strlen($root) + 1),
+                    substr($file->getPathname(), strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1),
                     $member_import['qualified']
                 ));
                 ++$violations;
