@@ -217,19 +217,19 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'trailing backslash before the query' => 'http://host.example\?next=1',
         );
 
-        foreach ( $hostile_urls as $label => $url ) {
+        foreach ($hostile_urls as $label => $url) {
             try {
-                Url::parse_validated( $url );
-                $this->fail( sprintf( 'A backslash-bearing authority (%s) must be refused by the shared URL owner — red at HEAD it constructed, the byte riding the host/userinfo verbatim.', $label ) );
-            } catch ( \InvalidArgumentException $e ) {
-                $this->assertStringContainsString( 'must not carry a backslash', $e->getMessage(), "The refusal names the backslash class ({$label})." );
+                Url::parse_validated($url);
+                $this->fail(sprintf('A backslash-bearing authority (%s) must be refused by the shared URL owner — red at HEAD it constructed, the byte riding the host/userinfo verbatim.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry a backslash', $e->getMessage(), "The refusal names the backslash class ({$label}).");
             }
 
             try {
-                new HttpRequest( 'GET', $url );
-                $this->fail( sprintf( 'A backslash-bearing authority (%s) must be refused by the request VO too — the redacted form would name a host no WHATWG consumer contacts.', $label ) );
-            } catch ( \InvalidArgumentException $e ) {
-                $this->assertStringContainsString( 'must not carry a backslash', $e->getMessage(), "The request VO answers the same refusal ({$label})." );
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A backslash-bearing authority (%s) must be refused by the request VO too — the redacted form would name a host no WHATWG consumer contacts.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry a backslash', $e->getMessage(), "The request VO answers the same refusal ({$label}).");
             }
         }
 
@@ -238,7 +238,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         // forge nothing — no consumer re-splits the authority on them),
         // and the rebuilt authority carries the raw host byte verbatim.
         $tab_url = "http://h\tst.example:8080/token";
-        $this->assertSame( "h\tst.example:8080", Url::parse_validated( $tab_url )['authority'], 'The space/tab adjudication stands — those bytes forge nothing, the backslash did.' );
+        $this->assertSame("h\tst.example:8080", Url::parse_validated($tab_url)['authority'], 'The space/tab adjudication stands — those bytes forge nothing, the backslash did.');
     }
 
     /**
