@@ -807,8 +807,36 @@ function wp_connectors_inspect_rrmdir($dir)
     if (! is_dir($probe)) {
         return;
     }
-    if ('/' === realpath($probe)) {
-        return;
+    /*
+     * The ROOT fence owns BOTH spellings of the universal container
+     * (OCR round 34, t31-ocr34-1 — the owner round 33's sweep missed):
+     * t31-ocr33-5 taught the container CLASS to the harness's one
+     * predicate, but this owner kept comparing '/' against realpath()'s
+     * raw answer — dead twice over on a '\' host, where the answer
+     * over a drive root is 'C:\', never '/': the inspector's rrmdir
+     * over a drive root passed the fence and the walk emptied THE
+     * DRIVE ROOT's children, the exact t31-ocr10-1 shape the fence
+     * exists to kill. The census of the universal-container class —
+     * THREE owners: WpHarness::resolvesToUniversalContainer(), the one
+     * predicate serving rrmdir()'s root refusal, copyTree()'s
+     * source-side refusal, and its mirror clause (t31-ocr33-5), and
+     * this inspector's own fence here; any future root-collapse guard
+     * joins the predicate or spells the whole class itself. The class
+     * spelling at this owner: the answer folded through the separator
+     * vocabulary (identity on POSIX, the ocr29-4 doctrine) and judged
+     * as '/' or a drive-letter root with or without the trailing
+     * separator. The SUPER-ROOT member (realpath('//') preserved as
+     * '//' on SysV-lineage libcs) rides the harness predicate's
+     * derived arm (t31-ocr34-3); this owner's stripped probe never
+     * carries a root-separator spelling that far — its degenerates
+     * answer the empty-probe fence above first.
+     */
+    $root_real = realpath($probe);
+    if (false !== $root_real) {
+        $root_folded = str_replace('\\', '/', $root_real);
+        if ('/' === $root_folded || 1 === preg_match('/\A[A-Za-z]:\/?\z/', $root_folded)) {
+            return;
+        }
     }
     try {
         $items = new RecursiveIteratorIterator(
