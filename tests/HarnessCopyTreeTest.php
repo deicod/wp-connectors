@@ -38,6 +38,20 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testANestedSameNameSegmentCopiesToItsExactTarget(): void
     {
+        /*
+         * The platform gate (OCR round 28, t31-ocr28-8 — the
+         * t31-ocr22-2 split's battery had it; these legs rode
+         * ungated): the leg's whole subject is the '/'-joined prefix
+         * strip (the ocr6-4 positional splice over '$from . '/''), and
+         * on a host whose platform separator is not the POSIX one the
+         * iterator's pathnames join through the native separator —
+         * they never meet the '/'-joined prefix, and the leg would
+         * judge a different seam than the one it pins.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The nested same-name leg rides the POSIX separator join of the prefix strip — this host\'s platform separator is not the POSIX one, and the iterator pathnames would never meet the prefix the leg pins.');
+        }
+
         $holder = sys_get_temp_dir() . '/wpct-copytree-src-' . uniqid('', true);
         $from = $holder . '/example-connector';
         $to = sys_get_temp_dir() . '/wpct-copytree-dst-' . uniqid('', true);
@@ -68,6 +82,19 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testATrailingSlashSourceRefusesInsteadOfSilentlyNesting(): void
     {
+        /*
+         * The platform gate (OCR round 28, t31-ocr28-8): the leg's
+         * premise is that a trailing '/' IS the separator spelling of
+         * the source's last component — POSIX. On a host whose platform
+         * separator is not '/', the trailing slash is a byte the native
+         * spelling never carries, the doubled-prefix relativize refusal
+         * the leg pins never fires for it, and the leg would pass or
+         * fail through a seam it does not name.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The trailing-slash leg premises the POSIX separator — a trailing \'/\' names the source\'s last-component separator only where \'/\' is the platform separator.');
+        }
+
         $from = sys_get_temp_dir() . '/wpct-copytree-slash-' . uniqid('', true);
         $to = sys_get_temp_dir() . '/wpct-copytree-slash-dst-' . uniqid('', true);
         mkdir($from . '/src', 0755, true);
@@ -111,6 +138,21 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testPreconditionAndSelfContainmentShapesRefuseBeforeIterating(): void
     {
+        /*
+         * The platform gate (OCR round 28, t31-ocr28-8): the control
+         * legs' '..'-woven alias spellings and '/'-rooted chains ride
+         * POSIX separator/root resolution (the t31-ocr11-2 doctrine
+         * the root-anchored battery's own legs carry), and the
+         * relativize refusals name the '/'-joined prefix. On a host
+         * whose platform separator is not the POSIX one the shapes
+         * resolve through a different root and the legs would misjudge
+         * through no defect of the contract they pin — the same
+         * premise the t31-ocr22-2 split gated its battery for.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The precondition control legs ride POSIX root and separator resolution (the t31-ocr11-2 doctrine) — this host\'s platform separator is not the POSIX one, and the shapes would judge a different root than the one they pin.');
+        }
+
         $from = sys_get_temp_dir() . '/wpct-copytree-guard-' . uniqid('', true);
         mkdir($from . '/src', 0755, true);
         file_put_contents($from . '/src/file.php', 'original bytes');
@@ -332,7 +374,25 @@ final class HarnessCopyTreeTest extends TestCase
              * refuse before the iterator is even constructed — no
              * byte of the root tree is read, nothing lands.
              */
-            $refuses('/', $from . '/dst-root-src', 'A source collapsed to the filesystem ROOT must refuse — the universal container is not a copyable tree.');
+            /*
+             * The bare '/' leg pins the DISTINCTIVE vocabulary (OCR
+             * round 28, t31-ocr28-8): the generic $refuses closure
+             * asserts the policy prefix plus $f, and with $f === '/'
+             * the second pin rides INSIDE the first (every refusal
+             * message starts 'WpHarness::copyTree() refuses', a string
+             * containing '/') — a check that can never fail, the leg's
+             * own verdict vacuous. The leg asserts the source-side
+             * root-collapse sentence instead, a substring only that
+             * refusal carries; the '/..' twin keeps the closure (its
+             * $f spells the distinctive '/..' the message names).
+             */
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree('/', $from . '/dst-root-src'),
+                'A source collapsed to the filesystem ROOT must refuse — the universal container is not a copyable tree.',
+                RuntimeException::class
+            );
+            $this->assertStringContainsString('refuses a source collapsed to the filesystem ROOT', $caught->getMessage(), 'The leg\'s distinctive pin: the source-side root-collapse vocabulary — the generic policy-prefix check cannot fail, and a contains-\'/\' check rides it vacuously.');
+            $this->assertStringContainsString(': /', $caught->getMessage(), 'The refusal names the caller\'s bare root spelling itself.');
             $refuses('/..', $from . '/dst-root-src', 'A \'/..\'-spelled source resolves to the filesystem ROOT on every POSIX host — the same refusal.');
             $this->assertFileDoesNotExist($from . '/dst-root-src', 'The root-source refusal moved no byte — the target was never created, never populated.');
 
@@ -953,6 +1013,20 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testARelativeTargetIsJudgedAndLandsThroughItsTrueTree(): void
     {
+        /*
+         * The platform gate (OCR round 28, t31-ocr28-8): the whole
+         * battery rides the cwd-prepend arm's premise — "a target not
+         * starting with '/' is relative" is POSIX spelling, the same
+         * premise the production owner now gates (t31-ocr28-3). On a
+         * host whose platform separator is not the POSIX one the arm
+         * would cwd-prepend the host's own absolute spellings into
+         * garbage, and the legs would judge a mangled tree through no
+         * defect of the contract they pin.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The relative-target legs ride the cwd-prepend arm\'s POSIX spelling premise (the t31-ocr28-3 gate\'s own) — this host\'s platform separator is not the POSIX one.');
+        }
+
         $base = sys_get_temp_dir() . '/wpct-copytree-relative-' . uniqid('', true);
         $w = $base . '/w';
         $from = $base . '/src';
