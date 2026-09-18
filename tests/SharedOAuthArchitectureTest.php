@@ -1420,7 +1420,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 'The canonical spelling collects; the non-PHP note does not.'
             );
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -1468,7 +1468,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
             // The clean direction: the case-consistent spelling of the
             // same tree collects — at any depth, and at the root.
-            WpHarness::rrmdir($scratch . '/tools');
+            WpHarness::releaseScratch($scratch . '/tools');
             mkdir($scratch . '/Tools', 0755, true);
             // Both writes gated (t31-ocr16-13): a missing member of the
             // clean-direction set makes the collect assertion fail as a
@@ -1489,7 +1489,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
 
             // The depth axis: a declaration DEEPER than the staged path
             // ships the same unloadable disagreement and refuses.
-            WpHarness::rrmdir($scratch . '/Tools');
+            WpHarness::releaseScratch($scratch . '/Tools');
             mkdir($scratch . '/Http', 0755, true);
             // Gated (t31-ocr16-13): an empty file refuses as
             // 'declares no namespace', not the depth verdict pinned here.
@@ -1577,7 +1577,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             );
             $this->assertSame(array('Root.php'), wp_connectors_php_source_files($scratch));
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -1732,7 +1732,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 $this->assertOneTypeMatchingFileName($scratch . '/' . $name, $name);
             }
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -1775,7 +1775,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
              * skip itself (t31-ocr8-9); the leak shape is gone by
              * construction.
              */
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host cannot create symlinks — the collector-refusal legs cannot run on it (t31-ocr6-11).');
         }
 
@@ -1827,7 +1827,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             if (is_link($scratch . '/LinkedDir')) {
                 unlink($scratch . '/LinkedDir');
             }
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -2105,7 +2105,7 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 $this->assertStringContainsString('Mate.php', $e->getMessage());
             }
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 }

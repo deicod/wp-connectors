@@ -253,7 +253,7 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertStringNotContainsString('broken.php', $report, 'The excluded tree stays excluded under the trailing-separator spelling (red as the bare offset: the shifted first segment read the vendor file into the lint).');
             $this->assertStringContainsString('3 file(s) checked, 0 failure(s)', $report, 'The good source under the shifted root stays counted (good.php plus the two copied tool files).');
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -433,7 +433,7 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertStringContainsString('5 file(s) checked, 0 failure(s)', $linked, 'The skipped dir-link does not change the checked count (pre-fix it was counted as a 6th file).');
             $this->assertStringNotContainsString('dirlink.php', $linked);
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -540,7 +540,7 @@ final class ToolchainSmokeTest extends TestCase
             // The locked tree must unlock BEFORE the removal owner walks
             // it (rrmdir cannot enter what the process cannot read).
             @chmod($locked, 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 

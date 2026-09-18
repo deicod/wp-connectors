@@ -568,7 +568,7 @@ FIXTURE
                 'A shared/src-only red run must not attribute its violations to the plugin dirs.'
             );
         } finally {
-            WpHarness::rrmdir($repo);
+            WpHarness::releaseScratch($repo);
         }
     }
 

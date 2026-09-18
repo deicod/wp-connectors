@@ -425,7 +425,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
         $extractDir = self::scratchPath('extract-test');
         if (is_dir($extractDir)) {
-            WpHarness::rrmdir($extractDir);
+            WpHarness::releaseScratch($extractDir);
         }
         mkdir($extractDir, 0755, true);
         $zip = new ZipArchive();
@@ -493,7 +493,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             }
             $this->assertGreaterThan(4, $count, 'Fixture zip should contain the main file, autoloader, and source classes.');
         } finally {
-            WpHarness::rrmdir($extractDir);
+            WpHarness::releaseScratch($extractDir);
         }
     }
 
@@ -704,7 +704,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         }
         $scratch = self::distDir() . '/.inspect-mkdir-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/parent', 0755, true);
         chmod($scratch . '/parent', 0555);
@@ -741,7 +741,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             $this->assertStringNotContainsString("\n", $violations[0], 'The captured reason renders through the printable seam — no raw newlines.');
         } finally {
             chmod($scratch . '/parent', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -760,7 +760,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $scratch = self::distDir() . '/.inspect-unique-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch, 0755, true);
         try {
@@ -857,7 +857,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             if (is_link($scratch . '/wp-connectors-inspect-' . getmypid())) {
                 unlink($scratch . '/wp-connectors-inspect-' . getmypid());
             }
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -1546,7 +1546,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $scratch = self::scratchPath('nearsource-collect');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/dist', 0755, true);
         $this->copyFixturePlugin($scratch . '/plugin/example-connector');
@@ -1578,7 +1578,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             }
             $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/.inspect-nearsource-pair'), 'Build and inspect answer one verdict over the plugin tree\'s near-source names — never build-ships-what-inspect-rejects.');
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -1764,7 +1764,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $tempPlugin = self::scratchPath('twomain-test') . '/twomain-demo';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src', 0755, true);
         $head = "Plugin Name:       twomain-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       twomain-demo\nAuthor:            x\n";
@@ -1820,7 +1820,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             @unlink($zipPath);
             @unlink($zipPath . '.sha256');
             @unlink(self::distDir() . '/checksums.txt');
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the inspector verdict (its internal php -l spawn) cannot run; the in-process shared-rule legs above already passed.');
         }
 
@@ -1831,7 +1831,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         unlink($zipPath);
         @unlink($zipPath . '.sha256');
         @unlink(self::distDir() . '/checksums.txt');
-        WpHarness::rrmdir(dirname($tempPlugin));
+        WpHarness::releaseScratch(dirname($tempPlugin));
     }
 
     /*
@@ -2002,7 +2002,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $tempPlugin = self::scratchPath('anchored-test') . '/anchored-demo';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src/Settings', 0755, true);
         $head = "Plugin Name:       anchored-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       anchored-demo\nAuthor:            x\n";
@@ -2059,7 +2059,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
          */
         if (! self::canSpawnChildren()) {
             @unlink($zipPath);
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the inspector verdict (its internal php -l spawn) cannot run; the in-process self-containment legs above already passed.');
         }
 
@@ -2068,7 +2068,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
 
         unlink($zipPath);
-        WpHarness::rrmdir(dirname($tempPlugin));
+        WpHarness::releaseScratch(dirname($tempPlugin));
     }
 
     /*
@@ -2081,7 +2081,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $tempPlugin = self::scratchPath('hidden-include-test') . '/hidden-demo';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src/Settings', 0755, true);
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\HiddenDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
@@ -2125,7 +2125,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('no resolvable same-file assignment', $report);
         $this->assertStringContainsString('is not anchored to __DIR__ or ABSPATH', $report);
 
-        WpHarness::rrmdir(dirname($tempPlugin));
+        WpHarness::releaseScratch(dirname($tempPlugin));
     }
 
     /*
@@ -2139,7 +2139,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $tempPlugin = self::scratchPath('mixed-include-test') . '/mixed-demo';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src', 0755, true);
         // (c) The mandated PSR-4 autoloader in its DIRECT require form: the
@@ -2183,7 +2183,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('depends on $unknown with no resolvable same-file assignment', $report);
         $this->assertStringContainsString('combines the anchor with unresolvable runtime segments', $report);
 
-        WpHarness::rrmdir(dirname($tempPlugin));
+        WpHarness::releaseScratch(dirname($tempPlugin));
     }
 
     /*
@@ -2201,7 +2201,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $tempPlugin = self::scratchPath('map-launder-test') . '/map-demo';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src', 0755, true);
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\MapDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
@@ -2238,7 +2238,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertSame(0, $byFile['sanctioned.php'] ?? 0, 'The sanctioned literal-only map shape must stay clean.');
         $this->assertSame(0, $byFile['src/autoload.php'] ?? 0, 'The mandated PSR-4 autoloader include must stay clean.');
 
-        WpHarness::rrmdir(dirname($tempPlugin));
+        WpHarness::releaseScratch(dirname($tempPlugin));
     }
 
     /*
@@ -2255,7 +2255,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     {
         $tempPlugin = self::scratchPath('string-contents-test') . '/string-demo';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src', 0755, true);
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\StringDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
@@ -2346,7 +2346,7 @@ FIXTURE;
 
         $this->assertStringContainsString('no resolvable same-file assignment', implode("\n", $violations));
 
-        WpHarness::rrmdir(dirname($tempPlugin));
+        WpHarness::releaseScratch(dirname($tempPlugin));
     }
 
     /*
@@ -2380,7 +2380,7 @@ FIXTURE;
         $this->assertStringContainsString('connectors-good-demo-1.0.0.zip', $report);
         $this->assertFileExists($repo . '/dist/connectors-good-demo-1.0.0.zip');
 
-        WpHarness::rrmdir($repo);
+        WpHarness::releaseScratch($repo);
     }
 
     public function testAllPluginBuildPackagesEveryValidConnectorDirectory()
@@ -2409,7 +2409,7 @@ FIXTURE;
         $this->assertStringContainsString('connectors-alpha-demo-1.0.0.zip', $checksums);
         $this->assertStringContainsString('connectors-beta-demo-1.0.0.zip', $checksums);
 
-        WpHarness::rrmdir($repo);
+        WpHarness::releaseScratch($repo);
     }
 
     public function testExplicitSlugBuildStillRejectsAMalformedConnector()
@@ -2432,7 +2432,7 @@ FIXTURE;
         $this->assertSame(1, $exit, 'Explicit-slug mode must keep rejecting a malformed connector.');
         $this->assertStringContainsString('no main plugin file', implode("\n", $output));
 
-        WpHarness::rrmdir($repo);
+        WpHarness::releaseScratch($repo);
     }
 
     /*
@@ -2444,7 +2444,7 @@ FIXTURE;
     {
         $tempPlugin = self::scratchPath('dupheader-test') . '/dupheader-demo';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src', 0755, true);
         // Two Version lines: WordPress installs and reports the FIRST; the
@@ -2477,7 +2477,7 @@ FIXTURE;
         );
         $this->assertStringContainsString('duplicate', $refusal->getMessage());
 
-        WpHarness::rrmdir(dirname($tempPlugin));
+        WpHarness::releaseScratch(dirname($tempPlugin));
     }
 
     /*
@@ -2490,7 +2490,7 @@ FIXTURE;
         // EXAMPLE_CONNECTOR_VERSION constant: the build must refuse.
         $tempPlugin = self::scratchPath('version-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
         $this->copyFixturePlugin($tempPlugin);
@@ -2506,7 +2506,7 @@ FIXTURE;
         $this->assertStringContainsString('does not match header Version', $refusal->getMessage());
         $this->assertStringContainsString('EXAMPLE_CONNECTOR_VERSION', $refusal->getMessage());
 
-        WpHarness::rrmdir(dirname($tempPlugin));
+        WpHarness::releaseScratch(dirname($tempPlugin));
     }
 
     /**
@@ -2531,7 +2531,7 @@ FIXTURE;
     {
         $tempPlugin = self::scratchPath('embed-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
         $this->copyFixturePlugin($tempPlugin);
@@ -2592,7 +2592,7 @@ FIXTURE;
             $this->assertStringContainsString('namespace Deicod\\WpConnectors\\' . $suffix . '\\Shared\\Http;', $embedded);
             $this->assertStringContainsString('Generated copy of shared/src/Http/HeaderMap.php', $embedded);
         } finally {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
     }
 
@@ -2611,7 +2611,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-scratch');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -2634,7 +2634,7 @@ FIXTURE;
                 $this->assertStringNotContainsString('README.md', $entry, 'A README inside shared/src must not ship.');
             }
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -2657,7 +2657,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-malformed');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -2697,7 +2697,7 @@ FIXTURE;
                 'The control build (valid build.json) must still embed the shared source.'
             );
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -2723,7 +2723,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('teardown-masking');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/dist', 0755, true);
         $this->copyFixturePlugin($scratch . '/plugin/example-connector');
@@ -2741,7 +2741,7 @@ FIXTURE;
         if (false !== $probe) {
             closedir($probe);
             chmod($stage . '/locked', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the teardown-hostile stage tree is unconstructible here.');
         }
 
@@ -2780,7 +2780,7 @@ FIXTURE;
         } finally {
             chmod($stage . '/locked', 0755);
             @chmod($lockedRoot, 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -2801,7 +2801,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-schema');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -2944,7 +2944,7 @@ FIXTURE;
             unlink($scratch . '/plugin/example-connector/build.json');
             $this->assertSame($zipsBeforeLinkLegs, glob($scratch . '/dist/*.zip') ?: array(), 'The refused link legs must leave no zip behind (the controls\' zips survive untouched).');
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -2963,7 +2963,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-residue');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -3049,7 +3049,7 @@ FIXTURE;
             $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'The manifest survives every pre-landing failure byte-for-byte.');
             rmdir($stagingArchive);
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3077,7 +3077,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('digit-slug');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -3160,7 +3160,7 @@ FIXTURE;
             exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg("require " . var_export($mainTarget, true) . "; exit( _3CX_OAUTH_VERSION === '1.0.0' ? 0 : 1 );") . ' 2>&1', $output, $exit);
             $this->assertSame(0, $exit, 'The underscored version constant must be referenceable in bare code: ' . implode("\n", $output));
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3180,7 +3180,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-excluded-names');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -3273,7 +3273,7 @@ FIXTURE;
                 @unlink($hostileZip . '.sha256');
             }
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3297,7 +3297,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-escaping-include');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -3337,7 +3337,7 @@ FIXTURE;
             // exactly where the extract-and-scan gate would find it.
             $this->assertStringContainsString('src/Shared/Clock/SystemClock.php', $refused);
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3357,7 +3357,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-anchored-include');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -3397,7 +3397,7 @@ FIXTURE;
             // the same full-tree anchor and accepts too.
             $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/dist/.inspect-anchored'));
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3422,7 +3422,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-phpcase');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -3463,7 +3463,7 @@ FIXTURE;
             $suffix = WpConnectorsBuild::namespaceSuffixFromSlug('example-connector');
             $this->assertStringContainsString('namespace Deicod\\WpConnectors\\' . $suffix . '\\Shared;', $embedded, 'The canonically-spelled copy is the REWRITTEN one.');
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3488,7 +3488,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('nearsource-edges');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch, 0755, true);
         file_put_contents($scratch . '/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface ClockInterface {}\n");
@@ -3541,7 +3541,7 @@ FIXTURE;
             );
             $this->assertStringContainsString('NEAR-SOURCE', $refusal->getMessage());
             $this->assertStringContainsString('Math.php', $refusal->getMessage(), 'The refusal must name the file under the junk segment.');
-            WpHarness::rrmdir($scratch . '/Clock ');
+            WpHarness::releaseScratch($scratch . '/Clock ');
 
             // Control: the ledgered merely-different boundary stays
             // silent — nothing loads those names in development
@@ -3555,7 +3555,7 @@ FIXTURE;
                 'The canonical source collects; the merely-different names stay silently out of scope (r5-14\'s ledgered boundary).'
             );
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3574,7 +3574,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-collision');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -3624,7 +3624,7 @@ FIXTURE;
             );
             $this->assertStringContainsString('case-insensitive collision', $refusal->getMessage());
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3648,7 +3648,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('license-case');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/dist', 0755, true);
         file_put_contents($scratch . '/LICENSE', "REPO LICENSE BYTES\n");
@@ -3720,7 +3720,7 @@ FIXTURE;
             $this->assertSame(array( 'example-connector/LICENSE' ), $licenseEntries($this->zipEntryNames($zipPath)));
             $this->assertSame("PLUGIN OWN LICENSE BYTES\n", $entryBytes($zipPath, 'example-connector/LICENSE'));
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3748,7 +3748,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('collision-fold-pressure');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/dist', 0755, true);
         file_put_contents($scratch . '/LICENSE', "REPO LICENSE BYTES\n");
@@ -3806,7 +3806,7 @@ FIXTURE;
             @mkdir($locpath, 0755, true);
             exec('localedef -i tr_TR -f ISO-8859-9 ' . escapeshellarg($locpath . '/tr_TR.ISO-8859-9') . ' 2>/dev/null', $localedefOutput, $localedefExit);
             if (0 !== $localedefExit) {
-                WpHarness::rrmdir($locpath);
+                WpHarness::releaseScratch($locpath);
                 $this->markTestSkipped('The tr_TR.ISO-8859-9 pressure locale could not be manufactured on this host (localedef exit ' . $localedefExit . ') — the locale-pressure half did not run; the C-locale controls above already passed.');
             }
             $previous = setlocale(LC_CTYPE, '0');
@@ -3843,10 +3843,10 @@ FIXTURE;
                 if (false === setlocale(LC_CTYPE, $previous)) {
                     setlocale(LC_CTYPE, 'C');
                 }
-                WpHarness::rrmdir($locpath);
+                WpHarness::releaseScratch($locpath);
             }
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3865,7 +3865,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('read-seam');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -3935,7 +3935,7 @@ FIXTURE;
         } finally {
             @chmod($sharedSource, 0644);
             @chmod($pluginSource, 0644);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -3952,7 +3952,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('embed-empty-tree');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -3985,7 +3985,7 @@ FIXTURE;
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $this->assertContains('example-connector/src/Shared/GrantInterface.php', $this->zipEntryNames($zipPath), 'A non-empty shared tree embeds normally.');
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -4009,7 +4009,7 @@ FIXTURE;
         }
         $tempPlugin = self::scratchPath('symlink-order-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
         $this->copyFixturePlugin($tempPlugin);
@@ -4039,7 +4039,7 @@ FIXTURE;
             $this->assertStringContainsString('symlink', $refusal->getMessage());
             $this->assertStringContainsString('linked-asset.svg', $refusal->getMessage());
         } finally {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
     }
 
@@ -4059,7 +4059,7 @@ FIXTURE;
     {
         $tempPlugin = self::scratchPath('deventry-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
         $this->copyFixturePlugin($tempPlugin);
@@ -4141,7 +4141,7 @@ FIXTURE;
                 @unlink($hostileZip . '.sha256');
             }
         } finally {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
     }
 
@@ -4163,7 +4163,7 @@ FIXTURE;
     {
         $tempPlugin = self::scratchPath('deventry-case-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
         $this->copyFixturePlugin($tempPlugin);
@@ -4241,7 +4241,7 @@ FIXTURE;
                 @unlink($hostileZip . '.sha256');
             }
         } finally {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
     }
 
@@ -4356,7 +4356,7 @@ FIXTURE;
                 );
             }
         } finally {
-            WpHarness::rrmdir($repo);
+            WpHarness::releaseScratch($repo);
         }
     }
 
@@ -4442,7 +4442,7 @@ FIXTURE;
             $this->assertSame(array(), glob($repo . '/dist/.stage-race-same-demo*') ?: array(), 'No stage tree of any pid may survive the pair.');
             $this->assertStringContainsString('connectors-race-same-demo-1.0.0.zip  ', (string) file_get_contents($repo . '/dist/checksums.txt'));
         } finally {
-            WpHarness::rrmdir($repo);
+            WpHarness::releaseScratch($repo);
         }
 
         // Part 2, the sweep, deterministic: a LIVE foreign run's stage
@@ -4614,7 +4614,7 @@ FIXTURE;
                 proc_terminate($live);
                 proc_close($live);
             }
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -4644,7 +4644,7 @@ FIXTURE;
         }
         $scratch = self::distDir() . '/.rrmdir-link-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch, 0755, true);
         $remove = new ReflectionMethod(WpConnectorsBuild::class, 'rrmdir');
@@ -5094,7 +5094,7 @@ FIXTURE;
             if (is_link($scratch . '/stage-link')) {
                 unlink($scratch . '/stage-link');
             }
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -5118,7 +5118,7 @@ FIXTURE;
     {
         $scratch = self::distDir() . '/.inspect-hostile-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/work', 0755, true);
         file_put_contents($scratch . '/work/plain.txt', 'extracted bytes');
@@ -5129,7 +5129,7 @@ FIXTURE;
         if (false !== $probe) {
             closedir($probe);
             chmod($scratch . '/work/locked', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the walk-hostile tree is unconstructible here.');
         }
 
@@ -5189,7 +5189,7 @@ FIXTURE;
             chmod($scratch . '/work/locked', 0755);
             @chmod($scratch . '/locked-root', 0755);
             @chmod($scratch . '/locked-empty-root', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -5223,7 +5223,7 @@ FIXTURE;
          */
         if (@unlink($scratch . '/work/locked/x.txt')) {
             chmod($scratch . '/work/locked', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host unlinks through mode 0555 (uid 0 — t31-ocr4-1); the stranded removal failure is unconstructible here.');
         }
 
@@ -5245,7 +5245,7 @@ FIXTURE;
             $this->assertStringContainsString('locked/x.txt', $refusal->getMessage(), 'The refusal names the path — the harness\'s own vocabulary, printable-seam rendered.');
         } finally {
             chmod($scratch . '/work/locked', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -5273,7 +5273,7 @@ FIXTURE;
         // failure — skip visibly, never a vacuous green.
         if (@unlink($scratch . '/locked/x.txt')) {
             chmod($scratch . '/locked', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host unlinks through mode 0555 (uid 0 — t31-ocr4-1); the stranded removal failure is unconstructible here.');
         }
 
@@ -5297,7 +5297,7 @@ FIXTURE;
             $this->assertDirectoryExists($scratch . '/locked', 'The partial removal stands — the loud refusal is the verdict, the residue the caller\'s to reclaim.');
         } finally {
             chmod($scratch . '/locked', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -5332,7 +5332,7 @@ FIXTURE;
         if (false !== $probe) {
             closedir($probe);
             chmod($scratch . '/tree/locked', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
         }
 
@@ -5347,7 +5347,7 @@ FIXTURE;
             $this->assertStringContainsString('Failed to open directory', $refusal->getMessage(), 'The parenthetical carries the engine\'s own diagnostic for the path — named, never laundered silent.');
         } finally {
             chmod($scratch . '/tree/locked', 0755);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         $this->assertDirectoryDoesNotExist($scratch, 'A readable tree still reclaims whole — the fence changed nothing about the green walk.');
     }
@@ -5366,7 +5366,7 @@ FIXTURE;
     {
         $scratch = self::distDir() . '/.inspect-reclaim-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch, 0755, true);
         try {
@@ -5380,7 +5380,7 @@ FIXTURE;
                 $this->assertDirectoryDoesNotExist($root, "A '{$tail}'-tailed real-dir root is reclaimed WHOLE ({$label}) — red at HEAD: the children went, the root leaked behind rmdir('…{$tail}') EINVAL.");
             }
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -5440,7 +5440,7 @@ FIXTURE;
 
         $scratch = self::distDir() . '/.inspect-walkrefusal-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch, 0755, true);
         $zipPath = $scratch . '/walk-refusal.zip';
@@ -5482,9 +5482,9 @@ FIXTURE;
             foreach (glob($scratch . '/work-*') ?: array() as $leak) {
                 chmod($leak, 0755);
                 @chmod($leak . '/ocr24-slug', 0755);
-                WpHarness::rrmdir($leak);
+                WpHarness::releaseScratch($leak);
             }
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -5703,7 +5703,7 @@ FIXTURE;
 
         $tempPlugin = self::scratchPath('dot-slug') . '/my.plugin';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src', 0755, true);
         $head = "Plugin Name:       my.plugin\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       my.plugin\nAuthor:            x\n";
@@ -5783,7 +5783,7 @@ FIXTURE;
                 }
             );
         } finally {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
     }
 
@@ -5801,7 +5801,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('manifest-read');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/dist', 0755, true);
         $this->copyFixturePlugin($scratch . '/plugin/example-connector');
@@ -5845,7 +5845,7 @@ FIXTURE;
             $this->assertStringContainsString(self::fixtureZipName(), $rebuilt);
         } finally {
             @chmod($manifestPath, 0644);
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -5865,7 +5865,7 @@ FIXTURE;
     {
         $tempPlugin = self::scratchPath('version-token') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
         $this->copyFixturePlugin($tempPlugin);
@@ -5898,7 +5898,7 @@ FIXTURE;
             }
             @unlink(self::distDir() . '/checksums.txt');
         } finally {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
     }
 
@@ -6665,7 +6665,7 @@ FIXTURE;
         @mkdir($locpath, 0755, true);
         exec('localedef -i tr_TR -f ISO-8859-9 ' . escapeshellarg($locpath . '/tr_TR.ISO-8859-9') . ' 2>/dev/null', $localedefOutput, $localedefExit);
         if (0 !== $localedefExit) {
-            WpHarness::rrmdir($locpath);
+            WpHarness::releaseScratch($locpath);
             $this->markTestSkipped('The tr_TR.ISO-8859-9 pressure locale could not be manufactured on this host (localedef exit ' . $localedefExit . ') — the locale-pressure half did not run; the fold-table and C-locale verdict pins above already passed.');
         }
         $previous = setlocale(LC_CTYPE, '0');
@@ -6688,7 +6688,7 @@ FIXTURE;
             if (false === setlocale(LC_CTYPE, $previous)) {
                 setlocale(LC_CTYPE, 'C');
             }
-            WpHarness::rrmdir($locpath);
+            WpHarness::releaseScratch($locpath);
         }
     }
 
@@ -8500,7 +8500,7 @@ FIXTURE;
          */
         $scratch = self::distDir() . '/.write-normalized-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -8587,7 +8587,7 @@ FIXTURE;
             $this->assertSame($sidecarBefore, (string) file_get_contents($seedZip . '.sha256'));
             $this->assertSame($manifestBefore, (string) file_get_contents($scratch . '/dist/checksums.txt'));
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -8610,7 +8610,7 @@ FIXTURE;
         }
         $scratch = self::scratchPath('embed-symlink');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/shared/src/Linked', 0755, true);
@@ -8632,7 +8632,7 @@ FIXTURE;
             $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build must leave no zip behind.');
             $this->assertNoStageTree($scratch . '/dist', 'example-connector');
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -8685,7 +8685,7 @@ FIXTURE;
             $this->assertSame($betaSidecarBefore, (string) file_get_contents($betaZip . '.sha256'), 'The unbuilt plugin\'s sidecar survives byte-for-byte.');
             $this->assertFileExists($betaZip, 'The unbuilt plugin\'s zip survives.');
         } finally {
-            WpHarness::rrmdir($repo);
+            WpHarness::releaseScratch($repo);
         }
     }
 
@@ -8750,7 +8750,7 @@ FIXTURE;
             $this->assertSame($alphaSidecarBefore, (string) file_get_contents($alphaZip . '.sha256'));
             $this->assertSame($betaSidecarBefore, (string) file_get_contents($betaZip . '.sha256'));
         } finally {
-            WpHarness::rrmdir($repo);
+            WpHarness::releaseScratch($repo);
         }
     }
 
@@ -8766,7 +8766,7 @@ FIXTURE;
     {
         $tempPlugin = self::scratchPath('phpcase-containment') . '/upper-demo';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src', 0755, true);
         $head = "Plugin Name:       upper-demo\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       upper-demo\nAuthor:            x\n";
@@ -8783,7 +8783,7 @@ FIXTURE;
             $this->assertStringContainsString('escape.PHP', implode("\n", $violations));
             $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
         } finally {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
     }
 
@@ -8834,7 +8834,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('publish-check');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/dist', 0755, true);
         $this->copyFixturePlugin($scratch . '/plugin/example-connector');
@@ -8889,7 +8889,7 @@ FIXTURE;
             $this->assertFileExists($rebuilt . '.sha256');
             $this->assertStringContainsString(basename($rebuilt), (string) file_get_contents($manifestPath));
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -8918,7 +8918,7 @@ FIXTURE;
 
         $scratch = self::distDir() . '/.landing-refusal-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/dist', 0755, true);
         $this->copyFixturePlugin($scratch . '/plugin/example-connector');
@@ -8930,7 +8930,7 @@ FIXTURE;
         file_put_contents($probe, 'capability probe');
         exec('chattr +i ' . escapeshellarg($probe) . ' 2>&1', $probeOutput, $probeExit);
         if (0 !== $probeExit) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host cannot set the immutable flag (no CAP_LINUX_IMMUTABLE — the unprivileged runner; the t31-ocr4-1 doctrine probed by doing it): the planted archive-rename refusal is unconstructible here.');
         }
         exec('chattr -i ' . escapeshellarg($probe));
@@ -8978,7 +8978,7 @@ FIXTURE;
             $this->assertSame($zipPath, $rebuilt);
             $this->assertNotSame($sidecarBefore, (string) file_get_contents($sidecarPath), 'The recovery build lands its own checksum — the probe asset made it a different artifact.');
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -9064,7 +9064,7 @@ FIXTURE;
     {
         $scratch = self::scratchPath('rewrite-refuse');
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/shared/src/Clock', 0755, true);
         mkdir($scratch . '/dist', 0755, true);
@@ -9126,7 +9126,7 @@ FIXTURE;
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $this->assertFileExists($zipPath);
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -9140,7 +9140,7 @@ FIXTURE;
     {
         $scratch = self::distDir() . '/.prune-dblspace-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch, 0755, true);
         try {
@@ -9165,7 +9165,7 @@ FIXTURE;
                 'The double-space entry name survives the split (red as the first-gap spelling: it read "double", named no file, and pruned the live entry) while the vanished artifact\'s line dies by the regeneration rule.'
             );
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -9179,7 +9179,7 @@ FIXTURE;
     {
         $scratch = self::distDir() . '/.prune-manifest-' . getmypid();
         if (is_dir($scratch)) {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
         mkdir($scratch . '/dist', 0755, true);
         try {
@@ -9232,7 +9232,7 @@ FIXTURE;
             file_put_contents($damaged, $source);
             $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'A failed run lands no manifest change, prune included.');
         } finally {
-            WpHarness::rrmdir($scratch);
+            WpHarness::releaseScratch($scratch);
         }
     }
 
@@ -9268,7 +9268,7 @@ FIXTURE;
         // wrongly cased OpenaiOautH prefix must still fail.
         $tempPlugin = self::scratchPath('ns-test') . '/openai-oauth';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir($tempPlugin . '/src', 0755, true);
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\OpenAiOauth\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
@@ -9279,7 +9279,7 @@ FIXTURE;
         file_put_contents($tempPlugin . '/src/autoload.php', str_replace('OpenAiOauth', 'OpenaiOauth', $autoload));
         $this->assertNotSame(array(), wp_connectors_autoloader_violations($tempPlugin), 'A lowercased OpenaiOauth prefix must be rejected.');
 
-        WpHarness::rrmdir(dirname($tempPlugin));
+        WpHarness::releaseScratch(dirname($tempPlugin));
     }
 
     /**
@@ -9302,7 +9302,7 @@ FIXTURE;
         }
         $tempPlugin = self::scratchPath('symlink-test') . '/example-connector';
         if (is_dir(dirname($tempPlugin))) {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
         mkdir(dirname($tempPlugin), 0755, true);
         $this->copyFixturePlugin($tempPlugin);
@@ -9320,7 +9320,7 @@ FIXTURE;
             $this->assertStringContainsString('outside-secret.txt', $refusal->getMessage(), 'The refusal names the link target — the leak half stays visible in the diagnostic.');
             $this->assertSame(array(), glob(self::distDir() . '/' . self::fixtureZipName() . '*') ?: array(), 'The refused build must leave no artifact behind.');
         } finally {
-            WpHarness::rrmdir(dirname($tempPlugin));
+            WpHarness::releaseScratch(dirname($tempPlugin));
         }
     }
 
@@ -9418,7 +9418,7 @@ FIXTURE;
 
         $tmp = self::scratchPath('badzip-' . $slug);
         if (is_dir($tmp)) {
-            WpHarness::rrmdir($tmp);
+            WpHarness::releaseScratch($tmp);
         }
         mkdir($tmp . '/' . $slug . '/src', 0755, true);
         file_put_contents($tmp . '/' . $slug . '/' . $slug . '.php', $main);
@@ -9437,7 +9437,7 @@ FIXTURE;
         $zip->addFile($tmp . '/' . $slug . '/' . $slug . '.php', "{$slug}/{$slug}.php");
         $zip->addFile($tmp . '/' . $slug . '/src/autoload.php', "{$slug}/src/autoload.php");
         $zip->close();
-        WpHarness::rrmdir($tmp);
+        WpHarness::releaseScratch($tmp);
 
         return $zipPath;
     }
@@ -9481,7 +9481,7 @@ FIXTURE;
     {
         $repo = self::distDir() . '/.build-cli-' . getmypid() . '-' . substr(md5((string) json_encode($connectors)), 0, 6);
         if (is_dir($repo)) {
-            WpHarness::rrmdir($repo);
+            WpHarness::releaseScratch($repo);
         }
         mkdir($repo . '/bin/lib', 0755, true);
         copy(__DIR__ . '/../bin/build.php', $repo . '/bin/build.php');

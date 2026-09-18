@@ -129,13 +129,13 @@ final class SecureFixturesTest extends WpConnectorsTestCase
 
         $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (is_dir($tempDir)) {
-            WpHarness::rrmdir($tempDir);
+            WpHarness::releaseScratch($tempDir);
         }
         mkdir($tempDir, 0755, true);
         file_put_contents($tempDir . '/known-secret-fixture.conf', "api_key = {$zaiKey}\ntoken: {$githubToken}\n");
 
         $findings = wp_connectors_scan_paths(array( $tempDir ));
-        WpHarness::rrmdir($tempDir);
+        WpHarness::releaseScratch($tempDir);
 
         $report = implode("\n", $findings);
         $this->assertStringContainsString('zai-key', $report);
@@ -163,7 +163,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
 
         $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-prune-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (is_dir($tempDir)) {
-            WpHarness::rrmdir($tempDir);
+            WpHarness::releaseScratch($tempDir);
         }
         mkdir($tempDir . '/VENDOR', 0755, true);
         mkdir($tempDir . '/Tools', 0755, true);
@@ -220,10 +220,10 @@ final class SecureFixturesTest extends WpConnectorsTestCase
                 $this->assertStringContainsString('root' . DIRECTORY_SEPARATOR . 'leak.conf', $ancestorReport, 'A dev-named ANCESTOR (case-variant, the folded spelling) of the scan root never prunes the scan itself.');
                 $this->assertStringContainsString('zai-key', $ancestorReport);
             } finally {
-                WpHarness::rrmdir($holder);
+                WpHarness::releaseScratch($holder);
             }
         } finally {
-            WpHarness::rrmdir($tempDir);
+            WpHarness::releaseScratch($tempDir);
         }
     }
 
@@ -244,7 +244,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
 
         $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-artifact-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (is_dir($tempDir)) {
-            WpHarness::rrmdir($tempDir);
+            WpHarness::releaseScratch($tempDir);
         }
         mkdir($tempDir . '/VENDOR', 0755, true);
         mkdir($tempDir . '/plain', 0755, true);
@@ -262,7 +262,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             $this->assertStringContainsString('plain' . DIRECTORY_SEPARATOR . 'leak.conf', $artifactReport, 'The artifact scan keeps the plain verdict too.');
             $this->assertStringNotContainsString($zaiKey, $artifactReport, 'Findings still never echo the secret itself.');
         } finally {
-            WpHarness::rrmdir($tempDir);
+            WpHarness::releaseScratch($tempDir);
         }
     }
 
@@ -298,7 +298,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
 
         $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-only-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (is_dir($tempDir)) {
-            WpHarness::rrmdir($tempDir);
+            WpHarness::releaseScratch($tempDir);
         }
         mkdir($tempDir . '/VENDOR', 0755, true);
         mkdir($tempDir . '/plain', 0755, true);
@@ -331,7 +331,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             $this->assertStringNotContainsString('VENDOR', $report, 'The case-variant dev segment prunes exactly as the in-process battery pins.');
             $this->assertStringNotContainsString($zaiKey, $report, 'Findings still never echo the secret itself.');
         } finally {
-            WpHarness::rrmdir($tempDir);
+            WpHarness::releaseScratch($tempDir);
         }
     }
 

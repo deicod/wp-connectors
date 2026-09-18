@@ -67,7 +67,7 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertSame('nested bytes', (string) file_get_contents($to . '/vendor' . $from . '/nested.php'), 'The nested same-name path keeps its exact position — only the SOURCE prefix strips, never a nested repetition.');
             $this->assertFileDoesNotExist($to . '/vendornested.php', 'The pre-fix str_replace() glue target (every occurrence stripped, the halves fused) must not appear — this leg is the regression detector for a return to str_replace().');
         } finally {
-            $this->releaseScratch($holder, $to);
+            WpHarness::releaseScratch($holder, $to);
         }
     }
 
@@ -112,7 +112,7 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString($from . '//', $caught->getMessage(), 'The refusal names the prefix it expected.');
             $this->assertFileDoesNotExist($to, 'Nothing landed under the target.');
         } finally {
-            $this->releaseScratch($from, $to);
+            WpHarness::releaseScratch($from, $to);
         }
     }
 
@@ -227,7 +227,7 @@ final class HarnessCopyTreeTest extends TestCase
             // walks them (rrmdir cannot write through 0555/0444 bits).
             @chmod($locked_to, 0755);
             @chmod($readonly_to . '/plain.php', 0644);
-            $this->releaseScratch($holder);
+            WpHarness::releaseScratch($holder);
         }
     }
 
@@ -432,7 +432,7 @@ final class HarnessCopyTreeTest extends TestCase
             // the teardown walk owns it (t31-ocr32-9's residue
             // vocabulary: the caller's finally restores).
             @chmod($from . '/locked-src', 0755);
-            $this->releaseScratch($from);
+            WpHarness::releaseScratch($from);
         }
     }
 
@@ -688,7 +688,7 @@ final class HarnessCopyTreeTest extends TestCase
             // intact after every shape.
             $this->assertSame('original bytes', (string) file_get_contents($from . '/src/file.php'), 'The source tree survives every refusal untouched.');
         } finally {
-            $this->releaseScratch($from);
+            WpHarness::releaseScratch($from);
         }
     }
 
@@ -868,7 +868,7 @@ final class HarnessCopyTreeTest extends TestCase
                 WpHarness::copyTree($dotdotHolder . '/tree/..', $dotdotOut);
                 $this->assertFileExists($dotdotOut . '/tree/real.php', 'A \'/..\'-spelled REAL source keeps copying the tree it names — the probe is the only judgment that changed.');
             } finally {
-                $this->releaseScratch($dotdotHolder, $dotdotOut);
+                WpHarness::releaseScratch($dotdotHolder, $dotdotOut);
             }
 
             /*
@@ -881,7 +881,7 @@ final class HarnessCopyTreeTest extends TestCase
              * a property of the refusal.
              */
         } finally {
-            $this->releaseScratch($plain);
+            WpHarness::releaseScratch($plain);
         }
     }
 
@@ -917,7 +917,7 @@ final class HarnessCopyTreeTest extends TestCase
         if (false !== $probe) {
             closedir($probe);
             chmod($from . '/locked', 0755);
-            $this->releaseScratch($from);
+            WpHarness::releaseScratch($from);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
         }
 
@@ -933,7 +933,7 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('Failed to open directory', $refusal->getMessage(), 'The parenthetical carries the engine\'s own diagnostic for the path — named, never laundered silent.');
         } finally {
             chmod($from . '/locked', 0755);
-            $this->releaseScratch($from, $to);
+            WpHarness::releaseScratch($from, $to);
         }
     }
 
@@ -1063,7 +1063,7 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('symlinked source tree', $child, 'The planted copy refusal still names the LINK class below the anchor.');
             $this->assertStringContainsString('planted-link', $child);
         } finally {
-            $this->releaseScratch($base);
+            WpHarness::releaseScratch($base);
         }
     }
 
@@ -1167,7 +1167,7 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('symlinked source tree', $child, 'The planted copy refusal still names the LINK class beneath the temp root.');
             $this->assertStringContainsString('planted-link', $child);
         } finally {
-            $this->releaseScratch($base);
+            WpHarness::releaseScratch($base);
         }
     }
 
@@ -1323,7 +1323,7 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertFileExists($base . '/C:\\Temp\\dst/sub/file.php', 'A drive-letter spelling is a LEGAL relative target on the POSIX host — cwd-prepended and landed, never a false platform refusal.');
         } finally {
             chdir($previous_cwd);
-            $this->releaseScratch($base);
+            WpHarness::releaseScratch($base);
         }
     }
 
@@ -1337,7 +1337,10 @@ final class HarnessCopyTreeTest extends TestCase
      * guard itself: the release throws the deterministic root
      * refusal (rrmdir over '/' refuses loudly on every host) while a
      * verdict is in flight — the guarded release surfaces it on
-     * STDERR and the VERDICT is what surfaces to the catch.
+     * STDERR and the VERDICT is what surfaces to the catch. The
+     * guard lives at the ONE shared owner now (t31-ocr34-4 —
+     * WpHarness::releaseScratch(), this battery's former private
+     * twin deleted in the same sweep); this leg drives that owner.
      */
     public function testTheGuardedReleaseNeverReplacesTheVerdictInFlight(): void
     {
@@ -1345,7 +1348,7 @@ final class HarnessCopyTreeTest extends TestCase
             try {
                 throw new RuntimeException('the real verdict');
             } finally {
-                $this->releaseScratch('/');
+                WpHarness::releaseScratch('/');
             }
         } catch (\Throwable $surfaced) {
             $this->assertSame('the real verdict', $surfaced->getMessage(), 'The guarded release surfaces the environmental failure on STDERR and never replaces the verdict in flight (unguarded, PHP would surface the rrmdir refusal instead).');
@@ -1353,26 +1356,6 @@ final class HarnessCopyTreeTest extends TestCase
             return;
         }
         $this->fail('The planted in-flight verdict must surface.');
-    }
-
-    /**
-     * The battery's guarded scratch release (OCR round 33,
-     * t31-ocr33-7): an environmental teardown failure (NFS/quota/
-     * antivirus lock, stranded permission bits) must never REPLACE
-     * the test's own verdict — PHP replaces the in-flight exception
-     * when finally throws. The guard surfaces the failure on STDERR
-     * (loud, visible in the run's output, never silent) and every
-     * leg's finally releases through this one owner.
-     */
-    private function releaseScratch(string ...$trees): void
-    {
-        foreach ($trees as $tree) {
-            try {
-                WpHarness::rrmdir($tree);
-            } catch (\Throwable $environmental) {
-                fwrite(STDERR, 'scratch release failed for ' . $tree . ': ' . $environmental->getMessage() . "\n");
-            }
-        }
     }
 
     /**

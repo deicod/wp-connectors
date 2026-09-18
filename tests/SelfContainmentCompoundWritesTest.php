@@ -491,7 +491,7 @@ final class SelfContainmentCompoundWritesTest extends TestCase
             $this->assertStringContainsString($fileRoot, $caught->getMessage(), 'The non-directory refusal names the scan root.');
             unlink($fileRoot);
         } finally {
-            WpHarness::rrmdir($outside);
+            WpHarness::releaseScratch($outside);
         }
     }
 }

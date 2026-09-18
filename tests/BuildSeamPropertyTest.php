@@ -151,7 +151,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
              */
             $this->assertStringContainsString((string) ZipArchive::ER_NOZIP, $verdict['why'], 'The row names the ER_* return (ER_NOZIP on a corrupt archive).');
         } finally {
-            WpHarness::rrmdir($scratch['root']);
+            WpHarness::releaseScratch($scratch['root']);
         }
     }
 
@@ -633,7 +633,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
              * removal contract for a residue only this row plants.
              */
             @chmod($scratch['dist'] . '/checksums.txt', 0644);
-            WpHarness::rrmdir($scratch['root']);
+            WpHarness::releaseScratch($scratch['root']);
         }
     }
 
@@ -709,7 +709,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 }
             }
         } finally {
-            WpHarness::rrmdir($extract);
+            WpHarness::releaseScratch($extract);
         }
 
         // Completeness: same entry set as the seeded good build, every
@@ -937,7 +937,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             $this->assertSame($manifestBefore, (string) file_get_contents($scratch['dist'] . '/checksums.txt'));
         } finally {
             @chmod($scratch['root'] . '/staged-source.php', 0644);
-            WpHarness::rrmdir($scratch['root']);
+            WpHarness::releaseScratch($scratch['root']);
         }
     }
 
@@ -1001,7 +1001,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          */
         $root = sys_get_temp_dir() . '/wpct-battery-' . preg_replace('/[^a-z0-9-]/', '-', strtolower($state_id)) . '-' . bin2hex(random_bytes(4));
         if (is_dir($root)) {
-            WpHarness::rrmdir($root);
+            WpHarness::releaseScratch($root);
         }
         /*
          * The maker owns its OWN cleanup (OCR round 26, t31-ocr26-11):
@@ -1049,7 +1049,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 'zip' => $root . '/dist/connectors-example-connector-' . $header[2] . '.zip',
             );
         } catch (\Throwable $creation_refusal) {
-            WpHarness::rrmdir($root);
+            WpHarness::releaseScratch($root);
 
             throw $creation_refusal;
         }

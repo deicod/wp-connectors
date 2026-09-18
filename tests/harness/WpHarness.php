@@ -1041,6 +1041,46 @@ final class WpHarness
     }
 
     /**
+     * The guarded scratch release (OCR round 34, t31-ocr34-4 — the
+     * t31-ocr33-7 doctrine, swept to the whole census): rrmdir()'s
+     * contract is the LOUD throw, and PHP REPLACES — never chains — an
+     * in-flight exception when finally throws, so a BARE cleanup call
+     * lets an environmental teardown failure (NFS/quota/antivirus
+     * lock, stranded permission bits) supersede the caller's REAL
+     * verdict at the finally line, the assertion's message discarded
+     * exactly where diagnosis matters most — an uncaught exception
+     * wearing the caller's frame. ONE owner now serves every RELEASE
+     * call site: the guard surfaces the environmental failure on
+     * STDERR (loud, visible in the run's output, never silent) and
+     * lets the verdict ride untouched; rrmdir() keeps its loud
+     * contract untouched, and the calls whose SUBJECT is the throw —
+     * the refusalOf closures and the link/walk legs under test —
+     * still invoke it bare by design.
+     *
+     * The census (every release caller rides this owner):
+     * HarnessCopyTreeTest (its former private twin, deleted in the
+     * same sweep), BuildArtifactsTest, BuildSeamPropertyTest,
+     * SecureFixturesTest, SharedOAuthContractsHttpTest,
+     * SharedOAuthArchitectureTest, ToolchainSmokeTest,
+     * UnusedImportScannerTest, SelfContainmentCompoundWritesTest —
+     * startup reclaims, mid-phase subtree removals, and finally
+     * teardowns alike, the whole release class one owner.
+     *
+     * @param string ...$trees Absolute scratch trees to release, in order.
+     * @return void
+     */
+    public static function releaseScratch(string ...$trees): void
+    {
+        foreach ($trees as $tree) {
+            try {
+                self::rrmdir($tree);
+            } catch (\Throwable $environmental) {
+                fwrite(STDERR, 'scratch release failed for ' . $tree . ': ' . $environmental->getMessage() . "\n");
+            }
+        }
+    }
+
+    /**
      * Recursively copies a directory tree's FILES (test helper — the ONE
      * scratch-tree copy owner, t31-ocr1-9: UnusedImportScannerTest carried
      * this private beside its own @-suppressed removeTree twin; both moved

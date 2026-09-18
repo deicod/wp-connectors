@@ -611,7 +611,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         @mkdir($locpath, 0755, true);
         exec('localedef -i tr_TR -f ISO-8859-9 ' . escapeshellarg($locpath . '/tr_TR.ISO-8859-9') . ' 2>/dev/null', $localedefOutput, $localedefExit);
         if (0 !== $localedefExit) {
-            WpHarness::rrmdir($locpath);
+            WpHarness::releaseScratch($locpath);
             $this->markTestSkipped('The tr_TR.ISO-8859-9 pressure locale could not be manufactured on this host (localedef exit ' . $localedefExit . ': no localedef, or no tr_TR source) — the LC_CTYPE pressure half did not run; the spelling pins above this point already passed (t31-ocr6-12).');
         }
 
@@ -671,7 +671,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             if (false === setlocale(LC_CTYPE, $previous)) {
                 setlocale(LC_CTYPE, 'C');
             }
-            WpHarness::rrmdir($locpath);
+            WpHarness::releaseScratch($locpath);
         }
 
         // The r4-13 outcome holds on the safe-debug side regardless of
