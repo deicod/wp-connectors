@@ -306,7 +306,19 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         file_put_contents($tempDir . '/plain/leak.conf', "api_key = {$zaiKey}\n");
 
         try {
-            $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/lib/secret-scanner.php'), true) . ';'
+            /*
+             * The library path is asserted resolved BEFORE the embed (OCR
+             * round 25, t31-ocr25-8): realpath() answering false (a broken
+             * checkout, an open_basedir wall) used to embed `require
+             * false;` straight into the child script — the child's fatal
+             * then read as the SCANNER's self-containment defect (the
+             * very thing this pin exists to vouch for), never the
+             * environment problem it was. The assertion names its own
+             * subject; the failure channel is the environment's.
+             */
+            $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
+            $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the fresh-process leg runs — a realpath() false (a broken checkout, an open_basedir wall) is an environment problem, never the scanner self-containment defect the child would otherwise fatal as.');
+            $script = 'require ' . var_export($scannerLibrary, true) . ';'
                 . ' foreach (wp_connectors_scan_paths(array(' . var_export($tempDir, true) . ')) as $finding) { echo $finding, "\n"; }';
             $output = array();
             $exit = 1;
