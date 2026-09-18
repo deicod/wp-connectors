@@ -107,7 +107,8 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         ), static function ( $segment ) {
             return '' !== $segment && '.' !== $segment;
         })));
-        if (isset($seenEntryNames[$name])) {
+        $is_byte_duplicate = isset($seenEntryNames[$name]);
+        if ($is_byte_duplicate) {
             $violations[] = sprintf(
                 'inspect: zip carries the entry name "%s" more than once — extraction keeps only one copy, so the other bytes are judged by nobody.',
                 wp_connectors_printable($name)
@@ -115,12 +116,23 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         } else {
             $seenEntryNames[$name] = true;
         }
-        if (isset($seenFoldedNames[$folded_name])) {
+        /*
+         * The verdict is DEDUPED per name (OCR round 26, t31-ocr26-5):
+         * identical bytes fold identically, so a byte-exact duplicate
+         * once tripped BOTH fences for the same name — one offense,
+         * two verdict lines (a triple copy answered four). The first
+         * fence wins; the folded fence judges only the copies the
+         * byte fence did not name (a case-fold twin is a DIFFERENT
+         * offense and keeps its own line). The byte-duplicate branch
+         * needs no fold marking either: its key was marked by the
+         * first copy of the same bytes.
+         */
+        if (! $is_byte_duplicate && isset($seenFoldedNames[$folded_name])) {
             $violations[] = sprintf(
                 'inspect: zip carries case-fold duplicate entry names ("%s") — on a normalizing extraction target (case-insensitive, or Windows trailing dot/space stripping per component) one silently overwrites the other.',
                 wp_connectors_printable($name)
             );
-        } else {
+        } elseif (! $is_byte_duplicate) {
             $seenFoldedNames[$folded_name] = true;
         }
         $topDirs[ $parts[0] ] = true;

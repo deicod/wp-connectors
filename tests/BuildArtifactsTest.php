@@ -1174,6 +1174,32 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('more than once', $flat, 'A byte-exact duplicate entry name refuses: the non-landed copy is judged by nobody.');
         $this->assertStringContainsString($slug . '/src/keys.txt', $flat);
+        /*
+         * The verdict is ONE line per duplicate copy (OCR round 26,
+         * t31-ocr26-5): identical bytes fold identically, so the
+         * second copy once tripped BOTH fences — the byte-exact line
+         * AND the case-fold line beside it (a triple copy answered
+         * four lines). The first fence wins; the fold fence judges
+         * only the copies the byte fence did not name.
+         */
+        $this->assertSame(1, substr_count($flat, 'more than once'), 'A byte-exact duplicate answers exactly ONE verdict line — never one per fence.');
+        $this->assertStringNotContainsString('case-fold duplicate', $flat, 'The byte-exact twin does not also wear the case-fold verdict — one offense, one line.');
+
+        // (a-triple) A THIRD copy of the same bytes: one more line,
+        // not two more (at HEAD the pair of fences answered four
+        // lines over the three copies).
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.6.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/src/keys.txt", "aws = {$key}\n"),
+            array("{$slug}/src/keys.txt", "nothing to see\n"),
+            array("{$slug}/src/keys.txt", "still nothing\n"),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
+        $flat = implode("\n", $violations);
+        $this->assertSame(2, substr_count($flat, 'more than once'), 'Each ADDITIONAL byte-exact copy answers exactly one verdict line — the triple that once answered four lines answers two.');
+        $this->assertStringNotContainsString('case-fold duplicate', $flat);
 
         // (b) Case-fold duplicate: on a case-insensitive extraction
         // target one silently overwrites the other (the r6 deferred
