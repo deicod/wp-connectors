@@ -4713,29 +4713,22 @@ FIXTURE;
      * environment, so a null-"snapshot" could restore a DIFFERENT
      * LC_CTYPE than the one in effect), attempted and restored in a
      * finally so no other test sees it.
+     *
+     * OCR round 23 (t31-ocr23-9, the r22 ledger's residual head
+     * converted): the ENV-PIN leg this test once opened — putenv()
+     * pinning LC_CTYPE in the parent to prove the query spelling reads
+     * rather than installs — moved to its OWN test below, gated on its
+     * own capability: this test's fold legs consume setlocale only,
+     * and gating the whole method on function_exists('putenv') would
+     * have skipped them needlessly on a disable_functions host (the
+     * gate-whole-method narrowing the r22 residual refused); the
+     * spawn-pair floor was equally a misfit here (the fold-table
+     * verdicts spawn nothing — the r21 producer-fence precedent, a
+     * class closed at one fence re-opened at the next).
      */
     public function testTheSlugToIdentifierFoldIsLocaleIndependent(): void
     {
         $previous = setlocale(LC_CTYPE, '0');
-        /*
-         * The QUERY spelling must be a read, never a set (t31-ocr1-6,
-         * the verifier-hardened pin): the naive shape (current ==
-         * current) is vacuous — null sets-then-returns the
-         * environment's spelling and would pass it too. The pin
-         * installs a locale that DIFFERS from the environment's and
-         * asserts the query leaves it standing; null installs the
-         * environment's here (reproduced: 'C' in effect +
-         * LC_CTYPE=C.UTF-8 -> null returns and leaves 'C.UTF-8').
-         */
-        $previousLcCtypeEnv = getenv('LC_CTYPE');
-        try {
-            putenv('LC_CTYPE=C.UTF-8');
-            setlocale(LC_CTYPE, 'C');
-            $this->assertSame('C', setlocale(LC_CTYPE, '0'), 'The setlocale query spelling must read the locale, never install the environment\'s.');
-        } finally {
-            putenv(false === $previousLcCtypeEnv ? 'LC_CTYPE' : 'LC_CTYPE=' . $previousLcCtypeEnv);
-            setlocale(LC_CTYPE, $previous);
-        }
         try {
             setlocale(LC_CTYPE, 'tr_TR.UTF-8');
 
@@ -4746,6 +4739,56 @@ FIXTURE;
             $this->assertSame('MY_PLUGIN_VERSION', wp_connectors_identifier_from_slug('My.Plugin', '_') . '_VERSION');
             $this->assertSame('_3CX_OAUTH_VERSION', wp_connectors_identifier_from_slug('3cx-oauth', '_') . '_VERSION', 'The digit rule rides the same ASCII fold.');
         } finally {
+            setlocale(LC_CTYPE, $previous);
+        }
+    }
+
+    /**
+     * The ENV-PIN leg of the fold test above, split to its own test and
+     * its own capability gate (OCR round 23, t31-ocr23-9 — the r22
+     * ledger's residual head: BuildArtifactsTest's fold battery
+     * putenv()s LC_CTYPE in the PARENT with NO spawn at all, the
+     * non-spawn putenv consumer the r21/r22 spawn-pair guards were a
+     * misfit for). The premise: the setlocale QUERY spelling ('0') must
+     * read the locale, never install the environment's (t31-ocr1-6:
+     * null behaves like "" and SETS from the environment, so a
+     * null-"snapshot" could restore a DIFFERENT LC_CTYPE than the one
+     * in effect) — proving it needs putenv to pin an LC_CTYPE that
+     * DIFFERS from the one in effect, and under -d
+     * disable_functions=putenv the leg died at the putenv with 'Error:
+     * Call to undefined function putenv()' mid-test (the exact fatal
+     * class the spawn consumers' guards convert — the r22 rd-2
+     * doctrine, at the one consumer that spawns nothing). The gate is
+     * the capability the consumer alone reaches — function_exists
+     * ('putenv'), the canSpawnChildren shape without the spawn pair
+     * (driven: a visible skip under the flag, zero errors; green
+     * otherwise). Census: setlocale — this test's other consumer and
+     * the fold test's whole premise — stays ungated exactly as before,
+     * a separate consumer class this round's finding does not name.
+     */
+    public function testTheSetlocaleQuerySpellingReadsNeverInstallsTheEnvironmentsLocale(): void
+    {
+        if (! function_exists('putenv')) {
+            $this->markTestSkipped('This host has putenv in disable_functions — the env-pin leg cannot pin an LC_CTYPE that differs from the one in effect (its whole premise), and the pin would die at the putenv mid-test instead of answering the visible skip.');
+        }
+        /*
+         * The QUERY spelling must be a read, never a set (t31-ocr1-6,
+         * the verifier-hardened pin): the naive shape (current ==
+         * current) is vacuous — null sets-then-returns the
+         * environment's spelling and would pass it too. The pin
+         * installs a locale that DIFFERS from the environment's and
+         * asserts the query leaves it standing; null installs the
+         * environment's here (reproduced: 'C' in effect +
+         * LC_CTYPE=C.UTF-8 -> null returns and leaves 'C.UTF-8').
+         */
+        $previous = setlocale(LC_CTYPE, '0');
+        $previousLcCtypeEnv = getenv('LC_CTYPE');
+        try {
+            putenv('LC_CTYPE=C.UTF-8');
+            setlocale(LC_CTYPE, 'C');
+            $this->assertSame('C', setlocale(LC_CTYPE, '0'), 'The setlocale query spelling must read the locale, never install the environment\'s.');
+        } finally {
+            putenv(false === $previousLcCtypeEnv ? 'LC_CTYPE' : 'LC_CTYPE=' . $previousLcCtypeEnv);
             setlocale(LC_CTYPE, $previous);
         }
     }
