@@ -377,7 +377,25 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     // Extract independently and validate the real tree. Everything below
     // runs inside try/finally so the temp tree is removed on EVERY path.
     if (is_dir($workDir)) {
-        wp_connectors_inspect_rrmdir($workDir);
+        /*
+         * The per-entry removal refusal converts to the VERDICT
+         * vocabulary here (t31-ocr32-4): the pre-extraction reclaim
+         * failing loudly is a judgment-shape failure of the run's own
+         * work directory, and the artifact is judged whole or not at
+         * all — never an uncaught fatal's exit 255 with no verdict
+         * (the ocr24-2 channel doctrine).
+         */
+        try {
+            wp_connectors_inspect_rrmdir($workDir);
+        } catch (RuntimeException $reclaim_refusal) {
+            $violations[] = sprintf(
+                'inspect: cannot reclaim the pre-existing work directory %s — %s; the artifact is judged whole or not at all.',
+                wp_connectors_printable($workDir),
+                wp_connectors_printable($reclaim_refusal->getMessage())
+            );
+
+            return $violations;
+        }
     }
     /*
      * The extraction dir is UNIQUE-OWNED (t31-ocr10-2, the WRITE half
@@ -608,7 +626,21 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 
         return $violations;
     } finally {
-        wp_connectors_inspect_rrmdir($extractDir);
+        /*
+         * The teardown degrade (the t31-ocr23-2 silent contract,
+         * unchanged): the per-entry removal failure was ANSWERED at
+         * the seam (the named refusal with the printable path,
+         * t31-ocr32-4) and the raw engine warning never escapes; a
+         * rethrow from this finally would REPLACE the artifact
+         * verdict in flight (the t31-ocr23-1 class), so the partial
+         * removal stands and the unique-suffixed residue stays for
+         * the OS temp sweep (the ocr24-3 vocabulary).
+         */
+        try {
+            wp_connectors_inspect_rrmdir($extractDir);
+        } catch (RuntimeException $reclaim_refusal) {
+            // Intentionally degraded — see the comment above.
+        }
     }
 }
 
@@ -652,8 +684,22 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
  * itself to rmdir('dir/.')'s EINVAL, contradicting the ocr24-3
  * root-reclaim claim this docblock states.
  *
+ * A per-entry removal FAILURE answers the named refusal (OCR round
+ * 32, t31-ocr32-4): the walk's rmdir()/unlink() returns are owned
+ * (the ocr30-4 pattern), because the paths they name are
+ * archive-controlled on this owner's tree and the raw engine
+ * warning is a diagnostics channel the printable seam owns. The
+ * WALK-REFUSAL shapes above (a subdirectory the iterator cannot
+ * OPEN, mid-recursion or at construction) keep the silent degrade
+ * — the production finally must not throw — and the two callers of
+ * the per-entry refusal own its conversion: the pre-extraction
+ * reclaim converts it to a violation (the verdict vocabulary), and
+ * the teardown finally swallows it (a rethrow would replace the
+ * artifact verdict in flight — the t31-ocr23-1 class).
+ *
  * @param string $dir Absolute directory path.
  * @return void
+ * @throws RuntimeException When a per-entry removal fails and the caller owns the conversion (t31-ocr32-4).
  */
 function wp_connectors_inspect_rrmdir($dir)
 {
@@ -755,10 +801,33 @@ function wp_connectors_inspect_rrmdir($dir)
             RecursiveIteratorIterator::CHILD_FIRST
         );
         foreach ($items as $item) {
+            /*
+             * The walk owns its IO returns (OCR round 32, t31-ocr32-4 —
+             * the ocr30-4 pattern at this owner's own vocabulary): the
+             * per-entry rmdir()/unlink() calls run over the EXTRACTED
+             * HOSTILE TREE, and every path they interpolate into an
+             * engine warning is archive-controlled — the one
+             * diagnostics channel the printable seam had left off (a
+             * stranded 0555/0444 shape or a removal race once answered
+             * with a raw E_WARNING: under PHPUnit an exception wearing
+             * PHPUnit's vocabulary, outside it the raw bytes — the
+             * exact two-way escape ocr30-4 closed for the copy twin).
+             * The @ suppresses only the diagnostic; the FAILED RETURN
+             * answers the named refusal below, the path rendered
+             * through the ONE printable seam (the sibling owners walk
+             * builder-created or test-scratch trees; this one does
+             * not). The CALLSITES own the conversion: the
+             * pre-extraction reclaim converts to the verdict
+             * vocabulary, and the teardown finally degrades silently
+             * (its own contract — a rethrow there would replace the
+             * artifact verdict in flight, the t31-ocr23-1 class).
+             */
             if ($item->isDir() && ! $item->isLink()) {
-                rmdir($item->getPathname());
-            } else {
-                unlink($item->getPathname());
+                if (! @rmdir($item->getPathname())) {
+                    throw new RuntimeException('inspect: cannot reclaim the extraction tree — rmdir() failed at ' . wp_connectors_printable($item->getPathname()) . '; the walk owns its IO failures here, never the engine\'s raw warning over archive-controlled bytes, and the partial removal stands for the OS temp sweep');
+                }
+            } elseif (! @unlink($item->getPathname())) {
+                throw new RuntimeException('inspect: cannot reclaim the extraction tree — unlink() failed at ' . wp_connectors_printable($item->getPathname()) . '; the walk owns its IO failures here, never the engine\'s raw warning over archive-controlled bytes, and the partial removal stands for the OS temp sweep');
             }
         }
     } catch (UnexpectedValueException $walk_refusal) {

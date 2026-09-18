@@ -5154,6 +5154,62 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-32 pin (t31-ocr32-4): the removal walk's per-entry
+     * IO failures. The rmdir()/unlink() calls run over the EXTRACTED
+     * HOSTILE TREE — every path interpolated into an engine warning
+     * is archive-controlled, the one diagnostics channel left off
+     * the printable seam — and a stranded shape (a 0555 directory
+     * whose children cannot be unlinked) or a removal race once
+     * answered with a RAW E_WARNING: under PHPUnit (failOnWarning)
+     * an exception wearing PHPUnit's vocabulary, outside it the raw
+     * bytes — the exact two-way escape ocr30-4 closed for the copy
+     * twin. The walk owns its returns now: the named refusal, the
+     * path through the ONE printable seam, the callsites owning the
+     * conversion (the teardown finally's silent degrade stays the
+     * t31-ocr23-2 contract — the sibling test above holds it).
+     */
+    public function testTheInspectorRemovalWalkOwnsItsIoFailuresNeverTheRawWarning(): void
+    {
+        $scratch = self::scratchPath('inspect-iofail');
+        mkdir($scratch . '/work/locked', 0755, true);
+        file_put_contents($scratch . '/work/locked/x.txt', 'bytes');
+        file_put_contents($scratch . '/work/plain.txt', 'bytes');
+        chmod($scratch . '/work/locked', 0555);
+        /*
+         * The stranded-shape probe (the t31-ocr4-1 root doctrine): a
+         * host whose unlink ignores the mode bit (uid 0) cannot
+         * construct the failure, and the leg would assert its own
+         * premise — skip visibly, never a vacuous green.
+         */
+        if (@unlink($scratch . '/work/locked/x.txt')) {
+            chmod($scratch . '/work/locked', 0755);
+            WpHarness::rrmdir($scratch);
+            $this->markTestSkipped('This host unlinks through mode 0555 (uid 0 — t31-ocr4-1); the stranded removal failure is unconstructible here.');
+        }
+
+        try {
+            /*
+             * Red at HEAD: the call emitted the raw E_WARNING (under
+             * failOnWarning, PHPUnit's vocabulary answered where the
+             * harness refusal belongs). CHILD_FIRST order makes the
+             * failing entry deterministic — 'locked/x.txt' is reached
+             * before its parent directory, and only the locked
+             * subtree's entries can fail.
+             */
+            $refusal = $this->refusalOf(
+                fn() => wp_connectors_inspect_rrmdir($scratch . '/work'),
+                'A per-entry removal failure must answer the named refusal — never the engine\'s raw warning over archive-controlled bytes.', \RuntimeException::class
+            );
+            $this->assertStringContainsString('cannot reclaim the extraction tree', $refusal->getMessage(), 'The refusal names the walk\'s own contract.');
+            $this->assertStringContainsString('unlink()', $refusal->getMessage(), 'The refusal names the operation that failed.');
+            $this->assertStringContainsString('locked/x.txt', $refusal->getMessage(), 'The refusal names the path — the harness\'s own vocabulary, printable-seam rendered.');
+        } finally {
+            chmod($scratch . '/work/locked', 0755);
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * OCR-round-26 pin (t31-ocr26-4): a TAIL-SPELLED real-dir removal
      * root is fully reclaimed. The walk and the final @rmdir read the
      * caller's RAW spelling while the fences judged the stripped
