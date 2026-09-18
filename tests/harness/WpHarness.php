@@ -1070,7 +1070,7 @@ final class WpHarness
      * @param string $from Absolute source directory.
      * @param string $to   Target directory — absolute, or relative (judged from the process cwd per t31-ocr11-5, its containment resolved through the TRUE tree the spelling names; the landing keeps the caller's spelling).
      * @return void
-     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing, not a directory, unlistable (t31-ocr32-9 — the gate probes the readability the iterator itself needs), or collapsed to the filesystem root (t31-ocr12-3), the target is the source itself, inside it, or contains it, or a relative target's working directory cannot be resolved (t31-ocr11-5).
+     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing, not a directory, unlistable (t31-ocr32-9 — the gate probes the readability the iterator itself needs), or collapsed to the filesystem root (t31-ocr12-3), the target is the source itself, inside it, or contains it, or a relative target's working directory cannot be resolved (t31-ocr11-5), or a subdirectory of the source cannot be listed mid-walk (t31-ocr34-2 — the recursion boundary is fenced, the rrmdir twin's own vocabulary, never the SPL iterator's).
      */
     public static function copyTree($from, $to)
     {
@@ -1407,69 +1407,92 @@ final class WpHarness
         if ('/' === $landing) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target whose RESOLVED chain has no existing component — the collapsed landing would create the first component directly beneath the filesystem root, the root sentinel\'s rule judged on the resolution rather than the spelling: from ' . $from . ' into ' . $to . ' (the collapsed resolution: ' . $target_real . ')');
         }
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($iterator as $file) {
-            if ($file->isLink()) {
-                // One verdict for both shapes (t31-ocr4-3): the isLink()
-                // probe precedes isDir() — a linked DIRECTORY's isDir()
-                // follows the link, and the old shape-based split silently
-                // skipped dir links while copy() followed file links.
-                throw new RuntimeException('WpHarness::copyTree() refuses a symlinked entry — never followed, never silently skipped: ' . $file->getPathname());
+        /*
+         * The walk fences its RECURSION BOUNDARY (OCR round 34,
+         * t31-ocr34-2 — the t31-ocr33-6 fence rrmdir()'s walk gained,
+         * the copy twin this round's sweep closed): hasChildren()
+         * passes on stat alone, so an unreadable SUBDIRECTORY
+         * mid-tree (a chmod-000 child) was reached by the descent —
+         * RecursiveIteratorIterator's getChildren() opens it — and
+         * the walk died in the SPL iterator's own
+         * UnexpectedValueException, from the constructor or
+         * mid-recursion: another library's vocabulary answering a
+         * harness refusal, while the ocr32-9 opendir gate probes only
+         * the SOURCE ROOT's readability. The construction rides the
+         * try (the ocr23 rd-1 doctrine); the abort converts to the
+         * harness's own refusal, the SPL message riding
+         * parenthetically (it is what names the path), and every
+         * landing already made stands for the caller's finally. The
+         * per-entry refusals inside are RuntimeExceptions — they pass
+         * the fence untouched.
+         */
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS)
+            );
+            foreach ($iterator as $file) {
+                if ($file->isLink()) {
+                    // One verdict for both shapes (t31-ocr4-3): the isLink()
+                    // probe precedes isDir() — a linked DIRECTORY's isDir()
+                    // follows the link, and the old shape-based split silently
+                    // skipped dir links while copy() followed file links.
+                    throw new RuntimeException('WpHarness::copyTree() refuses a symlinked entry — never followed, never silently skipped: ' . $file->getPathname());
+                }
+                /*
+                 * Directory entries are never yielded at all: the iterator
+                 * runs LEAVES_ONLY (the RecursiveIteratorIterator default),
+                 * so the only dir-shaped yields would be LINKED dirs — and
+                 * the isLink() refusal above already owns those (t31-ocr8-4
+                 * removed the dead isDir() continue this knowledge rode).
+                 * The LEAVES_ONLY corollary stands: EMPTY source directories
+                 * are silently dropped — no leaf, no copy, no target dir.
+                 */
+                /*
+                 * The relative path is a 0-position prefix strip, exactly
+                 * once (OCR round 4, t31-ocr4-2): str_replace() strips
+                 * EVERY occurrence, so a source tree containing the source
+                 * dir's own name as a nested segment
+                 * (…/example-connector/vendor/example-connector/file.php)
+                 * silently copied to the wrong target — the first segment
+                 * splice ate the nested one too. A pathname the prefix does
+                 * NOT prefix refuses loudly (OCR round 6, t31-ocr6-4): the
+                 * old no-match arm kept the FULL absolute path as the
+                 * "relative" tail, so every file silently landed nested
+                 * under the target (reachable via a trailing-slash $from,
+                 * whose iterator pathnames never start with the
+                 * double-slash prefix) — the exact silent mis-nesting this
+                 * loud-policy copy owner exists to prevent.
+                 */
+                $relative = $file->getPathname();
+                $prefix = $from . '/';
+                if (0 !== strpos($relative, $prefix)) {
+                    throw new RuntimeException('WpHarness::copyTree() cannot relativize ' . $relative . ' against the source prefix ' . $prefix . ' — every file would silently land nested under the target (a trailing-slash source is the reachable spelling).');
+                }
+                $relative = substr($relative, strlen($prefix));
+                $target = $to . '/' . $relative;
+                /*
+                 * The landing loop owns its IO returns (OCR round 30,
+                 * t31-ocr30-4): mkdir()/copy() failures once escaped the
+                 * contract two ways — under PHPUnit (failOnWarning +
+                 * convertWarningsToExceptions) the raw E_WARNING became an
+                 * exception wearing PHPUnit's vocabulary, and outside it
+                 * the raw warning rode while copyTree() RETURNED NORMALLY
+                 * having moved nothing — a mid-landing IO failure (EACCES,
+                 * ENOSPC, path-length) is never either verdict. The @
+                 * suppresses only the diagnostic (the builder's
+                 * copyNormalized shape); the FAILED RETURN is owned here,
+                 * answering the harness's own refusal vocabulary naming
+                 * the operation and the path.
+                 */
+                if (! is_dir(dirname($target)) && ! @mkdir(dirname($target), 0755, true)) {
+                    throw new RuntimeException('WpHarness::copyTree() refuses a landing whose directory cannot be created — the mkdir failed at the path it owns: ' . dirname($target));
+                }
+                if (! @copy($file->getPathname(), $target)) {
+                    throw new RuntimeException('WpHarness::copyTree() refuses a landing whose file cannot be copied — the copy failed mid-landing, and a partial tree never reads as a normal return: ' . $file->getPathname() . ' into ' . $target);
+                }
             }
-            /*
-             * Directory entries are never yielded at all: the iterator
-             * runs LEAVES_ONLY (the RecursiveIteratorIterator default),
-             * so the only dir-shaped yields would be LINKED dirs — and
-             * the isLink() refusal above already owns those (t31-ocr8-4
-             * removed the dead isDir() continue this knowledge rode).
-             * The LEAVES_ONLY corollary stands: EMPTY source directories
-             * are silently dropped — no leaf, no copy, no target dir.
-             */
-            /*
-             * The relative path is a 0-position prefix strip, exactly
-             * once (OCR round 4, t31-ocr4-2): str_replace() strips
-             * EVERY occurrence, so a source tree containing the source
-             * dir's own name as a nested segment
-             * (…/example-connector/vendor/example-connector/file.php)
-             * silently copied to the wrong target — the first segment
-             * splice ate the nested one too. A pathname the prefix does
-             * NOT prefix refuses loudly (OCR round 6, t31-ocr6-4): the
-             * old no-match arm kept the FULL absolute path as the
-             * "relative" tail, so every file silently landed nested
-             * under the target (reachable via a trailing-slash $from,
-             * whose iterator pathnames never start with the
-             * double-slash prefix) — the exact silent mis-nesting this
-             * loud-policy copy owner exists to prevent.
-             */
-            $relative = $file->getPathname();
-            $prefix = $from . '/';
-            if (0 !== strpos($relative, $prefix)) {
-                throw new RuntimeException('WpHarness::copyTree() cannot relativize ' . $relative . ' against the source prefix ' . $prefix . ' — every file would silently land nested under the target (a trailing-slash source is the reachable spelling).');
-            }
-            $relative = substr($relative, strlen($prefix));
-            $target = $to . '/' . $relative;
-            /*
-             * The landing loop owns its IO returns (OCR round 30,
-             * t31-ocr30-4): mkdir()/copy() failures once escaped the
-             * contract two ways — under PHPUnit (failOnWarning +
-             * convertWarningsToExceptions) the raw E_WARNING became an
-             * exception wearing PHPUnit's vocabulary, and outside it
-             * the raw warning rode while copyTree() RETURNED NORMALLY
-             * having moved nothing — a mid-landing IO failure (EACCES,
-             * ENOSPC, path-length) is never either verdict. The @
-             * suppresses only the diagnostic (the builder's
-             * copyNormalized shape); the FAILED RETURN is owned here,
-             * answering the harness's own refusal vocabulary naming
-             * the operation and the path.
-             */
-            if (! is_dir(dirname($target)) && ! @mkdir(dirname($target), 0755, true)) {
-                throw new RuntimeException('WpHarness::copyTree() refuses a landing whose directory cannot be created — the mkdir failed at the path it owns: ' . dirname($target));
-            }
-            if (! @copy($file->getPathname(), $target)) {
-                throw new RuntimeException('WpHarness::copyTree() refuses a landing whose file cannot be copied — the copy failed mid-landing, and a partial tree never reads as a normal return: ' . $file->getPathname() . ' into ' . $target);
-            }
+        } catch (UnexpectedValueException $walk_refusal) {
+            throw new RuntimeException('WpHarness::copyTree() refuses a source whose subdirectory cannot be listed — the walk fences the recursion boundary, never the SPL iterator\'s vocabulary (the t31-ocr33-6 fence, the copy twin): ' . $walk_refusal->getMessage());
         }
     }
 

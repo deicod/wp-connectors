@@ -866,6 +866,58 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-34 pin (t31-ocr34-2): the COPY walk fences its
+     * RECURSION BOUNDARY — the twin of the t31-ocr33-6 fence the
+     * removal walk gained, the one owner round 33's residual ledger
+     * line named. hasChildren() passes on stat alone, so an
+     * unreadable SUBDIRECTORY mid-tree (a chmod-000 child) was
+     * reached by the descent — RecursiveIteratorIterator's
+     * getChildren() opens it — and the walk died in the SPL
+     * iterator's own UnexpectedValueException (driven red at HEAD:
+     * the family pin reddened, the SPL exception standing where the
+     * policy's does), while the ocr32-9 opendir gate probes only the
+     * SOURCE ROOT's readability. The fence converts the abort to the
+     * harness's refusal (the SPL message riding parenthetically — it
+     * is what names the path), and every landing already made stands
+     * for the caller's finally.
+     */
+    public function testTheCopyWalkFencesTheRecursionBoundary(): void
+    {
+        $from = sys_get_temp_dir() . '/wpct-copytree-unlistable-' . uniqid('', true);
+        $to = $from . '-dst';
+        mkdir($from . '/open', 0755, true);
+        $this->stage($from . '/open/x.txt', 'bytes');
+        mkdir($from . '/locked/inner', 0755, true);
+        $this->stage($from . '/locked/inner/y.txt', 'bytes');
+        chmod($from . '/locked', 0000);
+        // The unlistable-shape probe (the t31-ocr4-1 root doctrine):
+        // a host whose process opens chmod-0000 directories cannot
+        // construct the shape — skip visibly, never a vacuous green.
+        $probe = @opendir($from . '/locked');
+        if (false !== $probe) {
+            closedir($probe);
+            chmod($from . '/locked', 0755);
+            $this->releaseScratch($from);
+            $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
+        }
+
+        try {
+            $refusal = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($from, $to),
+                'An unlistable SUBDIRECTORY of the source must answer the harness\'s own refusal, never the SPL iterator\'s vocabulary.',
+                RuntimeException::class
+            );
+            $this->assertStringContainsString('WpHarness::copyTree()', $refusal->getMessage(), 'The refusal speaks the harness policy\'s own vocabulary.');
+            $this->assertStringContainsString('cannot be listed', $refusal->getMessage(), 'The refusal names the class the fence owns.');
+            $this->assertStringContainsString('locked', $refusal->getMessage(), 'The refusal names the path — the SPL message parenthetical carries it.');
+            $this->assertStringContainsString('Failed to open directory', $refusal->getMessage(), 'The parenthetical carries the engine\'s own diagnostic for the path — named, never laundered silent.');
+        } finally {
+            chmod($from . '/locked', 0755);
+            $this->releaseScratch($from, $to);
+        }
+    }
+
+    /**
      * OCR-round-19 pin (t31-ocr19-2): the probe anchors at the TEMP
      * ROOT, never at '/'. The ocr17-2 full-chain walk judged every
      * component of the passed chain, and on a host whose temp spelling
