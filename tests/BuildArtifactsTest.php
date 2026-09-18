@@ -499,6 +499,16 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testInspectorRejectsRepoRelativeInclude()
     {
+        /*
+         * The exec-capability guard (t31-ocr27-7, the ocr20-5/ocr26-9
+         * doctrine): the anchoring violation ACCUMULATES — extraction
+         * and the internal php -l sweep run anyway — so the verdict
+         * leg rides the spawn; on a disable_functions host it was an
+         * undefined-function \Error, never a skip.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the inspector verdict (its internal php -l spawn over the extracted tree) cannot run; the anchoring violation accumulates beside it, extraction still happens.');
+        }
         $zipPath = $this->buildBadZip('escape-demo', "require_once dirname(__DIR__) . '/other-plugin/plugin.php';");
         $work = self::scratchPath('inspect-bad');
         $violations = wp_connectors_inspect_artifact($zipPath, $work);
@@ -514,6 +524,16 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testInspectorRejectsMissingHeader()
     {
+        /*
+         * The exec-capability guard (t31-ocr27-7, the ocr20-5/ocr26-9
+         * doctrine): the header verdict is a POST-EXTRACTION check —
+         * the internal php -l sweep runs behind it, so the leg rides
+         * the spawn; on a disable_functions host it was an
+         * undefined-function \Error, never a skip.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the inspector verdict (its internal php -l spawn over the extracted tree) cannot run; the header verdict it precedes is a post-extraction check.');
+        }
         $zipPath = $this->buildBadZip('header-demo', '', true);
         $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-bad'));
         $this->assertNotSame(array(), $violations);
@@ -522,6 +542,16 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
     public function testInspectorRejectsDevelopmentFilesInZip()
     {
+        /*
+         * The exec-capability guard (t31-ocr27-7, the ocr20-5/ocr26-9
+         * doctrine): the dev-entry verdicts ACCUMULATE — extraction
+         * and the internal php -l sweep run anyway — so the leg rides
+         * the spawn; on a disable_functions host it was an
+         * undefined-function \Error, never a skip.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the inspector verdict (its internal php -l spawn over the extracted tree) cannot run; the dev-entry classification accumulates, extraction still happens.');
+        }
         $zipPath = $this->buildBadZip('devfiles-demo', '');
         $extra = self::distDir() . '/connectors-devfiles-demo-1.0.0.zip';
         $zip = new ZipArchive();
@@ -556,6 +586,17 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      */
     public function testADevEntryTopLevelDirectoryIsNeverAnEmbedTerritory(): void
     {
+        /*
+         * The exec-capability guard (t31-ocr27-7, the ocr20-5/ocr26-9
+         * doctrine): the dev-entry classification under a dev-entry
+         * root ACCUMULATES (the finding's own named arm) — extraction
+         * and the internal php -l sweep run anyway, so both verdict
+         * legs ride the spawn; on a disable_functions host it was an
+         * undefined-function \Error, never a skip.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the inspector verdicts (their internal php -l spawn over the extracted tree) cannot run; the dev-entry classification accumulates, extraction still happens.');
+        }
         $head = "Plugin Name:       vendor\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       vendor\nAuthor:            x\n";
         $zipPath = self::distDir() . '/connectors-vendor-1.0.0.zip';
         $zip = new ZipArchive();
@@ -1426,6 +1467,15 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // source — it extracts, lints, and inspects green (the fence judges
         // the fold, never the source); a near-source NON-PHP tail
         // ('notes.md ') folds to no PHP source and refuses nothing here.
+        /*
+         * The exec-capability guard (t31-ocr27-7, the ocr20-5/ocr26-9
+         * doctrine): the GREEN control leg extracts real PHP sources
+         * and rides the internal php -l sweep; the refusal legs above
+         * refuse PRE-extraction and already passed on any host.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the green control leg (the inspector\'s internal php -l spawn over the extracted PHP sources) cannot run; the near-source refusal legs above already passed.');
+        }
         $zipPath = self::distDir() . "/connectors-{$slug}-1.0.3.zip";
         file_put_contents($zipPath, self::storedZipBytes(array(
             array("{$slug}/{$slug}.php", $main),
@@ -3140,6 +3190,18 @@ FIXTURE;
              * (pinned by the parse-after-extraction and
              * self-containment sweeps over the real zips).
              */
+            /*
+             * The exec-capability guard (t31-ocr27-7, the ocr20-5/ocr26-9
+             * doctrine): the green one-verdict leg inspects the whole
+             * plugin tree plus the embedded src/Shared sources through
+             * the internal php -l spawn; the build and entry-name legs
+             * above already passed. The hostile traversal leg below
+             * refuses PRE-extraction (spawn-free) and rides after the
+             * skip point — it runs wherever this leg can.
+             */
+            if (! self::canSpawnChildren()) {
+                $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the green one-verdict inspect leg (the inspector\'s internal php -l spawn over the plugin tree and embedded src/Shared) cannot run; the build and entry-name legs above already passed.');
+            }
             $this->assertSame(
                 array(),
                 wp_connectors_inspect_artifact($zipPath, $scratch . '/dist/.inspect-excluded-names'),
@@ -3279,6 +3341,17 @@ FIXTURE;
         try {
             $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
             $this->assertFileExists($zipPath, 'The plugin-root-anchored include is inside the artifact — the scoped walk must not narrow the anchor.');
+
+            /*
+             * The exec-capability guard (t31-ocr27-7, the ocr20-5/ocr26-9
+             * doctrine): the green one-verdict leg (the same class as
+             * the excluded-names test's) rides the inspector's internal
+             * php -l spawn over the extracted tree; the build leg above
+             * already passed.
+             */
+            if (! self::canSpawnChildren()) {
+                $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the green one-verdict inspect leg (the inspector\'s internal php -l spawn over the extracted tree) cannot run; the build leg above already passed.');
+            }
 
             // One verdict: the inspector scans the extracted tree with
             // the same full-tree anchor and accepts too.
