@@ -6907,6 +6907,28 @@ FIXTURE;
         $rewritten = WpConnectorsBuild::rewriteSharedNamespace($interrupted, 'OpenAiOauth', 'shared/src/InterruptedRelFixture.php');
         $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\WpConnectors\\Shared\\Clock;', $rewritten, 'An interrupted relative spelling is replaced whole, reassembled like its contiguous twin.');
 
+        /*
+         * The EXACT-ROOT member (OCR round 29, t31-ocr29-2): the
+         * family check tested only the prefix-with-separator form, so
+         * a relative resolving to EXACTLY the family root was refused
+         * as a "SIBLING" (driven red at HEAD) — the root is not a
+         * sibling, it is the family's own stem, and the member
+         * verdict it earns rewrites it to the REWRITTEN root: the
+         * below-root tail stays empty and no trailing separator ships
+         * (the prefix form's splice over an empty tail would emit
+         * `\…\Shared\`, a parse error). The aliased twin keeps its
+         * alias through the same splice, and the SIBLING refusal
+         * below keeps its own verdict — outside the root is still
+         * outside.
+         */
+        $exactRoot = "<?php\nnamespace Deicod;\nuse namespace\\WpConnectors\\Shared;\ninterface ExactRootFixture\n{\n}\n";
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($exactRoot, 'OpenAiOauth', 'shared/src/ExactRootFixture.php');
+        $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared;', $rewritten, 'A relative resolving to EXACTLY the family root is a MEMBER — it rewrites to the rewritten root itself (red at HEAD: the SIBLING refusal answered a member).');
+        $this->assertStringNotContainsString('OpenAiOauth\\Shared\\;', $rewritten, 'The root member carries no trailing separator — the empty below-root tail never rides the prefix form\'s splice.');
+        $aliasedRoot = "<?php\nnamespace Deicod;\nuse namespace\\WpConnectors\\Shared as Sh;\ninterface AliasedRootFixture\n{\n}\n";
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($aliasedRoot, 'OpenAiOauth', 'shared/src/AliasedRootFixture.php');
+        $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared as Sh;', $rewritten, 'The aliased exact-root twin keeps its alias through the same member splice.');
+
         // The other direction: a relative that ESCAPES the family —
         // under a foreign declaration, where the resolution lands
         // outside the vendor prefix — refuses loudly, never rides (in

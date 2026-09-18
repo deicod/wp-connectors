@@ -1007,14 +1007,28 @@ final class WpConnectorsBuild
             if ($resolved_lower !== $vendor_lower && 0 !== strpos($resolved_lower, $vendor_lower . '\\')) {
                 throw new RuntimeException("build: the relative use import {$spelling_display} in {$sourceVersion} resolves to {$resolved_display}, outside the shared-namespace family — in the rewritten output it would silently re-resolve against the REWRITTEN declaration, so it refuses rather than riding with changed meaning");
             }
-            if (0 !== strpos($resolved_lower, $root_lower . '\\')) {
+            /*
+             * The EXACT-ROOT spelling is a MEMBER (OCR round 29,
+             * t31-ocr29-2): the family check tested only the
+             * prefix-with-separator form, so a relative resolving to
+             * EXACTLY the family root (`use namespace\WpConnectors\
+             * Shared;` under `namespace Deicod;`) passed the vendor
+             * check, missed the family one, and refused as a "SIBLING"
+             * — the root is not a sibling, and the mis-diagnosis
+             * answered a member with the one verdict it cannot earn.
+             * The root rewrites to the rewritten ROOT: no below-root
+             * segment rides the splice, so no trailing separator
+             * ships (the prefix form's appended separator over an
+             * empty tail would emit `\…\Shared\`, a parse error).
+             */
+            if ($resolved_lower !== $root_lower && 0 !== strpos($resolved_lower, $root_lower . '\\')) {
                 throw new RuntimeException("build: the relative use import {$spelling_display} in {$sourceVersion} resolves to {$resolved_display}, a SIBLING under the vendor prefix the rewrite owns no spelling of — write the shared tree's own namespace (or refuse by hand)");
             }
             $below_root = implode('\\', array_slice(explode('\\', $resolved_display), count($family_segments)));
             $splices[] = array(
                 'start' => $token_offset,
                 'end' => $run_end_offset,
-                'replacement' => '\\' . $vendor . '\\' . $pluginSuffix . '\\' . $family_leaf . '\\' . $below_root,
+                'replacement' => '\\' . $vendor . '\\' . $pluginSuffix . '\\' . $family_leaf . ('' === $below_root ? '' : '\\' . $below_root),
             );
         }
 
