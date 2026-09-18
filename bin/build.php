@@ -183,10 +183,45 @@ final class WpConnectorsBuild
          * alias, and the brace-group tail (group members are relative —
          * rewriting the prefix before '{' rewrites every member).
          */
+        /*
+         * The ALIAS half of this seam's grammar (OCR round 32,
+         * t31-ocr32-1): the optional alias group once captured ANY
+         * identifier spelling and re-emitted it verbatim — including
+         * the fourteen engine-illegal ones (`as self`, `as true`,
+         * `as int`, … case-insensitively; php -l-derived), the exact
+         * class the relative-path alias state already refuses one
+         * method below — so `use …\Shared\Clock as self;` rewrote the
+         * family and re-emitted ` as self` beside it: compile-error
+         * bytes in the zip at exit 0 with every gate green (driven at
+         * HEAD; the postcondition judges family references, and the
+         * alias rides a target-prefixed import, so it waved through).
+         * The round's census rule: the alias grammar rejects what the
+         * engine rejects, at EVERY seam that re-emits an alias — this
+         * pattern, the group-use member callback (t31-ocr32-2/3), and
+         * the relative tail walk all consult the ONE reserved-vocab
+         * owner below.
+         */
         $rewritten = self::replaceOrThrow(
-            preg_replace(
+            preg_replace_callback(
                 '/(?<![A-Za-z0-9_])((?:use\s+(?:function\s+|const\s+)?)\\\\?)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*)(\s+as\s+[A-Za-z0-9_]+)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
-                '${1}' . $target_escaped . '${2}${3}${4};',
+                static function ($matches) use ($sourceVersion, $vendor, $pluginSuffix, $family_leaf) {
+                    // The optional groups are ABSENT keys (never
+                    // null/'' — no PREG_UNMATCHED_AS_NULL here), the
+                    // replacement-template ${n} empty-string semantics
+                    // spelled by hand.
+                    $alias_group = $matches[3] ?? '';
+                    if ('' !== $alias_group && 1 === preg_match('/[A-Za-z0-9_]+\z/', $alias_group, $alias_id)) {
+                        if (self::aliasIdentifierIsEngineIllegal($alias_id[0])) {
+                            throw new RuntimeException("build: the alias of a use statement importing the shared namespace in {$sourceVersion} must be one plain identifier — '{$alias_id[0]}' is one of the fourteen reserved spellings the engine forbids in the slot, case-insensitively, and the rewrite re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write a plain identifier the engine accepts");
+                        }
+                    }
+
+                    // The plain target spelling (the callback returns
+                    // raw bytes, never a replacement template — the
+                    // former $target_escaped side decoded to exactly
+                    // this through the replacement parser).
+                    return $matches[1] . $vendor . '\\' . $pluginSuffix . '\\' . $family_leaf . ($matches[2] ?? '') . $alias_group . ($matches[4] ?? '') . ';';
+                },
                 $rewritten
             ),
             'use-statement rewrite',
@@ -1126,11 +1161,12 @@ final class WpConnectorsBuild
                      * rewritten import with the engine-illegal alias
                      * intact — this fix's own exit-0 parse-error
                      * class, caught by the round's verifier pass.
-                     * The fold rides the ONE ASCII owner (the
-                     * r11-6/ocr10-4 doctrine).
+                     * The list rides the ONE reserved-vocab owner
+                     * since OCR round 32 (t31-ocr32-1): the hand-
+                     * rolled twin folded in, the same class refused
+                     * at every seam that re-emits an alias.
                      */
-                    $reserved_alias = array('self', 'parent', 'true', 'false', 'null', 'int', 'float', 'bool', 'string', 'void', 'iterable', 'object', 'mixed', 'never');
-                    if (T_STRING !== $tail_id || in_array(wp_connectors_ascii_lower((string) $rider_display), $reserved_alias, true)) {
+                    if (T_STRING !== $tail_id || self::aliasIdentifierIsEngineIllegal($rider_display)) {
                         throw new RuntimeException("build: the alias of a relative use import ({$spelling_display}) must be one plain identifier in {$sourceVersion} — the grammar accepts nothing else in the slot (a keyword spelling, case-insensitively, included), and the rewrite refuses the spelling rather than shipping it (here: '{$rider_display}')");
                     }
                     $tail_expect = 'terminator-only';
@@ -1587,6 +1623,34 @@ final class WpConnectorsBuild
         }
 
         return $counts;
+    }
+
+    /**
+     * Whether an identifier is one the ENGINE forbids in a use-alias
+     * slot — the ONE owner of the reserved-alias vocabulary (OCR round
+     * 32's census, t31-ocr32-1/2/3).
+     *
+     * Fourteen spellings lex as plain T_STRING yet never parse in the
+     * alias slot (php -l-derived on this engine, CASE-INSENSITIVELY:
+     * 'as self'/'as True'/'as Int' all refuse): self/parent, the three
+     * literals, and the type keywords. The census's shared rule: the
+     * alias grammar rejects what the engine rejects, at EVERY seam
+     * that re-emits an alias — the use-statement pattern, the
+     * group-use member callback, and the relative-use tail walk all
+     * consult THIS owner (the relative walk's hand-rolled list folded
+     * into it), so a future reserved word joins one list, never three
+     * seams. The fold rides the ONE ASCII owner (the r11-6/ocr10-4
+     * doctrine).
+     *
+     * @param string $alias Candidate alias identifier.
+     * @return bool True when the engine rejects the identifier in an alias slot.
+     */
+    private static function aliasIdentifierIsEngineIllegal($alias)
+    {
+        return in_array(wp_connectors_ascii_lower((string) $alias), array(
+            'self', 'parent', 'true', 'false', 'null',
+            'int', 'float', 'bool', 'string', 'void', 'iterable', 'object', 'mixed', 'never',
+        ), true);
     }
 
     /**

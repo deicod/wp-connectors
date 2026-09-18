@@ -5854,6 +5854,39 @@ FIXTURE;
         }
 
         /*
+         * OCR round 32 (t31-ocr32-1): the alias grammar at the
+         * USE-STATEMENT seam. The optional alias group re-emitted any
+         * identifier spelling verbatim — including the fourteen
+         * engine-illegal ones the relative-path alias state already
+         * refuses — so `use …\Shared\Clock as self;` rewrote the
+         * family and re-emitted ` as self` beside it: compile-error
+         * bytes in the zip at exit 0 with every gate green (driven at
+         * HEAD: the rewrite returned normally, the alias riding a
+         * target-prefixed import the postcondition waves through).
+         * The round's census rule, pinned here for the whole family:
+         * the alias grammar rejects what the engine rejects, at EVERY
+         * seam that re-emits an alias (the member seam's rows ride
+         * t31-ocr32-2/3 below).
+         */
+        foreach (array(
+            'reserved: self' => 'use Deicod\\WpConnectors\\Shared\\Clock as self;',
+            'reserved: True (case-folded literal)' => 'use Deicod\\WpConnectors\\Shared\\Clock as True;',
+            'reserved: Int (case-folded type keyword)' => 'use Deicod\\WpConnectors\\Shared\\Clock as Int;',
+            'reserved: NEVER (case-folded, function kind)' => 'use function Deicod\\WpConnectors\\Shared\\Clock\\now as NEVER;',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass IllegalAliasStore\n{\n}\n", 'OpenAiOauth', 'shared/src/IllegalAliasStore.php'),
+                "An engine-illegal use-statement alias must refuse the rewrite ({$label}) — the zip ships the compile-error bytes otherwise.", \RuntimeException::class
+            );
+            $this->assertStringContainsString('must be one plain identifier', $refusal->getMessage(), "The refusal speaks the alias grammar's own vocabulary ({$label}).");
+            $this->assertStringContainsString('IllegalAliasStore.php', $refusal->getMessage(), "The refusal names the file ({$label}).");
+        }
+        // The legal controls keep riding: the aliased spellings the
+        // engine accepts rewrite unchanged (pinned above in the
+        // $spellings battery — 'as SharedNs', 'as C', 'as nowish' —
+        // and the group battery's 'as W'/'as T' members).
+
+        /*
          * The total postcondition (the token detector, t31-r7): a family
          * reference the rewrite does not own REFUSES the build loudly
          * with the file, byte offset, resolved name, and position kind.
