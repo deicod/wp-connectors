@@ -57,8 +57,8 @@ final class HarnessCopyTreeTest extends TestCase
         $to = sys_get_temp_dir() . '/wpct-copytree-dst-' . uniqid('', true);
         $nested = $from . '/vendor' . $from;
         mkdir($nested, 0755, true);
-        file_put_contents($from . '/plain.php', 'plain bytes');
-        file_put_contents($nested . '/nested.php', 'nested bytes');
+        $this->stage($from . '/plain.php', 'plain bytes');
+        $this->stage($nested . '/nested.php', 'nested bytes');
 
         try {
             WpHarness::copyTree($from, $to);
@@ -97,7 +97,7 @@ final class HarnessCopyTreeTest extends TestCase
         $from = sys_get_temp_dir() . '/wpct-copytree-slash-' . uniqid('', true);
         $to = sys_get_temp_dir() . '/wpct-copytree-slash-dst-' . uniqid('', true);
         mkdir($from . '/src', 0755, true);
-        file_put_contents($from . '/src/file.php', 'bytes');
+        $this->stage($from . '/src/file.php', 'bytes');
 
         try {
             // The verdict rides the ONE refusal owner (t31-ocr15-7) —
@@ -156,12 +156,12 @@ final class HarnessCopyTreeTest extends TestCase
              * drives, and the legs pin one arm each.
              */
             mkdir($from_nested . '/sub', 0755, true);
-            file_put_contents($from_nested . '/sub/file.php', 'nested bytes');
+            $this->stage($from_nested . '/sub/file.php', 'nested bytes');
             mkdir($from_flat, 0755, true);
-            file_put_contents($from_flat . '/plain.php', 'plain bytes');
+            $this->stage($from_flat . '/plain.php', 'plain bytes');
             mkdir($locked_to, 0755, true);
             mkdir($readonly_to, 0755, true);
-            file_put_contents($readonly_to . '/plain.php', 'stale bytes');
+            $this->stage($readonly_to . '/plain.php', 'stale bytes');
 
             /*
              * The permission-denial probe (the capability these legs
@@ -268,9 +268,9 @@ final class HarnessCopyTreeTest extends TestCase
 
         $from = sys_get_temp_dir() . '/wpct-copytree-guard-' . uniqid('', true);
         mkdir($from . '/src', 0755, true);
-        file_put_contents($from . '/src/file.php', 'original bytes');
+        $this->stage($from . '/src/file.php', 'original bytes');
         $file_source = $from . '/plain.txt';
-        file_put_contents($file_source, 'a file, not a tree');
+        $this->stage($file_source, 'a file, not a tree');
 
         try {
             // The verdict rides the ONE refusal owner (WpHarness::refusalOf(),
@@ -313,7 +313,7 @@ final class HarnessCopyTreeTest extends TestCase
              */
             $locked = $from . '/locked-src';
             mkdir($locked . '/inner', 0755, true);
-            file_put_contents($locked . '/inner/x.txt', 'bytes');
+            $this->stage($locked . '/inner/x.txt', 'bytes');
             chmod($locked, 0000);
             $locked_probe = @opendir($locked);
             if (false !== $locked_probe) {
@@ -342,7 +342,7 @@ final class HarnessCopyTreeTest extends TestCase
              * parent). Same containment owner, symmetric direction.
              */
             mkdir($from . '/src/src', 0755, true);
-            file_put_contents($from . '/src/src/nested.php', 'nested bytes');
+            $this->stage($from . '/src/src/nested.php', 'nested bytes');
             $refuses($from . '/src', $from, 'A target that CONTAINS the source must refuse — the mirror of the nested-target refusal.');
             $this->assertFileDoesNotExist($from . '/src/nested.php', 'The mis-nested landing (the nested segment resolving inside the tree being read) never happens.');
             $this->assertFileDoesNotExist($from . '/file.php', 'No collateral lands in the containing parent either.');
@@ -487,7 +487,7 @@ final class HarnessCopyTreeTest extends TestCase
 
         $from = sys_get_temp_dir() . '/wpct-copytree-root-' . uniqid('', true);
         mkdir($from . '/src', 0755, true);
-        file_put_contents($from . '/src/file.php', 'original bytes');
+        $this->stage($from . '/src/file.php', 'original bytes');
 
         try {
             // The same refusal owner the parent battery rides
@@ -703,7 +703,7 @@ final class HarnessCopyTreeTest extends TestCase
 
         $plain = sys_get_temp_dir() . '/wpct-copytree-link-' . uniqid('', true);
         mkdir($plain . '/src', 0755, true);
-        file_put_contents($plain . '/src/real.php', 'real bytes');
+        $this->stage($plain . '/src/real.php', 'real bytes');
 
         try {
             /*
@@ -844,7 +844,7 @@ final class HarnessCopyTreeTest extends TestCase
             $dotdotOut = sys_get_temp_dir() . '/wpct-copytree-dotdot-out-' . uniqid('', true);
             try {
                 mkdir($dotdotHolder . '/tree', 0755, true);
-                file_put_contents($dotdotHolder . '/tree/real.php', 'real bytes');
+                $this->stage($dotdotHolder . '/tree/real.php', 'real bytes');
                 WpHarness::copyTree($dotdotHolder . '/tree/..', $dotdotOut);
                 $this->assertFileExists($dotdotOut . '/tree/real.php', 'A \'/..\'-spelled REAL source keeps copying the tree it names — the probe is the only judgment that changed.');
             } finally {
@@ -930,11 +930,11 @@ final class HarnessCopyTreeTest extends TestCase
 
         $base = sys_get_temp_dir() . '/wpct-anchor-' . uniqid('', true);
         mkdir($base . '/real/scratch/sub', 0755, true);
-        file_put_contents($base . '/real/scratch/sub/x.txt', 'bytes');
+        $this->stage($base . '/real/scratch/sub/x.txt', 'bytes');
         mkdir($base . '/real/copy-src', 0755, true);
-        file_put_contents($base . '/real/copy-src/f.php', 'copy bytes');
+        $this->stage($base . '/real/copy-src/f.php', 'copy bytes');
         mkdir($base . '/real/victim', 0755, true);
-        file_put_contents($base . '/real/victim/keep.txt', 'survivor');
+        $this->stage($base . '/real/victim/keep.txt', 'survivor');
         symlink($base . '/real', $base . '/anchor-link');
         symlink($base . '/real/victim', $base . '/real/planted-link');
 
@@ -1037,12 +1037,12 @@ final class HarnessCopyTreeTest extends TestCase
 
         $base = sys_get_temp_dir() . '/wpct-anchor6-' . uniqid('', true);
         mkdir($base . '/real/src', 0755, true);
-        file_put_contents($base . '/real/src/f.php', 'layout bytes');
+        $this->stage($base . '/real/src/f.php', 'layout bytes');
         mkdir($base . '/real/gone', 0755, true);
-        file_put_contents($base . '/real/gone/x.txt', 'bytes');
+        $this->stage($base . '/real/gone/x.txt', 'bytes');
         mkdir($base . '/real/deep', 0755, true);
         mkdir($base . '/real/victim', 0755, true);
-        file_put_contents($base . '/real/victim/keep.txt', 'survivor');
+        $this->stage($base . '/real/victim/keep.txt', 'survivor');
         symlink($base . '/real', $base . '/layout-link');
         symlink($base . '/real/victim', $base . '/real/deep/planted-link');
 
@@ -1208,7 +1208,7 @@ final class HarnessCopyTreeTest extends TestCase
         $from = $base . '/src';
         mkdir($w, 0755, true);
         mkdir($from . '/sub', 0755, true);
-        file_put_contents($from . '/sub/file.php', "SRC BYTES\n");
+        $this->stage($from . '/sub/file.php', "SRC BYTES\n");
 
         $previous_cwd = (string) getcwd();
         try {
@@ -1218,7 +1218,7 @@ final class HarnessCopyTreeTest extends TestCase
             // guard refuse a legal copy naming a containment that
             // does not exist.
             mkdir($base . '/wst/src', 0755, true);
-            file_put_contents($base . '/wst/src/wst.php', "WST BYTES\n");
+            $this->stage($base . '/wst/src/wst.php', "WST BYTES\n");
             chdir($w);
             WpHarness::copyTree($base . '/wst/src', 'dst');
             $this->assertFileExists($w . '/dst/wst.php', 'A relative target is judged through its TRUE tree — the first-byte-eaten spelling never refuses a legal copy.');
@@ -1301,5 +1301,20 @@ final class HarnessCopyTreeTest extends TestCase
                 fwrite(STDERR, 'scratch release failed for ' . $tree . ': ' . $environmental->getMessage() . "\n");
             }
         }
+    }
+
+    /**
+     * The battery's asserted stage write (OCR round 33, t31-ocr33-8,
+     * the t31-ocr29-10 doctrine swept whole-file): a staging write
+     * whose return rode unchecked surfaced as a misleading DOWNSTREAM
+     * verdict — 'cannot relativize' over an empty tree, a missing-
+     * file refusal over an absent stage, an ER_NOENT-shaped refusal
+     * — instead of the staging error that actually happened. Every
+     * leg stages through this one owner, the failure naming its own
+     * path.
+     */
+    private function stage(string $path, string $bytes): void
+    {
+        $this->assertNotFalse(file_put_contents($path, $bytes), "Staging {$path} must land — a failed stage is the leg's own verdict, never a misleading downstream one.");
     }
 }
