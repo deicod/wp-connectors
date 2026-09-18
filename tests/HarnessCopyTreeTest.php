@@ -624,6 +624,20 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testASymlinkedTempRootIsHostSpellingWhilePlantedLinksBelowItStillRefuse(): void
     {
+        /*
+         * The platform gate (OCR round 23, t31-ocr23-5 — the POSIX
+         * premise the sim rode ungated, its sibling battery the
+         * t31-ocr22-2 split already gating): the child's whole
+         * premise is a FRESH engine whose sys_get_temp_dir() honors
+         * the TMPDIR spelling — POSIX temp resolution. A host whose
+         * platform separator is not the POSIX one resolves the temp
+         * dir through its own vocabulary (TMP/TEMP, not TMPDIR), the
+         * putenv would redirect nothing, and the sim's verdicts would
+         * ride an engine that never read the variable.
+         */
+        if (DIRECTORY_SEPARATOR !== '/') {
+            $this->markTestSkipped('The redirected-TMPDIR sim premises POSIX temp resolution (a fresh engine honoring the TMPDIR spelling) — this host\'s platform separator is not the POSIX one.');
+        }
         if (! WpHarness::canSymlink()) {
             $this->markTestSkipped('This host cannot create symlinks.');
         }
