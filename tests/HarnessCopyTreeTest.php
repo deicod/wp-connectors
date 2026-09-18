@@ -418,10 +418,28 @@ final class HarnessCopyTreeTest extends TestCase
              * attempted.
              */
             foreach (array('/', '//') as $rootOnly) {
-                $this->assertSame(
-                    '/',
+                /*
+                 * The precondition DERIVES the host's shape (OCR
+                 * round 29, t31-ocr29-6): POSIX leaves EXACTLY two
+                 * leading slashes implementation-defined — libcs are
+                 * free to preserve the super-root spelling (realpath
+                 * ('//') answering '//') — and the former pin of
+                 * assertSame('/', realpath('//')) reddened on those
+                 * hosts while the leg's subject never rode the
+                 * resolution: the production guard is LEXICAL
+                 * (rtrim('//', '/') === '' — the ocr11-22
+                 * root-separators clause), the refusal firing on
+                 * every host regardless of the libc's answer. What
+                 * the leg needs is weaker and true on both shapes:
+                 * the spelling resolves to the filesystem ROOT
+                 * ITSELF, in either spelling — never to a real work
+                 * tree (driven on this host: '/' for both, the /tmp
+                 * probe recorded in the commit).
+                 */
+                $this->assertContains(
                     realpath($rootOnly),
-                    'The leg\'s own precondition: the root-separator spelling resolves to the filesystem ROOT the guard refuses — a spelling resolving elsewhere would point this leg\'s landing at a real tree.'
+                    array('/', '//'),
+                    'The leg\'s own precondition: the root-separator spelling resolves to the filesystem ROOT itself — the two-slash spelling is preserved on super-root hosts and either spelling names the root the lexical guard refuses; a spelling resolving to a real tree would point this leg\'s landing at it.'
                 );
             }
             /*
