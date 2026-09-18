@@ -172,6 +172,21 @@ final class ToolchainSmokeTest extends TestCase
         }
 
         /*
+         * The platform gate (OCR round 29, t31-ocr29-7, the suite's
+         * t31-ocr28-8 pattern): this leg's own premise is the
+         * SEPARATOR the patch spells — the scratch tool's connectors
+         * root is re-spelled with a trailing '/' while the production
+         * offset strips DIRECTORY_SEPARATOR, so on a host whose
+         * separator is '\' the rtrim eats NOTHING, the offset eats
+         * the first byte of the first segment, and the leg would
+         * drive its own pinned defect back as the platform's
+         * vocabulary — through no defect of the contract it pins.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('This host\'s platform separator is not the POSIX one — the trailing-separator patch spells \'/\' while the offset strips DIRECTORY_SEPARATOR, so the leg would judge the first-byte shift it exists to pin as the platform\'s own vocabulary (t31-ocr29-7).');
+        }
+
+        /*
          * RANDOM-suffixed and staged INSIDE the try (OCR round 16,
          * t31-ocr16-14): the pid-only name was the pre-plantable
          * spelling the ocr10-2 doctrine rejects (pids enumerable on
@@ -272,6 +287,22 @@ final class ToolchainSmokeTest extends TestCase
          */
         if (! WpHarness::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process lint legs cannot run, the still-fails controls included (they verdict through a spawned engine); the canSymlink promise below is never reached here (t31-ocr16-12).');
+        }
+
+        /*
+         * The platform gate (OCR round 29, t31-ocr29-7, the suite's
+         * t31-ocr28-8 pattern): this battery's verdicts ride the
+         * exclusion fold's SEPARATOR arithmetic — the production
+         * judge explodes the below-root relative on
+         * DIRECTORY_SEPARATOR while the staged trees and their
+         * composed relatives spell '/'-joined segments, and on a
+         * host whose separator is '\' the fold never splits: the
+         * excluded spellings would read as one giant segment and
+         * every skip/count verdict would judge a fold the platform
+         * mangled — through no defect of the gate they pin.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('This host\'s platform separator is not the POSIX one — the exclusion fold judges DIRECTORY_SEPARATOR-joined relatives over \'/\'-composed trees and never splits, so the skip/count verdicts would judge a platform-mangled fold, never the gate\'s own judgment (t31-ocr29-7).');
         }
 
         /*
