@@ -537,13 +537,35 @@ final class WpHarness
      * '/'-rooted arm (the ocr28-3 predicate) with the anchor
      * prefixes gaining the carry's leading '/'. The returned probe
      * spelling is the folded '/'-joined one — is_link() resolves
-     * both spellings on a separator host.
+     * both spellings on a separator host. The path's fold precedes
+     * the TAIL STRIPS (OCR round 33, t31-ocr33-4): the strips judge
+     * '/'-spelled tails only, so on a '\' host the fold must land
+     * before them or '\..'/'\.'/trailing-'\' never match.
      *
      * @param string $path The path as the caller spelled it.
      * @return string The spelling an is_link() probe can trust.
      */
     private static function link_probe_spelling($path)
     {
+        /*
+         * Fold FIRST, strip SECOND (OCR round 33, t31-ocr33-4 — the
+         * order-of-operations correction at the ocr32-8 fold's own
+         * owner): the tail strips once ran BEFORE the non-POSIX
+         * fold, so on a '\' host the tails arrived backslash-spelled
+         * — '\..', '\.', a trailing '\' — while
+         * same_directory_spelling() rtrims '/' only and the while
+         * loop tests '/..' only: the tails never matched, the probe
+         * read a tail-bearing spelling, and the anchor walk below
+         * judged the wrong chain. The path folds through the ocr32-8
+         * vocabulary at the HEAD, and every strip below sees
+         * '/'-spelled tails; the POSIX host rides the identity (a
+         * legal '\' filename byte stays, the r29-3 doctrine),
+         * byte-unchanged.
+         */
+        $posix = self::isPosixHost();
+        if (! $posix) {
+            $path = str_replace('\\', '/', $path);
+        }
         $path = self::same_directory_spelling($path);
         while ('/..' === substr($path, -3)) {
             $path = self::same_directory_spelling(rtrim(substr($path, 0, -3), '/'));
@@ -560,25 +582,20 @@ final class WpHarness
          * HOST, never the path (every component "outside both
          * anchors", the mid-chain link walk silently off — the r17-2
          * full-chain reach gone for every path the host spells). The
-         * path and both anchors fold through the ONE comparison
-         * owner (posix_comparison_vocabulary, the ocr29-4 arm) on
-         * non-POSIX hosts; the POSIX host rides the identity (a
-         * legal '\' byte in a filename stays, the r29-3 doctrine),
-         * byte-unchanged. A drive-letter absolute spelling joins the
-         * '/'-rooted arm there (the ocr28-3 predicate): its carry
-         * spells '/C:/…', so the anchor prefixes gain the same
-         * leading '/' — the comparison holds in one vocabulary for
-         * every absolute spelling a host hands its processes. The
-         * returned probe spelling is the folded '/'-joined one
-         * (is_link resolves both spellings on a separator host);
-         * construction-evident — no test sim flips
-         * DIRECTORY_SEPARATOR (the ocr28-3 boundary), and the POSIX
-         * link batteries below pin the identity side.
+         * path's own fold lives at the head (t31-ocr33-4); both
+         * anchors fold here through the ONE comparison owner
+         * (posix_comparison_vocabulary, the ocr29-4 arm). A
+         * drive-letter absolute spelling joins the '/'-rooted arm
+         * there (the ocr28-3 predicate): its carry spells '/C:/…',
+         * so the anchor prefixes gain the same leading '/' — the
+         * comparison holds in one vocabulary for every absolute
+         * spelling a host hands its processes. The returned probe
+         * spelling is the folded '/'-joined one (is_link resolves
+         * both spellings on a separator host); construction-evident
+         * — no test sim flips DIRECTORY_SEPARATOR (the ocr28-3
+         * boundary), and the POSIX link batteries below pin the
+         * identity side.
          */
-        $posix = self::isPosixHost();
-        if (! $posix) {
-            $path = str_replace('\\', '/', $path);
-        }
         $temp = rtrim(self::posix_comparison_vocabulary(sys_get_temp_dir()), '/');
         // The second anchor: the repository root, spelled as these
         // helpers themselves are (every in-repo consumer derives its
