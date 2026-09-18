@@ -784,7 +784,27 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         foreach ($sourceIterator as $sourceFile) {
             /** @var SplFileInfo $sourceFile */
             if (wp_connectors_is_php_source($sourceFile->getPathname())) {
-                $sources[] = str_replace($scratch['shared'] . '/', '', $sourceFile->getPathname());
+                /*
+                 * The comparison speaks ONE vocabulary (OCR round 34,
+                 * t31-ocr34-6 — the ocr28-3 doctrine): zip entry names
+                 * are always '/'-joined while $sourceFile->getPathname()
+                 * joins through the HOST separator, so on a non-POSIX
+                 * host every stripped tail kept backslash joins and the
+                 * $embedded !== $sources verdict below judged separator
+                 * noise — every entry mismatching, the completeness row
+                 * a permanent phantom FAIL. The pathname AND the strip
+                 * prefix fold first (identity on POSIX, where a legal
+                 * '\' filename byte stays — the r29-3 doctrine);
+                 * construction-evident (DIRECTORY_SEPARATOR, a constant
+                 * no test sim flips).
+                 */
+                $source_path = $sourceFile->getPathname();
+                $shared_prefix = $scratch['shared'] . '/';
+                if (! WpHarness::isPosixHost()) {
+                    $source_path = str_replace('\\', '/', $source_path);
+                    $shared_prefix = str_replace('\\', '/', $shared_prefix);
+                }
+                $sources[] = str_replace($shared_prefix, '', $source_path);
             }
         }
         sort($sources);
