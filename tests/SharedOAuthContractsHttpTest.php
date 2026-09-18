@@ -148,8 +148,8 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
      * the ledgered host-charset acceptance (no divergence there). The
      * raw port substring from the authority must be fully digits before
      * parse_url's port is trusted; the userinfo colon is not a port,
-     * and digit spellings (a leading zero included — parse_url's int
-     * value is the authority's) stay legal.
+     * and canonically spelled digits stay legal (a leading zero does
+     * NOT — t31-ocr25-3 closed that acceptance; its own pin below).
      */
     public function testAMalformedRawPortIsRejectedInsteadOfTruncated(): void
     {
@@ -187,9 +187,75 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
 
         $ported = new HttpRequest('GET', 'https://host.example:8443/token');
         $this->assertSame('https://host.example:8443/token', $ported->redacted_url(), 'A digit port keeps flowing into the authority.');
+    }
 
-        $leading_zero = Url::parse_validated('https://host.example:0443/');
-        $this->assertSame('host.example:443', $leading_zero['authority'], 'A leading-zero port is digits: accepted, spelled by its int value.');
+    /**
+     * OCR-round-25 pin (t31-ocr25-3): the leading-zero port spelling
+     * slips the raw digit screen — ':0443' IS digits — while
+     * parse_url() normalizes the value to 443: the value object
+     * carried url() with ':0443' against an authority spelling ':443',
+     * the exact raw/redacted divergence the screen exists to kill (the
+     * r4-12 class one spelling over). url() holds the caller's bytes
+     * verbatim, so agreement cannot come from normalizing the raw side
+     * — the non-canonical spelling REFUSES, the refusal naming the
+     * canonical one (the r4-12 acceptance of the spelling — "spelled
+     * by its int value" — is what this close reverses).
+     */
+    public function testALeadingZeroPortSpellingRefusesInsteadOfDiverging(): void
+    {
+        $hostile_urls = array(
+            'the divergence repro' => 'https://host.example:0443/token',
+            'double zero' => 'https://host.example:0080/',
+            'userinfo does not hide it' => 'https://user:pw@host.example:0443/',
+            'bracket host rides the same screen' => 'http://[::1]:0443/token',
+            'multi-@ authority rides the same screen' => 'https://user@evil@host.example:0443/',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A leading-zero port spelling (%s) must be refused by the shared URL owner — url() would keep the raw zeros while the authority spells the int value.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('without leading zeros', $e->getMessage());
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A leading-zero port spelling (%s) must be refused by the request VO too — one verdict, no constructed VO ever carries the divergence.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('without leading zeros', $e->getMessage());
+            }
+        }
+
+        /*
+         * ENGINE PREMISE, probed: the over-long spelling refuses one
+         * screen EARLIER on this build — parse_url() itself answers
+         * false for a port spelled with more than five digits
+         * (':000443' probed false, ':00443' probed 443), so the entry
+         * screen's own sentence fires before the leading-zero screen
+         * ever sees the spelling. The class is closed either way (the
+         * spelling never constructs); the belt for a build whose
+         * parse_url() accepts it is the leading-zero screen above, per
+         * the t31-ocr1-2 doctrine over build-dependent parse_url()
+         * answers.
+         */
+        try {
+            Url::parse_validated('https://host.example:000443/');
+            $this->fail('An over-long leading-zero port must be refused by whichever screen fires first.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertTrue(
+                false !== strpos($e->getMessage(), 'without leading zeros') || false !== strpos($e->getMessage(), 'absolute with a scheme and host'),
+                'The over-long spelling refuses through this build\'s entry screen (parse_url() answers false past five port digits) or the leading-zero screen — never constructs.'
+            );
+        }
+
+        // The canonical spellings stay green and agree with themselves:
+        // url() carries ':8443', the authority and the redacted form
+        // spell ':8443' — one verdict across every form.
+        $ported = new HttpRequest('GET', 'https://host.example:8443/token');
+        $this->assertSame('https://host.example:8443/token', $ported->url());
+        $this->assertSame('host.example:8443', Url::parse_validated('https://host.example:8443/token')['authority']);
+        $this->assertSame('https://host.example:8443/token', $ported->redacted_url());
     }
 
     /**

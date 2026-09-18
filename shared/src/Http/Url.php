@@ -226,6 +226,24 @@ final class Url {
 			if ( 1 !== preg_match( '/\A[0-9]+\z/', $raw_port ) ) {
 				throw new InvalidArgumentException( 'The URL port must be digits — parse_url() truncates a malformed port silently (":443x" reads as 443) while the URL string carries the raw text, and the two must agree.' );
 			}
+
+			/*
+			 * The CANONICAL spelling (OCR round 25, t31-ocr25-3): a
+			 * leading-zero port is digits, so the digit screen passed
+			 * it — but parse_url() normalizes ':0443' to 443 while the
+			 * URL string the caller holds keeps ':0443' verbatim: the
+			 * value object carried url() with ':0443' against an
+			 * authority spelling ':443', the exact raw/redacted
+			 * divergence this screen exists to kill (the r4-12 class
+			 * one spelling over). The raw string cannot be rewritten
+			 * (url() holds the caller's bytes exactly), so agreement
+			 * means REFUSING the non-canonical spelling — write ':443'.
+			 * The bare ':0' is out of range below, never a leading
+			 * zero.
+			 */
+			if ( strlen( $raw_port ) > 1 && '0' === $raw_port[0] ) {
+				throw new InvalidArgumentException( 'The URL port must be spelled without leading zeros — ":0443" reads as 443 while the URL string keeps the raw spelling, and the two must agree (write ":443").' );
+			}
 		}
 
 		/*
