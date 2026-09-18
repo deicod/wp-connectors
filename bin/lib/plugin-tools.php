@@ -1740,6 +1740,44 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
     $heredoc_chunks = array();
     $heredoc_offset = 0;
     $heredoc_quote = '"';
+    /*
+     * The heredoc FLUSH rides its ONE owner (OCR round 28, t31-ocr28-1):
+     * the body once lived inline under T_END_HEREDOC alone, so a source
+     * TRUNCATED inside the heredoc — no closing label ever tokenized —
+     * met no flush and the lens dropped every finding the body carried
+     * (driven red at HEAD: zero references where the terminated twin
+     * reports), the same totality gap the name walk's group-prefix EOF
+     * flush closed one round earlier (t31-ocr27-3) missed in the
+     * sibling LENS of this same detector. The closure is the LENS half
+     * (every judgment the body owes, over the state it is handed); the
+     * loop keeps the STATE half and resets it at the handler — so the
+     * label boundary and EOF call the same judgments and can never
+     * drift apart.
+     */
+    $flush_heredoc = function (array $heredoc_chunks, int $heredoc_offset, string $heredoc_quote, bool $heredoc_dynamic) use ($text_lens, $push_text_finding, $is_family): void {
+        foreach ($heredoc_chunks as $chunk) {
+            $text_lens('string', $chunk[0], $chunk[1]);
+        }
+        // Value lens over the whole body: a heredoc resolves the
+        // double-quoted escape table, a nowdoc resolves nothing. An
+        // interpolated piece anywhere makes the value runtime-built —
+        // the ledgered K1 split-composed boundary (the TEXT lens above
+        // still judged every chunk).
+        if (! $heredoc_dynamic) {
+            $body = '';
+            foreach ($heredoc_chunks as $chunk) {
+                $body .= $chunk[0];
+            }
+            $value = "'" === $heredoc_quote ? $body : wp_connectors_unescape_php_string_literal('"', $body);
+            // The same leading-backslash tolerance the quoted
+            // literal's value lens rides (t31-ocr20-3) — a heredoc
+            // resolves the full escape table, so the fully-qualified
+            // family value can arrive through an escape here too.
+            if ($is_family(wp_connectors_ascii_lower(ltrim($value, '\\')))) {
+                $push_text_finding('string', $heredoc_offset, $value);
+            }
+        }
+    };
     for ($i = 0; $i < $count; ++$i) {
         $token = $tokens[ $i ];
         $id = is_array($token) ? $token[0] : null;
@@ -1794,29 +1832,8 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
             continue;
         }
         if (T_END_HEREDOC === $id) {
+            $flush_heredoc($heredoc_chunks, $heredoc_offset, $heredoc_quote, $heredoc_dynamic);
             $in_heredoc = false;
-            foreach ($heredoc_chunks as $chunk) {
-                $text_lens('string', $chunk[0], $chunk[1]);
-            }
-            // Value lens over the whole body: a heredoc resolves the
-            // double-quoted escape table, a nowdoc resolves nothing. An
-            // interpolated piece anywhere makes the value runtime-built —
-            // the ledgered K1 split-composed boundary (the TEXT lens above
-            // still judged every chunk).
-            if (! $heredoc_dynamic) {
-                $body = '';
-                foreach ($heredoc_chunks as $chunk) {
-                    $body .= $chunk[0];
-                }
-                $value = "'" === $heredoc_quote ? $body : wp_connectors_unescape_php_string_literal('"', $body);
-                // The same leading-backslash tolerance the quoted
-                // literal's value lens rides (t31-ocr20-3) — a heredoc
-                // resolves the full escape table, so the fully-qualified
-                // family value can arrive through an escape here too.
-                if ($is_family(wp_connectors_ascii_lower(ltrim($value, '\\')))) {
-                    $push_text_finding('string', $heredoc_offset, $value);
-                }
-            }
             $heredoc_chunks = array();
             $heredoc_dynamic = false;
 
@@ -1848,6 +1865,18 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
 
             continue;
         }
+    }
+    /*
+     * EOF is the heredoc's last boundary (t31-ocr28-1): a source cut
+     * inside the body never tokenizes T_END_HEREDOC, and without this
+     * flush the open state died with the loop — the body's findings
+     * dropped without their report (red at HEAD). The label handler
+     * and EOF share the ONE flush closure above; the state resets keep
+     * the two spellings one verdict path, exactly as the name walk's
+     * group-prefix EOF twin rides the same fence as its ';'.
+     */
+    if ($in_heredoc) {
+        $flush_heredoc($heredoc_chunks, $heredoc_offset, $heredoc_quote, $heredoc_dynamic);
     }
 
     return $references;

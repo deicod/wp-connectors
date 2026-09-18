@@ -7543,6 +7543,79 @@ FIXTURE;
     }
 
     /**
+     * OCR round 28 (t31-ocr28-1): the heredoc text-lens state had no EOF
+     * flush — the SAME totality gap the name walk's group-prefix EOF
+     * flush closed one round earlier (t31-ocr27-3), missed in the
+     * sibling lens of the same detector. A source truncated inside a
+     * heredoc never tokenizes T_END_HEREDOC, and the flush lived inline
+     * under that handler alone, so the open state died with the loop and
+     * the body's findings dropped without their report (red at HEAD:
+     * zero family references where the terminated twin reports two).
+     * The label handler and EOF ride the ONE flush closure now; every
+     * truncation spelling answers its violation exactly as its
+     * terminated twin does — heredoc and nowdoc alike, the interpolated
+     * twin keeping its text-only verdict (the ledgered K1 boundary: a
+     * runtime-built value is never judged by value).
+     */
+    public function testAHeredocTruncatedAtEndOfFileStillAnswersItsFindings(): void
+    {
+        $heredoc_truncated = "<?php\nnamespace Deicod;\n\$x = <<<EOT\nDeicod\\WpConnectors\\Shared\\Clock\n";
+        $heredoc_terminated = $heredoc_truncated . "EOT;\n";
+        $this->assertSame(
+            wp_connectors_shared_family_references($heredoc_terminated),
+            wp_connectors_shared_family_references($heredoc_truncated),
+            'A heredoc truncated at EOF reports exactly what its terminated twin reports — EOF is the last boundary, and the flush the label handler rides never depends on the label arriving.'
+        );
+
+        // The nowdoc twin: no escape resolution either way, one verdict
+        // path shared with its terminated twin.
+        $nowdoc_truncated = "<?php\nnamespace Deicod;\n\$x = <<<'EOT'\nDeicod\\WpConnectors\\Shared\\Clock\n";
+        $nowdoc_terminated = $nowdoc_truncated . "EOT;\n";
+        $this->assertSame(
+            wp_connectors_shared_family_references($nowdoc_terminated),
+            wp_connectors_shared_family_references($nowdoc_truncated),
+            'A NOWDOC truncated at EOF reports exactly what its terminated twin reports — the truncation class owns both enclosure flavors.'
+        );
+
+        /*
+         * The interpolated twin keeps its SPLIT verdict under the same
+         * truncation: the text lens still judges the body's chunks
+         * (the stem finding), while the value lens stands down — a
+         * dynamic body is runtime-built, the K1 boundary, and EOF
+         * inherits the label handler's split, never a value verdict
+         * the terminated twin would not give.
+         */
+        $dynamic_truncated = "<?php\nnamespace Deicod;\n\$y = 1;\n\$x = <<<EOT\nDeicod\\WpConnectors\\Shared\\Clock\n\$y\n";
+        $dynamic_terminated = $dynamic_truncated . "EOT;\n";
+        $this->assertSame(
+            wp_connectors_shared_family_references($dynamic_terminated),
+            wp_connectors_shared_family_references($dynamic_truncated),
+            'An interpolated heredoc truncated at EOF keeps the terminated twin\'s split verdict — text findings on the chunks, never a value finding over a runtime-built body.'
+        );
+        $this->assertContains(array( 'name' => 'Deicod\\WpConnectors\\Shared', 'lower' => 'deicod\\wpconnectors\\shared', 'kind' => 'string' ), array_map(static function (array $reference): array {
+            return array( 'name' => $reference['name'], 'lower' => $reference['lower'], 'kind' => $reference['kind'] );
+        }, wp_connectors_shared_family_references($dynamic_truncated)), 'The truncated dynamic body still carries its text finding — the truncation never drops what the lens sees.');
+
+        /*
+         * The empty-body control: a truncation with NOTHING to report
+         * reports nothing — the flush is a boundary, not a fence that
+         * invents findings for a body carrying none.
+         */
+        $this->assertSame(array(), wp_connectors_shared_family_references("<?php\nnamespace Deicod;\n\$x = <<<EOT\n"), 'A truncated heredoc whose body carries no finding reports none — the EOF flush judges the body, it never manufactures one.');
+
+        // End to end through the build's postcondition: the truncated
+        // body's finding REFUSES the rewrite (red at HEAD: exit 0, the
+        // finding dropped before any gate could judge it).
+        $refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass TruncStore\n{\n    public function name(): string\n    {\n        return <<<EOT\nDeicod\\WpConnectors\\Shared\\Clock\n", 'OpenAiOauth', 'shared/src/Trunc.php'),
+            'A family spelling inside a heredoc truncated at EOF must refuse the rewrite — the truncation drops the label, never the finding.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
+        $this->assertStringContainsString('Trunc.php', $refusal->getMessage());
+        $this->assertStringContainsString('string position', $refusal->getMessage(), 'The refusal names the string position — the heredoc body\'s own kind.');
+    }
+
+    /**
      * Fix-round pin (t31-r4-3): ZipArchive::close()'s false return was
      * ignored — a failed finalization took no catch path while OVERWRITE
      * had already destroyed the previous good zip, so the run continued
