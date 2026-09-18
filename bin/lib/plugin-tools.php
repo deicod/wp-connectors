@@ -3676,12 +3676,15 @@ function wp_connectors_segment_is_named($segment, array $names)
  * segment that IS a source raw returns FALSE — it is an ordinary
  * source, every gate's charge; the fold rides the ONE edge-junk
  * owner's class on the trailing side only, the leading side stays (the
- * fold doctrine's own line: a leading dot is content). Both refusal
- * channels ride this predicate — the shared-source collector's
- * near-source fence (t31-r5-14/r6-4, over the basename) and the
+ * fold doctrine's own line: a leading dot is content). Every refusal
+ * channel rides this predicate — the shared-source collector's
+ * near-source fence (t31-r5-14/r6-4, over the basename, throwing), the
  * artifact inspector's extraction fence (t31-ocr20-1, over every
- * segment) — the channel differs (throw vs violation line), the
- * judgment does not; the byte class can never drift between them.
+ * segment, the violation line), and the plugin-tree collector's
+ * exclusion (t31-ocr23-8, over every segment, the silent skip that
+ * keeps build and inspect answering one verdict) — the channel
+ * differs, the judgment does not; the byte class can never drift
+ * between them.
  *
  * @param string $segment One path segment (a basename is one).
  * @return bool True when the trailing fold turns the segment into a '.php' source.

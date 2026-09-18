@@ -1296,6 +1296,53 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-23 pin (t31-ocr23-8): the BUILDER side of the
+     * near-source fence — the residual the r20 round itself named and
+     * carried (the ledger's builder-side name fence): collectFiles()
+     * packaged plugin-tree files whose names fold to .php only after
+     * edge-junk stripping ('notes.php.', 'x.PHP ') while the inspector
+     * refused every such entry through the ONE near-source predicate —
+     * build shipped what inspect rejected, the fence pair INCONSISTENT
+     * (a plugin tree carrying one built its zip at exit 0 and the same
+     * zip failed inspection, no CI run satisfiable). The collector
+     * skips the class now through the SAME judgment (the ONE
+     * near-source owner both fences ride): what never ships never
+     * judges the build — the exclusion filter's own doctrine — and the
+     * pair answers ONE verdict, builder-excludes/inspector-rejects,
+     * like the development-entry vocabulary before it (t31-r5-10).
+     */
+    public function testThePluginTreeCollectorSkipsNearSourceNamesSoBothFencesAnswerOneVerdict(): void
+    {
+        $scratch = self::distDir() . '/.nearsource-collect';
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/notes.php.', 'a tail the fold strips');
+        file_put_contents($scratch . '/plugin/example-connector/x.PHP ', 'a tail the fold strips');
+        file_put_contents($scratch . '/plugin/example-connector/plain.php', "<?php\n// an ordinary source\n");
+
+        try {
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+
+            $names = $this->zipEntryNames($zipPath);
+            $this->assertNotContains('example-connector/notes.php.', $names, 'A near-source name never ships — the collector skips the fold-to-PHP class (red at HEAD: the entry was packaged).');
+            $this->assertNotContains('example-connector/x.PHP ', $names, 'The case-folded near-source twin never ships either — the judgment rides the ONE predicate, casing and edge junk both.');
+            $this->assertContains('example-connector/plain.php', $names, 'The plain control still ships — the fence owns exactly the fold-to-PHP class.');
+
+            // The fence pair answers ONE verdict now: the built zip —
+            // the very artifact the builder produces — inspects green
+            // (red at HEAD: the same build's zip REJECTED, the
+            // NEAR-SOURCE violation naming the entry the collector
+            // shipped; both sides of the inconsistent pair driven).
+            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/.inspect-nearsource-pair'), 'Build and inspect answer one verdict over the plugin tree\'s near-source names — never build-ships-what-inspect-rejects.');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Builds a zip's raw bytes with STORED entries in the exact order
      * given — including BYTE-EXACT DUPLICATE names, which the
      * ZipArchive writer refuses to produce (same-name writes replace)

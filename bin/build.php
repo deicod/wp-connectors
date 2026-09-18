@@ -1291,10 +1291,23 @@ final class WpConnectorsBuild
              * the wrong verdict, so the one-verdict check never fired);
              * on a case-insensitive extraction target every such name
              * folds onto the dev entry it is one case away from.
+             *
+             * The NEAR-SOURCE class joins the exclusion (OCR round 23,
+             * t31-ocr23-8 — the r20 ledger's builder-side name fence,
+             * its named residual): a plugin-tree file whose name folds
+             * to .php only after edge-junk stripping ('notes.php.',
+             * 'x.PHP ') was packaged here while the inspector refused
+             * the same entry through the ONE near-source predicate —
+             * build shipped what inspect rejected, the fence pair
+             * inconsistent, the exact shape the r5-10 one-verdict
+             * doctrine closed for the development-entry vocabulary.
+             * The collector skips the class through the SAME judgment
+             * the inspector rejects by (the ONE near-source owner):
+             * what never ships never judges the build.
              */
             $excluded = false;
             foreach ($parts as $part) {
-                if (wp_connectors_is_development_entry($part)) {
+                if (wp_connectors_is_development_entry($part) || wp_connectors_segment_is_near_source_php($part)) {
                     $excluded = true;
 
                     break;
