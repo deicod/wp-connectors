@@ -945,6 +945,7 @@ final class WpConnectorsBuild
             $tail_expect = 'rider-or-terminator';
             $member_named = true;
             $member_await_separator = true;
+            $member_separator_open = false;
             while (null !== $tail_index) {
                 $tail_token = $tokens[ $tail_index ];
                 $tail_id = is_array($tail_token) ? $tail_token[0] : null;
@@ -955,9 +956,41 @@ final class WpConnectorsBuild
                      * (the run assembler's own vocabulary), so a
                      * SECOND name with no separator between — the
                      * rider bytes — never reads as a longer name.
+                     *
+                     * And a separator CONSUMED owes a name (OCR round
+                     * 31, t31-ocr31-3): the lexer bakes every legal
+                     * separator into the member's own name tokens
+                     * (probed: `\Other` and `\Other\Thing` each lex
+                     * as ONE T_NAME_FULLY_QUALIFIED token, `E\F` as
+                     * one T_NAME_QUALIFIED), so a bare T_NS_SEPARATOR
+                     * in the stream is an interrupted or DOUBLED
+                     * spelling — and the branch below once consumed
+                     * it unconditionally, with no state recording
+                     * separator-consumed-with-no-name, so two
+                     * engine-rejected member spellings passed the
+                     * walk and shipped verbatim beside the rewritten
+                     * name at exit 0 (driven red at HEAD: the double
+                     * separator `use namespace\Clock, \\Other;`, and
+                     * a separator dangling before the terminator,
+                     * the comma, or the alias — every one a parse
+                     * error php -l names "unexpected \"). The open
+                     * separator answers for exactly one name piece
+                     * next: not a name token (the terminator, the
+                     * comma, `as`, a second separator) or a name
+                     * token whose own text LEADS with '\' (the baked
+                     * second separator of the `\\Other` spelling)
+                     * each refuse with the engine's own verdict.
                      */
+                    if ($member_separator_open) {
+                        $rider_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
+                        if (! wp_connectors_is_name_token_id($tail_id) || '\\' === $rider_display[0]) {
+                            throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — the import member's separator names no member (here: '{$rider_display}'): the lexer bakes every legal separator into the member's own name tokens, so a '\\' standing alone in the stream is a doubled or dangling spelling the engine rejects at parse time ('\\\\Other', 'Other\\;', 'Other\\, C', 'Other\\ as C') and the walk once shipped verbatim beside the rewritten name at exit 0; write the member with its separators inside one name");
+                        }
+                        $member_separator_open = false;
+                    }
                     if (T_NS_SEPARATOR === $tail_id) {
                         $member_await_separator = false;
+                        $member_separator_open = true;
                         $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
 
                         continue;
@@ -1029,6 +1062,7 @@ final class WpConnectorsBuild
                         $tail_expect = 'member-start';
                         $member_named = false;
                         $member_await_separator = false;
+                        $member_separator_open = false;
 
                         $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
 
@@ -1071,6 +1105,7 @@ final class WpConnectorsBuild
                     $tail_expect = 'member-start';
                     $member_named = false;
                     $member_await_separator = false;
+                    $member_separator_open = false;
                 } elseif (! wp_connectors_is_use_statement_boundary($tail_token, $tail_id)) {
                     $rider_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
 

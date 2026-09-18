@@ -6944,6 +6944,38 @@ FIXTURE;
             );
             $this->assertStringContainsString('mid-name or in the alias slot', $refusal->getMessage(), "Both lexer spellings of the relative member answer the SAME refusal — the rewrite owns the operator only as the import's leading name (red at HEAD: the interrupted twin wore the empty-member verdict, a mis-named refusal over a member that is there) ({$label}).");
         }
+
+        /*
+         * OCR round 31 (t31-ocr31-3): a separator CONSUMED owes a
+         * name. The lexer bakes every legal separator into the
+         * member's own name tokens (`\Other\Thing` is ONE
+         * T_NAME_FULLY_QUALIFIED token), so a bare '\' in the stream
+         * is a doubled or dangling spelling the engine rejects at
+         * parse time (php -l: "unexpected \") — and the member-start
+         * separator branch once consumed it unconditionally, with no
+         * state recording separator-consumed-with-no-name, so every
+         * spelling below SHIPPED verbatim beside the rewritten name
+         * at exit 0 (driven red at HEAD). The open separator answers
+         * for exactly one name piece now: a second separator, or one
+         * dangling before the terminator, the comma, or the alias,
+         * each refuse with the engine's own verdict.
+         */
+        foreach (array(
+            'doubled separators' => 'use namespace\\Clock, \\\\Other;',
+            'separator dangling before the terminator' => 'use namespace\\Clock, Other\\;',
+            'separator dangling before the comma' => 'use namespace\\Clock, Other\\, Thing;',
+            'separator dangling before the alias' => 'use namespace\\Clock, Other\\ as O;',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\ninterface SepMemberFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/SepMemberFixture.php'),
+                "A doubled or dangling member separator must refuse the rewrite ({$label}).", \RuntimeException::class
+            );
+            $this->assertStringContainsString('separator names no member', $refusal->getMessage(), "The member grammar owns the engine's own rejection — the lexer bakes legal separators into the name tokens, so a bare '\\' is a parse error the walk once shipped at exit 0 ({$label}).");
+        }
+        // The LEGAL fully-qualified member keeps riding verbatim beside
+        // the splice — one baked \Name token, never a bare separator.
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock, \\Other\\Thing;\ninterface FqMemberFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/FqMemberFixture.php');
+        $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock, \\Other\\Thing;', $rewritten, 'A fully-qualified member (ONE baked name token, separators inside it) rides untouched — the fence judges the bare-separator spellings only.');
         // The legal aliases in later members keep riding (the member
         // grammar owns `as` past the comma exactly as member 1 does).
         $rewritten = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock, function Other\\fn as F, Other as O;\ninterface ListAliasFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/ListAliasFixture.php');
