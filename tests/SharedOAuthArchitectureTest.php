@@ -289,7 +289,18 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      */
     private function numberedLines(string $path): array
     {
-        $split = preg_split('/\R/u', $this->fileContents($path));
+        /*
+         * The split spells the TOKENIZER'S exact line class (OCR round
+         * 35, t31-ocr35-6 — the ocr33-2 narrowing swept to this file's
+         * own readers): PCRE's \R also matches \v (0x0B), \f (0x0C),
+         * and \x85, which token_get_all() counts as plain whitespace,
+         * so a \v/\f byte in an earlier line inflated every line
+         * number this reader handed the per-line gates — the same
+         * drift the detector's $line_of shed in t31-ocr33-2, one
+         * layer above it. The alternation keeps \r\n ONE terminator;
+         * the /u flag stays (the abort-refusal below rides it).
+         */
+        $split = preg_split('/\r\n|\r|\n/u', $this->fileContents($path));
         if (false === $split) {
             $this->fail(
                 sprintf(
@@ -941,23 +952,30 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
         if (1 === $result) {
             /*
-             * The diagnostic rides the SAME \R line semantics the
-             * reader (numberedLines()) splits by — ONE line-semantics
-             * owner (t31-r8-11's rule, applied here by t31-ocr5-7):
-             * the "\n"-only count/scan mislocated the reported line on
+             * The diagnostic rides the SAME line semantics the reader
+             * (numberedLines()) splits by — ONE line-semantics owner
+             * (t31-r8-11's rule, applied here by t31-ocr5-7): the
+             * "\n"-only count/scan mislocated the reported line on
              * CR-only files (line 1 and the whole file as the excerpt;
-             * the engine counts \r as a terminator too).
+             * the engine counts \r as a terminator too), and the
+             * class is the TOKENIZER'S exact three — \r\n, \r, \n —
+             * never PCRE's broader \R (t31-ocr35-6, the ocr33-2
+             * narrowing swept to this derivation and its line-end
+             * twin below: a \v/\f byte before the match counted as a
+             * terminator here while the engine reads it as whitespace,
+             * the reported line drifting from every token-derived
+             * number).
              *
              * An ABORT in the /u derivation is a REFUSAL, never a
              * mislocated report (t31-ocr5-10, the refutation lens over
-             * ocr5-7): on invalid-UTF-8 bytes both /\R/u calls return
+             * ocr5-7): on invalid-UTF-8 bytes both /u calls return
              * false SILENTLY — the count degraded to line 1 with the
              * whole file as the excerpt, the exact pre-fix symptom,
              * on an input class the main patterns (no /u flag) still
              * match. The function's own r2-16 doctrine, one layer in.
              */
             $terminators = array();
-            $count_result = preg_match_all('/\R/u', substr($contents, 0, $match[0][1]), $terminators, PREG_OFFSET_CAPTURE);
+            $count_result = preg_match_all('/\r\n|\r|\n/u', substr($contents, 0, $match[0][1]), $terminators, PREG_OFFSET_CAPTURE);
             if (false === $count_result) {
                 $this->fail(
                     sprintf(
@@ -974,7 +992,9 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             }
             $line_end = strlen($contents);
             $terminus = array();
-            $end_result = preg_match('/\R/u', $contents, $terminus, PREG_OFFSET_CAPTURE, $line_start);
+            // The line-END twin rides the same tokenizer class (the
+            // t31-ocr35-6 sweep): \v/\f/\x85 never end a line here.
+            $end_result = preg_match('/\r\n|\r|\n/u', $contents, $terminus, PREG_OFFSET_CAPTURE, $line_start);
             if (false === $end_result) {
                 $this->fail(
                     sprintf(
@@ -1655,6 +1675,69 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         }
         $this->assertNotSame(array(), $comment_lines, 'The docblock fixture must trip the text lens at all.');
         $this->assertSame(array(3), $comment_lines, 'The text lens counts only the terminators the tokenizer counts — \\v and \\f inside the earlier literal are whitespace to the engine, never line breaks (red at HEAD: \\R counted both, reporting line 5).');
+    }
+
+    /**
+     * OCR-round-35 pin (t31-ocr35-6, the ocr33-2 narrowing swept to
+     * THIS file's own readers): the sweep-side line lenses count only
+     * the terminators the tokenizer counts. numberedLines() split by
+     * PCRE's \R, and the whole-file diagnostic's line-count and
+     * line-end derivations matched the same class — so a \v (0x0B)
+     * byte inside an earlier string literal inflated every line
+     * number the sweep reported after it: the environment gate's
+     * diagnostic named line 4 over a line-3 `time()` (red at HEAD),
+     * the reader answered five lines over four, and the family gate's
+     * excerpt lookup read the post-\v FRAGMENT as the docblock's
+     * line. Both sites spell the exact three now (\r\n, \r, \n — the
+     * detector's own class, one vocabulary across the three lenses).
+     */
+    public function testTheSweepLineLensesCountOnlyTheTokenizerLineTerminators(): void
+    {
+        $fixture = realpath(__DIR__ . '/fixtures/sweep-corruption/vtab-line-drift.php');
+        $this->assertNotFalse($fixture, 'The vertical-tab drift fixture must exist.');
+
+        /*
+         * The whole-file diagnostic: the planted clock read on line 3
+         * must be REPORTED on line 3 — the \v byte on line 2 is
+         * whitespace to the engine (red at HEAD: the \R count read it
+         * as a terminator and the diagnostic named line 4).
+         */
+        $env_gate = new \ReflectionMethod($this, 'assertNoDirectEnvironmentAccess');
+        try {
+            $env_gate->invoke($this, $fixture);
+            $this->fail('The planted clock read must fail the environment gate at all.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('vtab-line-drift.php:3', $e->getMessage(), 'The diagnostic counts only the terminators the tokenizer counts — the \\v byte on line 2 is whitespace, never a line break (red at HEAD: line 4).');
+            $this->assertStringContainsString('time()', $e->getMessage(), 'The excerpt is the match\'s own line.');
+        }
+
+        /*
+         * The reader twin: the \v byte stays INSIDE line 2 (the
+         * tokenizer's whitespace, never a break) and the docblock is
+         * the fourth line — at HEAD the \R split answered SIX lines,
+         * the post-\v fragment standing as line 3 and the docblock
+         * drifting to 5.
+         */
+        $lines = (new \ReflectionMethod($this, 'numberedLines'))->invoke($this, $fixture);
+        $this->assertCount(5, $lines, 'The reader splits on the tokenizer\'s terminators only — the four \\n-separated lines plus the empty tail, never a fifth mid-line split over the \\v byte (red at HEAD: 6).');
+        $this->assertSame('$before = "a' . "\x0b" . 'B vertical tab inside";', $lines[1][1], 'Line 2 keeps the \\v byte INSIDE it, whole.');
+        $this->assertSame('/** @see Deicod\\WpConnectors\\Zai\\Api */', trim($lines[3][1]), 'Line 4 is the docblock, whole.');
+
+        /*
+         * The family gate's correlated pair: the detector's
+         * token-derived line (4, already the ocr33-2 class) and the
+         * reader's line-4 text must name the SAME bytes — at HEAD the
+         * reader's line 4 was the post-\v fragment, so the excerpt
+         * wore text from the middle of line 2.
+         */
+        $family_gate = new \ReflectionMethod($this, 'assertFamilyReferencesStayRewritable');
+        try {
+            $family_gate->invoke($this, $fixture);
+            $this->fail('The sibling docblock reference must fail the family gate at all.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('vtab-line-drift.php:4', $e->getMessage(), 'The family gate reports the token-derived line.');
+            $this->assertStringContainsString('Deicod\\WpConnectors\\Zai\\Api', $e->getMessage(), 'The excerpt is the docblock the line names — never the post-\\v fragment the \\R reader once handed the lookup (red at HEAD).');
+        }
     }
 
     /**
