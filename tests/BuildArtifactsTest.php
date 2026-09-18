@@ -6584,6 +6584,34 @@ FIXTURE;
         $this->assertSame("\\u{zz}\\u{1z}\\u{ 41 }", $non_hex, 'Non-hex braces spellings stay literal — the engine refuses them at compile time (red at HEAD: \'\\u{zz}\' modeled as the NUL byte, \'\\u{ 41 }\' as \'A\'), so the unescaper keeps the engine\'s own refusal spelling.');
         $this->assertSame(array(), $hex_deprecations, 'A non-hex \u{} spelling must not raise the hexdec() deprecation mid-gate — the hex judgment precedes the conversion (the r11-8 doctrine).');
         $this->assertSame('A', wp_connectors_unescape_php_string_literal('"', '\\u{41}'), 'The plain hex control still resolves — the guard narrows exactly the non-hex class.');
+
+        /*
+         * The verifier close (rd-2, the MAGNITUDE shape): hexdec()
+         * answers a FLOAT once the digit run outgrows the int range,
+         * and the (int) cast collapsed it to 0 — the range check read
+         * the COLLAPSED int, '\u{FFFFFFFFFFFFFFFF}' resolved as the
+         * NUL byte, and the cast itself raised 'the float … is not
+         * representable as an int' MID-GATE (the r11-8 class), while
+         * the engine refuses every over-magnitude spelling at compile
+         * time (php -l-verified, driven). The comparison keeps the
+         * float now: an over-magnitude run refuses the range and
+         * stays literal, warning-free.
+         */
+        $cast_warnings = array();
+        set_error_handler(static function (int $errno, string $message) use (&$cast_warnings): bool {
+            if (E_WARNING === $errno || E_DEPRECATED === $errno || E_USER_DEPRECATED === $errno) {
+                $cast_warnings[] = $message;
+            }
+
+            return true;
+        });
+        try {
+            $huge = wp_connectors_unescape_php_string_literal('"', '\\u{FFFFFFFFFFFFFFFF}\\u{1000000}');
+        } finally {
+            restore_error_handler();
+        }
+        $this->assertSame("\\u{FFFFFFFFFFFFFFFF}\\u{1000000}", $huge, 'Over-magnitude hex runs stay literal — the engine refuses them at compile time (red at HEAD: the 2^63-over run collapsed through the (int) cast and modeled as the NUL byte), and the range check reads the digit run\'s magnitude, never a collapsed int.');
+        $this->assertSame(array(), $cast_warnings, 'An over-magnitude \u{} spelling must raise nothing mid-gate — no deprecation from hexdec, no cast warning from the collapsed float (the r11-8 doctrine).');
     }
 
     /**

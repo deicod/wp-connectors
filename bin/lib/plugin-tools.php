@@ -1356,7 +1356,25 @@ function wp_connectors_unescape_php_string_literal($quote, $inner)
                  * spelling kept, byte for byte.
                  */
                 if ('' !== $digits && ctype_xdigit($digits)) {
-                    $codepoint = (int) hexdec($digits);
+                    /*
+                     * hexdec() rides UNCAST (the round's verifier
+                     * close, rd-2): a digit run past the int range
+                     * ('\u{FFFFFFFFFFFFFFFF}', 2^63 and over) answers
+                     * a FLOAT, and the former (int) cast collapsed it
+                     * to 0 — the range check read the COLLAPSED int,
+                     * the over-magnitude spelling resolved as the NUL
+                     * byte, and the cast itself raised 'the float … is
+                     * not representable as an int' MID-GATE (the
+                     * r11-8 class) while the engine refuses every
+                     * over-magnitude spelling at compile time
+                     * (php -l-verified, driven). The comparison keeps
+                     * the FLOAT — an over-magnitude run answers a
+                     * float over 0x10ffff, refuses the range, and
+                     * stays literal; the encode path below is reached
+                     * only by values the range already bounded, every
+                     * one an int.
+                     */
+                    $codepoint = hexdec($digits);
                     if ($codepoint <= 0x10ffff) {
                         // UTF-8 encoded in place (mbstring is not a dependency
                         // of this tooling; the encoder is four ranges).
