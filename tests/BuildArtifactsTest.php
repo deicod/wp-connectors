@@ -6918,6 +6918,32 @@ FIXTURE;
             'An empty member after the comma must refuse.', \RuntimeException::class
         );
         $this->assertStringContainsString('no import member', $refusal->getMessage());
+
+        /*
+         * OCR round 30 (t31-ocr30-5): the relative member past the
+         * comma keeps its own trigger through the main loop in BOTH
+         * lexer spellings. The fused twin always routed — a
+         * name-token id rides the member grammar and the main loop's
+         * own trigger answers the verdict — while the interrupted
+         * twin (a bare T_NAMESPACE at member-start) fell to the
+         * EMPTY-MEMBER refusal, a verdict mis-naming a member that IS
+         * there (driven red at HEAD: 'the comma is followed by no
+         * import member' over `use namespace\Clock, namespace \Forms;`),
+         * and the routing comment's claim held for the fused spelling
+         * only. The keyword rides the member grammar now and both
+         * twins answer the SAME mid-name refusal — one shape for both
+         * spellings of the operator, the r11-10 doctrine.
+         */
+        foreach (array(
+            'fused relative member after the comma' => 'use namespace\\Clock, namespace\\Forms;',
+            'interrupted relative member after the comma' => 'use namespace\\Clock, namespace \\Forms;',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\ninterface RelativeMemberFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/RelativeMemberFixture.php'),
+                "A relative member past the comma must refuse through the main loop's own fences ({$label}).", \RuntimeException::class
+            );
+            $this->assertStringContainsString('mid-name or in the alias slot', $refusal->getMessage(), "Both lexer spellings of the relative member answer the SAME refusal — the rewrite owns the operator only as the import's leading name (red at HEAD: the interrupted twin wore the empty-member verdict, a mis-named refusal over a member that is there) ({$label}).");
+        }
         // The legal aliases in later members keep riding (the member
         // grammar owns `as` past the comma exactly as member 1 does).
         $rewritten = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock, function Other\\fn as F, Other as O;\ninterface ListAliasFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/ListAliasFixture.php');

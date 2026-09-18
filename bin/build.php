@@ -933,7 +933,10 @@ final class WpConnectorsBuild
              * assembler consumes), an optional alias, and its own
              * comma-or-terminator — a member that is itself
              * relative keeps its own trigger through the main loop
-             * (the mid-name and trait fences judge it there).
+             * in BOTH lexer spellings (the fused token rides the
+             * name-run branch, the interrupted bare T_NAMESPACE its
+             * own member-start branch below — t31-ocr30-5), and the
+             * mid-name and trait fences judge it there.
              * Anything else — a second name, a brace without its
              * separator, an operator, an empty member, EOF without
              * a terminator — refuses loudly, never legalizes.
@@ -962,6 +965,40 @@ final class WpConnectorsBuild
                     if (wp_connectors_is_name_token_id($tail_id) && (! $member_await_separator || ! $member_named)) {
                         $member_named = true;
                         $member_await_separator = true;
+                        $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
+
+                        continue;
+                    }
+                    /*
+                     * The bare T_NAMESPACE member-start (OCR round 30,
+                     * t31-ocr30-5): the INTERRUPTED twin of a fused
+                     * relative member. The fused token is a name-token
+                     * id, so it rides the branch above as the member's
+                     * name start and its OWN trigger fires in the main
+                     * loop, where the mid-name fence owns the
+                     * relative-member verdict; the bare keyword is NOT
+                     * a name-token id, so it once fell to the
+                     * empty-member refusal below — "the comma is
+                     * followed by no import member" — a mis-named
+                     * verdict over a member that IS there (driven at
+                     * HEAD), and the routing comment's claim ("a
+                     * member that is itself relative keeps its own
+                     * trigger through the main loop") held for the
+                     * fused spelling only. The keyword rides as the
+                     * member's name start now, so BOTH spellings of
+                     * the same member take the main loop's own route
+                     * and answer the SAME refusal — one shape for both
+                     * lexer spellings, the r11-10 doctrine (the
+                     * opposite-verdicts-by-lexer-accident class this
+                     * walk closed at r11-10 and ocr23-7).
+                     */
+                    if (T_NAMESPACE === $tail_id && ! $member_named) {
+                        $member_named = true;
+                        // The interrupted spelling's follower arrives
+                        // as the baked T_NAME_FULLY_QUALIFIED piece
+                        // (the separator fence's own vocabulary above)
+                        // — no separator is awaited between them.
+                        $member_await_separator = false;
                         $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
 
                         continue;
