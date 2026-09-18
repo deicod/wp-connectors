@@ -514,6 +514,39 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $this->assertEquals($set->expires_at(), $restored->expires_at());
     }
 
+    /**
+     * OCR round 26 (t31-ocr26-6): a CLEAN serialized parse emits zero
+     * diagnostics on either engine shape. DateTimeImmutable::
+     * getLastErrors() answers false on a clean parse before 8.3 and an
+     * EMPTY ARRAY on the 8.3+ rewrite — the guard's false !== check
+     * passed on the empty-array shape and the two key reads were
+     * undefined-key accesses: a warning pair per instant on every clean
+     * from_array parse, noise no verdict saw. The shape-driven pin
+     * captures the diagnostics channel over a clean round trip and
+     * asserts it EMPTY — on a false-shape engine by the guard's false
+     * branch, on an empty-array engine by its empty branch (red at HEAD
+     * there: the two undefined-key warnings land in the capture), both
+     * by construction rather than by mocking the engine's own static.
+     */
+    public function testACleanSerializedParseEmitsNoDiagnosticsOnEitherEngineShape(): void
+    {
+        $set = new AccessTokenSet(FakeSecrets::accessToken(), FakeSecrets::refreshToken(), 3600, $this->obtainedAt());
+        $captured = array();
+        set_error_handler(static function (int $errno, string $errstr) use (&$captured): bool {
+            $captured[] = $errstr;
+
+            return true;
+        });
+        try {
+            $restored = AccessTokenSet::from_array($set->to_array());
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame(array(), $captured, 'A clean from_array parse emits ZERO diagnostics — the getLastErrors() guard reads its keys only when the engine populated them (false and array() are both the clean verdict, on their respective engine shapes).');
+        $this->assertSame($set->to_array(), $restored->to_array(), 'The clean parse still round-trips exactly.');
+    }
+
     public function testRoundTripPreservesNullRefreshToken(): void
     {
         $set = new AccessTokenSet(FakeSecrets::accessToken(), null, 3600, $this->obtainedAt());

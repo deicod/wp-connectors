@@ -622,8 +622,20 @@ final class AccessTokenSet {
 			throw new InvalidArgumentException( 'The serialized instants must match the serialization format exactly.' );
 		}
 
+		/*
+		 * Both engine shapes are CLEAN (OCR round 26, t31-ocr26-6):
+		 * the pre-8.3 spelling hands FALSE on a clean parse, and the
+		 * 8.3+ rewrite hands an EMPTY ARRAY — the false !== guard
+		 * alone passed on those builds, and the two key reads below
+		 * were undefined-key accesses: a warning pair on every clean
+		 * from_array parse, diagnostics noise the verdicts never saw
+		 * (this runner's engine still hands false — the empty-array
+		 * shape is the cross-engine premise). The keys are read only
+		 * when the engine POPULATED the array; false and array()
+		 * are both the clean verdict they name.
+		 */
 		$errors = DateTimeImmutable::getLastErrors();
-		if ( false !== $errors && ( $errors['warning_count'] > 0 || $errors['error_count'] > 0 ) ) {
+		if ( ! empty( $errors ) && ( $errors['warning_count'] > 0 || $errors['error_count'] > 0 ) ) {
 			throw new InvalidArgumentException( 'The serialized instants must be calendar-valid — an impossible date is a corrupted payload, never one to roll forward.' );
 		}
 
