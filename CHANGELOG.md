@@ -6,6 +6,96 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 31)
+
+Thirty-first OCR-tool round (main 61/62 with 9 findings; BuildArtifactsTest
+OCR-unreachable — context compression kills it deterministically even
+solo at the 200k ceiling, so its test legs ride the later claude-glm
+code-review phase): 9 findings, driver triage accepted all — trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9. The round's shape:
+the heredoc re-entry (a state machine that tracks one open construct must
+own the NESTED spelling of that construct — the lexer stack genuinely
+produces it); the member-grammar pair (two owners, the member-start walk
+and the group-use callback, each accepted engine-rejected member
+spellings — one doctrine: the grammar rejects what the engine rejects);
+and one engine-premise refutation driven at fix time (the hex-arm case
+claim — the engine decodes `\X` exactly like `\x`, and the unescaper
+already answered the engine's own bytes). Fixed as t31-ocr31-1..9 — one
+commit per finding — plus this docs record, the full offline check green
+after every commit. Suite 1681 → 1683 tests, 45821 → 45838
+assertions, 3 skipped unchanged.
+
+- **The heredoc text-lens state is a stack (t31-ocr31-1, bug:high)** —
+  the lens's four scalars tracked ONE open construct with no re-entry
+  guard, but the lexer genuinely produces a heredoc nested inside the
+  outer body's interpolation (`{$a[<<<K … K]}`, tokenized and driven on
+  this engine): the inner open clobbered the outer's chunks (lost with
+  no flush of their own), its dynamic mark, and its offsets. Every
+  nesting level carries its own frame now; the label closes the
+  innermost open, EOF flushes every frame still open (the round-28 EOF
+  doctrine holds for every stack level). Driven red at HEAD: the
+  outer-head finding dropped while the nested body's survived.
+- **The hex-arm case premise driven and refuted (t31-ocr31-2,
+  bug:medium, the refuted-premise shape)** — the finding claimed the
+  engine resolves only lowercase `\x`; driven at fix time on the runner
+  engine (8.5.10), `"\X41"` computes 'A' exactly like its lowercase
+  twin, so the unescaper already answered the engine's own bytes and
+  the demanded narrowing would have invented the divergence it accused.
+  The branch carries the engine truth; the battery drives the engine
+  itself as the oracle over both spellings and every tail.
+- **A separator consumed by the member grammar owes a name
+  (t31-ocr31-3, bug:medium)** — the member-start separator branch
+  consumed '\' unconditionally with no state recording
+  separator-consumed-with-no-name, so the double separator and the
+  dangling separator (before the terminator, comma, or alias) shipped
+  verbatim beside the rewritten name at exit 0. The lexer bakes every
+  legal separator into the member's own name tokens, so a bare '\' is
+  always a doubled or dangling spelling; each refuses with the
+  engine's own verdict, and the legal fully-qualified member (one
+  baked token) keeps riding.
+- **The group-use member grammar is validated before reassembly
+  (t31-ocr31-4, bug:medium)** — the member callback reassembled bytes
+  through explode/trim/implode with no refusal of its own, so the
+  empty member, the trailing comma, the empty body, and a dangling
+  `as` normalized into a silent pass that shipped the parse-error
+  spelling at exit 0 (the empty body alone reached a late, mis-named
+  postcondition refusal). Each shape refuses at the seam, naming the
+  spelling; the survivors battery's round-10 empty-body row moved with
+  it, its charge holding one seam earlier.
+- **The scan_paths root normalization strips both separator spellings
+  (t31-ocr31-5, bug:low)** — rtrim consulted only the native
+  separator, so a '/'-suffixed root on a separator host kept its
+  trailing byte in the prefix arithmetic while the iterator treats '/'
+  as a separator there too. The strip judges the spelling class, never
+  the host (the round-29 vocabulary doctrine); POSIX pays residue only
+  for a path literally named with a trailing backslash byte.
+- **The redaction rebuild has ONE owner (t31-ocr31-6,
+  maintainability:low)** — the masked view's verification-uri rebuild
+  hand-duplicated HttpRequest's redacted_url() construction with
+  sameness asserted only by docblock prose. Url::redacted() glues the
+  shape for both consumers (HttpRequest's now-callerless wrapper
+  deleted); a construction-evident pin asserts byte-equality between
+  the two consumers' outputs over the credential-carrying URI.
+- **The braced-declaration brace-offset seeds from the running counter
+  (t31-ocr31-7, performance:medium)** — the ledger re-summed every
+  token length from index 0 per braced namespace, O(file) each and
+  O(K²) over K declarations, while the running counter already carried
+  the cumulative length through the keyword. Offsets byte-identical
+  across the fix (driven before/after over a three-braced-declaration
+  file).
+- **The non-directory arm pins the guard's own class exactly
+  (t31-ocr31-8, test:medium)** — refusalOf()'s family match would
+  accept the iterator's UnexpectedValueException; the planted
+  regression is driven: today the lazy-iterator fence answers it one
+  seam earlier (no-throw verdict), and the exact-class assertion
+  closes the family channel against the day the fence or guard
+  re-shapes.
+- **The in-process cli_args pin leaves the exec gate (t31-ocr31-9,
+  test:low)** — a plain $GLOBALS read that spawns no child rode the
+  spawn-bearing battery's capability skip and silently skipped on
+  disable_functions hosts; its own method rides no gate and answers
+  everywhere the suite runs.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 30)
 
 Thirtieth OCR-tool round (main 61/62 with 7 findings; BuildArtifactsTest
