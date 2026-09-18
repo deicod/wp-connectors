@@ -200,7 +200,16 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
             }
         }
         if ($hasTraversalSegment || strpos($name, '\\') !== false) {
-            $traversalEntries[] = $name;
+            /*
+             * First-verdict-wins per name at the collector (OCR round
+             * 32, t31-ocr32-5 — the t31-ocr27-4 doctrine, this
+             * collector): the byte-duplicate fence above does not
+             * `continue`, so every COPY of a traversal name once
+             * pushed its own identical entry and the emission below
+             * answered N lines for N copies — one offense, one line;
+             * a name carried N times escapes once, loudly.
+             */
+            $traversalEntries[ $name ] = true;
         }
         /*
          * The near-source PHP fence (OCR round 20, t31-ocr20-1, the
@@ -236,7 +245,9 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          */
         foreach ($parts as $part) {
             if (wp_connectors_segment_is_near_source_php($part)) {
-                $nearSourceEntries[] = $name;
+                // Keyed like the traversal collector (t31-ocr32-5):
+                // first-verdict-wins per name — one offense, one line.
+                $nearSourceEntries[ $name ] = true;
 
                 break;
             }
@@ -343,7 +354,9 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         return $violations;
     }
     if ($traversalEntries !== array()) {
-        foreach ($traversalEntries as $name) {
+        // array_keys: the collector is keyed per name (t31-ocr32-5) —
+        // one line per offending name, never one per copy.
+        foreach (array_keys($traversalEntries) as $name) {
             $violations[] = sprintf('inspect: zip entry "%s" escapes the extraction directory.', wp_connectors_printable($name));
         }
 
@@ -354,7 +367,9 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     // name rides the printable seam — a control byte in the spelling is
     // hostile input, see the dev-entry site).
     if ($nearSourceEntries !== array()) {
-        foreach ($nearSourceEntries as $name) {
+        // array_keys: the collector is keyed per name (t31-ocr32-5) —
+        // one line per offending name, never one per copy.
+        foreach (array_keys($nearSourceEntries) as $name) {
             $violations[] = sprintf(
                 'inspect: zip entry "%s" is a NEAR-SOURCE PHP spelling (trailing whitespace, control byte, or dot hides the extension) — every normalizing extraction target (Windows strips trailing dots and spaces per component) lands it as a live .php source while every gate judged it as not one; write the plain .php name.',
                 wp_connectors_printable($name)

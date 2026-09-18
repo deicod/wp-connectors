@@ -1413,6 +1413,46 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup')), 'A duplicate-free zip of the same shape inspects green.');
     }
 
+    /**
+     * OCR-round-32 pin (t31-ocr32-5): first-verdict-wins per name at
+     * the traversal/near-source collectors (the t31-ocr27-4 doctrine,
+     * this collector). The byte-duplicate fence does not `continue`
+     * past its own emission, so every COPY of a hostile name once
+     * pushed its own identical entry — N copies answered N identical
+     * violation lines (red at HEAD: driven below, three copies
+     * answered three traversal lines, two near-source copies answered
+     * two). One offense, one line: the collectors are keyed per name
+     * and the emission walks the keys. Pre-extraction refusals both —
+     * no spawn gate (the ocr20-5 doctrine's ungated arm class).
+     */
+    public function testNCopyHostileEntriesAnswerExactlyOneLinePerName(): void
+    {
+        $slug = 'ncopy-demo';
+        $main = "<?php\n/**\n * Plugin Name:       {$slug}\n * Version:           1.0.0\n */\n";
+
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/../../escape.php", 'a'),
+            array("{$slug}/src/../../escape.php", 'b'),
+            array("{$slug}/src/../../escape.php", 'c'),
+        )));
+        $flat = implode("\n", wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-ncopy')));
+        $this->assertSame(1, substr_count($flat, 'escapes the extraction directory'), 'A traversal name carried three times answers exactly ONE traversal line — the duplicate-fence line is its own offense, the traversal line is one.');
+        $this->assertSame(1, substr_count($flat, 'more than once'), 'The duplicate fence keeps its own single line (the t31-ocr27-4 pin, unchanged).');
+        unlink($zipPath);
+
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.1.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/shell.php.", 'a'),
+            array("{$slug}/shell.php.", 'b'),
+        )));
+        $flat = implode("\n", wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-ncopy')));
+        $this->assertSame(1, substr_count($flat, 'NEAR-SOURCE PHP spelling'), 'A near-source name carried twice answers exactly ONE near-source line.');
+        unlink($zipPath);
+    }
+
     /*
      * The near-source PHP fence at the EXTRACTION fence (OCR round 20,
      * t31-ocr20-1, the security lens's HIGH — the r16 edge-junk class,
