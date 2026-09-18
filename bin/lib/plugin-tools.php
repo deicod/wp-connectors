@@ -1942,7 +1942,32 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
             $heredoc_stack[] = array(
                 'chunks' => array(),
                 'offset' => $token_offset,
-                'quote' => false !== strpos($text, "'") ? "'" : '"',
+                /*
+                 * The classification reads the quote DELIMITERS — the
+                 * first quote byte after '<<<' and the optional leading
+                 * whitespace — the engine's own rule (single-quoted
+                 * label = nowdoc; unquoted and double-quoted =
+                 * heredoc). The round-35 finding claimed a label
+                 * "legally carries an apostrophe" (<<<"E'OT") and a
+                 * strpos over the whole token misread it as nowdoc —
+                 * PREMISE REFUTED, driven at both legs (the r21
+                 * doctrine, in-round): labels are IDENTIFIERS
+                 * ([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*), the
+                 * ASCII apostrophe (0x27) is not a label byte, and
+                 * php -l refuses the spelling at the opener — the
+                 * misclassified token never exists; the legal quote-
+                 * LIKE class (high bytes, e.g. U+2019 '’') never
+                 * trips a strpos that searches the 0x27 byte no legal
+                 * label carries (driven: <<<"E’OT" with \104eicod…
+                 * classifies heredoc and the value lens catches it at
+                 * HEAD). The delimiter spelling stands as the engine
+                 * rule itself — the anchored reading cannot drift
+                 * with the label vocabulary the way a byte scan over
+                 * the whole opener could — and the pin (the r20-3
+                 * battery's opener-spelling rows) holds the
+                 * classification to the engine's verdict.
+                 */
+                'quote' => 1 === preg_match('/\A<<<\s*\'/', $text) ? "'" : '"',
                 'dynamic' => false,
             );
 

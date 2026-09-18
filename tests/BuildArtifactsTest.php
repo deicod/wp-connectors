@@ -6304,6 +6304,33 @@ FIXTURE;
             'qualified name after as, plain use (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\X as \\Deicod\\WpConnectors\\Shared\\Clock;\nclass FqAliasStore\n{\n}\n",
             'qualified name after as, group body (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\Stuff\\{ Y as \\Deicod\\WpConnectors\\Shared\\Clock };\nclass FqGroupAliasStore\n{\n}\n",
             'multi-trait adaptation CLAUSE naming the family (t31-r10-11)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait ClauseListStoreA { public function s(): void {} }\nfinal class ClauseListStore\n{\n    use ClauseListStoreA, Deicod\\WpConnectors\\Shared\\Clock {\n        ClauseListStoreA::s insteadof Clock;\n    }\n}\n",
+            /*
+             * OCR round 35 (t31-ocr35-3), the OPENER-SPELLING rows —
+             * the round's REFUTATION OF RECORD, pinned to the
+             * engine's verdict: the finding claimed a heredoc label
+             * "legally carries an apostrophe" (<<<"E'OT") that a
+             * strpos-over-the-whole-opener misread as nowdoc. PREMISE
+             * REFUTED, driven at both legs before the fix (the r21
+             * doctrine): labels are IDENTIFIERS, 0x27 is not a label
+             * byte, and php -l refuses the spelling AT THE OPENER —
+             * the misclassified token never exists; the legal
+             * quote-LIKE class (high bytes, U+2019 '’') never trips a
+             * 0x27 byte scan (driven at HEAD: the high-byte opener
+             * classifies heredoc and the value lens catches the
+             * escape-composed family). WHAT SURVIVES: the
+             * classification reads the quote DELIMITERS now (the
+             * engine's own rule — the anchored reading cannot drift
+             * with the label vocabulary), and these rows PIN every
+             * legal opener spelling to the engine's verdict — the
+             * quoted and bare heredoc openers resolve escapes (the
+             * escape-composed family refuses through the value lens),
+             * the high-byte label rides the heredoc arm, and the
+             * NOWDOC opener resolves nothing (the clean-direction
+             * assert below).
+             */
+            'quoted-heredoc opener, escape-composed, judged by value (t31-ocr35-3)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass QuotedOpenerStore\n{\n    public function name(): string\n    {\n        return <<<\"EOT\"\n\\104eicod\\\\WpConnectors\\\\Shared\\\\Clock\nEOT;\n    }\n}\n",
+            'bare-heredoc opener, escape-composed, judged by value (t31-ocr35-3)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BareOpenerStore\n{\n    public function name(): string\n    {\n        return <<<EOT\n\\104eicod\\\\WpConnectors\\\\Shared\\\\Clock\nEOT;\n    }\n}\n",
+            'high-byte-label heredoc opener, escape-composed, judged by value (t31-ocr35-3)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass HighByteOpenerStore\n{\n    public function name(): string\n    {\n        return <<<\"E’OT\"\n\\104eicod\\\\WpConnectors\\\\Shared\\\\Clock\nE’OT;\n    }\n}\n",
         );
         foreach ($survivors as $label => $hostile) {
             $refusal = $this->refusalOf(
@@ -6314,6 +6341,23 @@ FIXTURE;
             $this->assertStringContainsString('Hostile.php', $refusal->getMessage(), "The refusal must name the file ({$label}).");
             $this->assertStringContainsString('byte offset', $refusal->getMessage(), "The refusal must locate the survivor ({$label}).");
         }
+
+        /*
+         * The t31-ocr35-3 opener rows' clean-direction twin: the
+         * NOWDOC opener (single-quoted label) resolves NOTHING — the
+         * identical escape-composed body is its RAW BYTES, never a
+         * family value, so the rewrite OWNS the file clean. The
+         * quoted/bare/high-byte rows above refuse through the value
+         * lens; this leg pins the other side of the engine's opener
+         * rule, so a classification drift reddens one of the two
+         * directions.
+         */
+        $nowdoc_opener = WpConnectorsBuild::rewriteSharedNamespace(
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass NowdocOpenerStore\n{\n    public function name(): string\n    {\n        return <<<'EOT'\n\\104eicod\\\\WpConnectors\\\\Shared\\\\Clock\nEOT;\n    }\n}\n",
+            'OpenAiOauth',
+            'shared/src/NowdocOpenerStore.php'
+        );
+        $this->assertStringContainsString('Deicod\\WpConnectors\\OpenAiOauth\\Shared;', $nowdoc_opener, 'The nowdoc opener\'s file rewrites clean — its body resolves no escapes, so no family value exists to refuse.');
 
         /*
          * OCR round 7 (t31-ocr7-2): LEGAL import spellings the rewriter
