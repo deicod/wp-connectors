@@ -533,10 +533,16 @@ FIXTURE
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/check-conventions.php') . ' 2>&1', $cleanOutput, $cleanExit);
             $this->assertSame(0, $cleanExit, "The clean scratch repo must pass the gate: " . implode("\n", $cleanOutput));
 
-            // The planted dead import in shared/src fails the run.
-            file_put_contents(
-                $repo . '/shared/src/Clock/DeadImport.php',
-                "<?php\nnamespace Shared\\Clock;\nuse RuntimeException;\ninterface DeadImport {}\n"
+            // The planted dead import in shared/src fails the run —
+            // asserted like every other staging site (t31-ocr29-8):
+            // a silent false re-runs the CLEAN tree, the gate exits
+            // 0, and the planted-verdict leg passes vacuously.
+            $this->assertNotFalse(
+                file_put_contents(
+                    $repo . '/shared/src/Clock/DeadImport.php',
+                    "<?php\nnamespace Shared\\Clock;\nuse RuntimeException;\ninterface DeadImport {}\n"
+                ),
+                'staging: the dead-import source must write — a staging failure fails as staging, never as the gate\'s verdict.'
             );
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/check-conventions.php') . ' 2>&1', $plantedOutput, $plantedExit);
             $message = implode("\n", $plantedOutput);

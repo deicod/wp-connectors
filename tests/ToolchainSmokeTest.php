@@ -209,7 +209,16 @@ final class ToolchainSmokeTest extends TestCase
              * any child is spawned.
              */
             $this->assertTrue(mkdir($scratch . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the lint verdict.');
-            $tool = (string) file_get_contents(__DIR__ . '/../bin/lint-php.php');
+            /*
+             * The staging READ asserts its own success (OCR round 29,
+             * t31-ocr29-8, the t31-ocr27-9 doctrine's read twin): the
+             * former bare (string) cast turned a failed read into ''
+             * and flowed it downstream — the patch-count assertion
+             * then wore the read failure as its own verdict. Staging
+             * failures fail as staging, before any child spawns.
+             */
+            $tool = file_get_contents(__DIR__ . '/../bin/lint-php.php');
+            $this->assertNotFalse($tool, 'staging: the lint tool must read — a staging failure fails as staging, never as the patch verdict.');
             /*
              * The exactly-once claim is PINNED, not implied (OCR
              * round 16, t31-ocr16-15c): the old assertNotSame
