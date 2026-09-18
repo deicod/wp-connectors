@@ -4419,6 +4419,454 @@ OCR-tool
   skipped
   unchanged.
 
+  OCR-tool
+  round
+  t31-ocr25
+  (TEN
+  commits —
+  the
+  twenty-fifth
+  pass: main
+  57/62 with
+  3
+  findings,
+  the
+  fill-in
+  over 25
+  files with
+  8, the
+  union
+  complete —
+  11
+  findings,
+  all
+  accepted;
+  trajectory
+  27→10→11→7→11→33→9→9→4→12→8→7→9→4→11;
+  the
+  round's
+  shape: Url
+  speaks
+  TWICE —
+  the
+  parse_url/WHATWG
+  split-divergence
+  family,
+  the raw
+  screen and
+  the
+  rebuilt
+  authority
+  disagreeing
+  over the
+  multi-'@'
+  userinfo
+  boundary
+  and the
+  leading-zero
+  port — the
+  destructive-root-leg
+  probe-before-fire
+  doctrine
+  lands
+  (safety
+  must not
+  rest on
+  post-hoc
+  assertions
+  over
+  destroyed
+  trees),
+  and the
+  fixed-name-scratch
+  census
+  converts
+  the
+  concurrent-run
+  collision
+  class
+  reborn in
+  test
+  form): the
+  multi-'@'
+  authority
+  splits
+  ONCE
+  authority-wide
+  (the
+  rebuild
+  rides the
+  raw
+  last-'@'
+  derivation
+  whole —
+  host and
+  port, the
+  range
+  check on
+  the same
+  int;
+  engine
+  premise
+  probed
+  twice:
+  this
+  build's
+  parse_url
+  is itself
+  a last-'@'
+  splitter,
+  a
+  30,000-shape
+  battery at
+  zero
+  divergence,
+  the close
+  BY
+  CONSTRUCTION
+  per the
+  t31-ocr1-2
+  doctrine;
+  the
+  verifier's
+  300,000-shape
+  differential
+  fuzz found
+  only the
+  intended
+  class and
+  the
+  tab-host
+  spelling,
+  now
+  pinned);
+  the
+  archive
+  lands
+  FIRST, its
+  descriptors
+  after (the
+  pre-flight
+  rules out
+  non-file
+  targets
+  only; the
+  old order
+  stranded
+  the
+  archive-rename
+  refusal —
+  the NEW
+  checksum
+  beside the
+  OLD zip —
+  driven
+  both sides
+  on a
+  capability
+  runner
+  through
+  chattr +i;
+  a
+  descriptor
+  refusal
+  leaves the
+  new
+  archive
+  standing
+  with the
+  prior
+  descriptors,
+  stale-not-wrong,
+  healed by
+  the next
+  build's
+  regeneration;
+  the seam
+  charter
+  docblock
+  restated);
+  the
+  leading-zero
+  port
+  refuses
+  instead of
+  diverging
+  (url()
+  holds the
+  caller's
+  bytes, so
+  agreement
+  means
+  refusing
+  ':0443' —
+  the r4-12
+  acceptance
+  clause
+  reversed;
+  the range
+  screen
+  rides
+  first so
+  ':000'
+  wears the
+  range
+  sentence;
+  parse_url
+  answers
+  false past
+  five port
+  digits,
+  probed);
+  the
+  destructive
+  root legs
+  gain
+  PROBE-BEFORE-FIRE
+  (the fires
+  run only
+  where the
+  process
+  cannot
+  WRITE '/'
+  — first
+  level
+  unmutable,
+  the root
+  runner
+  skipping
+  visibly —
+  the canary
+  asserted
+  standing
+  before
+  every
+  fire, the
+  scratch-rooted
+  sim
+  driving
+  the
+  sentinel
+  shape
+  against an
+  unguarded
+  walker;
+  honest
+  boundary
+  restated:
+  the deep
+  user-writable-subtree
+  walk on a
+  regressed
+  guard is
+  the
+  ledgered
+  residual,
+  a
+  sandboxed
+  '/'
+  construction
+  the new
+  head); the
+  fixed-name
+  scratch
+  census
+  converts
+  to one
+  scratchPath
+  owner
+  (label +
+  random
+  suffix,
+  the
+  stage-dir
+  doctrine;
+  the census
+  lists
+  every
+  converted
+  label and
+  every
+  deliberate
+  non-conversion;
+  the
+  scratch
+  trees
+  coexist —
+  the
+  file-level
+  claim
+  narrowed
+  by the
+  verifier:
+  the
+  retained
+  artifact-name
+  class
+  still
+  collides);
+  the
+  umask-0444
+  leg skips
+  visibly on
+  root
+  runners
+  before any
+  construction;
+  the
+  skip-before-mutation
+  pair (the
+  deleted-zip
+  leg healed
+  before the
+  uid-0
+  gate,
+  makeScratchRepo's
+  needle
+  validated
+  before
+  anything
+  exists);
+  the
+  scanner-library
+  path
+  asserted
+  resolved
+  before the
+  child
+  embed —
+  and rd-1
+  completes
+  the class
+  at every
+  child-embed
+  site in
+  the suite;
+  the
+  refusal
+  verdict
+  resolves
+  without
+  PHPUnit
+  (one
+  verdict
+  owner:
+  AssertionFailedError
+  where
+  PHPUnit is
+  loaded,
+  the base
+  Exception
+  in a bare
+  engine,
+  the chain
+  intact —
+  driven in
+  the child;
+  the driven
+  mis-answer
+  shape
+  ledgered).
+  The
+  two-lens
+  verifier
+  pass
+  CONFIRMED
+  all nine
+  closes and
+  returned
+  five
+  follow-ups,
+  all
+  applied as
+  rd-1 (the
+  charter
+  rewrite,
+  the
+  realpath
+  census,
+  the
+  honest-boundary
+  gate
+  narration,
+  the ':000'
+  reorder,
+  the
+  verdict
+  docblock
+  and the
+  tab-host
+  pin), with
+  three
+  narration
+  corrections
+  ledgered.
+  Residuals:
+  the
+  genuinely-sandboxed
+  '/'
+  construction
+  is the new
+  head; the
+  artifact-name/tearDown
+  concurrency
+  class; the
+  crashed-run
+  scratch
+  residue;
+  the
+  ZAI-SUITE
+  putenv
+  census
+  still open
+  (two
+  rounds
+  running);
+  the
+  scan_paths
+  walk
+  unfenced;
+  the
+  pid-suffixed
+  scratch
+  class; the
+  r21/r22
+  list
+  otherwise
+  unchanged;
+  the
+  order/runner
+  flake not
+  reappearing
+  across ten
+  full-check
+  runs.
+  Suite 1665
+  → 1669
+  tests (+1
+  the
+  multi-@
+  battery,
+  +1 the
+  landing-refusal
+  leg, +1
+  the
+  leading-zero
+  battery,
+  +1 the
+  bare-engine
+  verdict
+  leg),
+  45603 →
+  45651
+  assertions,
+  2 → 3
+  skipped
+  (the
+  chattr
+  capability
+  skip).
+
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
   WordPress auth salts. The key derivation (or the envelope itself) MUST bind the ciphertext to

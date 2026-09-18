@@ -6,6 +6,139 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 25)
+
+Twenty-fifth OCR-tool round (main 57/62: 3 findings; fill-in over
+25 files: 8 findings — union complete): 11 findings, driver triage
+accepted all — trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11. The round's shape: Url
+speaks TWICE — the parse_url/WHATWG split-divergence family (the
+raw screen and the rebuilt authority disagreeing, over the
+multi-'@' userinfo boundary and the leading-zero port) — the
+destructive-root-leg PROBE-BEFORE-FIRE doctrine lands (safety must
+not rest on post-hoc assertions over destroyed trees), and the
+fixed-name-scratch census converts the concurrent-run collision
+class reborn in test form. Fixed as t31-ocr25-1..9 — one commit
+per finding, the two same-class pairs sharing one commit each —
+plus the two-lens verifier pass's one follow-up close (rd-1) and
+this docs record, the full offline check green after every commit.
+Suite 1665 → 1669 tests, 45603 → 45651 assertions, 2 → 3 skipped
+(the new capability-gated leg's visible skip).
+
+- **The multi-'@' authority splits ONCE, authority-wide
+  (t31-ocr25-1, bug:medium)** — the raw screens derived host_port
+  after the LAST '@' (the WHATWG/curl split) while the rebuilt
+  authority rode parse_url()'s own host/port answers: two
+  derivations of one boundary, and on an engine whose parse_url()
+  ends userinfo at the FIRST '@' the redacted authority would name
+  a host the transport never contacts. The rebuild rides the raw
+  derivation now (the segment the screens already judged feeds the
+  authority whole — host and port, range check on the same int);
+  an empty raw derivation refuses with the entry screen's own
+  sentence. Engine premise probed twice: this build's parse_url is
+  itself a last-'@' splitter (zend_memrchr; a 30,000-shape battery,
+  zero divergence), so the close is BY CONSTRUCTION — the
+  t31-ocr1-2 doctrine over build-dependent parse_url answers, never
+  engine accident.
+- **The archive lands FIRST, its descriptors after
+  (t31-ocr25-2, bug:medium)** — the landing pre-flight rules out
+  non-file targets only, and the old order (sidecar, manifest,
+  archive) stranded exactly the archive-rename refusal: the NEW
+  checksum standing beside the OLD zip, describing a release that
+  is not the artifact beside it, with no later build obligated to
+  heal it. The thing the descriptors NAME now stands before any
+  descriptor naming it moves: the archive rename refuses while
+  nothing has landed (the prior set byte-identical — driven on a
+  capability runner through the immutable flag), and a
+  mid-sequence descriptor refusal leaves only descriptors naming a
+  STANDING artifact (stale, loud, healed by the next build's own
+  regeneration). The seam charter docblock states the doctrine.
+- **The leading-zero port refuses instead of diverging
+  (t31-ocr25-3, bug:low)** — ':0443' is digits, so the r4-12 screen
+  passed it while parse_url() normalized the value to 443: url()
+  carried ':0443' against an authority spelling ':443', the exact
+  raw/redacted divergence that screen exists to kill. url() holds
+  the caller's bytes verbatim, so agreement means refusing the
+  non-canonical spelling — the r4-12 pin's own acceptance clause
+  ("spelled by its int value") reversed; the range screen rides
+  first (rd-1) so the zero-valued ':000' wears the range sentence,
+  never a dead-end remediation.
+- **The destructive root legs gain PROBE-BEFORE-FIRE
+  (t31-ocr25-4, test:high + test:medium sibling)** — the
+  '/'-anchored fires (the silent inspector loop, the loud rrmdir
+  loop, and copyTree's root-landing battery) answered their safety
+  to the production guard alone: a regressed guard would walk the
+  filesystem root's children as the very test runs, the sentinel
+  assertions reading a destroyed tree. The fires now run only
+  where the process cannot WRITE the root directory (the first
+  level unmutable; the root runner skips visibly — the ocr4-1
+  DAC-override premise), the canary is asserted standing BEFORE
+  every fire, and a scratch-rooted sim drives the sentinel shape
+  against an UNGUARDED walker (the canary dies — the assertions
+  are a live detector). Honest boundary (the verifier's refutation,
+  restated in place): the gate bounds the FIRST level — the deep
+  user-writable-subtree walk on a regressed guard stays the
+  ledgered residual the guard itself owns.
+- **The fixed-name scratch trees go unique-per-run
+  (t31-ocr25-5, test:medium)** — ~25 fixed-name scratch trees and
+  work dirs under the shared repo dist/ ('.embed-test',
+  '.teardown-masking', '.inspect-bad', …) each carried an
+  if(is_dir()) pre-clean, re-growing exactly the concurrent-run
+  collision class the unique-stage doctrine closed for the build.
+  Every fixed-name tree converts to the one scratchPath() owner
+  (label + bin2hex(random_bytes(4))); the pre-cleans rode along,
+  dead on a unique name. The census names every converted label
+  and every deliberate non-conversion (artifact names,
+  production-derived spellings, scratch-relative names, the
+  pid-suffixed class left to a future round). The scratch trees
+  coexist across concurrent runs — the FILE-level claim is
+  narrower than first narrated (the retained artifact-name class
+  still collides; ledgered).
+- **The umask-0444 walk-refusal leg skips visibly on root runners
+  (t31-ocr25-6, test:medium)** — the leg's premise is a directory
+  the process cannot open; uid 0 reads through mode 0333 (DAC
+  override), the walk opens, and the refusal assertions would ride
+  a premise that never constructed. The uid-0 skip fires BEFORE
+  the construction, naming the premise (the ocr4-1 doctrine).
+- **The skip-before-mutation pair (t31-ocr25-7, test:low ×2)** —
+  the success-line digest pin's uid-0 skip threw AFTER the
+  deleted-zip leg's mutation, leaving dist/ holding the deleted
+  zip's stale sidecar and manifest entry; the leg's mutation is
+  healed first (the rebuild lands the whole set) so the skip fires
+  over a consistent dist/. And makeScratchRepo()'s needle-miss
+  throw fired after the mkdir/copyTree work, leaking a half-built
+  scratch tree on fixture drift — the needle validates first, on
+  the fixture bytes at their own source, nothing created (rd-1
+  gives the swallowed realpath its own channel: a broken checkout
+  never reads as a needle drift).
+- **The scanner-library path is asserted resolved before the child
+  embed (t31-ocr25-8, maintainability:low)** — a realpath() false
+  once embedded `require false;` into the child, whose fatal then
+  read as the SCANNER's self-containment defect instead of the
+  environment problem it was; rd-1 completes the class across
+  every child-embed site in the suite.
+- **The refusal verdict resolves without PHPUnit
+  (t31-ocr25-9, maintainability:low)** — refusalOf()
+  hard-referenced AssertionFailedError at throw time while
+  WpHarness.php is required into PHPUnit-less child engines
+  (the redirected-TMPDIR sims): the first throwing child leg
+  would answer the class-not-found Error AS the verdict (driven:
+  caught and echoed at exit 0 — a silent mis-answer). One verdict
+  owner: AssertionFailedError where PHPUnit is loaded, the base
+  \Exception in a bare engine (never RuntimeException — the family
+  the guarded calls throw), the chain intact either way; the
+  bare-engine regression drives the child directly.
+- **The verifier's close (rd-1)** — the publication-seam charter
+  rewritten to the archive-first doctrine (it still narrated
+  "descriptors first, the archive LAST / byte-untouched BY
+  CONSTRUCTION"), the realpath class census completed at every
+  child-embed site, the probe-before-fire gates' narration
+  restated to the honest first-level boundary, ':000' wearing the
+  range sentence, the verdict docblock stating the driven shape,
+  and the tab-bearing host pinned (parse_url rewrites a host tab
+  to '_'; the raw derivation carries the byte verbatim —
+  authority() spells exactly the bytes url() carries).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 24)
 
 Twenty-fourth OCR-tool round (62/62, complete): 4 findings, driver
