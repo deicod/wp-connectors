@@ -500,21 +500,35 @@ FIXTURE
          * so a first-line failure unwinds clean).
          */
         try {
-            mkdir($repo . '/bin/lib', 0755, true);
-            mkdir($repo . '/shared/src/Clock', 0755, true);
-            mkdir($repo . '/connectors', 0755, true);
-            copy(dirname(__DIR__) . '/bin/check-conventions.php', $repo . '/bin/check-conventions.php');
-            copy(dirname(__DIR__) . '/bin/lib/plugin-tools.php', $repo . '/bin/lib/plugin-tools.php');
+            /*
+             * Staging success is ASSERTED at each site (OCR round 26,
+             * t31-ocr26-12, the misattribution doctrine): a failed
+             * mkdir()/copy() once surfaced only through the child
+             * run — the clean-control leg failed as 'must pass the
+             * gate: PHP Warning: require_once … Failed to open
+             * stream', a staging problem wearing the gate's own
+             * defect as its verdict. Staging failures fail as
+             * staging now, before any child is spawned. copyTree()
+             * (below) is the loud pair's own — it throws.
+             */
+            $this->assertTrue(mkdir($repo . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the gate.');
+            $this->assertTrue(mkdir($repo . '/shared/src/Clock', 0755, true), 'staging: the scratch shared/src/Clock must create — a staging failure fails as staging, never as the gate.');
+            $this->assertTrue(mkdir($repo . '/connectors', 0755, true), 'staging: the scratch connectors tree must create — a staging failure fails as staging, never as the gate.');
+            $this->assertTrue(copy(dirname(__DIR__) . '/bin/check-conventions.php', $repo . '/bin/check-conventions.php'), 'staging: the gate script must copy — a staging failure fails as staging, never as the gate.');
+            $this->assertTrue(copy(dirname(__DIR__) . '/bin/lib/plugin-tools.php', $repo . '/bin/lib/plugin-tools.php'), 'staging: the gate library must copy — a staging failure fails as staging, never as the gate.');
             // The gate's repo-level checks need a CHANGELOG at the root.
-            file_put_contents($repo . '/CHANGELOG.md', "# scratch\n");
+            $this->assertNotFalse(file_put_contents($repo . '/CHANGELOG.md', "# scratch\n"), 'staging: the scratch CHANGELOG must write — a staging failure fails as staging, never as the gate.');
             // A valid plugin so ONLY the unused-import verdict can fail the run.
             // The scratch-tree helpers are the harness's ONE pair (t31-ocr1-9).
             WpHarness::copyTree(__DIR__ . '/fixtures/plugins/example-connector', $repo . '/connectors/example-connector');
 
             // Control: the clean shared tree is invisible to the gate.
-            file_put_contents(
-                $repo . '/shared/src/Clock/ClockInterface.php',
-                "<?php\nnamespace Shared\\Clock;\ninterface ClockInterface {}\n"
+            $this->assertNotFalse(
+                file_put_contents(
+                    $repo . '/shared/src/Clock/ClockInterface.php',
+                    "<?php\nnamespace Shared\\Clock;\ninterface ClockInterface {}\n"
+                ),
+                'staging: the clean-control shared source must write — a staging failure fails as staging, never as the gate.'
             );
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/check-conventions.php') . ' 2>&1', $cleanOutput, $cleanExit);
             $this->assertSame(0, $cleanExit, "The clean scratch repo must pass the gate: " . implode("\n", $cleanOutput));
