@@ -330,6 +330,28 @@ final class Url {
 	}
 
 	/**
+	 * Parses and validates, then renders the redaction shape both consumers show.
+	 *
+	 * The scheme://authority/path rebuild — HttpRequest's redacted_url()
+	 * and the device-flow session's masked view — is glued by ONE owner
+	 * (OCR round 31, t31-ocr31-6): the two constructions were hand-twins
+	 * with their sameness asserted only by docblock prose, the drift seam
+	 * the one-owner doctrine exists to close. Validation and redaction
+	 * still derive from the one parse.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $url URL.
+	 * @return string The URL reduced to scheme://host[:port]/path.
+	 * @throws InvalidArgumentException When the URL is not absolute http(s) with a host and valid port.
+	 */
+	public static function redacted( string $url ): string {
+		$parts = self::parse_validated( $url );
+
+		return $parts['scheme'] . '://' . $parts['authority'] . $parts['path'];
+	}
+
+	/**
 	 * Post-parse re-validation of the rebuilt authority (review round
 	 * t31-r12-8, the noted-class hardening that kills the class for
 	 * three lines).

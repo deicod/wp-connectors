@@ -135,15 +135,13 @@ final class HttpRequest {
 			throw new InvalidArgumentException( 'The HTTP method must be a non-empty method token.' );
 		}
 
-		$parts = $this->validated_url_parts( $url );
-
 		$header_map = new HeaderMap( $headers );
 
 		$this->method       = $normalized_method;
 		$this->url          = $url;
 		$this->headers      = $header_map;
 		$this->body         = $body;
-		$this->redacted_url = $parts['scheme'] . '://' . $parts['authority'] . $parts['path'];
+		$this->redacted_url = Url::redacted( $url );
 	}
 
 	/**
@@ -229,18 +227,5 @@ final class HttpRequest {
 			'method'       => $this->method,
 			'redacted_url' => $this->redacted_url,
 		);
-	}
-
-	/**
-	 * Parses and validates the URL via the shared owner, returning the parts the redacted form needs.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $url URL.
-	 * @return array{scheme: string, authority: string, path: string}
-	 * @throws InvalidArgumentException When the URL is not absolute http(s) with a host and valid port.
-	 */
-	private function validated_url_parts( string $url ): array {
-		return Url::parse_validated( $url );
 	}
 }

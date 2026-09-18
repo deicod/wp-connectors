@@ -289,26 +289,26 @@ final class DeviceAuthorizationSession {
 	private function masked_view(): array {
 		/*
 		 * The URI renders through the ONE redaction seam the HTTP
-		 * contract owns (OCR round 14, t31-ocr14-1): the
-		 * scheme://authority/path rebuild from Url::parse_validated()
-		 * — HttpRequest::redacted_url()'s own shape — drops userinfo,
-		 * query, and fragment. A provider-supplied verification_uri
-		 * can carry credentials in any of the three (throttled
-		 * providers embed one-time tokens in the query; parse_validated
-		 * accepts userinfo by design), and the masked view rendered the
-		 * raw string verbatim — the exact cleartext class the VO's own
-		 * masking exists to prevent. The parse cannot throw here: the
-		 * constructor already validated this exact string. The RAW
-		 * property stays intact for the authorization redirect
-		 * (verification_uri() below) — the browser needs the full URI;
-		 * only the VIEW is masked.
+		 * contract owns (OCR round 14, t31-ocr14-1; one OWNER since
+		 * OCR round 31, t31-ocr31-6): Url::redacted() glues the
+		 * scheme://authority/path shape — the same static
+		 * HttpRequest::redacted_url() derives from, never a hand-twin
+		 * rebuild — dropping userinfo, query, and fragment. A
+		 * provider-supplied verification_uri can carry credentials in
+		 * any of the three (throttled providers embed one-time tokens
+		 * in the query; parse_validated accepts userinfo by design),
+		 * and the masked view rendered the raw string verbatim — the
+		 * exact cleartext class the VO's own masking exists to
+		 * prevent. The parse cannot throw here: the constructor
+		 * already validated this exact string. The RAW property stays
+		 * intact for the authorization redirect (verification_uri()
+		 * below) — the browser needs the full URI; only the VIEW is
+		 * masked.
 		 */
-		$uri = Url::parse_validated( $this->verification_uri );
-
 		return array(
 			'device_code'      => SecretMask::mask( $this->device_code ),
 			'user_code'        => SecretMask::mask( $this->user_code ),
-			'verification_uri' => $uri['scheme'] . '://' . $uri['authority'] . $uri['path'],
+			'verification_uri' => Url::redacted( $this->verification_uri ),
 			'interval_seconds' => $this->interval_seconds,
 			'expires_at'       => $this->expires_at,
 		);

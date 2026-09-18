@@ -519,6 +519,23 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
             'A backslash-bearing verification URI must refuse the session — the browser the redirect hands it to terminates the authority at the byte.', \InvalidArgumentException::class
         );
         $this->assertStringContainsString('must not carry a backslash', $refusal->getMessage());
+
+        /*
+         * The rebuild is ONE owner, pinned byte-equal against it (OCR
+         * round 31, t31-ocr31-6): the masked view's verification_uri
+         * and HttpRequest::redacted_url() both derive from
+         * Url::redacted() now — the two constructions were hand-twins
+         * with their sameness asserted only by docblock prose, the
+         * drift seam the one-owner doctrine exists to close, and this
+         * pin is construction-evident: the day either consumer
+         * re-decides its shape on its own, the byte-equality fails
+         * naming the drift.
+         */
+        $this->assertSame(
+            (new \Deicod\WpConnectors\Shared\Http\HttpRequest('GET', $rawUri))->redacted_url(),
+            $session->__debugInfo()['verification_uri'],
+            'The masked verification URI is byte-equal to the HTTP contract\'s own redacted target — one owner (Url::redacted()), never two constructions kept equal by prose.'
+        );
     }
 
     /**
