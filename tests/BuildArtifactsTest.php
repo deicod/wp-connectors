@@ -9227,6 +9227,10 @@ FIXTURE;
 
             // The remove-a-connector scenario: its zip vanishes out of
             // band, then ANY later build regenerates the manifest.
+            // Its checksum SIDECAR stands beside the gone zip first —
+            // the shape the t31-ocr35-2 reclaim answers (red at HEAD:
+            // the sidecar outlived the prune that dropped its entry).
+            $this->assertFileExists($zipBeta . '.sha256', 'The vanished connector\'s sidecar stands beside the gone zip before the regeneration — the shape the reclaim leg names.');
             unlink($zipBeta);
             WpConnectorsBuild::buildPlugin($plugins['alpha-demo'], $scratch . '/dist');
 
@@ -9235,6 +9239,18 @@ FIXTURE;
             }));
             $this->assertCount(1, $lines, 'The vanished connector\'s entry is dropped by regeneration: ' . implode(' | ', $lines));
             $this->assertStringContainsString(basename($zipAlpha), $lines[0]);
+            /*
+             * The prune reclaims the SIDECAR with the entry (OCR round
+             * 35, t31-ocr35-2): the manifest is an inventory of
+             * standing artifacts, and a checksum naming a non-standing
+             * artifact is the exact class the landing order closed —
+             * the r12-7 prune dropped the line but left
+             * dist/<zip>.sha256 standing forever (driven red at HEAD).
+             * A STANDING entry's sidecar is untouched by the same
+             * merge: the reclaim fires on the pruned entry alone.
+             */
+            $this->assertFileDoesNotExist($zipBeta . '.sha256', 'The pruned entry\'s checksum sidecar is reclaimed with its line — never a checksum naming a non-standing artifact.');
+            $this->assertFileExists($zipAlpha . '.sha256', 'A standing entry\'s sidecar keeps standing through the same merge.');
 
             // Every surviving line verifies: the artifact it names
             // exists beside the manifest and hashes to the recorded

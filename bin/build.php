@@ -2655,6 +2655,38 @@ final class WpConnectorsBuild
                 $separator = strrpos($line, '  ');
                 $entry_name = false === $separator ? false : substr($line, 0, $separator);
                 if (false === $entry_name || ! is_file(dirname($manifestPath) . '/' . $entry_name)) {
+                    /*
+                     * The prune RECLAIMS the entry's sidecar with its
+                     * line (OCR round 35, t31-ocr35-2): the r12-7
+                     * prune made the manifest an inventory of STANDING
+                     * artifacts, but a zip deleted out-of-band left its
+                     * dist/<zip>.sha256 standing — a checksum naming a
+                     * non-standing artifact, the exact class the
+                     * landing order closed, one member over. The
+                     * reclaim stays INSIDE the merge lock (a concurrent
+                     * run only ever prunes against the LANDED artifact
+                     * set) and fences itself to a plain FILE name
+                     * beside the manifest: a malformed line names no
+                     * artifact (never '' — a line leading with the
+                     * separator), a traversal-woven name never matches
+                     * its basename so nothing outside the manifest's
+                     * own directory is ever a target, and a LINK is
+                     * never deleted through (the sweep's own
+                     * no-symlinks doctrine — unlink removes the entry
+                     * itself). A sidecar the unlink cannot remove
+                     * stays standing beside a dropped line — the
+                     * manifest's contract (names standing artifacts)
+                     * holds regardless; the sweep owns the rest.
+                     */
+                    if (false !== $entry_name && '' !== $entry_name && $entry_name === basename((string) $entry_name)) {
+                        $sidecar = dirname($manifestPath) . '/' . $entry_name . '.sha256';
+                        if (is_file($sidecar) && ! is_link($sidecar)) {
+                            // A FILE, never a link (the guard above):
+                            // unlink removes the entry itself.
+                            @unlink($sidecar);
+                        }
+                    }
+
                     continue;
                 }
                 $manifest[] = $line;
