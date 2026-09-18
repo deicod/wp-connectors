@@ -1240,7 +1240,31 @@ final class WpConnectorsBuild
             if ($token_offset <= $reference_offset && $reference_offset < $offset) {
                 $hit = true;
             }
+            /*
+             * The frame rule over the use-statement boundary, this
+             * walk's arm (OCR round 30, t31-ocr30-2 — the SAME
+             * early-close the rewriter's walk closed at t31-ocr30-1;
+             * the census over every ';' consumer lives there): a
+             * trait-adaptation body carries grammar-required ';' INSIDE
+             * its braces, and that inner terminator once reset $in_use
+             * while $brace_depth === 1 — the adaptation's closing '}'
+             * was then judged OUTSIDE a use statement and popped the
+             * enclosing CLASS's 'other' frame off the brace-kind stack,
+             * and the stack mis-counted every brace that followed (a
+             * trait clause list after the adaptation read as an
+             * import, an import as a trait). The inner ';' rides the
+             * adaptation's frame now, and the '}' that closes it IS
+             * the trait use's terminator (the grammar gives that
+             * spelling no trailing ';'), so the statement ends at its
+             * own closing brace — break for a hit reference, reset for
+             * the walk — and the brace-kind stack stays balanced.
+             */
             if (wp_connectors_is_use_statement_boundary($token, $id)) {
+                if ($brace_depth > 0) {
+                    // The adaptation-inner boundary rides the
+                    // adaptation's frame, never the use reset.
+                    continue;
+                }
                 if ($hit) {
                     $terminated_by_close_tag = T_CLOSE_TAG === $id;
 
@@ -1257,8 +1281,16 @@ final class WpConnectorsBuild
                 ++$brace_depth;
             } elseif ('}' === $token) {
                 --$brace_depth;
-                if ($brace_depth < 0) {
+                if ($brace_depth <= 0) {
+                    // The '}' closing the adaptation body terminates
+                    // the trait use statement (no ';' follows it).
                     $brace_depth = 0;
+                    if ($hit) {
+                        break;
+                    }
+                    $in_use = false;
+
+                    continue;
                 }
             } elseif (',' === $token && 0 === $brace_depth) {
                 $saw_depth_zero_comma = true;

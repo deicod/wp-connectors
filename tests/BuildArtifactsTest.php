@@ -7486,6 +7486,49 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-30 pin (t31-ocr30-2): the unowned-spelling classifier's
+     * brace-kind stack stays balanced through a TRAIT-ADAPTATION body.
+     * The adaptation's inner ';' once reset the classifier's $in_use
+     * while the adaptation brace stood open, the adaptation's closing
+     * '}' then popped the enclosing CLASS's 'other' frame (a frame with
+     * no matching push — the walk was "outside" a use statement it was
+     * still inside), and the stack ran one short per adaptation: a
+     * trait clause list AFTER the adaptation was judged as an IMPORT
+     * and handed the dead 'write one use per line' errand the
+     * t31-ocr7-7 doctrine reserves for import lists (driven at HEAD —
+     * the identical shape minus the adaptation wore the anonymous trait
+     * verdict; the interpolation pin t31-ocr16-10 is this same defect
+     * class through the other unbalanced-pusher door). The inner ';'
+     * rides the adaptation's frame now and the closing '}' terminates
+     * the trait use at its own brace, so both twins wear the anonymous
+     * verdict their doctrine owns.
+     */
+    public function testTheClassifierBraceStackStaysBalancedThroughATraitAdaptation(): void
+    {
+        $head = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait FamilyTrait\n{\n    public function m(): void\n    {\n    }\n}\nfinal class AdaptListCarrier\n{\n%s    use Deicod\\WpConnectors\\Shared\\FamilyTrait, SecondTrait;\n}\n";
+        $with_adaptation = sprintf($head, '    use OtherTrait { m as n; }' . "\n");
+        $without_adaptation = sprintf($head, '    use OtherTrait;' . "\n");
+
+        foreach (array('adaptation' => $with_adaptation, 'adaptation-free control' => $without_adaptation) as $label => $source) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/AdaptListCarrier.php'),
+                "The trait-list fixture must refuse the rewrite — its family member rides a comma list no pattern owns ({$label}).", \RuntimeException::class
+            );
+            $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The refusal is the postcondition's own ({$label}).");
+            $this->assertStringNotContainsString('write one use per line', $refusal->getMessage(), "A TRAIT clause list wears its doctrine's anonymous verdict on both sides of the adaptation — the stack saw the class frame (red at HEAD: the adaptation's early-closed ';' let its '}' eat the class frame and the classifier named the import-list errand, a dead errand for a trait list) ({$label}).");
+        }
+
+        // The carve narrows EXACTLY: a genuine import list at the top
+        // level keeps its named errand — the fix moved the trait twin
+        // TO the anonymous verdict, never the import away from its own.
+        $refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass AdaptImportCarrier\n{\n    use OtherTrait { m as n; }\n}\nuse Deicod\\WpConnectors\\Shared\\Clock\\SystemClock, Other\\Thing;\ninterface AdaptImportTail\n{\n}\n", 'OpenAiOauth', 'shared/src/AdaptImportCarrier.php'),
+            'The genuine import list must refuse the rewrite too.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('write one use per line', $refusal->getMessage(), 'The import-list label still fires for a real import — the adaptation fix owns the trait position only.');
+    }
+
+    /**
      * Verifier-round pin (t31-r11-8): octal escapes past \377 unescape
      * DEPRECATION-FREE. The engine wraps such escapes to the low byte
      * ("\400" is chr(0), "\777" is chr(255) — verified against the
