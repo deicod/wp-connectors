@@ -1386,7 +1386,11 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     {
         $scratch = tempnam(sys_get_temp_dir(), 'wpct-phpcase-');
         unlink($scratch);
-        mkdir($scratch, 0755, true);
+        // Staging asserts its own landing (t31-ocr35-7, the
+        // t31-ocr29-10 doctrine): a silent false fails downstream as
+        // the collector's no-directory verdict, a staging problem
+        // wearing the sweep's vocabulary.
+        $this->assertTrue(@mkdir($scratch, 0755, true), "staging: the casing-vocabulary scratch tree must land at {$scratch} — a staging failure fails as staging, never as the collector's verdict.");
 
         try {
             // Both writes gated (t31-ocr16-13): an empty .PHP file never
@@ -1463,7 +1467,9 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     {
         $scratch = tempnam(sys_get_temp_dir(), 'wpct-psr4case-');
         unlink($scratch);
-        mkdir($scratch . '/tools', 0755, true);
+        // Staging asserts its own landing (t31-ocr35-7, the
+        // t31-ocr29-10 doctrine).
+        $this->assertTrue(@mkdir($scratch . '/tools', 0755, true), "staging: the casing-mismatch tools tree must land at {$scratch}/tools — a staging failure fails as staging, never as the casing verdict.");
 
         try {
             // Gated (t31-ocr16-13): an empty helper never declares the
@@ -1489,7 +1495,9 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             // The clean direction: the case-consistent spelling of the
             // same tree collects — at any depth, and at the root.
             WpHarness::releaseScratch($scratch . '/tools');
-            mkdir($scratch . '/Tools', 0755, true);
+            // Staging asserts its own landing (t31-ocr35-7, the
+            // t31-ocr29-10 doctrine).
+            $this->assertTrue(@mkdir($scratch . '/Tools', 0755, true), "staging: the case-consistent Tools tree must land at {$scratch}/Tools — a staging failure fails as staging, never as the collect expectation's phantom divergence.");
             // Both writes gated (t31-ocr16-13): a missing member of the
             // clean-direction set makes the collect assertion fail as a
             // phantom divergence, never over the write.
@@ -1510,7 +1518,9 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             // The depth axis: a declaration DEEPER than the staged path
             // ships the same unloadable disagreement and refuses.
             WpHarness::releaseScratch($scratch . '/Tools');
-            mkdir($scratch . '/Http', 0755, true);
+            // Staging asserts its own landing (t31-ocr35-7, the
+            // t31-ocr29-10 doctrine).
+            $this->assertTrue(@mkdir($scratch . '/Http', 0755, true), "staging: the depth-axis Http tree must land at {$scratch}/Http — a staging failure fails as staging, never as the depth verdict.");
             // Gated (t31-ocr16-13): an empty file refuses as
             // 'declares no namespace', not the depth verdict pinned here.
             $this->assertNotFalse(
@@ -1775,7 +1785,10 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // judge existing files.
         $scratch = tempnam(sys_get_temp_dir(), 'wpct-phpowner-');
         unlink($scratch);
-        mkdir($scratch, 0755, true);
+        // Staging asserts its own landing (t31-ocr35-7, the
+        // t31-ocr29-10 doctrine): a silent false fails downstream as
+        // the collect assertion's empty set, never as staging.
+        $this->assertTrue(@mkdir($scratch, 0755, true), "staging: the extension-owner scratch tree must land at {$scratch} — a staging failure fails as staging, never as the collect expectation's empty set.");
         try {
             // Gated (t31-ocr16-13): an empty file makes the collect
             // assertion fail as an empty set, never over the write.
@@ -1832,8 +1845,11 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     {
         $scratch = tempnam(sys_get_temp_dir(), 'wpct-symlink-src-');
         unlink($scratch);
-        mkdir($scratch . '/Clock', 0755, true);
-        mkdir($scratch . '/Linked', 0755, true);
+        // Staging asserts its own landing (t31-ocr35-7, the
+        // t31-ocr29-10 doctrine): a silent false leaves no tree to
+        // link at, and the leg fails as the walk's own verdict.
+        $this->assertTrue(@mkdir($scratch . '/Clock', 0755, true), "staging: the link-refusal Clock tree must land at {$scratch}/Clock — a staging failure fails as staging, never as the walk's verdict.");
+        $this->assertTrue(@mkdir($scratch . '/Linked', 0755, true), "staging: the link-target Linked tree must land at {$scratch}/Linked — a staging failure fails as staging, never as the walk's verdict.");
 
         /*
          * Capability guard (OCR round 6, t31-ocr6-11): on a host that
@@ -2156,7 +2172,11 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $gate = new \ReflectionMethod($this, 'assertOneTypeMatchingFileName');
         $scratch = tempnam(sys_get_temp_dir(), 'wpct-type-vocab-');
         unlink($scratch);
-        mkdir($scratch, 0755, true);
+        // Staging asserts its own landing (t31-ocr35-7, the
+        // t31-ocr29-10 doctrine): a silent false fails downstream as
+        // the one-type gate's no-type-found, a different verdict than
+        // each spelling the legs drive.
+        $this->assertTrue(@mkdir($scratch, 0755, true), "staging: the type-vocabulary scratch tree must land at {$scratch} — a staging failure fails as staging, never as the one-type gate's no-type-found.");
         try {
             // All three writes gated (t31-ocr16-13): an empty file makes
             // the one-type gate fail as no-type-found — a different
