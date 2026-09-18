@@ -190,6 +190,58 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-28 pin (t31-ocr28-6, DERIVED FIRST then fixed): the
+     * authority-termination set was '/?#' only, so a backslash rode the
+     * authority verbatim — parse_url() keeps the byte in the host and
+     * userinfo (driven: 'http://host.example\evil/x' parsed with host
+     * 'host.example\evil', 'https://evil.example\@idp.example/' with
+     * the backslash inside the userinfo), the rebuilt authority carried
+     * it too, and the raw/redacted pair agreed on the PHP side — but a
+     * WHATWG consumer treats '\' at this position as an authority
+     * TERMINATOR, and the one browser-facing channel this VO feeds (the
+     * device-flow verification URI, passed through raw to the
+     * authorization redirect) would send the browser to evil.example
+     * while this parse, the redacted forms, and the PHP-side transport
+     * (WP_Http rides parse_url) all name idp.example — the host-forgery
+     * seam the round-1 space/tab adjudication spared those bytes from
+     * ("they render oddly but forge nothing"; the backslash re-splits
+     * the authority in a consumer that renders it). RFC 3986's
+     * authority grammar carries no backslash anywhere, so the refusal
+     * rejects nothing legal (the bracket screens' own doctrine).
+     */
+    public function testABackslashInTheAuthorityRefusesInsteadOfForgingPastTheTerminationSet(): void
+    {
+        $hostile_urls = array(
+            'backslash inside the host' => 'http://host.example\evil/token',
+            'the WHATWG forging shape (backslash in userinfo)' => 'https://evil.example\@idp.example/device',
+            'trailing backslash before the query' => 'http://host.example\?next=1',
+        );
+
+        foreach ( $hostile_urls as $label => $url ) {
+            try {
+                Url::parse_validated( $url );
+                $this->fail( sprintf( 'A backslash-bearing authority (%s) must be refused by the shared URL owner — red at HEAD it constructed, the byte riding the host/userinfo verbatim.', $label ) );
+            } catch ( \InvalidArgumentException $e ) {
+                $this->assertStringContainsString( 'must not carry a backslash', $e->getMessage(), "The refusal names the backslash class ({$label})." );
+            }
+
+            try {
+                new HttpRequest( 'GET', $url );
+                $this->fail( sprintf( 'A backslash-bearing authority (%s) must be refused by the request VO too — the redacted form would name a host no WHATWG consumer contacts.', $label ) );
+            } catch ( \InvalidArgumentException $e ) {
+                $this->assertStringContainsString( 'must not carry a backslash', $e->getMessage(), "The request VO answers the same refusal ({$label})." );
+            }
+        }
+
+        // The legal mirrors stay constructible: the round-1 space/tab
+        // adjudication keeps its verdict (those bytes render oddly but
+        // forge nothing — no consumer re-splits the authority on them),
+        // and the rebuilt authority carries the raw host byte verbatim.
+        $tab_url = "http://h\tst.example:8080/token";
+        $this->assertSame( "h\tst.example:8080", Url::parse_validated( $tab_url )['authority'], 'The space/tab adjudication stands — those bytes forge nothing, the backslash did.' );
+    }
+
+    /**
      * OCR-round-25 pin (t31-ocr25-3): the leading-zero port spelling
      * slips the raw digit screen — ':0443' IS digits — while
      * parse_url() normalizes the value to 443: the value object

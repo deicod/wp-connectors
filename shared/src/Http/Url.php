@@ -143,9 +143,38 @@ final class Url {
 		}
 		$after_scheme = (string) substr( $url, $scheme_separator + 3 );
 		$authority    = (string) substr( $after_scheme, 0, strcspn( $after_scheme, '/?#' ) );
-		$at           = strrpos( $authority, '@' );
-		$host_port    = false === $at ? $authority : (string) substr( $authority, $at + 1 );
-		$bracket_end  = strrpos( $host_port, ']' );
+
+		/*
+		 * The BACKSLASH screen (OCR round 28, t31-ocr28-6, DERIVED
+		 * FIRST then fixed): the authority-termination set above is
+		 * '/?#' only, so a backslash rode the authority verbatim on
+		 * the PHP side (parse_url() keeps it in the host/userinfo —
+		 * driven: 'host.example\evil' and 'user\@evil' both parse with
+		 * the byte intact, and the rebuilt authority carries it too,
+		 * raw and rebuilt agreeing) while a WHATWG consumer — the one
+		 * browser-facing channel this VO feeds is the device-flow
+		 * verification URI, passed through RAW to the authorization
+		 * redirect — treats '\' at this position as an authority
+		 * TERMINATOR: 'https://evil.example\@idp.example/' sends the
+		 * browser to evil.example while this parse, the rebuilt
+		 * authority, every redacted log form, and the PHP-side
+		 * transport (which rides the engine's own parse_url
+		 * semantics) all name idp.example —
+		 * the host-forgery seam the round-1 space/tab adjudication
+		 * spared those bytes from ("they render oddly but forge
+		 * nothing"; the backslash re-splits the authority in a
+		 * consumer that renders it). The RFC 3986 authority grammar
+		 * carries no backslash in host, userinfo, or port either, so
+		 * the refusal rejects nothing legal — the bracket screens' own
+		 * doctrine: a malformed authority is a shape no client means
+		 * to send, and reject is the safer verdict.
+		 */
+		if ( false !== strpos( $authority, '\\' ) ) {
+			throw new InvalidArgumentException( 'The URL authority must not carry a backslash — WHATWG consumers treat "\" at this position as an authority terminator ("https://evil.example\@host/" sends a browser to evil.example while this parse and every redacted form name host), and the RFC 3986 authority grammar (host, userinfo, port) carries no backslash at all: write the authority with "/" separators, never "\".' );
+		}
+		$at          = strrpos( $authority, '@' );
+		$host_port   = false === $at ? $authority : (string) substr( $authority, $at + 1 );
+		$bracket_end = strrpos( $host_port, ']' );
 
 		/*
 		 * The PAIR leg of the bracket screen (review round t31-r12-2,

@@ -503,6 +503,22 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
 
         // The redirect channel keeps the FULL URI — the browser needs it.
         $this->assertSame($rawUri, $session->verification_uri(), 'The raw property is intact for the authorization redirect; only the view is masked.');
+
+        /*
+         * The browser-facing consumer answers the BACKSLASH screen
+         * (OCR round 28, t31-ocr28-6): the verification URI is the one
+         * raw channel a WHATWG consumer re-parses (the authorization
+         * redirect), and '\' terminates an authority there — the
+         * session refuses the spelling at construction (red at HEAD it
+         * constructed, masked views and redirect all agreeing on a
+         * host the browser never contacts), one verdict with the URL
+         * owner's own battery.
+         */
+        $refusal = $this->refusalOf(
+            fn() => new DeviceAuthorizationSession(FakeSecrets::deviceCode(), 'BCJK-3502', 'https://evil.example\@idp.example/device', 5, new \DateTimeImmutable('+10 minutes')),
+            'A backslash-bearing verification URI must refuse the session — the browser the redirect hands it to terminates the authority at the byte.', \InvalidArgumentException::class
+        );
+        $this->assertStringContainsString('must not carry a backslash', $refusal->getMessage());
     }
 
     /**
