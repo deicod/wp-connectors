@@ -658,7 +658,55 @@ final class WpConnectorsBuild
                 }
                 throw new RuntimeException("build: the bare 'namespace' keyword outside a use statement in {$sourceVersion} is not a spelling PHP accepts — outside one the keyword only ever opens a declaration (a name, or a braced block) standing at a statement boundary; the build runs no lint gate over the zip's bytes, so the rewrite refuses the parse-error spelling rather than shipping it at exit 0; write the family spelling");
             }
+            /*
+             * The frame rule over the use-statement boundary (OCR
+             * round 30, t31-ocr30-1/2 — the census over every ';'
+             * consumer of the ONE boundary owner): the ';'/tag set
+             * terminates the use statement only at the statement's
+             * OWN depth. A TRAIT-ADAPTATION body (`use T { m as n; }`)
+             * is grammar-required to carry ';' INSIDE its braces, and
+             * that inner terminator once fired the reset while
+             * $group_depth === 1 — the reset disarmed mid-adaptation,
+             * the adaptation's closing '}' was then judged OUTSIDE a
+             * use statement and popped the enclosing class's 'other'
+             * frame off the brace-kind stack, and every use statement
+             * after the class drew its trait fence (t31-ocr26-1) from
+             * a corrupted stack: driven red at HEAD,
+             * `class C { use T { m as n; } use namespace\Clock\
+             * \SystemClock; }` shipped the second use SPLICED to the
+             * family map — a DIFFERENT trait, exit 0, the exact
+             * retarget the trait fence exists to refuse. The
+             * adaptation-inner ';' rides the adaptation's frame now
+             * (skipped, never a reset), and the '}' that closes the
+             * adaptation IS the trait use's terminator — the grammar
+             * gives that spelling no trailing ';' — so the statement
+             * state resets there, at its own closing brace, and the
+             * brace-kind stack stays balanced through the block.
+             *
+             * The census, every other boundary consumer judged against
+             * the same two frames: the TAIL rider judgment below (the
+             * 934/985 pair) only ever runs at the statement's own
+             * depth — a relative member INSIDE a group/adaptation
+             * body is refused at the $group_depth fence above before
+             * the tail walk starts; the declaration ledger's walk
+             * (plugin-tools.php) resets at the same ';' set, but its
+             * region exists to suppress FILE-LEVEL declarations, and
+             * none can stand inside an adaptation body — the bare
+             * keyword there either precedes the first inner ';' (the
+             * r11-21 skip already owns it) or fails the
+             * declaration-shape predicate, and every such spelling is
+             * a parse error the rewriter's own fences refuse before
+             * the ledger's verdict ships; the classifier walk
+             * (unownedUseImportSpellingClass) carries the same
+             * early-close and rides the same frame rule (its fix
+             * below).
+             */
             if ($use_open && wp_connectors_is_use_statement_boundary($token, $id)) {
+                if ($group_depth > 0) {
+                    // The adaptation-inner ';' rides the adaptation's
+                    // frame, never the use reset.
+                    continue;
+                }
                 $use_open = false;
                 $use_is_trait = false;
                 $group_depth = 0;
@@ -672,8 +720,12 @@ final class WpConnectorsBuild
             }
             if ($use_open && '}' === $token) {
                 --$group_depth;
-                if ($group_depth < 0) {
+                if ($group_depth <= 0) {
+                    // The '}' closing the adaptation body terminates
+                    // the trait use statement (no ';' follows it).
                     $group_depth = 0;
+                    $use_open = false;
+                    $use_is_trait = false;
                 }
 
                 continue;

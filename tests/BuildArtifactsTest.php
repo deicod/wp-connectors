@@ -7425,6 +7425,67 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-30 pin (t31-ocr30-1): the use-statement state survives
+     * a TRAIT-ADAPTATION body. The adaptation's grammar-required ';'
+     * (`use T { m as n; }`) arrives while the adaptation brace stands
+     * open, and the boundary reset once fired THERE — mid-adaptation —
+     * so the adaptation's closing '}' was judged outside a use
+     * statement and popped the enclosing class's 'other' frame off the
+     * brace-kind stack, and every use statement after the class drew
+     * its trait fence (t31-ocr26-1) from a corrupted stack. Driven red
+     * at HEAD: `use T { m as n; } use namespace\Clock\SystemClock;`
+     * inside a class body shipped the second use SPLICED through the
+     * family map — a DIFFERENT trait loads, exit 0, the exact
+     * retarget the fence exists to refuse. The adaptation-inner ';'
+     * rides the adaptation's frame now and the '}' that closes it IS
+     * the trait use's terminator, so the stack stays balanced through
+     * the block.
+     */
+    public function testTheUseStateSurvivesATraitAdaptationBody(): void
+    {
+        // RED at HEAD: the fence disarmed — the following relative use
+        // spliced (exit 0), never refused.
+        $cases = array(
+            'fused trait use after an adaptation' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass AdaptFenceFusedFixture\n{\n    use OtherTrait { m as n; }\n    use namespace\\Clock\\SystemClock;\n}\n",
+            'interrupted trait use after an adaptation' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass AdaptFenceInterruptedFixture\n{\n    use OtherTrait { m as n; }\n    use namespace \\Clock\\SystemClock;\n}\n",
+            'adaptation on the relative use itself' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass AdaptFenceOwnFixture\n{\n    use namespace\\Clock\\SystemClock { m as n; }\n}\n",
+        );
+        foreach ($cases as $label => $source) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/AdaptFenceFixture.php'),
+                "A relative trait use around an adaptation body must refuse the rewrite, never retarget the trait ({$label}).", \RuntimeException::class
+            );
+            $this->assertStringContainsString('TRAIT use position', $refusal->getMessage(), "The trait fence answers from a balanced stack — the adaptation's inner ';' no longer disarms it ({$label}).");
+        }
+
+        // The control: an adaptation WITHOUT a relative use rides the
+        // rewrite verbatim (no relative trigger anywhere in the class).
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace(
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass AdaptPlainFixture\n{\n    use OtherTrait { m as n; }\n    use SecondTrait;\n}\ninterface AdaptPlainTail\n{\n}\n",
+            'OpenAiOauth',
+            'shared/src/AdaptPlainFixture.php'
+        );
+        $this->assertStringContainsString('use OtherTrait { m as n; }', $rewritten, 'A plain adaptation rides verbatim — the frame fix owns the relative arm only.');
+        $this->assertStringContainsString('use SecondTrait;', $rewritten, 'A plain trait use after an adaptation rides verbatim too.');
+
+        // The stack stays balanced BEYOND the class: the top-level
+        // import twin of the same relative bytes still rewrites, and a
+        // closure use list inside the class keeps its own fence's
+        // verdict — the adaptation corrupted neither judgment.
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace(
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass AdaptBeyondFixture\n{\n    use OtherTrait { m as n; }\n}\nuse namespace\\Clock\\SystemClock;\ninterface AdaptBeyondTail\n{\n}\n",
+            'OpenAiOauth',
+            'shared/src/AdaptBeyondFixture.php'
+        );
+        $this->assertStringContainsString('use \\Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\SystemClock;', $rewritten, 'The top-level twin after an adaptation-carrying class still rewrites — the stack round-tripped balanced.');
+        $closure = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass AdaptClosureFixture\n{\n    use OtherTrait { m as n; }\n    public function m(): int\n    {\n        \$f = function () use (namespace\\Clock) { return 1; };\n\n        return \$f();\n    }\n}\n", 'OpenAiOauth', 'shared/src/AdaptClosureFixture.php'),
+            'A closure use list after an adaptation keeps its own refusal.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('closure use(...) list', $closure->getMessage(), 'The closure fence is untouched — its verdict is its own.');
+    }
+
+    /**
      * Verifier-round pin (t31-r11-8): octal escapes past \377 unescape
      * DEPRECATION-FREE. The engine wraps such escapes to the low byte
      * ("\400" is chr(0), "\777" is chr(255) — verified against the
