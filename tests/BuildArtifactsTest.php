@@ -5822,6 +5822,38 @@ FIXTURE;
         $this->assertStringNotContainsString('Deicod\\WpConnectors\\{Shared', $groupRewritten, 'No unrewritten group member may survive.');
 
         /*
+         * OCR round 31 (t31-ocr31-4): the member grammar is validated
+         * BEFORE reassembly. The group-use callback once reassembled
+         * member bytes through explode/trim/implode with no refusal
+         * of its own, so every illegal member spelling normalized
+         * into a silent pass — the empty member, the trailing comma,
+         * the empty body, a dangling `as` — and the rewritten group
+         * SHIPPED the parse-error spelling verbatim at exit 0 (driven
+         * red at HEAD; the empty body alone reached a late,
+         * mis-named postcondition refusal — "survived the rewrite"
+         * over a body the grammar should have named itself). Each
+         * illegal shape answers the member grammar's own refusal now,
+         * naming the spelling the engine rejects at compile time —
+         * and the survivors battery's t31-r10-9 EMPTY-BODY row moved
+         * HERE with it: its charge (the bare vendor prefix never
+         * launders through a group body) holds one seam earlier, the
+         * grammar refusing the body before any prefix could survive
+         * to the postcondition.
+         */
+        foreach (array(
+            'empty member before its comma' => 'use Deicod\\WpConnectors\\{, Shared\\Clock};',
+            'trailing comma' => 'use Deicod\\WpConnectors\\{Shared\\Clock,};',
+            'empty brace body (the t31-r10-9 row, moved to its owning seam)' => 'use Deicod\\WpConnectors\\{};',
+            'dangling as' => 'use Deicod\\WpConnectors\\{Shared\\Clock as};',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass IllegalGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/IllegalGroupStore.php'),
+                "An illegal group-use member spelling must refuse the rewrite ({$label}).", \RuntimeException::class
+            );
+            $this->assertStringContainsString('group-use member grammar refuses', $refusal->getMessage(), "The refusal names the member grammar's own seam — never a late postcondition verdict over a body the grammar should have named ({$label}).");
+        }
+
+        /*
          * The total postcondition (the token detector, t31-r7): a family
          * reference the rewrite does not own REFUSES the build loudly
          * with the file, byte offset, resolved name, and position kind.
@@ -5886,7 +5918,6 @@ FIXTURE;
             'fully-qualified group member against a non-family prefix (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\Stuff\\{ \\Deicod\\WpConnectors\\Shared\\Clock };\nclass FqMemberStore\n{\n}\n",
             'qualified name after as, plain use (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\X as \\Deicod\\WpConnectors\\Shared\\Clock;\nclass FqAliasStore\n{\n}\n",
             'qualified name after as, group body (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse OtherVendor\\Stuff\\{ Y as \\Deicod\\WpConnectors\\Shared\\Clock };\nclass FqGroupAliasStore\n{\n}\n",
-            'empty group body naming the vendor prefix (t31-r10-9)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{};\nclass EmptyGroupStore\n{\n}\n",
             'multi-trait adaptation CLAUSE naming the family (t31-r10-11)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ntrait ClauseListStoreA { public function s(): void {} }\nfinal class ClauseListStore\n{\n    use ClauseListStoreA, Deicod\\WpConnectors\\Shared\\Clock {\n        ClauseListStoreA::s insteadof Clock;\n    }\n}\n",
         );
         foreach ($survivors as $label => $hostile) {

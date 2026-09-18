@@ -218,8 +218,41 @@ final class WpConnectorsBuild
                 '/((?<![A-Za-z0-9_])use\s+(?:function\s+|const\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
                 static function ($matches) use ($pluginSuffix, $sourceVersion, $shared_leaf) {
                     $members = array();
-                    foreach (explode(',', $matches[3]) as $member) {
+                    $member_pieces = explode(',', $matches[3]);
+                    foreach ($member_pieces as $member_index => $member) {
                         $member = trim($member);
+                        /*
+                         * The member grammar is validated BEFORE
+                         * reassembly (OCR round 31, t31-ocr31-4): the
+                         * callback once reassembled member bytes
+                         * through explode/trim/implode with no
+                         * refusal of its own, so every illegal member
+                         * spelling normalized into a silent pass —
+                         * the empty member (`{, Shared\Clock}`), the
+                         * trailing comma (`{Shared\Clock,}`), the
+                         * empty body (`{}`), a dangling `as`
+                         * (`{Shared\Clock as}`) — and the rewritten
+                         * group SHIPPED the parse-error spelling
+                         * verbatim at exit 0 (driven red at HEAD;
+                         * the empty body alone reached a late,
+                         * mis-named postcondition refusal). The
+                         * rewriter owns what it reassembles: each
+                         * illegal shape refuses HERE, at the seam,
+                         * naming the spelling the engine rejects.
+                         */
+                        if ('' === $member) {
+                            $shape = '' === trim($matches[3])
+                                ? 'an empty brace body'
+                                : (0 === $member_index
+                                    ? 'an empty member before its comma'
+                                    : ($member_index === count($member_pieces) - 1
+                                        ? 'a trailing comma'
+                                        : 'an empty member between commas'));
+                            throw new RuntimeException("build: the group-use member grammar refuses the statement (body: '" . trim($matches[3]) . "') in {$sourceVersion} — here: {$shape}: every one of these spellings is a parse error the engine rejects at compile time, and the reassembly once normalized it through explode/trim/implode into a silent pass that shipped the parse-error bytes verbatim at exit 0; write one named member per comma, never an empty one");
+                        }
+                        if (1 === preg_match('/\bas\s*$/i', $member)) {
+                            throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' with no identifier after it: a dangling alias is a parse error the engine rejects at compile time, and the reassembly once reassembled it into rewritten output that shipped ' as}' verbatim at exit 0; write the member as 'Name as Alias' or the bare 'Name'");
+                        }
                         $tail = '';
                         if (1 === preg_match('/^(.+?)\s+as\s+([A-Za-z0-9_]+)$/', $member, $alias_parts)) {
                             $member = $alias_parts[1];
