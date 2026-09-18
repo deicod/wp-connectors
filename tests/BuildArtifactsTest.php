@@ -4439,6 +4439,23 @@ FIXTURE;
                 $this->assertFileExists($victim . '/inner/keep.txt', "A '{$tail}' tail is not a disguise — the inspector twin never deletes through the link.");
                 $this->assertTrue(is_link($inspectRootLink), "The '{$tail}' tail does not smuggle the link past the plain guard.");
             }
+
+            /*
+             * The '/..' tail over a REAL directory (OCR round 26,
+             * t31-ocr26-3 — the link channel closed above, the real
+             * twin now): the fences judge the STRIPPED probe while the
+             * walk rode the caller's RAW spelling, and 'victim/..'
+             * resolves to the victim's PARENT — driven red at HEAD,
+             * this fire EMPTIED the scratch tree through the tail
+             * (every fence passed: no link, realpath not the root).
+             * The walk stays inside the caller-named root for every
+             * tail spelling; a tail naming OUTSIDE it is never walked
+             * (the silent return, the root clause's own vocabulary).
+             */
+            wp_connectors_inspect_rrmdir($scratch . '/victim/..');
+            $this->assertFileExists($victim . '/inner/keep.txt', "A '/..' tail over a REAL directory never walks the PARENT tree — the tail names outside the caller-named root.");
+            $this->assertFileExists($victim . '/keep2.txt', "A '/..' tail over a REAL directory never walks the PARENT tree — the victim survives whole.");
+            $this->assertDirectoryExists($scratch, "The PARENT the '/..' names is never this owner's territory — the scratch tree survives the tail-spelled fire whole.");
             /*
              * The root spellings are ROOT-ANCHORED, never a temp-parent
              * '..' (OCR round 11, t31-ocr11-2): POSIX resolves '.' and

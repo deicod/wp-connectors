@@ -606,12 +606,19 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
  * refuses silently too — the extraction lands in the unique dir
  * regardless.
  *
+ * The '/..' tail refuses over REAL directories too (OCR round 26,
+ * t31-ocr26-3): the raw spelling names the caller-named root's
+ * PARENT — territory this owner never walks (the probe's own
+ * doctrine, extended from the link channel to every tail
+ * spelling); '/' and '/.' name the root itself and keep the walk.
+ *
  * @param string $dir Absolute directory path.
  * @return void
  */
 function wp_connectors_inspect_rrmdir($dir)
 {
     $probe = $dir;
+    $parent_walking = false;
     if ('/' !== $probe) {
         $probe = rtrim($probe, '/');
         while (true) {
@@ -621,10 +628,29 @@ function wp_connectors_inspect_rrmdir($dir)
             }
             if ('/..' === substr($probe, -3)) {
                 $probe = rtrim(substr($probe, 0, -3), '/');
+                $parent_walking = true;
                 continue;
             }
             break;
         }
+    }
+    /*
+     * A parent-walking tail over a REAL directory refuses too (OCR
+     * round 26, t31-ocr26-3 — the same territory doctrine the link
+     * probe above owns, one spelling over): the fences judge the
+     * STRIPPED probe while the walk below rides the caller's RAW
+     * spelling, and 'root/..' resolves to the root's PARENT —
+     * driven pre-fix, a caller-controlled 'dist/.inspect-x/..'
+     * over a real (non-link) directory walked and EMPTIED the
+     * parent tree (dist/ itself) through the tail, past the link
+     * fence and the realpath root fence alike. The walk stays
+     * inside the caller-named root for every tail spelling: a
+     * tail that names OUTSIDE it is never walked. The verdict
+     * vocabulary is the silent return (the root clause's own — a
+     * production finally must not throw).
+     */
+    if ($parent_walking) {
+        return;
     }
     if (is_link($probe)) {
         return;
