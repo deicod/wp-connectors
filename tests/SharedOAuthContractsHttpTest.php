@@ -1624,8 +1624,20 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
 
         // The catalog spellings stay covered (the rule ADDS, never replaces).
-        foreach (array('authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'location') as $catalogued) {
+        foreach (array('cookie', 'set-cookie', 'location') as $catalogued) {
             $this->assertTrue(SecretMask::is_sensitive_header_name($catalogued), "The catalogued '{$catalogued}' spelling stays sensitive.");
+        }
+        /*
+         * The three former catalog entries ride the CLASS alone (OCR
+         * round 33, t31-ocr33-3, the ocr29-5 subsumption doctrine):
+         * 'authorization' IS a suffix member, 'proxy-authorization'
+         * and 'x-api-key' end in '-authorization'/'-api-key' —
+         * behaviorally dead as catalog entries, pinned green through
+         * the class by construction (drop the suffix and they
+         * redden).
+         */
+        foreach (array('authorization', 'proxy-authorization', 'x-api-key') as $subsumed) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($subsumed), "The '{$subsumed}' spelling stays sensitive through the suffix class alone — its catalog entry was behaviorally dead.");
         }
 
         // The render seam every safe debug form rides: the vendor spellings

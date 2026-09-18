@@ -92,11 +92,21 @@ final class SecretMask {
 	 * the suffix class below are together the single spelling of what
 	 * a sensitive header name is.
 	 *
+	 * The catalog carries only the names the class rule CANNOT spell
+	 * (OCR round 33, t31-ocr33-3, the t31-ocr29-5 subsumption doctrine
+	 * over the catalog's own entries): 'authorization' IS a member of
+	 * the suffix class, and 'proxy-authorization'/'x-api-key' end in
+	 * '-authorization'/'-api-key' — all three rode the class
+	 * identically and were behaviorally dead weight implying the
+	 * catalog needed them. The battery pins the three spellings green
+	 * through the class by construction (drop 'authorization' or
+	 * 'api-key' from the suffixes and they redden).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAMES = array( 'authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'location' );
+	const SENSITIVE_HEADER_NAMES = array( 'cookie', 'set-cookie', 'location' );
 
 	/**
 	 * Credential-bearing name suffixes (lowercase): any folded header
