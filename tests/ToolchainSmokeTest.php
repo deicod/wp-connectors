@@ -184,7 +184,16 @@ final class ToolchainSmokeTest extends TestCase
         $scratch = sys_get_temp_dir() . '/wpct-lint-trailroot-' . uniqid('', true);
 
         try {
-            mkdir($scratch . '/bin/lib', 0755, true);
+            /*
+             * Staging success is ASSERTED at each site (OCR round 27,
+             * t31-ocr27-9, the t31-ocr26-12 misattribution doctrine):
+             * a failed mkdir()/copy()/file_put_contents() once
+             * surfaced only through the child run — the gate's green
+             * or red verdict wore a staging problem as its own
+             * defect. Staging failures fail as staging now, before
+             * any child is spawned.
+             */
+            $this->assertTrue(mkdir($scratch . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the lint verdict.');
             $tool = (string) file_get_contents(__DIR__ . '/../bin/lint-php.php');
             /*
              * The exactly-once claim is PINNED, not implied (OCR
@@ -202,14 +211,14 @@ final class ToolchainSmokeTest extends TestCase
             );
             $patched = str_replace("__DIR__ . '/../connectors'", "__DIR__ . '/../connectors/'", $tool);
             $this->assertNotSame($tool, $patched, 'The patch must reach the roots line.');
-            file_put_contents($scratch . '/bin/lint-php.php', $patched);
-            copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php');
+            $this->assertNotFalse(file_put_contents($scratch . '/bin/lint-php.php', $patched), 'staging: the patched lint tool must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php'), 'staging: the tool library must copy — a staging failure fails as staging, never as the lint verdict.');
             // The excluded tree is the FIRST segment below the root —
             // the position whose first byte the bare offset ate.
-            mkdir($scratch . '/connectors/vendor', 0755, true);
-            mkdir($scratch . '/connectors/demo', 0755, true);
-            file_put_contents($scratch . '/connectors/demo/good.php', "<?php\n// lintable connector source\n");
-            file_put_contents($scratch . '/connectors/vendor/broken.php', "<?php this must stay excluded");
+            $this->assertTrue(mkdir($scratch . '/connectors/vendor', 0755, true), 'staging: the excluded first-segment tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/connectors/demo', 0755, true), 'staging: the demo connector tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/good.php', "<?php\n// lintable connector source\n"), 'staging: the good connector source must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/vendor/broken.php', "<?php this must stay excluded"), 'staging: the excluded broken source must write — a staging failure fails as staging, never as the lint verdict.');
 
             $output = array();
             $exit = 0;
@@ -275,24 +284,32 @@ final class ToolchainSmokeTest extends TestCase
         $scratch = sys_get_temp_dir() . '/wpct-lint-' . uniqid('', true);
 
         try {
-            mkdir($scratch . '/bin/lib', 0755, true);
-            copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php');
-            copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php');
+            /*
+             * Staging success is ASSERTED at each site (OCR round 27,
+             * t31-ocr27-9, the t31-ocr26-12 misattribution doctrine —
+             * this test's twin shape): every mkdir/copy/write feeding
+             * a child verdict, and every re-staging call between the
+             * child runs, names its own staging premise when it
+             * fails; staging failures never wear the gate's verdict.
+             */
+            $this->assertTrue(mkdir($scratch . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php'), 'staging: the lint tool must copy — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php'), 'staging: the tool library must copy — a staging failure fails as staging, never as the lint verdict.');
             // Real sources: one under tests/ (the root lints), one under
             // connectors/, one under a NESTED tests-named tree (the
             // ocr8-7 coverage — the vocabulary ride skipped it); then
             // the drifted spellings with parse-broken PHP inside — both
             // must be SKIPPED, not linted.
-            mkdir($scratch . '/tests/unit', 0755, true);
-            file_put_contents($scratch . '/tests/unit/RealTest.php', "<?php\n// lintable tests-root source\n");
-            mkdir($scratch . '/connectors/demo', 0755, true);
-            file_put_contents($scratch . '/connectors/demo/demo.php', "<?php\n// lintable connector source\n");
-            mkdir($scratch . '/connectors/demo/tests', 0755, true);
-            file_put_contents($scratch . '/connectors/demo/tests/NestedTest.php', "<?php\n// lintable NESTED tests-named source\n");
-            mkdir($scratch . '/connectors/demo/phpunit.cache', 0755, true);
-            file_put_contents($scratch . '/connectors/demo/phpunit.cache/broken.php', "<?php this is not php");
-            mkdir($scratch . '/connectors/demo/VENDOR', 0755, true);
-            file_put_contents($scratch . '/connectors/demo/VENDOR/broken.php', "<?php this is not php either");
+            $this->assertTrue(mkdir($scratch . '/tests/unit', 0755, true), 'staging: the scratch tests tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/tests/unit/RealTest.php', "<?php\n// lintable tests-root source\n"), 'staging: the tests-root source must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/connectors/demo', 0755, true), 'staging: the demo connector tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/demo.php', "<?php\n// lintable connector source\n"), 'staging: the connector source must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/connectors/demo/tests', 0755, true), 'staging: the nested tests tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/tests/NestedTest.php', "<?php\n// lintable NESTED tests-named source\n"), 'staging: the nested tests-named source must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/connectors/demo/phpunit.cache', 0755, true), 'staging: the drifted cache spelling must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/phpunit.cache/broken.php', "<?php this is not php"), 'staging: the cache-hidden broken source must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/connectors/demo/VENDOR', 0755, true), 'staging: the drifted VENDOR spelling must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/VENDOR/broken.php', "<?php this is not php either"), 'staging: the VENDOR-hidden broken source must write — a staging failure fails as staging, never as the lint verdict.');
 
             $output = array();
             $exit = 0;
@@ -331,8 +348,8 @@ final class ToolchainSmokeTest extends TestCase
              * gate. The control files are removed after their verdict
              * so the dir-link leg below lints the pristine tree.
              */
-            file_put_contents($scratch . '/connectors/demo/broken-too.php', "<?php nor is this");
-            file_put_contents($scratch . '/connectors/demo/tests/broken-nested.php', "<?php neither is this nested one");
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/broken-too.php', "<?php nor is this"), 'staging: the still-fails control source must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/tests/broken-nested.php', "<?php neither is this nested one"), 'staging: the nested still-fails control must write — a staging failure fails as staging, never as the lint verdict.');
             $output = array();
             $exit = 0;
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
@@ -340,8 +357,8 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertSame(1, $exit, 'A parse-broken real source still fails the lint.');
             $this->assertStringContainsString('broken-too.php', $combined);
             $this->assertStringContainsString('broken-nested.php', $combined, 'A parse-broken source under a NESTED tests-named tree must FAIL the lint — tests are the gate\'s charge, never a release exclusion.');
-            unlink($scratch . '/connectors/demo/broken-too.php');
-            unlink($scratch . '/connectors/demo/tests/broken-nested.php');
+            $this->assertTrue(unlink($scratch . '/connectors/demo/broken-too.php'), 'staging: the still-fails control must remove again — a failed re-stage fails as staging, never as the dir-link leg\'s count.');
+            $this->assertTrue(unlink($scratch . '/connectors/demo/tests/broken-nested.php'), 'staging: the nested still-fails control must remove again — a failed re-stage fails as staging, never as the dir-link leg\'s count.');
 
             /*
              * The capability rides the ONE owner, WpHarness::canSymlink()
@@ -355,9 +372,19 @@ final class ToolchainSmokeTest extends TestCase
             if (! WpHarness::canSymlink()) {
                 $this->markTestSkipped('This host cannot create symlinks — the dir-link skip leg cannot run on it (t31-ocr12-1); the still-fails controls above already ran (t31-ocr13-8).');
             }
-            mkdir($scratch . '/linked-tree', 0755, true);
-            file_put_contents($scratch . '/linked-tree/broken-inside.php', "<?php nor is this reachable only through the link");
-            symlink($scratch . '/linked-tree', $scratch . '/connectors/demo/dirlink.php');
+            $this->assertTrue(mkdir($scratch . '/linked-tree', 0755, true), 'staging: the link target tree must create — a staging failure fails as staging, never as the dir-link leg\'s verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/linked-tree/broken-inside.php', "<?php nor is this reachable only through the link"), 'staging: the linked-tree source must write — a staging failure fails as staging, never as the dir-link leg\'s verdict.');
+            /*
+             * The symlink CREATION is asserted (OCR round 27,
+             * t31-ocr27-9): symlink() returns FALSE silently on
+             * failure (canSymlink() proved the capability, not this
+             * call), and a link that never landed left the leg
+             * passing VACUOUSLY — '5 file(s) checked' reads as the
+             * pinned green with or without the link, a skip-shaped
+             * verdict nothing distinguishes from the pass. The leg
+             * names its own creation failure now.
+             */
+            $this->assertTrue(symlink($scratch . '/linked-tree', $scratch . '/connectors/demo/dirlink.php'), 'The dir-link must land — the leg lints a tree whose dirlink.php entry exists; a failed symlink creation is the leg\'s own failure, never a vacuous green.');
             $output = array();
             $exit = 0;
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
