@@ -219,7 +219,21 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
         // (reproduced: 0 findings under a Dist/ ancestor, 1 under Dst/
         // — the exact-case shape was pre-round, the fold widened it to
         // every casing).
-        $below_root = strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1;
+        /*
+         * The prefix arithmetic strips BOTH separator spellings (OCR
+         * round 31, t31-ocr31-5, the t31-ocr29-3 vocabulary class):
+         * rtrim($root, DIRECTORY_SEPARATOR) consulted only the native
+         * one, so a '/'-suffixed root on a separator host kept its
+         * trailing separator in the length while the iterator below
+         * treats '/' as a separator there too — $below_root one byte
+         * over, and every walked relative lost its first byte. The
+         * strip judges the spelling CLASS, never the host it runs on:
+         * on POSIX the '\' arm costs residue only for a path
+         * literally named with a trailing backslash byte (the
+         * ocr29-3 trade, residue over victim), and on this POSIX host
+         * the arithmetic is byte-identical to the former rtrim.
+         */
+        $below_root = strlen(rtrim($root, '/\\')) + 1;
         foreach ($iterator as $file) {
             /** @var SplFileInfo $file */
             // The segment walk exists ONLY to prune, and pruning is
