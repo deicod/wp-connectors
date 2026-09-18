@@ -928,6 +928,19 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
      * positions rendered in full (reproduced pre-fix). Both mask
      * through the one vocabulary (SecretMask, the same owner the
      * header renders ride); the public facts dump as themselves.
+     *
+     * OCR round 29 (t31-ocr29-1), the engine truth DRIVEN both ways:
+     * the round's finding claimed print_r() walks the raw property
+     * table ("only var_dump consults __debugInfo()") and the tokens
+     * render in full cleartext — driven at fix time, print_r() answers
+     * the HOOK'S masked view on the runner engine (8.5.10) and on the
+     * support floor (8.2, a php:8.2-cli container over this very
+     * class), the two functions sharing the engine's one
+     * get_debug_info handler. The premise refuted, the pin now drives
+     * BOTH channels explicitly, and pins the one true exclusion —
+     * var_export() dumps the raw property tree through no hook (the
+     * t31-ocr2-1 display-material adjudication; its eval channel
+     * __set_state() refuses, pinned beside its serialize twin below).
      */
     public function testTheSerializationChannelDumpsMaskedTokens(): void
     {
@@ -941,6 +954,32 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
         $this->assertStringContainsString((string) SecretMask::mask($access), $dumped, 'The access token dumps in its masked form.');
         $this->assertStringContainsString((string) SecretMask::mask($refresh), $dumped, 'The refresh token dumps in its masked form.');
         $this->assertStringContainsString('3600', $dumped, 'The public lifetime fact dumps as itself.');
+
+        /*
+         * The var_dump twin, driven beside it (t31-ocr29-1): the two
+         * functions share the engine's one get_debug_info handler, so
+         * the channel pair answers one view — the finding's split
+         * (print_r raw, var_dump masked) constructs on no engine in
+         * the support range.
+         */
+        ob_start();
+        var_dump($set);
+        $var_dumped = (string) ob_get_clean();
+        $this->assertStringNotContainsString($access, $var_dumped, 'var_dump must never carry the raw access token.');
+        $this->assertStringNotContainsString($refresh, $var_dumped, 'var_dump must never carry the raw refresh token.');
+        $this->assertStringContainsString((string) SecretMask::mask($access), $var_dumped, 'var_dump renders the same masked view print_r does — one handler, one vocabulary.');
+
+        /*
+         * The BOUNDARY, pinned by its adjudicated shape (t31-ocr29-1):
+         * var_export() is the one channel no hook covers — it dumps
+         * the raw property tree (the t31-ocr2-1 display-material
+         * adjudication). Pinning the exclusion's driven shape keeps
+         * the coverage claim honest: the day an engine grows a
+         * var_export hook, this leg reddens and the adjudication is
+         * re-derived, never silently drifted past.
+         */
+        $exported = var_export($set, true);
+        $this->assertStringContainsString($access, $exported, 'var_export stays the one EXCLUDED channel — the raw property tree through no hook, the adjudicated display-material shape (its eval channel refuses; see the __set_state pin below).');
 
         // The null refresh stays null — a fact, never a masked spelling.
         $no_refresh = new AccessTokenSet($access, null, 3600, new \DateTimeImmutable('2026-09-13T10:00:00+00:00'));

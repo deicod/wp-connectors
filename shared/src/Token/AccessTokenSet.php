@@ -361,6 +361,20 @@ final class AccessTokenSet {
 	 * Rides the same masked view as __serialize() below (OCR round 2,
 	 * t31-ocr2-1) — one vocabulary owner, both channels.
 	 *
+	 * ENGINE TRUTH, driven when the fix landed (OCR round 29,
+	 * t31-ocr29-1): the
+	 * round's finding claimed print_r() "does NOT consult __debugInfo()
+	 * (only var_dump does)" and walks the raw property table — the
+	 * DRIVEN engine refutes the premise: print_r() renders this hook's
+	 * masked view on the runner engine (8.5.10) AND on the support
+	 * floor (8.2, driven in a php:8.2-cli container over this very
+	 * class), because print_r() and var_dump() both walk objects
+	 * through the engine's one get_debug_info handler — a channel split
+	 * the engine never makes. The coverage claim above was never the
+	 * fabrication; the finding's engine premise was. The one channel no
+	 * hook covers stays var_export() (the adjudicated exclusion below,
+	 * its reconstruction channel refusing).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return array<string, mixed> Masked tokens plus the public facts, never containing token material.
