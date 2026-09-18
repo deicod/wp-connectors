@@ -6,6 +6,85 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 30)
+
+Thirtieth OCR-tool round (main 61/62 with 7 findings; BuildArtifactsTest
+OCR-unreachable — context compression kills it deterministically even
+solo at the 200k ceiling, so its test legs ride the later claude-glm
+code-review phase): 7 findings, driver triage accepted all — trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7. The round's shape:
+the trait-adaptation ';' — the r26-1 trait-fence class's third
+generation, this time corrupting the frame stack from INSIDE the
+adaptation block, with the driven red at the fence's worst case (a
+silent trait retarget at exit 0); and the scan_paths residual head
+landed (the lint walk fenced). Fixed as t31-ocr30-1..7 — one commit
+per finding — plus this docs record, the full offline check green
+after every commit. Suite 1676 → 1681 tests, 45776 → 45821
+assertions, 3 skipped unchanged.
+
+- **The use-statement state survives a trait-adaptation body
+  (t31-ocr30-1, bug:high)** — the adaptation's grammar-required ';'
+  (`use T { m as n; }`) fired the use-statement boundary reset
+  mid-adaptation, the adaptation's closing '}' then popped the
+  enclosing class's 'other' frame off the brace-kind stack, and every
+  use statement after the class drew its trait fence from the
+  corrupted stack: driven red at HEAD, `use T { m as n; } use
+  namespace\Clock\SystemClock;` inside a class body shipped the second
+  use spliced through the family map — a different trait loads, exit
+  0. The adaptation-inner ';' rides the adaptation's frame, the '}'
+  that closes it IS the trait use's terminator, and the stack stays
+  balanced through the block and beyond; the commit carries the census
+  over every other ';' consumer of the one boundary owner.
+- **The unowned-spelling classifier's brace stack survives a trait
+  adaptation too (t31-ocr30-2, bug:low)** — the same early-close in
+  the classifier walk let the adaptation's '}' pop the class's frame
+  with no matching push, and a trait clause list after the adaptation
+  was judged an IMPORT (the dead 'write one use per line' errand the
+  t31-ocr7-7 doctrine reserves for import lists); same frame doctrine,
+  both twins on the anonymous trait verdict, genuine import lists keep
+  their named errand. Driven red at HEAD.
+- **The lint walk names an unreadable subdirectory instead of dying
+  uncaught (t31-ocr30-3, bug:medium)** — a directory entry the walking
+  process cannot open aborted the bare RecursiveDirectoryIterator walk
+  with an uncaught UnexpectedValueException: the whole lint run died
+  at exit 255 with a stack trace, no verdict, no summary. The fence is
+  the repo's own iterator doctrine (the construction rides the try,
+  the abort converts to the gate's FAIL vocabulary naming the root,
+  the readable trees' partial count stays loud, the exit fails); the
+  regression leg rides a permission-denial probe in the canSymlink
+  shape. The scan_paths walk-unfenced residual stands one seam deeper
+  (the secret scanner's own walk).
+- **The copyTree landing loop owns its IO returns (t31-ocr30-4,
+  bug:medium)** — unchecked mkdir()/copy() let a mid-landing failure
+  escape the contract two ways: under PHPUnit the raw E_WARNING wore
+  PHPUnit's vocabulary (driven: the refusal read 'mkdir(): Permission
+  denied'), outside it the raw warning rode while copyTree() returned
+  normally having moved nothing. Both returns refuse loudly naming
+  the operation and the path (the builder's copyNormalized shape);
+  each arm driven by its own permission-shaped leg, the happy path
+  byte-unchanged.
+- **The relative member past the comma routes through the main loop
+  in BOTH lexer spellings (t31-ocr30-5, documentation:low — derived
+  first)** — the routing comment's claim held for the fused spelling
+  only; the interrupted member (a bare T_NAMESPACE at member-start)
+  fell to the empty-member refusal, mis-naming a member that is
+  there. Driven adjudication: refusing is the intended verdict on
+  every route, so the routing extends to the bare keyword and both
+  spellings answer the SAME mid-name refusal (one shape for both
+  spellings of the operator, the r11-10 doctrine).
+- **The apply closure's throws are row verdicts, never battery aborts
+  (t31-ocr30-6, test:medium)** — the one row-verdict channel in the
+  build-seam battery without its try/catch conversion let one row's
+  throw abort the whole row table as a test error, masking the states
+  behind it; the throw converts to a FAIL row naming the class and
+  message (the extra channel's own doctrine shape), driven by a
+  planted-throw leg.
+- **The symlink-shapes battery rides the platform gate its siblings
+  carry (t31-ocr30-7, test:low)** — the only filesystem battery in its
+  file without the isPosixHost() gate (the t31-ocr22-2/t31-ocr28-8
+  doctrine); the gate rides naming its own premise,
+  construction-evident, no count moves.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 29)
 
 Twenty-ninth OCR-tool round (the union complete: main 61/62 with 11
