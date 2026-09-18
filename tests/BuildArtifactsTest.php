@@ -6065,6 +6065,81 @@ FIXTURE;
         // and the group battery's 'as W'/'as T' members).
 
         /*
+         * OCR round 33 (t31-ocr33-1): the HARD half of the reserved-
+         * alias census. The round-32 owner enumerated only the
+         * fourteen spellings that lex as plain T_STRING; every
+         * keyword that lexes as its OWN token id (array, fn, list,
+         * if, foreach, function, class, new, match, readonly, …)
+         * matched the alias grammar's identifier bytes and shipped
+         * parse-error bytes at exit 0 (driven red at HEAD: the
+         * rewrite returned normally over `as array`). The class is
+         * DERIVED from the engine now — a php -l oracle over the
+         * whole keyword table refused every own-token keyword in the
+         * slot and accepted none — and the derivation rides the ONE
+         * owner, so both re-emit seams (the use-statement capture
+         * and the group-use member tail) refuse the whole class.
+         */
+        $hard_keywords = array(
+            'abstract', 'and', 'array', 'as', 'break', 'callable', 'case', 'catch', 'class',
+            'clone', 'const', 'continue', 'declare', 'default', 'do', 'else', 'elseif',
+            'enddeclare', 'endfor', 'endforeach', 'endif', 'endswitch', 'endwhile', 'extends',
+            'final', 'finally', 'fn', 'for', 'foreach', 'function', 'global', 'goto', 'if',
+            'implements', 'include', 'include_once', 'instanceof', 'insteadof', 'interface',
+            'isset', 'list', 'match', 'namespace', 'new', 'or', 'print', 'private',
+            'protected', 'public', 'readonly', 'require', 'require_once', 'return', 'static',
+            'switch', 'throw', 'trait', 'try', 'unset', 'use', 'var', 'while', 'xor', 'yield',
+            /*
+             * Case variants fold with the engine: the lexer spells
+             * 'ARRAY' as T_ARRAY exactly like its lowercase twin.
+             */
+            'ARRAY', 'Match', 'ReAdOnLy',
+        );
+        foreach ($hard_keywords as $keyword) {
+            /*
+             * 'namespace' refuses one walk EARLIER — the relative-use
+             * walk's bare-keyword fence owns the word's verdict in
+             * both positions (php -l agreeing), so the fragment pins
+             * that seam's vocabulary for it; every other hard keyword
+             * reaches the alias seam the census owns.
+             */
+            $seam_fragment = 'namespace' === $keyword
+                ? 'not a spelling PHP accepts'
+                : 'must be one plain identifier';
+            $use_refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock as {$keyword};\nclass HardAliasStore\n{\n}\n", 'OpenAiOauth', 'shared/src/HardAliasStore.php'),
+                "A hard-keyword use-statement alias must refuse the rewrite ('as {$keyword}') — red at HEAD: the fourteen-entry census passed it and the zip shipped the parse-error bytes.", \RuntimeException::class
+            );
+            $this->assertStringContainsString($seam_fragment, $use_refusal->getMessage(), "The use-statement seam refuses the hard keyword '{$keyword}' through a named grammar vocabulary.");
+            $member_fragment = 'namespace' === $keyword
+                ? 'not a spelling PHP accepts'
+                : 'group-use member grammar refuses';
+            $member_refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock as {$keyword}};\nclass HardMemberAliasStore\n{\n}\n", 'OpenAiOauth', 'shared/src/HardMemberAliasStore.php'),
+                "A hard-keyword member alias must refuse the rewrite ('as {$keyword}') — the member seam re-emits the extracted identifier the same way.", \RuntimeException::class
+            );
+            $this->assertStringContainsString($member_fragment, $member_refusal->getMessage(), "The member seam refuses the hard keyword '{$keyword}'.");
+        }
+        /*
+         * The oracle leg, driven against php -l for the WHOLE class
+         * (hard and soft alike, the same table the census derived
+         * from): the census's verdict and the engine's own stay
+         * tied — a future engine generation minting or lifting a
+         * reserved word redden here first, naming the drift.
+         */
+        if (WpHarness::canSpawnChildren()) {
+            foreach (array_merge($hard_keywords, array(
+                'self', 'parent', 'true', 'false', 'null',
+                'int', 'float', 'bool', 'string', 'void', 'iterable', 'object', 'mixed', 'never',
+            )) as $word) {
+                $probe = tempnam(sys_get_temp_dir(), 'ocr33-alias-');
+                $this->assertNotFalse(file_put_contents($probe, "<?php use A\\B as {$word};\n"), "The oracle probe for '{$word}' must stage — an unwritten probe lints empty bytes.");
+                exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($probe) . ' 2>/dev/null', $oracle_output, $oracle_exit);
+                unlink($probe);
+                $this->assertNotSame(0, $oracle_exit, "php -l refuses '{$word}' in the alias slot — the census's own derivation premise, driven against the engine.");
+            }
+        }
+
+        /*
          * OCR round 32 (t31-ocr32-3), the rider half over the
          * use-statement seam: the optional alias group and the
          * optional brace-group tail are each legal ALONE, but

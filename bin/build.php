@@ -230,7 +230,7 @@ final class WpConnectorsBuild
                     }
                     if ('' !== $alias_group && 1 === preg_match('/[A-Za-z0-9_]+\z/', $alias_group, $alias_id)) {
                         if (self::aliasIdentifierIsEngineIllegal($alias_id[0])) {
-                            throw new RuntimeException("build: the alias of a use statement importing the shared namespace in {$sourceVersion} must be one plain identifier — '{$alias_id[0]}' is one of the fourteen reserved spellings the engine forbids in the slot, case-insensitively, and the rewrite re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write a plain identifier the engine accepts");
+                            throw new RuntimeException("build: the alias of a use statement importing the shared namespace in {$sourceVersion} must be one plain identifier — '{$alias_id[0]}' is a reserved spelling the engine forbids in the slot, case-insensitively (every keyword the lexer does not spell a name), and the rewrite re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write a plain identifier the engine accepts");
                         }
                     }
 
@@ -335,7 +335,7 @@ final class WpConnectorsBuild
                              * insensitively).
                              */
                             if (self::aliasIdentifierIsEngineIllegal($alias_parts[2])) {
-                                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: the alias '{$alias_parts[2]}' is one of the fourteen reserved spellings the engine forbids in the slot, case-insensitively, and the reassembly re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write 'Name as Alias' with a plain identifier the engine accepts");
+                                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: the alias '{$alias_parts[2]}' is a reserved spelling the engine forbids in the slot, case-insensitively (every keyword the lexer does not spell a name), and the reassembly re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write 'Name as Alias' with a plain identifier the engine accepts");
                             }
                             /*
                              * An `as`-tail that is not ONE plain
@@ -1695,29 +1695,70 @@ final class WpConnectorsBuild
     /**
      * Whether an identifier is one the ENGINE forbids in a use-alias
      * slot — the ONE owner of the reserved-alias vocabulary (OCR round
-     * 32's census, t31-ocr32-1/2/3).
+     * 32's census, t31-ocr32-1/2/3; the COMPLETE class since OCR round
+     * 33, t31-ocr33-1).
      *
-     * Fourteen spellings lex as plain T_STRING yet never parse in the
-     * alias slot (php -l-derived on this engine, CASE-INSENSITIVELY:
-     * 'as self'/'as True'/'as Int' all refuse): self/parent, the three
-     * literals, and the type keywords. The census's shared rule: the
-     * alias grammar rejects what the engine rejects, at EVERY seam
-     * that re-emits an alias — the use-statement pattern, the
-     * group-use member callback, and the relative-use tail walk all
-     * consult THIS owner (the relative walk's hand-rolled list folded
-     * into it), so a future reserved word joins one list, never three
-     * seams. The fold rides the ONE ASCII owner (the r11-6/ocr10-4
-     * doctrine).
+     * THE DERIVATION (a php -l oracle drove every keyword of the
+     * language in the alias slot on 8.5.10, case-insensitively): the
+     * reserved class is the lexer's own TWO-TOKEN distinction, and no
+     * enumeration of one half can own it —
+     *
+     * - the SOFT half: fourteen spellings that lex as plain T_STRING
+     *   yet never parse in the slot (self/parent, the three literals,
+     *   the type keywords; 'as self'/'as True'/'as Int'/'as array'
+     *   all refuse) — the lexer cannot tell them from a name, only
+     *   the parser refuses them, so they ride the hand list below;
+     * - the HARD half: every keyword that lexes as its OWN token id
+     *   (array, fn, list, if, foreach, function, class, new, match,
+     *   readonly, … — the oracle REFUSED every own-token keyword in
+     *   the slot and accepted NONE) — DERIVED AT RUNTIME by
+     *   tokenizing the candidate in the alias position: anything the
+     *   lexer does not spell T_STRING there is reserved, so a future
+     *   reserved word joins the class the day the engine mints it.
+     *   The round's hole: the round-32 census enumerated the soft
+     *   half alone, so `use …\Shared\Clock as array;` matched the
+     *   alias grammar's identifier bytes and shipped parse-error
+     *   bytes in the zip at exit 0 (php -l refuses every hard
+     *   keyword in the slot, case-insensitively).
+     *
+     * The census's shared rule: the alias grammar rejects what the
+     * engine rejects, at EVERY seam that re-emits an alias — the
+     * use-statement pattern, the group-use member callback, and the
+     * relative-use tail walk all consult THIS owner (the relative
+     * walk's hand-rolled list folded into it), so a future reserved
+     * word joins one owner, never three seams. Non-identifier bytes
+     * answer false here (the identifier-SHAPE seams own their own
+     * verdicts; this census owns only the reserved vocabulary). The
+     * fold rides the ONE ASCII owner (the r11-6/ocr10-4 doctrine).
      *
      * @param string $alias Candidate alias identifier.
      * @return bool True when the engine rejects the identifier in an alias slot.
      */
     private static function aliasIdentifierIsEngineIllegal($alias)
     {
-        return in_array(wp_connectors_ascii_lower((string) $alias), array(
+        $alias = (string) $alias;
+        if (in_array(wp_connectors_ascii_lower($alias), array(
             'self', 'parent', 'true', 'false', 'null',
             'int', 'float', 'bool', 'string', 'void', 'iterable', 'object', 'mixed', 'never',
-        ), true);
+        ), true)) {
+            return true;
+        }
+        if (1 !== preg_match('/\A[A-Za-z0-9_]+\z/', $alias)) {
+            // Not identifier bytes — never this census's verdict (the
+            // shape seams own the not-an-identifier refusal).
+            return false;
+        }
+        // The HARD half, derived from the lexer at every call: a
+        // keyword lexes as its own token id (never T_STRING) in the
+        // alias position, case-insensitively — the one spelling of
+        // the class that cannot drift from the engine.
+        foreach (token_get_all("<?php use A\\B as {$alias};") as $token) {
+            if (is_array($token) && T_STRING !== $token[0] && $alias === $token[1]) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
