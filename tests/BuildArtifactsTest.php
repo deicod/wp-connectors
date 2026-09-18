@@ -6001,6 +6001,31 @@ FIXTURE;
         $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Http\\{HeaderMap, Url as U};', $battery, 'The brace-group form is rewritten (members are relative — the prefix carries them).');
 
         /*
+         * OCR round 35 (t31-ocr35-1): the FOUR KEYWORD AXES ride the
+         * engine's case-insensitivity — use, function, const, as. The
+         * patterns once matched every keyword byte-exact lowercase, so
+         * `USE …`, `use FUNCTION …`, `use Const …`, and `… AS Alias;`
+         * were LEGAL imports the rewrite did not own (driven red at
+         * HEAD: each refused at the postcondition's anonymous seam;
+         * the r7-9 census had named only the `use` keyword axis —
+         * never the other three). The keyword spellings ride the
+         * output VERBATIM (the caller's casing is the source's own
+         * byte, not the rewriter's to normalize); only the family
+         * segments rewrite. The group-use twin (prefix keyword and
+         * member KIND) rides the same census one seam over.
+         */
+        $keyword_case = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nUSE Deicod\\WpConnectors\\Shared\\Clock;\nUse Deicod\\WpConnectors\\Shared\\Token;\nuse FUNCTION Deicod\\WpConnectors\\Shared\\Clock\\now;\nuse Const Deicod\\WpConnectors\\Shared\\TTL;\nuse Deicod\\WpConnectors\\Shared\\Clock AS K;\nUSE Deicod\\WpConnectors\\{FUNCTION Shared\\Clock\\now};\nclass KeywordCaseStore\n{\n}\n";
+        $keyword_battery = WpConnectorsBuild::rewriteSharedNamespace($keyword_case, 'OpenAiOauth', 'shared/src/Storage/KeywordCaseStore.php');
+        $this->assertStringContainsString('USE Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock;', $keyword_battery, 'A USE-spelled import is rewritten, the keyword casing riding verbatim.');
+        $this->assertStringContainsString('Use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Token;', $keyword_battery, 'A Use-spelled import is rewritten.');
+        $this->assertStringContainsString('use FUNCTION Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock\\now;', $keyword_battery, "A 'use FUNCTION' spelling is rewritten.");
+        $this->assertStringContainsString('use Const Deicod\\WpConnectors\\OpenAiOauth\\Shared\\TTL;', $keyword_battery, "A 'use Const' spelling is rewritten.");
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock AS K;', $keyword_battery, 'An AS-spelled alias is rewritten, the alias riding verbatim beside it.');
+        $this->assertStringContainsString('USE Deicod\\WpConnectors\\{FUNCTION OpenAiOauth\\Shared\\Clock\\now};', $keyword_battery, 'The group-use PREFIX keyword and the member KIND keyword ride the same case-insensitive census.');
+        $this->assertStringNotContainsString('Deicod\\WpConnectors\\Shared\\', $keyword_battery, 'No keyword-case spelling may survive un-rewritten.');
+        $this->assertStringNotContainsString('Deicod\\WpConnectors\\{FUNCTION Shared', $keyword_battery, 'No keyword-case group member may survive un-rewritten.');
+
+        /*
          * Fix-round pin (t31-r4 K1 / t31-r4-4), restructured by t31-r7:
          * group-use MEMBER spellings — the prefix before '{' is
          * Deicod\WpConnectors itself and the members carry the Shared
@@ -6323,14 +6348,18 @@ FIXTURE;
              * NAMES case-insensitively; the rewrite's patterns match
              * byte-exact spellings — both survived to the anonymous
              * postcondition refusal, the exact class r7-2 declared
-             * closed. Owning them would flip the r7-pinned
-             * case-variant refuse doctrine (the battery's own
-             * 'case-variant use' leg), so the seam refuses NAMED.
+             * closed. The FAMILY-NAME half of that doctrine stands
+             * (the row below: the rewriter owns the declared spelling
+             * byte-exactly, so complying genuinely rewrites). The
+             * KEYWORD half was SUPERSEDED by t31-ocr35-1: all four
+             * keyword axes (use, function, const, as) are OWNED at the
+             * patterns through scoped case-insensitive groups, so the
+             * keyword rows moved to the owned battery above and the
+             * classifier's keyword label died with its dead errand
+             * (every surviving keyword-case spelling refuses through
+             * its OTHER cause — a comma list, a close tag, a comment —
+             * and lowercasing the keyword fixes none of them).
              */
-            'case-variant use keyword' => array(
-                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nUSE Deicod\\WpConnectors\\Shared\\Clock;\nclass UpperKeywordStore\n{\n}\n",
-                'a case-variant use keyword',
-            ),
             'case-variant family name' => array(
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse DEICOD\\WpConnectors\\SHARED\\Clock;\nclass CaseNameStore\n{\n}\n",
                 'a case-variant spelling of the family name',

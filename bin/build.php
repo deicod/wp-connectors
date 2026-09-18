@@ -201,9 +201,28 @@ final class WpConnectorsBuild
          * the relative tail walk all consult the ONE reserved-vocab
          * owner below.
          */
+        /*
+         * The KEYWORD axes ride the engine's case-insensitivity (OCR
+         * round 35, t31-ocr35-1): PHP accepts `USE`, `Use`, `as`/`AS`,
+         * `function`/`FUNCTION`, and `const`/`Const` alike, and every
+         * keyword here once matched its lowercase spelling byte-exact
+         * — so `use …\Shared\Clock AS Alias;` and `use FUNCTION …`
+         * skipped the rewrite and refused at the postcondition, the
+         * r7-9 census having covered only the `use` keyword and the
+         * family-name axes (two of four). The four keyword axes match
+         * through SCOPED (?i:…) groups at every pattern seam that
+         * spells them — this pattern, the group-use prefix pattern,
+         * and the member-kind extraction below — while the FAMILY
+         * name keeps its byte-exact case-sensitive matching on
+         * purpose: its case-variant spelling stays the refuse-NAMED
+         * doctrine one branch below (the r24-4 boundary-aware label),
+         * never an owned rewrite. The keyword's own casing rides the
+         * output verbatim ($matches[1] and the captured groups re-emit
+         * the caller's bytes; only the family segments rewrite).
+         */
         $rewritten = self::replaceOrThrow(
             preg_replace_callback(
-                '/(?<![A-Za-z0-9_])((?:use\s+(?:function\s+|const\s+)?)\\\\?)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*)(\s+as\s+[A-Za-z0-9_]+)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
+                '/(?<![A-Za-z0-9_])((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*)(\s+(?i:as)\s+[A-Za-z0-9_]+)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
                 static function ($matches) use ($sourceVersion, $vendor, $pluginSuffix, $family_leaf) {
                     // The optional groups are ABSENT keys (never
                     // null/'' — no PREG_UNMATCHED_AS_NULL here), the
@@ -266,9 +285,18 @@ final class WpConnectorsBuild
          * enough that the postcondition refuses it loudly rather than
          * this rewriter guessing member structure.
          */
+        /*
+         * The group-use PREFIX pattern's keyword axes ride the same
+         * scoped case-insensitive spellings (t31-ocr35-1's sweep): the
+         * plain-statement seam above owns `USE`/`FUNCTION`/`Const`
+         * spellings while this one matched lowercase only, so a
+         * case-variant group prefix refused at the postcondition one
+         * seam over — the keyword census is one vocabulary at every
+         * pattern that spells the grammar.
+         */
         $rewritten = self::replaceOrThrow(
             preg_replace_callback(
-                '/((?<![A-Za-z0-9_])use\s+(?:function\s+|const\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
+                '/((?<![A-Za-z0-9_])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
                 static function ($matches) use ($pluginSuffix, $sourceVersion, $shared_leaf) {
                     $members = array();
                     $member_pieces = explode(',', $matches[3]);
@@ -361,7 +389,20 @@ final class WpConnectorsBuild
                             $tail = ' as ' . $alias_parts[2];
                         }
                         $kind = '';
-                        if (1 === preg_match('/^(?:function|const)\s+/', $member, $member_kind)) {
+                        /*
+                         * The member KIND keyword rides the engine's
+                         * case-insensitivity too (t31-ocr35-1's sweep,
+                         * the group-body twin of the prefix axes): the
+                         * case-exact extraction once left a `FUNCTION
+                         * Shared\…` member un-stripped, the leaf
+                         * rewrite matched no leading Shared segment on
+                         * it, and the member rode verbatim — the
+                         * keyword census is one vocabulary at every
+                         * seam that spells the grammar, member bodies
+                         * included. The kind's own casing rides the
+                         * reassembly verbatim ($member_kind[0]).
+                         */
+                        if (1 === preg_match('/^(?:function|const)\s+/i', $member, $member_kind)) {
                             $kind = $member_kind[0];
                             $member = (string) substr($member, strlen($member_kind[0]));
                         }
@@ -1393,7 +1434,6 @@ final class WpConnectorsBuild
         $saw_depth_zero_comma = false;
         $saw_comment = false;
         $terminated_by_close_tag = false;
-        $use_keyword_text = null;
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[ $i ];
             $id = is_array($token) ? $token[0] : null;
@@ -1404,7 +1444,6 @@ final class WpConnectorsBuild
                 if (T_USE === $id && wp_connectors_use_opens_import($tokens, $i)) {
                     $in_use = true;
                     $trait_context = in_array('other', $context, true);
-                    $use_keyword_text = $text;
                     $brace_depth = 0;
                     $saw_statement_brace = false;
                     $saw_depth_zero_comma = false;
@@ -1526,19 +1565,24 @@ final class WpConnectorsBuild
 
         }
         /*
-         * The case-variant axis (verifier-pass fix t31-ocr7-9, the
-         * refutation lens's driven counterexample): PHP accepts the
-         * keyword and resolves NAMES case-insensitively, while the
-         * rewrite's patterns match byte-exact spellings — `USE …` and
-         * `use DEICOD\…` are legal imports the mechanism does not own,
-         * and they refused anonymously, the exact defect class r7-2
-         * declared closed. Owning them would flip the r7-pinned
-         * case-variant refuse doctrine, so the seam REFUSES-NAMED:
-         * the class names which spelling deviates.
+         * The case-variant KEYWORD label is GONE (OCR round 35,
+         * t31-ocr35-1): the r7-9 census covered two of the four
+         * case-insensitive axes — the `use` keyword (this label) and
+         * the family name (the label below) — while `as`, `function`,
+         * and `const` rode unnamed, and the fix OWNED the whole
+         * keyword class at the patterns (the scoped (?i:…) spellings,
+         * census there) instead of refusing it. A case-variant keyword
+         * can no longer reach this classifier as a refusal cause: a
+         * keyword-case spelling the patterns own rewrites, and every
+         * survivor that still carries one (a comma list, a close tag,
+         * a comment) refuses through THAT cause — a 'write the keyword
+         * lowercase' errand there would be dead exactly the way the
+         * r24-4 vendor branch was (complying leaves the other cause
+         * standing), so the label died with its premise. The
+         * family-NAME axis keeps its label below: the patterns match
+         * the declared spelling byte-exactly by design, so that errand
+         * (write the family spelling) genuinely rewrites.
          */
-        if (null !== $use_keyword_text && 'use' !== $use_keyword_text && 'use' === wp_connectors_ascii_lower($use_keyword_text)) {
-            $labels[] = 'a case-variant use keyword (the engine accepts USE/use alike; the rewrite\'s patterns match the lowercase spelling) — write the keyword lowercase';
-        }
         $family = wp_connectors_shared_source_namespace();
         $canonical = null;
         $name_lower = wp_connectors_ascii_lower($reference_name);
