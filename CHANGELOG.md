@@ -6,6 +6,73 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 35)
+
+Thirty-fifth OCR-tool round (main 61/61, fully complete): 9
+findings, driver accepts all — one of them refuted in-round at its
+premise (the r21 doctrine, driven before the fix landed). Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9. The
+round's shape: the case-variant keyword axes (the fourth generation of
+the use-grammar family, this time in the keyword spelling); the \R
+line-class twins the r33 detector close left in the test file's own
+readers; the vacuous-green silent skip. Fixed as t31-ocr35-1..8 — one
+commit per finding (the \R twins as ONE commit) — plus this docs
+record, the full offline check green after every commit. Suite 1690 →
+1692 tests, 46200 → 46241 assertions, 3 skipped unchanged.
+
+- **All four use-grammar keyword axes ride the engine's
+  case-insensitivity (t31-ocr35-1, bug:medium)** — the r7-9 census
+  named two of four axes while `as`, `function`, and `const` rode
+  unnamed: the use-statement patterns matched every keyword byte-exact
+  lowercase, so `use …\Shared\Clock AS Alias;` and `use FUNCTION …`
+  refused at the postcondition's anonymous seam. The four axes match
+  through scoped (?i:…) groups at every pattern seam (plain statement,
+  group prefix, member kind), the keyword casing riding the output
+  verbatim while the family NAME keeps its byte-exact matching and its
+  refuse-named label; the classifier's keyword label is deleted with
+  its dead errand.
+- **The manifest prune reclaims the pruned entry's checksum sidecar
+  (t31-ocr35-2, maintainability:low)** — a zip deleted out-of-band left
+  its dist/<zip>.sha256 standing beside the dropped line, a checksum
+  naming a non-standing artifact. The reclaim fires inside the merge
+  lock, fenced to a plain file name beside the manifest (never a
+  traversal-woven name, never a link); standing entries' sidecars
+  untouched.
+- **The heredoc/nowdoc classification reads the quote delimiters
+  (t31-ocr35-3, bug:low — premise refuted in-round)** — the finding's
+  apostrophe-bearing label (<<<"E'OT") is a parse error at the opener
+  (labels are identifiers; 0x27 is not a label byte), and the legal
+  high-byte quote-lookalikes never trip an ASCII strpos: driven at
+  both legs before the fix landed. What survives: the delimiter
+  reading (the engine's own rule) and opener-spelling pins holding
+  every legal opener to the engine's verdict, nowdoc resolving nothing
+  while every heredoc opener resolves escapes.
+- **The self-containment walk's docblock documents its deliberate
+  RuntimeException (t31-ocr35-4, documentation:low)** — the scan-root
+  boundary guard's @throws tag, the condition and the channel named.
+- **The containment verdicts speak the host's DERIVED path-case
+  vocabulary (t31-ocr35-5, bug:low)** — macOS resolves a case-variant
+  target to the source tree while passing every isPosixHost() gate;
+  the byte-wise verdicts were wrong exactly there. One probe owner
+  (isCaseInsensitivePathHost, the isPosixHost shape) derives the
+  host's answer and a sibling fold arm beside
+  posix_comparison_vocabulary carries the comparison — the identity on
+  this case-sensitive runner, pinned green-both-sides.
+- **The sweep-side line lenses count only the tokenizer's terminators
+  (t31-ocr35-6, bug:low ×2)** — numberedLines() and the whole-file
+  diagnostic's two derivations matched PCRE's broader \R, so a \v/\f
+  byte inflated every reported line after it; all three spell the
+  exact three (\r\n, \r, \n), pinned by the vertical-tab drift fixture
+  across all three lenses.
+- **Every scratch-tree mkdir setup asserts its own landing
+  (t31-ocr35-7, maintainability:low)** — five setups, eight call
+  sites, the t31-ocr29-10 staging doctrine: a failed mkdir answers a
+  staging message, never the downstream verdict's vocabulary.
+- **The chmod-0000 leg skips loudly on root runners
+  (t31-ocr35-8, test:low)** — the readable branch once restored 0755
+  and rode green with the ocr32-9 regression pin never having run; the
+  skip is visible now, the root-runner premise named.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 34)
 
 Thirty-fourth OCR-tool round (main 61/61, fully complete): 9
