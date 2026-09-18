@@ -7430,6 +7430,95 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-25 pin (t31-ocr25-2): the landing order is the ARCHIVE
+     * first, descriptors after — a rename refusal the pre-flight cannot
+     * see (the target IS a regular file; EPERM at the call) once
+     * refused at the archive landing AFTER the descriptors had moved,
+     * stranding the NEW checksum beside the OLD zip: a descriptor
+     * naming a release that is not the artifact standing beside it.
+     * The planted refusal rides the immutable flag, and the capability
+     * is probed by DOING it to a scratch file (the t31-ocr10-14
+     * doctrine — the ANSWER is the signal, never function_exists):
+     * unprivileged hosts skip visibly (no CAP_LINUX_IMMUTABLE — the
+     * t31-ocr4-1 root-runner premise, probed this direction too); the
+     * rebuild carries a probe asset so its checksum genuinely differs
+     * from the prior set's (the build is deterministic — an identical
+     * rebuild would strand a byte-identical checksum, the strand
+     * invisible).
+     */
+    public function testARefusedArchiveRenameStrandsNoChecksumBesideTheOldZip(): void
+    {
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the planted rename refusal rides chattr through a spawned engine.');
+        }
+
+        $scratch = self::distDir() . '/.landing-refusal-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::rrmdir($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+
+        // The capability probe: chattr +i on a scratch file — a host
+        // without CAP_LINUX_IMMUTABLE (every unprivileged runner) cannot
+        // construct the planted refusal at all.
+        $probe = $scratch . '/immutable-probe';
+        file_put_contents($probe, 'capability probe');
+        exec('chattr +i ' . escapeshellarg($probe) . ' 2>&1', $probeOutput, $probeExit);
+        if (0 !== $probeExit) {
+            WpHarness::rrmdir($scratch);
+            $this->markTestSkipped('This host cannot set the immutable flag (no CAP_LINUX_IMMUTABLE — the unprivileged runner; the t31-ocr4-1 doctrine probed by doing it): the planted archive-rename refusal is unconstructible here.');
+        }
+        exec('chattr -i ' . escapeshellarg($probe));
+        unlink($probe);
+
+        try {
+            // The prior good set.
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $sidecarPath = $zipPath . '.sha256';
+            $manifestPath = $scratch . '/dist/checksums.txt';
+            $sidecarBefore = (string) file_get_contents($sidecarPath);
+            $manifestBefore = (string) file_get_contents($manifestPath);
+
+            // The rebuild's bytes differ (a probe asset): its checksum
+            // differs too, so a stranded descriptor would show.
+            file_put_contents($scratch . '/plugin/example-connector/assets/landing-probe.txt', "landing-refusal probe\n");
+
+            // The planted refusal: a regular-file target the pre-flight
+            // passes and the rename cannot replace.
+            exec('chattr +i ' . escapeshellarg($zipPath));
+            try {
+                $refusal = $this->refusalOf(
+                    fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
+                    'A refused archive rename must fail the build loudly, never exit 0.', \RuntimeException::class
+                );
+                $this->assertStringContainsString('cannot land the archive', $refusal->getMessage(), 'The refusal names the landing that refused.');
+
+                /*
+                 * THE STRAND (red at HEAD, where the descriptors had
+                 * already landed when the archive rename refused): the
+                 * prior set stands WHOLE — the old sidecar and the old
+                 * manifest, never the new checksum beside the old zip.
+                 */
+                $this->assertSame($sidecarBefore, (string) file_get_contents($sidecarPath), 'The prior sidecar stands byte-for-byte — a checksum never describes an artifact that is not standing.');
+                $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'The prior manifest stands byte-for-byte — the refused run\'s entry never landed.');
+                $this->assertSame(array(), glob($scratch . '/dist/.*' . basename($zipPath) . '.tmp-*') ?: array(), 'The staging temps are released by the failure\'s finally.');
+            } finally {
+                exec('chattr -i ' . escapeshellarg($zipPath));
+            }
+
+            // Recovery: the same inputs rebuild cleanly once the flag is
+            // gone (the refused landing left nothing behind but the
+            // prior set it kept whole).
+            $rebuilt = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertSame($zipPath, $rebuilt);
+            $this->assertNotSame($sidecarBefore, (string) file_get_contents($sidecarPath), 'The recovery build lands its own checksum — the probe asset made it a different artifact.');
+        } finally {
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r4-18): the artifact inspector's
      * post-extraction syntax loop and the repo's lint gate both used the
      * exact-case extension check — a parse-broken '.PHP' entry shipped

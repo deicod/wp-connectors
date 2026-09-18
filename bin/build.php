@@ -1901,10 +1901,34 @@ final class WpConnectorsBuild
                 }
             }
 
-            // Landing: descriptors first, the archive LAST.
+            /*
+             * Landing: the archive FIRST, then its descriptors (OCR
+             * round 25, t31-ocr25-2 — the ordering the rename refusal
+             * the pre-flight cannot rule out forced). The pre-flight
+             * above rules out non-file targets only; the rename itself
+             * can still refuse at the call (EIO, ENOSPC, an AV lock,
+             * an immutable target), and landing descriptors FIRST
+             * stranded exactly that refusal at the archive: the NEW
+             * sidecar and the NEW manifest entry standing beside the
+             * OLD zip — a checksum describing a release that is not
+             * the artifact standing beside it, with verification
+             * failing against the standing zip and no later build
+             * obligated to heal it (the manifest regenerates an
+             * entry for a zip that exists, never re-derives the
+             * sidecar's checksum for a zip that vanished). The
+             * artifact lands first now — the thing the descriptors
+             * NAME stands before any descriptor naming it moves: the
+             * archive rename refuses while NOTHING has landed (the
+             * prior set whole, byte-identical), and a mid-sequence
+             * descriptor refusal leaves only descriptors that name a
+             * STANDING artifact (the prior checksum, stale beside the
+             * new archive — loudly failed, healed by the next build's
+             * own regeneration contract — never a checksum naming an
+             * artifact that is not standing).
+             */
+            self::landArtifact($zipTemp, $zipPath, "the archive {$zipName}");
             self::landArtifact($sidecarTemp, $zipPath . '.sha256', "the checksum sidecar for {$zipName}");
             self::landArtifact($manifestTemp, $manifestPath, "the checksum manifest for {$zipName}");
-            self::landArtifact($zipTemp, $zipPath, "the archive {$zipName}");
         } finally {
             if (is_resource($manifestLock)) {
                 @flock($manifestLock, LOCK_UN);
