@@ -484,6 +484,8 @@ final class WpConnectorsBuild
          */
         $splices = array();
         $use_open = false;
+        $closure_use = false;
+        $closure_use_depth = 0;
         $group_depth = 0;
         $offset = 0;
         for ($i = 0; $i < $count; ++$i) {
@@ -499,8 +501,44 @@ final class WpConnectorsBuild
                 // (wp_connectors_use_opens_import()).
                 $use_open = wp_connectors_use_opens_import($tokens, $i);
                 $group_depth = 0;
+                /*
+                 * A closure's `use (` opens the region this walk must
+                 * refuse names inside (OCR round 23, t31-ocr23-7):
+                 * the binding list carries VARIABLE names only, and a
+                 * relative operator standing in it is a parse error
+                 * in every reading (php -l: unexpected
+                 * namespace-relative name, expecting variable or
+                 * '&') — but the two lexer spellings took OPPOSITE
+                 * verdicts: the interrupted twin (a bare T_NAMESPACE)
+                 * hit the bare-keyword fence below, while the FUSED
+                 * token fell through the use-statement gate
+                 * (use_open false for a closure list) and rode the
+                 * rewrite at exit 0 by lexer accident. The region is
+                 * depth-counted so hostile bytes nesting parentheses
+                 * cannot smuggle a name past the closer.
+                 */
+                $closure_use = ! $use_open;
+                $closure_use_depth = 0;
 
                 continue;
+            }
+            if ($closure_use) {
+                if ('(' === $token) {
+                    ++$closure_use_depth;
+
+                    continue;
+                }
+                if (')' === $token) {
+                    --$closure_use_depth;
+                    if ($closure_use_depth <= 0) {
+                        $closure_use = false;
+                    }
+
+                    continue;
+                }
+                if (T_NAME_RELATIVE === $id) {
+                    throw new RuntimeException("build: the relative operator inside a closure use(...) list in {$sourceVersion} is not a spelling PHP accepts — a closure's lexical use list carries VARIABLE bindings only, and the fused spelling once rode the rewrite verbatim at exit 0 while its interrupted twin refused (opposite verdicts by lexer accident); write no names in the list");
+                }
             }
             if (T_NAMESPACE === $id && ! $use_open) {
                 /*

@@ -6295,6 +6295,53 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-23 pin (t31-ocr23-7): the fused relative operator
+     * inside a CLOSURE use list. A closure's `use (…)` is a lexical
+     * BINDING list, never a namespace import (the t31-r13-3 fence
+     * both walks ride), and a name standing in it is a parse error in
+     * every reading — php -l: "unexpected namespace-relative name,
+     * expecting variable or '&'" — but the two lexer spellings of the
+     * same illegal construct took OPPOSITE verdicts: the INTERRUPTED
+     * twin (a bare T_NAMESPACE) hit the bare-keyword fence's refusal,
+     * while the FUSED token fell through the walk's use-statement gate
+     * (use_open false for a closure list), rode the rewrite verbatim,
+     * and — a code position under an owned declaration — passed the
+     * postcondition's r8-2 carve-out too: parse-error bytes shipped at
+     * exit 0 by lexer accident. The closure-use arm joins the refused
+     * class now: the fused spelling refuses like its twin, the fence's
+     * vocabulary unchanged.
+     */
+    public function testAFusedRelativeOperatorInsideAClosureUseListRefusesLikeItsInterruptedTwin(): void
+    {
+        // RED at HEAD: the fused spelling rides every gate (driven:
+        // the rewrite returns normally, the parse-error line intact).
+        $fused = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n\$f = function () use (namespace\\WpConnectors\\Shared\\Clock\\SystemClock) {};\ninterface ClosureUseFixture\n{\n}\n";
+        $refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace($fused, 'OpenAiOauth', 'shared/src/ClosureUseFused.php'),
+            'The fused relative operator inside a closure use list must refuse the rewrite — it is the same never-legal construct its interrupted twin refuses (red at HEAD: the spelling rode the rewrite and the postcondition at exit 0).', \RuntimeException::class
+        );
+        $this->assertStringContainsString('closure use', $refusal->getMessage(), 'The refusal names the closure-use class — the arm\'s own vocabulary.');
+        $this->assertStringContainsString('ClosureUseFused.php', $refusal->getMessage(), 'The refusal names the file.');
+
+        // The interrupted twin keeps the bare-keyword fence's own
+        // verdict — the fix moved the fused twin TO the refusal, never
+        // the twin away from its fence.
+        $interrupted = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n\$f = function () use (namespace \\WpConnectors\\Shared\\Clock\\SystemClock) {};\ninterface ClosureUseFixture\n{\n}\n";
+        $refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace($interrupted, 'OpenAiOauth', 'shared/src/ClosureUseInterrupted.php'),
+            'The interrupted twin keeps refusing — the lexer accident that spared the fused spelling never legalized either.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('not a spelling PHP accepts', $refusal->getMessage(), 'The interrupted twin\'s verdict is the bare-keyword fence\'s own, unchanged.');
+
+        // The control: a real closure use list with VARIABLE bindings
+        // rides the rewrite untouched — the arm owns exactly the
+        // name-in-list class, never the list itself.
+        $legal = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n\$c = 1;\n\$f = function () use (\$c, &\$c) { return \$c; };\ninterface ClosureUseFixture\n{\n}\n";
+        $rewritten = WpConnectorsBuild::rewriteSharedNamespace($legal, 'OpenAiOauth', 'shared/src/ClosureUseControl.php');
+        $this->assertStringContainsString('use ($c, &$c)', $rewritten, 'A closure use list of variable bindings rides verbatim — the arm refuses names in the list, never the list.');
+    }
+
+    /**
      * OCR-round-16 pin (t31-ocr16-10): the unowned-spelling
      * classifier's brace-kind stack stays balanced through string
      * interpolation. A double-quoted `{$a}` lexes T_CURLY_OPEN plus
