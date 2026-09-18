@@ -1632,6 +1632,32 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-33 pin (t31-ocr33-2): the text lens's line counter
+     * counts ONLY the terminators the tokenizer counts. PCRE's \R is
+     * broader than the engine's line semantics — it also matches \v
+     * (0x0B), \f (0x0C), and \x85, which token_get_all() counts as
+     * plain whitespace — so a \v/\f byte inside an earlier string
+     * literal inflated every line the lens reported after it (red at
+     * HEAD: the docblock below, on line 3, reported line 5 over the
+     * two such bytes; the name lens's token-derived line said 3 all
+     * along). The counter spells the exact three now: \r\n, \r, \n —
+     * the same class the CR-only pin's reader derivation folds by.
+     */
+    public function testTheTextLensCountsOnlyTheTokenizerLineTerminators(): void
+    {
+        $source = "<?php\n\$x = \"before\x0Bvertical\x0Cform feed\";\n/** @see Deicod\\WpConnectors\\Zai\\Api */\n\$y = 1;\n";
+
+        $comment_lines = array();
+        foreach (wp_connectors_shared_family_references($source) as $reference) {
+            if ('comment' === $reference['kind']) {
+                $comment_lines[] = $reference['line'];
+            }
+        }
+        $this->assertNotSame(array(), $comment_lines, 'The docblock fixture must trip the text lens at all.');
+        $this->assertSame(array(3), $comment_lines, 'The text lens counts only the terminators the tokenizer counts — \\v and \\f inside the earlier literal are whitespace to the engine, never line breaks (red at HEAD: \\R counted both, reporting line 5).');
+    }
+
+    /**
      * Fix-round pin (t31-r4-9): ONE case-insensitive owner judges the
      * php extension — wp_connectors_is_php_source() for collect and
      * classify, wp_connectors_basename_without_php_extension() for the

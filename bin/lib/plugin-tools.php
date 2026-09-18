@@ -1757,15 +1757,23 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
     }
     $patterns[] = wp_connectors_family_sibling_pattern( $sibling_exclusions );
     /*
-     * The text lens's line derivation (t31-r8-11): the \R class is the
-     * engine's own line semantics for the terminators a PHP file
-     * carries (\n, \r\n, and a lone \r), and the reader the sweep's
-     * numberedLines() splits by — a "\n"-only count drifted from the
-     * name lens's token lines on lone-\r files, quoting the wrong
-     * source line in the refusal diagnostics. The count stays
-     * MATCH-precise (lines are read at the finding's offset, not the
-     * token's start — a finding deep inside a long docblock names its
-     * own line).
+     * The text lens's line derivation (t31-r8-11): the engine's own
+     * line semantics for the terminators a PHP file carries (\n,
+     * \r\n, and a lone \r), and the reader the sweep's numberedLines()
+     * splits by — a "\n"-only count drifted from the name lens's
+     * token lines on lone-\r files, quoting the wrong source line in
+     * the refusal diagnostics. The class is spelled EXACTLY (OCR
+     * round 33, t31-ocr33-2): PCRE's \R is BROADER than the
+     * tokenizer's terminators — it also matches \v (0x0B), \f
+     * (0x0C), and \x85, which token_get_all() counts as plain
+     * whitespace, never line breaks — so a \v/\f byte in an earlier
+     * string literal or comment inflated every line the lens
+     * reported after it (red at HEAD: a docblock on line 3 over two
+     * such bytes reported line 5). The alternation order keeps \r\n
+     * one terminator, never two. The count stays MATCH-precise
+     * (lines are read at the finding's offset, not the token's
+     * start — a finding deep inside a long docblock names its own
+     * line).
      */
     $line_of = static function (int $offset) use ($source): int {
         /*
@@ -1780,7 +1788,7 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
          * engine refuses, exactly the sibling shape the lens's
          * pcre-abort row carries).
          */
-        $lines = preg_match_all('/\R/', substr($source, 0, $offset), $line_matches);
+        $lines = preg_match_all('/\r\n|\r|\n/', substr($source, 0, $offset), $line_matches);
 
         return false === $lines ? 0 : $lines + 1;
     };
