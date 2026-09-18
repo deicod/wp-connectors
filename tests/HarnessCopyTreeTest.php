@@ -983,6 +983,22 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertFileExists($base . '/deep/dst/sub/file.php', 'A relative deep target lands at ./deep/dst byte-exact.');
             $this->assertFileDoesNotExist($base . '/st', 'The first-byte-eaten spelling never lands.');
             $this->assertFileDoesNotExist($base . '/ub/dst', 'The deep-eaten spelling never lands.');
+
+            /*
+             * The POSIX exactness of the cwd-prepend arm's platform gate
+             * (OCR round 28, t31-ocr28-3, the driven half a POSIX host
+             * CAN see): a Windows-absolute spelling ('C:\Temp\dst') is
+             * NOT absolute here — no leading '/' — and the arm's
+             * judgment for it is the RELATIVE one: cwd-prepended, judged
+             * through its true tree, landed under the cwd. The gate
+             * refuses that spelling only on the host whose platform
+             * separator makes it absolute (isPosixHost() false, the
+             * construction-evident half); here the leg pins that the
+             * gate does NOT over-refuse — the arm stays exact for every
+             * spelling its premise actually covers.
+             */
+            WpHarness::copyTree($from, 'C:\\Temp\\dst');
+            $this->assertFileExists($base . '/C:\\Temp\\dst/sub/file.php', 'A drive-letter spelling is a LEGAL relative target on the POSIX host — cwd-prepended and landed, never a false platform refusal.');
         } finally {
             chdir($previous_cwd);
             WpHarness::rrmdir($base);

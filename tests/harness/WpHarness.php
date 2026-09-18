@@ -992,6 +992,28 @@ final class WpHarness
          */
         $to_walk = (string) $to;
         if ('' === $to_walk || '/' !== $to_walk[0]) {
+            /*
+             * The platform gate at the owner (OCR round 28, t31-ocr28-3):
+             * the cwd-prepend arm below premises POSIX spelling — "a
+             * target not starting with '/' is relative" — and on a
+             * non-POSIX host that premise is FALSE for the host's own
+             * absolute spellings: a drive-letter target ('C:\Temp\dst')
+             * or a UNC root ('\\server\share\dst') is ABSOLUTE on the
+             * host it names, and cwd-prepending it sent the resolution
+             * loop into the collapse with a spelling no host resolves —
+             * the containment verdicts judged garbage (realpath()'s
+             * backslash output joined by '/' separators). The gate is
+             * the harness's ONE platform owner (isPosixHost(), the
+             * t31-ocr23-6 hoist) consulted at the arm that carries the
+             * premise, and the refusal names the platform premise —
+             * never a cwd-prepend over an absolute spelling. On the
+             * POSIX host the arm stays exact: there the spelling IS
+             * relative (a legal, if odd, directory name), and the
+             * prepend is the correct judgment.
+             */
+            if (! self::isPosixHost() && (1 === preg_match('/\A[A-Za-z]:/', $to_walk) || 0 === strpos($to_walk, '\\\\'))) {
+                throw new RuntimeException('WpHarness::copyTree() refuses a Windows-absolute target on a non-POSIX host — the containment walk premises POSIX spelling and would cwd-prepend an absolute drive/UNC spelling into a path no host resolves: ' . $to);
+            }
             $cwd = getcwd();
             if (false === $cwd) {
                 throw new RuntimeException('WpHarness::copyTree() refuses a relative target while the working directory cannot be resolved — the containment walk has no base to judge against: ' . $to);
