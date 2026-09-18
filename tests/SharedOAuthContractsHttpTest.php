@@ -1470,6 +1470,62 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertFalse(SecretMask::is_sensitive_header_name('x-api-keychain'), 'A name whose final token merely CONTAINS the suffix bytes is not credential-bearing — the boundary is the hyphen, the shape vendors spell.');
     }
 
+    /**
+     * OCR-round-24 pin (t31-ocr24-1, security — the first shared/src
+     * finding since round 14): the suffix class did not cover the
+     * credential suffixes its own rule statement implies. The rule
+     * judges "vendor-documented credential tokens" — and 'token',
+     * 'secret', and 'authorization' are exactly that: AWS STS signs
+     * with 'X-Amz-Security-Token', Shopify's REST API with
+     * 'X-Shopify-Access-Token', OAuth client credentials are spelled
+     * 'X-Client-Secret'/'X-Shared-Secret' by vendor gateways, and
+     * 'X-Authorization' is the prefixed bearer spelling several
+     * mobile/API gateways document — every one rendered its FULL
+     * secret verbatim through every safe debug form (HeaderMap's
+     * rendered_value() is the sole masking gate), the exact r12-4 /
+     * ocr15-1 leak class the rule exists to close. The suffixes join
+     * the class; over-masking a non-credential '-token' header in
+     * DEBUG output errs safe (a correlation tail is lost, never a
+     * secret), and the hyphen boundary is unaffected — the judged
+     * token is still the whole final hyphen-segment.
+     */
+    public function testTheCredentialSuffixClassOwnsTheTokenSecretAndAuthorizationSuffixes(): void
+    {
+        $sts = FakeSecrets::accessToken();
+        $shopify = FakeSecrets::accessToken();
+
+        // The named vendor spellings mask (red at HEAD: verbatim).
+        foreach (array(
+            'X-Amz-Security-Token', 'x-amz-security-token',
+            'X-Shopify-Access-Token', 'X-Client-Secret', 'X-Shared-Secret',
+            'X-Authorization', 'x-authorization', 'token', 'secret', 'authorization',
+        ) as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the suffix class — a credential suffix the rule's own statement implies, never a per-vendor catalog addition.");
+        }
+
+        // The render seam every safe debug form rides: the vendor
+        // spellings mask, the non-sensitive control stays verbatim —
+        // both channels of the ONE masked-view owner.
+        $map = new HeaderMap(array(
+            'X-Amz-Security-Token' => $sts,
+            'X-Shopify-Access-Token' => $shopify,
+            'x-request-id' => 'req-24',
+        ));
+        foreach (array('dump' => print_r($map, true), 'serialize' => serialize($map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($sts, $rendered, "The AWS STS session token renders masked in the {$channel} channel — pre-fix the suffix class's own rule statement named the class and missed it.");
+            $this->assertStringNotContainsString($shopify, $rendered, "The Shopify access token rides the same suffix class in the {$channel} channel.");
+            $this->assertStringContainsString('req-24', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
+        }
+
+        // The boundary is still the HYPHEN, now for every new suffix:
+        // a name merely CONTAINING the bytes — unhyphenated, or with
+        // the suffix mid-name — is not the class (the existing
+        // 'x-api-keychain' pin above rides unchanged beside these).
+        foreach (array('apitoken', 'clientsecret', 'x-authorization-scheme', 'www-authenticate') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling is not credential-bearing — the boundary stays the hyphen token, and 'www-authenticate' carries a challenge-scheme list, never a credential.");
+        }
+    }
+
     /* ---------------------------------------------------------------
      * Response shape and validation.
      * ---------------------------------------------------------------

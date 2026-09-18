@@ -126,11 +126,28 @@ final class SecretMask {
 	 * that decision — a seam added before a second config source
 	 * would be speculative reach.
 	 *
+	 * OCR round 24 (t31-ocr24-1, security — the first shared/src
+	 * finding since round 14): the class did not cover the credential
+	 * suffixes its own rule statement implies. 'token', 'secret', and
+	 * 'authorization' are vendor-documented credential tokens in the
+	 * rule's own sense — AWS STS signs with 'X-Amz-Security-Token',
+	 * Shopify's REST API with 'X-Shopify-Access-Token', OAuth client
+	 * credentials ride 'X-Client-Secret'/'X-Shared-Secret', and
+	 * 'X-Authorization' is the prefixed bearer spelling — and every
+	 * one rendered its full secret verbatim through every safe debug
+	 * form while the catalog's exact 'authorization' spelling sat
+	 * covered: the r12-4/ocr15-1 leak class under the class rule's
+	 * own implied vocabulary. They join the list. Over-masking a
+	 * non-credential '-token' header in DEBUG output errs safe (a
+	 * correlation tail is lost, never a secret); the hyphen boundary
+	 * is unaffected — the judged token stays the whole final
+	 * hyphen-segment ('x-api-keychain' remains outside).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'api-key', 'subscription-key', 'auth-token', 'auth' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'api-key', 'subscription-key', 'auth-token', 'auth', 'authorization', 'token', 'secret' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
