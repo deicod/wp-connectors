@@ -5845,6 +5845,20 @@ FIXTURE;
             'trailing comma' => 'use Deicod\\WpConnectors\\{Shared\\Clock,};',
             'empty brace body (the t31-r10-9 row, moved to its owning seam)' => 'use Deicod\\WpConnectors\\{};',
             'dangling as' => 'use Deicod\\WpConnectors\\{Shared\\Clock as};',
+            /*
+             * OCR round 32 (t31-ocr32-2): the member's ALIAS. The
+             * grammar validated the member and its dangling `as` but
+             * re-emitted the extracted identifier unvalidated, so
+             * `{Shared\Clock as self}` member-rewrote to
+             * `<Suffix>\Shared\Clock as self` verbatim (driven at
+             * HEAD) — the same exit-0 compile-error class the
+             * use-statement seam refused at t31-ocr32-1, one re-emit
+             * seam over; the alias rides the same reserved-vocab
+             * owner now (the round's census rule).
+             */
+            'reserved member alias: self' => 'use Deicod\\WpConnectors\\{Shared\\Clock as self};',
+            'reserved member alias: TRUE (case-folded)' => 'use Deicod\\WpConnectors\\{Shared\\Clock as TRUE};',
+            'reserved member alias: Float (case-folded type keyword)' => 'use Deicod\\WpConnectors\\{const Shared\\TTL as Float};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass IllegalGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/IllegalGroupStore.php'),

@@ -290,6 +290,26 @@ final class WpConnectorsBuild
                         }
                         $tail = '';
                         if (1 === preg_match('/^(.+?)\s+as\s+([A-Za-z0-9_]+)$/', $member, $alias_parts)) {
+                            /*
+                             * The member's ALIAS rides the same
+                             * engine-illegal refusal (OCR round 32,
+                             * t31-ocr32-2 — the round's census over
+                             * every seam that re-emits an alias): the
+                             * grammar validated the member and its
+                             * dangling `as` but re-emitted the
+                             * extracted identifier unvalidated, so
+                             * `{Shared\Clock as self}` member-rewrote
+                             * to `<Suffix>\Shared\Clock as self`
+                             * verbatim — the same exit-0 compile-error
+                             * class the use-statement seam refused at
+                             * t31-ocr32-1, one re-emit seam over. The
+                             * identifier consults the ONE reserved-
+                             * vocab owner (php -l-derived, case-
+                             * insensitively).
+                             */
+                            if (self::aliasIdentifierIsEngineIllegal($alias_parts[2])) {
+                                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: the alias '{$alias_parts[2]}' is one of the fourteen reserved spellings the engine forbids in the slot, case-insensitively, and the reassembly re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write 'Name as Alias' with a plain identifier the engine accepts");
+                            }
                             $member = $alias_parts[1];
                             $tail = ' as ' . $alias_parts[2];
                         }
