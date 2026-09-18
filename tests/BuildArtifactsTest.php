@@ -6460,6 +6460,28 @@ FIXTURE;
         $this->assertSame(array( array( 'Deicod\\WpConnectors\\Shared', 'declaration' ), array( 'Deicod\\WpConnectors\\Shared\\Clock', 'relative' ), array( 'Deicod\\WpConnectors', 'use' ) ), array_map(static function (array $reference): array {
             return array( $reference['name'], $reference['kind'] );
         }, $found), 'A relative-only body reports the resolved member AND the prefix (the file\'s own declaration beside them) — nothing composes, everything is judged.');
+
+        /*
+         * (d) The EOF-truncated spellings (OCR round 27, t31-ocr27-3):
+         * the fence fired only at the boundary handlers, so a group
+         * use cut at end-of-file — bare, or with a non-composing
+         * member in progress — dropped the prefix without its report
+         * (red at HEAD: zero family references, the family-spelled
+         * prefix judged by no gate). EOF is the last boundary: both
+         * spellings report the prefix exactly as the ';' and '}'
+         * handlers do.
+         */
+        $truncated_bare = "<?php\nnamespace Deicod;\nuse Deicod\\WpConnectors\\{";
+        $found = wp_connectors_shared_family_references($truncated_bare);
+        $this->assertContains(array( 'Deicod\\WpConnectors', 'use' ), array_map(static function (array $reference): array {
+            return array( $reference['name'], $reference['kind'] );
+        }, $found), 'A group use truncated at EOF still reports its prefix — the bare `use Prefix\{` spelling judged by the fence, never silently dropped.');
+
+        $truncated_member = "<?php\nnamespace Deicod;\nuse Deicod\\WpConnectors\\{\\Zai\\Api";
+        $found = wp_connectors_shared_family_references($truncated_member);
+        $this->assertContains(array( 'Deicod\\WpConnectors', 'use' ), array_map(static function (array $reference): array {
+            return array( $reference['name'], $reference['kind'] );
+        }, $found), 'A group use truncated at EOF mid-member still reports its prefix — the absolute member in progress composes nothing, and EOF flushes the fence exactly as the \';\' handler would.');
     }
 
     /**

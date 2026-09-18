@@ -1233,6 +1233,29 @@ function wp_connectors_name_references_from_tokens(array $tokens)
         );
     }
 
+    /*
+     * EOF flushes the open group state (OCR round 27, t31-ocr27-3):
+     * the empty-body fence fired only at the boundary handlers —
+     * the ';' / close-tag handler and the group's own '}' close —
+     * so a `use Prefix\{` or `use Prefix\{\Member` truncated at
+     * end-of-file never met either one and the prefix was dropped
+     * without its report (red at HEAD: a family-spelled prefix at
+     * EOF judged by no gate, the walk's totality owing the invalid
+     * file every legal position owes). EOF is the last boundary:
+     * the same fence, the same single report, the prefix judged
+     * exactly once — the boundary handlers null the prefix when
+     * they fire, so the flush can never double-report.
+     */
+    if (null !== $group_prefix && ! $group_member_seen) {
+        $references[] = array(
+            'name' => $group_prefix_display,
+            'lower' => $group_prefix,
+            'kind' => 'use',
+            'offset' => $group_prefix_offset,
+            'line' => $group_prefix_line,
+        );
+    }
+
     return $references;
 }
 
