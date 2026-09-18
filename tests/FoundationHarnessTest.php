@@ -585,7 +585,15 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         // read as "the corrupt archive" — a neighbor's plant steering
         // this leg's fixture (the naming shape t31-ocr10-18 rejects).
         $corrupt = sys_get_temp_dir() . '/wpct-corrupt-' . getmypid() . '-' . bin2hex(random_bytes(4)) . '.zip';
-        file_put_contents($corrupt, 'this is not a zip archive');
+        // The staging write asserts its own success (t31-ocr29-10,
+        // the t31-ocr27-9 doctrine): a silent false leaves the file
+        // absent and the open gate's refusal reads ER_NOENT — a
+        // staging problem wearing the CORRUPT-archive verdict's
+        // vocabulary.
+        $this->assertNotFalse(
+            file_put_contents($corrupt, 'this is not a zip archive'),
+            'staging: the corrupt archive must write — a staging failure fails as staging, never as the ER_NOZIP verdict (an unwritten scratch file answers ER_NOENT instead).'
+        );
         try {
             // The refusal-verdict owner (t31-ocr15-7): the hand-rolled
             // $caught=null/try/catch/fail-if-null shape was this helper's
@@ -677,10 +685,25 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     public function testTheZipReaderRidesTheGuardedRdonlySpelling()
     {
         $source = (string) file_get_contents(__DIR__ . '/harness/WpConnectorsTestCase.php');
+        /*
+         * Whitespace-normalized before comparing (OCR round 29,
+         * t31-ocr29-10): the pin once matched the harness source
+         * VERBATIM, so any mechanical reformat — a line wrap, a
+         * spacing change — reddened it with no behavioral defect,
+         * the source-shape pin brittle to the layout it never owned.
+         * The pin owns the guarded spelling's TOKENS: every
+         * whitespace run collapses to one space on the haystack's
+         * side (the needle already spells single spaces), so a wrap
+         * or respacing stays green while a reorder, a rename, or a
+         * dropped guard still reddens. An aborted collapse answers
+         * '' and the contains-check fails loud — never a vacuous
+         * pass.
+         */
+        $normalized = (string) preg_replace('/\s+/', ' ', $source);
         $this->assertStringContainsString(
             "defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0",
-            $source,
-            'The zip reader must spell the open flag through the guard: RDONLY where the engine defines it, 0 on the libzip < 1.0.0 build corner — the bare constant fatals exactly those engines, no PHP version boundary (t31-ocr21-1).'
+            $normalized,
+            'The zip reader must spell the open flag through the guard: RDONLY where the engine defines it, 0 on the libzip < 1.0.0 build corner — the bare constant fatals exactly those engines, no PHP version boundary (t31-ocr21-1; whitespace-insensitive per t31-ocr29-10).'
         );
     }
 }
