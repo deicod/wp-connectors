@@ -929,40 +929,56 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         if (is_dir($root)) {
             WpHarness::rrmdir($root);
         }
-        mkdir($root . '/shared/src/Clock', 0755, true);
-        mkdir($root . '/dist', 0755, true);
-        file_put_contents(
-            $root . '/shared/src/Clock/ClockInterface.php',
-            "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n"
-        );
-        file_put_contents(
-            $root . '/shared/src/GrantInterface.php',
-            "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface GrantInterface {}\n"
-        );
-
-        $plugin = $root . '/plugin/example-connector';
         /*
-         * The fixture tree rides the ONE scratch-tree copy owner
-         * (OCR round 6, t31-ocr6-5): this inline twin (str_replace
-         * prefix strip, no isLink() guard) had re-grown the exact two
-         * defect shapes ocr4-2/-3 killed in WpHarness::copyTree() —
-         * every-occurrence stripping on a nested same-name segment and
-         * silent link-following — in the one place the battery's own
-         * verdicts would never reach. copyTree() also owns the
-         * root-exists guarantee the old pre-create carried (it mkdirs
-         * each target's dirname recursively, order-free — t31-r6-7's
-         * readdir-order concern was the inline loop's own).
+         * The maker owns its OWN cleanup (OCR round 26, t31-ocr26-11):
+         * every caller invokes makeScratchRepo() BEFORE its own
+         * try/finally, so a throw from any CREATION step below once
+         * leaked the half-built wpct-battery-* tree in system temp —
+         * the ocr25-7 needle close moved the VALIDATION-phase refusal
+         * before the first mkdir; this catch is the creation-phase
+         * twin. The reclaim rides the throw's own way out, and the
+         * original refusal keeps propagating.
          */
-        WpHarness::copyTree($fixture, $plugin);
-        file_put_contents($plugin . '/build.json', "{\"embed_shared\": true}\n");
+        try {
+            mkdir($root . '/shared/src/Clock', 0755, true);
+            mkdir($root . '/dist', 0755, true);
+            file_put_contents(
+                $root . '/shared/src/Clock/ClockInterface.php',
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n"
+            );
+            file_put_contents(
+                $root . '/shared/src/GrantInterface.php',
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface GrantInterface {}\n"
+            );
 
-        return array(
-            'root' => $root,
-            'plugin' => $plugin,
-            'dist' => $root . '/dist',
-            'shared' => $root . '/shared/src',
-            'zip' => $root . '/dist/connectors-example-connector-' . $header[2] . '.zip',
-        );
+            $plugin = $root . '/plugin/example-connector';
+            /*
+             * The fixture tree rides the ONE scratch-tree copy owner
+             * (OCR round 6, t31-ocr6-5): this inline twin (str_replace
+             * prefix strip, no isLink() guard) had re-grown the exact two
+             * defect shapes ocr4-2/-3 killed in WpHarness::copyTree() —
+             * every-occurrence stripping on a nested same-name segment and
+             * silent link-following — in the one place the battery's own
+             * verdicts would never reach. copyTree() also owns the
+             * root-exists guarantee the old pre-create carried (it mkdirs
+             * each target's dirname recursively, order-free — t31-r6-7's
+             * readdir-order concern was the inline loop's own).
+             */
+            WpHarness::copyTree($fixture, $plugin);
+            file_put_contents($plugin . '/build.json', "{\"embed_shared\": true}\n");
+
+            return array(
+                'root' => $root,
+                'plugin' => $plugin,
+                'dist' => $root . '/dist',
+                'shared' => $root . '/shared/src',
+                'zip' => $root . '/dist/connectors-example-connector-' . $header[2] . '.zip',
+            );
+        } catch (\Throwable $creation_refusal) {
+            WpHarness::rrmdir($root);
+
+            throw $creation_refusal;
+        }
     }
 
     /**
