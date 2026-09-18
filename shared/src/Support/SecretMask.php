@@ -116,8 +116,8 @@ final class SecretMask {
 	 * vendor-documented credential token ('api-key' covers the
 	 * bare cloud-AI spelling and every '…-api-key' derivative;
 	 * 'subscription-key' covers the APIM gateway's
-	 * 'Ocp-Apim-Subscription-Key'; 'auth-token'
-	 * and 'auth' the token-bearing spellings), and the boundary is
+	 * 'Ocp-Apim-Subscription-Key'; 'auth' the token-bearing
+	 * spellings), and the boundary is
 	 * the HYPHEN — a name merely ending in the suffix bytes
 	 * ('x-api-keychain') is not the class, because vendor spellings
 	 * are hyphenated tokens. No extension seam exists yet by
@@ -143,11 +143,20 @@ final class SecretMask {
 	 * is unaffected — the judged token stays the whole final
 	 * hyphen-segment ('x-api-keychain' remains outside).
 	 *
+	 * OCR round 29 (t31-ocr29-5, maintainability): the round-15 entry
+	 * 'auth-token' is SUBSUMED by 'token' and is gone — every name
+	 * the entry matched (the bare 'auth-token' spelling, every
+	 * '…-auth-token' derivative) ends in '-token' and rode 'token'
+	 * identically, so the entry was behaviorally dead weight implying
+	 * the class needed it. The battery's auth-token spellings
+	 * ('x-auth-token', 'Auth-Token') ride 'token' green, by
+	 * construction.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'api-key', 'subscription-key', 'auth-token', 'auth', 'authorization', 'token', 'secret' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'api-key', 'subscription-key', 'auth', 'authorization', 'token', 'secret' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
