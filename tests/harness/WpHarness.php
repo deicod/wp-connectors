@@ -993,7 +993,7 @@ final class WpHarness
      * @param string $from Absolute source directory.
      * @param string $to   Target directory — absolute, or relative (judged from the process cwd per t31-ocr11-5, its containment resolved through the TRUE tree the spelling names; the landing keeps the caller's spelling).
      * @return void
-     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing, not a directory, or collapsed to the filesystem root (t31-ocr12-3), the target is the source itself, inside it, or contains it, or a relative target's working directory cannot be resolved (t31-ocr11-5).
+     * @throws RuntimeException When the source (or any entry in it) is a symlink, the source is missing, not a directory, unlistable (t31-ocr32-9 — the gate probes the readability the iterator itself needs), or collapsed to the filesystem root (t31-ocr12-3), the target is the source itself, inside it, or contains it, or a relative target's working directory cannot be resolved (t31-ocr11-5).
      */
     public static function copyTree($from, $to)
     {
@@ -1017,7 +1017,25 @@ final class WpHarness
         if (is_link(self::link_probe_spelling($from))) {
             throw new RuntimeException('WpHarness::copyTree() refuses a symlinked source tree — never followed, never silently skipped: ' . $from);
         }
-        if (! is_dir($from)) {
+        /*
+         * The gate probes READABILITY, not just kind (OCR round 32,
+         * t31-ocr32-9): an existing but UNLISTABLE source directory
+         * (mode 0000, or a read bit without the search bit) once
+         * passed is_dir() and died in the SPL constructor's
+         * UnexpectedValueException — another library's vocabulary
+         * answering a harness refusal, the ocr7-4/ocr10-9 doctrine's
+         * own class one permission shape over. opendir() is the exact
+         * capability the iterator's own construction needs (the probe
+         * this file's batteries already use for the same shape); the
+         * @ keeps the engine's diagnostic out of the channel (the
+         * ocr30-4 idiom), and the failed probe answers the harness's
+         * own refusal naming the path.
+         */
+        $source_probe = @opendir($from);
+        if (false !== $source_probe) {
+            closedir($source_probe);
+        }
+        if (! is_dir($from) || false === $source_probe) {
             throw new RuntimeException('WpHarness::copyTree() refuses a source that is not a readable directory — the loud policy, never the SPL iterator\'s surprise: ' . $from);
         }
         $source_real = realpath($from);

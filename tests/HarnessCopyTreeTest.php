@@ -297,6 +297,34 @@ final class HarnessCopyTreeTest extends TestCase
             // (a) A MISSING source: same verdict path.
             $refuses($from . '/no-such-tree', $from . '/dst-missing', 'A MISSING source must refuse with the policy exception.');
 
+            /*
+             * (a-unreadable) An EXISTING but UNLISTABLE source (OCR
+             * round 32, t31-ocr32-9): the gate checked kind but not
+             * readability, so a mode-0000 directory passed is_dir()
+             * and died in the SPL constructor's
+             * UnexpectedValueException — another library's
+             * vocabulary answering a harness refusal (red at HEAD:
+             * the SPL exception reaches the family match, and the
+             * 'WpHarness::copyTree() refuses' fragment redds). The
+             * gate probes readability now (opendir, the exact
+             * capability the iterator's own construction needs) and
+             * answers the policy refusal naming the path. Gated to
+             * hosts where the shape applies (the t31-ocr4-1 root
+             * doctrine: uid 0 opens chmod-0000 directories through
+             * the DAC override, so the leg skips there).
+             */
+            $locked = $from . '/locked-src';
+            mkdir($locked . '/inner', 0755, true);
+            file_put_contents($locked . '/inner/x.txt', 'bytes');
+            chmod($locked, 0000);
+            $locked_probe = @opendir($locked);
+            if (false !== $locked_probe) {
+                closedir($locked_probe);
+                chmod($locked, 0755);
+            } else {
+                $refuses($locked, $from . '/dst-locked', 'An EXISTING but unlistable source must refuse with the policy exception, never the SPL iterator\'s surprise.');
+            }
+
             // (b) The self-copy: the target IS the source — a silent
             // no-op success pre-round (the engine's same-file mercy,
             // probed, never a contract).
@@ -402,6 +430,10 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertSame('original bytes', (string) file_get_contents($from . '/src/file.php'), 'The source tree survives every refusal untouched.');
             $this->assertFileDoesNotExist($from . '/src/inside', 'The nested target was never created.');
         } finally {
+            // The unreadable-source leg's tree opens back up before
+            // the teardown walk owns it (t31-ocr32-9's residue
+            // vocabulary: the caller's finally restores).
+            @chmod($from . '/locked-src', 0755);
             WpHarness::rrmdir($from);
         }
     }
