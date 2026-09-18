@@ -5433,6 +5433,28 @@ FIXTURE;
             'exact-case sibling, control' => array(
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Sharedly\\Clock;\nclass SiblingExactStore\n{\n}\n",
             ),
+            /*
+             * The round's verifier close (rd-1, the refutation lens's
+             * driven finding, both lenses' evidence agreeing): the
+             * VENDOR branch of the canonical fold emitted the family
+             * label for a case-variant vendor lead-in — and every such
+             * firing is a DEAD ERRAND, because nothing that reaches
+             * the vendor branch (the bare vendor, or a below-vendor
+             * sibling — the detector's own $is_family fold includes
+             * the vendor prefix) can become rewrite-owned by
+             * re-casing: complying leaves the identical refusal
+             * (driven: 'use DEICOD\WpConnectors\Zai\ApiClient;' wore
+             * the label; the complied spelling refused identically,
+             * the hint gone). The vendor branch is deleted; shapes
+             * whose refusal is doctrine carry NO class sentence (the
+             * ocr7-7 doctrine).
+             */
+            'vendor-lead-in case-variant sibling (rd-1, red at HEAD: dead-labeled)' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse DEICOD\\WpConnectors\\Zai\\ApiClient;\nclass VendorCaseStore\n{\n}\n",
+            ),
+            'case-variant bare vendor (rd-1)' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse DEICOD\\WpConnectors;\nclass VendorBareStore\n{\n}\n",
+            ),
         );
         foreach ($sibling_spellings as $label => $row) {
             $refusal = $this->refusalOf(

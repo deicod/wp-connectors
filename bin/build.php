@@ -1111,30 +1111,39 @@ final class WpConnectorsBuild
             $labels[] = 'a case-variant use keyword (the engine accepts USE/use alike; the rewrite\'s patterns match the lowercase spelling) — write the keyword lowercase';
         }
         $family = wp_connectors_shared_source_namespace();
-        $vendor = implode('\\', array_slice(explode('\\', $family), 0, -1));
         $canonical = null;
         $name_lower = wp_connectors_ascii_lower($reference_name);
         /*
-         * The canonical judgment is BOUNDARY-AWARE on both branches
-         * (OCR round 24, t31-ocr24-4): a bare prefix match mislabeled
-         * a below-vendor SIBLING whose first segment merely starts
-         * with the family leaf ('…\SHAREDly\Clock', 'SharedStorage')
-         * as "a case-variant spelling of the family name … write the
-         * family spelling" — a dead errand: complying leaves the
-         * sibling, which refuses in every casing, so the label sent
-         * the author back to an identical refusal. The fold matches
+         * The canonical judgment is BOUNDARY-AWARE (OCR round 24,
+         * t31-ocr24-4): a bare prefix match mislabeled a below-vendor
+         * SIBLING whose first segment merely starts with the family
+         * leaf ('…\SHAREDly\Clock', 'SharedStorage') as "a
+         * case-variant spelling of the family name … write the family
+         * spelling" — a dead errand: complying leaves the sibling,
+         * which refuses in every casing, so the label sent the author
+         * back to an identical refusal. The fold matches
          * plugin-tools' $is_family — the ONE family vocabulary's own:
-         * exact, or prefix + a segment boundary. The vendor branch
-         * keeps the sibling out of the FAMILY class; when the vendor
-         * lead-in itself is the case-variant part, the label still
-         * names exactly that (the part that IS wrong to re-case).
+         * exact, or prefix + a segment boundary.
+         *
+         * The VENDOR branch is DELETED (the round's verifier close,
+         * rd-1 — the refutation lens's driven finding): every label
+         * it could emit was the same dead errand one branch over,
+         * because nothing that reaches it can become rewrite-owned by
+         * re-casing — the bare vendor and every below-vendor sibling
+         * refuse in EVERY casing (the detector's own $is_family fold
+         * includes the vendor prefix; the survivors battery pins the
+         * exact-case legs), and target-rooted uses are waived before
+         * the classifier ever runs. Driven: 'use
+         * DEICOD\WpConnectors\Zai\ApiClient;' wore the label while
+         * the complied spelling refused identically — the author had
+         * a wrong hint and then none. Shapes whose refusal is
+         * doctrine carry NO class sentence (the ocr7-7 doctrine);
+         * the label belongs to the FAMILY branch alone, where
+         * complying genuinely rewrites.
          */
         $family_lower = wp_connectors_ascii_lower($family);
-        $vendor_lower = wp_connectors_ascii_lower($vendor);
         if ($name_lower === $family_lower || 0 === strpos($name_lower, $family_lower . '\\')) {
             $canonical = $family;
-        } elseif ($name_lower === $vendor_lower || 0 === strpos($name_lower, $vendor_lower . '\\')) {
-            $canonical = $vendor;
         }
         if (null !== $canonical) {
             $prefix = (string) substr($reference_name, 0, strlen($canonical));
