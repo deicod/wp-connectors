@@ -469,6 +469,25 @@ final class SelfContainmentCompoundWritesTest extends TestCase
                 'A FILE scan root must refuse at the boundary — it once died in the iterator constructor\'s engine vocabulary.',
                 \RuntimeException::class
             );
+            /*
+             * The class pin is EXACT, never the family (OCR round 31,
+             * t31-ocr31-8): refusalOf() judges instanceof, so the
+             * family parameter alone accepts ANY RuntimeException
+             * subclass — the iterator's UnexpectedValueException the
+             * arm's own comment names included — and a guard-clause
+             * regression had a passing channel through the family
+             * match alone. The driven adjudication: the walk's
+             * glm31-4/ocr24-2 fence converts the constructor abort to
+             * a returned violation BEFORE any throw can escape, so
+             * the planted regression (the !is_dir() clause removed)
+             * answers refusalOf()'s no-throw verdict one seam earlier
+             * — driven red, the family hole unreachable through this
+             * consumer today — and the exact-class assertion closes
+             * it against the day the fence or the guard re-shapes:
+             * the refusal is the boundary guard's own
+             * RuntimeException, by name.
+             */
+            $this->assertSame(\RuntimeException::class, get_class($caught), 'The non-directory refusal is the boundary guard\'s own RuntimeException exactly — an UnexpectedValueException wearing the family would mean the guard clause regressed and the iterator answered a boundary the guard owns.');
             $this->assertStringContainsString($fileRoot, $caught->getMessage(), 'The non-directory refusal names the scan root.');
             unlink($fileRoot);
         } finally {
