@@ -6,6 +6,116 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 27)
+
+Twenty-seventh OCR-tool round (62/62 complete): 15 findings, driver triage
+accepted all — trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15. The round's shape: the
+FENCE-GENERATION TREADMILL named — the round-16 edge-junk close and the
+round-26 tail close each begat the next spelling generation (junk
+INTERLEAVED between the dots; whole-path degenerates with no tail at
+all), and the round's OWN fix was audited against its comment (the
+round-26 dedup claim overclaimed) — comment-vs-behavior drift is now a
+finding class of its own, and it found the nowdoc guidance wrong since
+round 7 while the only caller did it right. Fixed as t31-ocr27-1..10 —
+one commit per finding, the census's same-class sites sharing one
+commit — plus this docs record, the full offline check green after
+every commit. Suite 1672 → 1673 tests, 45686 → 45732 assertions,
+3 skipped unchanged.
+
+- **The traversal fence judges the RESOLVED segment — junk interleaved
+  or not (t31-ocr27-1, security:high)** — the two-phase strip (trailing
+  non-dot junk first, then the all-dots requirement) missed every
+  spelling with junk BETWEEN the dots: '. .', '..<tab>..',
+  '..<0x01>.' folded to nothing the predicate judged while the host
+  strips its own side of the junk class and lands the parent token —
+  the fence's own comment still claimed it owns "every spelling that
+  RESOLVES to '..'". The predicate folds EVERY junk byte out of the
+  segment first (the ONE edge-junk owner's class minus the dot,
+  derived not twinned), then judges the dot-shape of the residue:
+  dots-only of two or more dots refuses, wherever the junk sat —
+  interleaved, leading, or trailing. Unit-probed census: the round-16
+  boundary matrix rides unchanged; content spellings ('x..', '..x',
+  'a.b') keep their verdicts.
+- **The removal seam fences the whole-path degenerates
+  (t31-ocr27-2, security:medium)** — '..', './', '.' carry no '/..'
+  tail, so the strip loop left them unflagged and they passed every
+  probe: is_dir('..') names the parent of the process CWD, realpath
+  is not the filesystem root on any host whose CWD sits deep, and the
+  walk EMPTIED the parent of the caller's CWD through the spelling.
+  Every degenerate whole-path refuses now (the parent-walking
+  refusal's own silent vocabulary): a spelling that names no
+  caller-named root at all is never walked. Driven red at HEAD from a
+  controlled child CWD (the parent emptied), green now.
+- **The group-prefix fence flushes at EOF (t31-ocr27-3, bug:medium)**
+  — the empty-body fence fired only at the ';' boundary and the
+  group's own '}' close, so a `use Prefix\{` or `use Prefix\{\Member`
+  truncated at end-of-file met neither and the prefix was dropped
+  without its report (a family-spelled prefix judged by no gate). EOF
+  is the last boundary: the same fence, the same single report — the
+  handlers null the prefix when they fire, so the flush cannot
+  double-report.
+- **The byte-duplicate verdict is actually deduped per name
+  (t31-ocr27-4, maintainability:low)** — the r26-5 comment claimed
+  "deduped per name" while the emission answered N−1 identical lines
+  for a name carried N times (a pair one line, a triple two): that
+  fix had closed the two-fences class, not the per-copy emission
+  class beneath it. One offense, one line — the third and every later
+  copy of the same bytes answers nothing the second copy did not.
+- **label()'s unknown value answers a named failure
+  (t31-ocr27-5, maintainability:low)** — the bare LABELS[$this->value]
+  lookup answered a future case-without-row as the engine's own
+  "Undefined array key" warning plus a TypeError: loud, but naming
+  neither the enum, nor the missing case, nor the sync duty. An
+  explicit lookup throws a LogicException naming the value, the
+  table, and the add-them-together duty; the sync is
+  construction-evident in both directions (a case without its row
+  fails naming the case; an orphan row fails naming the key).
+- **The nowdoc guidance names the real escape semantics
+  (t31-ocr27-6, documentation:low)** — the unescaper's docblock
+  advised "pass the raw inner text with the single-quote semantics of
+  'nothing to do'", and the advice was wrong on its own terms: the
+  single-quote branch resolves \\ → \ and \' → ', so following it over
+  a nowdoc body corrupts exactly the bodies whose distinguishing
+  feature is that nothing resolves. The docblock states the real
+  semantics and the caller-side contract (never route a nowdoc body
+  through the function — the only caller has done it right since
+  round 7; the guidance was wrong while the caller was right).
+- **The exec-capability census closes WHOLE (t31-ocr27-7,
+  test:medium)** — the r26-9 census was incomplete, and the re-census
+  of every inspector call site in the file found SEVEN ungated arms
+  riding the internal php -l spawn (the finding's four plus three
+  its own five-site count missed: the repo-relative-include,
+  missing-header, and dev-files arms — violations ACCUMULATE, the
+  header verdict is POST-extraction). Each gains the ocr20-5 gate;
+  the arms that stay ungated are enumerated by verdict seam (every
+  one refuses before the spawn). Driven under disable_functions=exec:
+  seven visible skips where \Errors stood.
+- **The skip path leaves no probe behind (t31-ocr27-8, test:medium)**
+  — the dotted-slug pin wrote its parse probe into real dist/ BEFORE
+  the canSpawnChildren() guard while the try/finally unlink started
+  below it, so markTestSkipped()'s throw leaked the scratch file on
+  every spawn-less host. The guard fires before the write; the write
+  rides inside its own try. Driven both ways: at HEAD the skip leaks
+  one probe into real dist/, with the fix zero.
+- **Staging failures fail as staging, and the dir-link leg owns its
+  own creation (t31-ocr27-9, test:medium)** — both child-process
+  lint batteries staged their scratch trees through unchecked
+  mkdir/copy/write calls, so a staging failure wore the lint verdict
+  as its own defect (the t31-ocr26-12 doctrine's next two sites);
+  and the dirlink leg passed VACUOUSLY when symlink() returned false
+  silently — '5 file(s) checked' reads as the pinned green with or
+  without the link. Every staging site feeding a child verdict is
+  asserted now; the symlink creation is asserted, the leg naming its
+  own failure instead of a skip-shaped green.
+- **statIndex()'s false is a FAIL row, never a silent skip
+  (t31-ocr27-10, maintainability:low)** — the battery's emptiness
+  walk guarded the stat with is_array(), so a false return skipped
+  the entry's judgment entirely and the CLEAN classification passed
+  vacuously — the exact class the file's own strict-gate doctrine
+  forbids for open()/extractTo()/getNameIndex-false. The row names
+  the return, the handle closed, the verdict channel whole.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 26)
 
 Twenty-sixth OCR-tool round (62/62 complete): 15 findings, driver triage

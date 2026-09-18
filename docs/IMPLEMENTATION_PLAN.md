@@ -5199,6 +5199,508 @@ OCR-tool
   3 skipped
   unchanged.
 
+
+  OCR-tool
+  round
+  t31-ocr27
+  (ELEVEN
+  commits
+  — the
+  twenty-seventh
+  pass,
+  62/62, 15
+  findings,
+  all
+  accepted;
+  trajectory
+  27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15;
+  the
+  round's
+  shape: the
+  FENCE-GENERATION
+  TREADMILL
+  — the
+  round-16
+  edge-junk
+  close and
+  the
+  round-26
+  tail close
+  each begat
+  the next
+  spelling
+  generation,
+  and the
+  round's
+  own fix
+  was
+  audited
+  against
+  its
+  comment):
+  the
+  traversal
+  predicate
+  judges the
+  RESOLVED
+  segment
+  now —
+  junk folds
+  out
+  ANYWHERE
+  it sits
+  (the ONE
+  edge-junk
+  owner's
+  class
+  minus the
+  dot,
+  derived
+  not
+  twinned),
+  then a
+  dots-only
+  remainder
+  of two or
+  more dots
+  refuses,
+  so '. .',
+  '..<tab>..',
+  and
+  '..<0x01>.'
+  (junk
+  BETWEEN
+  the dots,
+  red at
+  HEAD: zero
+  traversal
+  violations)
+  refuse
+  beside the
+  round-16
+  spellings
+  while
+  content
+  verdicts
+  ride
+  unchanged
+  (unit-probed
+  census in
+  the
+  commit);
+  the
+  removal
+  seam
+  fences the
+  WHOLE-PATH
+  degenerates
+  — '..',
+  './', '.'
+  carry no
+  '/..'
+  tail,
+  passed
+  every
+  probe, and
+  the walk
+  EMPTIED
+  the parent
+  of the
+  caller's
+  CWD
+  (driven
+  red at
+  HEAD from
+  a
+  controlled
+  child CWD;
+  a spelling
+  that names
+  no
+  caller-named
+  root at
+  all is
+  never
+  walked, ''
+  the
+  strips'
+  residue
+  riding the
+  same
+  fence);
+  the
+  group-prefix
+  fence
+  flushes at
+  EOF — a
+  'use
+  Prefix\{'
+  or 'use
+  Prefix\{\Member'
+  truncated
+  at
+  end-of-file
+  once
+  dropped
+  the prefix
+  without
+  its
+  report,
+  and EOF is
+  the last
+  boundary
+  (single-report
+  by
+  construction,
+  the
+  handlers
+  null the
+  prefix
+  when they
+  fire). The
+  drift lens
+  turned on
+  the
+  round's
+  own fixes:
+  the
+  byte-duplicate
+  verdict is
+  ACTUALLY
+  deduped
+  per name
+  (the r26-5
+  comment
+  claimed it
+  while the
+  emission
+  answered
+  N−1
+  lines for
+  N copies
+  — one
+  offense,
+  one line
+  now, a
+  triple
+  answering
+  exactly
+  one);
+  label()'s
+  unknown
+  value
+  answers a
+  named
+  LogicException
+  (the
+  value, the
+  LABELS
+  table, and
+  the
+  add-them-together
+  duty — a
+  desync is
+  a
+  programmer
+  error, the
+  exception
+  imported
+  and pinned
+  into the
+  shared
+  tree's
+  enumerated
+  vocabulary,
+  the sync
+  construction-evident
+  in both
+  directions);
+  the nowdoc
+  guidance
+  names the
+  real
+  escape
+  semantics
+  (the
+  single-quote
+  branch
+  resolves
+  \\ and \',
+  never
+  "nothing
+  to do" —
+  following
+  the old
+  advice
+  would
+  corrupt
+  exactly
+  the bodies
+  whose
+  distinguishing
+  feature is
+  that
+  nothing
+  resolves;
+  the only
+  caller did
+  it right
+  since
+  round 7
+  while the
+  docblock
+  was
+  wrong).
+  The test
+  fences:
+  the
+  exec-capability
+  census
+  closes
+  WHOLE (the
+  r26-9
+  census was
+  incomplete
+  — the
+  re-census
+  of every
+  inspector
+  call site
+  found
+  SEVEN
+  ungated
+  spawn-riding
+  arms, the
+  finding's
+  four plus
+  the
+  repo-relative-include,
+  missing-header,
+  and
+  dev-files
+  arms its
+  own
+  five-site
+  count
+  missed;
+  violations
+  ACCUMULATE,
+  the header
+  verdict is
+  POST-extraction;
+  driven
+  under
+  disable_functions=exec:
+  seven
+  visible
+  skips
+  where
+  \Errors
+  stood, the
+  ungated
+  arms
+  enumerated
+  by verdict
+  seam —
+  every one
+  refuses
+  before the
+  spawn);
+  the
+  dotted-slug
+  probe no
+  longer
+  leaks on
+  the skip
+  path (the
+  guard
+  fires
+  before the
+  write now
+  — at
+  HEAD one
+  scratch
+  file per
+  spawn-less
+  host per
+  run,
+  driven
+  both
+  ways); the
+  toolchain
+  batteries'
+  staging
+  sites are
+  asserted
+  (staging
+  failures
+  fail as
+  staging,
+  the r26-12
+  doctrine's
+  next two
+  sites) and
+  the
+  dirlink
+  leg
+  asserts
+  its own
+  symlink
+  creation
+  (a silent
+  false once
+  left the
+  leg's
+  pinned '5
+  file(s)
+  checked'
+  green with
+  or without
+  the link
+  —
+  vacuous);
+  the seam
+  battery's
+  statIndex()
+  false is a
+  FAIL row
+  naming the
+  return
+  (the
+  is_array()
+  guard was
+  a silent
+  skip over
+  the
+  emptiness
+  judgment,
+  the file's
+  own
+  strict-gate
+  doctrine).
+  Residuals:
+  NEW and
+  driven at
+  close —
+  the
+  INSPECTOR
+  twin's
+  mid-path-link
+  NO-TAIL
+  spelling
+  walks and
+  deletes
+  through
+  the link
+  (wp_connectors_inspect_rrmdir('<symlink-to-dir>/sub')
+  removed
+  the
+  victim's
+  subtree in
+  a live
+  probe;
+  is_link()
+  follows an
+  intermediate
+  link, and
+  the r17-2
+  component-chain
+  resolution
+  lives only
+  in the
+  HARNESS
+  twin —
+  the
+  inspector
+  twin's own
+  test
+  comment
+  claims
+  "the probe
+  resolves
+  the FULL
+  component
+  chain
+  now",
+  comment-vs-behavior
+  drift over
+  a live
+  channel
+  reachable
+  through
+  the public
+  workDir
+  parameter).
+  The r26
+  head
+  residuals
+  stand: the
+  sandboxed
+  '/'
+  construction;
+  the
+  artifact-name/tearDown
+  concurrency
+  class; the
+  crashed-run
+  scratch
+  residue;
+  the
+  ZAI-SUITE
+  putenv
+  census
+  still open
+  (four
+  rounds);
+  the
+  scan_paths
+  walk
+  unfenced;
+  the
+  pid-suffixed
+  scratch
+  class; the
+  ocr26-7
+  driven
+  sim; the
+  r21/r22
+  list; the
+  order/runner
+  flake not
+  reappearing
+  across
+  this
+  round's
+  eleven
+  full-check
+  runs.
+  Suite 1672
+  → 1673
+  tests (+1
+  the
+  label-sync
+  pin),
+  45686 →
+  45732
+  assertions
+  (+3/+4/+2/+0/+10/+0/+0/+0/+27/+0,
+  every
+  delta
+  measured
+  from
+  output —
+  the 27-4
+  commit's
+  trailing
+  count one
+  high,
+  self-caught
+  at this
+  docs
+  pass), 3
+  skipped
+  unchanged.
+
 - [ ] **Task 3.2 — Implement encrypted token storage.** Encrypt one versioned envelope per provider
   with `sodium_crypto_secretbox`, random nonce, authenticated ciphertext, and a key derived from
   WordPress auth salts. The key derivation (or the envelope itself) MUST bind the ciphertext to
