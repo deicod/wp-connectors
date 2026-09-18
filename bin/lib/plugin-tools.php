@@ -624,10 +624,17 @@ function wp_connectors_namespace_declaration_ledger(array $tokens, $source)
         $expires = null;
         $after_run = wp_connectors_next_code_token_index($tokens, $run['end'] + 1);
         if (null !== $after_run && '{' === $tokens[ $after_run ]) {
-            // The opening brace's byte offset: cumulative text length up
-            // to (exclusive) its token index.
-            $brace_offset = 0;
-            for ($j = 0; $j < $after_run; ++$j) {
+            /*
+             * The opening brace's byte offset: the running $offset
+             * counter has already summed every token through the
+             * namespace keyword (OCR round 31, t31-ocr31-7 — the loop
+             * once re-summed the WHOLE token stream from index 0,
+             * O(file) per braced declaration, O(K²) over K
+             * declarations), so the name run's own tokens are all that
+             * remain between it and the brace.
+             */
+            $brace_offset = $offset;
+            for ($j = $i + 1; $j < $after_run; ++$j) {
                 $brace_offset += strlen(is_array($tokens[ $j ]) ? $tokens[ $j ][1] : $tokens[ $j ]);
             }
             if (null === $masked) {
