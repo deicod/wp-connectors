@@ -162,14 +162,23 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * already knows collapses. The fold is derived from the ONE
          * edge-junk owner (its class minus the dot — the dot is the
          * run's own byte, stripped and COUNTED, never part of the
-         * junk): trailing junk only, the LEADING side stays (a
-         * leading byte is content, the fold doctrine's own line).
+         * junk). The junk folds out of the segment ANYWHERE it sits
+         * (OCR round 27, t31-ocr27-1, the fence-
+         * generation treadmill's next spelling): the round-16 cut
+         * stripped TRAILING junk only, so junk BETWEEN the dots
+         * ('. .', '..<tab>..', '..<0x01>.') survived with the
+         * parent token intact after the host strips its own side of
+         * the class — the RESOLVED segment is what the predicate
+         * judges now: fold every junk byte out, then a DOTS-ONLY
+         * remainder of two or more dots is the parent token (content
+         * spellings keep their verdict — 'x..', '..x', 'a.b' still
+         * judge as content, their non-junk bytes survive the fold).
          */
         $hasTraversalSegment = false;
         $nonDotJunk = str_replace('.', '', wp_connectors_path_edge_junk());
         foreach ($parts as $part) {
-            $tail = rtrim((string) $part, $nonDotJunk);
-            if ('' === rtrim($tail, '.') && strlen($tail) >= 2) {
+            $folded = str_replace(str_split($nonDotJunk, 1), '', (string) $part);
+            if ('' === rtrim($folded, '.') && strlen($folded) >= 2) {
                 $hasTraversalSegment = true;
 
                 break;

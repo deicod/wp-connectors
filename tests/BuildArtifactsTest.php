@@ -1837,6 +1837,36 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertFileDoesNotExist(dirname($workDir) . '/escape.php', 'Extraction must never write outside the work dir.');
 
         unlink($zipPath);
+
+        /*
+         * The INTERLEAVED spellings (OCR round 27, t31-ocr27-1): junk
+         * BETWEEN the dots survived the round-16 trailing-only strip
+         * ('. .' folded to nothing the fence judged, red at HEAD: this
+         * zip carried ZERO traversal violations) while every
+         * path-normalizing host strips its own side of the class and
+         * lands the parent token. The predicate judges the RESOLVED
+         * segment now — junk folds out ANYWHERE it sits, then the
+         * dots-only remainder of two or more dots refuses. The
+         * control bytes need the raw-stored writer (the helper's own
+         * flag doctrine: libzip remaps a control byte in a name
+         * without the UTF-8 flag bit).
+         */
+        $interleaved = self::distDir() . '/connectors-interleave-demo-1.0.0.zip';
+        file_put_contents($interleaved, self::storedZipBytes(array(
+            array('interleave-demo/interleave-demo.php', "<?php\n/**\n * Plugin Name:       interleave-demo\n * Version:           1.0.0\n */\n"),
+            array('interleave-demo/a/. ./escape3.php', "<?php\necho 'space-between';\n"),
+            array("interleave-demo/b/..\t../escape4.php", "<?php\necho 'tab-between';\n"),
+            array("interleave-demo/c/..\x01./escape5.php", "<?php\necho 'control-between';\n"),
+        ), 0x0800));
+        $workDir = self::scratchPath('inspect-interleave');
+        $violations = wp_connectors_inspect_artifact($interleaved, $workDir);
+        $flat = implode("\n", $violations);
+
+        $this->assertStringContainsString('escapes the extraction directory', $flat, "Every junk-interleaved spelling of the parent token ('. .', '..<tab>..', '..<0x01>.') refuses — the resolved segment is the parent token after the host strips its own side of the junk class.");
+        $this->assertDirectoryDoesNotExist($workDir, 'The temp extraction tree must be cleaned up on every path.');
+        $this->assertFileDoesNotExist(dirname($workDir) . '/escape3.php', 'Extraction must never write outside the work dir.');
+
+        unlink($interleaved);
     }
 
     public function testInspectorRejectsBackslashSeparatedPathEntries()
