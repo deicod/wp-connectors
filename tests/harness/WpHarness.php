@@ -525,6 +525,20 @@ final class WpHarness
      * absolute; the relative arm stays the best-effort vocabulary,
      * and no committed leg pins a relative link chain).
      *
+     * The comparisons and the carry speak ONE vocabulary (OCR round
+     * 32, t31-ocr32-8): on a non-POSIX host the anchors answer in
+     * the host's own separator spelling while the carry is
+     * '/'-joined, so the prefix compares could never match and the
+     * probe answered the HOST, never the path. The path and both
+     * anchors fold through the ONE comparison owner there
+     * (posix_comparison_vocabulary, the ocr29-4 arm — identity on
+     * POSIX, where a legal '\' filename byte stays, the r29-3
+     * doctrine), and a drive-letter absolute spelling joins the
+     * '/'-rooted arm (the ocr28-3 predicate) with the anchor
+     * prefixes gaining the carry's leading '/'. The returned probe
+     * spelling is the folded '/'-joined one — is_link() resolves
+     * both spellings on a separator host.
+     *
      * @param string $path The path as the caller spelled it.
      * @return string The spelling an is_link() probe can trust.
      */
@@ -534,7 +548,38 @@ final class WpHarness
         while ('/..' === substr($path, -3)) {
             $path = self::same_directory_spelling(rtrim(substr($path, 0, -3), '/'));
         }
-        $temp = rtrim(sys_get_temp_dir(), '/');
+        /*
+         * The anchor comparisons speak ONE vocabulary (OCR round 32,
+         * t31-ocr32-8 — the ocr28-3/ocr29-4 platform gate doctrine,
+         * at this owner): the carry below is '/'-joined by
+         * construction, but the two anchors answered in the HOST's
+         * own separator spelling — sys_get_temp_dir() and
+         * dirname(__DIR__, 2) are backslash-joined on a '\' host —
+         * so every prefix comparison judged two vocabularies against
+         * each other and could NEVER match: the probe answered the
+         * HOST, never the path (every component "outside both
+         * anchors", the mid-chain link walk silently off — the r17-2
+         * full-chain reach gone for every path the host spells). The
+         * path and both anchors fold through the ONE comparison
+         * owner (posix_comparison_vocabulary, the ocr29-4 arm) on
+         * non-POSIX hosts; the POSIX host rides the identity (a
+         * legal '\' byte in a filename stays, the r29-3 doctrine),
+         * byte-unchanged. A drive-letter absolute spelling joins the
+         * '/'-rooted arm there (the ocr28-3 predicate): its carry
+         * spells '/C:/…', so the anchor prefixes gain the same
+         * leading '/' — the comparison holds in one vocabulary for
+         * every absolute spelling a host hands its processes. The
+         * returned probe spelling is the folded '/'-joined one
+         * (is_link resolves both spellings on a separator host);
+         * construction-evident — no test sim flips
+         * DIRECTORY_SEPARATOR (the ocr28-3 boundary), and the POSIX
+         * link batteries below pin the identity side.
+         */
+        $posix = self::isPosixHost();
+        if (! $posix) {
+            $path = str_replace('\\', '/', $path);
+        }
+        $temp = rtrim(self::posix_comparison_vocabulary(sys_get_temp_dir()), '/');
         // The second anchor: the repository root, spelled as these
         // helpers themselves are (every in-repo consumer derives its
         // non-temp paths from the same spelling). The DEGENERATE
@@ -552,15 +597,26 @@ final class WpHarness
         // (a root-writable host; the driven sim stays the
         // unprivileged-host ceiling, the ocr25-4 residual's own
         // class).
-        $repo = dirname(__DIR__, 2);
+        $repo = self::posix_comparison_vocabulary(dirname(__DIR__, 2));
         $repo_prefix = '/' === $repo ? '/' : $repo . '/';
-        $carry = '/' === ($path[0] ?? '') ? '' : '.';
+        if ($posix) {
+            $temp_prefix = $temp . '/';
+        } else {
+            // The '/'-joined carry of a drive-letter spelling leads
+            // with the separator ('/C:/…'); the anchors join it there
+            // (the fold's own ltrim, a no-op for '/…'-spelled anchors
+            // that already lead the way the carry spells them).
+            $temp_prefix = '/' . ltrim($temp, '/') . '/';
+            $repo_prefix = '/' === $repo ? '/' : '/' . ltrim($repo, '/') . '/';
+        }
+        $absolute = '/' === ($path[0] ?? '') || (! $posix && 1 === preg_match('/\A[A-Za-z]:/', (string) $path));
+        $carry = $absolute ? '' : '.';
         foreach (explode('/', $path) as $segment) {
             if ('' === $segment) {
                 continue;
             }
             $carry .= '/' . $segment;
-            $beneath_temp = '' !== $temp && 0 === strpos($carry, $temp . '/');
+            $beneath_temp = '' !== $temp && 0 === strpos($carry, $temp_prefix);
             $beneath_repo = 0 === strpos($carry, $repo_prefix);
             if (! $beneath_temp && ! $beneath_repo) {
                 // Outside both anchors — a component of either anchor
