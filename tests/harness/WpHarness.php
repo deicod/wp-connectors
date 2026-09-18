@@ -759,7 +759,7 @@ final class WpHarness
      *
      * @param string $dir Absolute directory path.
      * @return void
-     * @throws RuntimeException When the spelling collapses to the filesystem root (t31-ocr10-1) — the universal tree is never a scratch dir — or its realpath resolution fails (t31-ocr11-20).
+     * @throws RuntimeException When the spelling collapses to the filesystem root (t31-ocr10-1) — the universal tree is never a scratch dir — its realpath resolution fails (t31-ocr11-20), or a removal's IO return fails (t31-ocr32-7: the walk owns its returns — a stranded shape refuses loudly, never the engine's raw warning).
      */
     public static function rrmdir($dir)
     {
@@ -844,10 +844,25 @@ final class WpHarness
             RecursiveIteratorIterator::CHILD_FIRST
         );
         foreach ($items as $item) {
+            /*
+             * The walk owns its IO returns (OCR round 32, t31-ocr32-7
+             * — the ocr30-4 pattern, the copy twin's own doctrine):
+             * the per-entry unlink()/rmdir() calls once ran
+             * unchecked, so a stranded 0555/0444 shape or a removal
+             * race answered with a RAW E_WARNING — under PHPUnit
+             * (failOnWarning) an exception wearing PHPUnit's
+             * vocabulary, outside it raw bytes — never the harness's
+             * own refusal. The @ suppresses only the diagnostic; the
+             * FAILED RETURN answers the loud policy refusal naming
+             * the path, and the tree is reclaimed or refused loudly
+             * (the partial removal stands for the caller's finally).
+             */
             if ($item->isDir() && ! $item->isLink()) {
-                rmdir($item->getPathname());
-            } else {
-                unlink($item->getPathname());
+                if (! @rmdir($item->getPathname())) {
+                    throw new RuntimeException('WpHarness::rrmdir() refuses a tree whose directory cannot be removed — the walk owns its IO returns, never the engine\'s raw warning vocabulary (the ocr30-4 doctrine): ' . $item->getPathname());
+                }
+            } elseif (! @unlink($item->getPathname())) {
+                throw new RuntimeException('WpHarness::rrmdir() refuses a tree whose file cannot be removed — the walk owns its IO returns, never the engine\'s raw warning vocabulary (the ocr30-4 doctrine): ' . $item->getPathname());
             }
         }
         /*
@@ -861,9 +876,14 @@ final class WpHarness
          * HEAD: children emptied, the parent stranded under the
          * warning). $dir_real is the guard family's own normalization
          * (resolved before the walk, while the tree still stood) — it
-         * names the walked directory itself.
+         * names the walked directory itself. Its return is OWNED the
+         * walk's way (t31-ocr32-7): the tree is empty by here, so a
+         * refusal is the parent's write bit or a race — named loudly,
+         * never the raw E_WARNING either.
          */
-        rmdir($dir_real);
+        if (! @rmdir($dir_real)) {
+            throw new RuntimeException('WpHarness::rrmdir() cannot remove the emptied tree root — the parent refused the removal (its write bit, or a race), and the walk owns the return: ' . $caller_spelling);
+        }
     }
 
     /**
