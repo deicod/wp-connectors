@@ -281,11 +281,18 @@ final class HarnessCopyTreeTest extends TestCase
          * first-level writes as uid 0). The battery runs only where
          * those writes are IMPOSSIBLE — a process that cannot WRITE
          * the root directory cannot create the first-level components
-         * the landing names, whatever the guard does. is_writable('/')
-         * is the capability probe (the t31-ocr10-14 doctrine: the
-         * ANSWER is the signal); the root runner skips visibly (the
-         * t31-ocr4-1 DAC-override premise), the chmod-0000 skip's
-         * shape one finding over.
+         * the landing names, whatever the guard does (the landing
+         * legs' writes are first-level by construction, so the gate
+         * is exact for them). is_writable('/') is the capability
+         * probe (the t31-ocr10-14 doctrine: the ANSWER is the
+         * signal); the root runner skips visibly (the t31-ocr4-1
+         * DAC-override premise), the chmod-0000 skip's shape one
+         * finding over. Honest sibling note (the round's verifier):
+         * the SOURCE-side legs (copyTree('/', dst)) READ-walk the
+         * whole root on a regressed guard — a copy explosion into
+         * scratch, destructive of nothing; that read-side residual
+         * rides the same ledger line as the removal battery's
+         * deep-walk boundary.
          */
         if (is_writable('/')) {
             $this->markTestSkipped('The root-landing legs need a process that CANNOT write the filesystem root — this runner writes it (uid 0 / DAC override, the t31-ocr4-1 premise), and a regressed guard would land real writes at the root\'s first level mid-test (t31-ocr25-4 probe-before-fire).');
@@ -705,8 +712,18 @@ final class HarnessCopyTreeTest extends TestCase
              * copy of one (refuses, both ways — the caught message
              * rides STDOUT for the parent's fragment pins).
              */
+            /*
+             * The harness path is asserted resolved BEFORE the embed
+             * (t31-ocr25 rd-1, the ocr25-8 class census): a realpath()
+             * false once embedded `require false;` into the child —
+             * the fatal then read as the harness's own defect, an
+             * environment problem wearing the pin's subject.
+             */
+            $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
+            $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the harness defect the child would fatal as.');
+            
             $script = 'putenv("TMPDIR=" . ' . var_export($base . '/anchor-link', true) . ');'
-                . ' require ' . var_export(realpath(__DIR__ . '/harness/WpHarness.php'), true) . ';'
+                . ' require ' . var_export($harnessPath, true) . ';'
                 . ' $t = sys_get_temp_dir();'
                 . ' WpHarness::rrmdir($t . "/scratch");'
                 . ' WpHarness::copyTree($t . "/copy-src", ' . var_export($base . '/copy-dst', true) . ');'
@@ -804,8 +821,18 @@ final class HarnessCopyTreeTest extends TestCase
              * refuses, the refusal message on STDOUT for the parent's
              * fragment pins).
              */
+            /*
+             * The harness path is asserted resolved BEFORE the embed
+             * (t31-ocr25 rd-1, the ocr25-8 class census): a realpath()
+             * false once embedded `require false;` into the child —
+             * the fatal then read as the harness's own defect, an
+             * environment problem wearing the pin's subject.
+             */
+            $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
+            $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the harness defect the child would fatal as.');
+            
             $script = 'putenv("TMPDIR=" . ' . var_export($base . '/real/deep', true) . ');'
-                . ' require ' . var_export(realpath(__DIR__ . '/harness/WpHarness.php'), true) . ';'
+                . ' require ' . var_export($harnessPath, true) . ';'
                 . ' $t = sys_get_temp_dir();'
                 . ' WpHarness::copyTree(' . var_export($base . '/layout-link/src', true) . ', ' . var_export($base . '/copy-dst', true) . ');'
                 . ' WpHarness::rrmdir(' . var_export($base . '/layout-link/gone', true) . ');'
@@ -890,7 +917,17 @@ final class HarnessCopyTreeTest extends TestCase
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the PHPUnit-less child engine sim cannot run.');
         }
 
-        $script = 'require ' . var_export(realpath(__DIR__ . '/harness/WpHarness.php'), true) . ';'
+        /*
+             * The harness path is asserted resolved BEFORE the embed
+             * (t31-ocr25 rd-1, the ocr25-8 class census): a realpath()
+             * false once embedded `require false;` into the child —
+             * the fatal then read as the harness's own defect, an
+             * environment problem wearing the pin's subject.
+             */
+            $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
+            $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the harness defect the child would fatal as.');
+            
+        $script = 'require ' . var_export($harnessPath, true) . ';'
             . ' try { WpHarness::refusalOf(static function (): void {}, "the no-throw verdict message", RuntimeException::class); fwrite(STDERR, "verdict returned normally"); exit(3); }'
             . ' catch (\Throwable $verdict) { echo get_class($verdict), "\n", $verdict->getMessage(), "\n"; }';
         exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);

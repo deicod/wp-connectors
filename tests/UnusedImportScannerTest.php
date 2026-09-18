@@ -436,7 +436,16 @@ FIXTURE
 
         file_put_contents($this->root . '/fixture.php', "<?php\nuse Vendor\\Pkg\\DeadThing /* note */;\n");
 
-        $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/check-conventions.php'), true) . ';'
+        /*
+         * The gate path is asserted resolved BEFORE the embed (t31-ocr25
+         * rd-1, the ocr25-8 class census): a realpath() false once
+         * embedded `require false;` into the child — the fatal then
+         * read as the gate's own defect, an environment problem
+         * wearing the pin's subject.
+         */
+        $gateScript = realpath(__DIR__ . '/../bin/check-conventions.php');
+        $this->assertNotFalse($gateScript, 'The conventions-gate path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the gate defect the child would fatal as.');
+        $script = 'require ' . var_export($gateScript, true) . ';'
             . ' wp_connectors_unused_import_violations(' . var_export($this->root, true) . ');';
         exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
         $message = implode("\n", $output);

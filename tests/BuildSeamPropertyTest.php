@@ -878,8 +878,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * copy below copies it verbatim, so the bytes the needle is
          * judged on are the bytes that land).
          */
-        $fixture = (string) realpath(__DIR__ . '/fixtures/plugins/example-connector');
-        $main = (string) file_get_contents($fixture . '/example-connector.php');
+        /*
+         * The fixture resolution gets its OWN refusal channel (t31-ocr25
+         * rd-1): a swallowed realpath() false read as a needle miss on
+         * the next line — the environment impersonation the ocr25-8
+         * class close kills, one file over.
+         */
+        $fixture = realpath(__DIR__ . '/fixtures/plugins/example-connector');
+        if (false === $fixture) {
+            throw new RuntimeException('battery scratch: the fixture plugin tree does not resolve — an environment problem (a broken checkout, an open_basedir wall), never a needle drift; nothing was created.');
+        }
+        $mainFile = $fixture . '/example-connector.php';
+        if (! is_file($mainFile)) {
+            throw new RuntimeException("battery scratch: the fixture main file is missing at {$mainFile} — an environment problem, never a needle drift; nothing was created.");
+        }
+        $main = (string) file_get_contents($mainFile);
         /*
          * The artifact name derives from the FIXTURE at runtime (OCR
          * round 11, t31-ocr11-7): build.php names it
@@ -1001,11 +1014,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the require-side legs cannot run (all five entry-script probes spawn child processes).');
         }
 
-        $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/build.php'), true) . ';'
-            . ' require ' . var_export(realpath(__DIR__ . '/../bin/inspect-artifact.php'), true) . ';'
-            . ' require ' . var_export(realpath(__DIR__ . '/../bin/lint-php.php'), true) . ';'
-            . ' require ' . var_export(realpath(__DIR__ . '/../bin/check-conventions.php'), true) . ';'
-            . ' require ' . var_export(realpath(__DIR__ . '/../bin/scan-secrets.php'), true) . ';'
+        /*
+         * The five entry-script paths are asserted resolved BEFORE the
+         * embed (t31-ocr25 rd-1, the ocr25-8 class census): a
+         * realpath() false (a broken checkout, an open_basedir wall)
+         * once embedded `require false;` straight into the child —
+         * the fatal then read as the entry scripts' own defect, an
+         * environment problem wearing the pin's subject.
+         */
+        $entryScriptExports = array();
+        foreach (array('/../bin/build.php', '/../bin/inspect-artifact.php', '/../bin/lint-php.php', '/../bin/check-conventions.php', '/../bin/scan-secrets.php') as $entryScript) {
+            $resolved = realpath(__DIR__ . $entryScript);
+            $this->assertNotFalse($resolved, "The entry script {$entryScript} must resolve before the child embed — a realpath() false is an environment problem, never the entry scripts' own defect.");
+            $entryScriptExports[] = var_export($resolved, true);
+        }
+        $script = 'require ' . implode('; require ', $entryScriptExports) . ';'
             . ' echo ini_get("display_errors");';
         exec(escapeshellarg(PHP_BINARY) . ' -d display_errors=0 -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
 

@@ -306,6 +306,20 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
                 $this->assertStringContainsString('port must be digits', $e->getMessage());
             }
         }
+
+        /*
+         * The raw-derivation fold pin (the round's verifier, rd-1): a
+         * host TAB is legal per the round-1 host-charset adjudication,
+         * and this engine's parse_url() REWRITES it to '_' — the old
+         * rebuild rode that rewrite ('h_st.example'), the raw
+         * derivation carries the byte verbatim. The pin holds the
+         * agreement the one split exists for: authority() spells
+         * exactly the bytes url() carries, whatever the engine's own
+         * host spelling would be.
+         */
+        $tabUrl = "https://h\tst.example/token";
+        $this->assertSame("h\tst.example", Url::parse_validated($tabUrl)['authority'], 'The rebuilt authority carries the raw host byte verbatim — never the engine parse’s own host rewrite (the one-split agreement, pinned).');
+        $this->assertSame("https://h\tst.example/token", (new HttpRequest('GET', $tabUrl))->redacted_url(), 'The redacted form and the raw parse answer one verdict over the tab-bearing host.');
     }
 
     /**

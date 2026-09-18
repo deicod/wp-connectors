@@ -1277,9 +1277,13 @@ final class WpHarness
      * file is consumed by PHPUnit-less child engines — the
      * redirected-TMPDIR sims require WpHarness.php into a bare
      * `php -r` — lazily safe only for as long as no child leg ever
-     * called a throwing path; the first one would fatal on a
-     * class-not-found instead of answering the verdict. Where PHPUnit
-     * is loaded the verdict stays exactly the assertion failure its
+     * called a throwing path; the first one would answer the
+     * class-not-found \Error INSTEAD of the verdict (driven by the
+     * round's verifier: a child catching \Throwable echoes the Error
+     * as if it were the verdict at exit 0 — a silent mis-answer, worse
+     * than a fatal, which only a narrower catch produces). Where
+     * PHPUnit is loaded the verdict stays exactly the assertion
+     * failure its
      * channel expects; a bare engine gets the base \Exception carrying
      * the same message — deliberately NOT RuntimeException, the family
      * the guarded calls themselves throw, which a child's own catch

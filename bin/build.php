@@ -1613,10 +1613,14 @@ final class WpConnectorsBuild
          * zipped, closed, and checksummed at a staging path; the sidecar
          * is written beside it; the manifest is merged and staged under a
          * unique tempnam — and the previous good release is replaced only
-         * by checked RENAMES at the very end (descriptors first, the
-         * archive LAST). Every failure this run can construct then
-         * leaves the prior artifact set byte-untouched BY CONSTRUCTION:
-         * the half-built product lives at a temp path the finally below
+         * by checked RENAMES at the very end (the ARCHIVE FIRST, then
+         * its descriptors — t31-ocr25-2: the thing the descriptors NAME
+         * stands before any descriptor naming it moves, so a rename
+         * refusal the pre-flight cannot see fires while NOTHING has
+         * landed and the prior set stands byte-untouched). Every failure
+         * this run can construct before the first rename then leaves the
+         * prior artifact set byte-untouched BY CONSTRUCTION: the
+         * half-built product lives at a temp path the finally below
          * releases on every exit, never at the destination. That deletes
          * the compensating apparatus the catch-based shape needed (the
          * $zipOpened/$zipOverwritten flags deciding which artifact
@@ -1631,8 +1635,15 @@ final class WpConnectorsBuild
          * one landed is loud (exit != 0), leaves every not-yet-landed
          * temp cleaned, and every landed member COMPLETE (each was
          * verified whole at its staging path — the half-written-member
-         * class cannot exist on this side of the seam); EIO/ENOSPC-class
-         * rename failures past the pre-flight are the honest boundary.
+         * class cannot exist on this side of the seam). Past the
+         * pre-flight the honest boundary is the RENAME call itself
+         * (EIO/ENOSPC, an AV lock, an immutable target), and the
+         * archive-first order is what that boundary answers: the
+         * artifact-refusal case lands nothing at all, while a descriptor
+         * refusal leaves the new archive standing with the PRIOR
+         * descriptors — stale, loudly failed, healed by the next
+         * build's regeneration, never a checksum naming an artifact
+         * that is not standing.
          */
         /*
          * The stage tree is PID-named (round t31-r10-4, the reopen the

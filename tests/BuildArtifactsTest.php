@@ -4457,21 +4457,33 @@ FIXTURE;
              */
             /*
              * PROBE-BEFORE-FIRE (OCR round 25, t31-ocr25-4 — the
-             * ocr4-1 doctrine extended to the destructive root fires):
-             * the '/'-anchored legs below — this silent-owner loop AND
-             * the loud-owner loop under it — answer their safety to
-             * the production guard alone, and a REGRESSED guard would
-             * walk the filesystem root's children as this very test
-             * runs, the sentinel assertions after the fire reading a
-             * destroyed tree. The fires run only where the destruction
-             * is IMPOSSIBLE: a process that cannot WRITE the root
-             * directory can neither unlink its children nor create
-             * entries beside them, whatever the guard does —
-             * is_writable('/') is the capability probe (the t31-ocr10-14
-             * doctrine: the ANSWER is the signal), and the runner that
-             * writes the root (uid 0 through the DAC override, or a
-             * 0777-root host) skips visibly instead, the chmod-0000
-             * skip's premise one shape over.
+             * ocr4-1 doctrine extended to the destructive root fires;
+             * boundary restated honestly by the round's verifier): the
+             * '/'-anchored legs below — this silent-owner loop AND the
+             * loud-owner loop under it — answer their safety to the
+             * production guard alone, and a REGRESSED guard would walk
+             * the filesystem root's children as this very test runs,
+             * the sentinel assertions after the fire reading a
+             * destroyed tree. The fires run only where the process
+             * cannot WRITE the root directory: the root's FIRST level
+             * is then unmutable (no child unlinked, no entry created
+             * beside them), and the runner that writes the root (uid 0
+             * through the DAC override, or a 0777-root host —
+             * is_writable('/') is the capability probe, the
+             * t31-ocr10-14 doctrine: the ANSWER is the signal) skips
+             * visibly instead, the chmod-0000 skip's premise one shape
+             * over. HONEST BOUNDARY (the verifier's driven refutation
+             * of the first cut's wording): this bounds the FIRST
+             * level, not the DEEP walk — a regressed guard recursing
+             * past the root still destroys every USER-WRITABLE subtree
+             * it can reach ($HOME, the repo checkout, /tmp) on any
+             * host; the gate keeps the wholesale root-runner
+             * destruction off CI and makes first-level mutation
+             * impossible, while the genuinely sandboxed construction
+             * (a scratch-rooted '/' via a user-namespace mount, a
+             * dropped-capability child) stays the ledgered residual —
+             * the guard itself remains the deep-walk safety, as the
+             * legs' own docblocks state.
              */
             if (is_writable('/')) {
                 $this->markTestSkipped('The destructive root-spelling fires (the silent inspector loop and the loud rrmdir loop alike) need a process that CANNOT write the filesystem root — this runner writes it (uid 0 / DAC override, the t31-ocr4-1 premise), and a regressed guard would destroy the host mid-test (t31-ocr25-4 probe-before-fire).');

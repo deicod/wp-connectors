@@ -220,11 +220,16 @@ final class Url {
 		if ( false !== $bracket_end && 1 !== preg_match( '/\A\](?::|\z)/', substr( $host_port, (int) $bracket_end ) ) ) {
 			throw new InvalidArgumentException( 'A bracketed host must be followed by a colon port ("[::1]:8080") or the end of the authority — anything glued to the closing bracket ("[::1]8080", "[::1]x") is a malformed authority parse_url() misreads, and the URL string and the rebuilt authority must agree.' );
 		}
-		$colon = strpos( $host_port, ':', false === $bracket_end ? 0 : (int) $bracket_end + 1 );
+		$colon        = strpos( $host_port, ':', false === $bracket_end ? 0 : (int) $bracket_end + 1 );
+		$raw_port_int = null;
 		if ( false !== $colon ) {
 			$raw_port = (string) substr( $host_port, $colon + 1 );
 			if ( 1 !== preg_match( '/\A[0-9]+\z/', $raw_port ) ) {
 				throw new InvalidArgumentException( 'The URL port must be digits — parse_url() truncates a malformed port silently (":443x" reads as 443) while the URL string carries the raw text, and the two must agree.' );
+			}
+			$raw_port_int = (int) $raw_port;
+			if ( $raw_port_int < 1 || $raw_port_int > 65535 ) {
+				throw new InvalidArgumentException( 'The URL port is out of range.' );
 			}
 
 			/*
@@ -238,8 +243,11 @@ final class Url {
 			 * one spelling over). The raw string cannot be rewritten
 			 * (url() holds the caller's bytes exactly), so agreement
 			 * means REFUSING the non-canonical spelling — write ':443'.
-			 * The bare ':0' is out of range below, never a leading
-			 * zero.
+			 * The RANGE screen rides FIRST (the round's verifier close:
+			 * rd-1): a zero-valued spelling ':000' has no canonical
+			 * form to write — complying lands on the range refusal —
+			 * so it must wear the range sentence, never a dead-end
+			 * remediation.
 			 */
 			if ( strlen( $raw_port ) > 1 && '0' === $raw_port[0] ) {
 				throw new InvalidArgumentException( 'The URL port must be spelled without leading zeros — ":0443" reads as 443 while the URL string keeps the raw spelling, and the two must agree (write ":443").' );
@@ -272,13 +280,6 @@ final class Url {
 			: ( false !== $colon ? (string) substr( $host_port, 0, $colon ) : $host_port );
 		if ( '' === $raw_host ) {
 			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
-		}
-		$raw_port_int = null;
-		if ( false !== $colon ) {
-			$raw_port_int = (int) $raw_port;
-		}
-		if ( null !== $raw_port_int && ( $raw_port_int < 1 || $raw_port_int > 65535 ) ) {
-			throw new InvalidArgumentException( 'The URL port is out of range.' );
 		}
 
 		// The host fold rides the same ONE owner (t31-ocr1-4): a host
