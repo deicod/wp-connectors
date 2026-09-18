@@ -662,10 +662,23 @@ function wp_connectors_inspect_rrmdir($dir)
          * pass, rd-1): a removal ROOT this process cannot open throws
          * from the iterator's own constructor, one shape over the
          * walk's refusal (driven at HEAD).
+         *
+         * The catch FALLS THROUGH now (OCR round 24, t31-ocr24-3):
+         * the early return leaked the removal ROOT itself beside the
+         * unopened subtree, and the residue justification true for
+         * build's twin (its stage sweep revisits whatever stands)
+         * never held here — this owner's extraction dirs are unique
+         * random-suffixed trees NOTHING ever revisits: one leaked
+         * temp tree per refusal, accumulating across runs. The final
+         * @rmdir is the best-effort reclaim: a no-op when children
+         * remain (the unopenable-subtree residue stays by doctrine),
+         * and it RECLAIMS the root whenever it is empty-able — rmdir
+         * needs the PARENT's write bit, never the target's read bit,
+         * so even a locked EMPTY root goes. The silent verdict is
+         * unchanged (the @ keeps the engine's noise out of it).
          */
-        return;
     }
-    rmdir($dir);
+    @rmdir($dir);
 }
 
 if (wp_connectors_cli_entry(__FILE__)) {

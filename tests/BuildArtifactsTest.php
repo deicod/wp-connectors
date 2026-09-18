@@ -4610,16 +4610,19 @@ FIXTURE;
              * Red at HEAD: the call THROWS the iterator's
              * UnexpectedValueException (the docblock's violated
              * contract). The pin holds the silent verdict — and what it
-             * keeps: the final rmdir never runs (the work root stands),
-             * and the unopened subtree stays inside it. No pin on HOW
-             * MUCH was removed before the refusal: the yield order is
-             * the filesystem's (this runner's tmpfs meets the locked
-             * dir FIRST — the ocr22 order-dependence doctrine), so the
-             * partial removal is a host fact, never the contract.
+             * keeps: the unopened subtree stays inside the work root.
+             * No pin on HOW MUCH was removed before the refusal: the
+             * yield order is the filesystem's (this runner's tmpfs
+             * meets the locked dir FIRST — the ocr22
+             * order-dependence doctrine), so the partial removal is a
+             * host fact, never the contract. Since t31-ocr24-3 the
+             * refusal path runs the root rmdir as BEST-EFFORT — this
+             * leg's root stays because the unopened subtree keeps it
+             * non-empty, never because the rmdir was skipped.
              */
             wp_connectors_inspect_rrmdir($scratch . '/work');
 
-            $this->assertDirectoryExists($scratch . '/work', 'The final rmdir never runs past a refused walk — the silent degrade stops the removal, never rolls it back.');
+            $this->assertDirectoryExists($scratch . '/work', 'The work root stands past a refused walk — the unopened subtree inside it keeps the best-effort root rmdir a no-op.');
             $this->assertDirectoryExists($scratch . '/work/locked', 'The unopened subtree stays exactly where it stood — the silent return leaves it for the OS temp sweep.');
 
             /*
@@ -4634,10 +4637,30 @@ FIXTURE;
             file_put_contents($lockedRoot . '/inner/x.txt', 'bytes');
             chmod($lockedRoot, 0000);
             wp_connectors_inspect_rrmdir($lockedRoot);
-            $this->assertDirectoryExists($lockedRoot, 'A locked removal ROOT answers the silent verdict too — the guard owns the construction, never the walk alone.');
+            $this->assertDirectoryExists($lockedRoot, 'A locked removal ROOT answers the silent verdict too — the guard owns the construction, never the walk alone; the best-effort rmdir no-ops over its unopened children.');
+
+            /*
+             * OCR round 24 (t31-ocr24-3): the refusal path RECLAIMS the
+             * root itself. An EMPTY locked root — the
+             * construction-shape refusal over a root with nothing
+             * inside it — falls through to the best-effort @rmdir now:
+             * rmdir needs the PARENT's write bit, never the target's
+             * read bit, so the root is reclaimed. Red at HEAD: the
+             * catch returned before the rmdir — one leaked
+             * unique-suffixed tree per refusal with no sweeper
+             * anywhere (build's twin has the stage sweep; this owner's
+             * extraction dirs are random-named, nothing ever revisits
+             * them).
+             */
+            $lockedEmptyRoot = $scratch . '/locked-empty-root';
+            mkdir($lockedEmptyRoot, 0755);
+            chmod($lockedEmptyRoot, 0000);
+            wp_connectors_inspect_rrmdir($lockedEmptyRoot);
+            $this->assertDirectoryDoesNotExist($lockedEmptyRoot, 'An EMPTY locked removal root is reclaimed on the refusal path — rmdir needs the parent\'s write bit, never the target\'s read bit.');
         } finally {
             chmod($scratch . '/work/locked', 0755);
             @chmod($scratch . '/locked-root', 0755);
+            @chmod($scratch . '/locked-empty-root', 0755);
             WpHarness::rrmdir($scratch);
         }
     }
