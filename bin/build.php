@@ -210,6 +210,24 @@ final class WpConnectorsBuild
                     // replacement-template ${n} empty-string semantics
                     // spelled by hand.
                     $alias_group = $matches[3] ?? '';
+                    /*
+                     * The RIDER composition (OCR round 32, the
+                     * t31-ocr32-3 half over this seam): the optional
+                     * alias group and the optional brace-group tail
+                     * are each legal ALONE, but together — `use …\
+                     * \Clock as X {Y};` — they compose into a spelling
+                     * the engine rejects (an aliased import opens no
+                     * group; php -l refuses), and the pattern once
+                     * matched both and re-emitted both verbatim beside
+                     * the rewritten name at exit 0 (driven at HEAD),
+                     * the postcondition waving the target-prefixed
+                     * import through. The grammar refuses the
+                     * composition at the seam, never the verbatim
+                     * re-emit.
+                     */
+                    if ('' !== $alias_group && '' !== (string) ($matches[4] ?? '')) {
+                        throw new RuntimeException("build: the use statement importing the shared namespace in {$sourceVersion} carries both an alias and a brace-group tail — an aliased import opens no group, the composition is a parse error the engine rejects at compile time, and the rewrite once re-emitted both verbatim beside the rewritten name at exit 0; write the aliased import or the group, never both");
+                    }
                     if ('' !== $alias_group && 1 === preg_match('/[A-Za-z0-9_]+\z/', $alias_group, $alias_id)) {
                         if (self::aliasIdentifierIsEngineIllegal($alias_id[0])) {
                             throw new RuntimeException("build: the alias of a use statement importing the shared namespace in {$sourceVersion} must be one plain identifier — '{$alias_id[0]}' is one of the fourteen reserved spellings the engine forbids in the slot, case-insensitively, and the rewrite re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write a plain identifier the engine accepts");
@@ -289,7 +307,16 @@ final class WpConnectorsBuild
                             throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' with no identifier after it: a dangling alias is a parse error the engine rejects at compile time, and the reassembly once reassembled it into rewritten output that shipped ' as}' verbatim at exit 0; write the member as 'Name as Alias' or the bare 'Name'");
                         }
                         $tail = '';
-                        if (1 === preg_match('/^(.+?)\s+as\s+([A-Za-z0-9_]+)$/', $member, $alias_parts)) {
+                        /*
+                         * The extraction matches ANY `as`-tail
+                         * (case-insensitively — `AS` is a legal
+                         * keyword spelling the engine accepts, and the
+                         * lowercase-only cut once let a legal `Clock AS
+                         * C` member fall through to the leaf rewrite;
+                         * the tail's own shape is judged below, never
+                         * the keyword's case).
+                         */
+                        if (1 === preg_match('/^(.+?)\s+as\s+(.+)$/i', $member, $alias_parts)) {
                             /*
                              * The member's ALIAS rides the same
                              * engine-illegal refusal (OCR round 32,
@@ -309,6 +336,26 @@ final class WpConnectorsBuild
                              */
                             if (self::aliasIdentifierIsEngineIllegal($alias_parts[2])) {
                                 throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: the alias '{$alias_parts[2]}' is one of the fourteen reserved spellings the engine forbids in the slot, case-insensitively, and the reassembly re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write 'Name as Alias' with a plain identifier the engine accepts");
+                            }
+                            /*
+                             * An `as`-tail that is not ONE plain
+                             * identifier refuses, never the verbatim
+                             * re-emit (OCR round 32, t31-ocr32-3): the
+                             * identifier-only capture once left a
+                             * non-matching tail (`{Shared\Clock as
+                             * Foo\Bar}`, a backslash-separated alias
+                             * the single-identifier grammar cannot
+                             * spell) attached to the member, and the
+                             * whole member string flowed into the leaf
+                             * rewrite — the leading segment rewritten,
+                             * ` as Foo\Bar` re-emitted verbatim beside
+                             * it at exit 0 (driven at HEAD), the
+                             * engine accepting only a bare identifier
+                             * in the slot (php -l: the qualified alias
+                             * refuses).
+                             */
+                            if (1 !== preg_match('/\A[A-Za-z0-9_]+\z/', $alias_parts[2])) {
+                                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' whose tail ('{$alias_parts[2]}') is not one plain identifier: the engine accepts only a bare identifier in the alias slot, and the reassembly once re-emitted the tail verbatim beside the rewritten name at exit 0; write 'Name as Alias' with a plain identifier");
                             }
                             $member = $alias_parts[1];
                             $tail = ' as ' . $alias_parts[2];

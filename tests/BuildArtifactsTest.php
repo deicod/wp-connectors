@@ -5859,6 +5859,22 @@ FIXTURE;
             'reserved member alias: self' => 'use Deicod\\WpConnectors\\{Shared\\Clock as self};',
             'reserved member alias: TRUE (case-folded)' => 'use Deicod\\WpConnectors\\{Shared\\Clock as TRUE};',
             'reserved member alias: Float (case-folded type keyword)' => 'use Deicod\\WpConnectors\\{const Shared\\TTL as Float};',
+            /*
+             * OCR round 32 (t31-ocr32-3), the member half: an `as`
+             * whose tail is not one plain identifier. The
+             * identifier-only capture left a non-matching tail
+             * attached to the member, and the whole member string
+             * flowed into the leaf rewrite — the leading segment
+             * rewritten, ` as Foo\Bar` re-emitted verbatim beside it
+             * at exit 0 (driven at HEAD); the engine accepts only a
+             * bare identifier in the slot (php -l refuses the
+             * qualified alias). The extraction matches ANY `as`-tail
+             * case-insensitively now (`AS` is a legal keyword
+             * spelling that keeps riding) and the tail's shape is
+             * judged at the seam.
+             */
+            'qualified member alias: Foo\\Bar' => 'use Deicod\\WpConnectors\\{Shared\\Clock as Foo\\Bar};',
+            'member alias tail with a second as' => 'use Deicod\\WpConnectors\\{Shared\\Clock as X as Y};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass IllegalGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/IllegalGroupStore.php'),
@@ -5899,6 +5915,29 @@ FIXTURE;
         // engine accepts rewrite unchanged (pinned above in the
         // $spellings battery — 'as SharedNs', 'as C', 'as nowish' —
         // and the group battery's 'as W'/'as T' members).
+
+        /*
+         * OCR round 32 (t31-ocr32-3), the rider half over the
+         * use-statement seam: the optional alias group and the
+         * optional brace-group tail are each legal ALONE, but
+         * together they compose into a spelling the engine rejects
+         * (an aliased import opens no group; php -l refuses) — and
+         * the pattern once matched both and re-emitted both verbatim
+         * beside the rewritten name at exit 0 (driven at HEAD). The
+         * composition refuses at the seam; each half alone keeps
+         * riding (the brace-alone and alias-alone controls above).
+         */
+        foreach (array(
+            'aliased sub-segment import with a brace tail' => 'use Deicod\\WpConnectors\\Shared\\Clock as X {Y};',
+            'aliased exact-namespace import with a brace tail' => 'use Deicod\\WpConnectors\\Shared as S {Y};',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass RiderAliasStore\n{\n}\n", 'OpenAiOauth', 'shared/src/RiderAliasStore.php'),
+                "An alias and a brace-group tail never compose legally ({$label}) — the zip ships the parse-error bytes otherwise.", \RuntimeException::class
+            );
+            $this->assertStringContainsString('both an alias and a brace-group tail', $refusal->getMessage(), "The refusal names the composition ({$label}).");
+            $this->assertStringContainsString('RiderAliasStore.php', $refusal->getMessage(), "The refusal names the file ({$label}).");
+        }
 
         /*
          * The total postcondition (the token detector, t31-r7): a family
