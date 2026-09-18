@@ -810,6 +810,36 @@ final class WpHarness
     }
 
     /**
+     * Whether a RESOLVED, comparison-folded path is a universal
+     * container root — the POSIX root '/' or a DRIVE root ('C:/', the
+     * folded spelling of realpath()'s answer on a '\' host) — the ONE
+     * container judgment both tree owners ride (OCR round 33,
+     * t31-ocr33-5).
+     *
+     * The universal-container refusals were POSIX-spelling-only: on a
+     * non-POSIX host realpath() answers 'C:\', never '/', so
+     * rrmdir()'s raw `'/' === $dir_real` and copyTree's
+     * `'/' === $source_real`/mirror comparison (the latter already
+     * folded through the ONE comparison owner) all read false over
+     * the DRIVE ROOT — rrmdir('C:\') passed every probe and the walk
+     * deleted THE DRIVE ROOT's children (the t31-ocr10-1 shape the
+     * guard exists to kill), the copy twin reading the same container
+     * as a copyable source or an every-source-containing target. The
+     * container class is BOTH spellings: the POSIX root and the
+     * drive-letter root, with or without the trailing separator.
+     * Construction-evident on this POSIX runner (DIRECTORY_SEPARATOR,
+     * a constant no test sim flips — the t31-ocr28-3 doctrine); the
+     * POSIX '/' refusals ride unchanged beneath the same comparison.
+     *
+     * @param string $resolved A realpath()-derived answer, folded through posix_comparison_vocabulary().
+     * @return bool True when the path is a universal container root.
+     */
+    private static function resolvesToUniversalContainer(string $resolved): bool
+    {
+        return '/' === $resolved || 1 === preg_match('/\A[A-Za-z]:\/?\z/', $resolved);
+    }
+
+    /**
      * Recursively removes a directory (test helper — the ONE scratch-tree
      * removal owner, t31-ocr1-9: the former per-test twins diverged in
      * error policy; the harness policy is the loud one, and every test
@@ -891,7 +921,14 @@ final class WpHarness
         if (false === $dir_real) {
             throw new RuntimeException('WpHarness::rrmdir() refuses a spelling whose realpath resolution failed — the tree is unreadable through this process (open_basedir, or it vanished mid-call): ' . $caller_spelling);
         }
-        if ('/' === $dir_real) {
+        /*
+         * The resolution folds through the ONE comparison owner
+         * (t31-ocr33-5): the container judgment below and the walk
+         * after it read one vocabulary — the POSIX host rides the
+         * identity, byte-unchanged.
+         */
+        $dir_real = self::posix_comparison_vocabulary($dir_real);
+        if (self::resolvesToUniversalContainer($dir_real)) {
             throw new RuntimeException('WpHarness::rrmdir() refuses a spelling that collapses to the filesystem ROOT — the universal tree is never a scratch dir: ' . $caller_spelling);
         }
         /*
@@ -1091,7 +1128,13 @@ final class WpHarness
          * tree lives inside; the universal container is not a
          * copyable tree, and the refusal names the caller's spelling.
          */
-        if ('/' === $source_real) {
+        /*
+         * The container judgment rides the ONE owner — '/' and the
+         * drive-root spelling alike (t31-ocr33-5): a '\' host's
+         * realpath answers 'C:/', never '/', and the universal
+         * container must refuse by CLASS, not by one spelling of it.
+         */
+        if (self::resolvesToUniversalContainer($source_real)) {
             throw new RuntimeException('WpHarness::copyTree() refuses a source collapsed to the filesystem ROOT — the universal container is not a copyable tree: ' . $from);
         }
         /*
@@ -1307,7 +1350,7 @@ final class WpHarness
          * attempted '/<relative>' writes (driven); the root is judged
          * as the universal container now.
          */
-        if ($target_real === '/' || 0 === strpos($source_real, $target_real . '/')) {
+        if (self::resolvesToUniversalContainer($target_real) || 0 === strpos($source_real, $target_real . '/')) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target that CONTAINS the source — the mirror of the nested-target refusal: a nested same-name segment would resolve the copy inside the very tree it reads, and a target collapsed to the filesystem ROOT contains every source: from ' . $from . ' into ' . $to);
         }
         /*
