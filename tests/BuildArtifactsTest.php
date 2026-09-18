@@ -7687,6 +7687,34 @@ FIXTURE;
                 "The unescaper answers the engine's own bytes for \\u{{$codepoint}} — surrogate spellings included (the driven engine resolves them; the RFC-era refusal is not this engine's behavior, and the model mirrors the engine, both directions of the ocr23-4 charter)."
             );
         }
+
+        /*
+         * The hex-arm CASE premise, driven and refuted (OCR round 31,
+         * t31-ocr31-2 — the ocr28-4 engine-truth doctrine over this
+         * finding's own premise): the finding claimed the engine
+         * resolves only lowercase \x and demanded '\X' ride the
+         * literal doctrine. DRIVEN AT FIX TIME on the runner engine
+         * (8.5.10): the double-quoted "\X41" computes 'A' exactly
+         * like its lowercase twin — the hex handler reads BOTH cases —
+         * so the unescaper's answer was already the engine's own on
+         * every spelling, and the demanded narrowing would have
+         * INVENTED the exact divergence it accused (a literal '\X41'
+         * where every runtime computes 'A' — values no runtime
+         * computes are what BOTH directions of the mirror charter
+         * refuse, the ocr23-4 doctrine). The pin drives the engine
+         * itself as the oracle, both cases and the no-digit tails
+         * included; a future engine that stops resolving \X fails
+         * this pin loudly, naming the drift, and the arm narrows
+         * with it.
+         */
+        foreach (array('\\x41', '\\X41', '\\x4f', '\\X4F', '\\x', '\\X', '\\xg', '\\Xg') as $escape) {
+            $engine_value = eval('return "' . $escape . '";');
+            $this->assertSame(
+                $engine_value,
+                wp_connectors_unescape_php_string_literal('"', $escape),
+                "The hex arm mirrors the engine for '{$escape}' — both cases decode, the no-digit and non-hex tails keep their literal bytes, the engine's own answer on every spelling."
+            );
+        }
     }
 
     /**

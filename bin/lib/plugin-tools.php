@@ -1376,6 +1376,20 @@ function wp_connectors_unescape_php_string_literal($quote, $inner)
 
             continue;
         }
+        /*
+         * The hex arm reads BOTH cases (OCR round 31, t31-ocr31-2, the
+         * refuted-premise shape — the ocr28-4 doctrine): the round's
+         * finding claimed the engine recognizes only lowercase \x, so
+         * '\X41' should keep its four literal bytes — DRIVEN AT FIX
+         * TIME on the runner engine (8.5.10), the double-quoted
+         * "\X41" computes 'A' exactly like its lowercase twin (the
+         * scanner's hex handler consults the case-folded byte), and
+         * decoding \X invents nothing: REFUSING to decode it would.
+         * The pin in the battery drives the engine itself as the
+         * oracle over both spellings — a future engine generation
+         * that stops resolving \X fails that pin loudly, naming the
+         * drift, and this branch narrows with it.
+         */
         if ('x' === $next || 'X' === $next) {
             $hex = '';
             while ($i + 1 < $length && strlen($hex) < 2 && false !== stripos('0123456789abcdef', $inner[ $i + 1 ])) {
