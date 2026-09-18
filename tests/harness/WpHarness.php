@@ -1273,10 +1273,26 @@ final class WpHarness
             }
             $relative = substr($relative, strlen($prefix));
             $target = $to . '/' . $relative;
-            if (! is_dir(dirname($target))) {
-                mkdir(dirname($target), 0755, true);
+            /*
+             * The landing loop owns its IO returns (OCR round 30,
+             * t31-ocr30-4): mkdir()/copy() failures once escaped the
+             * contract two ways — under PHPUnit (failOnWarning +
+             * convertWarningsToExceptions) the raw E_WARNING became an
+             * exception wearing PHPUnit's vocabulary, and outside it
+             * the raw warning rode while copyTree() RETURNED NORMALLY
+             * having moved nothing — a mid-landing IO failure (EACCES,
+             * ENOSPC, path-length) is never either verdict. The @
+             * suppresses only the diagnostic (the builder's
+             * copyNormalized shape); the FAILED RETURN is owned here,
+             * answering the harness's own refusal vocabulary naming
+             * the operation and the path.
+             */
+            if (! is_dir(dirname($target)) && ! @mkdir(dirname($target), 0755, true)) {
+                throw new RuntimeException('WpHarness::copyTree() refuses a landing whose directory cannot be created — the mkdir failed at the path it owns: ' . dirname($target));
             }
-            copy($file->getPathname(), $target);
+            if (! @copy($file->getPathname(), $target)) {
+                throw new RuntimeException('WpHarness::copyTree() refuses a landing whose file cannot be copied — the copy failed mid-landing, and a partial tree never reads as a normal return: ' . $file->getPathname() . ' into ' . $target);
+            }
         }
     }
 

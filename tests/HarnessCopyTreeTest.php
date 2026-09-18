@@ -119,6 +119,121 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-30 pin (t31-ocr30-4): a mid-landing IO failure answers
+     * the POLICY refusal, never the engine's vocabulary. The landing
+     * loop's mkdir()/copy() returns were unchecked, so a mid-landing
+     * failure (EACCES, ENOSPC, path-length) escaped the contract two
+     * ways: under PHPUnit (failOnWarning + convertWarningsToExceptions)
+     * the raw E_WARNING became an exception wearing PHPUnit's
+     * vocabulary, and outside PHPUnit the raw warning rode while
+     * copyTree() RETURNED NORMALLY having moved nothing. Both returns
+     * are owned now — the @ suppresses only the diagnostic (the
+     * builder's copyNormalized shape), the failed return refuses
+     * loudly naming the operation and the path.
+     */
+    public function testAMidLandingIoFailureAnswersThePolicyRefusalNeverTheEngineVocabulary(): void
+    {
+        /*
+         * The platform gate (the t31-ocr28-8 doctrine, this file's
+         * sibling legs): the landing loop's prefix is '/'-joined and
+         * the permission bits premise POSIX semantics.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The mid-landing IO legs premise the POSIX separator join and POSIX permission bits — this host\'s platform separator is not the POSIX one.');
+        }
+
+        $holder = sys_get_temp_dir() . '/wpct-copytree-io-' . uniqid('', true);
+        $from_nested = $holder . '/src-nested';
+        $from_flat = $holder . '/src-flat';
+        $locked_to = $holder . '/locked-dst';
+        $readonly_to = $holder . '/readonly-dst';
+
+        try {
+            /*
+             * Each leg's source carries exactly ONE file, shaped for
+             * the arm it drives: the nested tree cannot land without
+             * the recursive mkdir (the directory arm), the flat tree
+             * needs no mkdir at all (the copy arm) — the iteration
+             * order of a mixed tree would decide which arm a leg
+             * drives, and the legs pin one arm each.
+             */
+            mkdir($from_nested . '/sub', 0755, true);
+            file_put_contents($from_nested . '/sub/file.php', 'nested bytes');
+            mkdir($from_flat, 0755, true);
+            file_put_contents($from_flat . '/plain.php', 'plain bytes');
+            mkdir($locked_to, 0755, true);
+            mkdir($readonly_to, 0755, true);
+            file_put_contents($readonly_to . '/plain.php', 'stale bytes');
+
+            /*
+             * The permission-denial probe (the capability these legs
+             * premise, in the canSymlink shape — probed, never
+             * assumed): a process the permission bits cannot deny
+             * (root walks 0555 and 0444 alike open) can never drive
+             * the refusals, and legs that cannot go red are vacuous
+             * greens — skip, naming the premise. The probe restores
+             * its own permissions so the finally's cleanup owns it.
+             */
+            $probe = $holder . '/perm-probe';
+            mkdir($probe . '/inner', 0755, true);
+            chmod($probe . '/inner', 0555);
+            $denied = ! @mkdir($probe . '/inner/child');
+            chmod($probe . '/inner', 0755);
+            if (! $denied) {
+                $this->markTestSkipped('This process writes through 0555/0444 permission bits (root-shaped), so the mid-landing IO legs can never drive their refusals: the landings would succeed and the legs would pin nothing.');
+            }
+
+            /*
+             * The mkdir leg: the nested source file's landing must
+             * CREATE '$locked_to/sub' under a read-only parent — the
+             * recursive mkdir fails, and the refusal names the
+             * operation and the path (red at HEAD: the raw E_WARNING
+             * in PHPUnit's vocabulary, never the policy's own).
+             */
+            chmod($locked_to, 0555);
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($from_nested, $locked_to),
+                'A landing whose directory cannot be created must refuse the copy loudly, never wear the engine\'s vocabulary.',
+                RuntimeException::class
+            );
+            $this->assertStringContainsString('cannot be created', $caught->getMessage(), 'The refusal names the mkdir operation that failed.');
+            $this->assertStringContainsString($locked_to . '/sub', $caught->getMessage(), 'The refusal names the path the mkdir owned.');
+
+            /*
+             * The copy leg: a read-only FILE already squatting the
+             * landing path makes copy() itself fail with every
+             * directory writable — the copy return is owned too, its
+             * refusal naming the copy and both paths.
+             */
+            chmod($readonly_to . '/plain.php', 0444);
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($from_flat, $readonly_to),
+                'A landing whose file cannot be copied must refuse the copy loudly, never return normally over a partial tree.',
+                RuntimeException::class
+            );
+            $this->assertStringContainsString('cannot be copied', $caught->getMessage(), 'The refusal names the copy operation that failed.');
+            $this->assertStringContainsString($readonly_to . '/plain.php', $caught->getMessage(), 'The refusal names the path the copy owned.');
+
+            /*
+             * The happy-path control: the identical source into a
+             * writable target lands every byte — the owned returns
+             * changed nothing about the green landing.
+             */
+            $writable_to = $holder . '/writable-dst';
+            WpHarness::copyTree($from_nested, $writable_to);
+            $this->assertSame('nested bytes', (string) file_get_contents($writable_to . '/sub/file.php'), 'The happy path lands the nested file — both owned returns stay green over a writable landing.');
+            WpHarness::copyTree($from_flat, $writable_to . '/flat');
+            $this->assertSame('plain bytes', (string) file_get_contents($writable_to . '/flat/plain.php'), 'The happy path lands the flat file.');
+        } finally {
+            // The permission shapes must relax BEFORE the removal owner
+            // walks them (rrmdir cannot write through 0555/0444 bits).
+            @chmod($locked_to, 0755);
+            @chmod($readonly_to . '/plain.php', 0644);
+            WpHarness::rrmdir($holder);
+        }
+    }
+
+    /**
      * OCR-round-7 pin (t31-ocr7-4; mechanism narrative corrected in
      * t31-ocr7-8 over the refutation lens's driven probes — the guard
      * stands, the first justification did not): preconditions and
