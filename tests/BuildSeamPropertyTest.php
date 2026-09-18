@@ -830,10 +830,18 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             chmod($staged, 0000);
             $finalize = new ReflectionMethod(WpConnectorsBuild::class, 'closeArchiveOrThrow');
             $refused = null;
-            $warnings = array();
-            set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
-                $warnings[] = $errstr;
-
+            /*
+             * The capture is the SILENCER, never the requirement (OCR
+             * round 26, t31-ocr26-10): libzip's read warning on the
+             * chmod-0000 source is ENGINE-OPTIONAL — some builds emit
+             * none — and the non-empty-capture assertion once made it a
+             * hard premise of the leg (red on every quiet-zip host for
+             * a probe whose REFUSAL — the null assertion below — had
+             * already fired). The refusal owns the contract; the
+             * handler stays so a chatty build's warning cannot leak
+             * into the suite's warning conversion either way.
+             */
+            set_error_handler(static function (): bool {
                 return true;
             });
             try {
@@ -846,7 +854,6 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             chmod($staged, 0644);
             $this->assertNotNull($refused, 'A failed finalization must refuse the build, never fall through.');
             $this->assertStringContainsString('cannot finalize', $refused);
-            $this->assertNotSame(array(), $warnings, 'The probe must drive a REAL close() failure (libzip\'s own read warning is the evidence).');
             @unlink($closeTemp);
 
             // The forced failures happened at staging paths: the seeded
