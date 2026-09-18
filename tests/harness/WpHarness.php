@@ -707,6 +707,36 @@ final class WpHarness
     }
 
     /**
+     * A realpath() OUTPUT in the comparison vocabulary the containment
+     * verdicts speak — the platform owner's sibling arm (OCR round 29,
+     * t31-ocr29-4).
+     *
+     * The containment comparisons join their needles with '/' ('$a .
+     * "/"'), and on a non-POSIX host realpath() ANSWERS in the host's
+     * own separator vocabulary (backslash-joined), so the prefix
+     * compares could never match — containment either always-refused
+     * or always-passed, the verdict judging vocabulary noise. The one
+     * vocabulary at the owner: realpath output is normalized to the
+     * POSIX spelling before any containment judgment reads it. On a
+     * POSIX host the arm is the IDENTITY (a legal '\' in a filename
+     * stays — realpath never spells it a separator there), so the
+     * POSIX behavior rides byte-identical; the non-POSIX verdicts are
+     * construction-evident (DIRECTORY_SEPARATOR, a constant no test
+     * sim flips — the t31-ocr28-3 doctrine).
+     *
+     * @param string $resolved A realpath() answer (never false — the callers gate first).
+     * @return string The same path, '/'-joined.
+     */
+    private static function posix_comparison_vocabulary(string $resolved): string
+    {
+        if (self::isPosixHost()) {
+            return $resolved;
+        }
+
+        return str_replace('\\', '/', $resolved);
+    }
+
+    /**
      * Recursively removes a directory (test helper — the ONE scratch-tree
      * removal owner, t31-ocr1-9: the former per-test twins diverged in
      * error policy; the harness policy is the loud one, and every test
@@ -931,6 +961,14 @@ final class WpHarness
             throw new RuntimeException('WpHarness::copyTree() refuses a source whose realpath resolution failed — the tree is unreadable through this process (open_basedir, or it vanished mid-call): ' . $from);
         }
         /*
+         * The containment verdicts' one vocabulary (t31-ocr29-4): the
+         * source's realpath answer joins the comparisons in the POSIX
+         * spelling — a backslash-joined answer on a separator host
+         * could never match a '/'-joined needle, and containment
+         * judged vocabulary noise. The POSIX host rides the identity.
+         */
+        $source_real = self::posix_comparison_vocabulary($source_real);
+        /*
          * The SOURCE-side root collapse (t31-ocr12-3, the THIRD
          * symmetry): rrmdir() refuses '/', the TARGET side refuses a
          * root-collapsed landing (t31-ocr9-9's universal-container
@@ -1111,6 +1149,11 @@ final class WpHarness
             }
             $ancestor_real = realpath($ancestor);
             if (false !== $ancestor_real) {
+                // The verdicts' one vocabulary rides the anchor's
+                // answer too (t31-ocr29-4) — the collapse below joins
+                // the remainder with '/', and a backslash-joined
+                // anchor would fold into one giant segment.
+                $ancestor_real = self::posix_comparison_vocabulary($ancestor_real);
                 $remainder = substr(rtrim($to_walk, '/'), strlen($ancestor));
                 $collapsed = array();
                 foreach (explode('/', $ancestor_real . $remainder) as $segment) {
