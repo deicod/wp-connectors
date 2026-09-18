@@ -438,6 +438,113 @@ final class ToolchainSmokeTest extends TestCase
     }
 
     /**
+     * OCR-round-30 pin (t31-ocr30-3): the lint walk NAMES an unreadable
+     * subdirectory instead of dying as an uncaught SPL fatal. A
+     * directory entry the walking process cannot open — a
+     * permission-bearing entry, shapes this repo's own adversarial
+     * tests plant — aborts the bare RecursiveDirectoryIterator walk
+     * with its own UnexpectedValueException (from the constructor or
+     * mid-recursion through getChildren()), and the lint gate caught
+     * nothing: driven red at HEAD, the whole run died at exit 255 with
+     * a stack trace, no verdict, no summary — the unreadable tree (and
+     * every root after it) escaped the gate unnamed. The walk fences
+     * the abort the way the repo's other iterators do
+     * (check-conventions' glm17-17 conversion, inspect-artifact's
+     * t31-ocr24-2 walk — the scan_paths walk-unfenced residual head,
+     * landed at its owner): the construction rides the try, the abort
+     * converts to the gate's FAIL vocabulary naming the root, the
+     * files collected from the readable trees stay counted, and the
+     * exit fails.
+     */
+    public function testTheLintWalkNamesAnUnreadableSubdirectoryInsteadOfDyingUncaught(): void
+    {
+        /*
+         * The child-process capability gate first (t31-ocr16-12): the
+         * legs verdict through a spawned engine; on an exec-less host
+         * the battery names the capability and stops, never a fatal.
+         */
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process lint legs cannot run (t31-ocr16-12).');
+        }
+
+        $scratch = sys_get_temp_dir() . '/wpct-lint-locked-' . uniqid('', true);
+        $locked = $scratch . '/tests/locked';
+
+        try {
+            $this->assertTrue(mkdir($scratch . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php'), 'staging: the lint tool must copy — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php'), 'staging: the tool library must copy — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/connectors/demo', 0755, true), 'staging: the demo connector tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/good.php', "<?php\n// lintable connector source\n"), 'staging: the connector source must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/tests/unit', 0755, true), 'staging: the scratch tests tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/tests/unit/RealTest.php', "<?php\n// lintable tests-root source\n"), 'staging: the tests-root source must write — a staging failure fails as staging, never as the lint verdict.');
+
+            /*
+             * The readable-trees control FIRST: the same scratch,
+             * everything readable, exits 0 with every staged source
+             * counted — the fence below changes nothing about the
+             * walk's green shape.
+             */
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
+            $readable = implode("\n", $output);
+            $this->assertSame(0, $exit, "The readable scratch tree must lint green: {$readable}");
+            $this->assertStringContainsString('4 file(s) checked, 0 failure(s)', $readable, 'Every staged source counts (both real sources plus the copied tool files under bin/).');
+
+            /*
+             * The permission-denial probe (the capability this leg
+             * premises, in the canSymlink shape — probed, never
+             * assumed): a process the permissions cannot deny (root
+             * walks a chmod-000 directory open) can never drive the
+             * refusal, and a leg that cannot go red is a vacuous
+             * green — skip, naming the premise. The probe restores its
+             * own permissions so the finally's rrmdir owns it either
+             * way.
+             */
+            $probe = $scratch . '/perm-probe';
+            $this->assertTrue(mkdir($probe, 0755, true), 'staging: the probe directory must create — a staging failure fails as staging, never as the capability verdict.');
+            $this->assertTrue(chmod($probe, 0000), 'staging: the probe directory must lock — a staging failure fails as staging, never as the capability verdict.');
+            $probe_open = @opendir($probe);
+            $denied = false === $probe_open;
+            if (false !== $probe_open) {
+                closedir($probe_open);
+            }
+            $this->assertTrue(chmod($probe, 0755), 'staging: the probe directory must unlock again — a staging failure fails as staging, never as the finally\'s cleanup.');
+            if (! $denied) {
+                $this->markTestSkipped('This process walks a chmod-000 directory open (permissions cannot deny it — root-shaped), so the unreadable-subdirectory leg can never drive its refusal: the walk would read the tree and exit as the readable control above.');
+            }
+
+            /*
+             * The locked leg: the chmod-000 child under the tests root
+             * aborts the walk mid-recursion; the gate answers with the
+             * NAMED failure and a non-zero exit, the readable trees'
+             * count stays in the summary, and no uncaught SPL fatal
+             * rides (red at HEAD: exit 255, a stack trace, no
+             * summary, no verdict).
+             */
+            $this->assertTrue(mkdir($locked, 0755, true), 'staging: the locked tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($locked . '/Hidden.php', "<?php\n// unreachable through the lock\n"), 'staging: the locked-tree source must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(chmod($locked, 0000), 'staging: the locked tree must lock — a staging failure fails as staging, never as the lint verdict.');
+
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
+            $refusal = implode("\n", $output);
+            $this->assertSame(1, $exit, "The unreadable subdirectory fails the gate by its own named verdict — never the uncaught fatal's exit 255 (red at HEAD): {$refusal}");
+            $this->assertStringContainsString('unreadable subdirectory', $refusal, 'The refusal names the unreadable-entry class — the tree is named, never a stack trace.');
+            $this->assertStringContainsString('file(s) checked', $refusal, 'The partial count from the readable trees stays loud in the summary (the glm17-17 conversion shape).');
+            $this->assertStringNotContainsString('Fatal error', $refusal, 'No uncaught SPL fatal rides the walk anymore.');
+            $this->assertStringNotContainsString('Hidden.php', $refusal, 'The unreachable source itself is never linted — the tree is judged whole or not at all.');
+        } finally {
+            // The locked tree must unlock BEFORE the removal owner walks
+            // it (rrmdir cannot enter what the process cannot read).
+            @chmod($locked, 0755);
+            WpHarness::rrmdir($scratch);
+        }
+    }
+
+    /**
      * Every PHP file under the phpcs-compat ruleset's tree set, mirroring
      * its vendor/dist/tools and tests/fixtures/data exclusions.
      *
