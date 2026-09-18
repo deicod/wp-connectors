@@ -573,6 +573,22 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 @chmod($scratch['shared'] . '/Clock/ClockInterface.php', 0644);
             }
             @chmod($scratch['plugin'] . '/src/Provider/ExampleProvider.php', 0644);
+            /*
+             * The THIRD chmod'd path of the census (OCR round 28,
+             * t31-ocr28-7): the manifest-unreadable row's apply() leaves
+             * dist/checksums.txt at mode 0000, and this finally restored
+             * only the other two — WpHarness::rrmdir() unlinks with no
+             * chmod fallback, so on a host whose unlink cannot remove a
+             * 0000 file the whole wpct-battery-* scratch tree leaked per
+             * run. The restore lives HERE, at the row that broke it (the
+             * ocr27-9 doctrine: the site owning the state owns its
+             * cleanup — the forced-close leg's own finally already
+             * restores its staged-source twin the same way), not in
+             * rrmdir: the removal owner serves every caller, and a
+             * chmod-before-unlink fallback there would change the
+             * removal contract for a residue only this row plants.
+             */
+            @chmod($scratch['dist'] . '/checksums.txt', 0644);
             WpHarness::rrmdir($scratch['root']);
         }
     }
