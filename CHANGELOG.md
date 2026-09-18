@@ -6,6 +6,89 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 34)
+
+Thirty-fourth OCR-tool round (main 61/61, fully complete): 9
+findings, driver accepts all. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9. The
+round's shape: the twin-sweep generation — every r33 close had missed
+an owner (the root fence's third owner, the copyTree recursion twin,
+the one-guarded-consumer release), and each lands at the owner the
+doctrine already names; beside it the Win32-premise family in
+BuildSeamPropertyTest, and the super-root spelling finally lands at
+the guard itself after r29-6 derived the host's answer. Fixed as
+t31-ocr34-1..7 — one commit per finding (the three Win32-premise row
+classes as ONE commit) — plus this docs record, the full offline
+check green after every commit. Suite 1689 → 1690 tests, 46192 →
+46200 assertions, 3 skipped unchanged.
+
+- **The inspector's root fence owns the drive-root spelling
+  (t31-ocr34-1, bug:medium)** — round 33 taught the container class
+  to the harness's one predicate but this third owner was not swept:
+  `wp_connectors_inspect_rrmdir('C:\')` passed the fence (realpath's
+  raw answer over a drive root is 'C:\', never '/') and the walk
+  emptied THE DRIVE ROOT's children, the t31-ocr10-1 shape the fence
+  exists to kill. The fence judges the container class — the answer
+  folded through the separator vocabulary and refused as '/' or a
+  drive-letter root — with ONE census comment naming all three owners
+  of the universal-container class. Construction-evident; the '/'
+  refusal rides unchanged.
+- **The copy walk fences its recursion boundary (t31-ocr34-2,
+  bug:medium)** — the twin of the t31-ocr33-6 fence the removal walk
+  gained, and the r33 ledger's own residual line: a chmod-000 child
+  mid-tree passed hasChildren() on stat alone and the iterator died
+  in the SPL vocabulary (driven red at HEAD) while the ocr32-9 gate
+  probes only the source ROOT. The construction rides the try, the
+  abort converts to the harness's refusal with the SPL message riding
+  parenthetically, and the per-entry ocr30-4 refusals pass the fence
+  untouched; regression gated by the opendir probe (the t31-ocr4-1
+  doctrine).
+- **The universal-container predicate owns the super-root spelling
+  (t31-ocr34-3, bug:medium)** — POSIX leaves EXACTLY two leading
+  slashes implementation-defined and the SysV-lineage libcs preserve
+  realpath('//') as '//', so there the '/' compare alone let the
+  resolved answer past and `copyTree('//', …)` walked the root as a
+  copyable source. The predicate DERIVES the host's own realpath
+  ('//') probe answer (never the literal, the r29-6 doctrine — the
+  same both-answers acknowledgment the HarnessCopyTreeTest
+  precondition carries, now answered by the guard itself); on this
+  engine the probe collapses to '/' (driven), the arm subsumes into
+  the '/' compare, and the '//' source leg pins the contract for the
+  preserving host exactly the way the 'C:/' spelling does.
+- **The guarded-release sweep reaches every rrmdir caller
+  (t31-ocr34-4, bug:medium)** — the t31-ocr33-7 doctrine was applied
+  to exactly ONE consumer while every pre-existing caller invoked
+  rrmdir() bare, so a cleanup-time throw landed as an uncaught
+  exception wearing the caller's frame. ONE owner —
+  WpHarness::releaseScratch(), hoisted beside rrmdir() with the
+  census naming every caller battery — serves every release call
+  site (startup reclaims, mid-phase removals, every finally) across
+  the nine batteries, HarnessCopyTreeTest's private twin deleted in
+  the same sweep; rrmdir() keeps its loud contract and its
+  under-test callers stay bare by design.
+- **The Win32-premise gates ride the chmod-0000 and
+  trailing-edge-junk rows (t31-ocr34-5, test:medium ×3, one
+  commit)** — on Win32 chmod(0000) sets the read-only attribute only
+  (reads succeed, the LOUD row fails as a phantom "run succeeded
+  where it must refuse"), the namespace strips trailing dots/spaces
+  and rejects control bytes (the staged near-source lands a DIFFERENT
+  valid file), and libzip still reads the read-only staged source
+  (the forced-close leg's assertNotNull reds as a phantom finalization
+  defect). The needs_posix row flag consults the ONE platform owner
+  at runState()'s head, the forced-close leg carrying its inline twin
+  above the archive's creation.
+- **The embedded-vs-sources comparison speaks one separator
+  vocabulary (t31-ocr34-6, test:medium)** — zip entry names are
+  always '/'-joined while getPathname() joins through the host
+  separator, so on a non-POSIX host every stripped tail kept
+  backslash joins and the completeness verdict judged separator noise
+  (a permanent phantom FAIL). Both sides of the strip fold first;
+  identity on POSIX where a legal '\' filename byte stays.
+- **One backslash-authority leg restyled to the file's PSR style
+  (t31-ocr34-7, style:low)** — the single test method written in
+  WordPress coding style while the file and siblings use PSR;
+  whitespace only, verdicts byte-identical.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 33)
 
 Thirty-third OCR-tool round (main 61/61, fully complete — the first
