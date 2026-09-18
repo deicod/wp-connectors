@@ -437,6 +437,55 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR round 35 (t31-ocr35-5): the containment verdicts speak the
+     * CASE vocabulary the HOST speaks — derived, never assumed.
+     *
+     * macOS is a POSIX host passing every isPosixHost() gate while its
+     * filesystem (and class loading through it) resolves a case-variant
+     * target ('/SRC' beside a source '/src') to the SAME tree, so the
+     * byte-wise verdicts passed the exact self-copy shape the guard
+     * exists to kill. The host's behavior is DERIVED through the
+     * harness's probe owner (isCaseInsensitivePathHost(), planted in
+     * temp — the canSymlink shape), and this leg expects the
+     * HOST-CORRECT verdict on both arms: the refusal where the variant
+     * resolves to the source, the real copy where it names a different
+     * tree. ENGINE-PREMISE NOTE (the r34-3 discipline): this runner is
+     * Linux — case-SENSITIVE (driven: the probe answers false) — so
+     * the proceeding arm is what runs here, the copy landing a REAL
+     * second tree with the source intact; the refusal's red lives only
+     * on a case-insensitive host, and the leg pins the contract
+     * green-both-sides exactly the way the '//' super-root leg does.
+     */
+    public function testTheContainmentVerdictSpeaksTheHostsPathCaseVocabulary(): void
+    {
+        $from = sys_get_temp_dir() . '/wpct-copytree-case-' . uniqid('', true);
+        mkdir($from . '/src', 0755, true);
+        $this->stage($from . '/src/file.php', 'original bytes');
+
+        try {
+            if (WpHarness::isCaseInsensitivePathHost()) {
+                $caught = WpHarness::refusalOf(
+                    fn() => WpHarness::copyTree($from . '/src', $from . '/SRC'),
+                    'A case-variant target the host resolves to the source itself must refuse — the byte-wise verdict is the wrong verdict on a case-insensitive host.', \RuntimeException::class
+                );
+                $this->assertStringContainsString('refuses a target that is the source itself', $caught->getMessage(), 'The case-variant self-copy refuses through the containment vocabulary, never a silent same-tree no-op.');
+                $this->assertFileDoesNotExist($from . '/SRC/file.php', 'Nothing lands through the case-variant spelling on a host that resolves it to the source.');
+            } else {
+                // The case-SENSITIVE arm: the variant spelling names a
+                // DIFFERENT tree, the byte-wise verdict is the correct
+                // one, and the copy proceeds — a real second tree with
+                // the source intact.
+                WpHarness::copyTree($from . '/src', $from . '/SRC');
+                $this->assertFileExists($from . '/SRC/file.php', 'On a case-sensitive host the case-variant target is a distinct tree and the copy lands.');
+                $this->assertSame('original bytes', (string) file_get_contents($from . '/SRC/file.php'), 'The copy carries the source bytes.');
+                $this->assertSame('original bytes', (string) file_get_contents($from . '/src/file.php'), 'The source tree rides the copy untouched.');
+            }
+        } finally {
+            WpHarness::releaseScratch($from);
+        }
+    }
+
+    /**
      * OCR-round-22 split (t31-ocr22-2): every root-ANCHORED leg of
      * the precondition battery above rode spellings whose premise is
      * POSIX root resolution — the t31-ocr11-2 doctrine the legs' own

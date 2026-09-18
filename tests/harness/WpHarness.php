@@ -780,6 +780,56 @@ final class WpHarness
     }
 
     /**
+     * Whether this host RESOLVES path spellings case-insensitively —
+     * the ONE owner of the path-case premise (OCR round 35,
+     * t31-ocr35-5), derived like isPosixHost() above it: PROBED, never
+     * assumed from the platform boolean.
+     *
+     * macOS is the motivating shape: a POSIX host passing every
+     * isPosixHost() gate whose filesystem (and class loading through
+     * it) resolves '/scratch/SRC' and '/scratch/src' to the SAME tree
+     * — so a byte-wise containment verdict is wrong there exactly
+     * where it is right on Linux. The probe plants a MIXED-CASE file
+     * in temp (the canSymlink shape: random-suffixed, never
+     * pid-enumerable or pre-plantable) and asks file_exists() for a
+     * case-VARIANT spelling of it: existence of the variant is the
+     * host's own answer. The answer is CACHED — the probe is
+     * filesystem work and every containment verdict consults it. A
+     * host whose temp cannot be planted answers false (the
+     * case-sensitive arm: the byte-wise verdicts, correct wherever
+     * the variant spelling names a different file).
+     *
+     * @return bool True when a case-variant spelling of an existing file exists.
+     */
+    public static function isCaseInsensitivePathHost(): bool
+    {
+        if (null !== self::$case_insensitive_path_host) {
+            return self::$case_insensitive_path_host;
+        }
+        $base = 'wpct-pathcase-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        $probe = sys_get_temp_dir() . '/' . $base . 'AbC.probe';
+        $variant = sys_get_temp_dir() . '/' . $base . 'aBc.probe';
+        $planted = false !== @file_put_contents($probe, 'case probe');
+        $answer = $planted && file_exists($variant);
+        if ($planted) {
+            @unlink($probe);
+        }
+
+        return self::$case_insensitive_path_host = $answer;
+    }
+
+    /**
+     * The case-insensitivity probe's cached answer — HOST truth, never
+     * test state: reset() does not touch it (the host's filesystem does
+     * not reset between tests), and no test sim can flip it (a planted
+     * probe file answers the real question — a plant is the host's own
+     * case behavior).
+     *
+     * @var bool|null
+     */
+    private static $case_insensitive_path_host = null;
+
+    /**
      * A realpath() OUTPUT in the comparison vocabulary the containment
      * verdicts speak — the platform owner's sibling arm (OCR round 29,
      * t31-ocr29-4).
@@ -807,6 +857,40 @@ final class WpHarness
         }
 
         return str_replace('\\', '/', $resolved);
+    }
+
+    /**
+     * A resolved path in the CASE vocabulary the containment verdicts
+     * speak on a case-insensitive host — the platform owner's sibling
+     * arm (OCR round 35, t31-ocr35-5, beside posix_comparison_vocabulary
+     * above).
+     *
+     * The containment verdicts compare byte-wise, which is CORRECT
+     * exactly where the host resolves paths case-sensitively — but
+     * macOS is a POSIX host passing every isPosixHost() gate whose
+     * filesystem (and class loading through it) resolves a case-variant
+     * target ('/scratch/SRC' beside a source '/scratch/src') to the
+     * SAME tree, so the byte-wise verdicts passed the exact self-copy
+     * and mirror shapes the guard exists to kill (DERIVE FIRST — the
+     * ledger's platform doctrine, never a blind case-insensitive
+     * compare). The host's behavior is DERIVED through the probe owner
+     * (isCaseInsensitivePathHost()): where the host resolves
+     * case-sensitively (this runner: Linux) the arm is the IDENTITY and
+     * every byte-wise verdict rides unchanged — construction-evident,
+     * the fold's driven red living only on a case-insensitive host. The
+     * fold is the ASCII table through strtr (locale-independent, the
+     * Turkish-locale pins' own vocabulary — never strtolower).
+     *
+     * @param string $resolved A realpath()-derived answer (already folded through posix_comparison_vocabulary()).
+     * @return string The same path, ASCII-case-folded on a case-insensitive host; byte-identical otherwise.
+     */
+    private static function case_insensitive_containment_fold(string $resolved): string
+    {
+        if (! self::isCaseInsensitivePathHost()) {
+            return $resolved;
+        }
+
+        return strtr($resolved, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
     }
 
     /**
@@ -1414,7 +1498,22 @@ final class WpHarness
             }
             $to_walk = $resolved;
         }
-        if ($target_real === $source_real || 0 === strpos($target_real, $source_real . '/')) {
+        /*
+         * The containment verdicts speak the CASE vocabulary the host
+         * speaks (OCR round 35, t31-ocr35-5): both sides fold through
+         * the probe-derived arm (the case_insensitive_containment_fold
+         * owner) before comparing — the IDENTITY, byte-unchanged, on a
+         * case-sensitive host (this runner: Linux, where a case-variant
+         * spelling names a DIFFERENT tree and the copy proceeds), and
+         * the ASCII fold on a case-insensitive one (macOS resolves the
+         * variant to the SAME tree — the self-copy/mirror shapes the
+         * guard exists to kill, red only there; the engine-premise
+         * shape the r34-3 note records, pinned green-both-sides by the
+         * copy battery's case-variant leg).
+         */
+        $target_compare = self::case_insensitive_containment_fold($target_real);
+        $source_compare = self::case_insensitive_containment_fold($source_real);
+        if ($target_compare === $source_compare || 0 === strpos($target_compare, $source_compare . '/')) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target that is the source itself or inside it — a self-copy is a silent no-op success riding the engine\'s same-file mercy, and a nested target writes the copy into the very tree it reads: from ' . $from . ' into ' . $to);
         }
         /*
@@ -1434,7 +1533,7 @@ final class WpHarness
          * attempted '/<relative>' writes (driven); the root is judged
          * as the universal container now.
          */
-        if (self::resolvesToUniversalContainer($target_real) || 0 === strpos($source_real, $target_real . '/')) {
+        if (self::resolvesToUniversalContainer($target_real) || 0 === strpos($source_compare, $target_compare . '/')) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target that CONTAINS the source — the mirror of the nested-target refusal: a nested same-name segment would resolve the copy inside the very tree it reads, and a target collapsed to the filesystem ROOT contains every source: from ' . $from . ' into ' . $to);
         }
         /*
