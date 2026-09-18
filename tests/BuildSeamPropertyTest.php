@@ -664,7 +664,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         }
         for ($i = 0; $i < $zip->numFiles; ++$i) {
             $stat = $zip->statIndex($i);
-            if (is_array($stat) && $stat['size'] <= 0) {
+            /*
+             * A statIndex() FAILURE is a FAIL row too (OCR round 27,
+             * t31-ocr27-10, the t31-ocr11-6/11-10 strict-gate doctrine
+             * the reopen/extractTo twins above already carry): the
+             * is_array() guard turned a false return into a silent
+             * skip — the emptiness walk judged nothing over that
+             * entry and the battery passed vacuously, a green row
+             * over a judgment that never ran. The row names the
+             * return, never a silent pass.
+             */
+            if (false === $stat) {
+                $zip->close();
+                return array('class' => 'FAIL', 'why' => "entry index {$i} has no stat — statIndex() returned false, never a silent skip");
+            }
+            if ($stat['size'] <= 0) {
                 $zip->close();
                 return array('class' => 'FAIL', 'why' => "entry {$stat['name']} shipped empty");
             }
