@@ -4776,6 +4776,23 @@ FIXTURE;
      */
     public function testThePostExtractionSyntaxWalkAnswersAVerdictOverAnUnopenableTree(): void
     {
+        /*
+         * The root-runner skip fires BEFORE the construction (OCR
+         * round 25, t31-ocr25-6, the t31-ocr4-1 doctrine): the leg's
+         * whole premise is a directory the process cannot OPEN (umask
+         * 0444 landing every extraction directory at 0333) — uid 0
+         * reads through mode 0333 via the DAC override, the walk
+         * OPENS, $violations answers the clean judgment of a readable
+         * tree, and the three refusal assertions below would pass (or
+         * fail) as false positives over a premise that never
+         * constructed. The root runner skips visibly instead of
+         * asserting nothing, before a single byte of the scratch tree
+         * exists.
+         */
+        if (self::runningAsRootRunner()) {
+            $this->markTestSkipped('The umask-0444 walk-refusal leg premises a directory the process cannot open — uid 0 reads through mode 0333 (DAC override, the t31-ocr4-1 doctrine), the unopenable tree is unconstructible, and the refusal assertions would ride a premise that never fired.');
+        }
+
         $scratch = self::distDir() . '/.inspect-walkrefusal-' . getmypid();
         if (is_dir($scratch)) {
             WpHarness::rrmdir($scratch);
