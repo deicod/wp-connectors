@@ -3507,6 +3507,12 @@ function wp_connectors_literal_is_interpolated($quote, $literal)
  * @param string      $pluginDir Absolute plugin directory (the anchoring base).
  * @param string|null $scanRoot  Optional absolute walk root under $pluginDir (default: walk $pluginDir).
  * @return list<string> Violation messages ("<slug>: <file>: <message>").
+ * @throws RuntimeException When $scanRoot is not an absolute directory path
+ *         resolving inside $pluginDir — the boundary guard's deliberate
+ *         channel (t31-ocr23-3: build's catch holds RuntimeException, so
+ *         the firing boundary reaches the build's named exit-1 verdict
+ *         instead of an uncaught fatal exiting 255; every other refusal
+ *         this walk can raise rides the returned violation list).
  */
 function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
 {
