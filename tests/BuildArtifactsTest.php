@@ -7897,6 +7897,36 @@ FIXTURE;
     }
 
     /**
+     * OCR round 31 (t31-ocr31-1): the heredoc text-lens state is a
+     * STACK. The lexer genuinely produces a T_START_HEREDOC while
+     * another heredoc is still open — a heredoc nested inside the
+     * outer body's interpolation ({$a[<<<K … K]}, tokenized and driven
+     * on this engine) — and the four scalars the lens once carried
+     * were clobbered by the inner open: the outer body's chunks
+     * collected before the nesting were lost with no flush of their
+     * own (red at HEAD: the outerhead finding dropped while the
+     * nested body's survived), the outer's dynamic mark reset, the
+     * offsets re-anchored to the inner's start. Every nesting level
+     * answers its own verdict now, at its own byte offset; the
+     * single-level spellings keep theirs (the t31-ocr28-1 battery one
+     * method up).
+     */
+    public function testAHeredocNestedInsideTheOuterBodysInterpolationScansBothBodies(): void
+    {
+        $nested = "<?php\nnamespace Deicod;\n\$a = array();\n\$x = <<<EOT\nouterhead Deicod\\WpConnectors\\Shared\\Clock\n{\$a[<<<K\nnested Deicod\\WpConnectors\\Shared\\Storage\nK]}\noutertail Deicod\\WpConnectors\\Shared\\Widget\nEOT;\n";
+        $by_offset = array();
+        foreach (wp_connectors_shared_family_references($nested) as $reference) {
+            $by_offset[ $reference['offset'] ] = $reference['name'];
+        }
+        ksort($by_offset);
+        $this->assertSame(array(
+            60 => 'Deicod\\WpConnectors\\Shared',
+            109 => 'Deicod\\WpConnectors\\Shared',
+            158 => 'Deicod\\WpConnectors\\Shared',
+        ), $by_offset, 'Both bodies of the nested spelling scan at their own byte offsets — the outerhead chunk (60) is the one the clobbered state dropped at HEAD; the nested body (109) and the outer tail chunk (158) are the two it kept; each nesting level carries its own frame (chunks, offset, quote, dynamic), the label closes the innermost open, and EOF flushes every frame still open.');
+    }
+
+    /**
      * Fix-round pin (t31-r4-3): ZipArchive::close()'s false return was
      * ignored — a failed finalization took no catch path while OVERWRITE
      * had already destroyed the previous good zip, so the run continued

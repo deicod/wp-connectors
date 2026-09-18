@@ -1806,11 +1806,23 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
     // text lens never re-tokenizes what the walk already consumed.
     $count = count($tokens);
     $offset = 0;
-    $in_heredoc = false;
-    $heredoc_dynamic = false;
-    $heredoc_chunks = array();
-    $heredoc_offset = 0;
-    $heredoc_quote = '"';
+    /*
+     * The heredoc state is a STACK (OCR round 31, t31-ocr31-1): the
+     * lexer genuinely produces a T_START_HEREDOC while another heredoc
+     * is still open — a heredoc nested inside the outer body's
+     * interpolation ({$a[<<<K … K]}, tokenized and driven on this
+     * engine) — and the four scalars this lens once carried were
+     * CLOBBERED by the inner open: the outer body's chunks collected
+     * before the nesting were lost with no flush (red at HEAD: the
+     * outer finding dropped while the nested body's survived), the
+     * outer's dynamic mark reset, the offsets re-anchored to the
+     * inner's start. Each open heredoc carries its own frame now
+     * (chunks, offset, quote, dynamic); the label closes the
+     * INNERMOST open frame (the lexer's own pairing), and EOF flushes
+     * every frame still open, innermost first — the t31-ocr28-1 EOF
+     * doctrine rides for every stack level.
+     */
+    $heredoc_stack = array();
     /*
      * The heredoc FLUSH rides its ONE owner (OCR round 28, t31-ocr28-1):
      * the body once lived inline under T_END_HEREDOC alone, so a source
@@ -1825,7 +1837,11 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * label boundary and EOF call the same judgments and can never
      * drift apart.
      */
-    $flush_heredoc = function (array $heredoc_chunks, int $heredoc_offset, string $heredoc_quote, bool $heredoc_dynamic) use ($text_lens, $push_text_finding, $is_family): void {
+    $flush_heredoc = function (array $frame) use ($text_lens, $push_text_finding, $is_family): void {
+        $heredoc_chunks = $frame['chunks'];
+        $heredoc_offset = $frame['offset'];
+        $heredoc_quote = $frame['quote'];
+        $heredoc_dynamic = $frame['dynamic'];
         foreach ($heredoc_chunks as $chunk) {
             $text_lens('string', $chunk[0], $chunk[1]);
         }
@@ -1894,25 +1910,25 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
             continue;
         }
         if (T_START_HEREDOC === $id) {
-            $in_heredoc = true;
-            $heredoc_dynamic = false;
-            $heredoc_chunks = array();
-            $heredoc_offset = $token_offset;
-            $heredoc_quote = false !== strpos($text, "'") ? "'" : '"';
+            $heredoc_stack[] = array(
+                'chunks' => array(),
+                'offset' => $token_offset,
+                'quote' => false !== strpos($text, "'") ? "'" : '"',
+                'dynamic' => false,
+            );
 
             continue;
         }
         if (T_END_HEREDOC === $id) {
-            $flush_heredoc($heredoc_chunks, $heredoc_offset, $heredoc_quote, $heredoc_dynamic);
-            $in_heredoc = false;
-            $heredoc_chunks = array();
-            $heredoc_dynamic = false;
+            if ($heredoc_stack) {
+                $flush_heredoc(array_pop($heredoc_stack));
+            }
 
             continue;
         }
         if (T_ENCAPSED_AND_WHITESPACE === $id) {
-            if ($in_heredoc) {
-                $heredoc_chunks[] = array($text, $token_offset);
+            if ($heredoc_stack) {
+                $heredoc_stack[ count($heredoc_stack) - 1 ]['chunks'][] = array($text, $token_offset);
             } else {
                 // A chunk of an INTERPOLATED string: its value is
                 // runtime-built (the ledgered boundary), but its TEXT is
@@ -1922,9 +1938,10 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
 
             continue;
         }
-        // Interpolation pieces inside a heredoc mark its value dynamic.
-        if ($in_heredoc && (T_VARIABLE === $id || T_CURLY_OPEN === $id || T_DOLLAR_OPEN_CURLY_BRACES === $id)) {
-            $heredoc_dynamic = true;
+        // Interpolation pieces inside a heredoc mark its value dynamic
+        // (the INNERMOST open frame — the one whose body they sit in).
+        if ($heredoc_stack && (T_VARIABLE === $id || T_CURLY_OPEN === $id || T_DOLLAR_OPEN_CURLY_BRACES === $id)) {
+            $heredoc_stack[ count($heredoc_stack) - 1 ]['dynamic'] = true;
         }
         if (T_COMMENT === $id || T_DOC_COMMENT === $id) {
             $text_lens('comment', $text, $token_offset);
@@ -1946,8 +1963,8 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * the two spellings one verdict path, exactly as the name walk's
      * group-prefix EOF twin rides the same fence as its ';'.
      */
-    if ($in_heredoc) {
-        $flush_heredoc($heredoc_chunks, $heredoc_offset, $heredoc_quote, $heredoc_dynamic);
+    while ($heredoc_stack) {
+        $flush_heredoc(array_pop($heredoc_stack));
     }
 
     return $references;
