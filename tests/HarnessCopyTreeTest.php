@@ -539,6 +539,26 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('refuses a source collapsed to the filesystem ROOT', $caught->getMessage(), 'The leg\'s distinctive pin: the source-side root-collapse vocabulary — the generic policy-prefix check cannot fail, and a contains-\'/\' check rides it vacuously.');
             $this->assertStringContainsString(': /', $caught->getMessage(), 'The refusal names the caller\'s bare root spelling itself.');
             $refuses('/..', $from . '/dst-root-src', 'A \'/..\'-spelled source resolves to the filesystem ROOT on every POSIX host — the same refusal.');
+            /*
+             * The SUPER-ROOT spelling (OCR round 34, t31-ocr34-3): the
+             * exactly-two-leading-slashes spelling is the ONE member
+             * of the root class POSIX leaves implementation-defined —
+             * the SysV-lineage libcs preserve realpath('//') as '//',
+             * and there the predicate's '/' compare alone let the
+             * resolved answer past, the root walking as a copyable
+             * source. The predicate DERIVES the host's own probe
+             * answer now (the r29-6 doctrine — the same
+             * assertContains(['/', '//']) acknowledgment the
+             * precondition below carries, answered by the guard
+             * itself). Driven reality on THIS engine: realpath
+             * collapses the probe to '/', so the refusal here rides
+             * the '/' arm and the leg is green either side of the fix
+             * — the pin's charge is the PRESERVING host, where the
+             * red at HEAD lives; the derived arm is that host's belt,
+             * inert here exactly the way the 'C:/' spelling is
+             * (construction-evident, the ocr28-3 boundary).
+             */
+            $refuses('//', $from . '/dst-root-src', 'A \'//\'-spelled source resolves to the filesystem ROOT on every POSIX host — whichever spelling the host\'s realpath preserves for the super-root, the same refusal.');
             $this->assertFileDoesNotExist($from . '/dst-root-src', 'The root-source refusal moved no byte — the target was never created, never populated.');
 
             /*

@@ -831,12 +831,33 @@ final class WpHarness
      * a constant no test sim flips — the t31-ocr28-3 doctrine); the
      * POSIX '/' refusals ride unchanged beneath the same comparison.
      *
+     * The SUPER-ROOT member (OCR round 34, t31-ocr34-3): POSIX leaves
+     * EXACTLY two leading slashes implementation-defined, and the
+     * SysV-lineage libcs PRESERVE the spelling — realpath('//')
+     * answering '//' — so on those hosts a resolved answer could
+     * carry '//' past the '/' compare and copyTree('//', …) walked
+     * the root as a copyable source. The spelling is DERIVED from the
+     * host's own probe, never the literal (the r29-6 doctrine — the
+     * same both-answers acknowledgment the HarnessCopyTreeTest
+     * precondition's assertContains(['/', '//']) carries, now
+     * answered by the guard itself): on an engine whose realpath
+     * collapses the probe (this one: '/' for both spellings, driven)
+     * the arm subsumes into the '/' compare and rides inert — and no
+     * $resolved can carry '//' there anyway, every input this
+     * predicate reads being a realpath output. The inspector's own
+     * root fence carries the census note (t31-ocr34-1).
+     *
      * @param string $resolved A realpath()-derived answer, folded through posix_comparison_vocabulary().
      * @return bool True when the path is a universal container root.
      */
     private static function resolvesToUniversalContainer(string $resolved): bool
     {
-        return '/' === $resolved || 1 === preg_match('/\A[A-Za-z]:\/?\z/', $resolved);
+        if ('/' === $resolved || 1 === preg_match('/\A[A-Za-z]:\/?\z/', $resolved)) {
+            return true;
+        }
+        $super_root = realpath('//');
+
+        return false !== $super_root && $resolved === self::posix_comparison_vocabulary($super_root);
     }
 
     /**
