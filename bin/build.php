@@ -1873,7 +1873,29 @@ final class WpConnectorsBuild
     public static function collectFiles($pluginDir)
     {
         $files = array();
-        $pluginDir = rtrim($pluginDir, '/');
+        /*
+         * THE COLLECTOR TWINS' DUAL-SEPARATOR spelling (OCR round 40,
+         * t31-ocr40-2 — the r31-5 doctrine, swept to both collectors):
+         * the root strip and the below-root arithmetic speak BOTH
+         * separator spellings, never the native one alone —
+         * RecursiveDirectoryIterator joins child pathnames through
+         * the NATIVE separator, so a '/'-only strip and a '/'-only
+         * segment split mis-slice on a '\' host: the str_replace
+         * prefix strip failed wholesale (every "relative" kept its
+         * absolute spelling), and every downstream judgment over it
+         * mis-segmented — the dev-entry and near-source logic saw no
+         * segments, the extension checks judged the full path, the
+         * PSR-4 casing fence misfired (the collector twin one file
+         * over, same class). The strip is the lint walk's arithmetic
+         * (substr past the rtrimmed root's length + one separator
+         * byte, whatever spelling it is); the segment split rides
+         * DIRECTORY_SEPARATOR. On the POSIX host both are byte-
+         * identical to the former spellings; on a '\' host the strip
+         * judges the spelling CLASS, and the '\' arm costs residue
+         * only for a path literally named with trailing backslash
+         * bytes (the ocr29-3 trade, residue over victim).
+         */
+        $pluginDir = rtrim($pluginDir, '/\\');
         /*
          * THE WALK CENSUS (OCR round 36, t31-ocr36-2 — the
          * iterator-fence sweep finally whole): every
@@ -1908,8 +1930,8 @@ final class WpConnectorsBuild
             );
             foreach ($iterator as $file) {
                 /** @var SplFileInfo $file */
-                $relative = str_replace($pluginDir . '/', '', $file->getPathname());
-                $parts = explode('/', $relative);
+                $relative = (string) substr($file->getPathname(), strlen($pluginDir) + 1);
+                $parts = explode(DIRECTORY_SEPARATOR, $relative);
                 /*
                  * The exclusion filter runs FIRST (review round t31-r5-7):
                  * what never ships never judges the build. The symlink

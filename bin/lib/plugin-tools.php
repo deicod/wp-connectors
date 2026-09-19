@@ -4083,7 +4083,21 @@ function wp_connectors_is_embed_destination($entry, $slug)
 function wp_connectors_php_source_files($dir)
 {
     $files = array();
-    $dir = rtrim((string) $dir, '/');
+    /*
+     * The collector twins' DUAL-SEPARATOR spelling (OCR round 40,
+     * t31-ocr40-2 — the r31-5 doctrine, swept to both collectors; the
+     * census comment rides bin/build.php's collectFiles(), this
+     * method's twin): the root strip and every below-root segment
+     * split below speak BOTH separator spellings —
+     * RecursiveDirectoryIterator joins child pathnames through the
+     * NATIVE separator, so a '/'-only strip left the "relative" path
+     * absolute on a '\' host and every judgment over it mis-segmented
+     * (the near-source leading-side walk, the extension checks, the
+     * PSR-4 casing fence). POSIX rides byte-identical; the '\' arm
+     * costs residue only for a path literally named with trailing
+     * backslash bytes (the ocr29-3 trade).
+     */
+    $dir = rtrim((string) $dir, '/\\');
     /*
      * The walk fences its recursion boundary (OCR round 36,
      * t31-ocr36-2 — the collectFiles census one file over): an
@@ -4114,7 +4128,7 @@ function wp_connectors_php_source_files($dir)
             if (! $file->isFile()) {
                 continue;
             }
-            $relative = str_replace($dir . '/', '', $file->getPathname());
+            $relative = (string) substr($file->getPathname(), strlen($dir) + 1);
             // The extension judgment rides the ONE case-insensitive owner
             // (t31-r4-9): nothing is silently skipped by a casing the
             // judgment cannot see. For THIS tree the judgment is then
@@ -4174,7 +4188,7 @@ function wp_connectors_php_source_files($dir)
              * other edge. Every segment of a collected source's path
              * must survive its own edge strip.
              */
-            foreach (explode('/', $relative) as $segment) {
+            foreach (explode(DIRECTORY_SEPARATOR, $relative) as $segment) {
                 if ($segment !== trim($segment, wp_connectors_path_edge_junk())) {
                     throw new RuntimeException(sprintf(
                         'shared source %s is a NEAR-SOURCE spelling (a path segment carries a leading or trailing whitespace, control byte, or dot) — it collects and ships, but the shipped autoloader maps class names onto label-shaped paths, so its class is a class no loader can address; rename the segment',
@@ -4262,7 +4276,7 @@ function wp_connectors_php_source_files($dir)
             }
             $below_root = array_slice($declared_segments, count($root_lower_segments));
             $directories = array();
-            foreach (explode('/', dirname($relative)) as $segment) {
+            foreach (explode(DIRECTORY_SEPARATOR, dirname($relative)) as $segment) {
                 if ('' !== $segment && '.' !== $segment) {
                     $directories[] = $segment;
                 }
