@@ -1219,6 +1219,39 @@ final class WpHarness
     }
 
     /**
+     * The suite's ONE STDERR writer — the STREAM resolved, never the
+     * CLI-only STDERR constant (OCR round 38, t31-ocr38-4; hoisted to
+     * one spelling for both its sites by OCR round 39, t31-ocr39-6):
+     * STDERR is defined by the CLI SAPI only, and in any other SAPI
+     * (cgi, fpm, a worker) a bare fwrite(STDERR, …) raises an
+     * undefined-constant Error — from INSIDE the release guard's own
+     * catch, the t31-ocr33-7 verdict-replacement defect re-opened by
+     * its own diagnostic, and from any mid-test notice the suite
+     * writes beside it. php://stderr answers in every SAPI; a stream
+     * that cannot be opened (fd 2 closed) degrades silently to no
+     * diagnostic, never a throw. The release guard below and every
+     * loud skip/notice the tests write ride this one spelling.
+     *
+     * @param string $message The diagnostic to write (the caller spells its own trailing newline).
+     * @return void
+     */
+    public static function stderrNotice(string $message): void
+    {
+        $stderr = @fopen('php://stderr', 'w');
+        if (false !== $stderr) {
+            fwrite($stderr, $message);
+        }
+    }
+
+    /*
+     * Each docblock sits directly above its OWN declaration (OCR
+     * round 40, t31-ocr40-4): only the LAST docblock before a
+     * declaration attaches — releaseScratch()'s contract rode
+     * orphaned above stderrNotice()'s own docblock, so the method
+     * shipped with no API documentation while its whole census was
+     * dead text.
+     */
+    /**
      * The guarded scratch release (OCR round 34, t31-ocr34-4 — the
      * t31-ocr33-7 doctrine, swept to the whole census): rrmdir()'s
      * contract is the LOUD throw, and PHP REPLACES — never chains — an
@@ -1247,31 +1280,6 @@ final class WpHarness
      * @param string ...$trees Absolute scratch trees to release, in order.
      * @return void
      */
-    /**
-     * The suite's ONE STDERR writer — the STREAM resolved, never the
-     * CLI-only STDERR constant (OCR round 38, t31-ocr38-4; hoisted to
-     * one spelling for both its sites by OCR round 39, t31-ocr39-6):
-     * STDERR is defined by the CLI SAPI only, and in any other SAPI
-     * (cgi, fpm, a worker) a bare fwrite(STDERR, …) raises an
-     * undefined-constant Error — from INSIDE the release guard's own
-     * catch, the t31-ocr33-7 verdict-replacement defect re-opened by
-     * its own diagnostic, and from any mid-test notice the suite
-     * writes beside it. php://stderr answers in every SAPI; a stream
-     * that cannot be opened (fd 2 closed) degrades silently to no
-     * diagnostic, never a throw. The release guard below and every
-     * loud skip/notice the tests write ride this one spelling.
-     *
-     * @param string $message The diagnostic to write (the caller spells its own trailing newline).
-     * @return void
-     */
-    public static function stderrNotice(string $message): void
-    {
-        $stderr = @fopen('php://stderr', 'w');
-        if (false !== $stderr) {
-            fwrite($stderr, $message);
-        }
-    }
-
     public static function releaseScratch(string ...$trees): void
     {
         foreach ($trees as $tree) {
