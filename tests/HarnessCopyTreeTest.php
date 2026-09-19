@@ -320,16 +320,24 @@ final class HarnessCopyTreeTest extends TestCase
                 closedir($locked_probe);
                 chmod($locked, 0755);
                 /*
-                 * The skip is LOUD (OCR round 35, t31-ocr35-8): the
-                 * branch once restored 0755 and rode through green —
-                 * the ocr32-9 regression pin never having run, a
-                 * VACUOUS green wearing the leg's own pass (the exact
-                 * class the root-landing legs' skips name). The file's
-                 * own uid-0 idiom: the runner that opens chmod-0000
-                 * directories cannot construct the unlistable shape,
-                 * and the skip says so.
+                 * The leg gates ITSELF, the battery continues (OCR
+                 * round 38, t31-ocr38-5): this branch once fired
+                 * markTestSkipped MID-TEST, and a skip aborts the
+                 * ENTIRE remaining battery — so on the root-runner
+                 * shape (the ocr4-1 uid-0 class runningAsRootRunner()
+                 * exists to name, the primary CI runner) the
+                 * self-copy, nested, mirror, alias, file-in-chain,
+                 * dangling-link, and symlink legs plus the
+                 * source-intact pins below NEVER RAN: copyTree
+                 * containment coverage going dark exactly where CI
+                 * rides. The sibling legs' own shape (canSymlink
+                 * below) gates the leg instead, and the r35-8
+                 * loudness doctrine survives WITHOUT the abort — the
+                 * skip says so on STDERR (the release guard's own
+                 * channel), never a silent gate, never a vacuous
+                 * green wearing the leg's pass.
                  */
-                $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 / DAC override — t31-ocr4-1); the unlistable-source shape is unconstructible here, so the ocr32-9 refusal pin cannot run on this runner.');
+                fwrite(STDERR, 'unlistable-source leg skipped: this host opens chmod-0000 directories (uid 0 / DAC override — t31-ocr4-1), so the ocr32-9 refusal pin is unconstructible here; the battery\'s remaining legs continue (t31-ocr38-5)' . "\n");
             } else {
                 $refuses($locked, $from . '/dst-locked', 'An EXISTING but unlistable source must refuse with the policy exception, never the SPL iterator\'s surprise.');
             }
