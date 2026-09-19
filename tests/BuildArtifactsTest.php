@@ -6516,6 +6516,21 @@ FIXTURE;
             'member name with a mid-name space' => 'use Deicod\\WpConnectors\\{Foo Bar};',
             'member name with a mid-name hyphen' => 'use Deicod\\WpConnectors\\{Foo-Bar};',
             'digit-initial member sub-segment' => 'use Deicod\\WpConnectors\\{Storage\\1y};',
+            /*
+             * OCR round 46 (t31-ocr46-2): the reserved-vocab oracle's
+             * HARD half once compared each token's TEXT to the FULL
+             * alias, so a spelling that lexes as MORE THAN ONE token
+             * matched no single token and fell through as legal —
+             * '0foo' is T_LNUMBER('0') + T_STRING('foo') — and the
+             * member grammar re-emitted the digit-initial alias
+             * verbatim beside the rewritten sibling (red at HEAD:
+             * returned normally; the member NAME's own shape grammar,
+             * t31-ocr43-3, never judged the ALIAS slot). The walk
+             * derives the verdict from the token SEQUENCE now: the
+             * alias position must hold EXACTLY ONE identifier token.
+             */
+            'digit-initial member alias: 0foo (lexes as two tokens)' => 'use Deicod\\WpConnectors\\{Shared\\Clock as 0foo};',
+            'digit-initial member alias: 9x' => 'use Deicod\\WpConnectors\\{Shared\\Clock as 9x};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass IllegalGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/IllegalGroupStore.php'),

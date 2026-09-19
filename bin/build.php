@@ -1747,15 +1747,21 @@ final class WpConnectorsBuild
      * - the HARD half: every keyword that lexes as its OWN token id
      *   (array, fn, list, if, foreach, function, class, new, match,
      *   readonly, … — the oracle REFUSED every own-token keyword in
-     *   the slot and accepted NONE) — DERIVED AT RUNTIME by
-     *   tokenizing the candidate in the alias position: anything the
-     *   lexer does not spell T_STRING there is reserved, so a future
-     *   reserved word joins the class the day the engine mints it.
+     *   the slot and accepted NONE) and every spelling that lexes as
+     *   MORE THAN ONE token ('0foo' is T_LNUMBER('0') + T_STRING
+     *   ('foo') — engine-illegal in the slot the same way, OCR round
+     *   46, t31-ocr46-2) — DERIVED AT RUNTIME by tokenizing the
+     *   candidate in the alias position: the position must hold
+     *   EXACTLY ONE T_STRING token spelling the full alias, so a
+     *   future reserved word joins the class the day the engine mints
+     *   it and a multi-token spelling the day the lexer mints one.
      *   The round's hole: the round-32 census enumerated the soft
      *   half alone, so `use …\Shared\Clock as array;` matched the
      *   alias grammar's identifier bytes and shipped parse-error
      *   bytes in the zip at exit 0 (php -l refuses every hard
-     *   keyword in the slot, case-insensitively).
+     *   keyword in the slot, case-insensitively); the round-46 hole
+     *   was the walk's own — a TEXT compare against the full alias
+     *   is invisible to a token stream, so '0foo' fell through.
      *
      * The census's shared rule: the alias grammar rejects what the
      * engine rejects, at EVERY seam that re-emits an alias — the
@@ -1780,21 +1786,55 @@ final class WpConnectorsBuild
             return true;
         }
         if (1 !== preg_match('/\A[A-Za-z0-9_]+\z/', $alias)) {
-            // Not identifier bytes — never this census's verdict (the
-            // shape seams own the not-an-identifier refusal).
+            // Not identifier BYTES — never this census's verdict (the
+            // shape seams own the not-an-identifier refusal). The
+            // routing gate stays the UN-ANCHORED word class on purpose
+            // (OCR round 46, t31-ocr46-2): it routes separators and
+            // spaces back to the shape seams while word bytes — a
+            // digit-initial spelling included — flow to the token walk
+            // below, which owns them; a label-grammar gate here would
+            // pre-refuse the walk's own class before it is judged.
             return false;
         }
-        // The HARD half, derived from the lexer at every call: a
-        // keyword lexes as its own token id (never T_STRING) in the
-        // alias position, case-insensitively — the one spelling of
-        // the class that cannot drift from the engine.
+        /*
+         * The HARD half, derived from the lexer at every call: the
+         * alias position's token stream must be EXACTLY ONE
+         * identifier token spelling the FULL alias — a keyword lexes
+         * as its own token id (never T_STRING) in the position,
+         * case-insensitively, and a spelling that lexes as MORE THAN
+         * ONE token is engine-illegal by the same census ('0foo' is
+         * T_LNUMBER('0') + T_STRING('foo'), '9x' T_LNUMBER('9') +
+         * T_STRING('x'); OCR round 46, t31-ocr46-2 — the walk once
+         * compared each token's TEXT to the FULL alias, so a
+         * multi-token spelling matched no single token and fell
+         * through as legal, and the member grammar re-emitted the
+         * digit-initial alias at exit 0). The one spelling of the
+         * class that cannot drift from the engine: count and name the
+         * tokens, never a text compare against the whole.
+         */
+        $position_tokens = array();
+        $in_position = false;
         foreach (token_get_all("<?php use A\\B as {$alias};") as $token) {
-            if (is_array($token) && T_STRING !== $token[0] && $alias === $token[1]) {
-                return true;
+            if (is_array($token) && T_WHITESPACE === $token[0]) {
+                continue;
             }
+            $text = is_array($token) ? $token[1] : (string) $token;
+            if (!$in_position) {
+                if (is_array($token) && T_AS === $token[0]) {
+                    $in_position = true;
+                }
+                continue;
+            }
+            if (';' === $text) {
+                break;
+            }
+            $position_tokens[] = $token;
         }
 
-        return false;
+        return !(1 === count($position_tokens)
+            && is_array($position_tokens[0])
+            && T_STRING === $position_tokens[0][0]
+            && $alias === $position_tokens[0][1]);
     }
 
     /**
