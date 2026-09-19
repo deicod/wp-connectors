@@ -6498,6 +6498,32 @@ FIXTURE;
         $this->assertStringContainsString('use function Deicod\\WpConnectors\\OpenAiOauth\\Shared\\true;', $tail_dissolver_battery, 'A function-kind special-class leaf is exempt (the fatal is a class-name check) and rewrites.');
 
         /*
+         * OCR round 49 (t31-ocr49-1/2/3 — the eleventh use-grammar
+         * family): the LEFT-ANCHOR generation. The engine lexes
+         * `Foo\namespace` and `Foo\use` as ONE qualified-name token
+         * (the mid-name demotion), so a keyword planted behind the
+         * separator is invisible to the token-aware passes and the
+         * byte patterns matched it at its SECOND occurrence — the
+         * declaration seam carried NO left anchor (splicing the
+         * rewritten target mid-name, parse-error bytes at exit 0),
+         * and both `use` lookbehinds guarded word bytes only, the
+         * separator passing (`\` is not [A-Za-z0-9_]). All the
+         * spellings below answer the postcondition's
+         * family-reference refusal now — the mid-name span never
+         * enters any rewrite.
+         */
+        foreach (array(
+            'mid-name namespace (the declaration seam, no anchor at all)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Foo\\namespace Deicod\\WpConnectors\\Shared;\nclass LeftAnchorStore\n{\n}\n",
+        ) as $label => $source) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/LeftAnchorStore.php'),
+                "A keyword planted behind the namespace separator must never enter the rewrite ({$label}) — red at HEAD: the pattern matched the mid-name keyword and spliced rewritten bytes beside the survivor, parse-error output at exit 0.", \RuntimeException::class
+            );
+            $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The refusal is the postcondition's family-reference verdict — the mid-name span rides verbatim, never rewritten ({$label}).");
+            $this->assertStringContainsString('LeftAnchorStore.php', $refusal->getMessage(), "The refusal names the file ({$label}).");
+        }
+
+        /*
          * Fix-round pin (t31-r4 K1 / t31-r4-4), restructured by t31-r7:
          * group-use MEMBER spellings — the prefix before '{' is
          * Deicod\WpConnectors itself and the members carry the Shared

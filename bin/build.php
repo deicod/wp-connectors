@@ -206,10 +206,35 @@ final class WpConnectorsBuild
          * — parse-error bytes at exit 0. The tail anchors its first
          * byte class at [A-Za-z_] like every label position in the
          * use pattern one seam below (the one census comment there).
+         *
+         * The LEFT-ANCHOR census (OCR round 49, t31-ocr49-1/2/3 —
+         * the eleventh use-grammar family, ONE doctrine at every
+         * keyword-bearing pattern this rewriter spells): every seam
+         * here guards the keyword's LEFT boundary, and the guard's
+         * class is the STATEMENT-START boundary — a match is legal
+         * only where nothing readable precedes the keyword: never a
+         * word byte, never the namespace separator `\`. The word-byte
+         * arm the plain-use seam always carried was never the whole
+         * class: the engine LEXES `Foo\namespace` and `Foo\use` as
+         * ONE qualified-name token (the mid-name demotion this
+         * file's own relative-walk note documents), so a keyword
+         * planted behind a separator is invisible to the token-aware
+         * passes and matches the byte patterns at its SECOND
+         * occurrence. This declaration pattern carried NO left
+         * anchor at all (t31-ocr49-1): `use Foo\namespace
+         * Deicod\WpConnectors\Shared;` spliced the rewritten target
+         * mid-name — parse-error bytes in the zip at exit 0 (driven
+         * at HEAD). The plain-use lookbehind and the group-use
+         * prefix pattern guard word bytes only and ride the same
+         * anchor in this round's own commits (t31-ocr49-2/3). All
+         * three spell the one anchor `(?<![A-Za-z0-9_\\\\])`: word
+         * byte or separator, the match refuses, the spelling rides
+         * verbatim, and the postcondition's family-reference verdict
+         * owns it — never a rewrite that splices mid-name.
          */
         $rewritten = self::replaceOrThrow(
             preg_replace(
-                '/((?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[A-Za-z_][A-Za-z0-9_]*)*\s*;)/',
+                '/((?<![A-Za-z0-9_\\\\])(?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[A-Za-z_][A-Za-z0-9_]*)*\s*;)/',
                 '$1' . $target_escaped . '$2',
                 $rewritten
             ),
