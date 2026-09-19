@@ -4970,6 +4970,36 @@ FIXTURE;
                 wp_connectors_inspect_rrmdir('..');
                 $this->assertFileExists($degenerate . '/survivor.txt', "The whole-path degenerate '..' never walks the parent of the CALLER'S CWD — driven red at HEAD: this fire emptied the parent tree through the spelling.");
                 $this->assertDirectoryExists($degenerate . '/child', 'The CWD tree itself survives the degenerate fires — the walk never ran.');
+                /*
+                 * The BARE DRIVE-LETTER degenerate (OCR round 39,
+                 * t31-ocr39-2): the whole-path fence refused '', '.',
+                 * and '..' but 'C:' survived it — rtrim keeps the
+                 * spelling (no trailing separator, no tail to strip)
+                 * and is_dir('C:') is TRUE on Windows: the walk names
+                 * the DRIVE ROOT, a directory the caller never named,
+                 * the exact class this fence exists to kill. The leg
+                 * creates a REAL directory whose own NAME is the bare
+                 * drive letter (a legal, if odd, filename on this
+                 * POSIX host, so the fire is real at HEAD — driven
+                 * red: the walk EMPTIED the drive-letter-named tree)
+                 * and the fence refuses it anyway: the fence judges
+                 * the spelling CLASS, never the host it runs on, and
+                 * residue for the pathological drive-letter-named
+                 * entry beats the drive-root walk the same bytes ride
+                 * on a separator host (the ocr29-3 trade). The 'C:/'
+                 * twin folds through the strip loop's rtrim into the
+                 * same bare spelling — one fence, both spellings. The
+                 * Windows-native drive-root walk itself is
+                 * construction-evident (DIRECTORY_SEPARATOR, the
+                 * ocr28-3 doctrine), the fence's drive-root vocabulary
+                 * the ocr33-5 spelling set below already names.
+                 */
+                mkdir('C:', 0755, true);
+                file_put_contents('C:/survivor.txt', 'drive-letter survivor');
+                wp_connectors_inspect_rrmdir('C:');
+                $this->assertFileExists($degenerate . '/child/C:/survivor.txt', "The bare drive-letter spelling 'C:' answers the refusal family — a degenerate whole-path names no caller-named root, and its is_dir() truth on a separator host names the DRIVE ROOT (driven red at HEAD: the walk emptied the drive-letter-named tree).");
+                wp_connectors_inspect_rrmdir('C:/');
+                $this->assertFileExists($degenerate . '/child/C:/survivor.txt', "The 'C:/' spelling folds through the strip loop's rtrim into the same bare drive letter — the same refusal, both spellings one fence.");
             } finally {
                 chdir($cwd);
             }

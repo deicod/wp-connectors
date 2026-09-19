@@ -807,8 +807,23 @@ function wp_connectors_inspect_rrmdir($dir)
      * handed); every one refuses, never walks. '' rides the same
      * fence: it is the '/..'/'/.' strips' own residue, a spelling
      * that names nothing.
+     *
+     * The BARE DRIVE-LETTER spelling refuses the same way (OCR
+     * round 39, t31-ocr39-2): 'C:' and 'C:/' survive the strip
+     * loop as the bare drive letter alone (rtrim keeps it — no
+     * trailing separator, no tail to strip), and is_dir('C:') is
+     * TRUE on Windows: the walk would name the DRIVE ROOT, a
+     * directory the caller never named — the same degenerate
+     * whole-path class this fence exists to kill. The drive-root
+     * vocabulary is the spelling set the ocr33-5 root clause
+     * below already names; judged here on the STRIPPED probe,
+     * before any is_dir() can follow the spelling. On a POSIX
+     * host the cost is residue for the pathological
+     * drive-letter-NAMED entry (the ocr29-3 trade, one spelling
+     * over), driven red at HEAD through a literal 'C:'
+     * directory: the walk emptied it.
      */
-    if ($parent_walking || '' === $probe || '.' === $probe || '..' === $probe) {
+    if ($parent_walking || '' === $probe || '.' === $probe || '..' === $probe || 1 === preg_match('/\A[A-Za-z]:\z/', $probe)) {
         return;
     }
     if (is_link($probe)) {
