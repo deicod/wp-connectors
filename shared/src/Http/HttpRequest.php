@@ -115,10 +115,10 @@ final class HttpRequest {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param string               $method  HTTP method token (stored upper-cased).
-	 * @param string               $url     Absolute http(s) URL with a host.
-	 * @param array<string, mixed> $headers Header map; non-empty string keys, string values.
-	 * @param string|null          $body    Body, or null for none.
+	 * @param string                   $method  HTTP method token (stored upper-cased).
+	 * @param string                   $url     Absolute http(s) URL with a host.
+	 * @param array<int|string, mixed> $headers Header map; non-empty string keys (an all-digit spelling arrives as a PHP integer key — the engine coerces canonical digit strings, and HeaderMap restores the string form, t31-r2-4), string values.
+	 * @param string|null              $body    Body, or null for none.
 	 * @throws InvalidArgumentException When the method, URL, or header map violates the contract.
 	 */
 	public function __construct( string $method, string $url, array $headers = array(), ?string $body = null ) {

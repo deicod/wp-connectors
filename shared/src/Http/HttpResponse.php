@@ -63,9 +63,9 @@ final class HttpResponse {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param int                  $status  Final status code (200-599).
-	 * @param array<string, mixed> $headers Header map; non-empty string keys, string values.
-	 * @param string               $body    Body as received (may be empty).
+	 * @param int                      $status  Final status code (200-599).
+	 * @param array<int|string, mixed> $headers Header map; non-empty string keys (an all-digit spelling arrives as a PHP integer key — the engine coerces canonical digit strings, and HeaderMap restores the string form, t31-r2-4), string values.
+	 * @param string                   $body    Body as received (may be empty).
 	 * @throws InvalidArgumentException When the status or header map violates the contract.
 	 */
 	public function __construct( int $status, array $headers = array(), string $body = '' ) {
