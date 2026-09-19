@@ -6,6 +6,126 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 45)
+
+Forty-fifth OCR-tool round (main 61/61, fully complete): 15 findings,
+all accepted and fixed. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15.
+The round's shape: the WHATWG host-parser generation proper —
+percent-decode of special-scheme hosts (two hosts, one URL), the
+whole-input tab strip, RFC 6874 zone ids named at their own screen —
+beside the tchar census collapsed to its single owner, the
+verdict-channel conversion swept to both siblings, the glob-false
+pair, and the symlink-cycle bound. Round 45 answered NEW findings,
+so the OCR phase continues per plan. Fixed as t31-ocr45-1..12 — one
+commit per finding, plus this docs record, the full offline check
+green after every commit. Suite 1704 → 1710 tests, 46357 → 46399
+assertions, 3 skipped unchanged.
+
+- **The URL host refuses percent-encoded spellings (t31-ocr45-1,
+  security:medium)** — the URL Standard's host parser PERCENT-DECODES
+  a special-scheme host before domain-to-ASCII (§6.4), so a browser
+  loading 'https://id%70.example/' contacts idp.example while this
+  parse and every redacted form named the encoded spelling verbatim:
+  two hosts named by one URL over the same browser-facing channel
+  (the device-flow verification URI) the backslash and strip-set
+  screens closed for their own bytes — the r28-6 refusal class one
+  generation over. A host carrying %XX answers the refusal at the
+  host region (non-bracket; the bracket literal's percent spelling is
+  the zone id's own screen), never decoded. Driven: four spellings
+  refuse at both consumers (red at HEAD: constructed); percent-encoded
+  paths, queries, and userinfo stay legal.
+- **The strip-set screen owns the whole input (t31-ocr45-2,
+  bug:low)** — the URL Standard removes tabs and newlines from the
+  ENTIRE input before parsing, but the r44-1 probe judged only the
+  extracted authority: a tab in the path or query rode validation
+  green while every WHATWG consumer saw the stripped spelling and the
+  engine's parse_url() rewrote the query's tab to a third
+  ('code=ab_cd') — three URLs named by one input. The probe rides the
+  entry now; the r44-1 authority spellings stay refused as a subset.
+  Driven: path/query/fragment tabs refuse at both consumers (red at
+  HEAD: the path shape constructed).
+- **The bracket content leg names the RFC 6874 zone-id class
+  (t31-ocr45-3, bug:low)** — 'https://[fe80::1%25eth0]/' is a
+  spelling the WHATWG parser accepts, but FILTER_VALIDATE_IP (the one
+  IP-literal validator the screen charters) rejects the %25-spelled
+  literal and the PHP-side transport cannot resolve it; the literal
+  died on the generic malformed-host sentence that names no zone id.
+  The spelling keeps its refusal (acceptance would hand-roll a second
+  IP grammar beside the engine's validator) under its OWN name — a
+  percent probe rides first in the content leg. Driven: four
+  spellings answer the named verdict (red at HEAD: the generic
+  sentence); plain IPv6 unchanged.
+- **The tchar delimiter census rides its one owner (t31-ocr45-4,
+  maintainability:medium)** — the masking boundary's strtr census was
+  a hand-spelled copy of the grammar's own class with nothing
+  structural tying the spellings (the single-owner drift
+  ocr8-8/ocr40-3 exist to prevent, claimed in prose only). HeaderMap
+  gains NAME_TOKEN_DELIMITER_CLASS; NAME_TOKEN_PATTERN COMPOSES from
+  it (byte-identical, verified) and the classifier consumes the same
+  constant — the two spellings cannot drift. Construction-evident;
+  the masking battery green byte-identically.
+- **Both VO constructor annotations speak the true header key domain
+  (t31-ocr45-5, documentation:low ×2)** — array<int|string, mixed>,
+  mirroring HeaderMap's own domain (an all-digit name arrives as an
+  engine-coerced int key and is restored, t31-r2-4). Doc-only.
+- **Both verdict channels convert every Throwable (t31-ocr45-6,
+  bug:medium + maintainability:low)** — the run-under-test catch
+  spoke RuntimeException alone, the extra-channel catch
+  AssertionFailedError alone: any other Throwable the adversarial
+  state surfaced escaped runState() as a test ERROR and aborted the
+  whole row table. The ocr30-6 conversion doctrine swept to both
+  siblings. Driven: a planted ValueError inside a CLEAN row answers
+  that row's FAIL verdict naming the class (red at HEAD: the throw
+  escaped as a test ERROR).
+- **The collector's iterator construction rides inside the guarded
+  region (t31-ocr45-7, maintainability:low)** — an unopenable scan
+  root threw from the RecursiveDirectoryIterator constructor BEFORE
+  the try, the finally never ran, and the by-ref $counted was never
+  assigned, falsifying the docblock's own "@param-out … always"
+  contract. Driven in-process over a chmod-0000 root: the refusal
+  AND $counted === 0 (red at HEAD: the count stayed null).
+- **The four production-source pin reads own their failure
+  (t31-ocr45-8, maintainability:low ×4)** — the structural pins read
+  through silent `(string) file_get_contents()` casts, a failed read
+  degrading to '' and the fragment assertions failing late with
+  misleading messages. One productionSource() helper refuses loudly
+  naming the class and file; all four sites ride it.
+  Construction-evident.
+- **Both glob sites own the glob contract (t31-ocr45-9, bug:low ×2)**
+  — the scratch lens read glob()'s false as the window HELD (a
+  diagnostic failure fabricating the window-open verdict), and the
+  temp sweep kept the false into its foreach, a TypeError replacing
+  the in-flight verdict (the ocr42-8 class). The lens answers its own
+  loud failure; the sweep degrades to the empty array — diagnostics
+  degrade, verdicts never. Construction-evident.
+- **The deferred-read arm's dead handle discards inside its own
+  silencer window (t31-ocr45-10, bug:low)** — a failed close() leaves
+  the archive object dead-but-live until the bare reassignment or
+  method-scope teardown, both outside any error handler; the
+  destructor's engine vocabulary could leak into the next test's
+  output. unset($zip) in its own silencer/finally window (the
+  ocr42-7 idiom, this arm). Construction-evident.
+- **The shared-prefix strip speaks the prefix boundary
+  (t31-ocr45-11, maintainability:low)** — the completeness walk's
+  every-occurrence str_replace spelled the exact defect shape
+  ocr6-5 killed in the old inline copy loop, unreachable only by the
+  random root suffix. The iterator roots the walk at the shared
+  tree, so substr past the prefix IS the relative.
+  Construction-evident.
+- **The resolution loop owns a cycle bound (t31-ocr45-12, bug:low)**
+  — the ocr17-9 termination argument leaned on every anchor link
+  resolving; a chain returning to itself resolves forever, and the
+  loop's boundedness was the screens' accident. Driven at HEAD: the
+  two-link cycle does NOT hang on this engine (stat ELOOPs, the
+  DANGLING arm refusing first under a sentence that mis-names a
+  chain resolving forever) — the resolves-to-nothing arm now HOPS
+  the chain with a seen-set naming the cycle, and the loop gains the
+  seen-set fence (legal fixed points break before the fence).
+  Driven: the cycle answers the SYMLINK CYCLE refusal (red at HEAD:
+  the dangling vocabulary); dot-chains and plain resolutions
+  unchanged.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 44)
 
 Forty-fourth OCR-tool round (main 61/61, fully complete): 7 findings,
