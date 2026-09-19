@@ -1045,13 +1045,27 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             return array('class' => 'FAIL', 'why' => 'the CLEAN artifact failed the inspector — build and inspect give ONE verdict: ' . implode('; ', $violations));
         }
 
-        // Consistency: the sidecar and manifest describe THIS zip.
+        /*
+         * Consistency: the sidecar and manifest describe THIS zip — and
+         * the reads ride the MARKER owner (t31-ocr53-8, the exact
+         * ocr50-8 class one screen up): the bare (string) casts
+         * laundered a failed read into '' and a mid-observation read
+         * failure (a vanished sidecar, an unreadable manifest) FAILED
+         * the row under the WRONG owner — 'does not describe the
+         * shipped zip' — never as the read's own staging failure.
+         */
         $checksum = hash_file('sha256', $zipPath);
-        $sidecar = (string) file_get_contents($zipPath . '.sha256');
+        $sidecar = $this->readMemberOrMarker($zipPath . '.sha256');
+        if (null === $sidecar || '__UNREADABLE__' === $sidecar) {
+            return array('class' => 'FAIL', 'why' => 'the shipped sidecar ' . (null === $sidecar ? 'is absent' : 'cannot be read') . ' — a staging failure of the observation read, never the row\'s own verdict');
+        }
         if ($checksum . '  ' . basename($zipPath) . "\n" !== $sidecar) {
             return array('class' => 'FAIL', 'why' => 'the sidecar does not describe the shipped zip');
         }
-        $manifest = (string) file_get_contents($scratch['dist'] . '/checksums.txt');
+        $manifest = $this->readMemberOrMarker($scratch['dist'] . '/checksums.txt');
+        if (null === $manifest || '__UNREADABLE__' === $manifest) {
+            return array('class' => 'FAIL', 'why' => 'the rebuilt manifest ' . (null === $manifest ? 'is absent' : 'cannot be read') . ' — a staging failure of the observation read, never the row\'s own verdict');
+        }
         if (false === strpos($manifest, basename($zipPath) . '  ' . $checksum . "\n")) {
             return array('class' => 'FAIL', 'why' => 'the manifest does not describe the shipped zip');
         }
