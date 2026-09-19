@@ -52,6 +52,10 @@ final class Url {
 	 * nothing), while the adjudication's TAB half fell to the WHATWG
 	 * strip-set screen at the authority (t31-ocr44-1): a browser
 	 * strips the byte BEFORE parsing, so it forges a different host.
+	 * The percent-ENCODED host answers the same family (t31-ocr45-1):
+	 * the WHATWG host parser decodes %XX in a special-scheme host
+	 * before resolving it, so a browser contacts a host this parse
+	 * never names — the encoded spelling refuses at the host region.
 	 *
 	 * @since 0.1.0
 	 *
@@ -341,6 +345,33 @@ final class Url {
 			: ( false !== $colon ? (string) substr( $host_port, 0, $colon ) : $host_port );
 		if ( '' === $raw_host ) {
 			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
+		}
+
+		/*
+		 * The PERCENT-ENCODED host screen (OCR round 45, t31-ocr45-1 —
+		 * the r28-6/r44-1 WHATWG-differential class, one generation
+		 * over): the URL Standard's host parser PERCENT-DECODES a
+		 * special-scheme host before domain-to-ASCII (§6.4), so a
+		 * browser loading 'https://id%70.example/' contacts
+		 * idp.example while this parse, the rebuilt authority, and
+		 * every redacted form name 'id%70.example' verbatim — two
+		 * hosts named by one URL over the same browser-facing channel
+		 * (the device-flow verification URI, passed through raw) the
+		 * backslash and strip-set screens closed for their own bytes.
+		 * http(s) are special schemes on every spelling this VO
+		 * accepts, so any '%' in the host answers the refusal —
+		 * REFUSED from derivation, never decoded (the ocr44-1
+		 * doctrine: the decode would silently accept a shape no
+		 * client means to send; write the host decoded). The screen
+		 * judges the HOST REGION alone: percent-encoding stays legal
+		 * in userinfo and in the path/query, where no consumer's
+		 * reading decodes it into the host, and a bracket literal's
+		 * own percent spelling (the RFC 6874 zone id) is owned by
+		 * the bracket content screen above, which every bracket
+		 * spelling answers first.
+		 */
+		if ( false === $bracket_end && false !== strpos( $raw_host, '%' ) ) {
+			throw new InvalidArgumentException( 'The URL host must not carry percent-encoded bytes — the URL Standard percent-DECODES a special-scheme host before resolving it ("https://id%70.example/" contacts idp.example in a browser) while this parse and every redacted form keep the encoded spelling verbatim, and the two must agree: write the host decoded, never percent-encoded.' );
 		}
 
 		// The host fold rides the same ONE owner (t31-ocr1-4): a host

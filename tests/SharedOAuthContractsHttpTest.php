@@ -293,6 +293,53 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-45 pin (t31-ocr45-1, the r28-6/r44-1 refusal class one
+     * generation over): the URL Standard's host parser PERCENT-DECODES a
+     * special-scheme host before domain-to-ASCII (§6.4), so a browser
+     * loading 'https://id%70.example/' contacts idp.example while this
+     * parse and every redacted form name 'id%70.example' verbatim — two
+     * hosts named by one URL over the same browser-facing channel (the
+     * device-flow verification URI) the backslash and strip-set screens
+     * closed for their own bytes. http(s) are special schemes on every
+     * spelling this VO accepts, so a '%' in the host answers the
+     * refusal — refused from derivation, never decoded (the ocr44-1
+     * doctrine: the decode would silently accept a shape no client
+     * means to send).
+     */
+    public function testAPercentEncodedHostRefusesInsteadOfNamingTwoHosts(): void
+    {
+        $hostile_urls = array(
+            'the WHATWG percent-decode shape' => 'https://id%70.example/ver',
+            'percent inside a label' => 'https://ho%73t.example/',
+            'the percent-encoding of a dot' => 'https://idp%2Eexample/',
+            'userinfo does not hide it' => 'https://user@id%70.example/device',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A percent-encoded host (%s) must be refused by the shared URL owner — red at HEAD it constructed, this parse and every redacted form naming the encoded spelling a browser decodes into another host.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry percent-encoded bytes', $e->getMessage(), "The refusal names the percent-decode channel ({$label}).");
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A percent-encoded host (%s) must be refused by the request VO too — the redacted form would name a host no browser consumer contacts.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry percent-encoded bytes', $e->getMessage(), "The request VO answers the same refusal ({$label}).");
+            }
+        }
+
+        // The legal percent-encodings stay constructible: the PATH and
+        // QUERY encode freely (no consumer decodes them into the host),
+        // and the screen judges the host region alone, never the
+        // userinfo's own percent spelling.
+        $this->assertSame('host.example', Url::parse_validated('https://host.example/a%20b?q=%41x')['authority'], 'A percent-encoded PATH stays legal — no consumer decodes it into the host.');
+        $this->assertSame('host.example', Url::parse_validated('https://us%40er@host.example/')['authority'], 'A percent-encoded USERINFO stays legal — the screen judges the host region alone.');
+    }
+
+    /**
      * OCR-round-25 pin (t31-ocr25-3): the leading-zero port spelling
      * slips the raw digit screen — ':0443' IS digits — while
      * parse_url() normalizes the value to 443: the value object
