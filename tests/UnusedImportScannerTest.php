@@ -714,11 +714,21 @@ FIXTURE
         // source created BEFORE the locked tree, one AFTER — whichever
         // half this filesystem's readdir yields ahead of locked/ is
         // walked before the descent, whatever rule orders the entries.
-        file_put_contents($this->root . '/dead-first.php', "<?php\nuse Vendor\\Pkg\\DeadThing;\nuse Vendor\\Pkg\\AlsoDead;\n");
-        mkdir($this->root . '/locked', 0755, true);
-        file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n");
-        file_put_contents($this->root . '/dead-last.php', "<?php\nuse Vendor\\Pkg\\ThirdDead;\nuse Vendor\\Pkg\\FourthDead;\n");
-        chmod($this->root . '/locked', 0000);
+        /*
+         * Every IO return before the guarded region is OWNED (OCR
+         * round 49, t31-ocr49-10 — the maker's own ocr26-12 staging
+         * doctrine, this leg): a silent write/mkdir false once fed
+         * the derivation a half-staged bracket — the yield-order
+         * arithmetic then wearing the staging failure it never
+         * named, and a chmod false answering the probe's skip as an
+         * environment premise that never was. Each site asserts at
+         * itself, naming its own path.
+         */
+        $this->assertNotFalse(file_put_contents($this->root . '/dead-first.php', "<?php\nuse Vendor\\Pkg\\DeadThing;\nuse Vendor\\Pkg\\AlsoDead;\n"), 'staging: the dead-first bracket source must write — a staging failure fails as staging, never as the partial-count verdict.');
+        $this->assertTrue(mkdir($this->root . '/locked', 0755, true), 'staging: the locked tree must create — a staging failure fails as staging, never as the partial-count verdict.');
+        $this->assertNotFalse(file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n"), 'staging: the locked tree\'s hidden source must write — a staging failure fails as staging, never as the partial-count verdict.');
+        $this->assertNotFalse(file_put_contents($this->root . '/dead-last.php', "<?php\nuse Vendor\\Pkg\\ThirdDead;\nuse Vendor\\Pkg\\FourthDead;\n"), 'staging: the dead-last bracket source must write — a staging failure fails as staging, never as the partial-count verdict.');
+        $this->assertTrue(chmod($this->root . '/locked', 0000), 'staging: the lock must take — a chmod failure is the probe\'s own premise gone silent, never an environment verdict.');
         // The permission-denial probe (the capability this leg
         // premises, in the lint gate's own shape): a process the
         // permissions cannot deny can never drive the abort — skip,

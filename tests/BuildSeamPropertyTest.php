@@ -1309,15 +1309,30 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * original refusal keeps propagating.
          */
         try {
-            mkdir($root . '/shared/src/Clock', 0755, true);
-            mkdir($root . '/dist', 0755, true);
-            file_put_contents(
-                $root . '/shared/src/Clock/ClockInterface.php',
-                "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n"
+            /*
+             * Every creation site owns its return (OCR round 49,
+             * t31-ocr49-10 — the ocr27-9/ocr26-12 staging doctrine,
+             * this maker's creation phase): a silent mkdir/file-write
+             * false once fed the seed build a half-built tree, every
+             * downstream verdict wearing a staging failure it never
+             * named. Each site asserts at itself, naming its own
+             * path (the scanner suite's own maker shape).
+             */
+            $this->assertTrue(mkdir($root . '/shared/src/Clock', 0755, true), 'staging: the scratch shared/src/Clock must create — a staging failure fails as staging, never as the row verdict.');
+            $this->assertTrue(mkdir($root . '/dist', 0755, true), 'staging: the scratch dist must create — a staging failure fails as staging, never as the row verdict.');
+            $this->assertNotFalse(
+                file_put_contents(
+                    $root . '/shared/src/Clock/ClockInterface.php',
+                    "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n"
+                ),
+                "staging: the scratch ClockInterface must write — a staging failure fails as staging, never as the row verdict."
             );
-            file_put_contents(
-                $root . '/shared/src/GrantInterface.php',
-                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface GrantInterface {}\n"
+            $this->assertNotFalse(
+                file_put_contents(
+                    $root . '/shared/src/GrantInterface.php',
+                    "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface GrantInterface {}\n"
+                ),
+                "staging: the scratch GrantInterface must write — a staging failure fails as staging, never as the row verdict."
             );
 
             $plugin = $root . '/plugin/example-connector';
@@ -1334,7 +1349,10 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
              * readdir-order concern was the inline loop's own).
              */
             WpHarness::copyTree($fixture, $plugin);
-            file_put_contents($plugin . '/build.json', "{\"embed_shared\": true}\n");
+            $this->assertNotFalse(
+                file_put_contents($plugin . '/build.json', "{\"embed_shared\": true}\n"),
+                "staging: the scratch build.json must write — a staging failure fails as staging, never as the row verdict."
+            );
 
             return array(
                 'root' => $root,
@@ -1415,11 +1433,26 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * environment problem wearing the pin's subject.
          */
         $entryScriptExports = array();
+        $resolvedEntryScripts = array();
         foreach (array('/../bin/build.php', '/../bin/inspect-artifact.php', '/../bin/lint-php.php', '/../bin/check-conventions.php', '/../bin/scan-secrets.php') as $entryScript) {
             $resolved = realpath(__DIR__ . $entryScript);
             $this->assertNotFalse($resolved, "The entry script {$entryScript} must resolve before the child embed — a realpath() false is an environment problem, never the entry scripts' own defect.");
+            $resolvedEntryScripts[$entryScript] = $resolved;
             $entryScriptExports[] = var_export($resolved, true);
         }
+        /*
+         * The GPC/forged/lint/scan legs interpolate the SAME resolved
+         * spellings (OCR round 49, t31-ocr49-10 — the ocr25-8
+         * realpath-into-child census swept to the last four
+         * consumers): the loop above guarded its own embeds while
+         * the four spawn legs below called realpath() inline — a
+         * false handed to escapeshellarg() embeds an empty path into
+         * the spawned command, the environment refusal wearing the
+         * leg's own subject. The scan target's fixtures twin rides
+         * the same guard.
+         */
+        $resolvedFixtures = realpath(__DIR__ . '/fixtures');
+        $this->assertNotFalse($resolvedFixtures, 'The fixtures root must resolve before the scan leg embeds it — a realpath() false is an environment problem, never the scanner\'s own defect.');
         $script = 'require ' . implode('; require ', $entryScriptExports) . ';'
             . ' echo ini_get("display_errors");';
         exec(escapeshellarg(PHP_BINARY) . ' -d display_errors=0 -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
@@ -1442,7 +1475,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * inspector's missing-file refusal still exits 2, and the lint
          * still checks its files and says so.
          */
-        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg(realpath(__DIR__ . '/../bin/inspect-artifact.php')) . ' /nonexistent-zip.zip 2>&1', $gpcOutput, $gpcExit);
+        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($resolvedEntryScripts['/../bin/inspect-artifact.php']) . ' /nonexistent-zip.zip 2>&1', $gpcOutput, $gpcExit);
         $this->assertSame(2, $gpcExit, 'Under variables_order=GPC the CLI guard still fires — never a silent exit-0 no-op.');
         $this->assertStringContainsString('no such file', implode("\n", $gpcOutput));
 
@@ -1457,11 +1490,11 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * refusal's own line, every control a space).
          */
         $forgedArg = "/no-such\ninspect: totally-legit.zip ACCEPTED (0 violation(s))\n.zip";
-        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(realpath(__DIR__ . '/../bin/inspect-artifact.php')) . ' ' . escapeshellarg($forgedArg) . ' 2>&1', $forgedOutput, $forgedExit);
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($resolvedEntryScripts['/../bin/inspect-artifact.php']) . ' ' . escapeshellarg($forgedArg) . ' 2>&1', $forgedOutput, $forgedExit);
         $this->assertSame(2, $forgedExit, 'The forged-name refusal still exits 2.');
         $this->assertStringNotContainsString("\ninspect: totally-legit", implode("\n", $forgedOutput), 'A newline in the caller path cannot START a verdict line — the guard line rides the printable seam.');
 
-        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg(realpath(__DIR__ . '/../bin/lint-php.php')) . ' 2>&1', $gpcLintOutput, $gpcLintExit);
+        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($resolvedEntryScripts['/../bin/lint-php.php']) . ' 2>&1', $gpcLintOutput, $gpcLintExit);
         $this->assertSame(0, $gpcLintExit);
         $this->assertStringContainsString('file(s) checked', implode("\n", $gpcLintOutput), 'The lint still runs its walk under GPC.');
 
@@ -1475,7 +1508,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * scan silently walked NOTHING when the runner started outside
          * the repo root, its 'finding(s)' line vacuously green.
          */
-        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg(realpath(__DIR__ . '/../bin/scan-secrets.php')) . ' ' . escapeshellarg(realpath(__DIR__ . '/fixtures')) . ' 2>&1', $gpcScanOutput, $gpcScanExit);
+        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($resolvedEntryScripts['/../bin/scan-secrets.php']) . ' ' . escapeshellarg($resolvedFixtures) . ' 2>&1', $gpcScanOutput, $gpcScanExit);
         $this->assertSame(0, $gpcScanExit, 'Under variables_order=GPC the scanner\'s CLI guard still fires — never a silent exit-0 no-op.');
         $this->assertStringContainsString('finding(s)', implode("\n", $gpcScanOutput), 'The scan still runs its walk under GPC.');
 
