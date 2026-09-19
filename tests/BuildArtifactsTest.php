@@ -2965,6 +2965,59 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-50 pin (t31-ocr50-2, security): the landing pre-flight
+     * ruled out NON-FILE targets only — file_exists()/is_file() FOLLOW
+     * symlinks, so a link at a landing target pointing at a regular
+     * file passed the gate and landArtifact()'s rename() silently
+     * REPLACED the link entry (a broken link passed the same gate by
+     * existing as nothing) while every sibling seam refuses links
+     * loudly (the stage name, build.json, the rrmdir root, the stale
+     * stage sweep, the sidecar reclaim) — this seam alone followed
+     * them. is_link() judges the entry itself, broken links included:
+     * a link answers the loud refusal naming the path and its target,
+     * the link standing exactly where it was planted, the prior set
+     * whole. Driven red at HEAD: the build SUCCEEDED, the planted
+     * link silently replaced.
+     */
+    public function testALinkAtALandingTargetRefusesInsteadOfSilentlyReplacingTheEntry(): void
+    {
+        if (! self::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the landing-target link leg did not run (the no-symlinks doctrine seam it drives is unconstructible here).');
+        }
+
+        $scratch = self::scratchPath('landing-link');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+
+        // The plant: the manifest landing target as a symlink AT a
+        // regular file — the exact follow shape, every follow-based
+        // gate (file_exists, is_file, the manifest read-through)
+        // seeing the BYSTANDER, never the link.
+        file_put_contents($scratch . '/bystander.txt', 'bystander');
+        symlink($scratch . '/bystander.txt', $scratch . '/dist/checksums.txt');
+
+        try {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
+                'The landing pre-flight must refuse a link at a landing target — red at HEAD the rename silently replaced the link entry and the build exited 0.', \RuntimeException::class
+            );
+            $this->assertStringContainsString('is a symlink', $refusal->getMessage(), 'The refusal names the link shape — the no-symlinks doctrine at this seam, never a silent replacement.');
+            $this->assertStringContainsString('checksums.txt', $refusal->getMessage(), 'The refusal names the landing target the pre-flight judged.');
+            $this->assertTrue(is_link($scratch . '/dist/checksums.txt'), 'The planted link stands exactly where it was — the refused landing replaced nothing.');
+            $this->assertSame('bystander', (string) file_get_contents($scratch . '/bystander.txt'), 'The file behind the link is untouched.');
+            $this->assertSame(array(), glob($scratch . '/dist/connectors-example-connector-*') ?: array(), 'The pre-flight refusal precedes every landing — nothing published.');
+        } finally {
+            if (is_link($scratch . '/dist/checksums.txt')) {
+                unlink($scratch . '/dist/checksums.txt');
+            }
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * OCR-round-43 pin (t31-ocr43-4): the BUILD removal walk owns its
      * IO returns — the exact two-way escape ocr30-4 closed for the
      * copy twin and ocr32-7 for the harness twin, one owner over, at

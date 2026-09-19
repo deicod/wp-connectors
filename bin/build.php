@@ -3042,11 +3042,28 @@ final class WpConnectorsBuild
             $manifestTemp = self::stageManifest($distDir, $manifestPath, $zipName, $checksum);
 
             // Pre-flight every landing target before anything lands: the
-            // one constructible rename blocker is a non-file at a
+            // constructible rename blockers are a non-file at a
             // destination, and it must refuse while the prior set is
             // still whole (a failure one landing later would strand a
             // descriptor beside the old release it does not describe).
             foreach (array( $zipPath, $zipPath . '.sha256', $manifestPath ) as $landingTarget) {
+                /*
+                 * The link shape rides its own gate (OCR round 50,
+                 * t31-ocr50-2 — the no-symlinks doctrine, this seam):
+                 * file_exists()/is_file() FOLLOW symlinks, so a link at
+                 * a landing target pointing at a regular file passed the
+                 * non-file gate and landArtifact()'s rename() silently
+                 * REPLACED the link entry (a broken link passed the same
+                 * gate by existing as nothing) while every sibling seam
+                 * refuses links loudly (the stage name, build.json, the
+                 * rrmdir root, sweepStaleStageDirs, the sidecar
+                 * reclaim). is_link() judges the ENTRY itself, broken
+                 * links included: a link answers the loud refusal
+                 * naming the path and its target.
+                 */
+                if (is_link($landingTarget)) {
+                    throw new RuntimeException("build: cannot publish {$zipName} — the landing target {$landingTarget} is a symlink (-> " . (string) readlink($landingTarget) . '); the no-symlinks doctrine refuses the landing instead of silently replacing the link entry — remove the link');
+                }
                 if (file_exists($landingTarget) && ! is_file($landingTarget)) {
                     throw new RuntimeException("build: cannot publish {$zipName} — the landing target {$landingTarget} is not a regular file");
                 }
