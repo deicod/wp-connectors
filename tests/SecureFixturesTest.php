@@ -127,10 +127,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
         $githubToken = 'ghp_' . bin2hex(random_bytes(18));
 
-        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-' . getmypid() . '-' . bin2hex(random_bytes(4));
-        if (is_dir($tempDir)) {
-            WpHarness::releaseScratch($tempDir);
-        }
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan');
         mkdir($tempDir, 0755, true);
         file_put_contents($tempDir . '/known-secret-fixture.conf', "api_key = {$zaiKey}\ntoken: {$githubToken}\n");
 
@@ -143,6 +140,87 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         // Findings must never echo the secret itself.
         $this->assertStringNotContainsString($zaiKey, $report);
         $this->assertStringNotContainsString($githubToken, $report);
+    }
+
+    /**
+     * The scan-scratch root maker — the r42-6 collision doctrine swept
+     * to every site (OCR round 51, t31-ocr51-3; ONE census comment
+     * across the file): every scan site this file grew — the
+     * known-secret battery, the prune-fold battery, the artifact
+     * battery, the fresh-process battery — derived its scratch root
+     * pid-prefixed and RANDOM-suffixed, then RECLAIMED a pre-existing
+     * tree at the freshly derived name (releaseScratch before the
+     * mkdir). Per the battery's own t31-ocr42-6 census: a
+     * random-suffixed name that already exists is a FOREIGN tree by
+     * construction (same pid plus the same 4 random bytes is the
+     * recycled-pid collision shape, 2^32 per pair) — the collision
+     * REGENERATES, never reclaims; the reclaim arm's only reachable
+     * effect was deleting another run's live scratch, the exact
+     * cross-run-destruction class the suffix was added to close.
+     * Same-process leftovers — a site that died between its mkdir and
+     * its finally — are the PID PREFIX's own: the sweep below
+     * reclaims this pid's stale trees (pid uniqueness keeps a live
+     * foreign run out of the glob), everything else at the rolled
+     * name is foreign, and the suffix ROLLS until the name is free —
+     * the foreign tree stands untouched. The exact-name collision
+     * landing itself is unconstructible without subverting the
+     * random source (the r42-6 adjudication); the sweep and the
+     * foreign-untouched legs are driven at
+     * testTheScanScratchRootSweepsItsOwnStaleTreesAndNeverTouchesForeignOnes.
+     *
+     * @param string $stem The site's scratch stem (e.g. 'wp-connectors-scan-prune').
+     * @return string A scratch root no existing tree occupies.
+     */
+    private function scanScratchRoot($stem)
+    {
+        foreach (glob(sys_get_temp_dir() . '/' . $stem . '-' . getmypid() . '-*') ?: array() as $stale) {
+            WpHarness::releaseScratch($stale);
+        }
+        do {
+            $root = sys_get_temp_dir() . '/' . $stem . '-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        } while (is_dir($root));
+
+        return $root;
+    }
+
+    /**
+     * OCR-round-51 pin (t31-ocr51-3): the reclaim arms the r42-6
+     * doctrine retired, driven at the maker that replaced them. The
+     * SWEEP leg: a same-process stale tree (the debris shape — a site
+     * that died between its mkdir and its finally) is reclaimed,
+     * HEAD's sites reclaiming nothing. The FOREIGN leg: a tree in the
+     * same name vocabulary under a pid this process does not hold
+     * (the recycled-pid leftover, the r42-6 collision class) stands
+     * untouched — the sweep's pid scope can never name it, and the
+     * roll never reclaims it; a widened glob (the scope dropped) or a
+     * restored reclaim arm over foreign names answers here. The FRESH
+     * leg: the rolled root is free — the site proceeds under a suffix
+     * no existing tree holds.
+     */
+    public function testTheScanScratchRootSweepsItsOwnStaleTreesAndNeverTouchesForeignOnes()
+    {
+        do {
+            $stale = sys_get_temp_dir() . '/wp-connectors-scan-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        } while (is_dir($stale));
+        $this->assertTrue(mkdir($stale, 0755, true), 'staging: the stale debris tree must create — a staging failure fails as staging, never as the maker verdict.');
+        $this->assertNotFalse(file_put_contents($stale . '/debris.conf', "api_key = stale\n"), 'staging: the stale debris marker must write — a staging failure fails as staging, never as the maker verdict.');
+
+        do {
+            $foreign = sys_get_temp_dir() . '/wp-connectors-scan-' . (getmypid() + 1) . '-' . bin2hex(random_bytes(4));
+        } while (is_dir($foreign));
+        $this->assertTrue(mkdir($foreign, 0755, true), 'staging: the foreign tree must create — a staging failure fails as staging, never as the maker verdict.');
+        $this->assertNotFalse(file_put_contents($foreign . '/foreign.conf', "foreign run tree\n"), 'staging: the foreign marker must write — a staging failure fails as staging, never as the maker verdict.');
+
+        $root = $this->scanScratchRoot('wp-connectors-scan');
+        try {
+            $this->assertFileDoesNotExist($stale, 'A same-process stale tree is the pid prefix\'s own — the sweep reclaims it (a site that died before its finally leaves no permanent debris).');
+            $this->assertFileExists($foreign . '/foreign.conf', 'A tree under a pid this process does not hold is foreign by construction — the sweep\'s pid scope never names it, the roll never reclaims it.');
+            $this->assertNotSame($stale, $root);
+            $this->assertNotSame($foreign, $root);
+            $this->assertTrue(mkdir($root, 0755, true), 'The rolled root is free — the site proceeds under a fresh suffix.');
+        } finally {
+            WpHarness::releaseScratch($foreign, $root);
+        }
     }
 
     /**
@@ -161,10 +239,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     {
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
-        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-prune-' . getmypid() . '-' . bin2hex(random_bytes(4));
-        if (is_dir($tempDir)) {
-            WpHarness::releaseScratch($tempDir);
-        }
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-prune');
         mkdir($tempDir . '/VENDOR', 0755, true);
         mkdir($tempDir . '/Tools', 0755, true);
         mkdir($tempDir . '/Tests', 0755, true);
@@ -242,10 +317,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     {
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
-        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-artifact-' . getmypid() . '-' . bin2hex(random_bytes(4));
-        if (is_dir($tempDir)) {
-            WpHarness::releaseScratch($tempDir);
-        }
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-artifact');
         mkdir($tempDir . '/VENDOR', 0755, true);
         mkdir($tempDir . '/plain', 0755, true);
         file_put_contents($tempDir . '/VENDOR/leak.conf', "api_key = {$zaiKey}\n");
@@ -296,10 +368,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
 
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
-        $tempDir = sys_get_temp_dir() . '/wp-connectors-scan-only-' . getmypid() . '-' . bin2hex(random_bytes(4));
-        if (is_dir($tempDir)) {
-            WpHarness::releaseScratch($tempDir);
-        }
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-only');
         mkdir($tempDir . '/VENDOR', 0755, true);
         mkdir($tempDir . '/plain', 0755, true);
         file_put_contents($tempDir . '/VENDOR/leak.conf', "api_key = {$zaiKey}\n");
