@@ -1138,6 +1138,23 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
      * the structural one: the restore lives inside the finally that
      * wraps the call, mutation-sensitive to the happy-path-only
      * pairing coming back.
+     *
+     * OCR round 39 (t31-ocr39-1): the r12-20 finally restored the
+     * handler but let the throw itself ESCAPE — uncaught past the
+     * restore, past $zip->close(), and past every verdict surface:
+     * the CLI died at exit 255 with an engine stack trace and no
+     * verdict, and a test call site aborted its whole battery. The
+     * catch now rides INSIDE the try statement whose finally restores
+     * the handler — the catch's return runs that finally exactly
+     * once, and a nested finally of its own would restore twice (the
+     * reviewer's own correction, one finding over the first cut). The
+     * pin's shape grows with it: extractTo() wrapped in a try whose
+     * CATCH clause precedes — never a sibling try, never a nested
+     * finally — the finally that restores the handler. Still
+     * structural: the throw spelling stays unconstructible on this
+     * engine (re-probed this round: warn and false, both the
+     * file-destination and empty-destination spellings), so the red
+     * at HEAD is the missing catch itself.
      */
     public function testTheCaptureHandlerRestoreRidesAFinally(): void
     {
@@ -1160,15 +1177,19 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
          * live — the t31-ocr10-2 finding's own class, one variable
          * at a time. The shape is a pattern now: assignment of an
          * extractTo() call on any variable pair, wrapped in a try
-         * whose finally restores the handler.
+         * whose catch-and-finally own the throw and the restore. The
+         * catch body is pinned BRACE-FLAT ([^{}] in the pattern): a
+         * nested try/finally inside the catch is the double-restore
+         * shape the reviewer's correction names, and the pin reds on
+         * its braces alone.
          */
         $this->assertSame(
             1,
             preg_match(
-                '/try\s*\{\s*\$\w+\s*=\s*\$\w+->extractTo\(\s*\$\w+\s*\)\s*;\s*\}\s*finally\s*\{\s*restore_error_handler\(\)\s*;\s*\}/',
+                '/try\s*\{\s*\$\w+\s*=\s*\$\w+->extractTo\(\s*\$\w+\s*\)\s*;\s*\}\s*catch\s*\([^)]+\)\s*\{\s*[^{}]*\}\s*finally\s*\{\s*restore_error_handler\(\)\s*;\s*\}/',
                 $source
             ),
-            'The capture handler\'s restore must ride the finally that wraps the extractTo() call — a happy-path-only restore leaks the swallow-all handler on any throw. (The pin matches the try/finally STRUCTURE: variable names are any names, reformatting is any formatting — only the shape is pinned.)'
+            'The capture handler\'s restore must ride the finally of the SAME try whose catch owns the extractTo() throw — the catch\'s return runs that finally exactly once, a happy-path-only restore leaks the swallow-all handler on any throw, and an uncaught throw dies at exit 255 with no verdict (t31-ocr39-1). (The pin matches the try/catch/finally STRUCTURE: variable names are any names, reformatting is any formatting — only the shape is pinned, the catch brace-flat so a nested finally\'s double restore reds on braces alone.)'
         );
     }
 

@@ -502,14 +502,37 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         /*
          * The capture is EXCEPTION-SAFE (verifier round t31-r12-20, the
          * security lens): anything extractTo() throws between the two
-         * handler calls (8.5 throws ValueError on an unusable
-         * destination) otherwise leaves the swallow-all capture handler
-         * installed for the REST of the process, silently suppressing
-         * every later warning, notice, and deprecation. The restore
-         * rides a finally; the throw itself keeps propagating.
+         * handler calls (a ValueError shape some 8.5 builds raise on an
+         * unusable destination; this runtime's engine answers warn and
+         * false — the r12-20 pin's own probed note) otherwise leaves
+         * the swallow-all capture handler installed for the REST of
+         * the process, silently suppressing every later warning,
+         * notice, and deprecation. The restore rides a finally.
+         *
+         * The throw itself is OWNED as a verdict too (OCR round 39,
+         * t31-ocr39-1): the r12-20 finally restored the handler but
+         * owned nothing else — a throw escaped uncaught past it, past
+         * $zip->close(), and past every verdict surface below: the CLI
+         * died at exit 255 with an engine stack trace and no verdict,
+         * and the test call site aborted its whole battery. The catch
+         * rides INSIDE the try statement whose finally restores the
+         * handler — the catch's return runs that finally exactly once;
+         * a nested finally of its own would restore twice — and the
+         * throw answers the SAME whole-or-not-at-all refusal the false
+         * return answers, the reason rendered through the ONE printable
+         * seam (the r12-19 doctrine: an engine message can interpolate
+         * archive-controlled bytes).
          */
         try {
             $extracted = $zip->extractTo($extractDir);
+        } catch (Throwable $extract_throw) {
+            $violations[] = sprintf(
+                'inspect: cannot extract %s — %s; the artifact is judged whole or not at all, never over a partial extraction tree.',
+                wp_connectors_printable(basename($zipPath)),
+                wp_connectors_printable($extract_throw->getMessage())
+            );
+
+            return $violations;
         } finally {
             restore_error_handler();
         }
