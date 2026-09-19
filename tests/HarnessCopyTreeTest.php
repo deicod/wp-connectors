@@ -1463,7 +1463,15 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('root-link', $caught->getMessage());
 
             mkdir($plain . '/multi-tail/a/b', 0755, true);
-            file_put_contents($plain . '/multi-tail/a/b/deep.php', '<?php // deep');
+            /*
+             * The write rides the asserted stage() owner (OCR round
+             * 49, t31-ocr49-13 — the ocr33-8 doctrine, this file's
+             * one staging write that bypassed it): a bare
+             * file_put_contents() false surfaced as the misleading
+             * downstream assertFileExists failure, never a staging
+             * verdict naming its own path.
+             */
+            $this->stage($plain . '/multi-tail/a/b/deep.php', '<?php // deep');
             $multi_to = $freshTo();
             WpHarness::copyTree($plain . '/multi-tail/a/b/../..', $multi_to);
             $this->assertFileExists($multi_to . '/a/b/deep.php', 'A REAL multi-tail source keeps copying the tree it semantically names — the walk resolves, only the probe strips.');
