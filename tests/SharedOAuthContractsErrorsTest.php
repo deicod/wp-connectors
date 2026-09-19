@@ -166,6 +166,25 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
 
         $this->assertSame(37, $withValue->retry_after_seconds());
         $this->assertNull($withoutValue->retry_after_seconds());
+
+        /*
+         * OCR-round-46 pin (t31-ocr46-10): the accessor's adjudicated
+         * invariant (t31-r1-15 — hands out the RAW provider number
+         * by design, the cap applied by the consumer through
+         * RefreshPolicy) was pinned only for sub-cap values, so a
+         * refactor that starts clamping the raw accessor to the
+         * policy cap would have ridden green. The oversized raw side
+         * answers RAW — both the oversized literal and the extreme
+         * spelling — beside the policy suite's own capped pins (one
+         * boundary, both files; the policy side rides unchanged).
+         */
+        $this->assertSame(86400, (new OAuthRateLimitException('throttled', 0, null, 86400))->retry_after_seconds(), 'An oversized Retry-After answers the RAW provider number — the accessor never clamps, the consumer does.');
+        $this->assertSame(PHP_INT_MAX, (new OAuthRateLimitException('throttled', 0, null, PHP_INT_MAX))->retry_after_seconds(), 'Even the extreme spelling answers raw — a clamp inside the exception would couple it to the policy and to per-provider config it cannot know (red only under the clamping refactor this pin guards).');
+
+        // The policy side states the cap over the same oversized
+        // spellings (its own suite pins the capped side; one truth,
+        // both sides — the t31-ocr2-7 pairing).
+        $this->assertSame(60, (new \Deicod\WpConnectors\Shared\Policy\RefreshPolicy(0, 1, 60))->capped_retry_after_seconds(PHP_INT_MAX));
     }
 
     /**
