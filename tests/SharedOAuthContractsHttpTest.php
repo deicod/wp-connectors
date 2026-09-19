@@ -1761,6 +1761,27 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         foreach (array('apitoken', 'clientsecret', 'x-authorization-scheme', 'www-authenticate') as $spelling) {
             $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling is not credential-bearing — the boundary stays the hyphen token, and 'www-authenticate' carries a challenge-scheme list, never a credential.");
         }
+
+        /*
+         * OCR-round-43 pin (t31-ocr43-1): the UNDERSCORE twin. '_'
+         * is a legal RFC 7230 tchar HeaderMap's NAME_TOKEN_PATTERN
+         * admits beside '-', so 'x_api_key' is a legal header name —
+         * and the suffix class keyed on hyphen boundaries only, so
+         * every underscore spelling of a credential name (including
+         * 'subscription_key', 'auth_token', 'client_secret' — the
+         * very tokens the class names, re-spelled) matched neither
+         * catalog nor class: the full secret rendered verbatim
+         * through every safe debug form (red at HEAD: unmasked), the
+         * r12-4 leak class over the grammar's own second separator.
+         * The classifier normalizes '_' to '-' once at the fold; the
+         * hyphen spellings above stay byte-identical, and the
+         * boundary pin below keeps the suffix bytes from spanning
+         * either separator.
+         */
+        foreach (array('x_api_key', 'X_Api_Key', 'subscription_key', 'auth_token', 'client_secret') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the suffix class — '_' is a tchar the header grammar admits, and the credential boundary speaks both separators (red at HEAD: unmasked).");
+        }
+        $this->assertFalse(SecretMask::is_sensitive_header_name('x_api_keychain'), 'The underscore twin of the boundary pin — a name whose final segment merely CONTAINS the suffix bytes is not credential-bearing, over either separator.');
     }
 
     /* ---------------------------------------------------------------

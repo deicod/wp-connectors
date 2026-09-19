@@ -219,9 +219,9 @@ final class SecretMask {
 	 *
 	 * The catalog match first (the named spellings), then the class
 	 * rule (t31-ocr15-1): a folded name that IS a credential suffix,
-	 * or whose final hyphen-token is one, is secret-bearing the same
-	 * way — see SENSITIVE_HEADER_NAME_SUFFIXES for the class and its
-	 * boundary.
+	 * or whose final separator-token is one, is secret-bearing the
+	 * same way — see SENSITIVE_HEADER_NAME_SUFFIXES for the class and
+	 * its boundary.
 	 *
 	 * @since 0.1.0
 	 *
@@ -229,7 +229,25 @@ final class SecretMask {
 	 * @return bool True when the header's value must always be masked.
 	 */
 	public static function is_sensitive_header_name( string $name ): bool {
-		$folded = AsciiFold::lower( $name );
+		/*
+		 * The underscore is a legal RFC 7230 tchar — HeaderMap's
+		 * NAME_TOKEN_PATTERN (the single owner of the tchar grammar)
+		 * admits '_' beside '-' — so 'x_api_key' is a legal header
+		 * name the boundary once did not speak (OCR round 43,
+		 * t31-ocr43-1): the suffix class keyed on hyphen boundaries
+		 * only, and every underscore spelling of a credential name
+		 * ('x_api_key', 'subscription_key', 'auth_token',
+		 * 'client_secret') matched neither catalog nor class — the
+		 * full secret rendered verbatim through every safe debug form,
+		 * the r12-4 leak class over the grammar's own second
+		 * separator. The classifier normalizes '_' to '-' ONCE, at
+		 * the fold: the delimiter is a CLASS (the grammar admits
+		 * both), the judged token stays the whole final segment over
+		 * either spelling ('x-api-keychain' AND 'x_api_keychain'
+		 * remain outside — the suffix bytes never span a separator),
+		 * and hyphen-only names judge byte-identically.
+		 */
+		$folded = str_replace( '_', '-', AsciiFold::lower( $name ) );
 		if ( \in_array( $folded, self::SENSITIVE_HEADER_NAMES, true ) ) {
 			return true;
 		}
