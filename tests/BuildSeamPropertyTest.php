@@ -987,6 +987,28 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             // beside @ (the suite's warning conversion ignores calls
             // made under it). The boolean verdict is the pin.
             $closeReportedFailure = true !== @$zip->close();
+            /*
+             * The dead handle discards INSIDE its own silencer window
+             * (OCR round 45, t31-ocr45-10 — the t31-ocr42-7 idiom,
+             * this arm): on the deferred-read libzip shape the FAILED
+             * close() leaves the archive object dead-but-live in $zip,
+             * discarded only at the bare reassignment below (the (b)
+             * arm's open) or method-scope teardown — both OUTSIDE any
+             * error handler, so the destructor's engine vocabulary
+             * could leak into the NEXT test's output. unset($zip) in
+             * its own silencer/finally window, before the reassignment
+             * ever happens; the emission is engine-optional (the
+             * t31-ocr26-10 quiet-zip class), the window the same belt
+             * the (b) arm's forced-close leg carries.
+             */
+            set_error_handler(static function (): bool {
+                return true;
+            });
+            try {
+                unset($zip);
+            } finally {
+                restore_error_handler();
+            }
             $this->assertTrue(
                 $addReportedFailure || $closeReportedFailure,
                 'A vanished staged source must fail the add+close sequence by close time at the latest — whichever libzip build shape (stat-at-add or deferred read) this runtime rides, the sequence never silently succeeds.'
