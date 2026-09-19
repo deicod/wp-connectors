@@ -233,12 +233,63 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             }
         }
 
-        // The legal mirrors stay constructible: the round-1 space/tab
-        // adjudication keeps its verdict (those bytes render oddly but
-        // forge nothing — no consumer re-splits the authority on them),
+        // The legal mirrors stay constructible: the round-1 space
+        // adjudication keeps its verdict (the byte renders oddly but
+        // forges nothing — no consumer re-splits the authority on it),
         // and the rebuilt authority carries the raw host byte verbatim.
-        $tab_url = "http://h\tst.example:8080/token";
-        $this->assertSame("h\tst.example:8080", Url::parse_validated($tab_url)['authority'], 'The space/tab adjudication stands — those bytes forge nothing, the backslash did.');
+        // The adjudication's TAB half fell to the ocr44-1 strip-set
+        // screen below — a browser strips the byte before parsing, so
+        // it forges a host the parse never named.
+        $space_url = 'http://h st.example:8080/token';
+        $this->assertSame('h st.example:8080', Url::parse_validated($space_url)['authority'], 'The space half of the round-1 adjudication stands — it forges nothing; the tab and the backslash each did.');
+    }
+
+    /**
+     * OCR-round-44 pin (t31-ocr44-1): the URL Standard strips ALL
+     * ASCII tabs and newlines from the input BEFORE parsing, so the
+     * byte mutates the host a browser contacts — "https://id<TAB>p
+     * .example/device" sends a WHATWG consumer to idp.example while
+     * this parse kept the tab in the authority verbatim and the
+     * engine's own parse_url() rewrote it to a THIRD spelling
+     * ('id_p.example', probed): one URL naming three hosts over the
+     * same browser-facing channel (the device-flow verification URI)
+     * the t31-ocr28-6 backslash screen closed — the same doctrine,
+     * WHATWG-differential bytes REFUSED at the authority, never
+     * stripped. The newline half of the strip set never reaches the
+     * authority (the entry control screen refuses LF/CR first); the
+     * tab is the byte the adjudication had to re-judge, superseding
+     * its round-1 "forges nothing" verdict for that half alone.
+     */
+    public function testATabInTheAuthorityRefusesInsteadOfStrippingToAnotherHost(): void
+    {
+        $hostile_urls = array(
+            'the WHATWG strip shape (tab in host)' => "https://id\tp.example/device",
+            'tab inside the userinfo' => "https://us\ter@idp.example/device",
+            'trailing tab before the query' => "https://idp.example\t?next=1",
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A tab-bearing authority (%s) must be refused by the shared URL owner — red at HEAD it constructed, the raw derivation carrying the byte a browser strips into a different host.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry tabs or newlines', $e->getMessage(), "The refusal names the strip-set class ({$label}).");
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A tab-bearing authority (%s) must be refused by the request VO too — the redacted form would name a host no WHATWG consumer contacts.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry tabs or newlines', $e->getMessage(), "The request VO answers the same refusal ({$label}).");
+            }
+        }
+
+        // The screen is byte-exact: the strip set is tabs and
+        // newlines, and the SPACE the round-1 adjudication spared
+        // stays constructible beside it (a WHATWG consumer fails a
+        // space-bearing host rather than contacting another one —
+        // no host divergence to refuse).
+        $this->assertSame('h st.example', Url::parse_validated('https://h st.example/token')['authority'], 'A space in the host stays legal — the screen refuses the WHATWG strip set, never the adjudication\'s surviving half.');
     }
 
     /**
@@ -360,18 +411,20 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
 
         /*
-         * The raw-derivation fold pin (the round's verifier, rd-1): a
-         * host TAB is legal per the round-1 host-charset adjudication,
-         * and this engine's parse_url() REWRITES it to '_' — the old
-         * rebuild rode that rewrite ('h_st.example'), the raw
-         * derivation carries the byte verbatim. The pin holds the
-         * agreement the one split exists for: authority() spells
+         * The raw-derivation fold pin (the round's verifier, rd-1):
+         * the agreement the one split exists for — authority() spells
          * exactly the bytes url() carries, whatever the engine's own
-         * host spelling would be.
+         * host spelling would be. Re-staged over the SPACE host
+         * (t31-ocr44-1): the former tab staging rode the round-1
+         * adjudication's tab half, whose supersession refuses that
+         * spelling now; the space is the adjudication's surviving
+         * byte, and this engine's parse_url() carries it verbatim —
+         * the agreement pin holds over a legal host the raw
+         * derivation still spells byte-for-byte.
          */
-        $tabUrl = "https://h\tst.example/token";
-        $this->assertSame("h\tst.example", Url::parse_validated($tabUrl)['authority'], 'The rebuilt authority carries the raw host byte verbatim — never the engine parse’s own host rewrite (the one-split agreement, pinned).');
-        $this->assertSame("https://h\tst.example/token", (new HttpRequest('GET', $tabUrl))->redacted_url(), 'The redacted form and the raw parse answer one verdict over the tab-bearing host.');
+        $spaceHostUrl = 'https://host.example well/token';
+        $this->assertSame('host.example well', Url::parse_validated($spaceHostUrl)['authority'], 'The rebuilt authority carries the raw host byte verbatim — never the engine parse’s own host spelling (the one-split agreement, pinned).');
+        $this->assertSame('https://host.example well/token', (new HttpRequest('GET', $spaceHostUrl))->redacted_url(), 'The redacted form and the raw parse answer one verdict over the space-bearing host.');
     }
 
     /**
@@ -774,9 +827,11 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
      * parse_url's lenient host charset is below-the-bar for constructor
      * validation; the byte renders oddly but forges no line). Widening
      * or narrowing this tolerance is a supersession of that
-     * adjudication, not a drive-by. (A TAB in the host normalizes to an
-     * underscore inside modern parse_url — no tab byte reaches the
-     * debug form to tolerate.)
+     * adjudication, not a drive-by. (The adjudication's TAB half is
+     * GONE — t31-ocr44-1: the URL Standard strips the byte before
+     * parsing, so a browser contacts a different host and the
+     * authority refuses the whole strip set; the space half this pin
+     * rides is the surviving byte, with no WHATWG differential.)
      */
     public function testSpaceStaysLegalInUrlHostsForNow(): void
     {
