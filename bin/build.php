@@ -1903,11 +1903,33 @@ final class WpConnectorsBuild
         }
         $tail = '';
         if (1 === preg_match('/^(.+?)\s+as\s+(.+)$/i', $member, $alias_parts)) {
+            /*
+             * The SHAPE judges before the vocabulary (OCR round 46,
+             * t31-ocr46-3 — the sweep's own ordering): the tail's
+             * shape check once spelled the UN-ANCHORED class
+             * \A[A-Za-z0-9_]+\z, which admits digit-initial spellings
+             * the engine refuses in the slot, so `{Shared\Clock as
+             * 0foo}` passed this grammar at BOTH re-emit seams (this
+             * owner and the use-statement pattern's alias group,
+             * anchored at t31-ocr46-1) and shipped the bytes at exit
+             * 0. The shape speaks the LABEL grammar at every seam
+             * that re-emits an alias — a label begins with a letter
+             * or underscore, never a digit — and judges BEFORE the
+             * reserved-vocab oracle consults, so a digit-initial tail
+             * answers the shape's own vocabulary, never the
+             * reserved-word sentence it is not. The census over the
+             * file's un-anchored class: the alias-SHAPE owners are
+             * this arm and the use-pattern's alias group (one commit
+             * over); the oracle's word-bytes gate is ROUTING, not
+             * shape (the t31-ocr46-2 comment names why it stays
+             * loose), and the use callback's tail extraction slices
+             * bytes the pattern's own label grammar already judged.
+             */
+            if (1 !== preg_match('/\A[A-Za-z_][A-Za-z0-9_]*\z/', $alias_parts[2])) {
+                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' whose tail ('{$alias_parts[2]}') is not one plain identifier (a label begins with a letter or underscore, never a digit): the engine accepts only a bare label identifier in the alias slot, and the reassembly once re-emitted the tail verbatim beside the rewritten name at exit 0; write 'Name as Alias' with a plain identifier");
+            }
             if (self::aliasIdentifierIsEngineIllegal($alias_parts[2])) {
                 throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: the alias '{$alias_parts[2]}' is a reserved spelling the engine forbids in the slot, case-insensitively (every keyword the lexer does not spell a name), and the reassembly re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write 'Name as Alias' with a plain identifier the engine accepts");
-            }
-            if (1 !== preg_match('/\A[A-Za-z0-9_]+\z/', $alias_parts[2])) {
-                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' whose tail ('{$alias_parts[2]}') is not one plain identifier: the engine accepts only a bare identifier in the alias slot, and the reassembly once re-emitted the tail verbatim beside the rewritten name at exit 0; write 'Name as Alias' with a plain identifier");
             }
             $member = $alias_parts[1];
             $tail = ' as ' . $alias_parts[2];

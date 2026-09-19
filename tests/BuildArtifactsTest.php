@@ -6569,6 +6569,15 @@ FIXTURE;
             // tail once re-emitted a non-name verbatim beside the
             // rewritten prefix (red at HEAD: returned normally).
             'non-name family-prefix member: Foo-Bar' => 'use Deicod\\WpConnectors\\Shared\\{Foo-Bar};',
+            /*
+             * OCR round 46 (t31-ocr46-3): the member ALIAS's shape
+             * judges at BOTH re-emit seams too — the un-anchored
+             * class admitted digit-initial spellings, and the
+             * family-prefix tail re-emitted `Clock as 0foo` verbatim
+             * beside the rewritten prefix at exit 0 (red at the
+             * round's HEAD: returned normally).
+             */
+            'digit-initial family-prefix member alias: 0foo' => 'use Deicod\\WpConnectors\\Shared\\{Clock as 0foo};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass FamilyPrefixGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/FamilyPrefixGroupStore.php'),
@@ -6583,6 +6592,26 @@ FIXTURE;
         // rewrite is pinned above in the $groupUse battery).
         $familyPrefixLegal = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\{Clock, Storage\\Widget as W};\nclass FamilyPrefixLegalStore\n{\n}\n", 'OpenAiOauth', 'shared/src/FamilyPrefixLegalStore.php');
         $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\{Clock, Storage\\Widget as W};', $familyPrefixLegal, 'A LEGAL family-prefix group rewrites the prefix and rides its members verbatim — validation owns the refusal, never the re-spelling.');
+
+        /*
+         * OCR round 46 (t31-ocr46-3): the alias SHAPE speaks the
+         * label grammar at the member seam, and judges BEFORE the
+         * reserved-vocab oracle consults — the un-anchored class
+         * admitted digit-initial spellings the engine refuses in the
+         * slot, and `{Shared\Clock as 0foo}` passed BOTH re-emit
+         * seams at exit 0 (red at the round's HEAD: returned
+         * normally; the oracle's multi-token walk, t31-ocr46-2, now
+         * refuses the spelling too — this pin holds the SHAPE arm's
+         * own vocabulary, so the refusal names the label premise,
+         * never the reserved-word sentence a digit-initial tail is
+         * not).
+         */
+        $digit_shape = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock as 0foo};\nclass DigitShapeStore\n{\n}\n", 'OpenAiOauth', 'shared/src/DigitShapeStore.php'),
+            'A digit-initial member alias must answer the SHAPE arm\'s refusal', \RuntimeException::class
+        );
+        $this->assertStringContainsString('not one plain identifier', $digit_shape->getMessage(), 'The refusal speaks the shape\'s own vocabulary — a label never begins with a digit, and the shape arm judges before the reserved-vocab oracle consults.');
+        $this->assertStringContainsString('0foo', $digit_shape->getMessage(), 'The refusal names the spelling.');
 
         /*
          * OCR round 32 (t31-ocr32-1): the alias grammar at the
