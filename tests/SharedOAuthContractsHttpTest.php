@@ -403,6 +403,31 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('127.0.0.1:8080', Url::parse_validated('http://127.0.0.1:8080/callback')['authority'], 'A canonical quad with a port stays legal.');
         $this->assertSame('idp2.example', Url::parse_validated('https://idp2.example/')['authority'], 'A digit-bearing INTERIOR label stays a DNS name — the predicate judges the last label alone.');
         $this->assertSame('example.com.', Url::parse_validated('https://example.com./')['authority'], 'A trailing-dot host keeps its domain reading — the empty part drops before the last label is judged.');
+
+        /*
+         * OCR-round-50 legs (t31-ocr50-6, the DIGIT-ONLY fast arm of
+         * this battery's own predicate): the Standard's "ends in a
+         * number" check answers its digit-only arm (§5.3 step 4)
+         * BEFORE the IPv4 radix parse, so '09' IS a number to every
+         * WHATWG consumer (the browser routes it to IPv4 parsing,
+         * where the leading-zero validation then fails) — while the
+         * r49 predicate spelled the radix arm alone, read '09' as
+         * octal-invalid, and the host parsed as an OPAQUE HOSTNAME
+         * (red at HEAD: constructed) — the accepting direction of the
+         * differential this screen exists to close.
+         */
+        try {
+            Url::parse_validated('https://09/');
+            $this->fail('A digit-only leading-zero host must be refused by the shared URL owner — red at HEAD it constructed, the radix arm alone misreading the Standard\'s digit-only arm.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), 'The refusal stays the IPv4-ambiguity channel — the digit-only arm is the same predicate, one arm over.');
+        }
+        try {
+            new HttpRequest('GET', 'https://host.007/');
+            $this->fail('A digit-only leading-zero last label must be refused by the request VO too.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), 'The request VO answers the same refusal.');
+        }
     }
 
     /**

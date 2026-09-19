@@ -546,12 +546,17 @@ final class Url {
 
 	/**
 	 * The URL Standard's "ends in a number" host predicate (§5.3,
-	 * t31-ocr49-4): strictly split the host on '.', drop ONE trailing
-	 * empty part, and ask whether the LAST part parses as an IPv4
-	 * number — decimal digits, a 0x/0X-prefixed hex number ('0x'
-	 * alone is 0 per the spec's own empty-after-prefix rule), or a
-	 * leading-zero octal ('010' is 8; '09' carries a non-octal digit
-	 * and is NOT a number). A host that ends in a number is IPv4
+	 * t31-ocr49-4; the digit-only arm aligned by t31-ocr50-6):
+	 * strictly split the host on '.', drop ONE trailing empty part,
+	 * and ask whether the LAST part is a number — the DIGIT-ONLY arm
+	 * first (§5.3 step 4: a non-empty part of only ASCII digits is a
+	 * number, BEFORE any radix parse, so '09' IS a number to every
+	 * WHATWG consumer — the browser routes it to IPv4 parsing, where
+	 * the leading-zero validation then fails it), then the IPv4 radix
+	 * arm (a 0x/0X-prefixed hex number, '0x' alone is 0 per the
+	 * spec's own empty-after-prefix rule — every all-digits spelling
+	 * already answered at the digit arm, so the radix arm owns the
+	 * hex family alone). A host that ends in a number is IPv4
 	 * territory to every WHATWG consumer on a special scheme; a last
 	 * label that is not a number leaves the host a domain whatever
 	 * the earlier labels carry.
@@ -568,6 +573,6 @@ final class Url {
 		}
 		$last = (string) $parts[ count( $parts ) - 1 ];
 
-		return 1 === preg_match( '/\A(?:0[xX][0-9A-Fa-f]*|0[0-7]*|[1-9][0-9]*)\z/', $last );
+		return 1 === preg_match( '/\A(?:[0-9]+|0[xX][0-9A-Fa-f]*)\z/', $last );
 	}
 }
