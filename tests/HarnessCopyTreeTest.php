@@ -698,6 +698,28 @@ final class HarnessCopyTreeTest extends TestCase
      * plant at all on a host whose temp root sits off the judged
      * volume — the r38-2 conservative unmeasured arm, residue-free
      * the same way).
+     *
+     * OCR round 44 (t31-ocr44-6): the window is watched through BOTH
+     * lenses now — the fixtures tree (a REGRESSED seam's plant) and
+     * the temp root's child-pid spelling (a FIXED seam's plant, the
+     * scratch representative the ocr40-5 seam owns) — so the freeze
+     * catches the window on either seam state. The finally's sweep
+     * answers BOTH spellings (this process's pid and the test's OWN
+     * dead child's pid — the ocr43-10 boundary intact: no foreign
+     * process's probe is ever another runner's to unlink), and the
+     * sweep's own pin is DRIVEN DETERMINISTICALLY: the real strand is
+     * phase- and host-conditional (the kill must land inside the
+     * plant window, and on a host whose temp root sits off the judged
+     * volume — this runner's tmpfs /tmp beside the ext4 repo, probed
+     * — the r38-2 conservative arm plants NOTHING, so no phase can
+     * strand one), so the leg stages the killed child's stranded
+     * SPELLING itself once the child is dead — a probe under the
+     * child's pid, the exact bytes a mid-window kill leaves — and the
+     * guarded post-sweep assertion (a flag the verdict-return sets,
+     * the t31-ocr42-8 doctrine: no assertion fires while a verdict is
+     * in flight) holds the temp root free of it. Red at HEAD: the
+     * own-pid-only glob left the child's stranded probe in the shared
+     * temp root.
      */
     public function testACrashedCaseProbeLeavesItsResidueInScratchNeverInTheJudgedRepoTree(): void
     {
@@ -763,6 +785,16 @@ final class HarnessCopyTreeTest extends TestCase
         };
 
         $childPid = 0;
+        /*
+         * The verdict-return flag (t31-ocr44-6): the finally's own
+         * assertion may fire ONLY when no verdict is in flight —
+         * PHP REPLACES an in-flight exception with one thrown from
+         * finally (the t31-ocr42-8 census), so the flag is set by the
+         * try body's LAST statement and the pin below stays silent on
+         * every abort, staging failure, and skip path, where the
+         * body's own verdict outranks it.
+         */
+        $verdict_returned = false;
         try {
             /*
              * The spawn (the backgrounded command is the php process
@@ -800,7 +832,17 @@ final class HarnessCopyTreeTest extends TestCase
                 exec('kill -STOP ' . $childPid . ' 2>/dev/null');
                 usleep(15000);
                 $held = $residueOf($fixtures);
-                if ($held !== array()) {
+                /*
+                 * The SCRATCH lens (t31-ocr44-6): the frozen child's
+                 * own pid-prefixed probe under the temp root is the
+                 * FIXED seam's window held open — the ocr40-5 plant
+                 * lands in the scratch representative, so the fixtures
+                 * lens above sees a regressed seam only. Either lens
+                 * firing means the stopped child stands inside its
+                 * plant window.
+                 */
+                $child_held = glob(sys_get_temp_dir() . '/wpct-pathcase-' . $childPid . '-*');
+                if ($held !== array() || array() !== $child_held) {
                     // The crash itself: SIGKILL reaches a stopped
                     // process, and no code of ours runs after it.
                     exec('kill -9 ' . $childPid . ' 2>/dev/null');
@@ -817,14 +859,33 @@ final class HarnessCopyTreeTest extends TestCase
                 $survivors = $residueOf($fixtures);
                 $this->assertSame(array(), $survivors, 'A crashed probe leaves its residue in SCRATCH (the volume\'s temp representative or nowhere), never in the judged repository tree — the planted file the killed child never unlinked must not sit in the fixtures tree (red at HEAD: the plant went directly into the judged base, with only a bare @unlink between).');
             } else {
-                // The window never opened across every attempt: on a
-                // FIXED seam this is the expected arm (no plant ever
-                // touches the repo tree); on a REGRESSED one it is the
-                // ~0.4^10 tail, and the verdict below still holds —
-                // the residue absence it asserts is what the fixed
-                // seam owes, with the tail documented in the docblock.
+                // The window never opened across every attempt — the
+                // ~0.4^10 tail on EITHER seam state now that the
+                // scratch lens watches the fixed seam's plant too (a
+                // regressed seam misses through the fixtures lens, a
+                // fixed one through the temp root), and the verdict
+                // below still holds — the residue absence it asserts
+                // is what the fixed seam owes, with the tail
+                // documented in the docblock.
                 $this->assertSame(array(), $residueOf($fixtures), 'No freeze may ever observe a planted probe file inside the judged repository tree — the plant belongs in scratch or nowhere.');
             }
+
+            /*
+             * The stranded SPELLING, staged deterministic (t31-ocr44-6):
+             * the child is dead now, and whatever its kill may have
+             * stranded is phase- and host-conditional — on this
+             * runner the r38-2 arm plants nothing at all (tmpfs temp
+             * beside the ext4 repo), so no phase draw could strand
+             * one. The staged probe spells the DEAD child's own pid
+             * in the harness's own plant spelling — the exact residue
+             * a mid-window kill leaves — and the sweep below owns it
+             * exactly as it would own the real one.
+             */
+            $this->stage(sys_get_temp_dir() . '/wpct-pathcase-' . $childPid . '-' . bin2hex(random_bytes(4)) . 'AbC.probe', 'case probe');
+
+            // The body's verdict has returned — the finally's own pin
+            // may speak now (see the flag's census above).
+            $verdict_returned = true;
         } finally {
             // The child dies stopped or running, never left looping.
             if ($childPid > 0) {
@@ -856,27 +917,48 @@ final class HarnessCopyTreeTest extends TestCase
                 @unlink($junk);
             }
             /*
-             * The temp sweep is scoped to THIS process's probe
-             * spelling (OCR round 43, t31-ocr43-10): the probe name
-             * carries its own pid (wpct-pathcase-<pid>-<hex>, the
-             * harness's own spelling at the plant seam), and the bare
-             * class glob matched EVERY process's in-flight case probe
-             * — under parallel CI runners sharing the temp root this
-             * finally could unlink another LIVE process's probe
-             * mid-measurement. Only this process's spelling is this
-             * test's to reclaim; the crash sim's dead child planted
-             * under the CHILD's own pid, and its residue belongs in
-             * scratch or nowhere (the ocr40-5 doctrine the pin itself
-             * states) — never reclaimed through another process's
-             * window. The heartbeat rides its own explicit unlink
-             * below (its 'crash'-stemmed spelling never matched the
-             * pid-prefixed pattern).
+             * The temp sweep is scoped to the spellings THIS test owns
+             * (OCR round 43, t31-ocr43-10; the child's half joined in
+             * round 44, t31-ocr44-6): the probe name carries its own
+             * pid (wpct-pathcase-<pid>-<hex>, the harness's own
+             * spelling at the plant seam), and the bare class glob
+             * matched EVERY process's in-flight case probe — under
+             * parallel CI runners sharing the temp root this finally
+             * could unlink another LIVE process's probe
+             * mid-measurement. This process's spelling and the test's
+             * OWN DEAD CHILD's are this test's to reclaim (the child
+             * is killed above — no window of its survives the sweep,
+             * and no foreign process's probe is ever another runner's
+             * to unlink, the ocr43-10 boundary); the child's stranded
+             * probe once belonged in scratch or nowhere (the ocr40-5
+             * doctrine) — it belongs RECLAIMED now, never left as the
+             * shared temp root's residue. The heartbeat rides its own
+             * explicit unlink below (its 'crash'-stemmed spelling never
+             * matched the pid-prefixed pattern).
              */
             $temp_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-' . getmypid() . '-*');
-            foreach (is_array($temp_junk) ? $temp_junk : array() as $junk) {
+            if ($childPid > 0) {
+                $child_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-' . $childPid . '-*');
+                $temp_junk = array_merge(is_array($temp_junk) ? $temp_junk : array(), is_array($child_junk) ? $child_junk : array());
+            }
+            foreach ($temp_junk as $junk) {
                 @unlink($junk);
             }
             @unlink($heartbeat);
+            /*
+             * The sweep's OWN pin (t31-ocr44-6, guarded by the
+             * verdict-return flag — never a verdict replacer): the
+             * staged stranded spelling under the dead child's pid —
+             * and any REAL strand the kill may have left beside it,
+             * wherever the host's plant arm allows one — must be gone
+             * once the sweep above has run. The probe spells THIS
+             * test's own dead child's pid, no live process's window,
+             * so the ownership is the test's by construction.
+             */
+            if ($verdict_returned && $childPid > 0) {
+                $stranded = glob(sys_get_temp_dir() . '/wpct-pathcase-' . $childPid . '-*');
+                $this->assertSame(array(), is_array($stranded) ? $stranded : array(), 'The sweep reclaims this test\'s own killed child\'s stranded probe — the spelling under the dead child\'s pid is a dead process\'s residue this sweep owns, staged or real alike (red at HEAD: the own-pid-only glob left it in the shared temp root).');
+            }
         }
     }
 
