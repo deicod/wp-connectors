@@ -855,7 +855,24 @@ final class HarnessCopyTreeTest extends TestCase
             foreach ($repo_junk as $junk) {
                 @unlink($junk);
             }
-            $temp_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-*');
+            /*
+             * The temp sweep is scoped to THIS process's probe
+             * spelling (OCR round 43, t31-ocr43-10): the probe name
+             * carries its own pid (wpct-pathcase-<pid>-<hex>, the
+             * harness's own spelling at the plant seam), and the bare
+             * class glob matched EVERY process's in-flight case probe
+             * — under parallel CI runners sharing the temp root this
+             * finally could unlink another LIVE process's probe
+             * mid-measurement. Only this process's spelling is this
+             * test's to reclaim; the crash sim's dead child planted
+             * under the CHILD's own pid, and its residue belongs in
+             * scratch or nowhere (the ocr40-5 doctrine the pin itself
+             * states) — never reclaimed through another process's
+             * window. The heartbeat rides its own explicit unlink
+             * below (its 'crash'-stemmed spelling never matched the
+             * pid-prefixed pattern).
+             */
+            $temp_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-' . getmypid() . '-*');
             foreach (is_array($temp_junk) ? $temp_junk : array() as $junk) {
                 @unlink($junk);
             }
