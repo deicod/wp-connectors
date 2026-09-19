@@ -122,9 +122,12 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
      * roles explicitly: $seen owns every tree ever entered, the
      * $ancestors stack owns the current descent. The loud-refusal
      * vocabulary covers the environment arms beside the loop: a
-     * directory that will not resolve or list refuses naming it (a
-     * silently shrunken census is the coverage hole this pin exists
-     * to close).
+     * directory that will not resolve or list refuses naming it, and
+     * since OCR round 53 (t31-ocr53-4) a DANGLING entry — a dead
+     * symlink, neither is_dir() nor is_file() (both stat through the
+     * link) — refuses too, the no-symlinks doctrine's fourth arm
+     * beside file/dir/loop (a silently shrunken census is the
+     * coverage hole this pin exists to close).
      *
      * @return list<string> Sorted class names of every *.php file under the tree.
      */
@@ -160,8 +163,23 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
                 $path = $current . '/' . $entry;
                 if (is_dir($path)) {
                     $walk($path);
-                } elseif (is_file($path) && 'php' === strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
-                    $classes[] = 'Deicod\\WpConnectors\\Shared\\Exception\\' . str_replace('/', '\\', substr($path, strlen($dir) + 1, -4));
+                } elseif (is_file($path)) {
+                    if ('php' === strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+                        $classes[] = 'Deicod\\WpConnectors\\Shared\\Exception\\' . str_replace('/', '\\', substr($path, strlen($dir) + 1, -4));
+                    }
+                } else {
+                    /*
+                     * The DANGLING arm (t31-ocr53-4 — the no-symlinks
+                     * doctrine's fourth arm beside file/dir/loop): a
+                     * dead symlink satisfies neither is_dir() nor
+                     * is_file() (both stat THROUGH the link), fell
+                     * through both branches, and was skipped silently
+                     * — the census quietly shrinking over an entry it
+                     * could not read, the exact shape the doctrine ("a
+                     * link is never silently skipped", t31-ocr49-11)
+                     * exists to close.
+                     */
+                    throw new \RuntimeException('The Exception-tree walk cannot read ' . $path . ' — a dangling symlink (or other neither-file-nor-directory entry) under the census root is never silently skipped: the census refuses loudly, never silently shrinks the file set.');
                 }
             }
             unset($ancestors[$real]);
@@ -253,6 +271,45 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
                 'Deicod\\WpConnectors\\Shared\\Exception\\Sub\\Two',
             );
             $this->assertSame($expected, $this->collectExceptionTreeClasses($scratch), 'A diamond completes the census with each real file counted ONCE — the duplicate entry skips, the walk continues; only a re-entry of an ANCESTOR (a cycle) refuses.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
+     * OCR-round-53 pin (t31-ocr53-4): the walk's own doctrine — "a
+     * link is never silently skipped" (t31-ocr49-11) — was not
+     * enforced for the DANGLING arm: a dead symlink satisfies neither
+     * is_dir() nor is_file() (both stat THROUGH the link), fell
+     * through both branches, and was skipped silently — the census
+     * quietly shrinking over an entry it could not read, the exact
+     * shape the loud-refusal vocabulary exists to close (RED AT HEAD,
+     * driven: the walk completed over the planted dead link without
+     * naming it). The dangling arm refuses loudly now — the
+     * no-symlinks doctrine's fourth arm beside file/dir/loop — in
+     * the walk's own refusal vocabulary; live trees unchanged.
+     */
+    public function testADanglingSymlinkUnderTheExceptionTreeAnswersTheLoudRefusalNotTheSilentSkip(): void
+    {
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the planted-dangling-link leg did not run (the dangling-arm seam it drives is unconstructible here).');
+        }
+
+        do {
+            $scratch = sys_get_temp_dir() . '/wpct-oauth-census-dangling-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        } while (is_dir($scratch));
+
+        try {
+            $this->assertTrue(mkdir($scratch, 0755, true), 'staging: the scratch Exception tree must create — a staging failure fails as staging, never as the walk verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/One.php', "<?php\n"), 'staging: the scratch type file must write — a staging failure fails as staging, never as the walk verdict.');
+            // The plant: a DEAD link — its target is never created, so
+            // both stat probes answer false and only the dangling arm
+            // can name it.
+            $this->assertTrue(symlink($scratch . '/gone', $scratch . '/dead'), 'staging: the planted dangling link must take — a staging failure fails as staging, never as the walk verdict.');
+
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('dangling symlink');
+            $this->collectExceptionTreeClasses($scratch);
         } finally {
             WpHarness::releaseScratch($scratch);
         }
