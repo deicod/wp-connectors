@@ -783,51 +783,123 @@ final class WpHarness
      * Whether this host RESOLVES path spellings case-insensitively —
      * the ONE owner of the path-case premise (OCR round 35,
      * t31-ocr35-5), derived like isPosixHost() above it: PROBED, never
-     * assumed from the platform boolean.
+     * assumed from the platform boolean. This spelling judges the
+     * TEMP volume (the scratch trees' own); the containment verdicts
+     * derive per VOLUME through the same probe core below
+     * (t31-ocr36-5).
      *
      * macOS is the motivating shape: a POSIX host passing every
      * isPosixHost() gate whose filesystem (and class loading through
      * it) resolves '/scratch/SRC' and '/scratch/src' to the SAME tree
      * — so a byte-wise containment verdict is wrong there exactly
      * where it is right on Linux. The probe plants a MIXED-CASE file
-     * in temp (the canSymlink shape: random-suffixed, never
-     * pid-enumerable or pre-plantable) and asks file_exists() for a
-     * case-VARIANT spelling of it: existence of the variant is the
-     * host's own answer. The answer is CACHED — the probe is
-     * filesystem work and every containment verdict consults it. A
-     * host whose temp cannot be planted answers false (the
-     * case-sensitive arm: the byte-wise verdicts, correct wherever
-     * the variant spelling names a different file).
+     * in the judged base (the canSymlink shape: random-suffixed,
+     * never pid-enumerable or pre-plantable) and asks file_exists()
+     * for a case-VARIANT spelling of it: existence of the variant is
+     * the host's own answer. The answer is CACHED per volume (the
+     * probe is filesystem work). A base that cannot be planted
+     * answers false (the case-sensitive arm: the byte-wise verdicts,
+     * correct wherever the variant spelling names a different file).
      *
      * @return bool True when a case-variant spelling of an existing file exists.
      */
     public static function isCaseInsensitivePathHost(): bool
     {
-        if (null !== self::$case_insensitive_path_host) {
-            return self::$case_insensitive_path_host;
+        return self::caseProbeAnswer(sys_get_temp_dir());
+    }
+
+    /**
+     * The probe core: the case answer for ONE volume, judged by
+     * planting in a directory that sits on it (OCR round 36,
+     * t31-ocr36-5).
+     *
+     * Case resolution is a PER-VOLUME property, and the r35 probe
+     * consulted ONE host-wide cached answer probed exclusively in
+     * sys_get_temp_dir() — but this suite's copyTree shapes
+     * routinely span volumes (repo-rooted sources into temp-rooted
+     * targets), and DERIVE FIRST confirms the shapes CAN diverge on
+     * the hosts the suite serves: macOS installs happily onto a
+     * case-SENSITIVE APFS volume (the dev setup that catches
+     * case-sensitivity bugs) while the system volume holding /tmp is
+     * the default case-insensitive one — and the inverse is one
+     * TMPDIR redirect away (a redirect this suite itself simulates),
+     * temp landing on any volume the user chooses. A host-wide
+     * answer folds repo-rooted verdicts by the TEMP volume's answer —
+     * false refusals one way, the r35 self-copy class surviving the
+     * other. The answer is derived at the volume each verdict judges,
+     * cached by the volume's stat() device id (host truth; Linux's
+     * uniformly case-sensitive volumes answer false everywhere, every
+     * verdict riding unchanged there).
+     *
+     * @param string $base An existing directory on the volume to judge.
+     * @return bool True when a case-variant spelling of an existing file exists on that volume.
+     */
+    private static function caseProbeAnswer(string $base): bool
+    {
+        $stat = @stat($base);
+        if (false === $stat) {
+            // The base cannot be stat'ed — no probe is possible, the
+            // case-sensitive arm answers (the r35 premise, kept).
+            return false;
         }
-        $base = 'wpct-pathcase-' . getmypid() . '-' . bin2hex(random_bytes(4));
-        $probe = sys_get_temp_dir() . '/' . $base . 'AbC.probe';
-        $variant = sys_get_temp_dir() . '/' . $base . 'aBc.probe';
+        $volume = (string) $stat['dev'];
+        if (\array_key_exists($volume, self::$case_insensitive_volumes)) {
+            return self::$case_insensitive_volumes[ $volume ];
+        }
+        $stem = 'wpct-pathcase-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        $probe = $base . '/' . $stem . 'AbC.probe';
+        $variant = $base . '/' . $stem . 'aBc.probe';
         $planted = false !== @file_put_contents($probe, 'case probe');
         $answer = $planted && file_exists($variant);
         if ($planted) {
             @unlink($probe);
         }
 
-        return self::$case_insensitive_path_host = $answer;
+        return self::$case_insensitive_volumes[ $volume ] = $answer;
     }
 
     /**
-     * The case-insensitivity probe's cached answer — HOST truth, never
-     * test state: reset() does not touch it (the host's filesystem does
-     * not reset between tests), and no test sim can flip it (a planted
-     * probe file answers the real question — a plant is the host's own
-     * case behavior).
+     * The case answer for the VOLUME a resolved path resolves on —
+     * the per-volume derivation's path-facing arm (t31-ocr36-5): the
+     * probe plants in the path's nearest EXISTING ancestor (a
+     * not-yet-created target resolves on the volume its anchor sits
+     * on), never at a filesystem root the walk cannot write.
      *
-     * @var bool|null
+     * @param string $resolved A comparison-vocabulary ('/'-joined) path.
+     * @return bool True when that path's volume resolves case-insensitively.
      */
-    private static $case_insensitive_path_host = null;
+    private static function pathVolumeResolvesCaseInsensitively(string $resolved): bool
+    {
+        $probe_dir = $resolved;
+        while (true) {
+            if (is_dir($probe_dir)) {
+                break;
+            }
+            $parent = dirname($probe_dir);
+            // A fixed point ('/' — or a drive root on a '\' host) with
+            // nothing existing below it: the ocr16-5 sentinel refuses
+            // such chains before the folds run, so this arm answers
+            // the case-sensitive default rather than probing a root.
+            if ($parent === $probe_dir) {
+                return false;
+            }
+            $probe_dir = $parent;
+        }
+
+        return self::caseProbeAnswer($probe_dir);
+    }
+
+    /**
+     * The per-volume case probe's cached answers — HOST truth, never
+     * test state: reset() does not touch them (the host's filesystem
+     * does not reset between tests), and no test sim can flip one (a
+     * planted probe file answers the real question — a plant is the
+     * host's own case behavior), keyed by the volume the answer
+     * judges.
+     *
+     * @var array<string, bool>
+     */
+    private static $case_insensitive_volumes = array();
 
     /**
      * A realpath() OUTPUT in the comparison vocabulary the containment
@@ -873,20 +945,25 @@ final class WpHarness
      * SAME tree, so the byte-wise verdicts passed the exact self-copy
      * and mirror shapes the guard exists to kill (DERIVE FIRST — the
      * ledger's platform doctrine, never a blind case-insensitive
-     * compare). The host's behavior is DERIVED through the probe owner
-     * (isCaseInsensitivePathHost()): where the host resolves
-     * case-sensitively (this runner: Linux) the arm is the IDENTITY and
-     * every byte-wise verdict rides unchanged — construction-evident,
-     * the fold's driven red living only on a case-insensitive host. The
-     * fold is the ASCII table through strtr (locale-independent, the
-     * Turkish-locale pins' own vocabulary — never strtolower).
+     * compare). Each side's behavior is DERIVED through the per-volume
+     * probe arm (pathVolumeResolvesCaseInsensitively(), t31-ocr36-5 —
+     * case resolution is a VOLUME property, and the suite's shapes
+     * span volumes): a side folds through ITS OWN volume's answer, so
+     * same-volume sides stay consistent under one answer while
+     * cross-volume sides are different trees regardless; where every
+     * volume resolves case-sensitively (this runner: Linux) the arm is
+     * the IDENTITY and every byte-wise verdict rides unchanged —
+     * construction-evident, the fold's driven red living only on a
+     * case-insensitive volume. The fold is the ASCII table through
+     * strtr (locale-independent, the Turkish-locale pins' own
+     * vocabulary — never strtolower).
      *
      * @param string $resolved A realpath()-derived answer (already folded through posix_comparison_vocabulary()).
-     * @return string The same path, ASCII-case-folded on a case-insensitive host; byte-identical otherwise.
+     * @return string The same path, ASCII-case-folded on a case-insensitive volume; byte-identical otherwise.
      */
     private static function case_insensitive_containment_fold(string $resolved): string
     {
-        if (! self::isCaseInsensitivePathHost()) {
+        if (! self::pathVolumeResolvesCaseInsensitively($resolved)) {
             return $resolved;
         }
 
