@@ -38,16 +38,43 @@ final class UnusedImportScannerTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_link($entry)) {
-                @unlink($entry);
-            } elseif (is_dir($entry)) {
-                @rmdir($entry);
-            } else {
-                @unlink($entry);
-            }
-        }
-        @rmdir($this->root);
+        /*
+         * The release owns the WHOLE tree (OCR round 44, t31-ocr44-4):
+         * the former per-child @rmdir chain was non-recursive — a
+         * non-empty subdirectory (the abort leg's locked/Hidden.php,
+         * its mode restored by the finally but its file never removed)
+         * made both rmdirs fail silently and the whole uniqid-named
+         * tree survived the run, one leak per abort-leg execution. The
+         * guarded release is the one owner (the t31-ocr34-4 doctrine):
+         * recursive through non-empty subtrees, loud on STDERR over an
+         * environmental failure yet never a verdict replacer, and a
+         * symlink inside the tree unlinks as itself (rrmdir's own
+         * no-links-through doctrine) — everything the hand chain did,
+         * without the silent-leak seam.
+         */
+        WpHarness::releaseScratch($this->root);
+    }
+
+    /**
+     * OCR-round-44 pin (t31-ocr44-4): teardown releases a NON-EMPTY
+     * subdirectory tree. The former @rmdir chain was one level deep —
+     * the abort leg's locked/Hidden.php (mode restored, file still
+     * inside) made rmdir(locked/) and rmdir(root) both fail silently,
+     * and the uniqid-named scratch tree survived every run of the leg
+     * (red at HEAD, driven: the tree remained under the temp root
+     * after tearDown). The release owner is recursive by construction;
+     * this pin holds it so, at the same depth the leak once rode.
+     */
+    public function testTeardownReleasesNonEmptySubdirectoryTrees(): void
+    {
+        mkdir($this->root . '/locked', 0755, true);
+        file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n");
+
+        $this->tearDown();
+
+        $this->assertDirectoryDoesNotExist($this->root, 'The teardown release owns the whole tree — a non-empty subdirectory never strands the uniqid-named scratch root (red at HEAD: both rmdirs failed silently and the tree survived).');
+        clearstatcache();
+        $this->assertDirectoryDoesNotExist($this->root . '/locked', 'The nested directory is gone with its parent — the release is recursive, never the one-level hand chain.');
     }
 
     /**
