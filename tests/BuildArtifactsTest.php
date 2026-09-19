@@ -3355,6 +3355,61 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-43 pin (t31-ocr43-6): the DEGENERATE composition — a
+     * slug whose derived suffix equals the family's own leaf segment.
+     * Slug 'shared' derives namespace_suffix 'Shared' (the autoloader
+     * cross-check agreeing by construction), and the rewrite composes
+     * <vendor>\<Suffix>\<family-leaf> into …\Shared\Shared: the
+     * relative pass's splice feeds the use pass a target-prefixed
+     * spelling the use pass rewrites AGAIN — a double rewrite (red at
+     * HEAD: the build SUCCEEDED, shipping a namespace nothing loads
+     * with every gate green). The config seam refuses the degenerate
+     * loudly now, the vocabulary-doctrine premise made explicit: no
+     * component may compose into the family's own spelling.
+     */
+    public function testASlugDerivingTheFamilyLeafRefusesTheBuildAtTheConfigSeam(): void
+    {
+        $scratch = self::scratchPath('degenerate-slug');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        mkdir($scratch . '/shared/src/Clock', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        file_put_contents($scratch . '/shared/src/Clock/ClockInterface.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Clock;\ninterface ClockInterface {}\n");
+
+        // The 'shared'-slug plugin in the digit-slug test's own shape:
+        // headers, the slug-derived version constant, and the
+        // autoloader bound to exactly the prefix the slug derives —
+        // every gate the cross-check consults agrees, which is what
+        // makes the degenerate the config seam's own to refuse.
+        $plugin = $scratch . '/plugin/shared';
+        mkdir($plugin . '/src', 0755, true);
+        $head = "Plugin Name:       shared\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       shared\nAuthor:            x\n";
+        file_put_contents($plugin . '/shared.php', "<?php\n/**\n * {$head} */\ndefine( 'SHARED_VERSION', '1.0.0' );\nif ( SHARED_VERSION !== '1.0.0' ) {\n\treturn;\n}\nrequire_once __DIR__ . '/src/autoload.php';\n");
+        $this->assertSame('Shared', WpConnectorsBuild::namespaceSuffixFromSlug('shared'), 'The premise: slug \'shared\' derives the family leaf itself.');
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\Shared\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        file_put_contents($plugin . '/src/autoload.php', $autoload);
+        file_put_contents($plugin . '/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            // The gates the cross-check consults all agree — the
+            // degenerate is invisible to every one of them.
+            $this->assertSame(array(), wp_connectors_autoloader_violations($plugin), 'The slug-derived autoloader prefix the cross-check consults agrees by construction — the degenerate is the config seam\'s own to refuse.');
+
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::buildPlugin($plugin, $scratch . '/dist'),
+                'A slug deriving the family leaf must refuse the build at the config seam — never ship the double rewrite (red at HEAD: the build succeeded).', \RuntimeException::class
+            );
+            $this->assertStringContainsString('collides with the family namespace\'s own leaf segment', $refusal->getMessage(), 'The refusal names the degenerate composition.');
+            $this->assertStringContainsString('double rewrite', $refusal->getMessage(), 'The refusal names the consequence it refuses.');
+            $this->assertStringContainsString('rename the plugin', $refusal->getMessage(), 'The refusal names the way out.');
+            $this->assertSame(array(), glob($scratch . '/dist/*.zip') ?: array(), 'The refused build leaves no zip behind.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r3-4): the embed collection reused
      * collectFiles(), whose EXCLUDED_PATHS dropped any shared/src
      * subdirectory named tests/tools/dist/vendor — a shared source

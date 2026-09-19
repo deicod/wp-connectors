@@ -2305,6 +2305,32 @@ final class WpConnectorsBuild
                     $family_leaf = $suffix_segments[count($suffix_segments) - 1];
                     throw new RuntimeException("build: {$slug}: build.json namespace_suffix '{$pluginSuffix}' does not match the slug-derived autoloader prefix {$vendor_prefix}\\{$derivedSuffix}\\ the plugin ships (src/autoload.php binds it, the conventions gate enforces it, and the build emits no autoloader of its own) — the shared library would embed under {$vendor_prefix}\\{$pluginSuffix}\\{$family_leaf}, a namespace nothing loads: every gate green, the plugin fataled on install. Set namespace_suffix to '{$derivedSuffix}' or drop the key");
                 }
+                /*
+                 * The DEGENERATE composition (OCR round 43,
+                 * t31-ocr43-6): a slug whose derived suffix collides
+                 * with the family's own LEAF segment — slug 'shared'
+                 * derives 'Shared' — passes every check above (the
+                 * autoloader cross-check agrees with the derivation by
+                 * construction) and composes
+                 * <vendor>\<Suffix>\<family-leaf> into
+                 * …\Shared\Shared: the rewrite's own output re-matches
+                 * the family pattern (the relative pass's splice
+                 * feeds the use pass a target-prefixed spelling the
+                 * use pass rewrites AGAIN), a double rewrite shipping
+                 * a namespace nothing loads at exit 0. The
+                 * vocabulary-doctrine premise, refused loudly: no
+                 * component may compose into the family's own
+                 * spelling — the comparison is case-insensitive, the
+                 * rewrite's segment class being case-blind (a
+                 * case-variant degenerate double-rewrites the same
+                 * way).
+                 */
+                $degenerate_segments = explode('\\', wp_connectors_shared_source_namespace());
+                $degenerate_vendor = implode('\\', array_slice($degenerate_segments, 0, -1));
+                $degenerate_leaf = $degenerate_segments[count($degenerate_segments) - 1];
+                if (0 === strcasecmp((string) $pluginSuffix, (string) $degenerate_leaf)) {
+                    throw new RuntimeException("build: {$slug}: the slug-derived namespace suffix '{$pluginSuffix}' collides with the family namespace's own leaf segment '{$degenerate_leaf}' — the embed would compose {$degenerate_vendor}\\{$pluginSuffix}\\{$degenerate_leaf} and the rewrite re-matches its own output (a double rewrite shipping a namespace nothing loads, every gate green); no component may compose into the family's own spelling — rename the plugin");
+                }
                 self::assertNamespaceSegment($pluginSuffix);
             }
         }
