@@ -6,6 +6,33 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 37)
+
+Thirty-seventh OCR-tool round (main 61/61, fully complete): 1
+finding, the lowest count of the whole loop, driver accepts.
+Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1.
+The round's shape: a single-owner IO-seam residue — the loop's
+first single-digit-minus-nine round; if round 38 answers 0 findings
+or no NEW findings, the OCR phase of the pipeline ends per plan and
+/code-review max begins. Fixed as t31-ocr37-1 — one commit (fix +
+docs together), the full offline check green after it. Suite 1693
+tests, 46253 assertions, 3 skipped unchanged (delta +0).
+
+- **The staging-tree mkdir rides the owned-return idiom
+  (t31-ocr37-1, other:low)** — the one filesystem seam left in
+  buildPlugin() outside the glm17-16 idiom every sibling seam
+  (copyNormalized, writeNormalized, the staging cleanup) already
+  spelled: the staging-tree creation ran bare before the try,
+  neither @-suppressed nor checked, so a refused mkdir surfaced as
+  the engine's own warning and the build refused one seam late at
+  the first copy's message naming a plugin file, never the staging
+  tree that actually refused. The mkdir is checked now — @ on the
+  call, the failed return owned below, the refusal naming the path
+  — and the sweep's standing comment ("an unusable dist is the
+  mkdir below's loud failure to own") tells the truth it always
+  promised. Happy path unchanged.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 36)
 
 Thirty-sixth OCR-tool round (main 61/61, fully complete): 10

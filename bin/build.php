@@ -2283,7 +2283,11 @@ final class WpConnectorsBuild
             self::rrmdir($stage);
         }
         self::sweepStaleStageDirs($distDir, $slug);
-        mkdir($stage . '/' . $slug, 0755, true);
+        // @: the diagnostic is suppressed, the failed return owned below
+        // (glm17-16) — the refusal is the build's own message.
+        if (! @mkdir($stage . '/' . $slug, 0755, true)) {
+            throw new RuntimeException("build: cannot create the staging tree {$stage}/{$slug} — a failed staging mkdir refuses the build, never packs into a tree it does not own");
+        }
 
         $zipTemp = $distDir . '/.' . $zipName . '.tmp-' . getmypid();
         $sidecarTemp = $zipTemp . '.sha256';
