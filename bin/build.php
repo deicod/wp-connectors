@@ -160,9 +160,22 @@ final class WpConnectorsBuild
          * loudly here rather than riding verbatim into the plugin.
          */
         $rewritten = self::rewriteRelativeUseImports($source, $pluginSuffix, $sourceVersion);
+        /*
+         * The NAMESPACE keyword axis joins the scoped census here (OCR
+         * round 43, t31-ocr43-5 — the r35-1 sweep's one reopened
+         * seam): `NAMESPACE Deicod\WpConnectors\Shared;` is legal PHP
+         * the engine matches case-insensitively, but this pattern
+         * spelled the keyword lowercase-only — the declaration rode
+         * un-rewritten and refused only as an anonymous postcondition
+         * failure, one verdict late (the r35-1 census had covered the
+         * use/function/const/as axes at every pattern seam that
+         * spells them and missed the declaration seam's own keyword).
+         * The keyword's casing rides the output verbatim ($1), the
+         * family segments rewriting beneath it.
+         */
         $rewritten = self::replaceOrThrow(
             preg_replace(
-                '/(namespace\s+)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
+                '/((?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
                 '$1' . $target_escaped . '$2',
                 $rewritten
             ),

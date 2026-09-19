@@ -6298,6 +6298,24 @@ FIXTURE;
         $this->assertStringNotContainsString('Deicod\\WpConnectors\\{FUNCTION Shared', $keyword_battery, 'No keyword-case group member may survive un-rewritten.');
 
         /*
+         * OCR round 43 (t31-ocr43-5): the NAMESPACE keyword axis —
+         * the r35-1 census's one reopened seam. The declaration
+         * pattern spelled the keyword lowercase-only, so
+         * `NAMESPACE Deicod\WpConnectors\Shared\Storage;` (legal PHP)
+         * skipped the rewrite entirely and refused only as an
+         * anonymous postcondition failure, one verdict late (red at
+         * HEAD: the call threw at the postcondition). The scoped
+         * group owns the axis now, the keyword casing riding the
+         * output verbatim.
+         */
+        $namespace_case = "<?php\nNAMESPACE Deicod\\WpConnectors\\Shared\\Storage;\nuse Deicod\\WpConnectors\\Shared\\Clock;\nclass NamespaceCaseStore\n{\n}\n";
+        $namespace_battery = WpConnectorsBuild::rewriteSharedNamespace($namespace_case, 'OpenAiOauth', 'shared/src/Storage/NamespaceCaseStore.php');
+        $this->assertStringContainsString('NAMESPACE Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Storage;', $namespace_battery, 'A NAMESPACE-spelled declaration is rewritten, the keyword casing riding verbatim (red at HEAD: skipped, the postcondition refusing anonymously one verdict late).');
+        $this->assertStringNotContainsString('Deicod\\WpConnectors\\Shared', $namespace_battery, 'No case-variant family spelling may survive un-rewritten.');
+        // Lowercase spellings unchanged: the canonical battery above
+        // rides the same pattern green, byte-identically.
+
+        /*
          * Fix-round pin (t31-r4 K1 / t31-r4-4), restructured by t31-r7:
          * group-use MEMBER spellings — the prefix before '{' is
          * Deicod\WpConnectors itself and the members carry the Shared
