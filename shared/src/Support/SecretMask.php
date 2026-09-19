@@ -119,11 +119,32 @@ final class SecretMask {
 	 * 'referer', 'info' — names no credential suffix), so all three
 	 * ride the catalog.
 	 *
+	 * OCR round 49 (t31-ocr49-5, security — the UNDELIMITED
+	 * generation, the single-token twin of the r12-4 leak class the
+	 * delimiter census of ocr43-1/ocr44-2 closed for every
+	 * SEPARATED spelling): the fold normalizes every tchar delimiter
+	 * to the hyphen, but a credential name spelled with NO delimiter
+	 * at all — a header named exactly 'apikey', 'accesstoken' —
+	 * folds to a judged name that equals no catalog entry and whose
+	 * final segment is the WHOLE token, ending in no suffix
+	 * ('accesstoken' does not end in '-token'): both screens
+	 * answered false and the secret rendered verbatim through every
+	 * safe debug form (driven at HEAD). The credential family's own
+	 * single-token forms join the catalog — the flattened spellings
+	 * of the suffix class's hyphenated members
+	 * ('api-key'/'subscription-key') and of the vendor-documented
+	 * names the class's own record cites (security/access/refresh
+	 * tokens, client/shared secrets). A glue with no recognized
+	 * credential name behind it stays outside ('apitoken' is no
+	 * vendor's spelling, the r24 boundary example — the boundary
+	 * still refuses suffix bytes SPANNING a separator,
+	 * 'x-api-keychain' over every delimiter).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAMES = array( 'cookie', 'set-cookie', 'location', 'referer', 'authentication-info', 'proxy-authentication-info' );
+	const SENSITIVE_HEADER_NAMES = array( 'cookie', 'set-cookie', 'location', 'referer', 'authentication-info', 'proxy-authentication-info', 'apikey', 'subscriptionkey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret' );
 
 	/**
 	 * Credential-bearing name suffixes (lowercase): any folded header

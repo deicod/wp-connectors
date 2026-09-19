@@ -2010,8 +2010,44 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         // a name merely CONTAINING the bytes — unhyphenated, or with
         // the suffix mid-name — is not the class (the existing
         // 'x-api-keychain' pin above rides unchanged beside these).
-        foreach (array('apitoken', 'clientsecret', 'x-authorization-scheme', 'www-authenticate') as $spelling) {
+        // 'clientsecret' rode this row until OCR round 49 — the
+        // undelimited generation below claims it as a recognized
+        // credential name's single-token spelling, superseding the
+        // row's example (the 'apitoken' glue keeps it: no vendor
+        // spells it).
+        foreach (array('apitoken', 'x-authorization-scheme', 'www-authenticate') as $spelling) {
             $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling is not credential-bearing — the boundary stays the hyphen token, and 'www-authenticate' carries a challenge-scheme list, never a credential.");
+        }
+
+        /*
+         * OCR-round-49 pin (t31-ocr49-5 — the UNDELIMITED
+         * generation, superseding the r24 row above): a credential
+         * name spelled with NO delimiter at all — a header named
+         * exactly 'apikey' or 'accesstoken' — folds to a judged name
+         * that equals no catalog entry and whose final segment is
+         * the whole token, ending in no suffix: both screens
+         * answered false and the secret rendered verbatim through
+         * every safe debug form (red at HEAD: unmasked). The
+         * credential family's own single-token forms join the
+         * catalog — the flattened spellings of the class's
+         * hyphenated members and of the vendor-documented names the
+         * class's own record cites; the render seam rides the same
+         * verdict, and the unrelated single tokens stay verbatim.
+         */
+        $undelimited_secret = FakeSecrets::accessToken();
+        foreach (array('apikey', 'ApiKey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'subscriptionkey') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the catalog — a recognized credential name's undelimited spelling is the name, never a delimiter-shaped hole (red at HEAD: unmasked).");
+        }
+        $undelimited_map = new HeaderMap(array(
+            'apikey' => $undelimited_secret,
+            'accept' => 'text/plain',
+        ));
+        foreach (array('dump' => print_r($undelimited_map, true), 'serialize' => serialize($undelimited_map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($undelimited_secret, $rendered, "The undelimited 'apikey' name masks in the {$channel} channel — the catalog owns the single-token spelling.");
+            $this->assertStringContainsString('text/plain', $rendered, "The unrelated single-token 'accept' value still renders verbatim in the {$channel} channel.");
+        }
+        foreach (array('host', 'accept') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The unrelated single token '{$spelling}' stays verbatim — the catalog grew the credential family alone.");
         }
 
         /*
