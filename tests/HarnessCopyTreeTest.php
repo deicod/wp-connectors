@@ -1435,6 +1435,55 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-45 pin (t31-ocr45-12): the resolution loop owns a
+     * CYCLE bound. The ocr17-9 termination argument ("the anchor
+     * resolves every link it stops at") leaned on links resolving —
+     * for a link CHAIN THAT RETURNS TO ITSELF nothing resolves (stat
+     * ELOOPs, is_dir/is_file answer false), and the loop's
+     * construction-evidence was the screens' accident, never its own.
+     * On this engine the two-link cycle meets the DANGLING arm (the
+     * probe: is_dir false through the loop, realpath answering the
+     * intermediate spelling) and refuses under the DANGLING
+     * vocabulary — "the link resolves to nothing," a sentence that
+     * mis-names a chain resolving forever; the hang itself is
+     * unconstructible through the dangling screen here, and the bound
+     * plus the named verdict are what the loop owes BY CONSTRUCTION
+     * (never an infinite walk, whatever screen ordering a future edit
+     * lands). Driven red at HEAD: the cycle answers the dangling
+     * sentence, naming no cycle.
+     */
+    public function testATwoLinkTargetCycleAnswersTheNamedCycleRefusal(): void
+    {
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The cycle leg rides POSIX symlink semantics — this host\'s platform separator is not the POSIX one.');
+        }
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the two-link cycle cannot be staged.');
+        }
+
+        $base = sys_get_temp_dir() . '/wpct-copytree-cycle-' . uniqid('', true);
+        mkdir($base . '/a', 0755, true);
+        mkdir($base . '/src', 0755, true);
+        $this->stage($base . '/src/real.php', 'real bytes');
+        try {
+            // The finding's own shape: /a/link -> /b, /b -> /a/link.
+            symlink($base . '/b', $base . '/a/link');
+            symlink($base . '/a/link', $base . '/b');
+
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($base . '/src', $base . '/a/link/x'),
+                'A target whose chain crosses a SYMLINK CYCLE must refuse the copy — the links resolve into each other, so no directory can ever be created through them.',
+                RuntimeException::class
+            );
+            $this->assertStringContainsString('SYMLINK CYCLE', $caught->getMessage(), 'The refusal names the cycle class — never the dangling sentence that mis-names a chain resolving forever (red at HEAD: the dangling vocabulary answered).');
+            $this->assertStringContainsString($base . '/a/link', $caught->getMessage(), 'The refusal names the crossing component.');
+            $this->assertFileDoesNotExist($base . '/a/link/x/real.php', 'Nothing lands through the cycle — the refusal precedes the byte work.');
+        } finally {
+            WpHarness::releaseScratch($base);
+        }
+    }
+
+    /**
      * OCR-round-34 pin (t31-ocr34-2): the COPY walk fences its
      * RECURSION BOUNDARY — the twin of the t31-ocr33-6 fence the
      * removal walk gained, the one owner round 33's residual ledger

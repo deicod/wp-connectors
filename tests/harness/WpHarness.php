@@ -1602,7 +1602,20 @@ final class WpHarness
          * the second pass's remainder is a nonexistent tail whose
          * anchor resolves every link it stops at, and the third pass
          * re-derives the same string.
+         *
+         * The SEEN-SET FENCE (OCR round 45, t31-ocr45-12): the
+         * construction evidence above leaned on every anchor link
+         * RESOLVING — a chain that returns to itself resolves
+         * forever, and the loop's boundedness was the screens'
+         * accident (the dangling arm meets the cyclic stat ELOOP on
+         * this engine), never the loop's own. The fence owns it now:
+         * a resolution that returns to a spelling the walk already
+         * resolved is a cycle, refused by name — the legal fixed
+         * points break at the equality check above BEFORE the fence
+         * ever consults the set, so dot-chains and plain resolutions
+         * ride byte-unchanged.
          */
+        $resolution_seen = array( $to_walk => true );
         while (true) {
             $ancestor = rtrim($to_walk, '/');
             while ('' !== $ancestor && '/' !== $ancestor && ! is_dir($ancestor) && ! is_link($ancestor) && ! is_file($ancestor)) {
@@ -1658,8 +1671,32 @@ final class WpHarness
              * nothing is a malformed chain exactly like the file: no
              * directory can be created through it, and the refusal names
              * it with the same vocabulary.
+             *
+             * The CYCLE half of the resolves-to-nothing class (OCR
+             * round 45, t31-ocr45-12): a chain that returns to ITSELF
+             * also answers false to is_dir()/is_file() (stat ELOOPs
+             * through the loop), but "resolves to nothing" mis-names
+             * it — it resolves FOREVER, and the ocr17-9 loop's
+             * termination argument leaned on exactly this link
+             * resolving. The hop probe walks the link chain with a
+             * seen-set: a spelling revisited is the cycle, named with
+             * its own vocabulary; a chain that ends without revisiting
+             * is the dangling shape the sentence below always owned.
              */
             if (is_link($ancestor) && ! is_dir($ancestor) && ! is_file($ancestor)) {
+                $hop = $ancestor;
+                $hopped = array();
+                while (is_link($hop)) {
+                    if (isset($hopped[$hop])) {
+                        throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain crosses a SYMLINK CYCLE — the links resolve into each other, so no directory can ever be created through them and the resolution walk can never terminate: from ' . $from . ' into ' . $to . ' (the crossing component: ' . $ancestor . ')');
+                    }
+                    $hopped[$hop] = true;
+                    $target = readlink($hop);
+                    if (false === $target || '' === $target) {
+                        break;
+                    }
+                    $hop = '/' === $target[0] ? $target : rtrim(dirname($hop), '/') . '/' . $target;
+                }
                 throw new RuntimeException('WpHarness::copyTree() refuses a target whose chain crosses a DANGLING symlink — the link resolves to nothing, so no directory can be created through it and the landing would die in the engine\'s vocabulary: from ' . $from . ' into ' . $to . ' (the crossing component: ' . $ancestor . ')');
             }
             $ancestor_real = realpath($ancestor);
@@ -1704,6 +1741,10 @@ final class WpHarness
                 $target_real = $resolved;
                 break;
             }
+            if (isset($resolution_seen[$resolved])) {
+                throw new RuntimeException('WpHarness::copyTree() refuses a target whose resolution forms a SYMLINK CYCLE — the resolution walk returned to a spelling it had already resolved (' . $resolved . '), so the chain can never settle and no directory can be created through it: from ' . $from . ' into ' . $to);
+            }
+            $resolution_seen[$resolved] = true;
             $to_walk = $resolved;
         }
         /*
