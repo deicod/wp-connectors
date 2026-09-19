@@ -830,7 +830,29 @@ final class HarnessCopyTreeTest extends TestCase
             if ($childPid > 0) {
                 exec('kill -9 ' . $childPid . ' 2>/dev/null');
             }
-            foreach ($residueOf($fixtures) as $junk) {
+            /*
+             * The finally's sweep NEVER throws (OCR round 42,
+             * t31-ocr42-8 — the t31-ocr33-7 class this file's own
+             * docblock cites): PHP's finally-throws semantics REPLACE
+             * an in-flight verdict, and $residueOf() carries the
+             * ocr41-3 fence's own $this->fail() — an unreadable subtree
+             * surfacing HERE would mask the very verdict the pin just
+             * returned with the diagnostic's environment failure
+             * instead. The sweep is this finally's DIAGNOSTIC arm, not
+             * its verdict arm: a refusal from the lens degrades to a
+             * swallowed notice (the junk reclaim skips a tree it
+             * cannot list; the residue stays for the checkout's owner),
+             * while the assertion arms above keep the fence's loud
+             * spelling. Verdicts never ride a finally.
+             */
+            $repo_junk = array();
+            try {
+                $repo_junk = $residueOf($fixtures);
+            } catch (\Throwable $environment_verdict) {
+                // Swallowed with notice: the in-flight verdict outranks
+                // the diagnostic (see the census above).
+            }
+            foreach ($repo_junk as $junk) {
                 @unlink($junk);
             }
             $temp_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-*');
