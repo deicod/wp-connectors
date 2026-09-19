@@ -1980,8 +1980,18 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testTheReleaseGuardSpeaksASapiIndependentStreamVocabulary(): void
     {
-        if (! WpHarness::canSpawnChildren()) {
-            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the non-CLI SAPI child sim cannot run.');
+        /*
+         * The declaring TRIPLE (OCR round 46, t31-ocr46-7 — the
+         * t31-ocr22-4 doctrine at this site): the guard named only
+         * the spawn pair while the leg's first statement past the
+         * probe is a putenv (the child's harness path rides the
+         * ENVIRONMENT, t31-ocr44-7) — on a host with putenv in
+         * disable_functions the call fataled before the child could
+         * ever spawn, the redirected-TMPDIR siblings' own idiom
+         * (canSpawnChildren('putenv')) the whole way.
+         */
+        if (! WpHarness::canSpawnChildren('putenv')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg/putenv in disable_functions — the non-CLI SAPI child sim cannot run (the child\'s harness path rides the environment through a parent-side putenv, so the declaring triple is the premise).');
         }
         $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
         $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — an environment problem, never the harness defect the child would fatal as.');
