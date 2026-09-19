@@ -4785,6 +4785,22 @@ FIXTURE;
              * orphan survived the sweep forever).
              */
             mkdir($scratch . '/dist/.stage-stage-demo-999999998-' . bin2hex(random_bytes(8)), 0755, true);
+            /*
+             * The EMPTY-PID spellings (OCR round 48, t31-ocr48-2):
+             * getmypid() answers int|false, and a false runtime
+             * interpolates an empty pid component — the stage
+             * `.stage-<slug>--<rand>`, the zip temp `.tmp--<rand>`,
+             * the manifest temp `.checksums--<tail>` — spellings a
+             * `(\d+)`-anchored pattern never matched, so a crashed
+             * false-pid run's leftovers were permanently unsweepable
+             * dist residue (red at HEAD: the stage spelling survived
+             * the sweep). The empty component parses to pid 0 — dead
+             * by construction, never a live run's — so the dead-pid
+             * gate reclaims it like any dead pid.
+             */
+            mkdir($scratch . '/dist/.stage-stage-demo--' . bin2hex(random_bytes(8)), 0755, true);
+            file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp--' . bin2hex(random_bytes(8)), 'half a zip, empty-pid spelling');
+            file_put_contents($scratch . '/dist/.checksums--orphaned', 'empty-pid manifest staging temp');
             mkdir($scratch . '/dist/.stage-stage-demo', 0755, true);
             mkdir($scratch . '/dist/.stage-other-demo-999999999', 0755, true);
             file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997', 'half a zip');
@@ -4818,6 +4834,17 @@ FIXTURE;
                 'A RANDOM-SUFFIXED dead-pid orphan is swept on the same charter — the unpredictability fix never weakens the crashed-run reclaim (t31-ocr42-2).'
             );
             $this->assertDirectoryExists($scratch . '/dist/.stage-stage-demo', 'A pid-less foreign spelling is left alone (nothing running this code creates it).');
+            $this->assertSame(
+                array(),
+                glob($scratch . '/dist/.stage-stage-demo--*') ?: array(),
+                'An EMPTY-PID stage spelling is swept on the same charter — getmypid()\'s false answer names a component the pattern must reclaim (red at HEAD: the \d+ anchor never matched it, unsweepable forever).'
+            );
+            $this->assertSame(
+                array(),
+                glob($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp--*') ?: array(),
+                'An EMPTY-PID zip temp is swept on the same charter — the sweep reclaims every spelling the builder emits.'
+            );
+            $this->assertFileDoesNotExist($scratch . '/dist/.checksums--orphaned', 'An EMPTY-PID manifest staging temp is reclaimed — the crashed-run charter covers the false-pid spelling too.');
             $this->assertDirectoryExists($scratch . '/dist/.stage-other-demo-999999999', 'Another plugin\'s stage dirs are that plugin\'s sweep\'s to reclaim.');
             /*
              * The run's OWN stage name is unpredictable since t31-ocr42-2

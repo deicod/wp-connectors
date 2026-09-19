@@ -3609,23 +3609,43 @@ final class WpConnectorsBuild
         if (false === $dir) {
             return;
         }
-        // The random tail (t31-ocr42-2) rides the stale-detection
-        // pattern tail-optionally: the current `.stage-<slug>-<pid>-<rand>`
-        // spelling and the legacy pid-only one both reclaim by the
-        // dead-pid gate alone — the suffix never weakens it.
-        $stage_pattern = '/^\.stage-' . preg_quote($slug, '/') . '-(\d+)(?:-[0-9a-f]+)?$/';
+        /*
+         * The random tail (t31-ocr42-2) rides the stale-detection
+         * pattern tail-optionally: the current `.stage-<slug>-<pid>-<rand>`
+         * spelling and the legacy pid-only one both reclaim by the
+         * dead-pid gate alone — the suffix never weakens it.
+         *
+         * The PID COMPONENT rides digit-optionally (OCR round 48,
+         * t31-ocr48-2): getmypid() answers int|false, and a runtime
+         * answering false interpolates an EMPTY component —
+         * `.stage-<slug>--<rand>` — a spelling a `(\d+)` anchor never
+         * matched, so a crashed false-pid run's leftovers were
+         * permanently unsweepable dist residue (the sweep must reclaim
+         * every spelling the builder emits). The empty component
+         * parses to pid 0: never a live process (processIsAlive
+         * refuses pid <= 0 outright) and never a working run's own
+         * pid — while a false-pid runtime's own `(int) getmypid()`
+         * reads 0 and matches its own empty spelling, the
+         * never-delete direction — so the dead-pid gate reclaims it
+         * exactly like any dead pid.
+         */
+        $stage_pattern = '/^\.stage-' . preg_quote($slug, '/') . '-(\d*)(?:-[0-9a-f]+)?$/';
         // The random tail (t31-ocr43-2, the stage pattern's twin
         // shape) rides tail-optionally here too: the current
         // `.tmp-<pid>-<rand>` spelling and the legacy pid-only one
         // both reclaim by the dead-pid gate alone — the suffix never
         // weakens it (the sidecar's '.sha256' and libzip's '.part'
-        // keep riding the dotted tail).
-        $temp_pattern = '/^\.connectors-' . preg_quote($slug, '/') . '-.*\.zip\.tmp-(\d+)(?:-[0-9a-f]+)?(?:\..*)?$/';
+        // keep riding the dotted tail). The pid component rides
+        // digit-optionally for the same false-pid spelling as the
+        // stage pattern above (t31-ocr48-2).
+        $temp_pattern = '/^\.connectors-' . preg_quote($slug, '/') . '-.*\.zip\.tmp-(\d*)(?:-[0-9a-f]+)?(?:\..*)?$/';
         // The manifest staging temp (t31-ocr26-8): pid-prefixed, tempnam
         // tail behind it — a LEGACY pid-less spelling never matches
         // (the random tail is alnum, no dash, and need not start with
-        // digits-then-dash), staying unattributable exactly as before.
-        $manifest_temp_pattern = '/^\.checksums-(\d+)-/';
+        // digits-then-dash), staying unattributable exactly as before;
+        // the pid rides digit-optionally for the false-pid spelling
+        // (t31-ocr48-2, the two patterns above).
+        $manifest_temp_pattern = '/^\.checksums-(\d*)-/';
         try {
             while (false !== ($entry = readdir($dir))) {
                 $path = $distDir . '/' . $entry;
