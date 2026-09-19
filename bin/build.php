@@ -3620,10 +3620,19 @@ final class WpConnectorsBuild
      *
      * - every `.stage-<slug>-<pid>[-<rand>]` DIRECTORY whose process
      *   is dead is removed; a LIVE run's tree is never touched;
-     * - every `.connectors-<slug>-….zip.tmp-<pid>…` FILE (the zip temp,
-     *   its sidecar twin `.sha256`, and libzip's in-window `.<rand>.part`
-     *   spelling a SIGKILL leaves behind) whose process is dead is
-     *   unlinked — the same crashed-run charter, the same liveness gate;
+     * - every `.connectors-<slug>-….zip.tmp-<pid>…` FILE whose process
+     *   is dead is unlinked — the same crashed-run charter, the same
+     *   liveness gate: the zip temp itself, its sidecar twin `.sha256`,
+     *   and libzip's in-window `.part` spelling, which libzip names
+     *   AFTER THE ZIP'S OWN NAME (`<zip-temp>.<rand>.part`, probed on
+     *   this engine mid-close over a streaming entry: the part temp
+     *   carries the zip temp's own prefix, so the pattern's dotted
+     *   tail owns exactly that spelling — pinned by the sweep
+     *   battery's planted part file). A part spelling NOT beginning
+     *   with the zip temp's own prefix never matches the pattern and
+     *   rides the foreign-shaped doctrine below — the claim owns
+     *   what the prefix anchor actually sweeps (OCR round 49,
+     *   t31-ocr49-7, the charter told the truth);
      * - every `.checksums-<pid>-…` FILE (the manifest staging temp,
      *   pid-named since OCR round 26, t31-ocr26-8) whose process is
      *   dead is unlinked on the same charter — a SIGKILL between the
