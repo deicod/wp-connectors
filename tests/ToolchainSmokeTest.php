@@ -279,6 +279,22 @@ final class ToolchainSmokeTest extends TestCase
         if (! WpHarness::canSymlink()) {
             $this->markTestSkipped('This host cannot create symlinks — the planted-link leg did not run (the no-symlinks doctrine seam it drives is unconstructible here).');
         }
+        /*
+         * The platform gate this battery owed its two siblings (OCR
+         * round 51, t31-ocr51-2 — the census's third '/'-fragment
+         * consumer): the refusal messages are built from raw
+         * HOST-joined pathnames, while the verdicts below assert
+         * '/'-joined fragments ('connectors/demo/linked.php',
+         * 'vendor/linked.php') — the trailing-separator pin and the
+         * exclusions pin gate the same divergence (t31-ocr29-7), and
+         * this battery grew the vocabulary in round 50 without the
+         * gate: on a Win32 host the separator vocabulary diverges and
+         * the battery would fail as an environment defect, never as
+         * the walk's own judgment.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('This host\'s platform separator is not the POSIX one — the refusal messages arrive host-joined while the verdicts assert \'/\'-joined fragments, so the leg would judge the platform\'s own separator vocabulary, never the walk\'s refusal (t31-ocr29-7, its two siblings\' gate).');
+        }
 
         $scratch = sys_get_temp_dir() . '/wpct-lint-link-' . uniqid('', true);
 
