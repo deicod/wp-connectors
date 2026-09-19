@@ -6,6 +6,115 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 53)
+
+Fifty-third OCR-tool round (main run partial 53/61 + fill-in r58b over
+the 8 compression-lost files): 18 findings, driver accepts all; 10
+numbered commits t31-ocr53-1..10, one per finding (same-class = one
+commit). Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18.
+The round's shape: the third driven refutation — the first against
+our own fix (r52-1's 0o/0b arms were ECMAScript spellings, not
+URL-Standard prefixes: over-refusal reverted to the Standard's
+two-prefix shape); the two PCRE fail-open screens; the freeze-loop
+stale-liveness kill; the dangling-symlink arm; saveCount's screen;
+the staging sweeps through BuildSeam/UnusedImport/SecureFixtures;
+the laundering reads; the pre-try creation leak. Round 53 answered
+NEW findings, so the OCR phase continues per plan. Fixed as
+t31-ocr53-1..10 — one commit per finding, plus this docs record, the
+full offline check green after every commit. Suite 1725 → 1728
+tests, 46771 → 46817 assertions, 3 skipped unchanged.
+
+- **The r52-1 radix completion REFUTED by the Standard's own text
+  (t31-ocr53-1, bug:medium + test:medium)** — the URL Standard's
+  IPv4 number parser recognizes exactly two prefix spellings ('0x'
+  radix 16, the legacy single leading '0' radix 8); '0o'/'0b' are
+  ECMAScript numeric-literal spellings, so '0b1'/'0o7' last labels
+  stay opaque domains for every WHATWG consumer and the r52-1
+  refusal was over-refusal of a legal domain — the ledger's third
+  driven refutation, the first against our own round's fix. Driven:
+  the r52-1 legs flip to construction legs (red at the r52 shape),
+  a fresh hex-arm refusal leg proves no overcorrection, the
+  Standard-true spellings stay driven by the r49 hostile loop.
+- **Both WHATWG-differential PCRE screens read abort-as-reject
+  (t31-ocr53-2, bug:low ×2)** — the non-ASCII byte-class probe and
+  the ends-in-a-number predicate were the file's two remaining
+  `1 ===` ban forms: a PCRE abort made `1 === false` false, so a
+  non-ASCII host constructed verbatim and an IPv4-ambiguous spelling
+  constructed as an opaque domain — fail-open on exactly the
+  differential screens. The byte-class probe re-spells `0 !==`; the
+  predicate answers the refusing arm on an abort. Driven for the
+  predicate by the pinned-backtrack-limit idiom (red at HEAD,
+  stash-verified); the class-scan twin construction-evident (no
+  backtracking to exhaust, stated in the census comment).
+- **The freeze loop signals only a child it still owns
+  (t31-ocr53-3, bug:medium)** — the loop signalled $childPid on the
+  heartbeat's stale liveness evidence (proof the child reached its
+  loop ONCE, each later kill riding ~30ms-old evidence), so a child
+  that died mid-loop (the reflected invoke runs uncaught) was
+  still STOPped/killed/CONTinued and, once the reaped pid recycled,
+  an unrelated process was signalled — the recycled-pid class the
+  file's own killChildIfAlive closed, applied inconsistently on the
+  loop side. Every loop signal rides the current probe now, a dead
+  child answering the named death verdict. Driven both directions:
+  a died-mid-loop child never signalled (red at HEAD by
+  construction); a live looping child freezes and thaws, observed
+  over its own marker log (every filesize behind clearstatcache).
+- **The census walk's dangling-symlink arm refuses loudly
+  (t31-ocr53-4, test:low)** — a dead symlink satisfies neither
+  is_dir() nor is_file() (both stat through the link), fell through
+  both branches, and was skipped silently, contradicting the walk's
+  own 'a link is never silently skipped' doctrine — the fourth arm
+  beside file/dir/loop. Driven: a planted dead link answers the
+  named refusal (red at HEAD, arm-disabled-verified: silent skip).
+- **saveCount() rides the one screen owner (t31-ocr53-5,
+  maintainability:low)** — the fake's observable took the same
+  caller-controlled storage key as load()/save()/delete() while
+  skipping screen_key(): a control-bearing key silently answered 0.
+  The guard runs at the fourth call site. Driven: the forged-key
+  loop gains the saveCount() arm (red at HEAD: 0); legal keys
+  unchanged.
+- **The SecureFixtures staging sweep (t31-ocr53-6, test:low ×4)** —
+  four batteries planted fixtures on bare mkdir()/writes, each with
+  its own misattribution shape: empty-report prune/artifact verdicts
+  (a missing tree trivially contains no 'VENDOR' fragment), the
+  ancestor leg's phantom, the fresh-process leg's misleading
+  child-exit-code failure — the sweep test's own asserted-staging
+  rule missed by the batteries that predate it. Every staging write
+  asserts its landing, naming its path. Construction-evident.
+- **The adversarial table's two symlink plants assert their landing
+  (t31-ocr53-7, test:medium ×2)** — a silently failed plant made the
+  CLEAN row's 'extra' control trivially true (vacuous pass, coverage
+  gone) and the LOUD row fail as 'the silent third' — a phantom
+  build defect over a staging failure; canSymlink() proved the
+  capability, not the call. Both plants assert (the closures drop
+  'static' so $this binds), an assertion failure riding the table's
+  own apply-throw channel as the row's FAIL. Construction-evident.
+- **The CLEAN leg's consistency reads ride the marker owner
+  (t31-ocr53-8, test:low ×2)** — the sidecar/manifest reads spelled
+  bare (string) casts, laundering a failed read into '' and failing
+  the row under the wrong owner ('does not describe the shipped
+  zip'), the exact ocr50-8 class readMemberOrMarker() fixed one
+  screen up. Both reads ride the marker; absent/unreadable answer
+  the row's own staging FAIL. Construction-evident.
+- **The scanner suite's two bare staging sites ride the asserted
+  idiom (t31-ocr53-9, test:low ×2)** — the teardown-release leg
+  went vacuously green over a tree that never landed (tearDown
+  releasing an already-clean root), and the unopenable-root leg
+  green over opendir() false on a NONEXISTENT root (counted=0
+  through the finally) — both legs' subjects defeated. Both sites
+  ride the mid-walk leg's own spelled-out doctrine. Construction-
+  evident.
+- **The nested same-name leg's creation rides inside the release's
+  try (t31-ocr53-10, test:low)** — the scratch trees were
+  created/staged BEFORE the try that owns them in the finally, so a
+  failed stage threw with the trees planted and releaseScratch()
+  never ran: both leaked into the shared temp root, the exact class
+  the file's own t31-ocr15-8 doctrine fixed ('every exit path from
+  creation on removes them'). The finally owns every exit from
+  creation on now. Construction-evident; the file's other
+  staging-before-try batteries noted for a later round's census.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 52)
 
 Fifty-second OCR-tool round (main 61/61, fully complete): 6 findings,
