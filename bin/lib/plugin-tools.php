@@ -3548,13 +3548,36 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
      * vocabulary on a boundary the guard owns.
      */
     if (null !== $scanRoot) {
-        $scanRoot = rtrim((string) $scanRoot, '/');
+        /*
+         * The guard speaks BOTH separator spellings (OCR round 42,
+         * t31-ocr42-3 — the t31-ocr40-2/ocr41-1 dual-separator doctrine,
+         * this owner): absoluteness and containment were judged with
+         * POSIX-only spellings — a '\'-separator host answered realpath()
+         * in its own join ('C:\repo\plugin\…'), so the '/'-anchored
+         * absoluteness arm refused every LEGAL root and the '/'-joined
+         * containment needle never matched the backslash-joined
+         * haystack, falsely refusing build.php's composed-tree gate on
+         * the whole platform class. The absoluteness judgment is a
+         * SPELLING-CLASS judgment (leading '/', a drive-letter prefix,
+         * or a UNC double backslash — never platform-gated: on POSIX a
+         * 'C:\…' or '\\…' spelling simply fails realpath below); the
+         * rtrim strips both separators (the r31-5 class list — on POSIX
+         * the '\' arm costs residue only for a path literally named
+         * with trailing backslash bytes, the ocr29-3 trade); the
+         * containment needle joins through whichever separator
+         * realpath() itself answered with. POSIX rides byte-identical
+         * (the '/' arms answer exactly as before; the new arms are
+         * dead there — the drivable class is the '\' host itself,
+         * unreachable from this runner).
+         */
+        $scanRoot = rtrim((string) $scanRoot, '/\\');
         $plugin_real = realpath($pluginDir);
         $scan_real = realpath($scanRoot);
-        if ('' === $scanRoot || '/' !== $scanRoot[0]
+        if ('' === $scanRoot
+            || ('/' !== $scanRoot[0] && 1 !== preg_match('/\A[A-Za-z]:/', $scanRoot) && 0 !== strpos($scanRoot, '\\\\'))
             || false === $plugin_real || false === $scan_real
             || ! is_dir($scan_real)
-            || ($scan_real !== $plugin_real && 0 !== strpos($scan_real, $plugin_real . '/'))) {
+            || ($scan_real !== $plugin_real && 0 !== strpos($scan_real, $plugin_real . '/') && 0 !== strpos($scan_real, $plugin_real . '\\'))) {
             /*
              * The refusal carries the CHANNEL's own class (OCR round
              * 23, t31-ocr23-3): it once threw
