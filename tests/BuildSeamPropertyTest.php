@@ -1074,11 +1074,20 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * (canSymlink()'s probe is the doctrine's own model); the
          * state id keeps the row identifiable in /tmp, the suffix
          * makes the tree one run's own.
+         *
+         * The collision REGENERATES, never reclaims (OCR round 42,
+         * t31-ocr42-6): the reclaim arm below once rrmdir'd a
+         * pre-existing random-suffixed root — reintroducing the very
+         * cross-run-destruction class the suffix closed (2^32 odds per
+         * pair) through the reclaim arm of the maker that closed it. A
+         * random-suffixed name that already exists is a FOREIGN tree
+         * by construction (the odds say so), never this run's stale
+         * leftover: the suffix rolls until the name is free, and the
+         * foreign tree stands untouched.
          */
-        $root = sys_get_temp_dir() . '/wpct-battery-' . preg_replace('/[^a-z0-9-]/', '-', strtolower($state_id)) . '-' . bin2hex(random_bytes(4));
-        if (is_dir($root)) {
-            WpHarness::releaseScratch($root);
-        }
+        do {
+            $root = sys_get_temp_dir() . '/wpct-battery-' . preg_replace('/[^a-z0-9-]/', '-', strtolower($state_id)) . '-' . bin2hex(random_bytes(4));
+        } while (is_dir($root));
         /*
          * The maker owns its OWN cleanup (OCR round 26, t31-ocr26-11):
          * every caller invokes makeScratchRepo() BEFORE its own
