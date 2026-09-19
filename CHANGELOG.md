@@ -6,6 +6,103 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 44)
+
+Forty-fourth OCR-tool round (main 61/61, fully complete): 7 findings,
+all accepted and fixed. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7.
+The round's shape: the tab-in-host WHATWG twin (the r28-6 refusal
+class striking at the authority itself), the tchar class completed at
+the masking boundary (the '.' slice), the constructor annotation
+speaking the true key domain, and the test-hygiene trio (a scratch-tree
+leak that defeated its own tearDown, a readdir-order load-bearing
+assertion, a killed child's stranded probe, and a cgi child's argv
+premise). Round 44 answered NEW findings, so the OCR phase continues
+per plan. Fixed as t31-ocr44-1..7 — one commit per finding, plus this
+docs record, the full offline check green after every commit. Suite
+1702 → 1704 tests, 46340 → 46357 assertions, 3 skipped unchanged.
+
+- **The URL authority refuses the WHATWG strip set (t31-ocr44-1,
+  security:medium)** — the URL Standard removes ALL ASCII tabs and
+  newlines from the input BEFORE parsing, so a tab in the host
+  mutates the host a browser contacts: 'https://id<TAB>p.example'
+  sends a WHATWG consumer to idp.example while this parse kept the
+  tab in the authority and parse_url() rewrote it to a third spelling
+  ('id_p.example') — one URL naming three hosts over the same
+  browser-facing channel (the device-flow verification URI) the
+  t31-ocr28-6 backslash screen closed. WHATWG-differential bytes are
+  REFUSED at the authority, never naively stripped; the round-1
+  host-charset adjudication's tab half ("forges nothing") is
+  superseded — the tab forges — while its space half stands (a
+  space-bearing host fails WHATWG validation rather than contacting
+  another host). Driven: three tab spellings refuse at both
+  consumers (red at HEAD: the strip shape constructed); the space
+  control stays constructible; the three sites that pinned the old
+  tab verdict re-staged.
+- **The masking boundary owns the whole tchar delimiter census
+  (t31-ocr44-2, security:low)** — the ocr43-1 rationale ("the
+  delimiter is a CLASS") closed only the underscore twin, but '.' is
+  equally a legal tchar and so is every other non-alphanumeric byte
+  in NAME_TOKEN_PATTERN's own class: 'x.api.key' matched neither
+  catalog nor class and rendered its secret verbatim (non-blocking,
+  no current consumer — pure class completion). The fold normalizes
+  all fourteen non-alphanumeric tchars (beside the hyphen's identity)
+  to the hyphen once; the boundary holds over every separator
+  spelling ('x.api.keychain' stays outside). Driven: the dot
+  spellings answer masked (red at HEAD: 'x.api.key' unmasked).
+- **The HeaderMap constructor annotation speaks the actual key
+  domain (t31-ocr44-3, documentation:low)** — canonical digit-string
+  keys arrive as PHP ints, are deliberately restored and accepted
+  (pinned since t31-r2-4), yet `array<string, mixed>` made every
+  such call site a static-analysis false positive. The annotation
+  reads array<int|string, mixed> now, the same restoration narrative
+  the docblock already tells. Doc-only.
+- **The unused-import teardown release owns the whole tree
+  (t31-ocr44-4, test:medium)** — tearDown() was a raw @rmdir chain
+  one level deep: the abort leg's locked/Hidden.php (mode restored,
+  file still inside) made both rmdirs fail silently and the whole
+  uniqid-named tree survived every run — thirteen stranded trees
+  cleared by hand from the temp root during the drive. The release
+  rides WpHarness::releaseScratch (the t31-ocr34-4 idiom): recursive,
+  guarded, never a verdict replacer. Driven: a new pin stages the
+  non-empty shape and calls tearDown() directly (red at HEAD: the
+  tree survived); the full check now leaves zero residue.
+- **The abort leg derives its expectation from the observed yield
+  order (t31-ocr44-5, test:medium)** — the ocr43-8 assertion
+  required dead.php to be walked before the locked tree descended,
+  premised on this build's readdir order (entries inverted from
+  creation); on a creation-order filesystem the assertion failed as
+  an environment-looking defect. Two dead sources BRACKET the locked
+  tree now and the expectation derives from the OBSERVED stream
+  (scandir SCANDIR_SORT_NONE — the raw readdir order the iterator
+  walks; the default alphabetical sort is a third order neither
+  consumer rides, driven), exact per observed sequence on every
+  filesystem; an order yielding the locked tree first skips naming
+  the premise. Green on this host; the leg no longer depends on
+  readdir order.
+- **The temp sweep reclaims the killed child's stranded probe
+  (t31-ocr44-6, test:low)** — the ocr43-10 scoping left the sweep
+  globbing only this process's pid spelling, but the SIGKILLed child
+  strands its own whenever the kill lands in its plant window —
+  residue in the shared temp root no run reclaims. The sweep answers
+  both spellings (the test's OWN dead child — the ocr43-10
+  foreign-process boundary intact); the window detection gains the
+  scratch lens (the fixed seam's plant beside the regressed seam's
+  fixtures lens). The pin is driven deterministically over the staged
+  stranded spelling — this runner's tmpfs /tmp beside the ext4 repo
+  makes the real strand unconstructible (the r38-2 no-plant arm,
+  probed) — guarded by a verdict-return flag so no assertion fires
+  while a verdict is in flight (the ocr42-8 doctrine). Red at HEAD:
+  the staged probe survived the own-pid-only glob.
+- **The cgi child reads its harness path from the environment
+  (t31-ocr44-7, test:low)** — `require $argv[1];` gated the
+  non-CLI-SAPI leg on register_argc_argv, an ini setting the CGI
+  SAPI does not force: with it off, $argv was undefined, the child
+  fataled at the require, and the leg failed through the exit-code
+  assertion as an environment-looking defect. The path rides
+  putenv/getenv now (read in every SAPI), the variable unset in the
+  finally; construction-evident, the CLI host riding unchanged.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 43)
 
 Forty-third OCR-tool round (main 61/61, fully complete): 11 findings,
