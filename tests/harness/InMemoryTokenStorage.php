@@ -153,7 +153,8 @@ final class InMemoryTokenStorage implements TokenStorageInterface
      * in, the exact class every provider-supplied string rides the
      * guard for, and a Task-3.2 adapter embedding the key in an
      * OAuthStorageException message on a failed load or delete reopens
-     * it identically. One screen owner, three call sites.
+     * it identically. One screen owner, four call sites (saveCount()
+     * joined in OCR round 53, t31-ocr53-5).
      *
      * @param string $provider_id The caller-controlled storage key.
      * @return void
@@ -167,11 +168,19 @@ final class InMemoryTokenStorage implements TokenStorageInterface
      * How many commits (successful saves) the provider has seen — the
      * fenced-off attempts do not count, they committed nothing.
      *
+     * The key rides the ONE screen owner here too (OCR round 53,
+     * t31-ocr53-5): this was the one public entry taking the same
+     * caller-controlled storage key while skipping screen_key() — a
+     * control-bearing key silently answered 0 instead of the typed
+     * refusal every other key-taking method performs.
+     *
      * @param string $provider_id
      * @return int
      */
     public function saveCount(string $provider_id): int
     {
+        self::screen_key($provider_id);
+
         return $this->saveCounts[$provider_id] ?? 0;
     }
 

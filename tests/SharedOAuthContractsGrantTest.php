@@ -624,18 +624,22 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
      * adapter embedding the key in an OAuthStorageException message on
      * a failed load or delete reopens the forged-log-line class the
      * save screen closed (t31-ocr1-13). The reference fake rides one
-     * screen owner (screen_key()) at three call sites; the pin drives
-     * each reader method with the same forged key the save pin uses.
+     * screen owner (screen_key()) at its key-taking call sites; the
+     * pin drives each reader method with the same forged key the save
+     * pin uses. OCR round 53 (t31-ocr53-5): the fake's own
+     * saveCount() observable joins the loop — it took the same
+     * caller-controlled key while skipping the screen, silently
+     * answering 0 where every sibling refuses (red at HEAD: 0).
      */
     public function testLoadAndDeleteScreenTheirKeysLikeSaveDoes(): void
     {
         $storage = new InMemoryTokenStorage();
         $storage->save('fixture-provider', $this->connectedGrant(), TokenStorageInterface::EXPECT_NO_GRANT);
 
-        foreach (array('load' => $storage->load(...), 'delete' => $storage->delete(...)) as $method => $call) {
+        foreach (array('load' => $storage->load(...), 'delete' => $storage->delete(...), 'saveCount' => $storage->saveCount(...)) as $method => $call) {
             try {
                 $call("forged\nprovider");
-                $this->fail(ucfirst($method) . '() must screen its key — the same caller-controlled string save() refuses, never a silent no-op.');
+                $this->fail(ucfirst($method) . '() must screen its key — the same caller-controlled string save() refuses, never a silent no-op (red at HEAD, saveCount() answered 0).');
             } catch (\InvalidArgumentException $e) {
                 $this->assertStringContainsString('must not contain control characters', $e->getMessage(), "{$method}() refuses with the same screen shape as save().");
                 $this->assertStringNotContainsString("\n", $e->getMessage(), 'The rejection message carries no forged line.');
@@ -643,6 +647,7 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
         }
 
         $this->assertNotNull($storage->load('fixture-provider'), 'The screened reader calls touched no persisted grant.');
+        $this->assertSame(1, $storage->saveCount('fixture-provider'), 'A legal key still counts through the screened observable.');
     }
 
     public function testStorageDeleteRemovesAndIsANoopWhenAbsent(): void
