@@ -1111,7 +1111,7 @@ final class HarnessCopyTreeTest extends TestCase
              */
             $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
             $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the harness defect the child would fatal as.');
-            
+
             $script = 'putenv("TMPDIR=" . ' . var_export($base . '/anchor-link', true) . ');'
                 . ' require ' . var_export($harnessPath, true) . ';'
                 . ' $t = sys_get_temp_dir();'
@@ -1220,7 +1220,7 @@ final class HarnessCopyTreeTest extends TestCase
              */
             $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
             $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the harness defect the child would fatal as.');
-            
+
             $script = 'putenv("TMPDIR=" . ' . var_export($base . '/real/deep', true) . ');'
                 . ' require ' . var_export($harnessPath, true) . ';'
                 . ' $t = sys_get_temp_dir();'
