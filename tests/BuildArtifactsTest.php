@@ -6099,6 +6099,25 @@ FIXTURE;
              */
             'qualified member alias: Foo\\Bar' => 'use Deicod\\WpConnectors\\{Shared\\Clock as Foo\\Bar};',
             'member alias tail with a second as' => 'use Deicod\\WpConnectors\\{Shared\\Clock as X as Y};',
+            /*
+             * OCR round 36 (t31-ocr36-1): the member NAME's
+             * leading-separator verdict, DERIVED from the engine
+             * oracle (php -l refuses a fully-qualified member inside
+             * a group-use at compile time — a group member resolves
+             * against the statement's prefix). The grammar validated
+             * everything around the name while the name rode
+             * unjudged: the leaf rewrite cannot match the leading
+             * backslash, so the member re-emitted VERBATIM — and
+             * beside a rewritten sibling the postcondition saw no
+             * family reference in it at all (an absolute member
+             * reports un-composed; the composed sibling kept the
+             * prefix from reporting), the zip shipping the
+             * compile-error bytes at exit 0 (driven at HEAD on the
+             * mixed row: returned normally; the alone row refused at
+             * the postcondition's anonymous seam one verdict late).
+             */
+            'fully-qualified member beside a rewritten sibling (the ship shape)' => 'use Deicod\\WpConnectors\\{function \\Shared\\Clock\\now as N, Shared\\Storage\\Widget as W};',
+            'fully-qualified member alone' => 'use Deicod\\WpConnectors\\{\\Shared\\Clock};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass IllegalGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/IllegalGroupStore.php'),

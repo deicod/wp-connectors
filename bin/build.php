@@ -406,6 +406,36 @@ final class WpConnectorsBuild
                             $kind = $member_kind[0];
                             $member = (string) substr($member, strlen($member_kind[0]));
                         }
+                        /*
+                         * The member NAME's leading-separator verdict
+                         * is DERIVED from the engine oracle (OCR round
+                         * 36, t31-ocr36-1 — the fifth generation of
+                         * the use-grammar family): a fully-qualified
+                         * member (`{ \Shared\Clock as C }`) is a parse
+                         * error the engine rejects at compile time
+                         * (php -l: "unexpected fully qualified name" —
+                         * a group member resolves against the
+                         * statement's prefix, so a leading backslash
+                         * names no legal member), and the grammar once
+                         * validated everything AROUND the name (the
+                         * empty/dangling/alias/kind shapes) while the
+                         * name itself rode unjudged: the leaf rewrite
+                         * cannot match the leading separator, so the
+                         * member re-emitted VERBATIM — and beside a
+                         * rewritten sibling the postcondition saw no
+                         * family reference in it at all (an absolute
+                         * member reports un-composed, and the composed
+                         * sibling kept the prefix's own spelling from
+                         * reporting — driven at HEAD: the mixed body
+                         * returned normally, compile-error bytes in
+                         * the zip at exit 0; the alone body refused at
+                         * the postcondition's anonymous seam one
+                         * verdict late). Write the member relative to
+                         * the group's prefix.
+                         */
+                        if ('\\' === ($member[0] ?? '')) {
+                            throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: a fully-qualified member (a leading backslash): the engine rejects the spelling at compile time (a group member resolves against the statement's prefix — php -l: unexpected fully qualified name), and the leaf rewrite cannot match the leading separator, so the reassembly once re-emitted the member verbatim beside its rewritten siblings — compile-error bytes in the zip at exit 0; write the member relative to the group's prefix, never with a leading backslash");
+                        }
                         $members[] = $kind . self::replaceOrThrow(
                             preg_replace(
                                 '/^' . $shared_leaf . '(?![A-Za-z0-9_])/',
