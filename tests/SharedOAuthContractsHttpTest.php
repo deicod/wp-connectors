@@ -2203,7 +2203,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     public function testBothVosRideTheSharedHeaderMapOwner(): void
     {
         foreach (array(HttpRequest::class, HttpResponse::class) as $class) {
-            $source = (string) file_get_contents((new \ReflectionClass($class))->getFileName());
+            $source = $this->productionSource($class);
 
             $this->assertStringContainsString('new HeaderMap(', $source, $class . ' must embed the shared header-map owner.');
             $this->assertStringNotContainsString('must not contain line breaks', $source, $class . ' must not hand-roll header validation.');
@@ -2254,7 +2254,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         // Class closure: no fold site may spell the locale-sensitive
         // function; both folding classes carry the shared owner's call.
         foreach (array(HeaderMap::class, SecretMask::class) as $class) {
-            $source = (string) file_get_contents((new \ReflectionClass($class))->getFileName());
+            $source = $this->productionSource($class);
             $this->assertStringNotContainsString('strtolower', $source, $class . ' must not spell the locale-sensitive fold.');
             $this->assertStringContainsString('AsciiFold::lower', $source, $class . ' must ride the shared ASCII fold.');
         }
@@ -2274,7 +2274,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         foreach (array('post', 'g.e.t', "MixedCase-\xE2\x82\xAC-0123", '') as $value) {
             $this->assertSame(strtoupper($value), AsciiFold::upper($value), 'The ASCII upper fold must match the C-locale fold on: ' . addcslashes($value, "\x00..\xFF"));
         }
-        $request = (string) file_get_contents((new \ReflectionClass(HttpRequest::class))->getFileName());
+        $request = $this->productionSource(HttpRequest::class);
         $this->assertStringNotContainsString('strtoupper', $request, 'HttpRequest must not spell the locale-sensitive upper fold.');
         $this->assertStringContainsString('AsciiFold::upper', $request, 'HttpRequest method normalization must ride the shared ASCII upper fold.');
         $this->assertSame('POST', (new HttpRequest('post', 'https://host.example/'))->method());
@@ -2399,8 +2399,32 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
 
         // The lookup is the probe, never a rescan: the owner spells the
         // isset over the folded index inside header().
-        $owner = (string) file_get_contents((new \ReflectionClass(HeaderMap::class))->getFileName());
+        $owner = $this->productionSource(HeaderMap::class);
         $this->assertStringContainsString('isset( $this->headers_by_lowercase[ $folded ] )', $owner);
+    }
+
+    /**
+     * The production-source read behind the structural pins (OCR
+     * round 45, t31-ocr45-8, one census over all four sites): the
+     * pins read through silent `(string) file_get_contents()` casts,
+     * so a failed read degraded to '' and the fragment assertions
+     * failed LATE with misleading messages — a needle mismatch over
+     * an empty string, never the environment verdict it was. The
+     * read owns its failure now: a named refusal carrying the class
+     * and the file, the pin's own vocabulary.
+     *
+     * @param string $class The production class whose source a pin reads.
+     * @return string The class's file bytes.
+     */
+    private function productionSource(string $class): string
+    {
+        $path = (new \ReflectionClass($class))->getFileName();
+        $source = false === $path ? false : file_get_contents($path);
+        if (false === $source) {
+            $this->fail('The production source for ' . $class . ' cannot be read' . (false === $path ? ' (ReflectionClass::getFileName() answered false)' : ' (' . $path . ')') . ' — an environment verdict the structural pin names, never a late fragment mismatch over the empty string (t31-ocr45-8).');
+        }
+
+        return $source;
     }
 
     /**
