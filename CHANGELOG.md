@@ -6,6 +6,58 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 51)
+
+Fifty-first OCR-tool round (main 61/61, fully complete): 6 comments =
+5 findings (two are twins on the same line), driver accepts all; 3
+numbered commits t31-ocr51-1..3 (the line-91 twins one commit over
+both gradings; the three r42-6 sites one commit per the same-class
+doctrine). Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6.
+The round's shape: the symlink-cycle guard the r49-11 fix owed its
+own docblock; the ungated separator-vocabulary battery; the r42-6
+reclaim doctrine swept to the random-suffixed sites
+SecureFixturesTest grew since. Round 51 answered NEW findings, so the
+OCR phase continues per plan. Fixed as t31-ocr51-1..3 — one commit
+per finding class, plus this docs record, the full offline check
+green after every commit. Suite 1722 → 1724 tests, 46717 → 46732
+assertions, 3 skipped unchanged.
+
+- **The Exception census's follow owns its cycle shape
+  (t31-ocr51-1, bug:medium)** — the r49-11 FOLLOW_SYMLINKS fix kept
+  no visited set, so a directory symlink closing a loop recursed with
+  the pathname growing until the engine's own limits answered: a
+  path-length or memory fatal on the finding's host shape, a silently
+  truncated walk returning duplicated phantom classes on this one
+  (demonstrated at HEAD: 82 entries over a two-file tree). The walk
+  carries a visited-realpath set at every directory it enters — a
+  re-visited realpath is a loop, refused loudly naming both spellings
+  — and its environment arms refuse naming their path, never silently
+  shrinking the census. Driven: a planted loop link answers the named
+  refusal and the suite survives; ordinary trees byte-unchanged.
+- **The symlink-refusal battery rides the platform gate its
+  separator vocabulary owed (t31-ocr51-2, test:medium)** — the
+  round-50 battery asserts '/'-joined fragments in refusal messages
+  built from raw host-joined pathnames, ungated where its two
+  siblings gate the same divergence (t31-ocr29-7): on a Win32 host it
+  would fail as an environment defect, never the walk's own judgment.
+  The isPosixHost() skip rides after the capability gates, one census
+  comment naming the third '/'-fragment consumer. Construction-
+  evident; POSIX hosts unchanged.
+- **The r42-6 reclaim doctrine swept to the random-suffixed scan
+  sites (t31-ocr51-3, bug:medium ×2 + maintainability:low, one
+  class)** — four SecureFixturesTest sites derived pid-prefixed
+  random-suffixed scratch roots, then reclaimed a pre-existing tree
+  at the freshly derived name: per the t31-ocr42-6 census such a name
+  is a foreign tree by construction (the recycled-pid collision
+  shape), and the arm's only reachable effect was deleting another
+  run's live scratch (demonstrated at HEAD over a planted occupant).
+  One maker owns the derivation now — a pid-scoped stale sweep
+  reclaiming this process's own debris, the suffix rolling until the
+  name is free, the foreign tree untouched. Driven: a planted stale
+  tree is swept, a planted foreign tree stands, the site proceeds
+  under a fresh suffix.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 50)
 
 Fiftieth OCR-tool round (main 61/61, fully complete): 10 findings,
