@@ -1895,6 +1895,16 @@ final class HarnessCopyTreeTest extends TestCase
      * subprocess idiom under the cgi SAPI beside the engine's own
      * binary (driven red at HEAD: the child fataled 'Undefined
      * constant "STDERR"' from inside the catch).
+     *
+     * OCR round 44 (t31-ocr44-7): the child once read its script
+     * path from $argv — an ini premise, register_argc_argv being a
+     * setting the CGI SAPI does NOT force, so on an install with it
+     * off $argv was undefined, the child fataled at the require, and
+     * the leg failed through assertSame(0, $exit) as an
+     * environment-looking defect. The path rides the ENVIRONMENT now
+     * (putenv before the spawn, getenv inside the child — the real
+     * OS environment, read in every SAPI whatever variables_order
+     * says); the leg's subject is the harness guard, never argv.
      */
     public function testTheReleaseGuardSpeaksASapiIndependentStreamVocabulary(): void
     {
@@ -1917,7 +1927,7 @@ final class HarnessCopyTreeTest extends TestCase
 
         $child = sys_get_temp_dir() . '/wpct-release-cgi-' . uniqid('', true) . '.php';
         $this->stage($child, '<?php
-require $argv[1];
+require getenv("WPCT_RELEASE_CGI_HARNESS");
 try {
     WpHarness::releaseScratch("/");
 } catch (\Throwable $guard_threw) {
@@ -1927,13 +1937,15 @@ try {
 echo "RETURNED\n";
 ');
         try {
-            exec(escapeshellarg($cgi) . ' -q ' . escapeshellarg($child) . ' ' . escapeshellarg($harnessPath) . ' 2>&1', $output, $exit);
+            putenv('WPCT_RELEASE_CGI_HARNESS=' . $harnessPath);
+            exec(escapeshellarg($cgi) . ' -q ' . escapeshellarg($child) . ' 2>&1', $output, $exit);
             $rendered = implode("\n", $output);
             $this->assertSame(0, $exit, "The guard never throws from inside its own catch in ANY SAPI — the child said: {$rendered}");
             $this->assertStringNotContainsString('GUARD-THREW', $rendered, 'The diagnostic must not throw the undefined-constant Error a non-CLI SAPI raises over the STDERR constant (red at HEAD: GUARD-THREW Error: Undefined constant "STDERR").');
             $this->assertStringContainsString('scratch release failed for /:', $rendered, 'The environmental diagnostic still surfaces — php://stderr answers in every SAPI, the refusal named, the verdict riding untouched.');
             $this->assertStringContainsString('RETURNED', $rendered, 'The release call returns normally behind the guard — the ocr33-7 contract holds in every SAPI.');
         } finally {
+            putenv('WPCT_RELEASE_CGI_HARNESS');
             @unlink($child);
         }
     }
