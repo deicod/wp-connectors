@@ -647,12 +647,25 @@ FIXTURE
      * by-ref count syncs in a finally around the walk now (the abort
      * flying through untouched, the gate folding the partial in
      * beside its own FAIL), driven here through the child shape the
-     * trailing-comment pin rides: the dead-import source is created
-     * AFTER the locked tree (this iterator build walks each
-     * directory's entries INVERTED from creation order, so the
-     * second-created source is walked before the first-created
-     * directory descends), and the child prints the count it held at
-     * the abort beside the collector's own FAIL lines.
+     * trailing-comment pin rides.
+     *
+     * The staging is YIELD-ORDER-INDEPENDENT (OCR round 44,
+     * t31-ocr44-5): the leg once created its dead-import source AFTER
+     * the locked tree and asserted the source walked first — a
+     * premise load-bearing on THIS build's readdir order (entries
+     * materialized inverted from creation order), so a
+     * creation-order filesystem descended into locked/ before the
+     * source ever walked and the assertion failed as an
+     * environment-looking defect. Two dead sources now BRACKET the
+     * locked tree (one created before it, one after), and the
+     * expectation derives from the OBSERVED yield order (scandir over
+     * the same directory the iterator reads — the same readdir
+     * stream): whichever sources sit before locked/ in that order are
+     * exactly the ones whose FAILs print before the descent aborts,
+     * on every filesystem; only an order that yields locked/ before
+     * BOTH sources cannot drive the partial-count subject at all, and
+     * skips naming that premise (the permission-probe doctrine: never
+     * a vacuous green).
      */
     public function testTheMidWalkAbortAnswersThePartialCountToo(): void
     {
@@ -660,15 +673,14 @@ FIXTURE
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process abort leg cannot run (the t31-ocr16-12 doctrine).');
         }
 
-        // The locked tree FIRST (the walk-order premise the assertions
-        // below name): this iterator build materializes each
-        // directory's entries INVERTED from creation order, so the
-        // source created SECOND is walked FIRST — its two dead imports
-        // each printing their own FAIL (and syncing the by-ref count)
-        // before the walk ever descends into the locked tree.
+        // The bracket (the yield-order-independent staging): one dead
+        // source created BEFORE the locked tree, one AFTER — whichever
+        // half this filesystem's readdir yields ahead of locked/ is
+        // walked before the descent, whatever rule orders the entries.
+        file_put_contents($this->root . '/dead-first.php', "<?php\nuse Vendor\\Pkg\\DeadThing;\nuse Vendor\\Pkg\\AlsoDead;\n");
         mkdir($this->root . '/locked', 0755, true);
         file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n");
-        file_put_contents($this->root . '/dead.php', "<?php\nuse Vendor\\Pkg\\DeadThing;\nuse Vendor\\Pkg\\AlsoDead;\n");
+        file_put_contents($this->root . '/dead-last.php', "<?php\nuse Vendor\\Pkg\\ThirdDead;\nuse Vendor\\Pkg\\FourthDead;\n");
         chmod($this->root . '/locked', 0000);
         // The permission-denial probe (the capability this leg
         // premises, in the lint gate's own shape): a process the
@@ -679,6 +691,34 @@ FIXTURE
             closedir($probe_open);
             chmod($this->root . '/locked', 0755);
             $this->markTestSkipped('This process walks a chmod-0000 directory open (permissions cannot deny it — root-shaped), so the mid-walk abort is unconstructible here.');
+        }
+
+        /*
+         * The OBSERVED yield order (t31-ocr44-5): SCANDIR_SORT_NONE
+         * reads the same readdir stream the child's
+         * RecursiveDirectoryIterator walks (the DEFAULT scandir sort
+         * is alphabetical — a third order neither consumer rides, and
+         * the probe that made this leg's first derivation redden over
+         * its own premise), so the positions below ARE the walk's own
+         * — the expectation is derived from what this filesystem
+         * actually yields, never from a creation-order rule. Each
+         * bracket source carries two dead imports, so every source
+         * positioned before locked/ answers exactly two FAIL lines;
+         * the descent aborts at locked/'s own position, and nothing
+         * after it walks.
+         */
+        $yield = array_values(array_diff(scandir($this->root, SCANDIR_SORT_NONE) ?: array(), array('..', '.')));
+        $locked_at = array_search('locked', $yield, true);
+        $this->assertNotFalse($locked_at, 'The locked tree is staged under the fixture root — its yield position is the derivation the assertions ride.');
+        $expected_fail_lines = 0;
+        foreach ($yield as $position => $entry) {
+            if ($position < $locked_at && 1 === preg_match('/\Adead-(?:first|last)\.php\z/', $entry)) {
+                $expected_fail_lines += 2;
+            }
+        }
+        if (0 === $expected_fail_lines) {
+            chmod($this->root . '/locked', 0755);
+            $this->markTestSkipped('This filesystem yields the locked tree before both bracket sources (' . implode(', ', $yield) . ') — the walk aborts before any FAIL prints, so the partial-count subject is unconstructible in this order (the permission-probe doctrine: never a vacuous green).');
         }
 
         /*
@@ -701,7 +741,7 @@ FIXTURE
             $this->assertSame(0, $exit, "The child owns its own exit — the abort is caught and the partial count printed, never an uncaught fatal: {$message}");
             $this->assertStringContainsString('aborted counted=', $message, 'The locked tree aborts the walk mid-recursion (the glm17-17 shape) — a green walk here means the leg never drove its subject.');
             $fail_lines = substr_count($message, 'conventions: FAIL');
-            $this->assertGreaterThanOrEqual(2, $fail_lines, "Both dead imports print their FAIL lines before the walk reaches the locked tree (creation order on this temp root) — fewer means the order premise broke, never the contract: {$message}");
+            $this->assertSame($expected_fail_lines, $fail_lines, "Exactly the dead sources the OBSERVED yield order positions before locked/ print their FAIL lines ({$expected_fail_lines} expected from the scandir positions) — the leg judges the contract per observed sequence, never a host's readdir rule: {$message}");
             $this->assertSame(1, preg_match('/aborted counted=(\d+)/', $message, $m) ? 1 : 0, 'The abort line carries its count.');
             $this->assertSame($fail_lines, (int) $m[1], "The by-ref count answers EXACTLY the violations whose FAIL lines already printed — the abort never drops a counted offense (red at HEAD: the FAILs printed while the count stayed 0): {$message}");
         } finally {
