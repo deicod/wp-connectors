@@ -269,7 +269,17 @@ final class SecretMask {
 	 * @return string The same bytes when valid UTF-8, else invalid sequences percent-encoded.
 	 */
 	public static function utf8_for_safe_render( string $value ): string {
-		if ( 1 === \preg_match( '//u', $value ) ) {
+		/*
+		 * The fast path rides the canonical walk (OCR round 40,
+		 * t31-ocr40-3 — the t31-ocr8-8 doctrine this method's own
+		 * body cites): the engine-level '//u' probe was a second
+		 * spelling of UTF-8 validity beside the ONE validator, with
+		 * no structural tie to it — a grammar fix landing on the
+		 * walk silently drifted the fast path. One validator, both
+		 * consumers: this early return and mask()'s standalone-tail
+		 * proof ride the same walk.
+		 */
+		if ( self::is_standalone_valid_utf8( $value ) ) {
 			return $value;
 		}
 
