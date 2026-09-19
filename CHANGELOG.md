@@ -6,6 +6,68 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 38)
+
+Thirty-eighth OCR-tool round (main 61/61, fully complete): 5
+findings, driver accepts all. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5.
+The round's shape: the fold-machinery's own adolescence — the
+r35/r36 case-derivation machinery judged on its edges
+(unmeasured-answer caching, non-POSIX synthesis composition, the
+guard's SAPI contract), plus the first shared/src production finding
+in thirty rounds (the Referer/request-side twin of the r12 location
+channel) and the mid-test skip that darkens the battery on root CI.
+Round 38 answered NEW findings, so the OCR phase continues per plan.
+Fixed as t31-ocr38-1..5 — one commit per finding, plus this docs
+record, the full offline check green after every commit. Suite 1693
+→ 1696 tests, 46253 → 46278 assertions, 3 skipped unchanged.
+
+- **The sensitive-header catalog gains 'referer' and the RFC 7615
+  authentication-exchange twins (t31-ocr38-1, security:low)** — the
+  'location' entry rode the argument that a redirect query carries
+  the RFC 6749 §4.1.2 authorization code, and a Referer value is the
+  request-side TWIN of that same channel (the same redirect query,
+  echoed by a caller's outbound navigation), yet it rendered verbatim
+  through every safe debug form while the response side masked its
+  own credential headers; 'authentication-info'/
+  'proxy-authentication-info' (RFC 7615, the 401-protection twins of
+  the masked 'proxy-authorization' class) join it — none of the three
+  composes through the suffix class, so all three ride the one
+  catalog. The first shared/src production finding since round 24.
+- **The case probe never caches an UNMEASURED answer
+  (t31-ocr38-2, bug:medium)** — when the probe plant failed (a
+  read-only probe base, ENOSPC, quota) the unmeasured false rode
+  into the per-volume cache unconditionally, so on a
+  case-insensitive volume one failed plant poisoned every later
+  derivation for the rest of the process. A failed plant answers the
+  conservative case-sensitive verdict unmeasured now; the cache holds
+  only measured answers, a later call with a plantable base
+  re-measures.
+- **The collapse speaks the anchor's own shape (t31-ocr38-3,
+  bug:medium)** — the resolution loop's collapse unconditionally
+  prepended '/', an arm that composes only on POSIX; on a separator
+  host the folded drive anchor ('C:/repo') became '/C:/repo/sub/dst',
+  a spelling no host resolves, the equality and containment verdicts
+  then answering over vocabulary noise. The prefix derives from the
+  anchor; POSIX byte-unchanged.
+- **The release guard resolves the diagnostic STREAM, never the
+  CLI-only STDERR constant (t31-ocr38-4, bug:low)** — STDERR is
+  defined by the CLI SAPI only, so in any non-CLI SAPI the guard's
+  fwrite raised an undefined-constant Error from inside the very
+  catch that exists to guarantee the guard never throws, re-opening
+  the t31-ocr33-7 verdict-replacement defect. php://stderr answers in
+  every SAPI; an unopenable stream degrades silently to no
+  diagnostic, never a throw.
+- **The unlistable-source leg skips itself, the battery continues
+  (t31-ocr38-5, test:low)** — the ocr32-9 leg's probe branch fired
+  markTestSkipped MID-TEST, and a skip aborts the entire remaining
+  battery: on the root-runner shape (the primary CI runner) the
+  self-copy, mirror, alias, file-in-chain, dangling-link, and symlink
+  legs plus the source-intact pins never ran, copyTree containment
+  coverage going dark exactly where CI rides. The sibling legs' own
+  shape gates the leg now, the r35-8 loudness surviving without the
+  abort (the skip says so on STDERR).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 37)
 
 Thirty-seventh OCR-tool round (main 61/61, fully complete): 1
