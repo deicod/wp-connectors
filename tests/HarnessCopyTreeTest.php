@@ -841,7 +841,21 @@ final class HarnessCopyTreeTest extends TestCase
                  * firing means the stopped child stands inside its
                  * plant window.
                  */
+                /*
+                 * The lens owns the glob contract (OCR round 45,
+                 * t31-ocr45-9): glob() answers FALSE on error, and
+                 * `array() !== false` read the refusal as the window
+                 * HELD — a diagnostic failure fabricating the
+                 * window-open verdict, silently degrading the
+                 * detection guarantee this lens exists to carry. The
+                 * false answers the site's own loud failure naming
+                 * the environment verdict, never a verdict over data
+                 * the glob never returned.
+                 */
                 $child_held = glob(sys_get_temp_dir() . '/wpct-pathcase-' . $childPid . '-*');
+                if (false === $child_held) {
+                    $this->fail('The scratch lens cannot list the shared temp root — glob() answered false, an environment verdict this pin names, never a fabricated window-open verdict read over the false.');
+                }
                 if ($held !== array() || array() !== $child_held) {
                     // The crash itself: SIGKILL reaches a stopped
                     // process, and no code of ours runs after it.
@@ -935,11 +949,20 @@ final class HarnessCopyTreeTest extends TestCase
              * shared temp root's residue. The heartbeat rides its own
              * explicit unlink below (its 'crash'-stemmed spelling never
              * matched the pid-prefixed pattern).
+             *
+             * EVERY glob in this finally owns the glob contract (OCR
+             * round 45, t31-ocr45-9 — the diagnostics-degrade half):
+             * glob() answers FALSE on error, and a false kept in
+             * $temp_junk raised a TypeError from the foreach that
+             * REPLACED the in-flight verdict (the t31-ocr42-8 class
+             * this finally's own census names). The false answers the
+             * EMPTY ARRAY here, one swallowed degrade beside the lens
+             * above — diagnostics degrade, verdicts never.
              */
-            $temp_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-' . getmypid() . '-*');
+            $temp_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-' . getmypid() . '-*') ?: array();
             if ($childPid > 0) {
-                $child_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-' . $childPid . '-*');
-                $temp_junk = array_merge(is_array($temp_junk) ? $temp_junk : array(), is_array($child_junk) ? $child_junk : array());
+                $child_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-' . $childPid . '-*') ?: array();
+                $temp_junk = array_merge($temp_junk, $child_junk);
             }
             foreach ($temp_junk as $junk) {
                 @unlink($junk);
@@ -956,8 +979,8 @@ final class HarnessCopyTreeTest extends TestCase
              * so the ownership is the test's by construction.
              */
             if ($verdict_returned && $childPid > 0) {
-                $stranded = glob(sys_get_temp_dir() . '/wpct-pathcase-' . $childPid . '-*');
-                $this->assertSame(array(), is_array($stranded) ? $stranded : array(), 'The sweep reclaims this test\'s own killed child\'s stranded probe — the spelling under the dead child\'s pid is a dead process\'s residue this sweep owns, staged or real alike (red at HEAD: the own-pid-only glob left it in the shared temp root).');
+                $stranded = glob(sys_get_temp_dir() . '/wpct-pathcase-' . $childPid . '-*') ?: array();
+                $this->assertSame(array(), $stranded, 'The sweep reclaims this test\'s own killed child\'s stranded probe — the spelling under the dead child\'s pid is a dead process\'s residue this sweep owns, staged or real alike (red at HEAD: the own-pid-only glob left it in the shared temp root).');
             }
         }
     }
