@@ -157,7 +157,7 @@ final class HeaderMap {
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param array<string, mixed> $headers Header map; non-empty string keys (an all-digit spelling arrives here as a PHP integer key — the engine coerces canonical digit strings before this loop — and is restored to its string form, the token grammar deciding as ever), string values free of control bytes (a horizontal tab is legal in a value).
+	 * @param array<int|string, mixed> $headers Header map; non-empty string keys (an all-digit spelling arrives here as a PHP integer key — the engine coerces canonical digit strings before this loop, so the true key domain carries int beside string — and is restored to its string form, the token grammar deciding as ever), string values free of control bytes (a horizontal tab is legal in a value).
 	 * @throws InvalidArgumentException When the header map violates the contract.
 	 */
 	public function __construct( array $headers = array() ) {
