@@ -776,7 +776,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // so the leg sleeps — visibly named — rather than skipping the
         // sweep's own verdicts on a non-spawning host.
         if (self::canSpawnChildren()) {
-            $lint_scratch = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-lint-') . '.php';
+            // The BASE file is unlinked too (OCR round 47, t31-ocr47-5):
+            // tempnam() MINTS the extension-less base before the '.php'
+            // twin is ever written — the finally once removed only the
+            // twin, one empty /tmp file leaking per run on every
+            // spawnable host (the file's own scratch-hygiene doctrine).
+            $lint_base = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-lint-');
+            $lint_scratch = $lint_base . '.php';
             try {
                 $this->assertNotFalse(
                     file_put_contents($lint_scratch, $clean_fixture),
@@ -786,7 +792,13 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 $this->assertSame(0, $lint_exit, 'The clean-direction fixture must be legal PHP on the supported floor — the gate tokenizes rather than parses, so its clean verdict only means what the bytes compile to: ' . implode("\n", $lint_output));
             } finally {
                 @unlink($lint_scratch);
+                @unlink($lint_base);
             }
+            // The residue pin: the finally owns BOTH spellings, so the
+            // extension-less BASE is gone once the leg answers (red at
+            // HEAD: the base survived every spawnable run — one empty
+            // /tmp file per execution).
+            $this->assertFileDoesNotExist($lint_base, 'The scratch base file must not outlive the leg — the finally owns the tempnam base and its .php twin both.');
         }
         $clean = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-clean-');
         try {
