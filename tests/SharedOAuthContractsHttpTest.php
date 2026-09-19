@@ -406,6 +406,53 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-50 pin (t31-ocr50-4, the WHATWG-differential class
+     * the r28-6 backslash, r44-1 strip-set, r45-1 percent, and r49-4
+     * IPv4 screens close for their own bytes): the URL Standard runs
+     * domain-to-ASCII over a special-scheme host before resolving it
+     * (§6.4), so a browser loading 'https://bücher.example/' contacts
+     * 'xn--bcher-kva.example' while this parse, the rebuilt
+     * authority, and every redacted form kept the raw UTF-8 host
+     * bytes — two hosts named by one URL over the same browser-facing
+     * channel (the device-flow verification URI, passed through raw).
+     * The non-ASCII host refuses — REFUSED from derivation, never
+     * punycode-converted (the ocr44-1 doctrine): write the host in
+     * its punycode (xn--) spelling, where both readings agree.
+     */
+    public function testANonAsciiHostRefusesInsteadOfNamingTwoHosts(): void
+    {
+        $hostile_urls = array(
+            'the IDN spelling' => 'https://bücher.example/ver',
+            'a non-ASCII label beside ASCII ones' => 'https://exämple.test/',
+            'userinfo does not hide it' => 'https://user@bücher.example/device',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A non-ASCII (IDN) host (%s) must be refused by the shared URL owner — red at HEAD it constructed, this parse and every redacted form naming the raw UTF-8 spelling a browser resolves at the punycode host.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('host must be ASCII', $e->getMessage(), "The refusal names the domain-to-ASCII channel ({$label}).");
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A non-ASCII (IDN) host (%s) must be refused by the request VO too — the redacted form would name a host no browser consumer contacts.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('host must be ASCII', $e->getMessage(), "The request VO answers the same refusal ({$label}).");
+            }
+        }
+
+        // The agreeing spellings stay constructible: a pure-ASCII host
+        // parses identically on both sides of the differential (the
+        // punycode spelling itself IS the ASCII spelling a browser
+        // resolves), and non-ASCII stays legal in the PATH, where no
+        // consumer's reading resolves it into the host.
+        $this->assertSame('xn--bcher-kva.example', Url::parse_validated('https://xn--bcher-kva.example/')['authority'], 'The punycode spelling stays legal — it is the ASCII spelling both readings name.');
+        $this->assertSame('host.example', Url::parse_validated('https://host.example/bücher')['authority'], 'A non-ASCII PATH stays legal — the screen judges the host region alone.');
+    }
+
+    /**
      * OCR-round-45 pin (t31-ocr45-2, the r44-1 screen's whole-input
      * spelling): the URL Standard removes tabs and newlines from the
      * ENTIRE input before parsing — never the authority alone — so a
@@ -799,16 +846,24 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
      * 8-bit LC_CTYPE, tolower(0xC3)=0xE3 breaks the second byte of a
      * UTF-8 host — so the pin MANUFACTURES tr_TR.ISO-8859-9 (localedef
      * into a private LOCPATH, per the r11-6 attempt-and-restore shape)
-     * and proves the invariant under pressure: the multibyte host
-     * validates byte-identically (the fold rides AsciiFold's byte
-     * tables — t31-ocr1-4 — no locale to consult, identical by
-     * construction), and the guard itself fires on the exact
-     * mangled spelling a byte-mapping fold produces (driven through
-     * the private probe, the closeArchiveOrThrow precedent). A host
-     * that cannot manufacture the locale skips VISIBLY (t31-ocr6-12):
-     * the spelling pins above the skip still ran, the pressure half is
-     * named as not-run — never silently green under a name claiming
-     * pressure was applied.
+     * and proves the invariant under pressure (the fold rides
+     * AsciiFold's byte tables — t31-ocr1-4 — no locale to consult,
+     * identical by construction), and the guard itself fires on the
+     * exact mangled spelling a byte-mapping fold produces (driven
+     * through the private probe, the closeArchiveOrThrow precedent).
+     * A host that cannot manufacture the locale skips VISIBLY
+     * (t31-ocr6-12): the spelling pins above the skip still ran, the
+     * pressure half is named as not-run — never silently green under
+     * a name claiming pressure was applied.
+     *
+     * OCR round 50 (t31-ocr50-4) superseded the multibyte-HOST half
+     * of the premise: a non-ASCII host now refuses at the host screen
+     * BEFORE the fold (the WHATWG-differential doctrine — a browser
+     * resolves it at the punycode host), so the fold's
+     * locale-independence rides the ASCII legs below and the direct
+     * guard probe above, and the multibyte URL's role in this pin is
+     * the refusal itself — byte-identical under the manufactured 8-bit
+     * locale, the screen judging bytes, never a locale mapping.
      */
     public function testAPostParseMangledHostRefusesUnderManufacturedLocalePressure(): void
     {
@@ -825,10 +880,18 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
         $probe->invoke(null, 'münchen.example:8443');
 
-        // The legal repro pinned once under the C fold for the
-        // byte-identity comparison below.
+        /*
+         * The multibyte URL answers the IDN refusal (t31-ocr50-4),
+         * pinned once under the C fold for the byte-identity
+         * comparison below.
+         */
         $utf8_url = 'https://münchen.example/token';
-        $c_locale_authority = Url::parse_validated($utf8_url)['authority'];
+        try {
+            Url::parse_validated($utf8_url);
+            $this->fail('The multibyte host URL must answer the non-ASCII host refusal — the screen precedes the fold (t31-ocr50-4).');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('host must be ASCII', $e->getMessage(), 'The refusal is the domain-to-ASCII channel, never a malformed-host sentence.');
+        }
 
         /*
          * Manufacture the 8-bit locale (localedef into a private
@@ -878,13 +941,19 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             // is real, not a setlocale that silently fell back.
             $this->assertTrue(ctype_lower("\xE3"), 'ctype consults the manufactured 8-bit LC_CTYPE (0xE3 is a lowercase letter in ISO-8859-9) — the pressure is live.');
 
-            // The invariant: the multibyte host validates and the
-            // rebuilt authority is byte-identical to the C-locale
-            // parse — the fold stayed UTF-8-clean under pressure,
-            // and the re-check is the guard that keeps it so.
-            $parts = Url::parse_validated($utf8_url);
-            $this->assertSame($c_locale_authority, $parts['authority'], 'The multibyte authority is byte-identical under the 8-bit LC_CTYPE.');
-            $this->assertSame('https://münchen.example/token', (new HttpRequest('GET', $utf8_url))->redacted_url());
+            /*
+             * The invariant under pressure (the multibyte half since
+             * t31-ocr50-4): the non-ASCII host URL answers the SAME
+             * refusal under the live 8-bit LC_CTYPE — the screen
+             * judges bytes, and no locale mapping consults it. The
+             * fold-invariant half rides the ASCII host legs below.
+             */
+            try {
+                Url::parse_validated($utf8_url);
+                $this->fail('The multibyte host URL must refuse under the manufactured locale too — the screen is byte-based, never locale-mapped.');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('host must be ASCII', $e->getMessage(), 'The refusal is byte-identical under the 8-bit LC_CTYPE.');
+            }
 
             /*
              * OCR-round-1 pin (t31-ocr1-4): the scheme and host
@@ -924,10 +993,15 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             WpHarness::releaseScratch($locpath);
         }
 
-        // The r4-13 outcome holds on the safe-debug side regardless of
-        // the locale: every accepted multibyte host's debug form
-        // json_encodes to a string, never false.
-        $vo = new HttpRequest('GET', $utf8_url);
+        /*
+         * The r4-13 outcome holds on the safe-debug side regardless of
+         * the locale: every accepted multibyte-bearing URL's debug
+         * form json_encodes to a string, never false. Since
+         * t31-ocr50-4 the multibyte bytes ride the PATH (a non-ASCII
+         * host refuses at the host screen); the outcome — the debug
+         * forms never see an invalid-UTF-8 line — is the same.
+         */
+        $vo = new HttpRequest('GET', 'https://host.example/münchen');
         $this->assertNotFalse(json_encode((string) $vo));
         $this->assertNotFalse(json_encode($vo->redacted_url()));
     }

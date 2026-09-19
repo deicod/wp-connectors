@@ -444,6 +444,32 @@ final class Url {
 			throw new InvalidArgumentException( 'The URL host must not use an IPv4-ambiguous spelling — the URL Standard parses any special-scheme host whose last label ends in a number as an IPv4 address ("https://010.1.1.1/" contacts 8.1.1.1, the bare "https://2130706433/" contacts 127.0.0.1) while this parse keeps the spelling as a hostname, and the two must agree: write the canonical dotted-quad IPv4 literal, never an octal, hex, or bare-number spelling.' );
 		}
 
+		/*
+		 * The NON-ASCII (IDN) host screen (OCR round 50, t31-ocr50-4 —
+		 * the r28-6/r44-1/r45-1/r49-4 WHATWG-differential class, one
+		 * generation over): the URL Standard runs domain-to-ASCII over
+		 * a special-scheme host before resolving it (§6.4), so a
+		 * browser loading 'https://bücher.example/' contacts
+		 * 'xn--bcher-kva.example' while this parse, the rebuilt
+		 * authority, and every redacted form keep the raw UTF-8 host
+		 * bytes — two hosts named by one URL over the same
+		 * browser-facing channel (the device-flow verification URI,
+		 * passed through raw) the earlier screens closed for their own
+		 * bytes. The non-ASCII host REFUSES — never punycode-converted
+		 * (the ocr44-1 doctrine: the conversion would silently accept
+		 * a spelling the caller never wrote, a second host derived by
+		 * us); write the host in its punycode (xn--) spelling, where
+		 * the browser's resolution and this parse's hostname agree
+		 * byte for byte. The screen judges the HOST REGION alone
+		 * (non-ASCII stays legal in the path and query, where no
+		 * consumer's reading resolves it into a host), and the bracket
+		 * literals ride their own screen above — an IPv6 address is
+		 * pure ASCII by grammar.
+		 */
+		if ( false === $bracket_end && 1 === preg_match( '/[\x80-\xFF]/', $raw_host ) ) {
+			throw new InvalidArgumentException( 'The URL host must be ASCII — the URL Standard runs domain-to-ASCII over a special-scheme host before resolving it ("https://bücher.example/" contacts xn--bcher-kva.example in a browser) while this parse and every redacted form keep the raw UTF-8 spelling, and the two must agree: write the host in its punycode (xn--) spelling, never raw UTF-8.' );
+		}
+
 		// The host fold rides the same ONE owner (t31-ocr1-4): a host
 		// folds by the ASCII byte table in every locale, and the rebuilt
 		// authority below re-checks that nothing between the parse and
