@@ -340,6 +340,47 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-45 pin (t31-ocr45-2, the r44-1 screen's whole-input
+     * spelling): the URL Standard removes tabs and newlines from the
+     * ENTIRE input before parsing — never the authority alone — so a
+     * tab in the PATH or QUERY rode validation green while every
+     * WHATWG consumer saw the stripped spelling ('/verify?code=abcd'),
+     * and the engine's own parse_url() rewrote the query's tab to a
+     * THIRD spelling ('code=ab_cd', probed): three URLs named by one
+     * input. The strip-set probe rides the ENTRY (the whole input),
+     * the same refusal doctrine as 45-1 — never a silent strip.
+     */
+    public function testATabAnywhereInTheUrlRefusesNotOnlyInTheAuthority(): void
+    {
+        $hostile_urls = array(
+            'tab in the path' => "https://host.example/ver\tify",
+            'tab in the query' => "https://host.example/verify?code=ab\tcd",
+            'tab in the fragment' => "https://host.example/verify#frag\tment",
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A tab-bearing URL (%s) must be refused by the shared URL owner — red at HEAD it constructed, the caller holding the tabbed spelling a browser strips into a different URL.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry tabs or newlines', $e->getMessage(), "The refusal names the strip-set class over the whole input ({$label}).");
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A tab-bearing URL (%s) must be refused by the request VO too.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry tabs or newlines', $e->getMessage(), "The request VO answers the same refusal ({$label}).");
+            }
+        }
+
+        // The clean spelling beside every leg stays constructible (the
+        // redaction drops the query by its own contract — the redacted
+        // form carries scheme, authority, path only).
+        $this->assertSame('https://host.example/verify', (new HttpRequest('GET', 'https://host.example/verify?code=abcd'))->redacted_url(), 'A tab-free URL keeps flowing through every screen.');
+    }
+
+    /**
      * OCR-round-25 pin (t31-ocr25-3): the leading-zero port spelling
      * slips the raw digit screen — ':0443' IS digits — while
      * parse_url() normalizes the value to 443: the value object

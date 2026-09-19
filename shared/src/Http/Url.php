@@ -50,8 +50,9 @@ final class Url {
 	 * the URL rule must not drift); space stays legal in a host per the
 	 * round-1 host-charset adjudication (it renders oddly and forges
 	 * nothing), while the adjudication's TAB half fell to the WHATWG
-	 * strip-set screen at the authority (t31-ocr44-1): a browser
-	 * strips the byte BEFORE parsing, so it forges a different host.
+	 * strip-set screen at the entry — the whole input, path and query
+	 * included (t31-ocr44-1, widened by t31-ocr45-2): a browser
+	 * strips the byte BEFORE parsing, so it forges a different URL.
 	 * The percent-ENCODED host answers the same family (t31-ocr45-1):
 	 * the WHATWG host parser decodes %XX in a special-scheme host
 	 * before resolving it, so a browser contacts a host this parse
@@ -84,6 +85,41 @@ final class Url {
 		 * lives in the owner.
 		 */
 		HeaderMap::assert_no_control_bytes( $url, 'The URL' );
+
+		/*
+		 * The WHATWG STRIP-SET screen (OCR round 44, t31-ocr44-1,
+		 * widened to the whole input by OCR round 45, t31-ocr45-2 —
+		 * the r28-6 doctrine's own class): the URL Standard removes
+		 * ALL ASCII tabs and newlines from the input BEFORE parsing,
+		 * so the byte mutates what a browser sees — 'https://id<TAB>
+		 * p.example/device' sends a WHATWG consumer to idp.example
+		 * (driven) while this parse keeps the tab in the authority
+		 * verbatim and the engine's own parse_url() rewrites it to a
+		 * THIRD spelling ('id_p.example' — probed), and a tab in the
+		 * PATH or QUERY rides the same strip ('/verify?code=abcd'
+		 * there, the query's tab rewritten 'code=ab_cd' by the engine
+		 * — probed) while this parse kept the tabbed spelling green:
+		 * URLs named by one input, the raw/redacted agreement this
+		 * screen's family exists to kill, over the same
+		 * browser-facing channel (the device-flow verification URI,
+		 * passed through raw) the backslash screen closed. The probe
+		 * rides the ENTRY — the whole input, never the authority
+		 * slice the r44-1 spelling judged — and WHATWG-differential
+		 * bytes are REFUSED from derivation, never naively stripped
+		 * (the strip would hide a shape no client means to send).
+		 * The newline half of the set (LF/CR) is already refused at
+		 * the entry screen above (the control vocabulary); the tab is
+		 * the byte that reached every surface past it. This SUPERSEDES
+		 * the round-1 adjudication's tab half ("they render oddly but
+		 * forge nothing") — the tab forges; the SPACE keeps its
+		 * verdict (a WHATWG consumer does not strip a space: a
+		 * space-bearing host FAILS validation there rather than
+		 * contacting another host, so the two consumers never name
+		 * DIFFERENT hosts over it).
+		 */
+		if ( false !== strpbrk( $url, "\t\n\r" ) ) {
+			throw new InvalidArgumentException( 'The URL must not carry tabs or newlines — the URL Standard strips those bytes from the whole input before parsing, so a browser sees a different URL ("https://id<TAB>p.example" reaches idp.example there; a tab in the path or query rides stripped) while this parse keeps them verbatim, and the two must agree: write the URL without them.' );
+		}
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- the WordPress helper does not exist in this provider-neutral source (WordPress is reached only through ports); parse_url's shape is adequate for constructor validation.
 		$parts = parse_url( $url );
@@ -179,35 +215,6 @@ final class Url {
 			throw new InvalidArgumentException( 'The URL authority must not carry a backslash — WHATWG consumers treat "\" at this position as an authority terminator ("https://evil.example\@host/" sends a browser to evil.example while this parse and every redacted form name host), and the RFC 3986 authority grammar (host, userinfo, port) carries no backslash at all: write the authority with "/" separators, never "\".' );
 		}
 
-		/*
-		 * The WHATWG STRIP-SET screen (OCR round 44, t31-ocr44-1 —
-		 * the r28-6 doctrine's own class, one twin over): the URL
-		 * Standard removes ALL ASCII tabs and newlines from the input
-		 * BEFORE parsing, so the byte mutates the host a browser
-		 * contacts — 'https://id<TAB>p.example/device' sends a WHATWG
-		 * consumer to idp.example (driven) while this parse keeps the
-		 * tab in the authority verbatim and the engine's own parse_url
-		 * rewrites it to a THIRD spelling ('id_p.example' — probed):
-		 * three hosts named by one URL, the raw/redacted agreement this
-		 * screen's family exists to kill, over the same browser-facing
-		 * channel (the device-flow verification URI, passed through
-		 * raw) the backslash screen closed. WHATWG-differential bytes
-		 * are REFUSED from derivation, never naively stripped — the
-		 * strip would hide a shape no client means to send. The
-		 * newline half of the set (LF/CR) is already refused at the
-		 * entry screen (the control vocabulary); the tab is the byte
-		 * that reached the authority, and the class is stated once
-		 * here over its whole WHATWG spelling. This SUPERSEDES the
-		 * round-1 adjudication's tab half ("they render oddly but
-		 * forge nothing") — the tab forges; the SPACE keeps its
-		 * verdict (a WHATWG consumer does not strip a space: a
-		 * space-bearing host FAILS validation there rather than
-		 * contacting another host, so the two consumers never name
-		 * DIFFERENT hosts over it).
-		 */
-		if ( false !== strpbrk( $authority, "\t\n\r" ) ) {
-			throw new InvalidArgumentException( 'The URL authority must not carry tabs or newlines — the URL Standard strips those bytes before parsing, so a browser contacts a different host ("https://id<TAB>p.example" reaches idp.example there) while this parse keeps them in the host string, and the two must agree: write the authority without them.' );
-		}
 		$at          = strrpos( $authority, '@' );
 		$host_port   = false === $at ? $authority : (string) substr( $authority, $at + 1 );
 		$bracket_end = strrpos( $host_port, ']' );
