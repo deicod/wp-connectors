@@ -210,9 +210,24 @@ final class Url {
 		 * the refusal rejects nothing legal — the bracket screens' own
 		 * doctrine: a malformed authority is a shape no client means
 		 * to send, and reject is the safer verdict.
+		 *
+		 * The screen owns the WHOLE INPUT since OCR round 46
+		 * (t31-ocr46-5 — the r28-6 refusal doctrine, full input; the
+		 * r45-2 tab strip's sibling): the URL Standard's path state
+		 * treats U+005C as a segment SEPARATOR for special schemes,
+		 * so a browser consuming 'https://host/device\page' requests
+		 * '/device/page' while this parse kept the byte verbatim in
+		 * the path — url(), redacted_url(), and every derived surface
+		 * naming a different path than the browser consumes, the same
+		 * WHATWG-differential divergence one position past the
+		 * authority. Every scheme this constructor admits is a
+		 * special scheme (http/https only, two lines above), so the
+		 * whole input is the screen's territory, and RFC 3986 admits
+		 * no raw backslash in path, query, or fragment either: the
+		 * refusal still rejects nothing legal.
 		 */
-		if ( false !== strpos( $authority, '\\' ) ) {
-			throw new InvalidArgumentException( 'The URL authority must not carry a backslash — WHATWG consumers treat "\" at this position as an authority terminator ("https://evil.example\@host/" sends a browser to evil.example while this parse and every redacted form name host), and the RFC 3986 authority grammar (host, userinfo, port) carries no backslash at all: write the authority with "/" separators, never "\".' );
+		if ( false !== strpos( $url, '\\' ) ) {
+			throw new InvalidArgumentException( 'The URL must not carry a backslash — WHATWG consumers treat "\" as a path-segment separator for http/https URLs ("https://host/device\page" reaches /device/page there while this parse keeps the byte) and as an authority terminator ("https://evil.example\@host/" sends a browser to evil.example while this parse and every redacted form name host), and this parse keeps the byte verbatim, so the two must agree: write the URL with "/" separators, never "\".' );
 		}
 
 		$at          = strrpos( $authority, '@' );

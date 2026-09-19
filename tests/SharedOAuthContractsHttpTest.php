@@ -215,6 +215,23 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'backslash inside the host' => 'http://host.example\evil/token',
             'the WHATWG forging shape (backslash in userinfo)' => 'https://evil.example\@idp.example/device',
             'trailing backslash before the query' => 'http://host.example\?next=1',
+            /*
+             * OCR round 46 (t31-ocr46-5): the PATH half — the screen
+             * once probed only $authority, but the URL Standard's
+             * path state treats U+005C as a segment SEPARATOR for
+             * special schemes, so a browser consuming
+             * 'https://host/device\page' requests '/device/page'
+             * while this parse kept the byte verbatim in the path:
+             * url(), redacted_url(), and every derived surface named
+             * a different path than the browser consumes (red at
+             * HEAD: constructed). Every scheme this VO admits is a
+             * special scheme (http/https), so the whole input is the
+             * screen's territory — the r45-2 tab-strip sibling, full
+             * input.
+             */
+            'backslash as a path separator' => 'https://host.example/device\page',
+            'backslash inside a query value' => 'https://host.example/token?next=a\b',
+            'backslash inside the fragment' => 'https://host.example/token#sec\tion',
         );
 
         foreach ($hostile_urls as $label => $url) {
