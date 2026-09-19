@@ -28,6 +28,8 @@ declare( strict_types=1 );
 
 namespace Deicod\WpConnectors\Shared\Support;
 
+use Deicod\WpConnectors\Shared\Http\HeaderMap;
+
 /**
  * Masks secret values and identifies secret-bearing header names.
  *
@@ -244,14 +246,26 @@ final class SecretMask {
 		 * verbatim through every safe debug form, the r12-4 leak
 		 * class over the grammar's own delimiter vocabulary. The
 		 * classifier normalizes the WHOLE census to '-' ONCE, at the
-		 * fold (the set derived from the pattern's own character
-		 * class, nothing hand-listed beside it): the judged token
+		 * fold (the set structually tied to the pattern's own
+		 * character class below — the one-owner spelling, never a
+		 * hand-listed twin): the judged token
 		 * stays the whole final segment over any delimiter spelling
 		 * ('x-api-keychain', 'x_api_keychain', and 'x.api.keychain'
 		 * all remain outside — the suffix bytes never span a
 		 * separator), and hyphen-only names judge byte-identically.
+		 *
+		 * The census rides its ONE owner (OCR round 45, t31-ocr45-4):
+		 * the class below was a second, hand-spelled copy of the
+		 * grammar's own — the drift seam the t31-ocr8-8/t31-ocr40-3
+		 * single-owner doctrine exists to close. The set IS
+		 * HeaderMap::NAME_TOKEN_DELIMITER_CLASS now, the same named
+		 * constant the grammar composes from: the two spellings
+		 * cannot drift (the hyphen needs no mapping — it normalizes
+		 * to itself, so the strtr spans the fourteen non-hyphen
+		 * delimiters alone).
 		 */
-		$folded = strtr( AsciiFold::lower( $name ), "!#$%&'*+.^_`|~-", '---------------' );
+		$delimiters = HeaderMap::NAME_TOKEN_DELIMITER_CLASS;
+		$folded     = strtr( AsciiFold::lower( $name ), $delimiters, str_repeat( '-', strlen( $delimiters ) ) );
 		if ( \in_array( $folded, self::SENSITIVE_HEADER_NAMES, true ) ) {
 			return true;
 		}

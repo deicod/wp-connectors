@@ -101,6 +101,28 @@ final class HeaderMap {
 	const VALUE_CONTROL_BYTE_PATTERN = '/[\x00-\x08\x0A-\x1F\x7F]|\xC2[\x80-\x9F\xAD]|\xE2\x80[\x8B-\x8F\xA8-\xAE]|\xE2\x81[\xA6-\xA9]|\xD8\x9C|\xD8[\x80-\x85]|\xDB\x9D|\xDC\x8F|\xE0\xA2[\x90-\x91]|\xE0\xA3\xA2|\xF0\x91\x82\xBD|\xF0\x91\x83\x8D|\xF0\x93\x90[\xB0-\xBF]|\xEF\xBB\xBF/';
 
 	/**
+	 * The NON-ALPHANUMERIC tchar census the token grammar admits
+	 * beside letters and digits — the fourteen delimiters ! # $ % &
+	 * ' * + . ^ _ ` | ~ (the hyphen rides inside the grammar's class
+	 * spelling, not this constant: it is the mask classifier's
+	 * identity mapping, a delimiter that normalizes to itself).
+	 *
+	 * The SINGLE OWNER of the delimiter spelling (OCR round 45,
+	 * t31-ocr45-4): the masking boundary's normalization set was a
+	 * second, hand-spelled copy of this class with nothing structural
+	 * tying the spellings — the exact single-owner drift
+	 * t31-ocr8-8/t31-ocr40-3 exist to prevent. The grammar composes
+	 * from it (NAME_TOKEN_PATTERN below) and SecretMask's classifier
+	 * consumes it, so a future class change moves both surfaces
+	 * together, by construction.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var string
+	 */
+	const NAME_TOKEN_DELIMITER_CLASS = "!#$%&'*+.^_`|~";
+
+	/**
 	 * The RFC 7230 token grammar every header NAME must satisfy
 	 * (verifier round t31-r1-16): visible ASCII token characters only.
 	 * The masking vocabulary and the duplicate fence both key on the
@@ -119,11 +141,19 @@ final class HeaderMap {
 	 * one now — the grammar lives once, and a future tightening (an
 	 * anchor, a character class) cannot diverge between the surfaces.
 	 *
+	 * COMPOSED from the delimiter census above (OCR round 45,
+	 * t31-ocr45-4): the class is stated once as the named constant,
+	 * and this pattern and SecretMask's delimiter normalization ride
+	 * the same spelling — a future class change moves the grammar
+	 * and the masking boundary together, by construction (the
+	 * t31-ocr8-8/t31-ocr40-3 single-owner doctrine the masking
+	 * boundary's own comment cites).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var string
 	 */
-	const NAME_TOKEN_PATTERN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/';
+	const NAME_TOKEN_PATTERN = '/\A[' . self::NAME_TOKEN_DELIMITER_CLASS . '0-9A-Za-z-]+\z/';
 
 	/**
 	 * The folded-name index (lowercased name => [name as given, value]),
