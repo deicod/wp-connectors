@@ -3134,11 +3134,28 @@ final class WpConnectorsBuild
                  * walk does not descend into linked children (no
                  * FOLLOW_SYMLINKS flag), so their target trees stand
                  * untouched.
+                 *
+                 * Each removal owns its IO return (OCR round 43,
+                 * t31-ocr43-4 — the glm17-16 idiom at this owner's
+                 * silent-degrade seam, the ocr32-7 harness twin one
+                 * policy over): the per-entry calls once ran bare, so a
+                 * refused removal (a stranded mode bit, a removal race)
+                 * answered with a RAW E_WARNING interpolating staging
+                 * paths — against the docblock's own promise below and,
+                 * under the runner's warning conversion, an exception
+                 * wearing another vocabulary inside the finally. The
+                 * @-suppressed false IS the named outcome here (a
+                 * rethrow would REPLACE the primary verdict in flight,
+                 * the t31-ocr23-1 class this owner exists to keep): the
+                 * entry stays for the sweep's next run, exactly the
+                 * destination the walk refusal names.
                  */
                 if ($item->isDir() && ! $item->isLink()) {
-                    rmdir($item->getPathname());
+                    // @: the diagnostic is suppressed, the failed
+                    // return the degrade below owns (glm17-16).
+                    @rmdir($item->getPathname());
                 } else {
-                    unlink($item->getPathname());
+                    @unlink($item->getPathname());
                 }
             }
         } catch (UnexpectedValueException $walk_refusal) {
@@ -3165,7 +3182,14 @@ final class WpConnectorsBuild
              */
             return;
         }
-        rmdir($dir);
+        // The emptied root's own removal rides the same owned-return
+        // degrade (t31-ocr43-4): a root that did not empty — or a
+        // removal the filesystem refuses — never answers in the
+        // engine's raw vocabulary; the root stays with whatever
+        // refused, for the sweep's next run.
+        // @: the diagnostic is suppressed, the failed return the
+        // degrade owns (glm17-16).
+        @rmdir($dir);
     }
 
     /**

@@ -2914,6 +2914,64 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-43 pin (t31-ocr43-4): the BUILD removal walk owns its
+     * IO returns — the exact two-way escape ocr30-4 closed for the
+     * copy twin and ocr32-7 for the harness twin, one owner over, at
+     * THIS owner's own contract. WpConnectorsBuild::rrmdir()'s
+     * per-entry unlink()/rmdir() calls (and the emptied root's final
+     * rmdir) once ran bare, and this owner runs from buildPlugin()'s
+     * FINALLY and the startup sweep — so a refused removal (a
+     * stranded 0555 bit, a removal race) answered with a RAW E_WARNING
+     * interpolating staging paths, against the docblock's own
+     * silent-degrade promise: under the runner's warning conversion
+     * an exception wearing another vocabulary inside the finally
+     * (driven red at HEAD), outside it raw bytes. The policy is the
+     * SILENT degrade, never the harness twin's loud throw — a rethrow
+     * here would REPLACE the primary verdict in flight (the
+     * t31-ocr23-1 class this owner exists to keep): the refused entry
+     * stays for the sweep's next run, the partial removal stands.
+     */
+    public function testTheBuildRemovalWalkOwnsItsIoReturns(): void
+    {
+        $scratch = self::scratchPath('build-iofail');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        mkdir($scratch . '/open', 0755, true);
+        file_put_contents($scratch . '/open/gone.txt', 'bytes');
+        mkdir($scratch . '/locked', 0755, true);
+        file_put_contents($scratch . '/locked/x.txt', 'bytes');
+        chmod($scratch . '/locked', 0555);
+        // The stranded-shape probe (the t31-ocr4-1 root doctrine): a
+        // host whose unlink ignores the mode bit cannot construct the
+        // refusal — skip visibly, never a vacuous green.
+        if (@unlink($scratch . '/locked/x.txt')) {
+            chmod($scratch . '/locked', 0755);
+            WpHarness::releaseScratch($scratch);
+            $this->markTestSkipped('This host unlinks through mode 0555 (uid 0 — t31-ocr4-1); the refused per-entry removal is unconstructible here.');
+        }
+
+        try {
+            /*
+             * Red at HEAD: the raw E_WARNING escaped at the first
+             * refused unlink (the runner's failOnWarning conversion
+             * wearing PHPUnit's vocabulary over the engine's words).
+             * CHILD_FIRST order makes the failing entry deterministic
+             * — 'locked/x.txt' is reached before its parent, and only
+             * the locked subtree can refuse.
+             */
+            $remove = new ReflectionMethod(WpConnectorsBuild::class, 'rrmdir');
+            $remove->invoke(null, $scratch);
+            $this->assertFileDoesNotExist($scratch . '/open/gone.txt', 'The readable siblings are removed — the partial removal stands, the degrade never abandons the walk.');
+            $this->assertDirectoryExists($scratch . '/locked', 'The refused subtree stays for the sweep\'s next run — the named failure is the silent degrade, never the engine\'s raw warning, never a rethrow from a finally.');
+            $this->assertDirectoryExists($scratch, 'The not-emptied root stays with it — the final rmdir degrades the same way.');
+        } finally {
+            chmod($scratch . '/locked', 0755);
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r4 K2), end-to-end through the seam: build.json
      * is a CLOSED SCHEMA now, not container shape. The seam had closed
      * "silently skips the embed" one spelling at a time (the decode
