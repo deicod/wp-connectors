@@ -129,22 +129,24 @@ final class SecretMask {
 	 * final segment is the WHOLE token, ending in no suffix
 	 * ('accesstoken' does not end in '-token'): both screens
 	 * answered false and the secret rendered verbatim through every
-	 * safe debug form (driven at HEAD). The credential family's own
-	 * single-token forms join the catalog — the flattened spellings
-	 * of the suffix class's hyphenated members
-	 * ('api-key'/'subscription-key') and of the vendor-documented
-	 * names the class's own record cites (security/access/refresh
-	 * tokens, client/shared secrets). A glue with no recognized
-	 * credential name behind it stays outside ('apitoken' is no
-	 * vendor's spelling, the r24 boundary example — the boundary
-	 * still refuses suffix bytes SPANNING a separator,
-	 * 'x-api-keychain' over every delimiter).
+	 * safe debug form (driven at HEAD). The flattened family rode
+	 * THIS catalog for one round — and OCR round 50 (t31-ocr50-1)
+	 * moved it to the SUFFIX CLASS below: the catalog is consulted
+	 * by exact match only, so 'X-ApiKey' — the equally real vendor
+	 * spelling, flattened twin of covered 'X-Api-Key' — folded to
+	 * 'x-apikey' and matched neither screen; the class's boundary
+	 * owns the hyphen-tail now, and the catalog entries were
+	 * behaviorally dead weight the t31-ocr33-3 subsumption doctrine
+	 * refuses. A glue with no recognized credential name behind it
+	 * stays outside ('apitoken' is no vendor's spelling, the r24
+	 * boundary example — the boundary still refuses suffix bytes
+	 * SPANNING a separator, 'x-api-keychain' over every delimiter).
 	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAMES = array( 'cookie', 'set-cookie', 'location', 'referer', 'authentication-info', 'proxy-authentication-info', 'apikey', 'subscriptionkey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret' );
+	const SENSITIVE_HEADER_NAMES = array( 'cookie', 'set-cookie', 'location', 'referer', 'authentication-info', 'proxy-authentication-info' );
 
 	/**
 	 * Credential-bearing name suffixes (lowercase): any folded header
@@ -200,11 +202,27 @@ final class SecretMask {
 	 * ('x-auth-token', 'Auth-Token') ride 'token' green, by
 	 * construction.
 	 *
+	 * OCR round 50 (t31-ocr50-1, security — the HYPHEN-TAIL twin of
+	 * the r49-5 undelimited generation): the flattened family rides
+	 * HERE, never the catalog. The r49-5 fix consulted the catalog by
+	 * exact match only, so a name whose FINAL hyphen-token is one of
+	 * the flattened spellings escaped both screens — 'X-ApiKey' (the
+	 * equally real vendor spelling, flattened twin of covered
+	 * 'X-Api-Key') folds to judged 'x-apikey': no exact catalog hit,
+	 * no suffix hit, the value verbatim (driven at HEAD). One
+	 * predicate owns the whole family shape: the fold normalizes
+	 * underscore, hyphen, and dot segment tails to the hyphen once,
+	 * so the one boundary below speaks every delimiter's segment tail
+	 * plus the bare token ('x-apikey', 'x_accesstoken',
+	 * 'x.accesstoken' all judge the same final segment), and the
+	 * boundary still refuses suffix bytes SPANNING a separator
+	 * ('x-apikeychain' stays outside, over every delimiter).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'api-key', 'subscription-key', 'auth', 'authorization', 'token', 'secret' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'api-key', 'subscription-key', 'auth', 'authorization', 'token', 'secret', 'apikey', 'subscriptionkey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.

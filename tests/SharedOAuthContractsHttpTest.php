@@ -2028,26 +2028,50 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
          * the whole token, ending in no suffix: both screens
          * answered false and the secret rendered verbatim through
          * every safe debug form (red at HEAD: unmasked). The
-         * credential family's own single-token forms join the
-         * catalog — the flattened spellings of the class's
-         * hyphenated members and of the vendor-documented names the
-         * class's own record cites; the render seam rides the same
-         * verdict, and the unrelated single tokens stay verbatim.
+         * credential family's own single-token forms join the policy
+         * — the flattened spellings of the class's hyphenated
+         * members and of the vendor-documented names the class's own
+         * record cites (the suffix class's own flattened members
+         * since OCR round 50, t31-ocr50-1 — the exact-match catalog
+         * arm answered only the bare token); the render seam rides
+         * the same verdict, and the unrelated single tokens stay
+         * verbatim.
          */
         $undelimited_secret = FakeSecrets::accessToken();
         foreach (array('apikey', 'ApiKey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'subscriptionkey') as $spelling) {
-            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the catalog — a recognized credential name's undelimited spelling is the name, never a delimiter-shaped hole (red at HEAD: unmasked).");
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — a recognized credential name's undelimited spelling is the name, never a delimiter-shaped hole (red at HEAD: unmasked).");
         }
         $undelimited_map = new HeaderMap(array(
             'apikey' => $undelimited_secret,
             'accept' => 'text/plain',
         ));
         foreach (array('dump' => print_r($undelimited_map, true), 'serialize' => serialize($undelimited_map)) as $channel => $rendered) {
-            $this->assertStringNotContainsString($undelimited_secret, $rendered, "The undelimited 'apikey' name masks in the {$channel} channel — the catalog owns the single-token spelling.");
+            $this->assertStringNotContainsString($undelimited_secret, $rendered, "The undelimited 'apikey' name masks in the {$channel} channel — the class owns the single-token spelling.");
             $this->assertStringContainsString('text/plain', $rendered, "The unrelated single-token 'accept' value still renders verbatim in the {$channel} channel.");
         }
         foreach (array('host', 'accept') as $spelling) {
-            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The unrelated single token '{$spelling}' stays verbatim — the catalog grew the credential family alone.");
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The unrelated single token '{$spelling}' stays verbatim — the credential family alone grew a spelling.");
+        }
+
+        /*
+         * OCR-round-50 pin (t31-ocr50-1 — the HYPHEN-TAIL twin of
+         * the undelimited generation): the r49-5 flattened spellings
+         * rode the catalog, consulted by exact match only, so a name
+         * whose FINAL hyphen-token is one of them escaped both
+         * screens — 'X-ApiKey' (the equally real vendor spelling,
+         * flattened twin of covered 'X-Api-Key') folded to
+         * 'x-apikey' and matched neither (red at HEAD: unmasked).
+         * The flattened family rides the SUFFIX CLASS now — one
+         * boundary speaking every delimiter's segment tail plus the
+         * bare token (the fold normalizes '_' and '.' to the hyphen
+         * once) — and the boundary still refuses suffix bytes
+         * spanning a separator.
+         */
+        foreach (array('X-ApiKey', 'x-apikey', 'x.accesstoken', 'x_clientsecret') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the suffix class's flattened family — the boundary judges the final segment over every delimiter, never the catalog's exact match alone (red at HEAD: unmasked).");
+        }
+        foreach (array('X-Request-Id', 'x-apikeychain') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling stays verbatim — a non-credential tail and a name whose final token merely CONTAINS the flattened bytes are both outside the class.");
         }
 
         /*
