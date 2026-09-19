@@ -1605,7 +1605,22 @@ final class WpHarness
                     }
                     $collapsed[] = $segment;
                 }
-                $resolved = '/' . implode('/', $collapsed);
+                /*
+                 * The collapse speaks the ANCHOR's own shape (OCR
+                 * round 38, t31-ocr38-3): the unconditional '/'
+                 * prepend composed only on POSIX, where every
+                 * realpath() answer carries a leading separator — on
+                 * a separator host the folded anchor is a realpath()
+                 * output with NONE ('C:/repo'), and the prepend
+                 * folded the resolution into '/C:/repo/sub/dst', a
+                 * spelling no host resolves, the loop's equality and
+                 * containment verdicts then answering over vocabulary
+                 * noise. The prefix derives from the anchor: '/' where
+                 * the anchor carries one, '' where it does not (the
+                 * drive anchor joins through its segments alone).
+                 * POSIX byte-unchanged (the anchor always '/' there).
+                 */
+                $resolved = ('/' === $ancestor_real[0] ? '/' : '') . implode('/', $collapsed);
             } else {
                 $resolved = rtrim($to_walk, '/');
             }
