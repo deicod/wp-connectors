@@ -2597,6 +2597,88 @@ FIXTURE;
     }
 
     /**
+     * OCR-round-36 pin (t31-ocr36-2): BOTH tree collectors fence their
+     * recursion boundary. hasChildren() passes on stat alone, so an
+     * unreadable SUBDIRECTORY mid-tree (a chmod-000 child) aborted each
+     * descent in the SPL iterator's own UnexpectedValueException —
+     * another library's vocabulary answering a build refusal (red at
+     * HEAD: both walks threw the SPL exception class, the t31-ocr33-6
+     * class at the last two unfenced collectors). The twins are fenced
+     * in lockstep: the abort answers each walk's own named refusal,
+     * the SPL message riding parenthetically (it is what names the
+     * path); the staged source is a LEGAL shared root so the fence's
+     * verdict is the only refusal the walk can reach, and the
+     * readable-tree control below keeps the green walk's collection
+     * unchanged. Gated by the opendir probe (the t31-ocr4-1 doctrine):
+     * a host whose process opens chmod-0000 directories cannot
+     * construct the shape at all.
+     */
+    public function testBothTreeCollectorsFenceTheirRecursionBoundary(): void
+    {
+        $scratch = self::scratchPath('collectors-unlistable');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        // Staging asserts its own landing (the t31-ocr35-7 doctrine):
+        // a staging failure fails as staging, never as a collector
+        // verdict.
+        $this->assertTrue(@mkdir($scratch . '/locked/inner', 0755, true), "staging: the collectors' hostile leg must land at {$scratch}/locked/inner.");
+        // Gated (the t31-ocr16-13 doctrine): an absent or empty source
+        // makes the shared collector refuse as 'declares no namespace'
+        // (or collect a phantom empty set) instead of the fence's
+        // verdict the leg pins — and the source sits at the tree ROOT
+        // so the PSR-4 fence keeps it green whatever readdir order the
+        // descent takes to the locked child.
+        $this->assertNotFalse(
+            file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\n"),
+            "staging: the legal shared source must land at {$scratch}/Root.php — every other verdict the walk owns must stay green so the fence's is the only one it can reach."
+        );
+        chmod($scratch . '/locked', 0000);
+        // The unlistable-shape probe (the t31-ocr4-1 root doctrine): a
+        // host whose process opens chmod-0000 directories cannot
+        // construct the shape — skip visibly, never a vacuous green.
+        $probe = @opendir($scratch . '/locked');
+        if (false !== $probe) {
+            closedir($probe);
+            chmod($scratch . '/locked', 0755);
+            WpHarness::releaseScratch($scratch);
+            $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
+        }
+
+        try {
+            $plugin_refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::collectFiles($scratch),
+                'An unlistable SUBDIRECTORY mid-tree must answer the plugin collector\'s own refusal, never the SPL iterator\'s vocabulary.', \RuntimeException::class
+            );
+            $this->assertStringContainsString('cannot be listed', $plugin_refusal->getMessage(), 'The refusal names the class the fence owns.');
+            $this->assertStringContainsString('locked', $plugin_refusal->getMessage(), 'The refusal names the path — the SPL message parenthetical carries it.');
+
+            $shared_refusal = $this->refusalOf(
+                fn() => wp_connectors_php_source_files($scratch),
+                'An unlistable SUBDIRECTORY mid-tree must answer the shared collector\'s own refusal, never the SPL iterator\'s vocabulary.', \RuntimeException::class
+            );
+            $this->assertStringContainsString('cannot be listed', $shared_refusal->getMessage(), 'The refusal names the class the fence owns.');
+            $this->assertStringContainsString('locked', $shared_refusal->getMessage(), 'The refusal names the path — the SPL message parenthetical carries it.');
+        } finally {
+            chmod($scratch . '/locked', 0755);
+            WpHarness::releaseScratch($scratch);
+        }
+
+        // The readable-tree control: the same walk with the mode
+        // restored collects the legal source unchanged — the fence
+        // changed nothing about the green walk.
+        $restored = self::scratchPath('collectors-unlistable');
+        $this->assertTrue(@mkdir($restored, 0755, true), "staging: the control tree must land at {$restored}.");
+        $this->assertNotFalse(
+            file_put_contents($restored . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\n"),
+            "staging: the control's source must land — the collect expectation names it."
+        );
+        $this->assertSame(array('Root.php'), wp_connectors_php_source_files($restored));
+        $this->assertSame(array('Root.php'), WpConnectorsBuild::collectFiles($restored));
+        WpHarness::releaseScratch($restored);
+    }
+
+    /**
      * Verifier-round pin (t31-r2-18): collectFiles() filters by
      * excluded path NAMES only, so the embed collection would ship any
      * non-PHP file committed inside shared/src (notes, READMEs)

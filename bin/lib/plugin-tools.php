@@ -4075,191 +4075,213 @@ function wp_connectors_is_embed_destination($entry, $slug)
  * @param string $dir Absolute source-only directory (shared/src).
  * @return list<string> Sorted relative .php file paths.
  * @throws RuntimeException When the tree carries a symlink, a
- *                          non-canonical extension casing, or a
+ *                          non-canonical extension casing, a
  *                          near-source spelling (an edge byte hiding
- *                          the extension or riding a path segment).
+ *                          the extension or riding a path segment),
+ *                          or a subdirectory the walk cannot list.
  */
 function wp_connectors_php_source_files($dir)
 {
     $files = array();
     $dir = rtrim((string) $dir, '/');
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)
-    );
-    foreach ($iterator as $file) {
-        /** @var SplFileInfo $file */
-        if ($file->isLink()) {
-            throw new RuntimeException(sprintf(
-                'shared source tree carries a symlink (%s -> %s) — the no-symlinks doctrine refuses the walk instead of silently skipping a source that loads in development and misses the zip',
-                $file->getPathname(),
-                (string) $file->getLinkTarget()
-            ));
-        }
-        if (! $file->isFile()) {
-            continue;
-        }
-        $relative = str_replace($dir . '/', '', $file->getPathname());
-        // The extension judgment rides the ONE case-insensitive owner
-        // (t31-r4-9): nothing is silently skipped by a casing the
-        // judgment cannot see. For THIS tree the judgment is then
-        // narrowed by the casing doctrine (t31-r5-3): a source that is
-        // a PHP file by any case but not by the canonical lowercase
-        // spelling REFUSES — the shipped autoloader probes '.php'
-        // lowercase, so any other casing ships a class nothing loads.
-        if (! wp_connectors_is_php_source($relative)) {
+    /*
+     * The walk fences its recursion boundary (OCR round 36,
+     * t31-ocr36-2 — the collectFiles census one file over): an
+     * unreadable SUBDIRECTORY mid-tree (a chmod-000 child) aborts
+     * the descent in the SPL iterator's own
+     * UnexpectedValueException — another library's vocabulary
+     * answering this collector's refusal (the t31-ocr33-6 class).
+     * The construction rides the try (a source root this process
+     * cannot open throws from the constructor, the ocr23 rd-1
+     * doctrine); the abort converts to the walk's own refusal with
+     * the SPL message riding parenthetically (it is what names the
+     * path); the per-entry refusals inside are RuntimeExceptions and
+     * pass the fence untouched.
+     */
+    try {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            /** @var SplFileInfo $file */
+            if ($file->isLink()) {
+                throw new RuntimeException(sprintf(
+                    'shared source tree carries a symlink (%s -> %s) — the no-symlinks doctrine refuses the walk instead of silently skipping a source that loads in development and misses the zip',
+                    $file->getPathname(),
+                    (string) $file->getLinkTarget()
+                ));
+            }
+            if (! $file->isFile()) {
+                continue;
+            }
+            $relative = str_replace($dir . '/', '', $file->getPathname());
+            // The extension judgment rides the ONE case-insensitive owner
+            // (t31-r4-9): nothing is silently skipped by a casing the
+            // judgment cannot see. For THIS tree the judgment is then
+            // narrowed by the casing doctrine (t31-r5-3): a source that is
+            // a PHP file by any case but not by the canonical lowercase
+            // spelling REFUSES — the shipped autoloader probes '.php'
+            // lowercase, so any other casing ships a class nothing loads.
+            if (! wp_connectors_is_php_source($relative)) {
+                /*
+                 * Near-source spellings refuse first (verifier round
+                 * t31-r5-14): a name whose trailing whitespace or dot
+                 * hides the extension ('ClockMath.php ', 'ClockMath.php.')
+                 * is a file a human READS as a PHP source while every gate
+                 * — this collector, the sweep, the dev autoloader's
+                 * class-to-path map — judges it as not one: it builds
+                 * clean, ships nowhere, and a class declared inside it is
+                 * a class-not-found fatal with build and inspect green
+                 * (adversarially confirmed) — the exact silently-invisible
+                 * ship the r5-3 doctrine claims never happens. Refusing
+                 * closes the neighborhood at the ONE owner. (Names that
+                 * are merely DIFFERENT — 'ClockMath.phpé', 'Notes.md' —
+                 * stay out of scope: nothing loads them in development
+                 * either, so no divergence exists.)
+                 *
+                 * The tail strip rides the ONE edge-junk owner
+                 * (wp_connectors_path_edge_junk()): r5-14's charlist
+                 * (" \t.") missed \n/\r/\v/\f (review round t31-r6-2), and
+                 * r6-2's own literal still missed the rest of the C0
+                 * controls and DEL — 'ClockMath.php\x01' was STILL
+                 * neither collected nor refused (verifier round
+                 * t31-r6-4, reproduced) — so the class is owned once,
+                 * completely: every byte 0x00-0x20, DEL, and the dot. A
+                 * filename hiding the extension behind ANY trailing byte
+                 * is the same near-source spelling and refuses the same
+                 * way.
+                 */
+                if (wp_connectors_segment_is_near_source_php(basename($relative))) {
+                    throw new RuntimeException(sprintf(
+                        'shared source %s is a NEAR-SOURCE spelling (trailing whitespace, control byte, or dot hides the extension) — it reads as a PHP source but is invisible to every gate and absent from every ship; rename it to the canonical .php',
+                        $dir . '/' . $relative
+                    ));
+                }
+                continue;
+            }
             /*
-             * Near-source spellings refuse first (verifier round
-             * t31-r5-14): a name whose trailing whitespace or dot
-             * hides the extension ('ClockMath.php ', 'ClockMath.php.')
-             * is a file a human READS as a PHP source while every gate
-             * — this collector, the sweep, the dev autoloader's
-             * class-to-path map — judges it as not one: it builds
-             * clean, ships nowhere, and a class declared inside it is
-             * a class-not-found fatal with build and inspect green
-             * (adversarially confirmed) — the exact silently-invisible
-             * ship the r5-3 doctrine claims never happens. Refusing
-             * closes the neighborhood at the ONE owner. (Names that
-             * are merely DIFFERENT — 'ClockMath.phpé', 'Notes.md' —
-             * stay out of scope: nothing loads them in development
-             * either, so no divergence exists.)
-             *
-             * The tail strip rides the ONE edge-junk owner
-             * (wp_connectors_path_edge_junk()): r5-14's charlist
-             * (" \t.") missed \n/\r/\v/\f (review round t31-r6-2), and
-             * r6-2's own literal still missed the rest of the C0
-             * controls and DEL — 'ClockMath.php\x01' was STILL
-             * neither collected nor refused (verifier round
-             * t31-r6-4, reproduced) — so the class is owned once,
-             * completely: every byte 0x00-0x20, DEL, and the dot. A
-             * filename hiding the extension behind ANY trailing byte
-             * is the same near-source spelling and refuses the same
-             * way.
+             * Near-source spellings, the LEADING side (verifier round
+             * t31-r6-4): the fence above guards names whose TAIL hides
+             * the extension from the collector; the mirror defect is a
+             * COLLECTED source whose path segment carries an edge byte —
+             * ' ClockMath.php', '.ClockMath.php', 'Clock /Math.php'. It
+             * collects and ships while the shipped autoloader maps class
+             * names onto LABEL-SHAPED paths (class names carry no
+             * whitespace, control bytes, or dots), so the file ships a
+             * class no loader can address (reproduced: class_exists
+             * through the real shipped autoloader false, build and
+             * inspect green) — the t31-r5-3 dead-ship class, from the
+             * other edge. Every segment of a collected source's path
+             * must survive its own edge strip.
              */
-            if (wp_connectors_segment_is_near_source_php(basename($relative))) {
+            foreach (explode('/', $relative) as $segment) {
+                if ($segment !== trim($segment, wp_connectors_path_edge_junk())) {
+                    throw new RuntimeException(sprintf(
+                        'shared source %s is a NEAR-SOURCE spelling (a path segment carries a leading or trailing whitespace, control byte, or dot) — it collects and ships, but the shipped autoloader maps class names onto label-shaped paths, so its class is a class no loader can address; rename the segment',
+                        $dir . '/' . $relative
+                    ));
+                }
+            }
+            if ('.php' !== substr($relative, -4)) {
                 throw new RuntimeException(sprintf(
-                    'shared source %s is a NEAR-SOURCE spelling (trailing whitespace, control byte, or dot hides the extension) — it reads as a PHP source but is invisible to every gate and absent from every ship; rename it to the canonical .php',
+                    'shared source %s carries a non-canonical extension casing — the shipped autoloader maps class names onto lowercase ".php" paths, so any other casing ships a class no loader reaches on a case-sensitive filesystem; rename the source',
                     $dir . '/' . $relative
                 ));
             }
-            continue;
-        }
-        /*
-         * Near-source spellings, the LEADING side (verifier round
-         * t31-r6-4): the fence above guards names whose TAIL hides
-         * the extension from the collector; the mirror defect is a
-         * COLLECTED source whose path segment carries an edge byte —
-         * ' ClockMath.php', '.ClockMath.php', 'Clock /Math.php'. It
-         * collects and ships while the shipped autoloader maps class
-         * names onto LABEL-SHAPED paths (class names carry no
-         * whitespace, control bytes, or dots), so the file ships a
-         * class no loader can address (reproduced: class_exists
-         * through the real shipped autoloader false, build and
-         * inspect green) — the t31-r5-3 dead-ship class, from the
-         * other edge. Every segment of a collected source's path
-         * must survive its own edge strip.
-         */
-        foreach (explode('/', $relative) as $segment) {
-            if ($segment !== trim($segment, wp_connectors_path_edge_junk())) {
+            /*
+             * The PSR-4 CASING-AGREEMENT fence for the embedded tree
+             * (verifier round t31-r8-4): the r5-3 doctrine fenced the
+             * EXTENSION's casing but not the DIRECTORIES' —
+             * shared/src/tools/Helper.php declaring `…\Tools;` collected,
+             * staged at src/Shared/tools/, passed inspection, and
+             * published, while the shipped autoloader maps the class name
+             * `…\Tools\Helper` onto `src/Shared/Tools/Helper.php`
+             * verbatim: class_exists through the real shipped loader was
+             * FALSE with every gate green (end-to-end reproduced). The
+             * staged path's directory segments must agree with the declared
+             * namespace's segments below the shared root CASE-EXACTLY
+             * (depth included) — the root's own casing stays the family
+             * detector's and the rewrite postcondition's charge, since the
+             * build itself maps the root onto src/Shared/ regardless of
+             * spelling. A missing declaration refuses too: a global-
+             * namespace source staged under src/Shared/ is a tree no
+             * autoload path can address.
+             */
+            // @: the diagnostic is suppressed, the failed return owned below — the glm17-16 idiom.
+            $contents = @file_get_contents($dir . '/' . $relative);
+            if (false === $contents) {
                 throw new RuntimeException(sprintf(
-                    'shared source %s is a NEAR-SOURCE spelling (a path segment carries a leading or trailing whitespace, control byte, or dot) — it collects and ships, but the shipped autoloader maps class names onto label-shaped paths, so its class is a class no loader can address; rename the segment',
+                    'shared source %s cannot be read for the PSR-4 casing fence — an unreadable source refuses the walk, never ships unverified',
                     $dir . '/' . $relative
                 ));
             }
-        }
-        if ('.php' !== substr($relative, -4)) {
-            throw new RuntimeException(sprintf(
-                'shared source %s carries a non-canonical extension casing — the shipped autoloader maps class names onto lowercase ".php" paths, so any other casing ships a class no loader reaches on a case-sensitive filesystem; rename the source',
-                $dir . '/' . $relative
-            ));
-        }
-        /*
-         * The PSR-4 CASING-AGREEMENT fence for the embedded tree
-         * (verifier round t31-r8-4): the r5-3 doctrine fenced the
-         * EXTENSION's casing but not the DIRECTORIES' —
-         * shared/src/tools/Helper.php declaring `…\Tools;` collected,
-         * staged at src/Shared/tools/, passed inspection, and
-         * published, while the shipped autoloader maps the class name
-         * `…\Tools\Helper` onto `src/Shared/Tools/Helper.php`
-         * verbatim: class_exists through the real shipped loader was
-         * FALSE with every gate green (end-to-end reproduced). The
-         * staged path's directory segments must agree with the declared
-         * namespace's segments below the shared root CASE-EXACTLY
-         * (depth included) — the root's own casing stays the family
-         * detector's and the rewrite postcondition's charge, since the
-         * build itself maps the root onto src/Shared/ regardless of
-         * spelling. A missing declaration refuses too: a global-
-         * namespace source staged under src/Shared/ is a tree no
-         * autoload path can address.
-         */
-        // @: the diagnostic is suppressed, the failed return owned below — the glm17-16 idiom.
-        $contents = @file_get_contents($dir . '/' . $relative);
-        if (false === $contents) {
-            throw new RuntimeException(sprintf(
-                'shared source %s cannot be read for the PSR-4 casing fence — an unreadable source refuses the walk, never ships unverified',
-                $dir . '/' . $relative
-            ));
-        }
-        /*
-         * Every declaration the source carries, not just the first
-         * (verifier round t31-r8-8): the fence's first cut broke at the
-         * file's first namespace block, so a legal multi-block source —
-         * first block agreeing with its staged path, second block one
-         * level deeper — collected, rewrote clean, passed inspection,
-         * and published while the second block's class mapped onto a
-         * path nothing stages (interface_exists through the shipped
-         * autoloader FALSE, end-to-end reproduced). The embed maps ONE
-         * staged path per file, so a SECOND declaration block stages
-         * nowhere at all — refused outright, with both spellings named.
-         */
-        $declarations = array();
-        foreach (wp_connectors_php_name_references($contents) as $reference) {
-            if ('declaration' === $reference['kind']) {
-                $declarations[] = $reference['name'];
+            /*
+             * Every declaration the source carries, not just the first
+             * (verifier round t31-r8-8): the fence's first cut broke at the
+             * file's first namespace block, so a legal multi-block source —
+             * first block agreeing with its staged path, second block one
+             * level deeper — collected, rewrote clean, passed inspection,
+             * and published while the second block's class mapped onto a
+             * path nothing stages (interface_exists through the shipped
+             * autoloader FALSE, end-to-end reproduced). The embed maps ONE
+             * staged path per file, so a SECOND declaration block stages
+             * nowhere at all — refused outright, with both spellings named.
+             */
+            $declarations = array();
+            foreach (wp_connectors_php_name_references($contents) as $reference) {
+                if ('declaration' === $reference['kind']) {
+                    $declarations[] = $reference['name'];
+                }
             }
-        }
-        if ($declarations === array()) {
-            throw new RuntimeException(sprintf(
-                'shared source %s declares no namespace — the embed stages it under src/Shared/, a tree only the slug-derived namespace prefix addresses, so a global-namespace source ships a class no loader can reach; declare %s\\… in it',
-                $dir . '/' . $relative,
-                wp_connectors_shared_source_namespace()
-            ));
-        }
-        if (count($declarations) > 1) {
-            throw new RuntimeException(sprintf(
-                'shared source %s declares %d namespaces (%s) — the embed stages ONE path per file, so a second block\'s classes stage nowhere the shipped autoloader addresses (class_exists false with every gate green); split the blocks into one file per namespace',
-                $dir . '/' . $relative,
-                count($declarations),
-                implode(', ', $declarations)
-            ));
-        }
-        $declared_namespace = $declarations[0];
-        $root_lower_segments = explode('\\', wp_connectors_ascii_lower(wp_connectors_shared_source_namespace()));
-        $declared_segments = explode('\\', ltrim($declared_namespace, '\\'));
-        if (count($declared_segments) < count($root_lower_segments)
-            || array_map('wp_connectors_ascii_lower', array_slice($declared_segments, 0, count($root_lower_segments))) !== $root_lower_segments) {
-            throw new RuntimeException(sprintf(
-                'shared source %s declares %s — not the shared tree root %s the embed rewrites and stages under src/Shared/, so its staged path maps no autoloadable class; declare the tree root (or deeper) in it',
-                $dir . '/' . $relative,
-                $declared_namespace,
-                wp_connectors_shared_source_namespace()
-            ));
-        }
-        $below_root = array_slice($declared_segments, count($root_lower_segments));
-        $directories = array();
-        foreach (explode('/', dirname($relative)) as $segment) {
-            if ('' !== $segment && '.' !== $segment) {
-                $directories[] = $segment;
+            if ($declarations === array()) {
+                throw new RuntimeException(sprintf(
+                    'shared source %s declares no namespace — the embed stages it under src/Shared/, a tree only the slug-derived namespace prefix addresses, so a global-namespace source ships a class no loader can reach; declare %s\\… in it',
+                    $dir . '/' . $relative,
+                    wp_connectors_shared_source_namespace()
+                ));
             }
+            if (count($declarations) > 1) {
+                throw new RuntimeException(sprintf(
+                    'shared source %s declares %d namespaces (%s) — the embed stages ONE path per file, so a second block\'s classes stage nowhere the shipped autoloader addresses (class_exists false with every gate green); split the blocks into one file per namespace',
+                    $dir . '/' . $relative,
+                    count($declarations),
+                    implode(', ', $declarations)
+                ));
+            }
+            $declared_namespace = $declarations[0];
+            $root_lower_segments = explode('\\', wp_connectors_ascii_lower(wp_connectors_shared_source_namespace()));
+            $declared_segments = explode('\\', ltrim($declared_namespace, '\\'));
+            if (count($declared_segments) < count($root_lower_segments)
+                || array_map('wp_connectors_ascii_lower', array_slice($declared_segments, 0, count($root_lower_segments))) !== $root_lower_segments) {
+                throw new RuntimeException(sprintf(
+                    'shared source %s declares %s — not the shared tree root %s the embed rewrites and stages under src/Shared/, so its staged path maps no autoloadable class; declare the tree root (or deeper) in it',
+                    $dir . '/' . $relative,
+                    $declared_namespace,
+                    wp_connectors_shared_source_namespace()
+                ));
+            }
+            $below_root = array_slice($declared_segments, count($root_lower_segments));
+            $directories = array();
+            foreach (explode('/', dirname($relative)) as $segment) {
+                if ('' !== $segment && '.' !== $segment) {
+                    $directories[] = $segment;
+                }
+            }
+            if ($below_root !== $directories) {
+                throw new RuntimeException(sprintf(
+                    'shared source %s declares %s but its staged path spells the namespace directories %s — the shipped autoloader maps class names onto paths verbatim (PSR-4, case-sensitive), so the casing disagreement ships a class no loader reaches; rename the directory or the declaration so they agree exactly',
+                    $dir . '/' . $relative,
+                    $declared_namespace,
+                    implode('\\', $directories === array() ? array( '(the tree root)' ) : $directories)
+                ));
+            }
+            $files[] = $relative;
         }
-        if ($below_root !== $directories) {
-            throw new RuntimeException(sprintf(
-                'shared source %s declares %s but its staged path spells the namespace directories %s — the shipped autoloader maps class names onto paths verbatim (PSR-4, case-sensitive), so the casing disagreement ships a class no loader reaches; rename the directory or the declaration so they agree exactly',
-                $dir . '/' . $relative,
-                $declared_namespace,
-                implode('\\', $directories === array() ? array( '(the tree root)' ) : $directories)
-            ));
-        }
-        $files[] = $relative;
+    } catch (UnexpectedValueException $walk_refusal) {
+        throw new RuntimeException(sprintf(
+            'shared source tree carries a subdirectory that cannot be listed (%s) — the walk fences its recursion boundary and answers its own refusal, never the SPL iterator\'s vocabulary (the t31-ocr33-6 fence, swept to the collector census)',
+            $walk_refusal->getMessage()
+        ));
     }
     sort($files, SORT_STRING);
 

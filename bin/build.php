@@ -1861,85 +1861,123 @@ final class WpConnectorsBuild
      *
      * @param string $pluginDir Absolute plugin directory.
      * @return list<string> Sorted relative file paths.
+     * @throws RuntimeException When the tree carries a shippable
+     *                          symlink, or a subdirectory the walk
+     *                          cannot list (the t31-ocr36-2 fence).
      */
     public static function collectFiles($pluginDir)
     {
         $files = array();
         $pluginDir = rtrim($pluginDir, '/');
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($pluginDir, FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($iterator as $file) {
-            /** @var SplFileInfo $file */
-            $relative = str_replace($pluginDir . '/', '', $file->getPathname());
-            $parts = explode('/', $relative);
-            /*
-             * The exclusion filter runs FIRST (review round t31-r5-7):
-             * what never ships never judges the build. The symlink
-             * refusal fired before it, so a vendor/node_modules link —
-             * a composer path repo, an npm .bin shim — refused a build
-             * whose zip would have been byte-identical to one without
-             * the link (excluded paths ship nothing either way).
-             *
-             * The segment judgment rides the ONE comparison owner and
-             * folds CASE (review round t31-r6-3): the byte-exact
-             * array_intersect let 'Tests/', 'Build.json', and 'VENDOR'
-             * ship in release zips while the inspector — byte-exact
-             * itself — accepted the same entries (both gates agreed on
-             * the wrong verdict, so the one-verdict check never fired);
-             * on a case-insensitive extraction target every such name
-             * folds onto the dev entry it is one case away from.
-             *
-             * The NEAR-SOURCE class joins the exclusion (OCR round 23,
-             * t31-ocr23-8 — the r20 ledger's builder-side name fence,
-             * its named residual): a plugin-tree file whose name folds
-             * to .php only after edge-junk stripping ('notes.php.',
-             * 'x.PHP ') was packaged here while the inspector refused
-             * the same entry through the ONE near-source predicate —
-             * build shipped what inspect rejected, the fence pair
-             * inconsistent, the exact shape the r5-10 one-verdict
-             * doctrine closed for the development-entry vocabulary.
-             * The collector skips the class through the SAME judgment
-             * the inspector rejects by (the ONE near-source owner):
-             * what never ships never judges the build.
-             */
-            $excluded = false;
-            foreach ($parts as $part) {
-                if (wp_connectors_is_development_entry($part) || wp_connectors_segment_is_near_source_php($part)) {
-                    $excluded = true;
+        /*
+         * THE WALK CENSUS (OCR round 36, t31-ocr36-2 — the
+         * iterator-fence sweep finally whole): every
+         * RecursiveDirectoryIterator walk in the change set converts
+         * its construction throw and mid-recursion abort into the
+         * named refusal vocabulary NOW — bin/lint-php.php's lint walk
+         * (fenced at its own boundary), check-conventions.php's
+         * unused-import walk (declares @throws; both call sites
+         * convert), build.php's rrmdir teardown walk (the silent
+         * contract, t31-ocr23-1), plugin-tools.php's
+         * self-containment walk (the boundary guard converts), and
+         * inspect-artifact.php's two walks (both fenced) — with the
+         * ONE standing exception the ledger names (the secret
+         * scanner's scan_paths walk, the residual line). THIS walk
+         * and its twin wp_connectors_php_source_files() one file
+         * over were the last unfenced pair: hasChildren() passes on
+         * stat alone, so an unreadable SUBDIRECTORY mid-tree (a
+         * chmod-000 child) aborted the descent in the SPL iterator's
+         * own UnexpectedValueException — another library's
+         * vocabulary answering a build refusal (the t31-ocr33-6
+         * class, the collector twins). The construction rides the
+         * try (the ocr23 rd-1 doctrine — a plugin root this process
+         * cannot open throws from the constructor); the abort
+         * converts to the build's own refusal with the SPL message
+         * riding parenthetically (it is what names the path); the
+         * per-entry refusals inside are RuntimeExceptions and pass
+         * the fence untouched.
+         */
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($pluginDir, FilesystemIterator::SKIP_DOTS)
+            );
+            foreach ($iterator as $file) {
+                /** @var SplFileInfo $file */
+                $relative = str_replace($pluginDir . '/', '', $file->getPathname());
+                $parts = explode('/', $relative);
+                /*
+                 * The exclusion filter runs FIRST (review round t31-r5-7):
+                 * what never ships never judges the build. The symlink
+                 * refusal fired before it, so a vendor/node_modules link —
+                 * a composer path repo, an npm .bin shim — refused a build
+                 * whose zip would have been byte-identical to one without
+                 * the link (excluded paths ship nothing either way).
+                 *
+                 * The segment judgment rides the ONE comparison owner and
+                 * folds CASE (review round t31-r6-3): the byte-exact
+                 * array_intersect let 'Tests/', 'Build.json', and 'VENDOR'
+                 * ship in release zips while the inspector — byte-exact
+                 * itself — accepted the same entries (both gates agreed on
+                 * the wrong verdict, so the one-verdict check never fired);
+                 * on a case-insensitive extraction target every such name
+                 * folds onto the dev entry it is one case away from.
+                 *
+                 * The NEAR-SOURCE class joins the exclusion (OCR round 23,
+                 * t31-ocr23-8 — the r20 ledger's builder-side name fence,
+                 * its named residual): a plugin-tree file whose name folds
+                 * to .php only after edge-junk stripping ('notes.php.',
+                 * 'x.PHP ') was packaged here while the inspector refused
+                 * the same entry through the ONE near-source predicate —
+                 * build shipped what inspect rejected, the fence pair
+                 * inconsistent, the exact shape the r5-10 one-verdict
+                 * doctrine closed for the development-entry vocabulary.
+                 * The collector skips the class through the SAME judgment
+                 * the inspector rejects by (the ONE near-source owner):
+                 * what never ships never judges the build.
+                 */
+                $excluded = false;
+                foreach ($parts as $part) {
+                    if (wp_connectors_is_development_entry($part) || wp_connectors_segment_is_near_source_php($part)) {
+                        $excluded = true;
 
-                    break;
+                        break;
+                    }
                 }
+                if ($excluded) {
+                    continue;
+                }
+                /*
+                 * A symlink REFUSES the build loudly (verifier round
+                 * t31-r4-16, extending t31-r4-7's doctrine from the shared
+                 * tree to the plugin tree) — scoped, since t31-r5-7, to the
+                 * paths that would SHIP: the old silent skip left a
+                 * divergence — a symlinked plugin source loads in development
+                 * (the dev autoloader resolves link paths) and is scanned
+                 * through by the self-containment walker, but silently missed
+                 * the zip, so the shipped plugin fataled on the missing class
+                 * at exit 0 (reproduced) — the same loads-in-dev/invisible/
+                 * missing-from-every-zip class, plus the leak half the old
+                 * skip pinned (out-of-tree content never packaged). Zero
+                 * symlinks in the tree today; this is the doctrine made loud
+                 * at both collectors.
+                 */
+                if ($file->isLink()) {
+                    throw new RuntimeException(sprintf(
+                        'plugin tree carries a symlink (%s -> %s) — the no-symlinks doctrine refuses the build instead of silently skipping a source that loads in development and misses the zip',
+                        $file->getPathname(),
+                        (string) $file->getLinkTarget()
+                    ));
+                }
+                if (! $file->isFile()) {
+                    continue;
+                }
+                $files[] = $relative;
             }
-            if ($excluded) {
-                continue;
-            }
-            /*
-             * A symlink REFUSES the build loudly (verifier round
-             * t31-r4-16, extending t31-r4-7's doctrine from the shared
-             * tree to the plugin tree) — scoped, since t31-r5-7, to the
-             * paths that would SHIP: the old silent skip left a
-             * divergence — a symlinked plugin source loads in development
-             * (the dev autoloader resolves link paths) and is scanned
-             * through by the self-containment walker, but silently missed
-             * the zip, so the shipped plugin fataled on the missing class
-             * at exit 0 (reproduced) — the same loads-in-dev/invisible/
-             * missing-from-every-zip class, plus the leak half the old
-             * skip pinned (out-of-tree content never packaged). Zero
-             * symlinks in the tree today; this is the doctrine made loud
-             * at both collectors.
-             */
-            if ($file->isLink()) {
-                throw new RuntimeException(sprintf(
-                    'plugin tree carries a symlink (%s -> %s) — the no-symlinks doctrine refuses the build instead of silently skipping a source that loads in development and misses the zip',
-                    $file->getPathname(),
-                    (string) $file->getLinkTarget()
-                ));
-            }
-            if (! $file->isFile()) {
-                continue;
-            }
-            $files[] = $relative;
+        } catch (UnexpectedValueException $walk_refusal) {
+            throw new RuntimeException(sprintf(
+                'build: the plugin tree carries a subdirectory that cannot be listed (%s) — the walk fences its recursion boundary and answers the build\'s own refusal, never the SPL iterator\'s vocabulary (the t31-ocr33-6 fence, swept to the collector census)',
+                $walk_refusal->getMessage()
+            ));
         }
         sort($files, SORT_STRING);
 
