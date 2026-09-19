@@ -357,6 +357,55 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-49 pin (t31-ocr49-4, the WHATWG-differential class the
+     * r28-6 backslash, r44-1 strip-set, and r45-1 percent screens close
+     * for their own bytes): the URL Standard parses any special-scheme
+     * host whose last label "ends in a number" as an IPv4 ADDRESS (§5.3
+     * — '010.1.1.1' is 8.1.1.1 under the leading-zero octal, '0x62'
+     * labels hex, the bare '2130706433' is 127.0.0.1), while this parse
+     * kept such spellings as OPAQUE HOSTNAMES — two hosts named by one
+     * URL over the same browser-facing channel the earlier screens
+     * guard. The ambiguous class refuses; the one spelling that passes
+     * is the canonical dotted quad, where both readings agree.
+     */
+    public function testAnIpv4AmbiguousHostRefusesInsteadOfNamingTwoHosts(): void
+    {
+        $hostile_urls = array(
+            'leading-zero octal quad' => 'https://010.1.1.1/ver',
+            'hex labels' => 'https://0x62.0x90.0.1/',
+            'bare trailing-number host' => 'https://2130706433/',
+            'leading-zero octet inside an otherwise canonical quad' => 'https://192.168.1.01/token',
+            'the bare zero host' => 'https://0/',
+            'userinfo does not hide it' => 'https://user@010.1.1.1/device',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('An IPv4-ambiguous host (%s) must be refused by the shared URL owner — red at HEAD it constructed, this parse naming a hostname a browser resolves as a different IPv4 address.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), "The refusal names the IPv4-ambiguity channel ({$label}).");
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('An IPv4-ambiguous host (%s) must be refused by the request VO too — the redacted form would name a host no browser consumer contacts.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), "The request VO answers the same refusal ({$label}).");
+            }
+        }
+
+        // The agreeing spellings stay constructible: a canonical
+        // dotted quad parses identically on both sides of the
+        // differential, and a last label that is not a number leaves
+        // the host a DNS name whatever the earlier labels carry.
+        $this->assertSame('8.8.8.8', Url::parse_validated('https://8.8.8.8/')['authority'], 'A canonical dotted quad stays legal — the browser\'s IPv4 reading and this parse agree byte for byte.');
+        $this->assertSame('127.0.0.1:8080', Url::parse_validated('http://127.0.0.1:8080/callback')['authority'], 'A canonical quad with a port stays legal.');
+        $this->assertSame('idp2.example', Url::parse_validated('https://idp2.example/')['authority'], 'A digit-bearing INTERIOR label stays a DNS name — the predicate judges the last label alone.');
+        $this->assertSame('example.com.', Url::parse_validated('https://example.com./')['authority'], 'A trailing-dot host keeps its domain reading — the empty part drops before the last label is judged.');
+    }
+
+    /**
      * OCR-round-45 pin (t31-ocr45-2, the r44-1 screen's whole-input
      * spelling): the URL Standard removes tabs and newlines from the
      * ENTIRE input before parsing — never the authority alone — so a

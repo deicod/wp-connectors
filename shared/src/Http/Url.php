@@ -417,6 +417,33 @@ final class Url {
 			throw new InvalidArgumentException( 'The URL host must not carry percent-encoded bytes — the URL Standard percent-DECODES a special-scheme host before resolving it ("https://id%70.example/" contacts idp.example in a browser) while this parse and every redacted form keep the encoded spelling verbatim, and the two must agree: write the host decoded, never percent-encoded.' );
 		}
 
+		/*
+		 * The IPv4-AMBIGUOUS host screen (OCR round 49, t31-ocr49-4 —
+		 * the r28-6/r44-1/r45-1 WHATWG-differential class, one
+		 * generation over): the URL Standard parses any
+		 * special-scheme host whose last label "ends in a number" as
+		 * an IPv4 ADDRESS (§5.3 — '010.1.1.1' is 8.1.1.1 under the
+		 * leading-zero octal, '0x62.0x90.0.1' hex, the bare
+		 * '2130706433' is 127.0.0.1), while this parse kept such
+		 * spellings as OPAQUE HOSTNAMES — two hosts named by one URL
+		 * over the same browser-facing channel (the device-flow
+		 * verification URI, passed through raw) the percent,
+		 * backslash, and strip-set screens closed for their own
+		 * bytes. http(s) are special schemes on every spelling this
+		 * VO accepts, so the ambiguity refuses — REFUSED from
+		 * derivation, never coerced to the IPv4 reading (the ocr44-1
+		 * doctrine): the one spelling that passes is the CANONICAL
+		 * dotted quad ('8.8.8.8', four decimal octets 0-255, no
+		 * leading zeros), where the browser's IPv4 reading and this
+		 * parse's hostname agree byte for byte. A last label that is
+		 * not a number leaves the host a domain whatever the earlier
+		 * labels carry ('idp2.example' stays a DNS name) — the
+		 * URL Standard's own predicate, spelled by the helper.
+		 */
+		if ( false === $bracket_end && 1 !== preg_match( '/\A(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}\z/', $raw_host ) && self::host_ends_in_a_number( $raw_host ) ) {
+			throw new InvalidArgumentException( 'The URL host must not use an IPv4-ambiguous spelling — the URL Standard parses any special-scheme host whose last label ends in a number as an IPv4 address ("https://010.1.1.1/" contacts 8.1.1.1, the bare "https://2130706433/" contacts 127.0.0.1) while this parse keeps the spelling as a hostname, and the two must agree: write the canonical dotted-quad IPv4 literal, never an octal, hex, or bare-number spelling.' );
+		}
+
 		// The host fold rides the same ONE owner (t31-ocr1-4): a host
 		// folds by the ASCII byte table in every locale, and the rebuilt
 		// authority below re-checks that nothing between the parse and
@@ -489,5 +516,32 @@ final class Url {
 		if ( 1 !== preg_match( '//u', $authority ) ) {
 			throw new InvalidArgumentException( 'The URL authority must stay valid UTF-8 after parsing — a host the parse or the case fold mangled refuses loudly instead of flowing into log lines whose json_encode then fails outright (the line is dropped, not degraded).' );
 		}
+	}
+
+	/**
+	 * The URL Standard's "ends in a number" host predicate (§5.3,
+	 * t31-ocr49-4): strictly split the host on '.', drop ONE trailing
+	 * empty part, and ask whether the LAST part parses as an IPv4
+	 * number — decimal digits, a 0x/0X-prefixed hex number ('0x'
+	 * alone is 0 per the spec's own empty-after-prefix rule), or a
+	 * leading-zero octal ('010' is 8; '09' carries a non-octal digit
+	 * and is NOT a number). A host that ends in a number is IPv4
+	 * territory to every WHATWG consumer on a special scheme; a last
+	 * label that is not a number leaves the host a domain whatever
+	 * the earlier labels carry.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $host The raw (pre-fold) host spelling.
+	 * @return bool True when the URL Standard reads the host as ending in a number.
+	 */
+	private static function host_ends_in_a_number( string $host ): bool {
+		$parts = explode( '.', $host );
+		if ( count( $parts ) > 1 && '' === $parts[ count( $parts ) - 1 ] ) {
+			array_pop( $parts );
+		}
+		$last = (string) $parts[ count( $parts ) - 1 ];
+
+		return 1 === preg_match( '/\A(?:0[xX][0-9A-Fa-f]*|0[0-7]*|[1-9][0-9]*)\z/', $last );
 	}
 }
