@@ -1378,6 +1378,29 @@ final class WpHarness
             if (false === $cwd) {
                 throw new RuntimeException('WpHarness::copyTree() refuses a relative target while the working directory cannot be resolved — the containment walk has no base to judge against: ' . $to);
             }
+            /*
+             * The RELATIVE twin of the platform gate (OCR round 36,
+             * t31-ocr36-4): the gate above refuses only the ABSOLUTE
+             * drive/UNC spellings, so a backslash-spelled RELATIVE
+             * target — the platform's own natural spelling
+             * ('sub\dst') — passed into the cwd-prepend and mingled
+             * vocabularies ('C:\repo/a\src\dst'), a mixed-separator
+             * spelling the resolution loop's dirname/explode/'/'
+             * judgments below read as one giant segment. The walk
+             * must never see mixed-separator paths (the containment
+             * doctrine): both the relative spelling and the cwd (a
+             * host-native getcwd() answer) fold through the ONE
+             * comparison-vocabulary owner before the prepend, and the
+             * COPY itself keeps the caller's spelling — the landing
+             * is unchanged, only the judgment reads the one
+             * vocabulary (the t31-ocr11-5 doctrine). On the POSIX
+             * host the fold is the IDENTITY and the prepend rides
+             * byte-unchanged.
+             */
+            if (! self::isPosixHost()) {
+                $to_walk = self::posix_comparison_vocabulary($to_walk);
+                $cwd = self::posix_comparison_vocabulary($cwd);
+            }
             $to_walk = rtrim($cwd, '/') . '/' . ltrim($to_walk, '/');
         }
         /*
