@@ -6371,6 +6371,43 @@ FIXTURE;
         // rides the same pattern green, byte-identically.
 
         /*
+         * OCR round 46 (t31-ocr46-1 — the eighth use-grammar family):
+         * the DIGIT-INITIAL generation. The identifier classes in the
+         * use pattern and the namespace-declaration twin once spelled
+         * the UN-ANCHORED byte class [A-Za-z0-9_]+ — label bytes plus
+         * a leading digit — so '0Foo'/'0foo' matched the sub-segment
+         * tail, the alias group, and the declaration twin as though
+         * they were names, and the callbacks re-emitted them beside
+         * rewritten output: parse-error bytes in the zip at exit 0
+         * with every gate green (driven red at HEAD: all three rows
+         * below RETURNED, the digit spelling riding verbatim beside
+         * the rewritten family — php -l refuses every digit-initial
+         * label). A PHP label never begins with a digit; every label
+         * position in these patterns anchors its FIRST byte class at
+         * [A-Za-z_] now, the illegal spelling fails the pattern,
+         * rides verbatim, and refuses at the postcondition's
+         * family-reference verdict — never a rewrite that ships it.
+         */
+        foreach (array(
+            'digit-initial sub-segment' => 'use Deicod\\WpConnectors\\Shared\\0Foo;',
+            'digit-initial alias' => 'use Deicod\\WpConnectors\\Shared\\Clock as 0foo;',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass DigitInitialStore\n{\n}\n", 'OpenAiOauth', 'shared/src/DigitInitialStore.php'),
+                "A digit-initial use spelling must refuse the rewrite ({$label}) — red at HEAD the pattern matched and re-emitted the illegal bytes beside the rewritten family at exit 0.", \RuntimeException::class
+            );
+            $this->assertStringContainsString('DigitInitialStore.php', $refusal->getMessage(), "The refusal names the file ({$label}).");
+        }
+        // The namespace-declaration twin rides the same census (red at
+        // HEAD: the twin matched and re-emitted '\0Foo;' verbatim
+        // beside the rewritten namespace at exit 0).
+        $namespace_refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared\\0Foo;\nclass DigitNamespaceStore\n{\n}\n", 'OpenAiOauth', 'shared/src/DigitNamespaceStore.php'),
+            'A digit-initial namespace segment must refuse the rewrite — the engine rejects the label, and a rewrite that re-emits it ships compile-error bytes.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('DigitNamespaceStore.php', $namespace_refusal->getMessage(), 'The refusal names the file.');
+
+        /*
          * Fix-round pin (t31-r4 K1 / t31-r4-4), restructured by t31-r7:
          * group-use MEMBER spellings — the prefix before '{' is
          * Deicod\WpConnectors itself and the members carry the Shared

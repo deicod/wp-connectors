@@ -172,10 +172,19 @@ final class WpConnectorsBuild
          * spells them and missed the declaration seam's own keyword).
          * The keyword's casing rides the output verbatim ($1), the
          * family segments rewriting beneath it.
+         *
+         * The sub-segment tail's label grammar rides the round-46
+         * census (t31-ocr46-1): the tail once spelled the UN-ANCHORED
+         * [A-Za-z0-9_]+ class, so a digit-initial segment
+         * (`NAMESPACE …\Shared\0Foo;`) matched as though it were a
+         * name and rode verbatim in $2 beside the rewritten namespace
+         * — parse-error bytes at exit 0. The tail anchors its first
+         * byte class at [A-Za-z_] like every label position in the
+         * use pattern one seam below (the one census comment there).
          */
         $rewritten = self::replaceOrThrow(
             preg_replace(
-                '/((?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*\s*;)/',
+                '/((?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[A-Za-z_][A-Za-z0-9_]*)*\s*;)/',
                 '$1' . $target_escaped . '$2',
                 $rewritten
             ),
@@ -233,9 +242,27 @@ final class WpConnectorsBuild
          * output verbatim ($matches[1] and the captured groups re-emit
          * the caller's bytes; only the family segments rewrite).
          */
+        /*
+         * The LABEL GRAMMAR census (OCR round 46, t31-ocr46-1 — the
+         * eighth use-grammar family): the identifier classes here and
+         * in the namespace-declaration twin above once spelled the
+         * UN-ANCHORED byte class [A-Za-z0-9_]+ — label bytes plus a
+         * leading digit — so `use Shared\0Foo;` and `… as 0foo;`
+         * matched as though the digit-initial spellings were names,
+         * and the callback re-emitted them beside the rewritten
+         * family: compile-error bytes in the zip at exit 0 with every
+         * gate green (php -l refuses every digit-initial label; a PHP
+         * label begins with a letter or underscore, never a digit).
+         * Every label position in these patterns anchors its FIRST
+         * byte class at [A-Za-z_] — the sub-segment tail and the
+         * alias group here, the declaration twin's tail above — and
+         * the illegal spelling fails the pattern, rides verbatim, and
+         * refuses at the postcondition's family-reference verdict,
+         * never a rewrite that ships it.
+         */
         $rewritten = self::replaceOrThrow(
             preg_replace_callback(
-                '/(?<![A-Za-z0-9_])((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[A-Za-z0-9_]+)*)(\s+(?i:as)\s+[A-Za-z0-9_]+)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
+                '/(?<![A-Za-z0-9_])((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[A-Za-z_][A-Za-z0-9_]*)*)(\s+(?i:as)\s+[A-Za-z_][A-Za-z0-9_]*)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
                 static function ($matches) use ($sourceVersion, $vendor, $pluginSuffix, $family_leaf) {
                     // The optional groups are ABSENT keys (never
                     // null/'' — no PREG_UNMATCHED_AS_NULL here), the
