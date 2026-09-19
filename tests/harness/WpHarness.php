@@ -1770,9 +1770,23 @@ final class WpHarness
                  * whose iterator pathnames never start with the
                  * double-slash prefix) — the exact silent mis-nesting this
                  * loud-policy copy owner exists to prevent.
+                 *
+                 * The prefix speaks the ITERATOR'S OWN JOIN (OCR round
+                 * 39, t31-ocr39-4 — the ocr28-8/ocr30-7 doctrine this
+                 * file's own gates state, missed at the production
+                 * seam): RecursiveDirectoryIterator joins child
+                 * pathnames through the NATIVE separator, and the
+                 * prefix math was '/'-joined — on a host whose platform
+                 * separator is not the POSIX one, $from.'/' never
+                 * prefixes any pathname and the FIRST leaf trips the
+                 * cannot-relativize refusal below: the copy owner dead
+                 * on arrival on the very host class the platform
+                 * vocabulary exists to serve. The prefix derives from
+                 * DIRECTORY_SEPARATOR now; on the POSIX host it IS '/'
+                 * and every byte rides unchanged.
                  */
                 $relative = $file->getPathname();
-                $prefix = $from . '/';
+                $prefix = $from . DIRECTORY_SEPARATOR;
                 if (0 !== strpos($relative, $prefix)) {
                     throw new RuntimeException('WpHarness::copyTree() cannot relativize ' . $relative . ' against the source prefix ' . $prefix . ' — every file would silently land nested under the target (a trailing-slash source is the reachable spelling).');
                 }
