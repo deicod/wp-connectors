@@ -2362,7 +2362,28 @@ final class WpConnectorsBuild
             throw new RuntimeException("build: cannot create the staging tree {$stage}/{$slug} — a failed staging mkdir refuses the build, never packs into a tree it does not own");
         }
 
-        $zipTemp = $distDir . '/.' . $zipName . '.tmp-' . getmypid();
+        /*
+         * THE STAGING FAMILY'S RANDOM-SUFFIX CENSUS (OCR round 43,
+         * t31-ocr43-2 — the r42-2 twin sweep that never landed then):
+         * the zip temp and its sidecar twin were the last staging
+         * names still PID-PREDICTABLE, in the same method that gave
+         * $stage its bin2hex(random_bytes(8)) suffix precisely
+         * because "the pid alone is PREDICTABLE … TOCTOU" — the pid
+         * is enumerable, ZipArchive::open() writes THROUGH whatever
+         * stands at the spelled path, and the sweep (which skips
+         * links and its own pid) never fences a planted tree at the
+         * predicted spelling. Both temps ride the whole family's one
+         * doctrine now: an unpredictable suffix per name (the sidecar
+         * inherits its twin's), nothing pre-plantable, no check-
+         * then-act window of the build's own making — a fresh random
+         * name has no history to collide with, so unlike $stage (a
+         * full-dist check-then-act sweep it needed the belt for)
+         * these seams carry no link fence to keep. The sweep's tail
+         * pattern rides the suffix tail-optionally below, so stale
+         * temps of BOTH spellings still reclaim by the dead-pid gate
+         * alone.
+         */
+        $zipTemp = $distDir . '/.' . $zipName . '.tmp-' . getmypid() . '-' . bin2hex(random_bytes(8));
         $sidecarTemp = $zipTemp . '.sha256';
         $manifestPath = $distDir . '/checksums.txt';
         $manifestTemp = false;
@@ -3176,7 +3197,13 @@ final class WpConnectorsBuild
         // spelling and the legacy pid-only one both reclaim by the
         // dead-pid gate alone — the suffix never weakens it.
         $stage_pattern = '/^\.stage-' . preg_quote($slug, '/') . '-(\d+)(?:-[0-9a-f]+)?$/';
-        $temp_pattern = '/^\.connectors-' . preg_quote($slug, '/') . '-.*\.zip\.tmp-(\d+)(?:\..*)?$/';
+        // The random tail (t31-ocr43-2, the stage pattern's twin
+        // shape) rides tail-optionally here too: the current
+        // `.tmp-<pid>-<rand>` spelling and the legacy pid-only one
+        // both reclaim by the dead-pid gate alone — the suffix never
+        // weakens it (the sidecar's '.sha256' and libzip's '.part'
+        // keep riding the dotted tail).
+        $temp_pattern = '/^\.connectors-' . preg_quote($slug, '/') . '-.*\.zip\.tmp-(\d+)(?:-[0-9a-f]+)?(?:\..*)?$/';
         // The manifest staging temp (t31-ocr26-8): pid-prefixed, tempnam
         // tail behind it — a LEGACY pid-less spelling never matches
         // (the random tail is alnum, no dash, and need not start with

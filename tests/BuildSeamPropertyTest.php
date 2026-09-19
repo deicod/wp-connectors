@@ -494,13 +494,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 'needs_posix' => true,
             ),
             'zip-staging-path-blocked' => array(
-                // t31-r5-S: leftover junk at the (PID-unique) staging
-                // path is a production failure, not a landing one.
-                'expect' => 'LOUD',
+                // t31-ocr43-2 INVERTS this row to the guessable-
+                // spelling contract (the r42-2 twin sweep): the zip
+                // temp name is PID + random suffix now, so a blocker
+                // planted at the once-predictable pid-only spelling
+                // never intersects the run's own temp — the guessable
+                // spelling is inert, exactly the inversion the stage
+                // seam's own-name leg took at t31-ocr42-2. The
+                // t31-r5-S refusal survives unreachable-by-planting
+                // (the archive's own open refusal still owns a
+                // genuinely unusable staging path; no test can aim
+                // one at 2^64 fresh bytes, which is the fix's point).
+                'expect' => 'CLEAN',
                 'apply' => static function (array $scratch): void {
                     mkdir($scratch['dist'] . '/.' . basename($scratch['zip']) . '.tmp-' . getmypid());
                 },
-                'fragment' => 'cannot create the staging archive',
             ),
         );
     }

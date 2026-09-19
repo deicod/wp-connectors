@@ -3162,20 +3162,23 @@ FIXTURE;
             $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The sidecar must survive with the zip it describes.');
             $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'The manifest entry must stay consistent with the surviving artifact.');
 
-            // (e) t31-r5-S pin: the staging archive path is refuse-able
-            // too (leftover junk at the temp path), and that production
-            // failure likewise leaves the previous good set untouched.
+            // (e) t31-r5-S pin, INVERTED at t31-ocr43-2 to the
+            // guessable-spelling contract (the r42-2 twin sweep): the
+            // zip temp is pid + random suffix now, so junk planted at
+            // the once-predictable pid-only spelling never intersects
+            // the run's own staging path — the build lands whole
+            // beside it, and the planted spelling stands untouched (a
+            // foreign tree at a spelling this run never owned is not
+            // its to reclaim, the sweep's own-pid gate agreeing). The
+            // archive-open refusal still owns a genuinely unusable
+            // staging path; no test can aim one at 2^64 fresh bytes —
+            // which is the fix's point.
             $stagingArchive = $scratch . '/dist/.' . self::fixtureZipName() . '.tmp-' . getmypid();
             unlink($scratch . '/shared/src/Broken.php');
             mkdir($stagingArchive, 0755, true);
-            $refusal = $this->refusalOf(
-                fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
-                'An un-creatable staging archive path must fail the build.', \RuntimeException::class
-            );
-            $this->assertStringContainsString('cannot create the staging archive', $refusal->getMessage());
-            $this->assertSame($zipBefore, (string) file_get_contents($zipPath), 'A production failure must not touch the previous good zip.');
-            $this->assertSame($sidecarBefore, (string) file_get_contents($zipPath . '.sha256'), 'The sidecar survives every pre-landing failure byte-for-byte.');
-            $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'The manifest survives every pre-landing failure byte-for-byte.');
+            $rebuilt = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertFileExists($rebuilt, 'A blocker at the guessable pid-only spelling is inert — the staging temp is unpredictable, the build lands whole.');
+            $this->assertDirectoryExists($stagingArchive, 'The planted spelling is never this run\'s to reclaim — it stands exactly where it was planted.');
             rmdir($stagingArchive);
         } finally {
             WpHarness::releaseScratch($scratch);
@@ -4675,6 +4678,16 @@ FIXTURE;
             file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.sha256', 'half a sidecar');
             file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.acce0w.part', 'libzip window');
             file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-' . $live_pid, 'live run temp');
+            /*
+             * The RANDOM-SUFFIXED dead-pid ZIP temp (OCR round 43,
+             * t31-ocr43-2 — the r42-2 twin sweep): the current temp
+             * spelling `.tmp-<pid>-<rand>` rides the sweep's
+             * stale-detection pattern tail-optionally, so the
+             * crashed-run charter keeps owning it (red at HEAD: the
+             * pid-anchored tail never matched the suffix and the
+             * orphan survived the sweep forever).
+             */
+            file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999996-' . bin2hex(random_bytes(8)), 'half a zip, new spelling');
             file_put_contents($scratch . '/dist/.checksums-orphan', 'pid-less manifest staging temp');
             // The manifest temps on the same charter (t31-ocr26-8):
             // dead pid swept, live pid kept, pid-less legacy alone.
@@ -4706,6 +4719,11 @@ FIXTURE;
             $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997', 'A dead-pid zip temp is reclaimed — the crashed-run charter covers the temps too.');
             $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.sha256', 'A dead-pid sidecar temp is reclaimed.');
             $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.acce0w.part', 'A dead-pid libzip .part temp is reclaimed.');
+            $this->assertSame(
+                array(),
+                glob($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999996-*') ?: array(),
+                'A RANDOM-SUFFIXED dead-pid zip temp is swept on the same charter — the unpredictability fix never weakens the crashed-run reclaim (t31-ocr43-2).'
+            );
             $this->assertFileExists($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-' . $live_pid, 'A LIVE run\'s temp is never touched by a sibling build.');
             $this->assertFileExists($scratch . '/dist/.checksums-orphan', 'A pid-less manifest staging temp is unattributable — left alone, never raced.');
             $this->assertFileDoesNotExist($scratch . '/dist/.checksums-999999996-orphan', 'A dead-pid manifest staging temp is reclaimed — the crashed-run charter covers it since it carries the pid.');
