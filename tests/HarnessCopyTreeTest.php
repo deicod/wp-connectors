@@ -951,10 +951,24 @@ final class HarnessCopyTreeTest extends TestCase
             // may speak now (see the flag's census above).
             $verdict_returned = true;
         } finally {
-            // The child dies stopped or running, never left looping.
-            if ($childPid > 0) {
-                exec('kill -9 ' . $childPid . ' 2>/dev/null');
-            }
+            /*
+             * The child dies stopped or running, never left looping —
+             * and only the child this test still OWNS is ever
+             * signalled (OCR round 50, t31-ocr50-3 — the r47-8
+             * self-termination doctrine, parent side): the former
+             * guard was $childPid > 0 alone, and a child that fataled
+             * at the embed/reflection setup (the heartbeat assertSame
+             * case) exits within milliseconds, is orphaned at spawn,
+             * is REAPED by init, and its pid recycles — the finally's
+             * kill -9 then signalled whatever unrelated process now
+             * holds the number. The kill rides the child's OWN
+             * liveness evidence now (killChildIfAlive): a stopped
+             * child reads alive and dies, a zombie reads alive and
+             * the signal is a no-op over this test's own dead child,
+             * and a reaped-or-gone pid answers ESRCH and is never
+             * signalled.
+             */
+            $this->killChildIfAlive($childPid);
             /*
              * The finally's sweep NEVER throws (OCR round 42,
              * t31-ocr42-8 — the t31-ocr33-7 class this file's own
@@ -1043,6 +1057,74 @@ final class HarnessCopyTreeTest extends TestCase
                 $this->assertSame(array(), $stranded, 'The sweep reclaims this test\'s own killed child\'s stranded probe — the spelling under the dead child\'s pid is a dead process\'s residue this sweep owns, staged or real alike (red at HEAD: the own-pid-only glob left it in the shared temp root).');
             }
         }
+    }
+
+    /**
+     * OCR-round-50 pin (t31-ocr50-3): the crash-sim finally's kill
+     * once signalled whenever $childPid > 0 — and the child that
+     * fataled at the embed/reflection setup (the heartbeat assertSame
+     * case) exits within milliseconds, is orphaned at spawn, is REAPED
+     * by init, and its pid recycles: the finally's kill -9 then
+     * signalled an unrelated process. The kill rides the child's OWN
+     * liveness evidence now (the r47-8 self-termination doctrine,
+     * parent side — killChildIfAlive below), and this leg drives BOTH
+     * directions with real children: a dead-and-reaped child is never
+     * signalled (the exact shape HEAD's pid-only guard signalled —
+     * $shortPid > 0 stays true while the kernel says gone), and a
+     * live child still dies.
+     */
+    public function testTheCrashSimReapRidesTheChildsOwnLivenessEvidence(): void
+    {
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The reap pin premises POSIX process semantics (signal-0 probing, init reaping an orphan) — this host\'s platform separator is not the POSIX one.');
+        }
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the reap pin\'s children cannot spawn (the t31-ocr16-12 doctrine).');
+        }
+
+        // The DEAD direction: a child that exits at once — the staging
+        // failure's own shape — orphaned at spawn and reaped by init,
+        // exactly the child the heartbeat assertSame path leaves.
+        $spawned = array();
+        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('exit(0);') . ' >/dev/null 2>&1 & echo $!', $spawned, $spawnExit);
+        $shortPid = (int) trim((string) ($spawned[0] ?? ''));
+        $this->assertGreaterThan(0, $shortPid, 'The spawn must answer the short-lived child pid — a failed spawn is a staging failure, never a reap verdict (the t31-ocr27-9 doctrine).');
+        $reaped = false;
+        for ($wait = 0; $wait < 40; ++$wait) {
+            usleep(50000);
+            if (! $this->childIsAlive($shortPid)) {
+                $reaped = true;
+                break;
+            }
+        }
+        $this->assertTrue($reaped, 'The short-lived child must be reaped inside the bounded wait — a child init never reaps leaves the dead direction unconstructible on this host.');
+        $this->assertFalse($this->killChildIfAlive($shortPid), 'A dead-and-reaped child is never signalled — the pid stays a positive number (HEAD\'s only guard, $childPid > 0, issued the kill over exactly this shape, the recycled-pid window the probe closes) while the kernel says the process is gone.');
+
+        // The LIVE direction: a sleeping child — the looping child's
+        // own shape — reads alive and dies by the same owner.
+        $spawned = array();
+        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('sleep(30);') . ' >/dev/null 2>&1 & echo $!', $spawned, $spawnExit);
+        $livePid = (int) trim((string) ($spawned[0] ?? ''));
+        $this->assertGreaterThan(0, $livePid, 'The spawn must answer the sleeping child pid.');
+        $alive = false;
+        for ($wait = 0; $wait < 40; ++$wait) {
+            if ($this->childIsAlive($livePid)) {
+                $alive = true;
+                break;
+            }
+            usleep(50000);
+        }
+        $this->assertTrue($alive, 'The sleeping child must read alive — the live direction premises it.');
+        $this->assertTrue($this->killChildIfAlive($livePid), 'A live child is signalled — the never-left-looping contract the finally keeps.');
+        $died = false;
+        for ($wait = 0; $wait < 40; ++$wait) {
+            usleep(50000);
+            if (! $this->childIsAlive($livePid)) {
+                $died = true;
+                break;
+            }
+        }
+        $this->assertTrue($died, 'The signalled child is gone inside the bounded wait — live children still die.');
     }
 
     /**
@@ -2143,5 +2225,41 @@ echo "RETURNED\n";
     private function stage(string $path, string $bytes): void
     {
         $this->assertNotFalse(file_put_contents($path, $bytes), "Staging {$path} must land — a failed stage is the leg's own verdict, never a misleading downstream one.");
+    }
+
+    /*
+     * The child-ownership probe, parent side (OCR round 50,
+     * t31-ocr50-3): the crash-sim child embeds this same signal-0
+     * spelling inline (t31-ocr47-8 — the child requires only
+     * WpHarness, so the two spellings cannot share a file; they share
+     * the doctrine). posix_kill(0) is cache-free and deterministic in
+     * both directions (EPERM = exists, not ours to signal; ESRCH =
+     * gone); the /proc is_dir rides only as the posix-less fallback,
+     * behind its own clearstatcache().
+     */
+    private function childIsAlive(int $pid): bool
+    {
+        if (function_exists('posix_kill')) {
+            return @posix_kill($pid, 0) || 1 === posix_get_last_error();
+        }
+        clearstatcache();
+
+        return is_dir('/proc/' . $pid);
+    }
+
+    /*
+     * The crash-sim finally's kill owner (t31-ocr50-3): a pid that is
+     * gone is never signalled (the recycled-pid window), a live child
+     * still dies. Returns whether the signal was issued — the pin's
+     * own observable.
+     */
+    private function killChildIfAlive(int $pid): bool
+    {
+        if ($pid <= 0 || ! $this->childIsAlive($pid)) {
+            return false;
+        }
+        exec('kill -9 ' . $pid . ' 2>/dev/null');
+
+        return true;
     }
 }
