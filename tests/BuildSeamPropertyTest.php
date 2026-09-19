@@ -874,7 +874,20 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     $source_path = str_replace('\\', '/', $source_path);
                     $shared_prefix = str_replace('\\', '/', $shared_prefix);
                 }
-                $sources[] = str_replace($shared_prefix, '', $source_path);
+                /*
+                 * The strip speaks the PREFIX BOUNDARY (OCR round 45,
+                 * t31-ocr45-11 — the ocr6-5 defect shape): the
+                 * every-occurrence str_replace replaced the prefix
+                 * spelling wherever it appeared again past the first
+                 * byte, the exact shape the old inline copy loop
+                 * carried — unreachable only because the random root
+                 * suffix makes a second occurrence constructibly
+                 * impossible. The iterator roots the walk AT the
+                 * shared tree, so the prefix holds every pathname by
+                 * construction and the tail past it IS the relative:
+                 * substr, never a global replace.
+                 */
+                $sources[] = substr($source_path, strlen($shared_prefix));
             }
         }
         sort($sources);
