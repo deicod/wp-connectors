@@ -1379,6 +1379,36 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('root-link', $caught->getMessage());
 
             /*
+             * The MULTI-TAIL adjudication (OCR round 47, t31-ocr47-4):
+             * the probe's '/..' strip loop pops NOTHING — '/a/b/../..'
+             * probes '/a/b', never the semantic '/' — and that landing
+             * is the doctrine for every tail count (the ocr9-1
+             * no-pop split, never adjudicated past the single tail
+             * before this round). A popping "correction" would hide
+             * the link's own spelling from the probe chain: this leg
+             * rides RED under it (the landing collapses to '/' , the
+             * probe sees no link, and the copy walks through the link
+             * into the target's GRANDPARENT — the ocr9-1 blast
+             * radius, multi-tail edition). The REAL control keeps its
+             * semantics: the WALK (never the probe) resolves the
+             * spelling, so a real multi-tail source copies the tree
+             * it semantically names.
+             */
+            $caught = WpHarness::refusalOf(
+                fn() => WpHarness::copyTree($plain . '/root-link/../..', $freshTo()),
+                'A MULTI-TAIL \'/../..\'-spelled symlinked SOURCE ROOT must refuse the copy — the no-pop landing keeps the link\'s own spelling in the probe chain.',
+                RuntimeException::class
+            );
+            $this->assertStringContainsString('symlinked source tree', $caught->getMessage(), 'The verdict names the LINK class for the multi-tail spelling too.');
+            $this->assertStringContainsString('root-link', $caught->getMessage());
+
+            mkdir($plain . '/multi-tail/a/b', 0755, true);
+            file_put_contents($plain . '/multi-tail/a/b/deep.php', '<?php // deep');
+            $multi_to = $freshTo();
+            WpHarness::copyTree($plain . '/multi-tail/a/b/../..', $multi_to);
+            $this->assertFileExists($multi_to . '/a/b/deep.php', 'A REAL multi-tail source keeps copying the tree it semantically names — the walk resolves, only the probe strips.');
+
+            /*
              * The MID-PATH twin (OCR round 17, t31-ocr17-2): the probe
              * once stripped only the TRAILING tails, so a source
              * spelled THROUGH a linked ancestor passed is_link() (stat

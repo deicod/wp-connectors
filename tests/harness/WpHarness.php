@@ -567,6 +567,28 @@ final class WpHarness
             $path = str_replace('\\', '/', $path);
         }
         $path = self::same_directory_spelling($path);
+        /*
+         * The MULTI-TAIL adjudication (OCR round 47, t31-ocr47-4):
+         * this loop strips EVERY '/..' tail WITHOUT popping the
+         * preceding component — '/a/b/../..' lands on '/a/b', never
+         * the semantic '/' — and that no-pop landing is the doctrine
+         * for every tail count, not the single tail alone. The
+         * landing is the PROBE spelling, never a resolver: a popped
+         * component would remove a link's own spelling from the chain
+         * the anchor walk judges ('link/x/../..' popped to '/' hides
+         * the link — the t31-ocr9-1 blast radius, MULTI-tail edition,
+         * the walk copying through the link into the target's
+         * grandparent), while every component of a spelling IS
+         * traversed by the engine's own resolution (the kernel walks
+         * INTO 'a/b' before either '..' cancels it, following any
+         * link there), so the no-pop landing retains exactly the
+         * components the resolution touches — the full-chain reach
+         * (t31-ocr17-2) whole. Pinned in the copy battery: a
+         * multi-tail spelling through a link still names the link,
+         * and a REAL multi-tail source still copies the tree it
+         * semantically names (the WALKS keep the caller's spelling —
+         * only the probe strips, the ocr9-1 split).
+         */
         while ('/..' === substr($path, -3)) {
             $path = self::same_directory_spelling(rtrim(substr($path, 0, -3), '/'));
         }
