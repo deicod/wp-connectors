@@ -251,6 +251,61 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertStringContainsString('planted engine-shaped throw must ride the row channel', $verdict['why'], 'The row carries the throw\'s own message.');
     }
 
+    /*
+     * OCR-round-49 pin (t31-ocr49-8, the t31-ocr45-6 conversion
+     * doctrine swept to the seed channel — the one verdict channel
+     * that round's sweep missed): the seed-build catch spoke
+     * RuntimeException alone and the zipEntryNames census rode raw
+     * assertions, so an engine-shaped throw inside the seed call —
+     * or a census assertion over a seed artifact that did not open —
+     * escaped runState as a test ERROR and aborted the whole row
+     * table, masking every state behind it. Both halves of the
+     * channel convert to the row's FAIL verdict now. The plant
+     * rides the row's optional 'seed_call' arm (the
+     * deterministically plantable spelling at this channel — no
+     * fixture mutation can reach between the maker and the seed;
+     * absent on every enumerated row, the real seed build answers):
+     * a planted ValueError answers the row's verdict naming the
+     * class, and a corrupt seed artifact answers the census arm's
+     * verdict the same way (red at HEAD: both aborted the table as
+     * test ERRORs). The rows ride 'expect' => 'LOUD' — the LOUD rows
+     * need no child process, and the seed fails before any apply.
+     */
+    public function testASeedThrowAnswersAFailRowNotABatteryAbort(): void
+    {
+        $verdict = $this->runState('seed-throw', array(
+            'expect' => 'LOUD',
+            'seed_call' => static function (): string {
+                throw new \ValueError('seed-throw: the planted engine-shaped throw must ride the row channel');
+            },
+            'apply' => static function (): void {
+            },
+        ));
+        $this->assertSame('FAIL', $verdict['class'], 'A seed-channel throw is a FAIL row, never a battery abort (red at HEAD: the ValueError escaped runState as a test ERROR, masking the states behind it).');
+        $this->assertStringContainsString('seeded control build itself threw', $verdict['why'], 'The row names the channel the throw rode.');
+        $this->assertStringContainsString('ValueError', $verdict['why'], 'The row names the throw\'s class.');
+        $this->assertStringContainsString('planted engine-shaped throw must ride the row channel', $verdict['why'], 'The row carries the throw\'s own message.');
+
+        // The census half of the same channel: a seed artifact the
+        // shared zipEntryNames owner cannot open answers the
+        // converted row verdict, never a raw assertion abort (the
+        // corrupt-reopen pin's own class, at the seed position).
+        $verdict = $this->runState('seed-census-throw', array(
+            'expect' => 'LOUD',
+            'seed_call' => static function (string $plugin, string $dist): string {
+                $corrupt = $dist . '/corrupt-seed.zip';
+                file_put_contents($corrupt, 'not a zip archive');
+
+                return $corrupt;
+            },
+            'apply' => static function (): void {
+            },
+        ));
+        $this->assertSame('FAIL', $verdict['class'], 'A seed-census throw is a FAIL row, never a battery abort (red at HEAD: the AssertionFailedError escaped runState as a test ERROR).');
+        $this->assertStringContainsString('entry census threw', $verdict['why'], 'The row names the census channel.');
+        $this->assertStringContainsString('corrupt-seed.zip', $verdict['why'], 'The row carries the census\'s own assertion message naming the artifact.');
+    }
+
     /**
      * The adversarial state table (exhaustive for the round's charter).
      *
@@ -261,7 +316,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * reads through mode 0000, t31-ocr4-1 — the row skips itself on a
      * root runner instead of failing as a false silent third).
      *
-     * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool}>
+     * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable, seed_call?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool}>
      */
     private function states(): array
     {
@@ -566,7 +621,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * Runs one state and classifies the observation against the invariant.
      *
      * @param string                                                $state_id Row label (diagnostics).
-     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool} $state The row (skip_on_root, needs_symlink, and needs_posix — the t31-ocr4-1/t31-ocr10-14/t31-ocr34-5 row-level skip flags the head of this method consults).
+     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, seed_call?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool} $state The row (skip_on_root, needs_symlink, and needs_posix — the t31-ocr4-1/t31-ocr10-14/t31-ocr34-5 row-level skip flags the head of this method consults).
      * @return array{class: string, why: string} 'PASS', 'FAIL', or 'SKIP' with the reason (SKIP: the row-level root-runner and symlink-capability legs).
      */
     private function runState(string $state_id, array $state): array
@@ -620,13 +675,43 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
 
         $scratch = $this->makeScratchRepo($state_id);
         try {
-            // Seed: one previous GOOD build of the same inputs.
+            /*
+             * The SEED channel rides the same conversion (OCR round
+             * 49, t31-ocr49-8 — the r45-6 doctrine swept to the one
+             * verdict channel that sweep missed): the seed-build
+             * catch spoke RuntimeException alone and the entry
+             * census rode raw assertions, so a ValueError-shaped
+             * throw — or a census assertion over a seed artifact
+             * that did not open — escaped runState as a test ERROR
+             * and aborted the whole row table, masking the states
+             * behind it (every OTHER channel was widened to
+             * \Throwable precisely for this). Both invocations
+             * convert to the row's FAIL verdict naming the channel
+             * and the class, and the table keeps its charge row by
+             * row. The row's optional 'seed_call' arm is the PLANT
+             * channel (the deterministically plantable spelling of
+             * an engine-shaped throw inside the seed call — no
+             * fixture mutation can reach between the maker and the
+             * seed, the r45-6 plant move at this channel): absent
+             * on every enumerated row, the REAL seed build answers.
+             */
+            $seed_builder = isset($state['seed_call'])
+                ? $state['seed_call']
+                : static function (string $plugin, string $dist): string {
+                    return WpConnectorsBuild::buildPlugin($plugin, $dist);
+                };
             try {
-                $seedZip = WpConnectorsBuild::buildPlugin($scratch['plugin'], $scratch['dist']);
+                $seedZip = $seed_builder($scratch['plugin'], $scratch['dist']);
             } catch (RuntimeException $seedFailure) {
                 return array('class' => 'FAIL', 'why' => 'the seeded control build itself refused: ' . $seedFailure->getMessage());
+            } catch (\Throwable $seed_engine_throw) {
+                return array('class' => 'FAIL', 'why' => 'the seeded control build itself threw (' . get_class($seed_engine_throw) . '): ' . $seed_engine_throw->getMessage());
             }
-            $seedNames = $this->zipEntryNames($seedZip);
+            try {
+                $seedNames = $this->zipEntryNames($seedZip);
+            } catch (\Throwable $seed_census_throw) {
+                return array('class' => 'FAIL', 'why' => 'the seeded control build\'s entry census threw (' . get_class($seed_census_throw) . '): ' . $seed_census_throw->getMessage());
+            }
             $seedManifest = (string) file_get_contents($scratch['dist'] . '/checksums.txt');
 
             // Apply the adversarial state, then snapshot what the run must
@@ -754,7 +839,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * @param array<string, string>                    $scratch      The scratch repo map.
      * @param list<string>                             $seedNames    The seeded build's entry names.
      * @param string                                   $seedManifest The seeded manifest bytes.
-     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool} $state The row (the full row shape runState() receives; the skip flags are consulted before this half runs).
+     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, seed_call?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool} $state The row (the full row shape runState() receives; the skip flags are consulted before this half runs).
      * @return array{class: string, why: string} 'PASS' or 'FAIL' with the reason.
      */
     private function classifyClean(array $scratch, array $seedNames, string $seedManifest, array $state): array
