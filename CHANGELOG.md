@@ -6,6 +6,84 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 36)
+
+Thirty-sixth OCR-tool round (main 61/61, fully complete): 10
+findings, driver accepts all. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10. The
+round's shape: the loop's first FIX-INDUCED high (the r35
+case-derivation's own pin guaranteed red on the host class that
+motivated it); the fifth use-grammar generation; the iterator-fence
+sweep finally whole-census; per-volume case folding. Fixed as
+t31-ocr36-1..8 — one commit per finding (the walk-fence pair and the
+rtrim-parity pair each ONE commit, same class) — plus this docs
+record, the full offline check green after every commit. Suite
+1692 → 1693 tests, 46241 → 46253 assertions, 3 skipped unchanged.
+
+- **The group-use member grammar refuses the fully-qualified member
+  name (t31-ocr36-1, bug:high)** — the grammar validated everything
+  AROUND the member name (empty members, dangling/qualified/reserved
+  aliases, the kind keyword) while the name rode unjudged: a
+  fully-qualified member (`{ \Shared\Clock as C }`) passed every
+  check, missed the leaf rewrite, and re-emitted verbatim — and
+  beside a rewritten sibling the postcondition saw no family
+  reference at all, compile-error bytes shipping at exit 0 (driven
+  at HEAD, both escape arms). The engine verdict is DERIVED FIRST
+  (php -l refuses the spelling at compile time — a group member
+  resolves against the statement's prefix), and the member seam
+  refuses it loudly now; the legal relative members ride unchanged.
+- **Both tree collectors fence their recursion boundary, the
+  iterator-fence census whole (t31-ocr36-2, bug:medium +
+  maintainability:low)** — collectFiles() and
+  wp_connectors_php_source_files() were the last two
+  RecursiveDirectoryIterator walks with no UnexpectedValueException
+  conversion: a chmod-000 child mid-tree aborted each descent in the
+  SPL iterator's own vocabulary (red at HEAD, both walks). Both
+  seams fenced the ocr33-6 way (construction inside the try, the
+  abort converted to each walk's own named refusal, per-entry
+  verdicts passing untouched), with the census comment naming every
+  walk in the change set and its one standing exception (the secret
+  scanner's scan_paths walk).
+- **The below-root offsets spell the sibling's dual-separator strip,
+  the comments telling the truth again (t31-ocr36-3,
+  maintainability:low ×2)** — both scanners' offset comments claimed
+  rtrim parity with a sibling that had moved to
+  rtrim($root, '/\\') in t31-ocr31-5; the four sites (three FAIL
+  sites of the unused-import scan and lint-php's exclusion strip)
+  adopt the dual-separator class, byte-identical arithmetic on
+  POSIX.
+- **The relative arm folds the backslash-spelled target before the
+  cwd-prepend on non-POSIX hosts (t31-ocr36-4, bug:medium)** — the
+  platform gate refused only the ABSOLUTE drive/UNC spellings, so a
+  backslash-spelled relative target mingled vocabularies
+  ('C:\repo/a\src\dst') into the containment walk. Both the relative
+  spelling and the cwd fold through the one comparison-vocabulary
+  owner before the prepend (the landing keeps the caller's bytes);
+  identity on POSIX.
+- **The case verdicts derive per volume (t31-ocr36-5, bug:low)** —
+  the r35 fold consulted one host-wide answer probed exclusively in
+  temp, but case resolution is a per-VOLUME property and the suite's
+  copyTree shapes span volumes (derivation: macOS case-sensitive
+  APFS beside the case-insensitive system volume; the inverse one
+  TMPDIR redirect away). One probe core plants in a directory on the
+  volume judged (cached by its stat() device id), each containment
+  side folds through its own volume's answer; single-volume hosts
+  ride byte-identical.
+- **The case-variant refusal arm proves the RESOLUTION
+  (t31-ocr36-6, bug:high)** — the r35 leg's nothing-lands pin was a
+  GUARANTEED RED on its own motivating host (macOS default APFS:
+  the variant spelling resolves to the staged source file), the
+  loop's first fix-induced high. Both arms prove what is true on
+  each host: the resolution premise on case-insensitive hosts (the
+  file answering the variant spelling; nothing landing through a
+  name staged nowhere), the real second tree unchanged on
+  case-sensitive ones.
+- **classifyClean()'s @param names the needs_posix flag
+  (t31-ocr36-7, documentation:low)** — the row-shape annotation now
+  agrees with states()' @return and runState()'s @param.
+- **Two whitespace-only lines removed (t31-ocr36-8, style:low)** —
+  the only two in the copy battery.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 35)
 
 Thirty-fifth OCR-tool round (main 61/61, fully complete): 9
