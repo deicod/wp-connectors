@@ -6,6 +6,92 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 40)
+
+Fortieth OCR-tool round (main 61/61, fully complete): 8 findings in
+seven numbered commits (the collector twins — `bin/build.php`'s
+`collectFiles()` and `bin/lib/plugin-tools.php`'s
+`wp_connectors_php_source_files()`, one defect class — one commit),
+driver accepts all. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8.
+The round's shape: the sixth use-grammar generation — the brace-group
+tail with a FAMILY prefix escaping the member grammar by pattern
+shape — beside the dual-separator collector twins and the probe-junk
+fence (the case probe planting into the judged repository tree).
+Round 40 answered NEW findings, so the OCR phase continues per plan.
+Fixed as t31-ocr40-1..7 — one commit per finding, plus this docs
+record, the full offline check green after every commit. Suite
+1696 → 1698 tests, 46282 → 46301 assertions, 3 skipped unchanged.
+
+- **The family-prefix brace tail rides the ONE member grammar
+  (t31-ocr40-1, bug:high)** — a group whose prefix is the family
+  itself (`use …\Shared\{Clock as self};`, or deeper via the
+  sub-segment tail) matches the PLAIN use-statement pattern, not the
+  vendor-prefix group pattern below it, and the tail re-emitted
+  verbatim beside the rewritten prefix with no member validation:
+  compile-error bytes in the zip at exit 0 with every gate green.
+  The member grammar is the one owner now (empty/dangling shapes,
+  reserved and non-identifier alias, kind strip, leading-backslash
+  refusal) and both group seams ride it — the vendor-prefix callback
+  (which also rewrites the members' leading Shared segment) and the
+  family-prefix return (which never re-spells a member, its prefix
+  already carrying the rewrite).
+- **The collector twins speak both separator spellings
+  (t31-ocr40-2, bug:low ×2, one commit)** — `collectFiles()` and
+  `wp_connectors_php_source_files()` stripped their walk root with
+  `rtrim($root, '/')` and sliced the below-root relative with a
+  '/'-only strip and segment split: on a '\' host every "relative"
+  kept its absolute spelling and every downstream judgment
+  mis-segmented (dev-entry/near-source logic, extension checks, the
+  PSR-4 casing fence). The r31-5 dual-separator doctrine sweeps to
+  both twins — the rtrim class list, the substr-past-the-root
+  arithmetic, DIRECTORY_SEPARATOR at every below-root segment split;
+  POSIX rides byte-identical.
+- **The render fast path rides the canonical walk
+  (t31-ocr40-3, maintainability:low)** — `utf8_for_safe_render()`'s
+  early return probed validity through `preg_match('//u')`, a second
+  engine-level spelling of UTF-8 validity beside the canonical
+  `utf8_sequence_length_at()` walk (the exact duplication the
+  t31-ocr8-8 doctrine exists to close, cited by the method's own
+  docblock). The fast path consults `is_standalone_valid_utf8()` now
+  — one validator, both consumers; the regex twin deleted.
+- **releaseScratch()'s docblock sits above its own declaration
+  (t31-ocr40-4, documentation:low)** — the contract rode orphaned
+  above `stderrNotice()`'s own docblock, and only the last docblock
+  before a declaration attaches: the guarded-release doctrine and
+  its caller census were dead text one method up. Each contract is
+  attached to its own declaration now.
+- **The case probe plants in the volume's SCRATCH representative,
+  never the judged tree (t31-ocr40-5, test:low)** — the probe planted
+  `wpct-pathcase-*` directly into whichever directory the derivation
+  first judged, routinely a REPOSITORY-rooted source tree (copyTree()
+  from tests/fixtures/plugins), with only a bare @unlink between: a
+  junk window in the repository on every measurement and, for a
+  probe whose process died between the two, checkout residue nothing
+  reclaims. The anchor is the base itself when it sits under the
+  temp root, else the temp root when it shares the volume's device,
+  else no plant at all (the r38-2 conservative unmeasured arm).
+  Driven the FREEZE-KILL way — SIGSTOP holds the looping child
+  inside its plant window, the kill answers the crash residue, red
+  at HEAD on the first freeze.
+- **The landing join speaks the iterator's own vocabulary
+  (t31-ocr40-6, maintainability:low)** — the copyTree() landing loop
+  joined `$to . '/' . $relative` two lines under the relativize
+  prefix t31-ocr39-4 corrected to DIRECTORY_SEPARATOR, mingling
+  vocabularies before dirname()/mkdir()/copy() on a '\' host; one
+  spelling both lines now, POSIX byte-identical.
+- **The trailing-separator arithmetic pin gains its SCANNER leg
+  (t31-ocr40-7, test:low)** — the t31-ocr31-5 dual-separator
+  arithmetic exists in two tools, and the scanner's variant lived in
+  the lint twin's PROSE only. The new leg drives
+  `wp_connectors_scan_paths()` directly with a trailing-separator
+  root and a canary under the pruned first segment: the rtrim's
+  presence is the drivable class on POSIX (a bare offset eats the
+  first byte, the prune misses, the canary finds — verified red at
+  the patched seam); the narrowing half is POSIX-judgment-neutral
+  (the ocr29-3 residue trade) and the leg's platform gate skips the
+  hosts whose vocabulary it serves.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 39)
 
 Thirty-ninth OCR-tool round (main 61/61, fully complete): 7
