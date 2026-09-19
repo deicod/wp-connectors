@@ -192,11 +192,19 @@ function wp_connectors_unused_import_violations(string $root): int
              * too few, and every FAIL line named its file one
              * character short — the offset derives from the root
              * AFTER its separator is stripped, the one spelling both
-             * scanners' diagnostics share.
+             * scanners' diagnostics share. The strip is the
+             * DUAL-SEPARATOR class since t31-ocr31-5 moved the
+             * sibling (bin/lib/secret-scanner.php) to
+             * rtrim($root, '/\\'): the native-separator-only strip
+             * keeps a '/'-suffixed root on a '\' host one byte over,
+             * so these sites spell the same class — the offset judges
+             * the spelling CLASS, never the host it runs on, and on a
+             * POSIX host the arithmetic is byte-identical to the
+             * former rtrim.
              */
             fwrite(STDERR, sprintf(
                 "conventions: FAIL %s: unreadable file — the unused-import scan cannot run.\n",
-                substr($file->getPathname(), strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1)
+                substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1)
             ));
             ++$violations;
             continue;
@@ -323,7 +331,7 @@ function wp_connectors_unused_import_violations(string $root): int
 
             fwrite(STDERR, sprintf(
                 "conventions: FAIL %s: unused import '%s' — the short name appears nowhere else in the file.\n",
-                substr($file->getPathname(), strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1),
+                substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
                 $qualified
             ));
             ++$violations;
@@ -370,7 +378,7 @@ function wp_connectors_unused_import_violations(string $root): int
 
                 fwrite(STDERR, sprintf(
                     "conventions: FAIL %s: unused import '%s' (group-use member) — the short name appears nowhere else in the file.\n",
-                    substr($file->getPathname(), strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1),
+                    substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
                     $member_import['qualified']
                 ));
                 ++$violations;

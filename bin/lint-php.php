@@ -117,9 +117,16 @@ if (wp_connectors_cli_entry(__FILE__)) {
                  * segments (green before only by accident: no excluded
                  * name is one byte away from a real one). rtrim also keeps
                  * the degenerate '/' root correct (offset 1 over the
-                 * absolute pathname).
+                 * absolute pathname). The strip is the DUAL-SEPARATOR
+                 * class since t31-ocr31-5 moved the sibling to
+                 * rtrim($root, '/\\') — this site spells the same class
+                 * (the ocr36-3 parity sweep: the native-separator-only
+                 * strip kept a '/'-suffixed root on a '\' host one byte
+                 * over), judging the spelling CLASS never the host it
+                 * runs on; on a POSIX host the arithmetic is
+                 * byte-identical to the former rtrim.
                  */
-                $relative = (string) substr($file->getPathname(), strlen(rtrim($root, DIRECTORY_SEPARATOR)) + 1);
+                $relative = (string) substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1);
                 foreach (explode(DIRECTORY_SEPARATOR, $relative) as $segment) {
                     if (wp_connectors_segment_is_named($segment, $lint_excludes)) {
                         continue 2;
