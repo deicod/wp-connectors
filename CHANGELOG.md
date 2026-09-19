@@ -6,6 +6,79 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 52)
+
+Fifty-second OCR-tool round (main 61/61, fully complete): 6 findings,
+driver accepts all; 6 numbered commits t31-ocr52-1..6, one per
+finding. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6.
+The round's shape: the radix-arm completion the r49-4 family owed
+(0o/0b join 0x); the generic-key consistency gap in the masking
+boundary; diamond-vs-loop in the cycle guard; the adjacent-pid
+foreign-tree plant; the vacuous-pass staging channel; the traversal
+fold's invariant hoist. Round 52 answered NEW findings, so the OCR
+phase continues per plan. Fixed as t31-ocr52-1..6 — one commit per
+finding, plus this docs record, the full offline check green after
+every commit. Suite 1724 → 1725 tests, 46732 → 46771 assertions,
+3 skipped unchanged.
+
+- **The IPv4 number predicate spells the Standard's whole radix
+  table (t31-ocr52-1, security:high)** — the r49-4 predicate spelled
+  the 0x/0X hex arm alone while the URL Standard's IPv4 number
+  parser it cites accepts three prefix spellings (0x radix 16, 0o
+  radix 8, 0b radix 2, one empty-after-prefix rule), so a last label
+  '0b1'/'0o7' named IPv4 for every WHATWG consumer while this parse
+  kept the host an opaque domain — the r49-4 differential one radix
+  over. Driven: the bare and last-label spellings refuse through
+  both consumers (red at HEAD: constructed); non-radix digits keep
+  the domain reading.
+- **The generic 'key' token joins the masking suffix class
+  (t31-ocr52-2, security:medium)** — the class carried
+  'api-key'/'subscription-key' while missing the generic token both
+  end in, so 'X-Secret-Key' and 'X-Access-Key' rendered verbatim
+  while 'X-Client-Secret' masked. 'key' joins the generic tier
+  'token'/'secret'/'auth' occupy (the r24 over-masking-errs-safe
+  doctrine), subsuming the hyphenated compounds per the ocr33-3
+  doctrine while their flattened twins stay beside the round's own
+  'secretkey'/'accesskey'; the any-credential-token shape rejected
+  in the census (it leaves 'X-Access-Key' verbatim). Driven: the
+  family masks in name and render channels (red at HEAD); the
+  spanning-bytes neighbors stay outside.
+- **The Exception census's cycle guard distinguishes a LOOP from a
+  DIAMOND (t31-ocr52-3, bug:low)** — the r51 guard refused ANY
+  re-visited realpath, but two sibling links at one real directory
+  re-enter an already-walked tree through a non-cyclic path: a
+  terminating shape the guard reported as 'Symlink loop'. A re-visit
+  is a loop only when the revisited realpath is an ANCESTOR of the
+  current position (the ancestors stack); a non-ancestor re-visit is
+  a diamond — the duplicate entry skips, the walk continues, each
+  real file counted once. Driven: a planted diamond completes the
+  census (red at HEAD: the refusal); the planted true loop still
+  refuses loudly.
+- **The foreign-tree plant rides a pid above the kernel's ceiling
+  (t31-ocr52-4, test:low)** — the r51-3 sweep battery planted its
+  foreign tree under getmypid() + 1, an ADJACENT pid — exactly two
+  runners one orchestrator spawns — so the plant could sit on a real
+  runner's live scratch vocabulary. The pid is one above
+  PID_MAX_LIMIT (2^22 on every 64-bit Linux build, claimable by no
+  live process); construction-evident, the refusal pins unchanged.
+- **The scan-root boundary battery's staging writes own their
+  returns (t31-ocr52-5, test:low)** — the boundary refuses a MISSING
+  scan root with the same RuntimeException class and vocabulary as
+  an outside root, so an unchecked staging write failure surfaced as
+  the expected refusal: a reachable vacuous pass. Per-site success
+  asserts (the ocr27-9 doctrine) fail the leg as staging, naming its
+  path; construction-evident, the happy path unchanged.
+- **The edge-junk byte class and traversal-fold char set hoisted out
+  of the per-segment rebuild paths (t31-ocr52-6, performance:low)**
+  — wp_connectors_path_edge_junk() rebuilt its constant class per
+  call while its consumers judge per segment, and the traversal fold
+  re-derived its char set per entry and per segment. The owner
+  computes the class once per process (one cache point, every caller
+  routed through it); the fold derives its array once per archive.
+  Byte-identical by construction; pure perf, the existing fences the
+  oracle.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 51)
 
 Fifty-first OCR-tool round (main 61/61, fully complete): 6 comments =
