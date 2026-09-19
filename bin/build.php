@@ -2012,6 +2012,40 @@ final class WpConnectorsBuild
     }
 
     /**
+     * The '/' spelling of a walk-collected relative path — the ONE
+     * serialized-boundary owner (OCR round 41, t31-ocr41-1, ×2: both
+     * zip legs, one commit, one defect class).
+     *
+     * THE CENSUS: the native separator vocabulary lives INSIDE the
+     * walk — the t31-ocr40-2 dual-separator sweep made both
+     * collectors WORK on '\' hosts, and the relatives they answer
+     * carry the iterator's native join ('sub\file.php') — while
+     * every SERIALIZED boundary speaks '/': the zip localname is
+     * '/'-joined by zip spec, the collision keys fold over the
+     * '/'-joined entries, and the manifest-side vocabulary the
+     * inspector judges by is already '/'. Both zip legs spliced the
+     * native-spelled relative verbatim into the ENTRY (the plugin
+     * tree at collectFiles() and the embed destination over
+     * wp_connectors_php_source_files()), so on a '\' host every
+     * shipped entry name carried '\', breaking the inspector's
+     * near-source check and the case-insensitive collision key. One
+     * owner, both legs: $relative normalizes HERE, at the seam where
+     * it composes an entry; the disk paths beside each seam keep the
+     * native vocabulary (the engine resolves its own platform's
+     * spelling). On the POSIX host the translation is byte-identical
+     * ('/' IS the separator — construction-evident, the ocr28-3
+     * doctrine: DIRECTORY_SEPARATOR is a constant no test sim
+     * flips).
+     *
+     * @param string $relative A walk-collected relative path (native separator).
+     * @return string The same path '/'-joined, for entry names.
+     */
+    private static function zipEntryPath($relative)
+    {
+        return str_replace(DIRECTORY_SEPARATOR, '/', $relative);
+    }
+
+    /**
      * Builds one plugin zip.
      *
      * SOURCE LAYOUT COUPLING, stated (review round t31-r12-14, noted with
@@ -2326,7 +2360,7 @@ final class WpConnectorsBuild
             $entries = array();
             foreach (self::collectFiles($pluginDir) as $relative) {
                 self::copyNormalized($pluginDir . '/' . $relative, $stage . '/' . $slug . '/' . $relative);
-                $entries[] = $slug . '/' . $relative;
+                $entries[] = $slug . '/' . self::zipEntryPath($relative);
             }
             /*
              * The repo LICENSE injects only where the plugin does not
@@ -2414,7 +2448,7 @@ final class WpConnectorsBuild
                      * fold is a fold whose verdict is a question about
                      * the process, never a constant of the artifact.
                      */
-                    $destination = wp_connectors_embed_destination_prefix($slug) . $relative;
+                    $destination = wp_connectors_embed_destination_prefix($slug) . self::zipEntryPath($relative);
                     $folded_destination = wp_connectors_ascii_lower($destination);
                     foreach ($entries as $existing_entry) {
                         if (wp_connectors_ascii_lower($existing_entry) === $folded_destination) {
@@ -2426,7 +2460,7 @@ final class WpConnectorsBuild
                     $target = $stage . '/' . wp_connectors_embed_destination_prefix($slug) . $relative;
                     @mkdir(dirname($target), 0755, true);
                     self::writeNormalized($rewritten, $target);
-                    $entries[] = wp_connectors_embed_destination_prefix($slug) . $relative;
+                    $entries[] = $destination;
                 }
             }
 
