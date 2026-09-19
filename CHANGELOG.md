@@ -6,6 +6,174 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 49)
+
+Forty-ninth OCR-tool round (main 61/61, fully complete): 18 findings,
+driver accepts all; 15 numbered commits t31-ocr49-1..15 (the left-anchor
+generation lands as THREE findings/THREE commits under one census, the
+seed channel as one commit over both its sites, the staging gaps and the
+HarnessCopyTree pairs per their own census instructions). Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18.
+The round's shape: the left-anchor generation — the ELEVENTH use-grammar
+family, the namespace separator passing every word-byte lookbehind (the
+engine demotes `Foo\namespace`/`Foo\use` to one qualified-name token, so
+the keyword planted behind a separator matched every byte pattern at its
+second occurrence); the IPv4-ambiguous host class (010.1.1.1 / 0x-labels
+/ bare trailing-number hosts name two hosts over one URL on the
+browser-facing channel); the undelimited credential tokens; the
+seed-channel conversion the r45-6 sweep missed; and the statics exemption
+in the payload fence. Round 49 answered NEW findings, so the OCR phase
+continues per plan. Fixed as t31-ocr49-1..15 — one commit per finding,
+plus this docs record, the full offline check green after every commit.
+Suite 1716 → 1718 tests, 46468 → 46668 assertions
+(+0/+2/+4/+2/+1/+16/+13/+3/+0/+0/+1/+8/+0/+0/+151/+0/+0/+0/+0/+0/+0),
+3 skipped unchanged.
+
+- **The namespace-declaration rewrite owns its left anchor
+  (t31-ocr49-1, bug:high)** — the declaration pattern carried NO left
+  boundary, and the engine lexes `use Foo\namespace Deicod\…` with
+  `Foo\namespace` as ONE qualified-name token, so the pattern matched at
+  the SECOND `namespace` and spliced the rewritten target mid-name —
+  parse-error output at exit 0. The anchor `(?<![A-Za-z0-9_\\\\])`
+  (word byte or separator refused) rides the head of the pattern, ONE
+  census comment at the seam naming the statement-start class for every
+  keyword-bearing pattern the rewriter spells; the mid-name span rides
+  verbatim into the postcondition's family-reference verdict now.
+  Driven: the mid-name spelling answers the refusal (red at HEAD:
+  returned, spliced bytes shipping).
+- **The use-keyword lookbehind owns the separator byte
+  (t31-ocr49-2, bug:medium)** — `\` is not `[A-Za-z0-9_]`, so
+  `use Foo\use Deicod\…\Clock;` matched at the second `use`, the
+  callback splicing the rewritten target over the matched span with the
+  leftover `use Foo\` bytes shipping parse-error output (the plain and
+  family-prefix-brace spellings alike, one pattern). The lookbehind
+  joins the r49-1 statement-start class; every legal `use` spelling
+  rewrites byte-identically. Driven: both spellings answer the refusal
+  (red at HEAD: returned).
+- **The group-use prefix pattern owns the same anchor
+  (t31-ocr49-3, bug:medium)** — the vendor-prefix group's lookbehind
+  guarded word bytes only, so `use Foo\use Deicod\…\{Shared\Clock};`
+  matched at the second `use` and the members rewrote inside a span no
+  legal statement could occupy, refusing only at the postcondition one
+  verdict late. The anchor refuses the match before any member bytes
+  are judged. Driven through the splice's own observable: a planted
+  repeated-kind member inside the mid-name group answered the MEMBER
+  GRAMMAR's verdict at HEAD (the grammar judging mid-name bytes); it
+  answers the postcondition's verdict now.
+- **The IPv4-ambiguous host class rides the WHATWG-differential refusal
+  (t31-ocr49-4, security:medium)** — the URL Standard parses any
+  special-scheme host whose last label "ends in a number" as an IPv4
+  address ('https://010.1.1.1/' is 8.1.1.1, the bare
+  'https://2130706433/' is 127.0.0.1) while this parse kept the
+  spelling as an opaque hostname: two hosts named by one URL over the
+  browser-facing channel. The class refuses, never coerced — the
+  predicate is the Standard's own (last label parses as an IPv4 number:
+  decimal, 0x-hex, leading-zero octal), and the canonical dotted quad
+  alone passes, both readings agreeing byte for byte. Driven: all six
+  spellings answer the refusal through both the URL owner and the
+  request VO (red at HEAD: constructed); canonical quads, interior
+  digit labels, and trailing-dot domains unchanged.
+- **The undelimited credential spellings join the catalog
+  (t31-ocr49-5, security:low)** — a header named exactly 'apikey' or
+  'accesstoken' (one token, no delimiter) folds to a judged name that
+  equals no catalog entry and ends in no suffix segment: both screens
+  answered false and the secret rendered verbatim through every safe
+  debug form. The credential family's single-token forms join the
+  catalog (the flattened spellings of the suffix class's hyphenated
+  members and of the vendor-documented names the class's own record
+  cites); the r24 boundary holds for glues with no recognized name
+  behind them ('apitoken') and spanning bytes ('x-api-keychain') — the
+  r24 pin's 'clientsecret' example row superseded. Driven: all eight
+  spellings mask in name and render channels (red at HEAD: verbatim);
+  'host'/'accept' stay verbatim.
+- **The fold exclusion owns the dots-ONLY class
+  (t31-ocr49-6, bug:low)** — the r48-3 close owned the exact '..'
+  spelling only, so 'p/.../a.php' collapsed out of the fold key the
+  same way and a zip carrying it beside 'p/a.php' answered a spurious
+  case-fold duplicate line beside its traversal rejection. ANY segment
+  consisting solely of dots stays outside the fold (the traversal
+  screen's own parent-token predicate), a lone '.' still collapsing
+  with the empty segment. Driven: the dots-run zip answers only the
+  traversal refusal (red at HEAD: the spurious line).
+- **The sweep charter tells the truth about the `.part` spelling
+  (t31-ocr49-7, documentation:low)** — the claim read as if the pattern
+  owned any `.<rand>.part` file, but the temp pattern is anchored to
+  the zip temp's own prefix. Probed mid-close on this engine: libzip
+  names the part temp AFTER THE ZIP'S OWN NAME, so the pattern's dotted
+  tail does own the real spelling — and the sweep battery already pins
+  it (the finding's "no test pins the claim" half read false against
+  the tree). Doc-only: the charter names the exact owned spelling and
+  the boundary the anchor draws.
+- **The seed channel rides the row conversion
+  (t31-ocr49-8, test:medium ×2)** — the seed-build catch spoke
+  RuntimeException alone and the seed's zipEntryNames census rode raw
+  assertions, so a ValueError-shaped throw — or a census assertion over
+  a seed artifact that did not open — aborted the whole row table as a
+  test ERROR, the one verdict channel the r45-6 sweep missed. Both
+  invocations convert to the row's FAIL verdict naming the channel and
+  class; the plant rides the row's optional 'seed_call' arm (absent on
+  every enumerated row, the real seed build answers). Driven: a planted
+  ValueError and a corrupt seed artifact each answer their row's
+  verdict (red at HEAD: both aborted the table).
+- **The payload-channel fence owns statics
+  (t31-ocr49-9, test:medium)** — every collection in the exceptions
+  family's API audit skipped `isStatic()`, so a `public static` helper
+  on a concrete type passed every pin wholly exempt — the exact hole
+  the ledger's own r8-5 disposition names while claiming the design.
+  Statics judge by the same rule at every collection (the baseline
+  keeping engine statics, the name diff and declaring-class audit
+  answering family-declared ones). Driven both directions: a planted
+  static helper passed every pin at HEAD; both audits answer it now.
+- **The three staging gaps ride their siblings' doctrines
+  (t31-ocr49-10, test:low ×3)** — makeScratchRepo's creation phase
+  carries per-site success asserts (two mkdirs, three writes, each
+  naming its own path), the four GPC/forged/lint/scan spawn legs
+  consume the guarded realpath resolutions the five-script loop already
+  asserts (the scan target's fixtures twin included), and the scanner's
+  yield-order bracket leg owns all five IO returns before its guarded
+  region. Construction-evident; happy paths unchanged.
+- **The Exception census follows symlinked directories
+  (t31-ocr49-11, test:low)** — without FOLLOW_SYMLINKS a
+  symlink-to-directory under shared/src/Exception is neither
+  isFile()-true nor recursed, escaping the census while the pin's
+  message claimed "at any depth" — and PSR-4 maps a linked
+  subdirectory like a real one, the family growing through it whether
+  the census sees it or not. The walk reads the tree whole (a stray
+  link fails the file-set pin naming the class). Driven by planting
+  one: the linked type FAILS the census (green at HEAD — the escape).
+- **The repo-junk catch writes the degraded notice it promises
+  (t31-ocr49-12, bug:low)** — the finally's sweep catch was empty
+  while its own census comment and the r42-8 record promise a
+  stderrNotice(): an environmental failure in the repo-junk sweep
+  disappeared with no diagnostic. The catch writes the notice through
+  the suite's ONE STDERR writer (the ocr38-5 idiom), the in-flight
+  verdict still outranking the diagnostic. Construction-evident; clean
+  runs unchanged.
+- **The multi-tail staging write rides stage()
+  (t31-ocr49-13, test:low)** — the file's one staging write that
+  bypassed the asserted stage() owner surfaced a failed write as a
+  misleading downstream assertFileExists failure; the write rides the
+  one owner whose failure names its path. Construction-evident.
+- **The interval floor's deliberate lower bound named
+  (t31-ocr49-14, documentation:low)** — RFC 8628 §3.2 defines
+  `interval` with NO lower bound (only the absent field defaults to 5),
+  so a provider may legally answer 0 and a future flow parser's
+  payload would meet an opaque refusal. The ledger holds no
+  interval-floor adjudication, so the docs align to what the code does:
+  the floor is the VO's own deliberate decision (a 0-second floor is a
+  busy-loop against the token endpoint), the parser's duty named at
+  the guard. Doc-only.
+- **The label sync guard distinguishes presence from null
+  (t31-ocr49-15, maintainability:low)** — isset() cannot distinguish a
+  LABELS row present with null from a missing row, so a
+  `'case' => null` slip answered the MISSING-row guidance, mis-naming
+  the defect. array_key_exists owns presence, a separate null check
+  answers the null-shaped defect with its own named remedy — the
+  runtime read riding a mixed-contract owner (phpstan constant-folds
+  the declared table; no suppression). Driven both directions through
+  a planted null row: the wrong guidance at HEAD, the null-shaped
+  guidance now; ordinary labels unchanged.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 48)
 
 Forty-eighth OCR-tool round (main run partial — 52/61, nine large files
