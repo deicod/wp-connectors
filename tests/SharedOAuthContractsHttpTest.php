@@ -1837,6 +1837,26 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the suffix class — '_' is a tchar the header grammar admits, and the credential boundary speaks both separators (red at HEAD: unmasked).");
         }
         $this->assertFalse(SecretMask::is_sensitive_header_name('x_api_keychain'), 'The underscore twin of the boundary pin — a name whose final segment merely CONTAINS the suffix bytes is not credential-bearing, over either separator.');
+
+        /*
+         * OCR-round-44 pin (t31-ocr44-2): the class census COMPLETED.
+         * The ocr43-1 rationale ("'_' is a tchar the grammar admits …
+         * the delimiter is a CLASS") closed only the underscore twin —
+         * but '.' is equally a legal tchar, and so is every other
+         * non-alphanumeric byte in NAME_TOKEN_PATTERN's character
+         * class: 'x.api.key' was a legal header name matching neither
+         * catalog nor class (red at HEAD: unmasked), the same r12-4
+         * leak class one delimiter over. The fold now normalizes the
+         * WHOLE fourteen-member census (beside the hyphen itself) to
+         * the hyphen once, derived from the grammar's own class; the
+         * judged token stays the whole final segment over any of
+         * them, and every hyphen spelling above judges
+         * byte-identically (the underscore pins ride unchanged).
+         */
+        foreach (array('x.api.key', 'X.Api.Key', 'api.key', 'subscription.key', 'client.secret') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the suffix class — '.' is a tchar the header grammar admits, and the credential boundary speaks the whole delimiter census (red at HEAD: unmasked).");
+        }
+        $this->assertFalse(SecretMask::is_sensitive_header_name('x.api.keychain'), 'The dot twin of the boundary pin — a name whose final segment merely CONTAINS the suffix bytes is not credential-bearing, over any separator spelling.');
     }
 
     /* ---------------------------------------------------------------

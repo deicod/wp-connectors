@@ -230,24 +230,28 @@ final class SecretMask {
 	 */
 	public static function is_sensitive_header_name( string $name ): bool {
 		/*
-		 * The underscore is a legal RFC 7230 tchar — HeaderMap's
-		 * NAME_TOKEN_PATTERN (the single owner of the tchar grammar)
-		 * admits '_' beside '-' — so 'x_api_key' is a legal header
-		 * name the boundary once did not speak (OCR round 43,
-		 * t31-ocr43-1): the suffix class keyed on hyphen boundaries
-		 * only, and every underscore spelling of a credential name
-		 * ('x_api_key', 'subscription_key', 'auth_token',
-		 * 'client_secret') matched neither catalog nor class — the
-		 * full secret rendered verbatim through every safe debug form,
-		 * the r12-4 leak class over the grammar's own second
-		 * separator. The classifier normalizes '_' to '-' ONCE, at
-		 * the fold: the delimiter is a CLASS (the grammar admits
-		 * both), the judged token stays the whole final segment over
-		 * either spelling ('x-api-keychain' AND 'x_api_keychain'
-		 * remain outside — the suffix bytes never span a separator),
-		 * and hyphen-only names judge byte-identically.
+		 * The delimiter is a legal-tchar CLASS, not the hyphen alone.
+		 * HeaderMap's NAME_TOKEN_PATTERN (the single owner of the tchar
+		 * grammar) admits fourteen non-alphanumeric tchars beside the
+		 * letters and digits — ! # $ % & ' * + . ^ _ ` | ~ and the
+		 * hyphen itself — so 'x_api_key' and 'x.api.key' are both
+		 * legal header names, and the boundary once spoke neither
+		 * (underscore: OCR round 43, t31-ocr43-1; the residual '.'
+		 * slice and the rest of the census: t31-ocr44-2): the suffix
+		 * class keyed on hyphen boundaries only, and every
+		 * alternate-delimiter spelling of a credential name matched
+		 * neither catalog nor class — the full secret rendered
+		 * verbatim through every safe debug form, the r12-4 leak
+		 * class over the grammar's own delimiter vocabulary. The
+		 * classifier normalizes the WHOLE census to '-' ONCE, at the
+		 * fold (the set derived from the pattern's own character
+		 * class, nothing hand-listed beside it): the judged token
+		 * stays the whole final segment over any delimiter spelling
+		 * ('x-api-keychain', 'x_api_keychain', and 'x.api.keychain'
+		 * all remain outside — the suffix bytes never span a
+		 * separator), and hyphen-only names judge byte-identically.
 		 */
-		$folded = str_replace( '_', '-', AsciiFold::lower( $name ) );
+		$folded = strtr( AsciiFold::lower( $name ), "!#$%&'*+.^_`|~-", '---------------' );
 		if ( \in_array( $folded, self::SENSITIVE_HEADER_NAMES, true ) ) {
 			return true;
 		}
