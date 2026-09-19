@@ -667,7 +667,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * @param array<string, string>                    $scratch      The scratch repo map.
      * @param list<string>                             $seedNames    The seeded build's entry names.
      * @param string                                   $seedManifest The seeded manifest bytes.
-     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool} $state The row (the full row shape runState() receives; the skip flags are consulted before this half runs).
+     * @param array{expect: string, apply: callable, fragment?: string, extra?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool} $state The row (the full row shape runState() receives; the skip flags are consulted before this half runs).
      * @return array{class: string, why: string} 'PASS' or 'FAIL' with the reason.
      */
     private function classifyClean(array $scratch, array $seedNames, string $seedManifest, array $state): array
