@@ -546,17 +546,25 @@ final class Url {
 
 	/**
 	 * The URL Standard's "ends in a number" host predicate (§5.3,
-	 * t31-ocr49-4; the digit-only arm aligned by t31-ocr50-6):
-	 * strictly split the host on '.', drop ONE trailing empty part,
-	 * and ask whether the LAST part is a number — the DIGIT-ONLY arm
-	 * first (§5.3 step 4: a non-empty part of only ASCII digits is a
-	 * number, BEFORE any radix parse, so '09' IS a number to every
-	 * WHATWG consumer — the browser routes it to IPv4 parsing, where
-	 * the leading-zero validation then fails it), then the IPv4 radix
-	 * arm (a 0x/0X-prefixed hex number, '0x' alone is 0 per the
-	 * spec's own empty-after-prefix rule — every all-digits spelling
+	 * t31-ocr49-4; the digit-only arm aligned by t31-ocr50-6, the
+	 * radix table completed by t31-ocr52-1): strictly split the host
+	 * on '.', drop ONE trailing empty part, and ask whether the LAST
+	 * part is a number — the DIGIT-ONLY arm first (§5.3 step 4: a
+	 * non-empty part of only ASCII digits is a number, BEFORE any
+	 * radix parse, so '09' IS a number to every WHATWG consumer —
+	 * the browser routes it to IPv4 parsing, where the leading-zero
+	 * validation then fails it), then the IPv4 radix arm: the
+	 * Standard's IPv4 number parser accepts THREE prefix spellings,
+	 * one arm per radix in the table below — 0x/0X radix 16, 0o/0O
+	 * radix 8, 0b/0B radix 2 — each with the same empty-after-prefix
+	 * rule ('0x'/'0o'/'0b' alone is 0, the spec's own parsing) and
+	 * the same non-radix-digit boundary ('0xg', '0o9', '0b2' are
+	 * domains exactly like any other non-number — the r49 spelling
+	 * carried the hex arm alone, so '0b1'/'0o7' last labels named
+	 * IPv4 for every WHATWG consumer while this parse kept the host
+	 * a domain, two hosts over one URL). Every all-digits spelling
 	 * already answered at the digit arm, so the radix arm owns the
-	 * hex family alone). A host that ends in a number is IPv4
+	 * prefixed families alone. A host that ends in a number is IPv4
 	 * territory to every WHATWG consumer on a special scheme; a last
 	 * label that is not a number leaves the host a domain whatever
 	 * the earlier labels carry.
@@ -573,6 +581,6 @@ final class Url {
 		}
 		$last = (string) $parts[ count( $parts ) - 1 ];
 
-		return 1 === preg_match( '/\A(?:[0-9]+|0[xX][0-9A-Fa-f]*)\z/', $last );
+		return 1 === preg_match( '/\A(?:[0-9]+|0[xX][0-9A-Fa-f]*|0[oO][0-7]*|0[bB][01]*)\z/', $last );
 	}
 }

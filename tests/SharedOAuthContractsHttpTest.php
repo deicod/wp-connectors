@@ -428,6 +428,46 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         } catch (\InvalidArgumentException $e) {
             $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), 'The request VO answers the same refusal.');
         }
+
+        /*
+         * OCR-round-52 legs (t31-ocr52-1, the radix table the r49-4
+         * predicate owed): the Standard's IPv4 number parser accepts
+         * THREE prefix spellings — 0x/0X radix 16, 0o/0O radix 8,
+         * 0b/0B radix 2, each with the same empty-after-prefix rule —
+         * while the r49 arm spelled the hex family alone, so a LAST
+         * label '0b1' or '0o7' named IPv4 0.0.0.1 / 0.0.0.7 for
+         * every WHATWG consumer while this parse kept the host an
+         * opaque domain (red at HEAD: constructed) — the same
+         * differential one radix over. The judged label is the LAST
+         * one (the predicate's own rule): a radix spelling beside a
+         * later domain label ('0b1.example') is a domain on BOTH
+         * sides and stays constructible, exactly like the interior
+         * digit leg above. A digit outside the radix is a domain on
+         * both sides too.
+         */
+        foreach (array(
+            'the bare binary host' => 'https://0b1/',
+            'the bare octal host' => 'https://0o7/',
+            'the binary prefix as the last label' => 'https://example.0b1/',
+        ) as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A radix-prefixed number host (%s) must be refused by the shared URL owner — red at HEAD it constructed, the predicate spelling the hex arm of the Standard\'s three-prefix table alone.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), "The refusal stays the IPv4-ambiguity channel ({$label}).");
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A radix-prefixed number host (%s) must be refused by the request VO too.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), "The request VO answers the same refusal ({$label}).");
+            }
+        }
+        $this->assertSame('0xg', Url::parse_validated('https://0xg/')['authority'], 'A non-radix digit keeps the domain reading — the boundary is the radix\'s own digit class, exactly as at the hex arm.');
+        $this->assertSame('0o9', Url::parse_validated('https://0o9/')['authority'], 'An octal prefix with a decimal digit stays a domain — both consumers read the same host.');
+        $this->assertSame('0b2', Url::parse_validated('https://0b2/')['authority'], 'A binary prefix with a non-binary digit stays a domain — both consumers read the same host.');
+        $this->assertSame('0b1.example', Url::parse_validated('https://0b1.example/')['authority'], 'A radix label BESIDE a later domain label is a domain on both sides — the predicate judges the last label alone.');
     }
 
     /**
