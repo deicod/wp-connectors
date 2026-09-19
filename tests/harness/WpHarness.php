@@ -797,9 +797,11 @@ final class WpHarness
      * never pid-enumerable or pre-plantable) and asks file_exists()
      * for a case-VARIANT spelling of it: existence of the variant is
      * the host's own answer. The answer is CACHED per volume (the
-     * probe is filesystem work). A base that cannot be planted
-     * answers false (the case-sensitive arm: the byte-wise verdicts,
-     * correct wherever the variant spelling names a different file).
+     * probe is filesystem work) — MEASURED answers only
+     * (t31-ocr38-2): a base that cannot be planted answers the
+     * conservative case-sensitive verdict UNMEASURED, never cached,
+     * so one failed plant cannot poison a case-insensitive volume's
+     * later derivations.
      *
      * @return bool True when a case-variant spelling of an existing file exists.
      */
@@ -850,10 +852,25 @@ final class WpHarness
         $probe = $base . '/' . $stem . 'AbC.probe';
         $variant = $base . '/' . $stem . 'aBc.probe';
         $planted = false !== @file_put_contents($probe, 'case probe');
-        $answer = $planted && file_exists($variant);
-        if ($planted) {
-            @unlink($probe);
+        if (! $planted) {
+            /*
+             * A failed plant is NEVER a measured answer (OCR round 38,
+             * t31-ocr38-2): the unchecked arm once wrote the
+             * unmeasured false into the per-volume cache — on a
+             * case-insensitive volume (the exact host class this
+             * machinery serves) one failed plant (a read-only probe
+             * base, ENOSPC, quota) poisoned every later derivation on
+             * that volume for the whole process. The conservative
+             * case-sensitive verdict answers UNMEASURED — the
+             * containment refusals err byte-wise, the correct verdict
+             * wherever the variant spelling names a different file —
+             * and the cache holds only measured answers, so a later
+             * call with a plantable base re-measures.
+             */
+            return false;
         }
+        $answer = file_exists($variant);
+        @unlink($probe);
 
         return self::$case_insensitive_volumes[ $volume ] = $answer;
     }

@@ -519,6 +519,73 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-38 pin (t31-ocr38-2): a FAILED probe plant is never a
+     * MEASURED answer. caseProbeAnswer() caches per volume for the
+     * whole process, and when the plant failed (a read-only probe
+     * base, ENOSPC, quota) the unmeasured false rode into the cache —
+     * on a case-INSENSITIVE volume (the exact host class the r35/r36
+     * fold machinery serves) one failed plant poisoned every later
+     * derivation on that volume for the rest of the process. The
+     * failed plant answers the conservative case-sensitive verdict
+     * UNMEASURED now and the cache holds only measured answers — a
+     * later call with a plantable base re-measures (driven red at
+     * HEAD: the read-only base's volume key sat in the cache).
+     */
+    public function testAFailedCaseProbePlantIsNeverAMeasuredCachedAnswer(): void
+    {
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The planted-fail shape premises POSIX permission bits — this host\'s platform separator is not the POSIX one.');
+        }
+
+        $holder = sys_get_temp_dir() . '/wpct-caseprobe-fail-' . uniqid('', true);
+        $this->assertTrue(@mkdir($holder, 0755, true), "Staging {$holder} must land — a failed stage is the leg's own verdict, never a misleading downstream one.");
+
+        /*
+         * The write-denial probe (the t31-ocr4-1 doctrine, this file's
+         * own uid-0 idiom): a process that writes through 0555 cannot
+         * construct the planted-fail shape — skip visibly, never a
+         * vacuous green.
+         */
+        chmod($holder, 0555);
+        $denied = false === @file_put_contents($holder . '/denial-probe', 'x');
+        chmod($holder, 0755);
+        if (! $denied) {
+            WpHarness::releaseScratch($holder);
+            $this->markTestSkipped('This host writes through 0555 permission bits (root-shaped, t31-ocr4-1); the planted-fail shape is unconstructible here, so the ocr38-2 cache-purity pin cannot run on this runner.');
+        }
+
+        try {
+            chmod($holder, 0555);
+            $probe = new \ReflectionMethod(WpHarness::class, 'caseProbeAnswer');
+            $cache = new \ReflectionProperty(WpHarness::class, 'case_insensitive_volumes');
+            /*
+             * The cache snapshot, taken BEFORE the failed-plant call:
+             * an earlier test may have MEASURED this volume already
+             * (a legal entry, host truth the cache exists to hold), so
+             * the pin judges what THIS call adds — a failed plant
+             * writes NOTHING: no new key, no overwritten value (red at
+             * HEAD in isolation: the unmeasured false was inserted).
+             */
+            $before = $cache->getValue(null);
+            $answer = $probe->invoke(null, $holder);
+            $this->assertFalse($answer, 'A failed plant answers the CONSERVATIVE case-sensitive verdict — the containment verdicts err byte-wise wherever the volume goes unmeasured.');
+            $this->assertSame($before, $cache->getValue(null), 'A failed plant writes NOTHING to the per-volume cache — no new key, no overwritten value: one failed plant must not poison a case-insensitive volume\'s derivations for the whole process.');
+
+            // The control: a PLANTABLE base on the same volume still
+            // measures and caches — the machinery answers, only the
+            // unmeasured shape stays out.
+            chmod($holder, 0755);
+            $measured = $probe->invoke(null, $holder);
+            $volume = (string) stat($holder)['dev'];
+            $this->assertArrayHasKey($volume, $cache->getValue(null), 'A MEASURED answer still enters the cache — the control proves the failed-plant arm silenced only itself, never the probe.');
+            $this->assertSame($measured, $cache->getValue(null)[ $volume ], 'The cached measured answer is the probe\'s own verdict.');
+        } finally {
+            @chmod($holder, 0755);
+            WpHarness::releaseScratch($holder);
+        }
+    }
+
+    /**
      * OCR-round-22 split (t31-ocr22-2): every root-ANCHORED leg of
      * the precondition battery above rode spellings whose premise is
      * POSIX root resolution — the t31-ocr11-2 doctrine the legs' own
