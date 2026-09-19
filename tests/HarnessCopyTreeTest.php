@@ -879,7 +879,21 @@ final class HarnessCopyTreeTest extends TestCase
              */
             $frozenResidue = null;
             for ($attempt = 0; $attempt < 10; ++$attempt) {
-                exec('kill -STOP ' . $childPid . ' 2>/dev/null');
+                /*
+                 * Loop-side signal ownership (t31-ocr53-3, the
+                 * t31-ocr50-3 doctrine one seam over): the heartbeat
+                 * proves the child reached its loop ONCE — every
+                 * signal this loop issues rides the CURRENT probe
+                 * instead, so a child that died mid-loop (the
+                 * reflected invoke runs uncaught) answers the named
+                 * death verdict here, never a signal over a pid the
+                 * kernel may have handed an unrelated process by
+                 * then (the recycled-pid window the finally's own
+                 * killChildIfAlive closed, loop side now too).
+                 */
+                if (! $this->freezeChildIfAlive($childPid)) {
+                    $this->fail('The crash-sim child died inside its probe loop — the freeze loop signals only a child it still owns (the t31-ocr50-3 ownership doctrine, loop side), and the simulation\'s own crash is a staging failure, never a residue verdict (the t31-ocr27-9 doctrine).');
+                }
                 usleep(15000);
                 $held = $residueOf($fixtures);
                 /*
@@ -1125,6 +1139,117 @@ final class HarnessCopyTreeTest extends TestCase
             }
         }
         $this->assertTrue($died, 'The signalled child is gone inside the bounded wait — live children still die.');
+    }
+
+    /**
+     * OCR-round-53 pin (t31-ocr53-3 — the t31-ocr50-3 ownership
+     * doctrine, LOOP side): the freeze loop signalled $childPid on the
+     * heartbeat's stale liveness evidence — proof the child reached
+     * its loop ONCE (up to ~2s before the first attempt), each later
+     * kill -STOP riding ~30ms-old evidence over a child whose
+     * reflected invoke runs uncaught: a child that died mid-loop was
+     * STOPped, killed, and CONTinued anyway, and once the reaped pid
+     * recycled the loop signalled an unrelated process — the same
+     * recycled-pid class killChildIfAlive closed for the finally,
+     * applied inconsistently on the loop side (RED AT HEAD by
+     * construction: the loop body carried no probe at all). Every
+     * loop signal rides the CURRENT probe now (freezeChildIfAlive),
+     * and this leg drives both directions with real children: a
+     * child that heartbeats then dies mid-loop is never signalled by
+     * the gate, and a live looping child still freezes and thaws —
+     * the marker log's growth the observable in both directions.
+     */
+    public function testTheFreezeLoopSignalsOnlyAChildItStillOwns(): void
+    {
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The freeze pin premises POSIX process semantics (signal-0 probing, SIGSTOP/SIGCONT, init reaping an orphan) — this host\'s platform separator is not the POSIX one.');
+        }
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the freeze pin\'s children cannot spawn (the t31-ocr16-12 doctrine).');
+        }
+
+        /*
+         * The DEAD direction: a child that heartbeats (the staging
+         * proof the loop's own evidence names) then exits mid-loop —
+         * orphaned at spawn, reaped by init, the recycled-pid window
+         * open exactly as the finding spells it.
+         */
+        $heartbeat = (string) tempnam(sys_get_temp_dir(), 'wpct-freeze-pin-');
+        try {
+            $spawned = array();
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('fwrite(STDOUT, "looping\n"); exit(70);') . ' >' . escapeshellarg($heartbeat) . ' 2>&1 & echo $!', $spawned, $spawnExit);
+            $diedPid = (int) trim((string) ($spawned[0] ?? ''));
+            $this->assertGreaterThan(0, $diedPid, 'The spawn must answer the dying child pid — a failed spawn is a staging failure, never a freeze verdict (the t31-ocr27-9 doctrine).');
+            $beat = '';
+            for ($wait = 0; $wait < 40 && "looping\n" !== $beat; ++$wait) {
+                usleep(50000);
+                $beat = (string) @file_get_contents($heartbeat);
+            }
+            $this->assertSame("looping\n", $beat, 'The dying child must reach its heartbeat first — the mid-loop death shape premises it.');
+            $reaped = false;
+            for ($wait = 0; $wait < 40; ++$wait) {
+                usleep(50000);
+                if (! $this->childIsAlive($diedPid)) {
+                    $reaped = true;
+                    break;
+                }
+            }
+            $this->assertTrue($reaped, 'The mid-loop-dead child must be reaped inside the bounded wait — a child init never reaps leaves the dead direction unconstructible on this host.');
+            $this->assertFalse($this->freezeChildIfAlive($diedPid), 'A child that died mid-loop is never signalled — the gate answers the no-signal arm while the pid stays a positive number, the exact recycled-pid shape the HEAD loop STOPped unconditionally.');
+        } finally {
+            @unlink($heartbeat);
+        }
+
+        /*
+         * The LIVE direction: a child whose loop appends one marker
+         * per iteration — frozen means the log stops growing, thawed
+         * means it grows again: freeze/thaw observed, never assumed
+         * (the return true alone proves a signal was ISSUED, not that
+         * it LANDED).
+         */
+        $log = (string) tempnam(sys_get_temp_dir(), 'wpct-freeze-pin-');
+        $livePid = 0;
+        try {
+            $script = '$log = ' . var_export($log, true) . '; while (true) { file_put_contents($log, ".", FILE_APPEND); usleep(50000); }';
+            $spawned = array();
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' >/dev/null 2>&1 & echo $!', $spawned, $spawnExit);
+            $livePid = (int) trim((string) ($spawned[0] ?? ''));
+            $this->assertGreaterThan(0, $livePid, 'The spawn must answer the looping child pid.');
+            $reached = false;
+            for ($wait = 0; $wait < 40; ++$wait) {
+                clearstatcache(true, $log);
+                if (0 < filesize($log)) {
+                    $reached = true;
+                    break;
+                }
+                usleep(50000);
+            }
+            $this->assertTrue($reached, 'The looping child must reach its loop (the first marker) — a fatal at the embed is a staging failure, never a freeze verdict.');
+
+            $this->assertTrue($this->freezeChildIfAlive($livePid), 'A live looping child is frozen — the freeze half of the contract the crash-sim loop keeps.');
+            usleep(200000);
+            clearstatcache(true, $log);
+            $frozenAt = (int) filesize($log);
+            usleep(200000);
+            clearstatcache(true, $log);
+            $this->assertSame($frozenAt, (int) filesize($log), 'A frozen child\'s log stops growing — the STOP landed, observed over its own running marker.');
+            exec('kill -CONT ' . $livePid . ' 2>/dev/null');
+            $thawed = false;
+            for ($wait = 0; $wait < 40; ++$wait) {
+                usleep(50000);
+                clearstatcache(true, $log);
+                if ($frozenAt < (int) filesize($log)) {
+                    $thawed = true;
+                    break;
+                }
+            }
+            $this->assertTrue($thawed, 'A thawed child\'s log grows again inside the bounded wait — live children still freeze and thaw through the gate.');
+        } finally {
+            if ($livePid > 0) {
+                $this->killChildIfAlive($livePid);
+            }
+            @unlink($log);
+        }
     }
 
     /**
@@ -2259,6 +2384,28 @@ echo "RETURNED\n";
             return false;
         }
         exec('kill -9 ' . $pid . ' 2>/dev/null');
+
+        return true;
+    }
+
+    /*
+     * The freeze loop's STOP owner (t31-ocr53-3 — the t31-ocr50-3
+     * ownership doctrine, loop side): the loop's signals once rode the
+     * heartbeat's stale evidence — proof the child reached its loop
+     * once, never that it still runs. The STOP rides the probe now: a
+     * dead child is never signalled (false), a live one freezes
+     * (true). The loop's kill -9/CONT arms ride the SAME iteration's
+     * fresh evidence — a child this loop just froze cannot die of its
+     * own while stopped; the only death window (the uncaught reflected
+     * invoke) sits in the running phase the NEXT iteration's probe
+     * owns.
+     */
+    private function freezeChildIfAlive(int $pid): bool
+    {
+        if ($pid <= 0 || ! $this->childIsAlive($pid)) {
+            return false;
+        }
+        exec('kill -STOP ' . $pid . ' 2>/dev/null');
 
         return true;
     }
