@@ -1253,7 +1253,23 @@ final class WpHarness
             try {
                 self::rrmdir($tree);
             } catch (\Throwable $environmental) {
-                fwrite(STDERR, 'scratch release failed for ' . $tree . ': ' . $environmental->getMessage() . "\n");
+                /*
+                 * The diagnostic resolves the STREAM, never the CLI
+                 * constant (OCR round 38, t31-ocr38-4): STDERR is
+                 * defined by the CLI SAPI only, and in any other SAPI
+                 * (cgi, fpm, a worker) the bare fwrite raised an
+                 * undefined-constant Error from INSIDE the very catch
+                 * that exists to guarantee this guard never throws —
+                 * the t31-ocr33-7 verdict-replacement defect
+                 * re-opened by the guard's own diagnostic. php://stderr
+                 * answers in every SAPI; a stream that cannot be
+                 * opened (fd 2 closed) degrades silently to no
+                 * diagnostic, never a throw.
+                 */
+                $stderr = @fopen('php://stderr', 'w');
+                if (false !== $stderr) {
+                    fwrite($stderr, 'scratch release failed for ' . $tree . ': ' . $environmental->getMessage() . "\n");
+                }
             }
         }
     }

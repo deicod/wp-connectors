@@ -1508,6 +1508,60 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-38 pin (t31-ocr38-4): the release guard's diagnostic
+     * resolves the STREAM, never the CLI constant. STDERR is defined
+     * by the CLI SAPI only; in any other SAPI (cgi, fpm, a worker)
+     * the bare fwrite raised an undefined-constant Error from inside
+     * the very catch that exists to guarantee the guard never throws
+     * — the t31-ocr33-7 verdict-replacement defect re-opened by the
+     * guard's own diagnostic. Driven through the harness's own
+     * subprocess idiom under the cgi SAPI beside the engine's own
+     * binary (driven red at HEAD: the child fataled 'Undefined
+     * constant "STDERR"' from inside the catch).
+     */
+    public function testTheReleaseGuardSpeaksASapiIndependentStreamVocabulary(): void
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the non-CLI SAPI child sim cannot run.');
+        }
+        $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
+        $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — an environment problem, never the harness defect the child would fatal as.');
+        /*
+         * The cgi SAPI beside the engine's own binary, probed by
+         * SPAWNING it (the t31-ocr10-14 doctrine: the ANSWER is the
+         * signal, never a file-check guess) — an install without it
+         * cannot construct the non-CLI shape and skips visibly.
+         */
+        $cgi = dirname(PHP_BINARY) . '/php-cgi';
+        exec(escapeshellarg($cgi) . ' -q -v', $probe_output, $probe_exit);
+        if (0 !== $probe_exit) {
+            $this->markTestSkipped('No php-cgi SAPI beside ' . PHP_BINARY . ' — the non-CLI shape is unconstructible on this install, so the t31-ocr38-4 SAPI pin cannot run on this runner.');
+        }
+
+        $child = sys_get_temp_dir() . '/wpct-release-cgi-' . uniqid('', true) . '.php';
+        $this->stage($child, '<?php
+require $argv[1];
+try {
+    WpHarness::releaseScratch("/");
+} catch (\Throwable $guard_threw) {
+    echo "GUARD-THREW ", get_class($guard_threw), ": ", $guard_threw->getMessage(), "\n";
+    exit(4);
+}
+echo "RETURNED\n";
+');
+        try {
+            exec(escapeshellarg($cgi) . ' -q ' . escapeshellarg($child) . ' ' . escapeshellarg($harnessPath) . ' 2>&1', $output, $exit);
+            $rendered = implode("\n", $output);
+            $this->assertSame(0, $exit, "The guard never throws from inside its own catch in ANY SAPI — the child said: {$rendered}");
+            $this->assertStringNotContainsString('GUARD-THREW', $rendered, 'The diagnostic must not throw the undefined-constant Error a non-CLI SAPI raises over the STDERR constant (red at HEAD: GUARD-THREW Error: Undefined constant "STDERR").');
+            $this->assertStringContainsString('scratch release failed for /:', $rendered, 'The environmental diagnostic still surfaces — php://stderr answers in every SAPI, the refusal named, the verdict riding untouched.');
+            $this->assertStringContainsString('RETURNED', $rendered, 'The release call returns normally behind the guard — the ocr33-7 contract holds in every SAPI.');
+        } finally {
+            @unlink($child);
+        }
+    }
+
+    /**
      * The battery's asserted stage write (OCR round 33, t31-ocr33-8,
      * the t31-ocr29-10 doctrine swept whole-file): a staging write
      * whose return rode unchecked surfaced as a misleading DOWNSTREAM
