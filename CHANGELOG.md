@@ -6,6 +6,57 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 41)
+
+Forty-first OCR-tool round (main 61/61, fully complete): 4 findings,
+driver accepts all — tying the loop minimum. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4.
+The round's shape: the serialized-boundary generation — the r40
+collector sweep made the walks work, this round polices what crosses
+the SERIALIZED boundary (zip localnames are '/' by spec, never the
+walk's native vocabulary); beside it the fake's per-install contract
+and the diagnostic helper's own fence. Round 41 answered NEW
+findings, so the OCR phase continues per plan. Fixed as
+t31-ocr41-1..3 — one commit per finding (the two zip legs one
+defect class, one commit), plus this docs record, the full offline
+check green after every commit. Suite 1698 → 1699 tests,
+46301 → 46305 assertions, 3 skipped unchanged.
+
+- **The zip localnames speak the '/' vocabulary at every serialized
+  boundary (t31-ocr41-1, bug:medium ×2, one commit)** — the
+  t31-ocr40-2 dual-separator sweep made both collectors work on '\'
+  hosts, but the collected `$relative` still carries the iterator's
+  native join, and both zip legs spliced it verbatim into the ENTRY
+  LOCALNAME (the plugin tree's `$entries[]` and the embed leg's
+  destination): on a '\' host every shipped entry name would contain
+  '\', breaking the inspector's near-source check and the
+  case-insensitive collision key (already '/'-joined from the
+  manifest side). One normalization owner (`zipEntryPath()`) answers
+  both legs at the seam where `$relative` composes an entry; the
+  disk paths beside each seam keep the native vocabulary.
+  Construction-evident on POSIX ('/' is the separator — the
+  ocr28-3 doctrine).
+- **`delete()` retires the install's save counters
+  (t31-ocr41-2, maintainability:low)** — `InMemoryTokenStorage`'s
+  delete() unset the persisted grant but left `saveCounts` intact,
+  so `saveCount()` reported lifetime commits across a
+  delete/reinstall rather than per-install ones; the counters retire
+  with the grant now (per-install semantics, the class docblock's
+  own contract — the encrypted-storage and refresh-coordination
+  suites reuse the fake with deletes between phases). Driven:
+  save→delete→save answers 1 (red at HEAD: 2); plain save sequences
+  unchanged.
+- **The residue sweep fences its walk (t31-ocr41-3, test:low)** —
+  the freeze-kill pin's `$residueOf()` lens walked an unfenced
+  `RecursiveDirectoryIterator` over tests/fixtures/plugins, the
+  exact shape both production owners fence (rrmdir t31-ocr33-6,
+  copyTree t31-ocr34-2): an unreadable subtree (a stranded chmod,
+  an FS/AV lock) died in the SPL vocabulary inside the test's own
+  diagnostic helper. The helper fences its boundary now — the
+  UnexpectedValueException converts to the test's own failure
+  vocabulary naming the path. Construction-evident; readable trees
+  sweep byte-identically.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 40)
 
 Fortieth OCR-tool round (main 61/61, fully complete): 8 findings in
