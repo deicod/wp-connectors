@@ -112,6 +112,22 @@ final class DeviceAuthorizationSession {
 		HeaderMap::assert_no_control_bytes( $device_code, 'The device code' );
 		HeaderMap::assert_no_control_bytes( $user_code, 'The user code' );
 		Url::parse_validated( $verification_uri );
+
+		/*
+		 * The INTERVAL FLOOR is this VO's own decision, not the
+		 * RFC's (OCR round 49, t31-ocr49-14): RFC 8628 §3.2
+		 * defines `interval` with no lower bound — only the ABSENT
+		 * field defaults to 5 seconds — so a provider may answer 0
+		 * ("no minimum") and a flow parser that passes such a
+		 * payload here meets this refusal. It is deliberate: a
+		 * 0-second floor is a busy-loop against the token endpoint,
+		 * the exact hammering §3.5's interval exists to prevent, and
+		 * `interval_seconds` types as a positive int by construction
+		 * (the docblock's "at least 1 second" contract rides the
+		 * same decision). A future parser pre-normalizes or refuses
+		 * 0 with a verdict of its own naming this floor — never an
+		 * opaque throw the payload cannot explain.
+		 */
 		if ( $interval_seconds < 1 ) {
 			throw new InvalidArgumentException( 'The poll interval must be at least one second.' );
 		}
