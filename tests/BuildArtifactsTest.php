@@ -1451,6 +1451,32 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('p/../a.php', $flat, 'The traversal line names the dotdot twin.');
         $this->assertStringNotContainsString('case-fold duplicate', $flat, 'No spurious case-fold line beside the traversal rejection — the .. segment stays outside the fold, exactly the census comment\'s contract.');
 
+        /*
+         * (b-traversal, the CLASS widened) The dots-ONLY run beyond
+         * the exact '..' spelling rides the same exclusion (OCR
+         * round 49, t31-ocr49-6): the r48-3 close owned the exact
+         * two-dot spelling only, so 'p/.../a.php' collapsed under
+         * the per-segment rtrim and dropped from the key the same
+         * way — a zip carrying it beside 'p/a.php' answering the
+         * spurious case-fold line BESIDE its traversal rejection
+         * (red at HEAD). The census comment's contract owns the
+         * parent CLASS (the traversal screen's own predicate judges
+         * any dots-only run of two or more dots the parent token);
+         * a lone '.' keeps collapsing with the empty segment above.
+         */
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.9.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/p/.../a.php", 'dots-run twin'),
+            array("{$slug}/p/a.php", 'plain twin'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('escapes the extraction directory', $flat, 'The dots-run twin answers its traversal refusal — the screen\'s own predicate judges a dots-only run of two or more dots the parent token.');
+        $this->assertStringContainsString('p/.../a.php', $flat, 'The traversal line names the dots-run twin.');
+        $this->assertStringNotContainsString('case-fold duplicate', $flat, 'No spurious case-fold line beside the traversal rejection — the dots-only class stays outside the fold, the census contract\'s own wording.');
+
         // (c) The forged-name arm of the SAME fence: a duplicate whose
         // name carries a newline (and the verdict-lookalike text the
         // security lens used) renders with the newline neutralized —
