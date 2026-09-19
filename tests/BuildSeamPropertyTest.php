@@ -336,9 +336,20 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // instead, the skip_on_root pattern.
                 'expect' => 'CLEAN',
                 'needs_symlink' => true,
-                'apply' => static function (array $scratch): void {
-                    mkdir($scratch['plugin'] . '/vendor/bin', 0755, true);
-                    symlink('/usr/bin/true', $scratch['plugin'] . '/vendor/bin/tool');
+                'apply' => function (array $scratch): void {
+                    /*
+                     * The plants assert their own landing (t31-ocr53-7,
+                     * the t31-ocr27-9 staging doctrine): canSymlink()
+                     * proved the CAPABILITY, not this call — a silently
+                     * failed mkdir()/symlink() left the 'extra' control
+                     * trivially true ('vendor/' in no entries over a
+                     * tree that never shipped) and the row passed
+                     * VACUOUSLY, its coverage gone. An assertion failure
+                     * here rides the apply-throw channel as the row's
+                     * own FAIL (t31-ocr30-6), never a phantom CLEAN.
+                     */
+                    $this->assertTrue(mkdir($scratch['plugin'] . '/vendor/bin', 0755, true), "staging: {$scratch['plugin']}/vendor/bin must create — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertTrue(symlink('/usr/bin/true', $scratch['plugin'] . '/vendor/bin/tool'), "staging: {$scratch['plugin']}/vendor/bin/tool must take — a staging failure fails as staging, never the row's verdict.");
                 },
                 'extra' => function (array $scratch, string $zipPath): void {
                     foreach ($this->zipEntryNames($zipPath) as $entry) {
@@ -518,13 +529,22 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // the way its needs_symlink siblings do.
                 'expect' => 'LOUD',
                 'needs_symlink' => true,
-                'apply' => static function (array $scratch): void {
-                    mkdir($scratch['shared'] . '/Linked', 0755, true);
-                    file_put_contents(
+                'apply' => function (array $scratch): void {
+                    /*
+                     * The plants assert their own landing (t31-ocr53-7,
+                     * the t31-ocr27-9 staging doctrine): a silently
+                     * failed plant here failed the row as 'the silent
+                     * third' — the run succeeded where it must refuse —
+                     * a PHANTOM build defect over a staging failure.
+                     * The assertion rides the apply-throw channel as
+                     * the row's own FAIL (t31-ocr30-6).
+                     */
+                    $this->assertTrue(mkdir($scratch['shared'] . '/Linked', 0755, true), "staging: {$scratch['shared']}/Linked must create — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertNotFalse(file_put_contents(
                         $scratch['shared'] . '/Linked/LinkedSource.php',
                         "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Linked;\ninterface LinkedSource {}\n"
-                    );
-                    symlink($scratch['shared'] . '/Linked', $scratch['shared'] . '/LinkedDir');
+                    ), "staging: {$scratch['shared']}/Linked/LinkedSource.php must write — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertTrue(symlink($scratch['shared'] . '/Linked', $scratch['shared'] . '/LinkedDir'), "staging: {$scratch['shared']}/LinkedDir must take — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'symlink',
             ),
