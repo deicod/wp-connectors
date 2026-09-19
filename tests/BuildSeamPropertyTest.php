@@ -122,6 +122,25 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      */
     public function testACorruptArtifactAnswersTheReopenFailRowNotAnAbort()
     {
+        /*
+         * The exec-capability guard (OCR round 42, t31-ocr42-5 — the
+         * t31-ocr20-5 doctrine over this DIRECT classifyClean() call):
+         * runState() gates every CLEAN row on canSpawnChildren() before
+         * the row ever reaches the classifier, but this pin drives
+         * classifyClean() DIRECTLY, past the row channel — and it
+         * stayed green on a disable_functions host only by the
+         * fixture's own accident (the corrupt bytes fail
+         * ZipArchive::open() at the reopen gate, BEFORE the php -l
+         * soundness walk's first spawn, so the undefined-function \Error
+         * never fired). The pin rides the same premise the row
+         * enforces now, the skip naming it — and it precedes the
+         * scratch maker, so no tree exists at skip time (the t31-ocr12-4
+         * hoist doctrine).
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the corrupt-reopen pin drives classifyClean() directly, past runState()\'s row-level CLEAN gate, and the classifier\'s php -l soundness walk rides child processes (the t31-ocr20-5 premise, made explicit at this direct call: green there was the fixture\'s accident, never the gate\'s).');
+        }
+
         $scratch = $this->makeScratchRepo('corrupt-reopen');
         try {
             WpConnectorsBuild::buildPlugin($scratch['plugin'], $scratch['dist']);
