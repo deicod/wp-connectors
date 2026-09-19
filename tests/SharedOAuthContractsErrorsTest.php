@@ -238,11 +238,28 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
      */
     public function testExceptionTypesDeclareNoPayloadOrCredentialCarryingApi(): void
     {
+        /*
+         * The STANDARD BASELINE owns statics too (OCR round 49,
+         * t31-ocr49-9): every collection in this fence once skipped
+         * `isStatic()` — the baseline, the name diff, and the
+         * declaring-class audit — so a `public static` helper on a
+         * concrete type or the family base passed every pin wholly
+         * exempt, the exact hole the r8-5 ledger record's own
+         * disposition names ("a static payload carrier fails the
+         * NAME diff only if its name is not an engine name") — a
+         * disposition the code never enforced, both static skips
+         * contradicting it. Statics judge by the SAME rule as
+         * instance methods at every collection now (the r8-5
+         * exemption superseded): an engine-declared static rides the
+         * baseline like any engine method, and a FAMILY-declared
+         * static must be one of the type's allowed additions —
+         * nothing static is, so any family-declared public static is
+         * the payload channel (driven: a planted static helper
+         * passed every pin at HEAD, both audits answering it now).
+         */
         $standard = array();
         foreach ((new \ReflectionClass(\Exception::class))->getMethods(\ReflectionMethod::IS_PUBLIC) as $standard_method) {
-            if (! $standard_method->isStatic()) {
-                $standard[] = $standard_method->getName();
-            }
+            $standard[] = $standard_method->getName();
         }
 
         foreach ($this->concreteTypes() as $type) {
@@ -257,7 +274,7 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
 
             $api = array();
             foreach ((new \ReflectionClass($type))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
-                if (! $method->isStatic() && '__construct' !== $method->getName()) {
+                if ('__construct' !== $method->getName()) {
                     $api[] = $method->getName();
                 }
             }
@@ -273,19 +290,18 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
              * NAME-based — a concrete type REDECLARING an allowed name
              * (a future __toString override appending the raw provider
              * body) wore an allowed spelling and passed invisible.
-             * The DECLARING CLASS decides now: a non-static public
-             * method is either the engine's own (declared outside the
-             * family, un-overridden standard behavior) or one of the
-             * type's allowed additions (t31-ocr22-5: __construct for
-             * every type, retry_after_seconds for the RATE-LIMIT type
-             * alone). Anything else the family declares
-             * — a concrete override, a base method beyond the allow
-             * set — is the payload channel and fails.
+             * The DECLARING CLASS decides now: a public method is
+             * either the engine's own (declared outside the family,
+             * un-overridden standard behavior) or one of the type's
+             * allowed additions (t31-ocr22-5: __construct for every
+             * type, retry_after_seconds for the RATE-LIMIT type
+             * alone). Anything else the family declares — a concrete
+             * override, a base method beyond the allow set, a static
+             * helper (t31-ocr49-9: the audit's own static exemption
+             * retired, statics judged by this same rule) — is the
+             * payload channel and fails.
              */
             foreach ((new \ReflectionClass($type))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
-                if ($method->isStatic()) {
-                    continue;
-                }
                 $declared_by = $method->getDeclaringClass()->getName();
                 if (0 !== strpos($declared_by, 'Deicod\\WpConnectors\\')) {
                     continue;
