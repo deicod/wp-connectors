@@ -1709,10 +1709,26 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
          * — pinned on the exact CR-only shape the drift was found on.
          */
         $cr_source = "<?php\rnamespace Deicod\\WpConnectors\\Shared;\r/** @see Deicod\\WpConnectors\\Zai\\Api */\r\$x = \\Deicod\\WpConnectors\\Zai\\ApiClient::class;\r";
+        /*
+         * The MUST-TRIP premise (OCR round 47, t31-ocr47-7): the loop
+         * once skipped 'declaration' references inline and asserted
+         * nothing else — a collector regression reporting ONLY the
+         * declaration on lone-\r content left the foreach body with
+         * ZERO assertions and the pin silently stopped biting. The
+         * non-declaration references are COLLECTED first and their
+         * presence asserted (the ocr33-2 trip-guard idiom one method
+         * below), so the declaration-only regression answers a named
+         * failure here, never a vacuous pass.
+         */
+        $cr_references = array();
         foreach (wp_connectors_shared_family_references($cr_source) as $reference) {
             if ('declaration' === $reference['kind']) {
                 continue;
             }
+            $cr_references[] = $reference;
+        }
+        $this->assertNotSame(array(), $cr_references, 'The CR-only fixture must trip the family detector with NON-declaration references — a lone-\\r regression reporting only the declaration would otherwise leave this leg asserting nothing.');
+        foreach ($cr_references as $reference) {
             $reader_line = substr_count(preg_replace('/\r\n|\r/', "\n", substr($cr_source, 0, $reference['offset'])), "\n") + 1;
             $this->assertSame($reader_line, $reference['line'], sprintf('Every lens rides the \R line semantics: %s (kind %s) must report the reader\'s line.', $reference['name'], $reference['kind']));
         }
