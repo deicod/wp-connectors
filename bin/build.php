@@ -2928,7 +2928,17 @@ final class WpConnectorsBuild
              */
             self::closeArchiveOrThrow($zip, $zipName);
 
-            $checksum = hash_file('sha256', $zipTemp);
+            /*
+             * The @ suppresses only the diagnostic (the E_WARNING of a
+             * failed read — the glm17-16 idiom this seam's own
+             * @file_put_contents below and the byte-identical
+             * @hash_file in publishedChecksum() already spell); the
+             * FALSE return is owned by the check, so an unreadable
+             * staged zip refuses HERE instead of warning first (OCR
+             * round 47, t31-ocr47-3 — the owned-return census: both
+             * neighbors carried the idiom, this call alone warned).
+             */
+            $checksum = @hash_file('sha256', $zipTemp);
             if (false === $checksum) {
                 throw new RuntimeException("build: cannot checksum {$zipName} — refusing to publish a sidecar for an artifact that cannot be read");
             }
@@ -3400,7 +3410,14 @@ final class WpConnectorsBuild
          * truncated overlay) refuses here, before the archive opens.
          */
         clearstatcache(true, $to);
-        $staged = filesize($to);
+        /*
+         * The @ rides the same owned-return census as the checksum
+         * read two seams over (t31-ocr47-3): the E_WARNING of a
+         * failed stat is a diagnostic this seam owns the refusal for
+         * — the FALSE return refuses below, never the engine's
+         * warning aborting the check first.
+         */
+        $staged = @filesize($to);
         if (false === $staged || $staged !== $expected) {
             throw new RuntimeException(sprintf(
                 'build: the generated file %s did not land whole — %d bytes expected, %s on disk; a truncated generated file never enters the archive',
