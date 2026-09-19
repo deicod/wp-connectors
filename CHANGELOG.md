@@ -6,6 +6,114 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 50)
+
+Fiftieth OCR-tool round (main 61/61, fully complete): 10 findings,
+driver accepts all; 9 numbered commits t31-ocr50-1..9 (the unchecked
+read pairs one commit over both their sites). Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10.
+The round's shape: the hyphen-tail credential twin (X-ApiKey — the
+r49-5 fix judged exact catalog matches only); the landing pre-flight
+symlink follow; the recycled-pid kill; the IDN differential; the bidi
+neutralizer; the digits-only fast arm; the lint coverage regression.
+Round 50 answered NEW findings, so the OCR phase continues per plan.
+Fixed as t31-ocr50-1..9 — one commit per finding, plus this docs
+record, the full offline check green after every commit. Suite
+1718 → 1722 tests, 46668 → 46717 assertions, 3 skipped unchanged.
+
+- **The flattened credential family judges the hyphen-tail
+  (t31-ocr50-1, security:medium)** — the r49-5 flattened spellings
+  rode the catalog, consulted by exact match only, so a name whose
+  final hyphen-token is one of them escaped both screens: 'X-ApiKey'
+  folded to judged 'x-apikey' and rendered its secret verbatim. The
+  seven flattened spellings ride the suffix class now — one predicate
+  speaking every delimiter's segment tail plus the bare token — and
+  the catalog entries are the dead weight the ocr33-3 subsumption
+  doctrine refuses. Driven: 'X-ApiKey', 'x.accesstoken' answer masked
+  (red at HEAD: verbatim); 'X-Request-Id' and the spanning bytes
+  ('x-apikeychain') unchanged.
+- **The landing pre-flight owns the link shape (t31-ocr50-2,
+  security:medium)** — file_exists()/is_file() FOLLOW symlinks, so a
+  link at a landing target pointing at a regular file passed the
+  non-file gate and the publication rename silently replaced the link
+  entry, this the one sibling seam that followed links instead of
+  refusing them. is_link() judges the entry itself: a link at any
+  landing target answers the loud refusal naming the path and its
+  target, the prior set whole. Driven: a planted symlink target
+  answers the refusal (red at HEAD: the build exited 0, the link
+  silently replaced); regular landing targets unchanged.
+- **The crash-sim finally's kill rides the child's own liveness
+  evidence (t31-ocr50-3, bug:medium)** — the kill -9 fired on every
+  exit path behind `$childPid > 0` alone, and the child that fataled
+  at setup is reaped by init within milliseconds: the recycled pid
+  took the signal meant for it. The kill rides the r47-8 signal-0
+  probe's parent-side spelling now (EPERM = exists, ESRCH = gone): a
+  dead-or-reaped child is never signalled, a live child still dies.
+  Driven with real children in both directions (red at HEAD: the
+  signal issued unconditionally over the dead child's positive pid).
+- **The non-ASCII host answers the WHATWG-differential refusal
+  (t31-ocr50-4, bug:low)** — a browser resolves 'https://bücher.example/'
+  at 'xn--bcher-kva.example' (domain-to-ASCII, URL Standard §6.4)
+  while this parse and every redacted form kept the raw UTF-8 bytes:
+  two hosts named by one URL over the browser-facing channel. The
+  host region refuses — never punycode-converts; write the xn--
+  spelling, where both readings agree. The r12-8 locale-pressure
+  pin's multibyte-host half is superseded (the fold invariant riding
+  its ASCII legs and the guard probe; the multibyte URL now pinning
+  the refusal byte-identical under pressure). Driven: three IDN
+  spellings refuse through both owners (red at HEAD: constructed);
+  the punycode spelling and pure-ASCII hosts unchanged.
+- **The printable seam owns the bidi/format class (t31-ocr50-5,
+  security:low)** — the neutralizer answered C0 + DEL only, so the
+  Unicode bidi controls rode verbatim in inspector diagnostics
+  interpolating archive-controlled entry names: a crafted name
+  carrying U+202E could visually reorder its own diagnostic line.
+  U+202A-202E, U+200E/U+200F, and U+2066-2069 join the substitution
+  vocabulary as explicit byte sequences — an ASCII-only diagnostic
+  stays byte-identical. Driven at the seam and end to end through a
+  U+202E-bearing entry name (red at HEAD: the controls verbatim).
+- **The ends-in-a-number predicate rides the digit-only fast arm
+  (t31-ocr50-6, documentation:low)** — the URL Standard's step 4
+  (last part non-empty, only ASCII digits) runs before the IPv4 radix
+  parse, so '09' IS a number to every WHATWG consumer while the r49
+  predicate's radix arm alone read it as octal-invalid and the host
+  parsed as an opaque hostname — the accepting direction of the
+  differential the r49-4 screen closes. The ledger read first (no
+  digit-only adjudication; "the predicate is the Standard's own"):
+  the code moves — the regex gains the digit-only alternation, the
+  docblock naming the actual shape. Driven: 'https://09/' and
+  'https://host.007/' answer the refusal (red at HEAD: constructed).
+- **The lint gate refuses a symlinked source loudly (t31-ocr50-7,
+  maintainability:low)** — the walk silently skipped symlinked *.php
+  entries under a false "sibling collectors' parity" claim (the
+  collectors THROW on links), a coverage regression: a linked source
+  escaped php -l unseen. The link answers the walk's FAIL vocabulary
+  now — a counted walk refusal naming the path and its target, the
+  exit red, the tree still walked — with the exclusion judgment
+  first, so a link under a third-party tree refuses nothing. The
+  t31-ocr10-7 pin's silent-skip expectation is superseded. Driven:
+  the linked source answers the refusal (red at HEAD: exit 0, the
+  link unseen); regular trees lint unchanged.
+- **The unchecked read pairs ride the marker owner (t31-ocr50-8,
+  test:low ×2, one commit)** — the forced-failure test's
+  byte-untouched snapshot and compare degraded a failed read to
+  '' === '' (a vacuous pass over the contract the leg pins), and
+  runState's seed manifest read degraded a staging failure into the
+  CLEAN row's 'rebuilt manifest diverged' verdict. Both sites ride
+  readMemberOrMarker(), an unreadable member answering its own marker
+  like-for-like and an absent-or-unreadable seed manifest answering
+  the row's own FAIL naming the staging channel. Construction-evident;
+  happy paths unchanged.
+- **The abort leg's derivation answers before the lock takes
+  (t31-ocr50-9, test:low)** — the chmod-0000 on locked/ landed before
+  the try/finally that restores it, two assertion sites between them:
+  either failure stranded the tree at mode 0000 with no restore. The
+  mode-independent yield derivation and the gate-path pin ride above
+  the chmod now (the derivation's skip restore dead and deleted);
+  only the probe's own restore-on-skip sits between lock and try, the
+  finally owning every mode-0000 spelling alone. Construction-evident;
+  failing legs still fail.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 49)
 
 Forty-ninth OCR-tool round (main 61/61, fully complete): 18 findings,
