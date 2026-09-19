@@ -3840,11 +3840,24 @@ function wp_connectors_basename_without_php_extension($path)
  * 'vendor '/'.git ' fold onto the real dev entries at extraction).
  * rtrim/ltrim/trim all take this list verbatim.
  *
+ * The class is a CONSTANT and is computed ONCE per process (OCR
+ * round 52, t31-ocr52-6): the consumers judge per SEGMENT (the
+ * inspector's case-fold and traversal folds, the near-source
+ * predicate, the development-entry fold), so a per-call rebuild of
+ * the range/array_map/implode spelling was ~N·(K+1) rebuilds of the
+ * same 35 bytes over one archive walk. The static cache is
+ * byte-identical to the rebuilt spelling by construction.
+ *
  * @return string The strip charlist.
  */
 function wp_connectors_path_edge_junk()
 {
-    return implode('', array_map('chr', range(0, 0x20))) . ".\x7F";
+    static $junk = null;
+    if (null === $junk) {
+        $junk = implode('', array_map('chr', range(0, 0x20))) . ".\x7F";
+    }
+
+    return $junk;
 }
 
 /**

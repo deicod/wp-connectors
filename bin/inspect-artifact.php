@@ -63,6 +63,15 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     $seenFoldedNames = array();
     $reportedDuplicateEntries = array();
     $reportedDevEntries = array();
+    /*
+     * The traversal fold's char set derives ONCE per archive (OCR
+     * round 52, t31-ocr52-6): the fold below once re-derived
+     * $nonDotJunk per ENTRY and a fresh str_split char array per
+     * SEGMENT — ~N·(K+1) rebuilds of constants over one walk. The
+     * hoisted array is byte-identical to the rebuilt spelling (the
+     * same edge-junk owner, the same dot strip).
+     */
+    $nonDotJunkChars = str_split(str_replace('.', '', wp_connectors_path_edge_junk()), 1);
     for ($i = 0; $i < $zip->numFiles; ++$i) {
         $name = (string) $zip->getNameIndex($i);
         $parts = explode('/', $name);
@@ -219,9 +228,8 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * judge as content, their non-junk bytes survive the fold).
          */
         $hasTraversalSegment = false;
-        $nonDotJunk = str_replace('.', '', wp_connectors_path_edge_junk());
         foreach ($parts as $part) {
-            $folded = str_replace(str_split($nonDotJunk, 1), '', (string) $part);
+            $folded = str_replace($nonDotJunkChars, '', (string) $part);
             if ('' === rtrim($folded, '.') && strlen($folded) >= 2) {
                 $hasTraversalSegment = true;
 
