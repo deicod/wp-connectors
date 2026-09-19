@@ -6,6 +6,132 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 46)
+
+Forty-sixth OCR-tool round (main 61/61, fully complete): 10 findings,
+all accepted and fixed. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10.
+The round's shape: the digit-initial generation — the eighth
+use-grammar family, three owners in one census (the pattern classes,
+the oracle's single-token blindness, the shape check), the same
+un-anchored [A-Za-z0-9_]+ class everywhere — plus the masking
+edge-delimiter twin (the empty final segment), the backslash-in-path
+screen, and the scanner's case-variant sibling of the r35-1 census.
+Round 46 answered NEW findings, so the OCR phase continues per plan.
+Fixed as t31-ocr46-1..10 — one commit per finding, plus this docs
+record, the full offline check green after every commit. Suite
+1710 → 1716 tests, 46399 → 46431 assertions, 3 skipped unchanged.
+
+- **Every label position in the use and namespace patterns anchors
+  its first byte class (t31-ocr46-1, bug:medium)** — the identifier
+  classes in the use-statement pattern and the namespace-declaration
+  twin spelled the UN-ANCHORED byte class [A-Za-z0-9_]+, so '0Foo'/
+  '0foo' matched the sub-segment tail, the alias group, and the
+  declaration twin as though they were names, and the callbacks
+  re-emitted them beside rewritten output: parse-error bytes in the
+  zip at exit 0 with every gate green. Every label position anchors
+  at [A-Za-z_] now — the illegal spelling fails the pattern, rides
+  verbatim, and refuses at the postcondition's family-reference
+  verdict. Driven: the three spellings answer the refusal naming the
+  file (red at HEAD: re-emitted); legal labels unchanged.
+- **The engine-oracle hard half walks the token sequence
+  (t31-ocr46-2, bug:medium)** — the oracle returned true only when a
+  single non-T_STRING token's text equaled the FULL alias, so a
+  spelling that lexes as MORE THAN ONE token ('0foo' is T_LNUMBER +
+  T_STRING) matched no single token and fell through as legal. The
+  walk collects the alias position's tokens and requires EXACTLY ONE
+  identifier-shaped token — an own-token keyword fails the name, a
+  multi-token spelling fails the count, 'as' itself lexes T_AS and
+  refuses by the same count (probed). The word-bytes routing gate
+  above the walk stays un-anchored DELIBERATELY (it feeds the walk
+  its own class). Driven: the digit-initial member-alias rows answer
+  the refusal (red at HEAD: re-emitted); single-token spellings
+  unchanged.
+- **The member alias shape speaks the label grammar at every seam
+  (t31-ocr46-3, bug:medium)** — the group-use member grammar's alias
+  check spelled the same un-anchored class, so '{Shared\Clock as
+  0foo}' passed the grammar at BOTH re-emit seams and shipped the
+  bytes at exit 0. The shape speaks the label grammar and judges
+  BEFORE the reserved-vocab oracle consults, so a digit-initial tail
+  answers the shape's own vocabulary, never the reserved-word
+  sentence it is not; the census comment names the routing gate's
+  deliberate looseness. Driven: both group spellings answer the
+  shape arm's refusal (red at HEAD: re-emitted); legal aliases
+  unchanged.
+- **The credential boundary segments before emptiness is judged
+  (t31-ocr46-4, security:medium)** — 'Authorization.' is a legal RFC
+  7230 token, and its fold 'authorization-' carries an EMPTY final
+  segment: the exact match failed and str_ends_with failed over the
+  empty-segment shape, so the credential rendered verbatim through
+  every safe debug form (the same r12-4 leak class the ocr43-1/
+  ocr44-2 closures claimed closed). The judged name sheds its bound
+  separators once at the fold — an empty BOUND segment never
+  disqualifies a credential-bearing name over either edge; an empty
+  MID segment changes nothing, a separators-alone name judges the
+  empty string. Driven: the edge spellings answer masked, the
+  boundary controls stay plain (red at HEAD: the trailing-edge rows
+  unmasked); plain spellings byte-unchanged.
+- **The backslash screen owns the whole input (t31-ocr46-5,
+  security:medium)** — the r28-6 screen probed only $authority, but
+  the URL Standard's path state treats U+005C as a segment SEPARATOR
+  for special schemes: a browser consuming 'https://host/device\page'
+  requests '/device/page' while this parse kept the byte verbatim in
+  the path — url(), redacted_url(), and every derived surface naming
+  a different path than the browser consumes. The screen probes the
+  whole URL (every scheme this constructor admits is special, and
+  RFC 3986 admits no raw backslash in path, query, or fragment
+  either). Driven: the path/query/fragment spellings answer the
+  refusal (red at HEAD: constructed); clean paths unchanged.
+- **The extra-throw pin rides its row's own gate premise
+  (t31-ocr46-6, bug:medium)** — the round-45 pin drives runState()
+  with an 'expect' => 'CLEAN' row but asserted its FAIL verdict
+  unconditionally; on a disable_functions host the row-level gate
+  answers SKIP first and the assertion failed as an
+  environment-looking defect (the ocr42-5 class over the ROW
+  channel). The SKIP verdict is the gate answering, named by its own
+  why; the FAIL assertions run only where the row can.
+  Construction-evident; spawning host unchanged.
+- **The release-guard SAPI sim's guard speaks the declaring triple
+  (t31-ocr46-7, bug:low)** — the guard named only the spawn pair
+  while the leg's first statement past the probe is a putenv (the
+  child's harness path rides the ENVIRONMENT), so a putenv-disabled
+  host fataled before the child could ever spawn. The guard speaks
+  canSpawnChildren('putenv') — the redirected-TMPDIR siblings' own
+  idiom. Construction-evident; ordinary hosts unchanged.
+- **The clean-direction fixture's compilability is a checked premise
+  (t31-ocr46-8, test:low)** — the fixture's
+  'self(): namespace\FormsFixture' was charged as a parse error the
+  engine never sees (the gate tokenizes, never parses). DRIVEN at
+  HEAD: the premise fails on this engine — the spelling lints CLEAN
+  on 8.5.10; the relative operator has been part of the TYPE grammar
+  since 8.0 and the floor is >= 8.2 ('expression-only' is a PHP 7
+  truth). The spelling stays (legal on the floor, load-bearing per
+  t31-r8-2); a php -l leg now pins the fixture's compilability, so
+  the clean contract can never again ride a byte shape the engine
+  would refuse. Construction-green at HEAD by the driven truth; gate
+  verdicts unchanged.
+- **The scanner's keyword patterns ride the scoped case-insensitive
+  census (t31-ocr46-9, bug:low)** — the unused-import scanner spelled
+  use/function/const/as byte-exact lowercase while the engine — and
+  the rewriter's own r35-1 census — treats every keyword
+  case-insensitively, so a legal 'Use …' / 'USE FUNCTION …' / '… AS
+  C;' in connectors/ went unscanned: a dead case-variant import was
+  invisible to the gate. The scoped (?i:…) groups sweep every
+  keyword-bearing pattern in the file — the statement pair, both
+  keyword-prefix strips, and the group unroller's member parses.
+  Driven: five case-variant rows answer the verdict, the used control
+  stays clean (red at HEAD: unscanned); lowercase spellings
+  unchanged.
+- **The raw accessor's oversized side pinned (t31-ocr46-10,
+  test:low)** — the accessor's adjudicated invariant (t31-r1-15:
+  hands out the RAW provider number by design, the cap is the
+  consumer's) was pinned only for sub-cap values, so a refactor that
+  starts clamping the raw accessor would have ridden green. The pin
+  answers RAW on the oversized literal and PHP_INT_MAX, beside the
+  policy suite's own capped pins (one boundary, both files).
+  Construction-green at HEAD — red only under the clamping refactor
+  it guards.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 45)
 
 Forty-fifth OCR-tool round (main 61/61, fully complete): 15 findings,
