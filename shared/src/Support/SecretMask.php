@@ -102,11 +102,26 @@ final class SecretMask {
 	 * through the class by construction (drop 'authorization' or
 	 * 'api-key' from the suffixes and they redden).
 	 *
+	 * OCR round 38 (t31-ocr38-1, security — the first shared/src
+	 * finding since round 24): the REQUEST-SIDE TWIN of the r12-4
+	 * channel. 'location' masks because the RFC 6749 section 4.1.2
+	 * redirect query carries the authorization code — and a Referer
+	 * value is that SAME query echoed by a caller's outbound
+	 * navigation (the response-side leak's request-side spelling),
+	 * yet it rendered verbatim through every safe debug form. Beside
+	 * it the RFC 7615 authentication-exchange headers
+	 * ('authentication-info'/'proxy-authentication-info' — the
+	 * 401-protection twins of the masked 'proxy-authorization'
+	 * class, credential material by specification): none of the three
+	 * composes through the suffix class (each final hyphen-token —
+	 * 'referer', 'info' — names no credential suffix), so all three
+	 * ride the catalog.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAMES = array( 'cookie', 'set-cookie', 'location' );
+	const SENSITIVE_HEADER_NAMES = array( 'cookie', 'set-cookie', 'location', 'referer', 'authentication-info', 'proxy-authentication-info' );
 
 	/**
 	 * Credential-bearing name suffixes (lowercase): any folded header

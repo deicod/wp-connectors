@@ -1596,6 +1596,49 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-38 pin (t31-ocr38-1, security — the first shared/src
+     * finding since round 24): the REQUEST-SIDE TWIN of the r12-4
+     * channel. 'location' masks because RFC 6749 section 4.1.2
+     * mandates the authorization code in the redirect's Location
+     * query — and a Referer value is that SAME redirect query echoed
+     * by a caller's outbound navigation (the code-side channel
+     * spelled on the request), yet it rendered verbatim through every
+     * safe debug form while the response side masked its own
+     * credential headers (red at HEAD: unmasked). Beside it the RFC
+     * 7615 authentication-exchange headers
+     * ('authentication-info'/'proxy-authentication-info') — the
+     * 401-protection twins of the masked 'proxy-authorization' class,
+     * credential material by specification — join it: none of the
+     * three composes through the suffix class (each final
+     * hyphen-token — 'referer', 'info' — names no credential suffix),
+     * so all three ride the one catalog.
+     */
+    public function testTheRequestSideTwinOfTheRedirectCodeChannelMasksEverywhere(): void
+    {
+        $code = FakeSecrets::accessToken();
+        $referer = 'https://client.example/cb?code=' . $code . '&state=xyz';
+
+        foreach (array('Referer', 'referer', 'REFERER', 'authentication-info', 'Authentication-Info', 'proxy-authentication-info') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the one sensitive-header catalog — the request-side twin of the r12-4 location channel (red at HEAD: unmasked).");
+        }
+
+        // The render seam every safe debug form rides: the echoed
+        // redirect query never renders; the masked rendering does —
+        // both channels of the ONE masked-view owner.
+        $map = new HeaderMap(array(
+            'Referer' => $referer,
+            'Proxy-Authentication-Info' => $code,
+            'x-request-id' => 'req-38',
+        ));
+        foreach (array('dump' => print_r($map, true), 'serialize' => serialize($map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($code, $rendered, "The authorization code riding the Referer query never renders in the {$channel} channel — pre-fix the request side leaked what the response side masked.");
+            $this->assertStringNotContainsString('client.example/cb?code=', $rendered, "The redirect query — where the code rides — does not render in the {$channel} channel.");
+            $this->assertStringContainsString((string) SecretMask::mask($referer), $rendered, "The masked rendering is what renders in the {$channel} channel.");
+            $this->assertStringContainsString('req-38', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
+        }
+    }
+
+    /**
      * OCR-round-15 pin (t31-ocr15-1, security): the sensitive-name
      * catalog closed at six spellings could never grow as fast as
      * vendors mint key-bearing header names — 'api-key' (Azure OpenAI
