@@ -202,6 +202,38 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertStringContainsString('planted throw must ride the row channel', $verdict['why'], 'The row carries the throw\'s own message.');
     }
 
+    /*
+     * OCR-round-45 pin (t31-ocr45-6, the t31-ocr30-6 conversion
+     * doctrine swept to both siblings): EVERY verdict channel in
+     * runState()/classifyClean() converts its throws into the row's
+     * FAIL verdict — the run-under-test catch once spoke
+     * RuntimeException alone and the extra-channel catch
+     * AssertionFailedError alone, so any other Throwable the
+     * adversarial state surfaces (a PHP >= 8 ValueError over a
+     * mutated path, an engine error over a vanished path) escaped
+     * runState() as a test ERROR and aborted the whole row table,
+     * masking every state behind it. The extra closure is the
+     * deterministically plantable channel: a planted ValueError —
+     * the engine class the finding itself names — answers the row's
+     * FAIL verdict naming the class (red at HEAD: the throw escaped
+     * as a test ERROR), and the table keeps its charge row by row.
+     */
+    public function testAnExtraThrowAnswersAFailRowNotABatteryAbort()
+    {
+        $verdict = $this->runState('extra-throw', array(
+            'expect' => 'CLEAN',
+            'apply' => static function (): void {
+            },
+            'extra' => static function (): void {
+                throw new \ValueError('extra-throw: the planted engine-shaped throw must ride the row channel');
+            },
+        ));
+        $this->assertSame('FAIL', $verdict['class'], 'An extra-channel throw is a FAIL row, never a battery abort (red at HEAD: the ValueError escaped runState as a test ERROR, masking the states behind it).');
+        $this->assertStringContainsString('extra control threw', $verdict['why'], 'The row names the channel the throw rode.');
+        $this->assertStringContainsString('ValueError', $verdict['why'], 'The row names the throw\'s class.');
+        $this->assertStringContainsString('planted engine-shaped throw must ride the row channel', $verdict['why'], 'The row carries the throw\'s own message.');
+    }
+
     /**
      * The adversarial state table (exhaustive for the round's charter).
      *
@@ -618,6 +650,17 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 WpConnectorsBuild::buildPlugin($scratch['plugin'], $scratch['dist']);
             } catch (RuntimeException $e) {
                 $refusal = $e->getMessage();
+            } catch (\Throwable $engine_throw) {
+                /*
+                 * The conversion owns the row (OCR round 45,
+                 * t31-ocr45-6 — the t31-ocr30-6 doctrine swept to
+                 * this sibling): a throw the run surfaces that is not
+                 * the build's own refusal — a PHP >= 8 ValueError
+                 * over a mutated path, an engine error over a vanished
+                 * one — is that row's FAIL verdict naming the class,
+                 * never a battery abort masking the states behind it.
+                 */
+                $refusal = get_class($engine_throw) . ': ' . $engine_throw->getMessage();
             }
 
             if ('CLEAN' === $state['expect']) {
@@ -870,16 +913,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
 
         if (isset($state['extra'])) {
             /*
-             * The extra closure's assertions are ROW verdicts
-             * (t31-ocr13-6), never battery aborts: a thrown assertion
-             * failure converts to a FAIL row riding the aggregator —
-             * each row's setup is its reproducer, and one row's failed
-             * control must not mask the states behind it.
+             * The extra closure's throws are ROW verdicts
+             * (t31-ocr13-6, widened to every Throwable by
+             * t31-ocr45-6), never battery aborts: a thrown assertion
+             * failure converts to a FAIL row riding the aggregator,
+             * and so does any OTHER throw the control surfaces (a
+             * PHP >= 8 ValueError, an engine error) — each row's
+             * setup is its reproducer, and one row's failed control
+             * must not mask the states behind it.
              */
             try {
                 ($state['extra'])($scratch, $zipPath);
             } catch (\PHPUnit\Framework\AssertionFailedError $e) {
                 return array('class' => 'FAIL', 'why' => 'the CLEAN state\'s extra control failed: ' . $e->getMessage());
+            } catch (\Throwable $extra_throw) {
+                return array('class' => 'FAIL', 'why' => 'the CLEAN state\'s extra control threw (' . get_class($extra_throw) . '): ' . $extra_throw->getMessage());
             }
         }
 
