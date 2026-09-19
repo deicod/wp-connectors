@@ -974,8 +974,18 @@ final class HarnessCopyTreeTest extends TestCase
             try {
                 $repo_junk = $residueOf($fixtures);
             } catch (\Throwable $environment_verdict) {
-                // Swallowed with notice: the in-flight verdict outranks
-                // the diagnostic (see the census above).
+                /*
+                 * Swallowed WITH NOTICE (OCR round 49, t31-ocr49-12):
+                 * the census above and the r42-8 ledger record both
+                 * promise a degraded stderrNotice() here — the catch
+                 * was empty, an environmental failure in the repo-junk
+                 * sweep disappearing with no diagnostic at all. The
+                 * notice rides the suite's ONE STDERR writer (the
+                 * ocr38-5 site's idiom, php://stderr in every SAPI,
+                 * an unopenable stream degrading silently), the
+                 * in-flight verdict still outranking the diagnostic.
+                 */
+                WpHarness::stderrNotice('repo-junk sweep degraded: the residue lens refused (' . get_class($environment_verdict) . '): ' . $environment_verdict->getMessage() . "\n");
             }
             foreach ($repo_junk as $junk) {
                 @unlink($junk);
