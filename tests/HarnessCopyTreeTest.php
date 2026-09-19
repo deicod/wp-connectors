@@ -337,7 +337,15 @@ final class HarnessCopyTreeTest extends TestCase
                  * channel), never a silent gate, never a vacuous
                  * green wearing the leg's pass.
                  */
-                fwrite(STDERR, 'unlistable-source leg skipped: this host opens chmod-0000 directories (uid 0 / DAC override — t31-ocr4-1), so the ocr32-9 refusal pin is unconstructible here; the battery\'s remaining legs continue (t31-ocr38-5)' . "\n");
+                /*
+                 * The notice rides the ONE stream-resolving writer
+                 * (t31-ocr39-6): this line was the suite's last bare
+                 * STDERR-constant writer executing in the test process
+                 * — the CLI-only constant this same update's ocr38-4
+                 * doctrine removed from the release guard, one site
+                 * over, inconsistent beside it.
+                 */
+                WpHarness::stderrNotice('unlistable-source leg skipped: this host opens chmod-0000 directories (uid 0 / DAC override — t31-ocr4-1), so the ocr32-9 refusal pin is unconstructible here; the battery\'s remaining legs continue (t31-ocr38-5)' . "\n");
             } else {
                 $refuses($locked, $from . '/dst-locked', 'An EXISTING but unlistable source must refuse with the policy exception, never the SPL iterator\'s surprise.');
             }
