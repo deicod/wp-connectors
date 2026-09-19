@@ -56,11 +56,22 @@ final class HarnessCopyTreeTest extends TestCase
         $from = $holder . '/example-connector';
         $to = sys_get_temp_dir() . '/wpct-copytree-dst-' . uniqid('', true);
         $nested = $from . '/vendor' . $from;
-        mkdir($nested, 0755, true);
-        $this->stage($from . '/plain.php', 'plain bytes');
-        $this->stage($nested . '/nested.php', 'nested bytes');
 
         try {
+            /*
+             * Creation rides INSIDE the release's try (t31-ocr53-10,
+             * the t31-ocr15-8 doctrine — 'every exit path from
+             * creation on removes them'): the mkdir/stage once sat
+             * BEFORE the try, so a failed stage (a read-only temp,
+             * ENOSPC) threw with the trees already planted and
+             * releaseScratch() never ran — both leaked into the
+             * shared temp root. Inside the try the finally owns every
+             * exit from creation on (the ocr30-4 mid-landing shape).
+             */
+            mkdir($nested, 0755, true);
+            $this->stage($from . '/plain.php', 'plain bytes');
+            $this->stage($nested . '/nested.php', 'nested bytes');
+
             WpHarness::copyTree($from, $to);
 
             $this->assertFileExists($to . '/plain.php');
