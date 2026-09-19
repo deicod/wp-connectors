@@ -1851,7 +1851,22 @@ final class WpHarness
                     throw new RuntimeException('WpHarness::copyTree() cannot relativize ' . $relative . ' against the source prefix ' . $prefix . ' — every file would silently land nested under the target (a trailing-slash source is the reachable spelling).');
                 }
                 $relative = substr($relative, strlen($prefix));
-                $target = $to . '/' . $relative;
+                /*
+                 * The landing join speaks the SAME vocabulary as the
+                 * relativize prefix above it (OCR round 40,
+                 * t31-ocr40-6 — the ocr39-4 fix's own neighbor, one
+                 * line it left behind): $to arrives in the caller's
+                 * platform spelling and $relative now rides the
+                 * iterator's native join, so a hardcoded '/' mingles
+                 * vocabularies ('C:\dst' . '/' . 'sub\file.php')
+                 * before dirname()/mkdir()/copy() — every one of
+                 * which resolves the mixed spelling only by the
+                 * engine's grace, and the mkdir spelling question is
+                 * answered by the same constant the prefix derives
+                 * from. On the POSIX host the join IS '/' and every
+                 * byte rides unchanged.
+                 */
+                $target = $to . DIRECTORY_SEPARATOR . $relative;
                 /*
                  * The landing loop owns its IO returns (OCR round 30,
                  * t31-ocr30-4): mkdir()/copy() failures once escaped the
