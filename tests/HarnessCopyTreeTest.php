@@ -466,6 +466,11 @@ final class HarnessCopyTreeTest extends TestCase
      * second tree with the source intact; the refusal's red lives only
      * on a case-insensitive host, and the leg pins the contract
      * green-both-sides exactly the way the '//' super-root leg does.
+     * ROUND 36 (t31-ocr36-6): the refusal arm's landing pin now proves
+     * the RESOLUTION (the variant spelling answers the staged file)
+     * instead of a "nothing lands" verdict that was GUARANTEED RED on
+     * the arm's own motivating host — the first fix-induced high, the
+     * r35 derivation's own leg turning on it.
      */
     public function testTheContainmentVerdictSpeaksTheHostsPathCaseVocabulary(): void
     {
@@ -480,7 +485,24 @@ final class HarnessCopyTreeTest extends TestCase
                     'A case-variant target the host resolves to the source itself must refuse — the byte-wise verdict is the wrong verdict on a case-insensitive host.', \RuntimeException::class
                 );
                 $this->assertStringContainsString('refuses a target that is the source itself', $caught->getMessage(), 'The case-variant self-copy refuses through the containment vocabulary, never a silent same-tree no-op.');
-                $this->assertFileDoesNotExist($from . '/SRC/file.php', 'Nothing lands through the case-variant spelling on a host that resolves it to the source.');
+                /*
+                 * The RESOLUTION premise, proven — not a "nothing
+                 * lands" pin over the variant spelling (OCR round 36,
+                 * t31-ocr36-6 — the round's first FIX-INDUCED high):
+                 * on this host the spelling {$from}/SRC/file.php
+                 * RESOLVES to the staged {$from}/src/file.php — the
+                 * same file answers both spellings — so the r35 leg's
+                 * assertFileDoesNotExist over the variant was a
+                 * GUARANTEED RED on exactly the motivating host class
+                 * (macOS default APFS). The leg proves what is true on
+                 * each host: the resolution (the file answers the
+                 * variant — the premise the refusal rides on) here,
+                 * the nothing-lands verdict on the case-sensitive arm
+                 * below through a name staged nowhere — absent under
+                 * every spelling, the refusal having moved no bytes.
+                 */
+                $this->assertFileExists($from . '/SRC/file.php', 'The case-variant spelling RESOLVES to the staged source on this host — the premise the self-copy refusal rides on (the same file answers both spellings).');
+                $this->assertFileDoesNotExist($from . '/SRC/inside', 'Nothing lands through the case-variant spelling — a name staged nowhere stays absent under every spelling.');
             } else {
                 // The case-SENSITIVE arm: the variant spelling names a
                 // DIFFERENT tree, the byte-wise verdict is the correct
