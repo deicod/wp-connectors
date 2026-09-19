@@ -103,6 +103,22 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          */
         $folded_name = wp_connectors_ascii_lower(implode('/', array_filter(array_map(
             static function ( $segment ) {
+                /*
+                 * '..' rides the key VERBATIM (OCR round 48,
+                 * t31-ocr48-3): the edge-junk rtrim collapses a
+                 * dots-only segment to '' and the filter below drops
+                 * it, which once folded 'p/../a.php' onto 'p/a.php' —
+                 * a zip carrying both answered a spurious case-fold
+                 * duplicate line BESIDE its traversal rejection. The
+                 * census contract above ("'..' stays outside the fold,
+                 * the traversal refusal below owns it") owns the
+                 * parent segment: excluded from the fold's collapsing
+                 * vocabulary, both spellings answer the traversal
+                 * refusal on their own keys.
+                 */
+                if ('..' === $segment) {
+                    return $segment;
+                }
                 return rtrim((string) $segment, wp_connectors_path_edge_junk());
             },
             explode('/', $name)

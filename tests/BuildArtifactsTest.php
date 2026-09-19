@@ -1426,6 +1426,31 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('assets/./logo.png', $flat, 'The dot-segment twin is named in the refusal.');
         $this->assertStringContainsString('assets//logo.png', $flat, 'The empty-segment twin is named in the refusal.');
 
+        /*
+         * (b-traversal) The '..' twin stays OUT of the fold (OCR round
+         * 48, t31-ocr48-3): the key's edge-junk rtrim collapsed a
+         * dots-only segment to '' and the filter dropped it, so
+         * 'p/../a.php' folded onto 'p/a.php' and a zip carrying both
+         * answered a SPURIOUS case-fold duplicate line beside its
+         * traversal rejection (red at HEAD) — contradicting the
+         * census comment's own contract ("'..' stays outside the
+         * fold, the traversal refusal below owns it"). The parent
+         * segment rides the key verbatim now, the keys stay apart,
+         * and the traversal refusal alone answers.
+         */
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.8.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/p/../a.php", 'dotdot twin'),
+            array("{$slug}/p/a.php", 'plain twin'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('escapes the extraction directory', $flat, 'The dotdot twin answers its traversal refusal.');
+        $this->assertStringContainsString('p/../a.php', $flat, 'The traversal line names the dotdot twin.');
+        $this->assertStringNotContainsString('case-fold duplicate', $flat, 'No spurious case-fold line beside the traversal rejection — the .. segment stays outside the fold, exactly the census comment\'s contract.');
+
         // (c) The forged-name arm of the SAME fence: a duplicate whose
         // name carries a newline (and the verdict-lookalike text the
         // security lens used) renders with the newline neutralized —
