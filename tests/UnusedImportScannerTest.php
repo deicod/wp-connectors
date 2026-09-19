@@ -749,6 +749,53 @@ FIXTURE
         }
     }
 
+    /*
+     * OCR-round-45 pin (t31-ocr45-7): the by-ref $counted sync answers
+     * the CONSTRUCTOR's refusal too. The RecursiveDirectoryIterator
+     * construction sat OUTSIDE the try/finally that owns the sync, so
+     * an unopenable scan root threw UnexpectedValueException from the
+     * constructor BEFORE the try — the finally never ran, $counted was
+     * never assigned, and the docblock's own "@param-out ... always"
+     * contract was falsified (red at HEAD: the by-ref variable stayed
+     * null under the abort). The construction rides inside the guarded
+     * region now; this leg drives the collector IN-PROCESS over a
+     * chmod-0000 root (the refusal prints nothing — no child needed,
+     * unlike the mid-walk leg whose FAIL lines the child isolates) and
+     * holds count === 0 under the refusal.
+     */
+    public function testAnUnopenableRootAnswersTheRefusalWithTheCountSynced(): void
+    {
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The unopenable-root leg premises POSIX permission bits — chmod(0000) must deny the opendir, never read through a read-only attribute.');
+        }
+        $locked = $this->root . '/locked-root';
+        mkdir($locked, 0755, true);
+        chmod($locked, 0000);
+        // The permission-denial probe (the capability this leg
+        // premises, the mid-walk leg's own shape): a process the
+        // permissions cannot deny can never drive the constructor's
+        // refusal — skip, naming the premise, never a vacuous green.
+        $probe_open = @opendir($locked);
+        if (false !== $probe_open) {
+            closedir($probe_open);
+            chmod($locked, 0755);
+            $this->markTestSkipped('This process opens a chmod-0000 directory (permissions cannot deny it — root-shaped), so the constructor refusal is unconstructible here.');
+        }
+
+        try {
+            $counted = null;
+            try {
+                wp_connectors_unused_import_violations($locked, $counted);
+                $this->fail('An unopenable scan root must answer the constructor\'s UnexpectedValueException, never walk green.');
+            } catch (UnexpectedValueException $e) {
+                $this->assertStringContainsString($locked, $e->getMessage(), 'The refusal names the unopenable root.');
+            }
+            $this->assertSame(0, $counted, 'The by-ref count answers 0 under the constructor\'s own refusal — the finally owns the sync for every abort shape (red at HEAD: the count stayed null, the construction sitting outside the guarded region).');
+        } finally {
+            chmod($locked, 0755);
+        }
+    }
+
     public function testStrippedCommentsKeepTheirLineTerminator(): void
     {
         /*

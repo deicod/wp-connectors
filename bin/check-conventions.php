@@ -172,9 +172,6 @@ if (wp_connectors_cli_entry(__FILE__)) {
 function wp_connectors_unused_import_violations(string $root, ?int &$counted = null): int
 {
     $violations = 0;
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
-    );
 
     /*
      * The finally owns the by-ref sync (OCR round 43, t31-ocr43-8):
@@ -186,9 +183,18 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
      * flies through UNTOUCHED (the gate's conversion is the verdict)
      * and $counted still answers: one sync point covering every
      * increment site and every abort shape, never a per-site
-     * bookkeeping twin.
+     * bookkeeping twin. The CONSTRUCTION rides inside the guarded
+     * region (OCR round 45, t31-ocr45-7): an unopenable scan root
+     * throws from the RecursiveDirectoryIterator constructor itself,
+     * and the former placement — outside the try — ran no finally and
+     * left $counted unassigned, falsifying the docblock's own
+     * "@param-out ... always" contract under the very abort the sync
+     * exists to cover.
      */
     try {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
+        );
         foreach ($iterator as $file) {
             if ($file->isDir()) {
                 // The iterator yields directories too, and one NAMED *.php
