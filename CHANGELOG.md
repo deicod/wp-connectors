@@ -6,6 +6,62 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 48)
+
+Forty-eighth OCR-tool round (main run partial — 52/61, nine large files
+died to context compression; fill-in r52a covered the five bin/ files
+completely): 4 findings, all accepted and fixed. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4.
+The round's shape: the repeated-kind generation — the tenth
+use-grammar family — beside the pid-false seam and the fold-key
+comment drift. Round 48 answered NEW findings, so the OCR phase
+continues per plan. Fixed as t31-ocr48-1..4 — one commit per finding,
+plus this docs record, the full offline check green after every
+commit. Suite 1716 → 1716 tests, 46458 → 46468 assertions
+(+4/+3/+3/+0), 3 skipped unchanged.
+
+- **The kind arm owns its once-per-member premise
+  (t31-ocr48-1, bug:medium)** — the comma-list member grammar accepted
+  a kind keyword whenever the member was not yet named, and a kind
+  keyword never names anything: every kind-pair spelling
+  (`function function Foo` and the three mixed/repeated twins)
+  re-emitted verbatim beside the rewritten family — parse-error bytes
+  php -l refuses, shipped at exit 0. The arm refuses the second kind
+  with the engine's own verdict; single-kind members, the leaf
+  exemption, and the alias dissolver ride unchanged. Driven: all four
+  kind-pair spellings answer the refusal (red at HEAD: re-emitted).
+- **The sweep patterns admit the empty-pid spelling
+  (t31-ocr48-2, bug:low)** — getmypid() answers int|false, and a
+  false runtime interpolates an empty pid component into every staging
+  spelling (stage tree, zip temp, manifest temp) the `(\d+)`-anchored
+  sweep patterns never matched: a crashed false-pid run's leftovers
+  were permanently unsweepable dist residue. The pid component rides
+  digit-optionally in all three patterns; the empty component parses
+  to pid 0 — never alive, never a working run's own — so the dead-pid
+  gate reclaims it exactly like any dead pid. Legacy pid-less foreign
+  spellings stay unattributable. Driven: empty-pid stage, zip-temp,
+  and manifest spellings all answer the sweep (red at HEAD: no
+  match); normal pids unchanged.
+- **The fold key keeps '..' outside the fold
+  (t31-ocr48-3, maintainability:low)** — the inspector's fold-key
+  derivation collapsed a dots-only '..' segment to '' and dropped it,
+  folding 'p/../a.php' onto 'p/a.php' and answering a spurious
+  case-fold duplicate line beside the traversal rejection,
+  contradicting the key's own census comment. The '..' segment rides
+  the key verbatim — excluded from the fold's collapsing vocabulary,
+  exactly the comment's contract — and the traversal refusal alone
+  answers. Driven: a zip with both spellings answers only the
+  traversal refusal (red at HEAD: spurious line); genuine case-fold
+  duplicates still answer theirs.
+- **The freeze-kill docblock tells the miss arm's actual contract
+  (t31-ocr48-4, documentation:low)** — the crash-sim pin's docblock
+  promised "an unopened window after every attempt is a loud
+  staging-shaped failure, never a vacuous green" while the else
+  branch passes on the miss by design (per the r40-5 record's own
+  both-arms-green fact; a loud miss would fail every plant-less
+  host). Doc-only: the miss rides green BY DESIGN at the residual
+  probability, the number stays, the loud-failure clause goes.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 47)
 
 Forty-seventh OCR-tool round (main 61/61, fully complete): 9 findings,
